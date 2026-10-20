@@ -3,6 +3,7 @@ use zellij_tile::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TreeNode {
+    Exited,
     Session,
     Tab(usize),
     Pane(usize, usize),
@@ -16,6 +17,7 @@ pub struct TreeRow {
     pub depth: usize,
     pub expandable: bool,
     pub expanded: bool,
+    pub covers: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -35,6 +37,7 @@ pub struct TreeTab {
 
 #[derive(Default)]
 pub struct SessionTree {
+    pub exited_expanded: bool,
     pub expanded: BTreeSet<String>,
     pub expanded_tabs: BTreeSet<(String, usize)>,
     pub children: BTreeMap<String, Vec<TreeTab>>,
@@ -55,51 +58,97 @@ impl Default for TreeNode {
 }
 
 impl SessionTree {
+    #[cfg(test)]
     pub fn flatten(&self, sessions: &[(usize, String)]) -> Vec<TreeRow> {
+        let sessions: Vec<(usize, String, bool)> = sessions
+            .iter()
+            .map(|(index, name)| (*index, name.clone(), false))
+            .collect();
+        self.flatten_grouped(&sessions, false)
+    }
+
+    pub fn flatten_grouped(
+        &self,
+        sessions: &[(usize, String, bool)],
+        expand_exited: bool,
+    ) -> Vec<TreeRow> {
         let mut rows = vec![];
-        for (original_index, name) in sessions {
-            let children = self.children.get(name);
-            let expanded = self.expanded.contains(name);
-            rows.push(TreeRow {
-                original_index: *original_index,
-                session: name.clone(),
-                node: TreeNode::Session,
-                depth: 0,
-                expandable: children.map(|c| !c.is_empty()).unwrap_or(true),
-                expanded,
-            });
-            if !expanded {
-                continue;
-            }
-            let Some(tabs) = children else {
-                continue;
-            };
-            for (tab_index, tab) in tabs.iter().enumerate() {
-                let tab_expanded = self.expanded_tabs.contains(&(name.clone(), tab_index));
-                rows.push(TreeRow {
-                    original_index: *original_index,
-                    session: name.clone(),
-                    node: TreeNode::Tab(tab_index),
-                    depth: 1,
-                    expandable: !tab.panes.is_empty(),
-                    expanded: tab_expanded,
-                });
-                if !tab_expanded {
-                    continue;
-                }
-                for pane_index in 0..tab.panes.len() {
-                    rows.push(TreeRow {
-                        original_index: *original_index,
-                        session: name.clone(),
-                        node: TreeNode::Pane(tab_index, pane_index),
-                        depth: 2,
-                        expandable: false,
-                        expanded: false,
-                    });
-                }
+        for (original_index, name, _) in sessions.iter().filter(|(_, _, exited)| !exited) {
+            self.push_session(&mut rows, *original_index, name, 0);
+        }
+        let exited: Vec<&(usize, String, bool)> =
+            sessions.iter().filter(|(_, _, exited)| *exited).collect();
+        let Some(first) = exited.first() else {
+            return rows;
+        };
+        let expanded = self.exited_expanded || expand_exited;
+        rows.push(TreeRow {
+            original_index: first.0,
+            session: String::new(),
+            node: TreeNode::Exited,
+            depth: 0,
+            expandable: true,
+            expanded,
+            covers: exited.iter().map(|(index, _, _)| *index).collect(),
+        });
+        if expanded {
+            for (original_index, name, _) in exited {
+                self.push_session(&mut rows, *original_index, name, 1);
             }
         }
         rows
+    }
+
+    fn push_session(
+        &self,
+        rows: &mut Vec<TreeRow>,
+        original_index: usize,
+        name: &str,
+        depth: usize,
+    ) {
+        let children = self.children.get(name);
+        let expanded = self.expanded.contains(name);
+        rows.push(TreeRow {
+            original_index,
+            session: name.to_owned(),
+            node: TreeNode::Session,
+            depth,
+            expandable: children.map(|c| !c.is_empty()).unwrap_or(true),
+            expanded,
+            covers: vec![],
+        });
+        if !expanded {
+            return;
+        }
+        let Some(tabs) = children else {
+            return;
+        };
+        for (tab_index, tab) in tabs.iter().enumerate() {
+            let tab_expanded = self.expanded_tabs.contains(&(name.to_owned(), tab_index));
+            rows.push(TreeRow {
+                original_index,
+                session: name.to_owned(),
+                node: TreeNode::Tab(tab_index),
+                depth: depth + 1,
+                expandable: !tab.panes.is_empty(),
+                expanded: tab_expanded,
+                covers: vec![],
+            });
+            if !tab_expanded {
+                continue;
+            }
+            for pane_index in 0..tab.panes.len() {
+                rows.push(TreeRow {
+                    original_index,
+                    session: name.to_owned(),
+                    node: TreeNode::Pane(tab_index, pane_index),
+                    depth: depth + 2,
+                    expandable: false,
+                    expanded: false,
+                    covers: vec![],
+                });
+            }
+        }
     }
 
     pub fn cursor_position(&self, rows: &[TreeRow], selected: Option<usize>) -> Option<usize> {
@@ -114,10 +163,15 @@ impl SessionTree {
                 rows.iter()
                     .position(|r| r.original_index == selected && r.node == TreeNode::Session)
             })
+            .or_else(|| {
+                rows.iter()
+                    .position(|r| r.node == TreeNode::Exited && r.covers.contains(&selected))
+            })
     }
 
     pub fn toggle(&mut self, row: &TreeRow) {
         match row.node {
+            TreeNode::Exited => self.exited_expanded = !self.exited_expanded,
             TreeNode::Session => {
                 if !self.expanded.remove(&row.session) {
                     self.expanded.insert(row.session.clone());
@@ -275,6 +329,51 @@ mod tests {
         );
         tree.toggle(&rows[0]);
         assert_eq!(tree.flatten(&sessions()).len(), 2);
+    }
+
+    #[test]
+    fn exited_sessions_collapse_under_one_line() {
+        let mut tree = SessionTree::default();
+        let sessions = vec![
+            (0, "api".to_owned(), false),
+            (1, "old".to_owned(), true),
+            (2, "web".to_owned(), false),
+            (3, "older".to_owned(), true),
+        ];
+        let rows = tree.flatten_grouped(&sessions, false);
+        let shown: Vec<(TreeNode, &str, usize)> = rows
+            .iter()
+            .map(|r| (r.node, r.session.as_str(), r.depth))
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                (TreeNode::Session, "api", 0),
+                (TreeNode::Session, "web", 0),
+                (TreeNode::Exited, "", 0),
+            ]
+        );
+        assert_eq!(rows[2].covers, vec![1, 3]);
+        assert!(!rows[2].expanded);
+        tree.node = TreeNode::Session;
+        tree.node_session = "older".to_owned();
+        assert_eq!(tree.cursor_position(&rows, Some(3)), Some(2));
+        tree.toggle(&rows[2]);
+        let rows = tree.flatten_grouped(&sessions, false);
+        let shown: Vec<(&str, usize)> =
+            rows.iter().map(|r| (r.session.as_str(), r.depth)).collect();
+        assert_eq!(
+            shown,
+            vec![("api", 0), ("web", 0), ("", 0), ("old", 1), ("older", 1)]
+        );
+        assert_eq!(tree.cursor_position(&rows, Some(3)), Some(4));
+        tree.toggle(&rows[2]);
+        assert_eq!(tree.flatten_grouped(&sessions, true).len(), 5);
+        assert_eq!(
+            tree.flatten_grouped(&[(0, "api".to_owned(), false)], false)
+                .len(),
+            1
+        );
     }
 
     #[test]

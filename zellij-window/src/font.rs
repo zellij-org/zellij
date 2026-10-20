@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{anyhow, Result};
 use swash::scale::image::Content;
@@ -1083,12 +1084,9 @@ impl FontStack {
         let data = match self.files.get(&path) {
             Some(data) => *data,
             None => {
-                let data = std::fs::read(&path)
-                    .map_err(|e| report!("failed to read the font {:?}: {}", path, e))
-                    .ok()?;
-                let leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
-                self.files.insert(path.clone(), leaked);
-                leaked
+                let data = font_file(&path)?;
+                self.files.insert(path.clone(), data);
+                data
             },
         };
         let parsed = FontRef::from_index(data, index as usize)?;
@@ -1108,6 +1106,47 @@ impl FontStack {
 }
 
 const STATIC_FACE: u16 = 0;
+
+fn font_file(path: &Path) -> Option<&'static [u8]> {
+    static FILES: OnceLock<Mutex<HashMap<PathBuf, &'static [u8]>>> = OnceLock::new();
+    let mut files = FILES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(data) = files.get(path) {
+        return Some(*data);
+    }
+    let data = map_font_file(path)
+        .map_err(|e| report!("failed to read the font {:?}: {}", path, e))
+        .ok()?;
+    files.insert(path.to_path_buf(), data);
+    Some(data)
+}
+
+fn map_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
+    if !safe_to_map(path) {
+        return Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()));
+    }
+    let file = std::fs::File::open(path)?;
+    match unsafe { memmap2::Mmap::map(&file) } {
+        Ok(mapped) => Ok(&**Box::leak(Box::new(mapped))),
+        Err(_) => Ok(Box::leak(std::fs::read(path)?.into_boxed_slice())),
+    }
+}
+
+#[cfg(unix)]
+fn safe_to_map(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    unsafe { libc::access(path.as_ptr(), libc::W_OK) != 0 }
+}
+
+#[cfg(not(unix))]
+fn safe_to_map(_path: &Path) -> bool {
+    true
+}
 
 fn has_weight_axis(font: &FontRef<'_>) -> bool {
     font.variations()
@@ -2750,6 +2789,28 @@ mod tests {
             panic!("a with two marks did not draw");
         };
         assert!(stacked.height > single.height);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_font_file_this_user_can_write_is_read_rather_than_mapped() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        assert!(!safe_to_map(file.path()));
+        let mut permissions = std::fs::metadata(file.path()).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(file.path(), permissions).unwrap();
+        let running_as_root = unsafe { libc::geteuid() } == 0;
+        assert_eq!(safe_to_map(file.path()), !running_as_root);
+    }
+
+    #[test]
+    fn a_font_file_is_loaded_once_per_process() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, REGULAR).unwrap();
+        let first = font_file(file.path()).unwrap();
+        let second = font_file(file.path()).unwrap();
+        assert_eq!(first.as_ptr(), second.as_ptr());
+        assert_eq!(first, REGULAR);
     }
 
     #[test]

@@ -21,6 +21,7 @@ use crate::client_server_contract::client_server_contract::{
 };
 use prost::Message;
 
+mod attention_conversion;
 mod enum_conversions;
 mod protobuf_conversion;
 
@@ -250,6 +251,14 @@ pub enum ClientToServerMsg {
     RequestSessionPreview {
         tab_index: Option<u32>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<crate::data::PreviewAnchor>,
+    },
+    RequestSessionAttention {
+        include_command_text: bool,
+    },
+    PeerAttentionChanged {
+        session_name: String,
+        attention: Option<crate::attention::SessionAttention>,
     },
     SetMobileRenderPreferences {
         single_pane: bool,
@@ -334,6 +343,15 @@ pub enum ServerToClientMsg {
     },
     MobileState {
         payload: MobileStatePayload,
+    },
+    HostProgramStatus {
+        status: Option<crate::attention::HostProgramStatus>,
+    },
+    SessionAttention {
+        attention: crate::attention::SessionAttention,
+    },
+    SessionPreview {
+        preview: Option<crate::data::SessionPreview>,
     },
 }
 

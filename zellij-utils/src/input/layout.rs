@@ -691,7 +691,7 @@ pub type SwapFloatingLayout = (
     Option<String>,
 ); // Option<String> is the swap layout name
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
@@ -699,6 +699,25 @@ pub struct Layout {
     pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub swap_tiled_layouts: Vec<SwapTiledLayout>,
     pub swap_floating_layouts: Vec<SwapFloatingLayout>,
+    #[serde(default)]
+    pub session_attention_muted: bool,
+}
+
+impl std::fmt::Debug for Layout {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("Layout");
+        debug_struct
+            .field("tabs", &self.tabs)
+            .field("focused_tab_index", &self.focused_tab_index)
+            .field("template", &self.template)
+            .field("swap_layouts", &self.swap_layouts)
+            .field("swap_tiled_layouts", &self.swap_tiled_layouts)
+            .field("swap_floating_layouts", &self.swap_floating_layouts);
+        if self.session_attention_muted {
+            debug_struct.field("session_attention_muted", &self.session_attention_muted);
+        }
+        debug_struct.finish()
+    }
 }
 
 /// Layout configuration for a single tab in multi-tab override
@@ -797,6 +816,10 @@ pub struct FloatingPaneLayout {
     pub logical_position: Option<usize>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl FloatingPaneLayout {
@@ -817,6 +840,8 @@ impl FloatingPaneLayout {
             logical_position: None,
             default_fg: None,
             default_bg: None,
+            attention_muted: None,
+            ignore_output: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -841,6 +866,8 @@ impl From<&TiledPaneLayout> for FloatingPaneLayout {
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
             border_style: pane_layout.border_style,
+            attention_muted: pane_layout.attention_muted,
+            ignore_output: pane_layout.ignore_output,
             ..Default::default()
         }
     }
@@ -866,6 +893,10 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: Option<String>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl TiledPaneLayout {

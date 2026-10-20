@@ -1016,6 +1016,116 @@ pub fn get_session_preview(name: &str, tab_index: Option<usize>, pane_id: Option
         name: name.to_owned(),
         tab_index,
         pane_id,
+        anchor: None,
+    });
+}
+
+pub fn get_session_preview_with_history(
+    name: &str,
+    tab_index: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index,
+        pane_id,
+        anchor: Some(PreviewAnchor::Bottom),
+    });
+}
+
+pub fn get_session_pane_preview(name: &str, pane_id: PaneId, anchor: PreviewAnchor) {
+    let pane_id = match pane_id {
+        PaneId::Terminal(id) => (id, false),
+        PaneId::Plugin(id) => (id, true),
+    };
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index: None,
+        pane_id: Some(pane_id),
+        anchor: Some(anchor),
+    });
+}
+
+pub fn mark_session_pane_seen(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::MarkSessionPaneSeen {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn mark_all_seen(session_name: Option<&str>) {
+    run_plugin_command(PluginCommand::MarkAllSeen {
+        session_name: session_name.map(|s| s.to_owned()),
+    });
+}
+
+pub fn open_session_window(session_name: &str, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::existing(session_name, None, new_window),
+    ));
+}
+
+pub fn open_session_pane_window(session_name: &str, pane_id: PaneId, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::existing(session_name, Some(pane_id), new_window),
+    ));
+}
+
+pub fn request_session_window(request: SessionWindowRequest) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(request));
+}
+
+pub fn open_new_session_window(
+    session_name: Option<&str>,
+    layout: Option<LayoutInfo>,
+    cwd: Option<PathBuf>,
+) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::new_session(session_name, layout, cwd),
+    ));
+}
+
+pub fn write_to_session_pane(session_name: &str, pane_id: PaneId, bytes: Vec<u8>) {
+    run_plugin_command(PluginCommand::WriteToSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
+        bytes,
+    });
+}
+
+pub fn send_key_to_session_pane(session_name: &str, pane_id: PaneId, key: KeyWithModifier) {
+    run_plugin_command(PluginCommand::SendKeyToSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
+        key,
+    });
+}
+
+pub fn toggle_session_pane_mute(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneMute {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn toggle_session_pane_ignore_output(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneIgnoreOutput {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn toggle_session_pane_watch(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneWatch {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn focus_session_pane(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::FocusSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
     });
 }
 

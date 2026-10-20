@@ -230,8 +230,8 @@ mouse_mode false
 advanced_mouse_actions false
 pane_frame_style "titles"
 theme "default"
-session_card false
 session_indicator false
+attention { startup_card "never"; }
 swap_layout_notification false
 on_quit "quit"
 "#;

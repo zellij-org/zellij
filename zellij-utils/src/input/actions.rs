@@ -758,12 +758,54 @@ pub enum Action {
     DismissInfoPopups,
     OpenContextMenu,
     ToggleSessionCard,
+    MutePane,
+    MutePaneByPaneId {
+        pane_id: PaneId,
+    },
+    IgnorePaneOutput,
+    IgnorePaneOutputByPaneId {
+        pane_id: PaneId,
+    },
+    WatchPane,
+    WatchPaneByPaneId {
+        pane_id: PaneId,
+    },
+    MuteTab,
+    MuteTabByTabId {
+        id: u64,
+    },
+    MuteSession,
+    ToggleSession,
+    GoToPreviousSession,
+    GoToNextSession,
+    GoToNextAttention,
+    ToggleTrayIcon,
+    MarkPaneSeen {
+        session: Option<String>,
+        pane_id: Option<PaneId>,
+    },
+    MarkAllSeen {
+        session: Option<String>,
+        this_session: bool,
+    },
+    WriteKeyToPaneId {
+        key_with_modifier: Option<KeyWithModifier>,
+        pane_id: PaneId,
+    },
 }
 
 impl Default for Action {
     fn default() -> Self {
         Action::NoOp
     }
+}
+
+fn parse_cli_pane_id(pane_id_str: &str) -> Result<PaneId, String> {
+    PaneId::from_str(pane_id_str).map_err(|_| {
+        format!(
+            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+        )
+    })
 }
 
 impl Default for SearchDirection {
@@ -801,6 +843,10 @@ impl Action {
             },
             Action::CloseFocusByPaneId { .. } => vec![Action::CloseFocus],
             Action::TogglePanePinnedByPaneId { .. } => vec![Action::TogglePanePinned],
+            Action::MutePaneByPaneId { .. } => vec![Action::MutePane],
+            Action::IgnorePaneOutputByPaneId { .. } => vec![Action::IgnorePaneOutput],
+            Action::WatchPaneByPaneId { .. } => vec![Action::WatchPane],
+            Action::MuteTabByTabId { .. } => vec![Action::MuteTab],
             Action::TogglePaneInGroupByPaneId { .. } => vec![Action::TogglePaneInGroup],
             Action::StartRenamePaneByPaneId { .. } => vec![
                 Action::SwitchToMode {
@@ -1227,6 +1273,7 @@ impl Action {
                 name,
                 close_on_exit,
                 start_suspended,
+                notify,
                 configuration,
                 skip_plugin_cache,
                 x,
@@ -1296,6 +1343,7 @@ impl Action {
                             direction,
                             hold_on_close,
                             hold_on_start,
+                            notify,
                             ..Default::default()
                         })
                     } else {
@@ -1412,6 +1460,7 @@ impl Action {
                         direction,
                         hold_on_close,
                         hold_on_start,
+                        notify,
                         ..Default::default()
                     };
                     if floating {
@@ -2173,6 +2222,42 @@ impl Action {
             CliAction::CurrentTabInfo { json } => {
                 Ok(vec![Action::CurrentTabInfo { output_json: json }])
             },
+            CliAction::MutePane { pane_id } => match pane_id {
+                Some(pane_id_str) => Ok(vec![Action::MutePaneByPaneId {
+                    pane_id: parse_cli_pane_id(&pane_id_str)?,
+                }]),
+                None => Ok(vec![Action::MutePane]),
+            },
+            CliAction::IgnorePaneOutput { pane_id } => match pane_id {
+                Some(pane_id_str) => Ok(vec![Action::IgnorePaneOutputByPaneId {
+                    pane_id: parse_cli_pane_id(&pane_id_str)?,
+                }]),
+                None => Ok(vec![Action::IgnorePaneOutput]),
+            },
+            CliAction::WatchPane { pane_id } => match pane_id {
+                Some(pane_id_str) => Ok(vec![Action::WatchPaneByPaneId {
+                    pane_id: parse_cli_pane_id(&pane_id_str)?,
+                }]),
+                None => Ok(vec![Action::WatchPane]),
+            },
+            CliAction::MuteTab { tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::MuteTabByTabId { id }]),
+                None => Ok(vec![Action::MuteTab]),
+            },
+            CliAction::MuteSession => Ok(vec![Action::MuteSession]),
+            CliAction::ToggleSession => Ok(vec![Action::ToggleSession]),
+            CliAction::GoToPreviousSession => Ok(vec![Action::GoToPreviousSession]),
+            CliAction::GoToNextSession => Ok(vec![Action::GoToNextSession]),
+            CliAction::GoToNextAttention => Ok(vec![Action::GoToNextAttention]),
+            CliAction::ToggleTrayIcon => Ok(vec![Action::ToggleTrayIcon]),
+            CliAction::MarkPaneSeen { pane_id } => Ok(vec![Action::MarkPaneSeen {
+                session: None,
+                pane_id: pane_id.as_deref().map(parse_cli_pane_id).transpose()?,
+            }]),
+            CliAction::MarkAllSeen { this_session } => Ok(vec![Action::MarkAllSeen {
+                session: None,
+                this_session,
+            }]),
             CliAction::TogglePanePinned { pane_id } => match pane_id {
                 Some(pane_id_str) => {
                     let pane_id = PaneId::from_str(&pane_id_str)
@@ -4038,6 +4123,7 @@ mod tests {
             borderless: None,
             tab_id: None,
             border_style: border_style.map(|s| s.to_string()),
+            notify: Default::default(),
         }
     }
 
@@ -4229,6 +4315,7 @@ mod tests {
             borderless: None,
             tab_id: Some(3),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4274,6 +4361,7 @@ mod tests {
             borderless: None,
             tab_id: None,
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4319,6 +4407,7 @@ mod tests {
             borderless: None,
             tab_id: None,
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4366,6 +4455,7 @@ mod tests {
             borderless: None,
             tab_id: None,
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -4404,6 +4494,7 @@ mod tests {
             borderless: None,
             tab_id: Some(5),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4449,6 +4540,7 @@ mod tests {
             borderless: None,
             tab_id: Some(1),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4494,6 +4586,7 @@ mod tests {
             borderless: None,
             tab_id: Some(2),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4605,6 +4698,7 @@ mod tests {
             borderless: None,
             tab_id: Some(2),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4650,6 +4744,7 @@ mod tests {
             borderless: None,
             tab_id: Some(1),
             border_style: None,
+            notify: Default::default(),
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());

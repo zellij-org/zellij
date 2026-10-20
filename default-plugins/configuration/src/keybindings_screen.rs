@@ -152,7 +152,16 @@ pub fn category_of(actions: &[String]) -> &'static str {
         | "MessagePlugin"
         | "DismissInfoPopups"
         | "ToggleSessionCard"
+        | "MuteSession"
+        | "ToggleSession"
+        | "GoToPreviousSession"
+        | "GoToNextSession"
+        | "GoToNextAttention"
+        | "ToggleTrayIcon"
+        | "MarkPaneSeen"
+        | "MarkAllSeen"
         | "OpenContextMenu" => "Session and plugins",
+        "MuteTab" => "Tabs",
         name if name.starts_with("Search") => "Search",
         name if name.contains("Scroll")
             || name == "EditScrollback"

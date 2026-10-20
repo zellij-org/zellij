@@ -14561,7 +14561,7 @@ fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
 }
 
 #[test]
-fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
+fn the_tab_bar_gets_only_the_stopped_command_hint() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -14571,56 +14571,15 @@ fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
 
     tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
         .unwrap();
-    tab.mouse_help_text_visible.insert(client_id, true);
-
-    tab.update_mouse_scroll_resize(false);
-    let disabled_hints = tab.resolve_hint_text(client_id);
-    assert!(!disabled_hints.is_empty());
-    assert!(disabled_hints
-        .values()
-        .all(|hint| !hint.text.contains("MouseScroll")));
-
-    tab.update_mouse_scroll_resize(true);
-    let enabled_hints = tab.resolve_hint_text(client_id);
-    assert!(!enabled_hints.is_empty());
-    assert!(enabled_hints
-        .values()
-        .all(|hint| hint.text.contains("MouseScroll")));
-}
-
-#[test]
-fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
-    let size = Size {
-        cols: 120,
-        rows: 20,
-    };
-    let client_id = 1;
-    let mut tab = create_new_tab(size, ModeInfo::default());
-
-    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
-        .unwrap();
-    tab.mouse_help_text_visible.insert(client_id, true);
-
-    let enabled_resize_hints = tab.resolve_hint_text(client_id);
-    assert!(!enabled_resize_hints.is_empty());
-    assert!(enabled_resize_hints
-        .values()
-        .all(|hint| hint.text.contains("drag borders")));
-
-    tab.update_mouse_hover_tips(false);
-    assert!(tab.resolve_hint_text(client_id).is_empty());
-
-    tab.mouse_hover_pane_id
-        .insert(client_id, PaneId::Terminal(1));
-    assert!(tab.resolve_hint_text(client_id).is_empty());
-
-    tab.update_mouse_hover_tips(true);
-    let hover_hints = tab.resolve_hint_text(client_id);
-    assert!(!hover_hints.is_empty());
-    assert!(hover_hints.values().all(|hint| hint.text.contains("group")));
-
-    tab.update_mouse_hover_tips(false);
-    assert!(tab.resolve_hint_text(client_id).is_empty());
+    for hover_tips in [true, false] {
+        tab.update_mouse_hover_tips(hover_tips);
+        tab.mouse_help_text_visible.insert(client_id, true);
+        assert!(tab.resolve_hint_text(client_id).is_empty());
+        tab.mouse_hover_pane_id
+            .insert(client_id, PaneId::Terminal(1));
+        assert!(tab.resolve_hint_text(client_id).is_empty());
+        tab.mouse_hover_pane_id.remove(&client_id);
+    }
 
     tab.hold_pane(PaneId::Terminal(2), Some(0), false, RunCommand::default());
     let held_hints = tab.resolve_hint_text(client_id);
@@ -17992,6 +17951,46 @@ fn mouse_events_work_again_when_the_selecting_pane_is_gone() {
     )
     .unwrap();
     assert!(tab.selecting_with_mouse_in_pane.is_none());
+}
+
+#[test]
+fn a_shift_click_selection_in_a_pane_with_mouse_reporting_ends_on_release() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let position = Position::new(5, 10);
+    let mut shift_press = MouseEvent::new_left_press_event(position);
+    shift_press.shift = true;
+    let mut shift_release = MouseEvent::new_left_release_event(position);
+    shift_release.shift = true;
+    tab.handle_mouse_event(&shift_press, client_id).unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    tab.handle_mouse_event(&shift_release, client_id).unwrap();
+    assert!(
+        tab.selecting_with_mouse_in_pane.is_none(),
+        "releasing the button ends the selection"
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<0;10;5M".to_string(), "\u{1b}[<0;10;5m".to_string()],
+        "the program gets the later plain click, and no release for the shift-click it never saw"
+    );
 }
 
 #[test]

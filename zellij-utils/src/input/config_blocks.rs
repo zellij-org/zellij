@@ -257,7 +257,7 @@ pub fn styling_from_colours(colours: &[String]) -> Styling {
     styling
 }
 
-fn config_value(value: &str) -> KdlValue {
+pub fn config_value(value: &str) -> KdlValue {
     match value {
         "true" => KdlValue::Bool(true),
         "false" => KdlValue::Bool(false),
@@ -509,7 +509,7 @@ pub fn menu_entries(
         .iter()
         .map(|entry| match entry {
             ContextMenuEntry::Separator => MenuItemEntry::separator(),
-            ContextMenuEntry::Item { label, actions } => MenuItemEntry {
+            ContextMenuEntry::Item { label, actions, .. } => MenuItemEntry {
                 label: Some(label.clone()),
                 actions: menu_action_texts(actions),
                 shortcut: shortcuts.and_then(|(keybinds, base_mode)| {

@@ -1281,6 +1281,12 @@ pub enum Event {
     TerminalCommandSubmitted,
     SessionPreview(SessionPreview),
     SavedSessionPreview(SavedSessionPreview),
+    PaneAttentionChanged(PaneId, crate::attention::PaneAttention),
+    PromptShown(PaneId),
+    CommandStarted(PaneId, Option<crate::attention::CommandText>),
+    CommandFinished(PaneId, crate::attention::CommandOutcome),
+    GlobalAttentionUpdate(crate::attention::GlobalAttention),
+    SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1337,6 +1343,10 @@ pub struct SessionSuggestions {
     pub suggestions: Vec<SessionSuggestion>,
     pub command_submitted: bool,
     pub from_script: bool,
+    #[serde(default)]
+    pub desktop_app_running: bool,
+    #[serde(default)]
+    pub desktop_window_sessions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1393,6 +1403,43 @@ pub struct SessionPreview {
     pub error: Option<String>,
     #[serde(default)]
     pub tabs: Vec<SessionPreviewTab>,
+    #[serde(default)]
+    pub pane_id: Option<(u32, bool)>,
+    #[serde(default)]
+    pub anchor_line: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PreviewAnchor {
+    Bottom,
+    LastCommandOutput,
+    NewOutputStart,
+}
+
+impl PreviewAnchor {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PreviewAnchor::Bottom => "bottom",
+            PreviewAnchor::LastCommandOutput => "last_command_output",
+            PreviewAnchor::NewOutputStart => "new_output_start",
+        }
+    }
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "bottom" => Some(PreviewAnchor::Bottom),
+            "last_command_output" => Some(PreviewAnchor::LastCommandOutput),
+            "new_output_start" => Some(PreviewAnchor::NewOutputStart),
+            _ => None,
+        }
+    }
+    pub fn for_status(status: crate::attention::AttentionStatus) -> Self {
+        use crate::attention::AttentionStatus;
+        match status {
+            AttentionStatus::Failed | AttentionStatus::Done => PreviewAnchor::LastCommandOutput,
+            AttentionStatus::NewOutput => PreviewAnchor::NewOutputStart,
+            _ => PreviewAnchor::Bottom,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1460,16 +1507,22 @@ pub enum ClickedPaneAction {
     TogglePinned,
     ToggleInGroup,
     StartRename,
+    ToggleMute,
+    ToggleIgnoreOutput,
+    ToggleWatch,
 }
 
 impl ClickedPaneAction {
-    pub const ALL: [ClickedPaneAction; 6] = [
+    pub const ALL: [ClickedPaneAction; 9] = [
         ClickedPaneAction::CloseFocus,
         ClickedPaneAction::ToggleFocusFullscreen,
         ClickedPaneAction::ToggleEmbedOrFloating,
         ClickedPaneAction::TogglePinned,
         ClickedPaneAction::ToggleInGroup,
         ClickedPaneAction::StartRename,
+        ClickedPaneAction::ToggleMute,
+        ClickedPaneAction::ToggleIgnoreOutput,
+        ClickedPaneAction::ToggleWatch,
     ];
     pub fn kdl_name(&self) -> &'static str {
         match self {
@@ -1479,6 +1532,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::TogglePinned => "TogglePanePinnedByPaneId",
             ClickedPaneAction::ToggleInGroup => "TogglePaneInGroupByPaneId",
             ClickedPaneAction::StartRename => "StartRenamePaneByPaneId",
+            ClickedPaneAction::ToggleMute => "MutePaneByPaneId",
+            ClickedPaneAction::ToggleIgnoreOutput => "IgnorePaneOutputByPaneId",
+            ClickedPaneAction::ToggleWatch => "WatchPaneByPaneId",
         }
     }
     pub fn from_kdl_name(name: &str) -> Option<Self> {
@@ -1498,6 +1554,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::TogglePinned => Action::TogglePanePinnedByPaneId { pane_id },
             ClickedPaneAction::ToggleInGroup => Action::TogglePaneInGroupByPaneId { pane_id },
             ClickedPaneAction::StartRename => Action::StartRenamePaneByPaneId { pane_id },
+            ClickedPaneAction::ToggleMute => Action::MutePaneByPaneId { pane_id },
+            ClickedPaneAction::ToggleIgnoreOutput => Action::IgnorePaneOutputByPaneId { pane_id },
+            ClickedPaneAction::ToggleWatch => Action::WatchPaneByPaneId { pane_id },
         }
     }
 }
@@ -1508,6 +1567,7 @@ pub enum ClickedTabAction {
     StartRename,
     Move(Direction),
     MoveToPosition(u64),
+    Mute,
 }
 
 pub const TAB_POSITION_END: u64 = u64::MAX;
@@ -1519,6 +1579,7 @@ impl ClickedTabAction {
             ClickedTabAction::StartRename => "StartRenameTabByTabId",
             ClickedTabAction::Move(_) => "MoveTabByTabId",
             ClickedTabAction::MoveToPosition(_) => "MoveTabToPosition",
+            ClickedTabAction::Mute => "MuteTabByTabId",
         }
     }
     pub fn with_tab(&self, id: u64) -> Action {
@@ -1533,6 +1594,7 @@ impl ClickedTabAction {
                 id,
                 position: *position,
             },
+            ClickedTabAction::Mute => Action::MuteTabByTabId { id },
         }
     }
 }
@@ -1580,6 +1642,8 @@ pub enum ContextMenuEntry {
     Item {
         label: String,
         actions: Vec<ContextMenuAction>,
+        #[serde(default)]
+        toggled_label: Option<String>,
     },
     Separator,
 }
@@ -1589,6 +1653,7 @@ impl ContextMenuEntry {
         ContextMenuEntry::Item {
             label: label.into(),
             actions,
+            toggled_label: None,
         }
     }
     pub fn label(&self) -> Option<&str> {
@@ -2614,6 +2679,8 @@ pub struct ModeInfo {
     pub nested_ascend_keys: Vec<KeyWithModifier>,
     pub session_ascended: Option<bool>,
     pub nested_descend_keys: Vec<KeyWithModifier>,
+    #[serde(default)]
+    pub remote_client: Option<String>,
 }
 
 impl ModeInfo {
@@ -2678,6 +2745,8 @@ pub struct SessionInfo {
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
     pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     pub creation_time: Duration,
+    #[serde(default)]
+    pub attention_muted: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -3206,6 +3275,7 @@ pub struct TabInfo {
     pub has_bell_notification: bool,
     /// Whether this tab is currently flashing its bell (transient 400ms state)
     pub is_flashing_bell: bool,
+    pub attention: crate::attention::TabAttention,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -3280,6 +3350,9 @@ pub struct PaneInfo {
     /// The default background color of this pane, if set (e.g. "#001a3a")
     pub default_bg: Option<String>,
     pub nested_session_name: Option<String>,
+    pub attention: crate::attention::PaneAttention,
+    pub command_state: crate::attention::CommandState,
+    pub program_status: Vec<crate::attention::ProgramStatusRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -3907,6 +3980,42 @@ impl MessageToPlugin {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionWindowRequest {
+    pub session_name: Option<String>,
+    pub new_window: bool,
+    pub pane_id: Option<PaneId>,
+    pub layout: Option<LayoutInfo>,
+    pub cwd: Option<PathBuf>,
+}
+
+impl SessionWindowRequest {
+    pub fn existing(session_name: &str, pane_id: Option<PaneId>, new_window: bool) -> Self {
+        SessionWindowRequest {
+            session_name: Some(session_name.to_owned()),
+            new_window,
+            pane_id,
+            ..Default::default()
+        }
+    }
+    pub fn new_session(
+        session_name: Option<&str>,
+        layout: Option<LayoutInfo>,
+        cwd: Option<PathBuf>,
+    ) -> Self {
+        SessionWindowRequest {
+            session_name: session_name.map(|n| n.to_owned()),
+            new_window: true,
+            layout,
+            cwd,
+            ..Default::default()
+        }
+    }
+    pub fn creates_a_session(&self) -> bool {
+        self.session_name.is_none() || self.layout.is_some()
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
@@ -3914,7 +4023,7 @@ pub struct ConnectToSession {
     pub layout: Option<LayoutInfo>,
     pub cwd: Option<PathBuf>,
     #[serde(default)]
-    pub session_card: Option<bool>,
+    pub switch_context: Option<crate::session_history::SwitchContext>,
 }
 
 impl ConnectToSession {
@@ -3925,43 +4034,14 @@ impl ConnectToSession {
                 .to_string();
         }
     }
-    pub fn apply_to_options(&self, options: &mut crate::input::options::Options) {
-        if let Some(session_card) = self.session_card {
-            options.session_card = Some(session_card);
-        }
+    pub fn startup_card(&self) -> Option<crate::input::attention::StartupCard> {
+        self.switch_context.as_ref().and_then(|c| c.startup_card)
     }
-}
-
-#[cfg(test)]
-mod connect_to_session_tests {
-    use super::*;
-    use crate::input::options::Options;
-
-    #[test]
-    fn a_session_card_choice_overrides_the_options_of_the_new_session() {
-        let mut options = Options {
-            session_card: Some(true),
-            ..Default::default()
-        };
-        ConnectToSession {
-            session_card: Some(false),
-            ..Default::default()
-        }
-        .apply_to_options(&mut options);
-        assert_eq!(options.session_card, Some(false));
-    }
-
-    #[test]
-    fn without_a_session_card_choice_the_options_are_kept() {
-        let mut options = Options {
-            session_card: Some(true),
-            ..Default::default()
-        };
-        ConnectToSession::default().apply_to_options(&mut options);
-        assert_eq!(options.session_card, Some(true));
-        let mut unset = Options::default();
-        ConnectToSession::default().apply_to_options(&mut unset);
-        assert_eq!(unset.session_card, None);
+    pub fn disconnects_others(&self) -> bool {
+        self.switch_context
+            .as_ref()
+            .map(|c| c.disconnect_others)
+            .unwrap_or(false)
     }
 }
 
@@ -4922,8 +5002,43 @@ pub enum PluginCommand {
         name: String,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<PreviewAnchor>,
     },
     GetSavedSessionPreview(String),
+    MarkSessionPaneSeen {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    MarkAllSeen {
+        session_name: Option<String>,
+    },
+    OpenSessionWindow(SessionWindowRequest),
+    WriteToSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+        bytes: Vec<u8>,
+    },
+    SendKeyToSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+        key: KeyWithModifier,
+    },
+    ToggleSessionPaneMute {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    ToggleSessionPaneIgnoreOutput {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    ToggleSessionPaneWatch {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    FocusSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -4935,6 +5050,7 @@ pub enum SettingSection {
     WindowTheme,
     Keybinds,
     Blocks,
+    Attention,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5062,7 +5178,6 @@ setting_keys! {
     ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
     NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
     DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
-    SessionCard => (TopLevel, "session_card", false, Flag),
     SessionIndicator => (TopLevel, "session_indicator", false, Flag),
     SwapLayoutNotification => (TopLevel, "swap_layout_notification", false, Flag),
     OnQuit => (TopLevel, "on_quit", false, Text),
@@ -5120,7 +5235,6 @@ setting_keys! {
     WindowScrollMomentum => (Window, "scroll_momentum", false, Flag),
     WindowScrollMomentumFriction => (Window, "scroll_momentum_friction", false, Decimal),
     WindowBell => (Window, "bell", false, Text),
-    WindowNotifications => (Window, "notifications", false, Text),
     WindowOpenLinks => (Window, "open_links", false, Flag),
     WindowOpenLinksWithShift => (Window, "open_links_with_shift", false, Flag),
     WindowShiftDragSelects => (Window, "shift_drag_selects", false, Flag),
@@ -5159,6 +5273,16 @@ setting_keys! {
     Env => (Blocks, "env", true, Text),
     Themes => (Blocks, "themes", false, Text),
     ContextMenu => (Blocks, "context_menu", false, Text),
+    AttentionFrameMarkers => (Attention, "frame_markers", false, Flag),
+    AttentionHostStatus => (Attention, "host_status", false, Flag),
+    AttentionIdleRule => (Attention, "idle_rule", false, Text),
+    AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
+    AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
+    AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
+    AttentionStartupCard => (Attention, "startup_card", false, Text),
+    AttentionTrayIcon => (Attention, "tray_icon", false, Flag),
+    AttentionDesktopNotifications => (Attention, "desktop_notifications", false, Text),
+    AttentionNotificationDetails => (Attention, "notification_details", false, Flag),
 }
 
 impl SettingKey {
@@ -5175,6 +5299,7 @@ impl SettingKey {
             SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
             SettingSection::Window => format!("window.{}", self.kdl_name()),
             SettingSection::WindowTheme => format!("window.theme.{}", self.kdl_name()),
+            SettingSection::Attention => format!("attention.{}", self.kdl_name()),
         }
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
@@ -5187,6 +5312,7 @@ impl SettingKey {
             SettingSection::WebClient => &["web_client"],
             SettingSection::Window => &["window"],
             SettingSection::WindowTheme => &["window", "theme"],
+            SettingSection::Attention => &["attention"],
         }
     }
     pub fn is_window(&self) -> bool {

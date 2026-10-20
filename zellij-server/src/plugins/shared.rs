@@ -491,6 +491,8 @@ pub fn apply_events_job(
                 continue;
             },
         }
+        let mut event = event.clone();
+        super::wasm_bridge::redact_event_for_plugin(running_plugin.store.data(), &mut event);
         match call_update(&mut running_plugin, &event, keybinds.as_deref(), context) {
             Ok(requested) => {
                 render = render.merge(requested);

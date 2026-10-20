@@ -281,7 +281,7 @@ fn opening_the_menu_keeps_floating_panes_hidden_or_visible() {
         grid_snapshot.contains("FLOAT-MARKER")
     });
 
-    right_click(&zellij, 5, 20);
+    right_click(&zellij, 100, 20);
     let grid_snapshot = wait_for_pane_menu(&zellij);
     assert!(grid_snapshot.contains("Pane #2"));
     zellij.send_stdin(&keys::ESC);
@@ -579,5 +579,76 @@ fn a_key_bound_to_open_context_menu_opens_the_menu_of_the_focused_pane() {
 
     zellij.send_stdin(&keys::ESC);
     wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn right_click_on_a_watched_pane_offers_stop_watching() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    right_click(&zellij, 30, 10);
+    let grid_snapshot = wait_for_pane_menu(&zellij);
+    assert!(
+        grid_snapshot.contains("Watch this pane"),
+        "{}",
+        grid_snapshot.text
+    );
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+    zellij.run_cli_action(CliAction::WatchPane {
+        pane_id: Some(format!("terminal_{}", terminal.terminal_id())),
+    });
+    right_click(&zellij, 30, 10);
+    let grid_snapshot = zellij.wait_until("the menu offers to stop watching", |grid_snapshot| {
+        grid_snapshot.contains(PANE_MENU_MARKER) && grid_snapshot.contains("Stop watching")
+    });
+    assert!(
+        !grid_snapshot.contains("Watch this pane"),
+        "{}",
+        grid_snapshot.text
+    );
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn the_menu_offers_back_to_the_previous_session() {
+    let other = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true\nsession_indicator true")
+        .skip_concurrency_slot()
+        .start_in_background();
+    let other_terminal = other.expect_pty_spawn();
+    other_terminal.output(PROMPT);
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true\nsession_indicator true")
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let first = zellij.session_name().to_owned();
+    zellij.wait_until("both sessions are known", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("2 running")
+    });
+    zellij
+        .main_client()
+        .send_action(zellij_utils::input::actions::Action::SwitchSession {
+            name: other.session_name().to_owned(),
+            tab_position: None,
+            pane_id: None,
+            layout: None,
+            cwd: None,
+            close_current: false,
+        });
+    let (_switch, first_session) = zellij.follow_switch_into(other);
+    zellij.wait_until("the switched client is attached", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    let back = format!("Back to {}", first);
+    right_click(&zellij, 60, TERMINAL_SIZE.rows);
+    let grid_snapshot = zellij.wait_until("the bar menu offers the way back", |grid_snapshot| {
+        grid_snapshot.contains(COMMON_MENU_MARKER) && grid_snapshot.contains(&back)
+    });
+    click_menu_item(&zellij, &grid_snapshot, &back);
+    let (switch, _second) = zellij.follow_switch_into(first_session);
+    assert_eq!(switch.name.as_deref(), Some(first.as_str()));
     zellij.quit();
 }

@@ -93,6 +93,41 @@ pub struct ClientOsInputOutput {
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
     reading_from_stdin: Arc<Mutex<Option<Vec<u8>>>>,
     session_name: Arc<Mutex<Option<String>>>,
+    host_state: Arc<Mutex<RememberedHostState>>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RememberedHostState {
+    pub focused: Option<bool>,
+    pub fullscreen: Option<bool>,
+}
+
+impl RememberedHostState {
+    pub fn note(&mut self, message: &zellij_utils::nested_session::NestedSessionMessage) {
+        use zellij_utils::nested_session::NestedSessionMessage;
+        match message {
+            NestedSessionMessage::FocusGained { .. } => self.focused = Some(true),
+            NestedSessionMessage::FocusLost => self.focused = Some(false),
+            NestedSessionMessage::FullscreenState { fullscreen } => {
+                self.fullscreen = Some(*fullscreen)
+            },
+            _ => {},
+        }
+    }
+
+    pub fn replay(&self) -> Vec<zellij_utils::nested_session::NestedSessionMessage> {
+        use zellij_utils::nested_session::NestedSessionMessage;
+        let mut messages = vec![];
+        if self.fullscreen == Some(true) {
+            messages.push(NestedSessionMessage::FullscreenState { fullscreen: true });
+        }
+        if self.focused == Some(true) {
+            messages.push(NestedSessionMessage::FocusGained {
+                from_direction: None,
+            });
+        }
+        messages
+    }
 }
 
 impl std::fmt::Debug for ClientOsInputOutput {
@@ -170,6 +205,11 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     fn get_async_signal_listener(&self) -> io::Result<Box<dyn AsyncSignals>> {
         Ok(Box::new(AsyncSignalListener::new()?))
     }
+    fn note_host_message(&self, _message: &zellij_utils::nested_session::NestedSessionMessage) {}
+    fn remembered_host_state(&self) -> RememberedHostState {
+        RememberedHostState::default()
+    }
+    fn forget_host_state(&self) {}
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -187,6 +227,15 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn update_session_name(&mut self, new_session_name: String) {
         *self.session_name.lock().unwrap() = Some(new_session_name);
+    }
+    fn note_host_message(&self, message: &zellij_utils::nested_session::NestedSessionMessage) {
+        self.host_state.lock().unwrap().note(message);
+    }
+    fn remembered_host_state(&self) -> RememberedHostState {
+        *self.host_state.lock().unwrap()
+    }
+    fn forget_host_state(&self) {
+        *self.host_state.lock().unwrap() = RememberedHostState::default();
     }
     fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
         let session_name_at_calltime = { self.session_name.lock().unwrap().clone() };
@@ -358,6 +407,7 @@ pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
         reading_from_stdin,
         session_name: Arc::new(Mutex::new(None)),
+        host_state: Arc::new(Mutex::new(RememberedHostState::default())),
     })
 }
 
@@ -368,6 +418,7 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> 
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
         reading_from_stdin,
         session_name: Arc::new(Mutex::new(None)),
+        host_state: Arc::new(Mutex::new(RememberedHostState::default())),
     })
 }
 
@@ -376,6 +427,34 @@ pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_last_focus_and_fullscreen_from_the_host_are_replayed_after_a_switch() {
+        use zellij_utils::nested_session::NestedSessionMessage;
+        let os_input = get_client_os_input().unwrap();
+        assert!(os_input.remembered_host_state().replay().is_empty());
+        os_input.note_host_message(&NestedSessionMessage::FullscreenState { fullscreen: true });
+        os_input.note_host_message(&NestedSessionMessage::FocusGained {
+            from_direction: None,
+        });
+        assert_eq!(
+            os_input.clone().remembered_host_state().replay(),
+            vec![
+                NestedSessionMessage::FullscreenState { fullscreen: true },
+                NestedSessionMessage::FocusGained {
+                    from_direction: None
+                },
+            ]
+        );
+        os_input.note_host_message(&NestedSessionMessage::FocusLost);
+        os_input.note_host_message(&NestedSessionMessage::FullscreenState { fullscreen: false });
+        assert!(os_input.remembered_host_state().replay().is_empty());
+        os_input.note_host_message(&NestedSessionMessage::FocusGained {
+            from_direction: None,
+        });
+        os_input.forget_host_state();
+        assert!(os_input.remembered_host_state().replay().is_empty());
+    }
 
     #[test]
     fn get_terminal_size_returns_nonzero_or_fallback() {

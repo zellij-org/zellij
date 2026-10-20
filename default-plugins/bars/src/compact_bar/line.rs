@@ -550,11 +550,16 @@ impl<'a> TabLinePrefixBuilder<'a> {
 struct RightSideElementsBuilder {
     palette: Styling,
     dimmed: bool,
+    simplified_ui: bool,
 }
 
 impl RightSideElementsBuilder {
-    fn new(palette: Styling, dimmed: bool) -> Self {
-        Self { palette, dimmed }
+    fn new(palette: Styling, dimmed: bool, simplified_ui: bool) -> Self {
+        Self {
+            palette,
+            dimmed,
+            simplified_ui,
+        }
     }
 
     fn build(
@@ -579,7 +584,7 @@ impl RightSideElementsBuilder {
         let mut indicator_text = None;
         if let Some(text) = config
             .session_indicator
-            .fitting_variant(available_space.saturating_sub(used))
+            .fitting_variant(available_space.saturating_sub(used), self.simplified_ui)
         {
             elements.push(LinePart {
                 part: String::new(),
@@ -784,7 +789,11 @@ impl TabLineBuilder {
         let mut session_indicator_range = None;
 
         if current_len < self.cols {
-            let right_builder = RightSideElementsBuilder::new(self.palette, self.config.dimmed);
+            let right_builder = RightSideElementsBuilder::new(
+                self.palette,
+                self.config.dimmed,
+                self.capabilities.arrow_fonts,
+            );
             let available_space = self.cols.saturating_sub(current_len);
             let (mut right_elements, indicator_text) =
                 right_builder.build(&self.config, available_space);
