@@ -475,7 +475,7 @@ pub struct Options {
     /// ("vertical" or "horizontal"), default is vertical
     #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
-    pub default_stack_list_orientation: Option<StackListOrientation>,
+    pub stack_default_orientation: Option<StackListOrientation>,
 
     /// Whether to show startup tips when starting a new session
     /// default is true
@@ -797,9 +797,9 @@ impl Options {
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
-        let default_stack_list_orientation = other
-            .default_stack_list_orientation
-            .or(self.default_stack_list_orientation);
+        let stack_default_orientation = other
+            .stack_default_orientation
+            .or(self.stack_default_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -860,7 +860,7 @@ impl Options {
             .or(self.mode_hints_when_bars_hidden);
 
         Options {
-            default_stack_list_orientation,
+            stack_default_orientation,
             simplified_ui,
             theme,
             theme_dark,
@@ -1026,9 +1026,9 @@ impl Options {
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
         let stacked_pane_list = other.stacked_pane_list.or(self.stacked_pane_list);
-        let default_stack_list_orientation = other
-            .default_stack_list_orientation
-            .or(self.default_stack_list_orientation);
+        let stack_default_orientation = other
+            .stack_default_orientation
+            .or(self.stack_default_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
@@ -1092,7 +1092,7 @@ impl Options {
         );
 
         Options {
-            default_stack_list_orientation,
+            stack_default_orientation,
             simplified_ui,
             theme,
             theme_dark,

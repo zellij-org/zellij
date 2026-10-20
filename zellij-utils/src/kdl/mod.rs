@@ -821,9 +821,7 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::ToggleFocusNoUiFullscreen => Some(KdlNode::new("ToggleFocusNoUiFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
-            Action::ToggleStackListOrientation => {
-                Some(KdlNode::new("ToggleStackListOrientation"))
-            },
+            Action::ToggleStackListOrientation => Some(KdlNode::new("ToggleStackListOrientation")),
             Action::SetPaneFrameStyle(style) => {
                 let mut node = KdlNode::new("SetPaneFrameStyle");
                 let style = match style {
@@ -3404,16 +3402,21 @@ impl Options {
         let stacked_pane_list =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_pane_list")
                 .map(|(v, _)| v);
-        let default_stack_list_orientation = match kdl_property_first_arg_as_string_or_error!(
+        let stack_default_orientation = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
             "default_stack_list_orientation"
         ) {
-            Some((string, entry)) => Some(StackListOrientation::from_str(string).map_err(|_| {
-                kdl_parsing_error!(
-                    format!("Invalid value for default_stack_list_orientation: '{}'", string),
-                    entry
-                )
-            })?),
+            Some((string, entry)) => {
+                Some(StackListOrientation::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!(
+                            "Invalid value for default_stack_list_orientation: '{}'",
+                            string
+                        ),
+                        entry
+                    )
+                })?)
+            },
             None => None,
         };
         let show_startup_tips =
@@ -3614,7 +3617,7 @@ impl Options {
             web_sharing,
             stacked_resize,
             stacked_pane_list,
-            default_stack_list_orientation,
+            stack_default_orientation,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -4990,7 +4993,7 @@ impl Options {
             None
         }
     }
-    fn default_stack_list_orientation_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+    fn stack_default_orientation_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}",
             " ",
@@ -5012,7 +5015,7 @@ impl Options {
             node.push(node_value.to_owned());
             node
         };
-        if let Some(orientation) = &self.default_stack_list_orientation {
+        if let Some(orientation) = &self.stack_default_orientation {
             let mut node = create_node(orientation_as_str(orientation));
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -5881,10 +5884,9 @@ impl Options {
         if let Some(stacked_pane_list) = self.stacked_pane_list_to_kdl(add_comments) {
             nodes.push(stacked_pane_list);
         }
-        if let Some(default_stack_list_orientation) =
-            self.default_stack_list_orientation_to_kdl(add_comments)
+        if let Some(stack_default_orientation) = self.stack_default_orientation_to_kdl(add_comments)
         {
-            nodes.push(default_stack_list_orientation);
+            nodes.push(stack_default_orientation);
         }
         if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
             nodes.push(show_startup_tips);
