@@ -473,6 +473,9 @@ impl App {
         }
         if change.transparency {
             self.warn_if_opaque();
+            if let Some(surfaces) = &self.surfaces {
+                set_see_through(&surfaces.window, self.see_through());
+            }
         }
         if change.blur {
             if let Some(surfaces) = &self.surfaces {
@@ -492,6 +495,10 @@ impl App {
         } else {
             Transparency::OPAQUE
         }
+    }
+
+    fn see_through(&self) -> bool {
+        self.effective_transparency().opacity < 1.0
     }
 
     fn warn_if_opaque(&mut self) {
@@ -1708,7 +1715,9 @@ impl App {
             .with_window_attributes(Some(attributes))
             .build(
                 event_loop,
-                ConfigTemplateBuilder::new().with_alpha_size(8),
+                ConfigTemplateBuilder::new()
+                    .with_alpha_size(8)
+                    .with_transparency(requires_transparent_configs(Platform::current())),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
@@ -1720,6 +1729,7 @@ impl App {
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
         blur::set(&window, self.options.blur);
+        set_see_through(&window, self.see_through());
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
 
@@ -2545,6 +2555,37 @@ fn named(attributes: WindowAttributes) -> WindowAttributes {
     attributes
 }
 
+// The shadow of a window with a wholly clear background is drawn from what the window
+// shows, which keeps the compositor busy for as long as it is on screen.
+#[cfg(target_os = "macos")]
+fn set_see_through(window: &Window, see_through: bool) {
+    use objc2_app_kit::NSColor;
+    window.set_transparent(see_through);
+    if !see_through {
+        return;
+    }
+    if let Some(ns_window) = ns_window(window) {
+        let almost_clear = NSColor::clearColor().colorWithAlphaComponent(0.001);
+        ns_window.setBackgroundColor(Some(&almost_clear));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ns_window(window: &Window) -> Option<objc2::rc::Retained<objc2_app_kit::NSWindow>> {
+    use winit::raw_window_handle::RawWindowHandle;
+    let Ok(RawWindowHandle::AppKit(handle)) = window.window_handle().map(|handle| handle.as_raw())
+    else {
+        return None;
+    };
+    // SAFETY: winit hands out the handle only on the main thread, and the handle of a live
+    // window points at its content view, which the window keeps alive.
+    let view = unsafe { handle.ns_view.cast::<objc2_app_kit::NSView>().as_ref() };
+    view.window()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_see_through(_window: &Window, _see_through: bool) {}
+
 #[cfg(target_os = "macos")]
 fn native_option_as_alt(side: OptionAsAlt) -> winit::platform::macos::OptionAsAlt {
     use winit::platform::macos::OptionAsAlt as Native;
@@ -2588,6 +2629,12 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         .into_iter()
         .nth(best)
         .expect("the chosen config is one of those offered")
+}
+
+// Without a transparent config a macOS window is always opaque. Elsewhere asking for one
+// can leave no config at all: EGL drops every config an X11 visual cannot make see-through.
+fn requires_transparent_configs(platform: Platform) -> bool {
+    platform == Platform::MacOs
 }
 
 fn transparency_available(
@@ -4172,6 +4219,35 @@ mod tests {
     }
 
     #[test]
+    fn only_a_window_drawn_below_full_opacity_is_see_through() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(!harness.app.see_through());
+
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.9),
+            ..WindowConfig::default()
+        });
+        assert!(harness.app.see_through());
+
+        harness.reconfigure(WindowConfig {
+            opacity: Some(1.0),
+            blur: Some(true),
+            ..WindowConfig::default()
+        });
+        assert!(
+            !harness.app.see_through(),
+            "a blur behind a solid window shows through nothing"
+        );
+
+        harness.app.transparency_available = false;
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.5),
+            ..WindowConfig::default()
+        });
+        assert!(!harness.app.see_through());
+    }
+
+    #[test]
     fn a_display_without_transparency_draws_opaque_and_warns_once() {
         let mut harness = Harness::new(0, true, "");
         harness.app.transparency_available = false;
@@ -4213,6 +4289,19 @@ mod tests {
             Some(1)
         );
         assert_eq!(best_config(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn only_macos_requires_a_transparent_config() {
+        assert!(
+            !requires_transparent_configs(Platform::Windows),
+            "a driver that honors WGL_TRANSPARENT_ARB would offer no config at all"
+        );
+        assert!(
+            !requires_transparent_configs(Platform::Linux),
+            "an X11 display without a see-through visual would offer no config at all"
+        );
+        assert!(requires_transparent_configs(Platform::MacOs));
     }
 
     #[test]
