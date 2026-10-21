@@ -20,6 +20,11 @@ pub struct SwapLayouts {
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
 }
 
+fn clear_pane_names(layout: &mut TiledPaneLayout) {
+    layout.name = None;
+    layout.children.iter_mut().for_each(clear_pane_names);
+}
+
 impl SwapLayouts {
     pub fn new(
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
@@ -35,7 +40,11 @@ impl SwapLayouts {
             ..Default::default()
         }
     }
-    pub fn set_base_layout(&mut self, layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
+    pub fn set_base_layout(&mut self, mut layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
+        // the existing panes already carry these names, and keeping them would rename any pane
+        // that later lands in the same position (eg. one opened after the original was closed)
+        clear_pane_names(&mut layout.0);
+        layout.1.iter_mut().for_each(|pane| pane.name = None);
         let mut base_swap_tiled_layout = BTreeMap::new();
         let mut base_swap_floating_layout = BTreeMap::new();
         let tiled_panes_count = layout.0.pane_count();

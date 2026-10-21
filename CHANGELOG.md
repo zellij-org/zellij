@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: busy-loop and log spam on dangling symlinks in layout/config folders (https://github.com/zellij-org/zellij/pull/5731)
 * feat: inbox, cross-session activity notifications, OSC7501 support, desktop integrations (https://github.com/zellij-org/zellij/pull/5734)
 * fix: restore opacity and blur in the macOS window and reduce WindowServer load when see-through (https://github.com/zellij-org/zellij/pull/5748)
+* fix: don't keep pane names in the base swap layout (https://github.com/zellij-org/zellij/issues/5743)
 
 
 ## [0.45.1] - 2026-08-28

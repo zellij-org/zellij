@@ -19048,3 +19048,65 @@ fn a_popup_render_drawn_for_a_stale_size_is_dropped_and_the_size_is_sent_again()
         "a plugin that is not in a popup keeps every render"
     );
 }
+
+#[test]
+fn new_floating_pane_does_not_inherit_name_from_base_layout() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let base_layout = r#"
+        layout {
+            pane
+            floating_panes {
+                pane name="Example popup"
+            }
+        }
+    "#;
+    let (base_layout, base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (vec![], vec![]),
+        Some((
+            base_layout,
+            base_floating_layout,
+            vec![(1, None)],
+            vec![(2, None)],
+            HashMap::new(),
+        )),
+        true,
+        true,
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .unwrap()
+            .current_title(),
+        "Example popup"
+    );
+
+    tab.close_pane(PaneId::Terminal(2), false, None);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    let title = tab
+        .get_pane_with_id(PaneId::Terminal(3))
+        .unwrap()
+        .current_title();
+    assert_ne!(title, "Example popup");
+}
