@@ -11,6 +11,8 @@ use std::io::{Read, Seek};
 use std::path::Path;
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
+pub const MAX_PAYLOAD_B64_BYTES: usize =
+    (MAX_DECODED_BYTES.saturating_add(2) / 3).saturating_mul(4);
 pub const MAX_DIMENSION: u32 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +225,11 @@ impl KittyCommandParser {
                     }
                 }
                 let pending = self.pending.as_mut().unwrap();
+                if pending.payload_b64.len().saturating_add(payload.len()) > MAX_PAYLOAD_B64_BYTES {
+                    let pending = self.pending.take().unwrap();
+                    let echo = EchoFields::from_command(&pending.command);
+                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
+                }
                 pending.payload_b64.extend_from_slice(payload);
                 if more_chunks {
                     return None;
@@ -240,6 +247,10 @@ impl KittyCommandParser {
             KittyAction::Delete | KittyAction::Display => Some(Ok(command)),
             KittyAction::Transmit | KittyAction::TransmitAndDisplay | KittyAction::Query => {
                 if command.more_chunks {
+                    if payload.len() > MAX_PAYLOAD_B64_BYTES {
+                        let echo = EchoFields::from_command(&command);
+                        return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
+                    }
                     self.pending = Some(PendingUpload {
                         command,
                         payload_b64: payload.to_vec(),
@@ -553,6 +564,9 @@ fn run_payload_pipeline(
     payload_b64: &[u8],
 ) -> Result<KittyCommand, KittyError> {
     let echo = EchoFields::from_command(&command);
+    if payload_b64.len() > MAX_PAYLOAD_B64_BYTES {
+        return Err(echo.error(KittyErrorCode::Einval, "image too large"));
+    }
     let trimmed_len = payload_b64
         .iter()
         .rposition(|b| *b != b'=')
