@@ -5,11 +5,17 @@ Name=Zellij
 GenericName=Terminal Workspace
 Comment=Manage Your Terminal Applications
 Exec=zellij window
-Icon=zellij
+TryExec=zellij
+Icon=dev.zellij.Zellij
 Terminal=false
-StartupWMClass=zellij
+StartupNotify=true
+StartupWMClass=dev.zellij.Zellij
 Categories=System;TerminalEmulator;
 Keywords=terminal;multiplexer;shell;workspace;
+X-TerminalArgExec=-e
+X-TerminalArgDir=--working-directory=
+X-TerminalArgHold=--hold
+X-ExecArg=-e
 Actions=inbox;sessions;new-window;
 
 [Desktop Action inbox]

@@ -131,6 +131,7 @@ pub fn action_without_arguments(
         "GoToNextSession" => Ok(Action::GoToNextSession),
         "GoToNextAttention" => Ok(Action::GoToNextAttention),
         "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
+        "OpenSessionInWindow" => Ok(Action::OpenSessionInWindow),
         "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
             session: None,
             pane_id: None,
@@ -1471,6 +1472,7 @@ impl Action {
             Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
             Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
             Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
+            Action::OpenSessionInWindow => Some(KdlNode::new("OpenSessionInWindow")),
             Action::MarkPaneSeen {
                 session: None,
                 pane_id: None,
@@ -1945,6 +1947,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "GoToNextSession"
             | "GoToNextAttention"
             | "ToggleTrayIcon"
+            | "OpenSessionInWindow"
             | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },

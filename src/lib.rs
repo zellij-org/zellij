@@ -55,12 +55,8 @@ fn main() {
     }
 
     if let Some(Command::Setup(ref setup)) = opts.command {
-        if setup.install_desktop_entry {
-            commands::install_desktop_entry();
-            std::process::exit(0);
-        }
-        if setup.uninstall_desktop_entry {
-            commands::uninstall_desktop_entry();
+        if setup.runs_setup_actions() {
+            commands::run_setup_actions(setup, &opts);
             std::process::exit(0);
         }
     }

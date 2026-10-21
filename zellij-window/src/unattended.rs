@@ -24,7 +24,7 @@ pub fn prepare() -> Option<Unattended> {
     if !messages_vanish(console_has_window(), processes_on_console()) {
         return None;
     }
-    let path = ZELLIJ_TMP_LOG_DIR.join(format!("{}-window.log", identity().app_id));
+    let path = ZELLIJ_TMP_LOG_DIR.join(format!("{}-window.log", identity().name));
     let log = open_log(&path, LOG_LIMIT).ok().map(|file| {
         send_stderr_to(file);
         path

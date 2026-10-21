@@ -16941,6 +16941,7 @@ fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
         None,
         true,
         false,
+        false,
     );
     let (client_id, kind, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(client_id, 1);
@@ -16968,6 +16969,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         true,
         false,
+        false,
     );
     let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(anchor_pane, Some(focused_pane));
@@ -16986,6 +16988,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         false,
         false,
+        false,
     );
     let (_, kind, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(kind, crate::tab::PopupKind::Info);
@@ -17002,6 +17005,7 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
         None,
         true,
+        false,
         false,
     );
     let failed = plugin_receiver.try_iter().any(|(instruction, _)| {

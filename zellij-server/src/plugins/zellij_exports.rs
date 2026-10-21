@@ -545,20 +545,18 @@ fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWind
     let _ = std::thread::Builder::new()
         .name("open_session_window".to_owned())
         .spawn(move || {
-            let request = zellij_utils::app_control::AppRequest::OpenWindow(
-                zellij_utils::app_control::OpenWindowRequest {
-                    create: request.new_window || request.session_name.is_none(),
-                    session: request.session_name,
-                    pane_id: request.pane_id.map(|p| match p {
-                        zellij_utils::data::PaneId::Terminal(id) => (id, false),
-                        zellij_utils::data::PaneId::Plugin(id) => (id, true),
-                    }),
-                    layout: layout_holder.layout,
-                    cwd,
-                    ..Default::default()
-                },
-            );
-            if let Err(e) = zellij_utils::app_control::send_app_request(&request) {
+            let request = zellij_utils::app_control::OpenWindowRequest {
+                create: request.new_window || request.session_name.is_none(),
+                session: request.session_name,
+                pane_id: request.pane_id.map(|p| match p {
+                    zellij_utils::data::PaneId::Terminal(id) => (id, false),
+                    zellij_utils::data::PaneId::Plugin(id) => (id, true),
+                }),
+                layout: layout_holder.layout,
+                cwd,
+                ..Default::default()
+            };
+            if let Err(e) = crate::desktop_app::open_window(request) {
                 log::info!("The desktop app did not open the session window: {}", e);
             }
         });
@@ -579,6 +577,24 @@ fn get_saved_session_preview(env: &PluginEnv, name: String) {
             plugin_id: env.plugin_id,
             client_id: env.client_id,
             session_name: name,
+        });
+}
+
+fn desktop_integration(env: &PluginEnv, request: String) {
+    let send_plugin_instructions = env.senders.to_plugin.clone();
+    let plugin_id = env.plugin_id;
+    let client_id = acting_client(env);
+    let _ = std::thread::Builder::new()
+        .name("desktop_integration".to_owned())
+        .spawn(move || {
+            let response = crate::desktop_app::desktop_integration(&request);
+            if let Some(sender) = send_plugin_instructions {
+                let _ = sender.send(PluginInstruction::Update(vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::DesktopIntegration(response),
+                )]));
+            }
         });
 }
 
@@ -740,6 +756,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     ),
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
+                    },
+                    PluginCommand::DesktopIntegration(request) => {
+                        desktop_integration(env, request)
                     },
                     PluginCommand::RunContextMenuItem(index) => {
                         run_context_menu_item(env, index)
@@ -6659,6 +6678,7 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::MarkSessionPaneSeen { .. }
         | PluginCommand::MarkAllSeen { .. }
         | PluginCommand::OpenSessionWindow(..)
+        | PluginCommand::DesktopIntegration(..)
         | PluginCommand::ToggleSessionPaneMute { .. }
         | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
         | PluginCommand::ToggleSessionPaneWatch { .. }

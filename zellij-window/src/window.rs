@@ -64,7 +64,7 @@ pub(crate) use desktop::{
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
 const ZOOM_STEP: f64 = 1.1;
-pub(crate) const ICON_PNG: &[u8] = include_bytes!("../../assets/logo128.png");
+pub(crate) const ICON_PNG: &[u8] = zellij_utils::desktop_integration::ICON_PNG;
 
 pub(crate) fn application_id() -> &'static str {
     crate::identity::identity().app_id

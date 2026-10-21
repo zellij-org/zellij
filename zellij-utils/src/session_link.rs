@@ -40,6 +40,13 @@ impl SessionLink {
     pub fn send(&mut self, msg: ClientToServerMsg) -> Result<(), String> {
         self.sender.send_client_msg(msg).map_err(|e| e.to_string())
     }
+    pub fn recv_blocking(&mut self) -> Result<ServerToClientMsg, String> {
+        let _ = self.receiver.set_read_timeout(None);
+        self.receiver
+            .try_recv_server_msg()
+            .map(|(msg, _)| msg)
+            .map_err(|e| e.to_string())
+    }
     pub fn recv(&mut self, timeout: Duration) -> Result<ServerToClientMsg, String> {
         let _ = self.receiver.set_read_timeout(Some(timeout));
         self.receiver

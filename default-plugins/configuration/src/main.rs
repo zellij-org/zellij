@@ -9,6 +9,7 @@ mod mousebindings_screen;
 mod page;
 mod settings;
 mod settings_screen;
+mod setup_screen;
 mod theme_preview;
 mod theme_sample;
 mod themes_screen;
@@ -16,31 +17,39 @@ mod ui_components;
 
 use zellij_tile::prelude::*;
 
-use keys_screen::KeysScreen;
 use settings_screen::SettingsScreen;
+use setup_screen::SetupScreen;
 use ui_components::set_close_directly;
 
 use std::collections::BTreeMap;
 
-const SETUP_WIZARD_WIDTH: usize = 72;
-const SETUP_WIZARD_HEIGHT: usize = 18;
-
 enum Screen {
-    SetupWizard(KeysScreen),
+    Loading,
+    SetupWizard(Box<SetupScreen>),
     Settings(SettingsScreen),
 }
 
 impl Default for Screen {
     fn default() -> Self {
-        Screen::SetupWizard(KeysScreen::new(true))
+        Screen::Loading
     }
 }
 
 #[derive(Default)]
 struct State {
-    notification: Option<String>,
     screen: Screen,
 }
+
+const WIZARD_EVENTS: [EventType; 8] = [
+    EventType::Key,
+    EventType::Mouse,
+    EventType::Timer,
+    EventType::FailedToWriteConfigToDisk,
+    EventType::ConfigWasWrittenToDisk,
+    EventType::AvailableKeybindPresets,
+    EventType::DesktopIntegration,
+    EventType::PromptResult,
+];
 
 register_plugin!(State);
 
@@ -50,20 +59,18 @@ impl ZellijPlugin for State {
             .get("is_setup_wizard")
             .map(|v| v == "true")
             .unwrap_or(false);
+        let rerun_setup = configuration
+            .get("rerun_setup")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         let own_plugin_id = get_plugin_ids().plugin_id;
-        if is_setup_wizard {
-            subscribe(&[
-                EventType::Key,
-                EventType::Mouse,
-                EventType::Timer,
-                EventType::FailedToWriteConfigToDisk,
-                EventType::AvailableKeybindPresets,
-            ]);
+        if is_setup_wizard || rerun_setup {
+            subscribe(&WIZARD_EVENTS);
             set_close_directly(true);
-            let mut keys_screen = KeysScreen::new(true);
-            keys_screen.set_snapshot(&read_config());
-            self.screen = Screen::SetupWizard(keys_screen);
-            rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
+            self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(
+                is_setup_wizard,
+                own_plugin_id,
+            )));
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
@@ -81,6 +88,7 @@ impl ZellijPlugin for State {
                 EventType::BeforeClose,
                 EventType::Visible,
                 EventType::PromptResult,
+                EventType::DesktopIntegration,
             ]);
             set_close_directly(false);
             self.screen = Screen::Settings(SettingsScreen::new());
@@ -101,40 +109,21 @@ impl ZellijPlugin for State {
         }
     }
     fn update(&mut self, event: Event) -> bool {
-        match &mut self.screen {
-            Screen::SetupWizard(keys_screen) => match event {
+        let should_render = match &mut self.screen {
+            Screen::Loading => false,
+            Screen::SetupWizard(setup) => match event {
                 Event::AvailableKeybindPresets(presets, errors) => {
-                    keys_screen.set_presets(presets, errors);
+                    setup.keys_mut().set_presets(presets, errors);
                     true
                 },
-                Event::Key(key) => {
-                    if self.notification.is_some() {
-                        self.notification = None;
-                        return true;
-                    }
-                    let should_render = keys_screen.handle_key(key);
-                    if keys_screen.take_needs_refresh() {
-                        keys_screen.set_snapshot(&read_config());
-                    }
-                    should_render
-                },
-                Event::Mouse(mouse) => {
-                    let should_render = keys_screen.handle_mouse(mouse);
-                    let refreshed = keys_screen.take_needs_refresh();
-                    if refreshed {
-                        keys_screen.set_snapshot(&read_config());
-                    }
-                    should_render || refreshed
-                },
-                Event::Timer(_) => keys_screen.handle_timer(),
+                Event::DesktopIntegration(payload) => setup.desktop_integration(payload),
+                Event::PromptResult(request_id, result) => setup.prompt_result(request_id, result),
+                Event::Key(key) => setup.handle_key(key),
+                Event::Mouse(mouse) => setup.handle_mouse(mouse),
+                Event::Timer(_) => setup.handle_timer(),
+                Event::ConfigWasWrittenToDisk => setup.config_written(),
                 Event::FailedToWriteConfigToDisk(config_file_path) => {
-                    self.notification = Some(match config_file_path {
-                        Some(failed_path) => {
-                            format!("Failed to write configuration file: {}", failed_path)
-                        },
-                        None => "Failed to write configuration file.".to_owned(),
-                    });
-                    true
+                    setup.config_write_failed(config_file_path)
                 },
                 _ => false,
             },
@@ -179,22 +168,25 @@ impl ZellijPlugin for State {
                 },
                 _ => false,
             },
+        };
+        if let Screen::Settings(settings_screen) = &mut self.screen {
+            if settings_screen.take_setup_request() {
+                set_close_directly(true);
+                let own_plugin_id = get_plugin_ids().plugin_id;
+                self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(
+                    false,
+                    own_plugin_id,
+                )));
+                return true;
+            }
         }
+        should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
         page::clear_overlays();
         match &mut self.screen {
-            Screen::SetupWizard(keys_screen) => {
-                if self.notification.is_some() {
-                    keys_screen.set_notice(self.notification.clone());
-                }
-                let width = SETUP_WIZARD_WIDTH.min(cols);
-                let height = SETUP_WIZARD_HEIGHT.min(rows);
-                let x = cols.saturating_sub(width) / 2;
-                let y = rows.saturating_sub(height) / 2;
-                keys_screen.render(x, y, width, height);
-                keys_screen.render_overlays(rows, cols);
-            },
+            Screen::Loading => {},
+            Screen::SetupWizard(setup) => setup.render(rows, cols),
             Screen::Settings(settings_screen) => settings_screen.render(rows, cols),
         }
     }

@@ -661,6 +661,7 @@ impl Screen {
             placement,
             focused,
             false,
+            false,
         );
     }
     pub fn open_prompt_popup(
@@ -672,6 +673,7 @@ impl Screen {
         placement: Option<PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
+        closes_on_outside_click: bool,
     ) {
         let tab_id = match self.active_tab_ids.get(&owner_client_id) {
             Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
@@ -725,6 +727,7 @@ impl Screen {
             pipe_placement,
             focused,
             capture_all_keys,
+            closes_on_outside_click,
         );
     }
     fn load_answer_popup(
@@ -738,6 +741,7 @@ impl Screen {
         placement: PipePopupPlacement,
         focused: bool,
         capture_all_keys: bool,
+        closes_on_outside_click: bool,
     ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
@@ -805,6 +809,7 @@ impl Screen {
             },
         };
         let kind = match (focused, capture_all_keys) {
+            (true, _) if closes_on_outside_click => PopupKind::Explanation,
             (true, true) => PopupKind::Modal,
             (true, false) => PopupKind::Prompt,
             (false, _) => PopupKind::Info,

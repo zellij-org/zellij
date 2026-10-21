@@ -90,6 +90,9 @@ pub enum Spec {
         show_tab_name: bool,
         caller_pane: Option<PaneId>,
     },
+    Info {
+        message: StyledText,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -252,6 +255,7 @@ pub fn request_from_pipe_prompt(pipe_prompt: PipePrompt) -> Result<Request, Stri
             show_tab_name,
             caller_pane: caller.pane_id,
         },
+        PromptSpec::Info { message } => Spec::Info { message },
     };
     Ok(Request {
         element: request.element,

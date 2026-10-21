@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 945
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -8633,6 +8634,15 @@ Config {
                 ],
                 toggled_label: None,
             },
+            Item {
+                label: "Open in a window",
+                actions: [
+                    Action(
+                        OpenSessionInWindow,
+                    ),
+                ],
+                toggled_label: None,
+            },
         ],
         common: [
             Item {
@@ -12843,6 +12853,7 @@ Config {
         open_links: None,
         bell: None,
         startup_mode: None,
+        terminal_requests: None,
         opacity: None,
         opacity_mode: None,
         blur: None,
@@ -12886,6 +12897,7 @@ Config {
     attention: AttentionConfig {
         frame_markers: None,
         host_status: None,
+        tab_markers: None,
         idle_rule: None,
         done_threshold_secs: None,
         idle_activity_secs: None,

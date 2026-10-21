@@ -8,6 +8,7 @@ pub mod notifier;
 pub mod platform_windows;
 pub mod probe;
 pub mod route;
+pub mod services;
 pub mod standalone;
 pub mod state;
 pub mod tray;

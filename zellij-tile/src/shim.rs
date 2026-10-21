@@ -1133,6 +1133,10 @@ pub fn get_saved_session_preview(name: &str) {
     run_plugin_command(PluginCommand::GetSavedSessionPreview(name.to_owned()));
 }
 
+pub fn request_desktop_integration(request: &zellij_utils::desktop_integration::Request) {
+    run_plugin_command(PluginCommand::DesktopIntegration(request.to_json()));
+}
+
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

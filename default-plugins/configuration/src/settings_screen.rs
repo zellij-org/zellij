@@ -129,6 +129,7 @@ pub struct SettingsScreen {
     window_title: String,
     file_link_hovered: bool,
     last_mouse: Option<(isize, usize)>,
+    setup_requested: bool,
 }
 
 impl Default for SettingsScreen {
@@ -172,6 +173,7 @@ impl Default for SettingsScreen {
             window_title: WINDOW_TITLE.to_owned(),
             file_link_hovered: false,
             last_mouse: None,
+            setup_requested: false,
         }
     }
 }
@@ -1148,6 +1150,9 @@ impl SettingsScreen {
             self.stop_editing(false);
         }
     }
+    pub fn take_setup_request(&mut self) -> bool {
+        std::mem::replace(&mut self.setup_requested, false)
+    }
     pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
         let should_render = self.handle_key_inner(key);
         self.stop_editing_if_focus_moved();
@@ -1176,6 +1181,11 @@ impl SettingsScreen {
             if is_ctrl_key(&key, 'r') {
                 self.restore_theme_preview();
                 self.request_revert_all();
+                return true;
+            }
+            if is_ctrl_key(&key, 'w') {
+                self.restore_theme_preview();
+                self.setup_requested = true;
                 return true;
             }
         }
@@ -2081,8 +2091,13 @@ impl SettingsScreen {
         } else {
             None
         };
-        let hints =
-            page_hints.unwrap_or_else(|| vec![("<Ctrl a>", "save"), ("<Ctrl r>", "revert all")]);
+        let hints = page_hints.unwrap_or_else(|| {
+            vec![
+                ("<Ctrl a>", "save"),
+                ("<Ctrl r>", "revert all"),
+                ("<Ctrl w>", "Setup Zellij"),
+            ]
+        });
         let mut header = key_hints(&format!("{} · ", count), &hints, cols);
         if unsaved > 0 {
             header = header.color_range(1, ..count.chars().count().min(cols));

@@ -157,6 +157,33 @@
                          Action="removeOnUninstall" />
     </Component>
 
+    <Component Id="explorer_item"
+               Directory="APPLICATIONFOLDER"
+               Guid="8D533AC5-90C5-4E43-B25D-8A1C424C16F8">
+      <RegistryKey Root="HKMU" Key="Software\Classes\Directory\shell\Zellij">
+        <RegistryValue Type="string" Value="Open Zellij here" />
+        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-window.exe" />
+        <RegistryKey Key="command">
+          <RegistryValue Type="string"
+                         Value="&quot;[APPLICATIONFOLDER]zellij-window.exe&quot; --working-directory &quot;%V&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+      <RegistryKey Root="HKMU" Key="Software\Classes\Directory\Background\shell\Zellij">
+        <RegistryValue Type="string" Value="Open Zellij here" />
+        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-window.exe" />
+        <RegistryKey Key="command">
+          <RegistryValue Type="string"
+                         Value="&quot;[APPLICATIONFOLDER]zellij-window.exe&quot; --working-directory &quot;%V&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+      <RegistryValue Root="HKMU"
+                     Key="Software\Zellij"
+                     Name="ExplorerItem"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
     <Component Id="path_machine"
                Directory="APPLICATIONFOLDER"
                Guid="85C2CC85-8379-4C27-8337-A90EAD9AC265"
@@ -206,6 +233,10 @@
 
     <Feature Id="StartMenuShortcut" Title="Start menu shortcut" Level="1">
       <ComponentRef Id="start_menu_shortcut" />
+    </Feature>
+
+    <Feature Id="ExplorerItem" Title="Open Zellij here in Explorer" Level="1">
+      <ComponentRef Id="explorer_item" />
     </Feature>
 
     <!-- ===== Custom UI =====

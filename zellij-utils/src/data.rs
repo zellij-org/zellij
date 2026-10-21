@@ -1287,6 +1287,7 @@ pub enum Event {
     CommandFinished(PaneId, crate::attention::CommandOutcome),
     GlobalAttentionUpdate(crate::attention::GlobalAttention),
     SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
+    DesktopIntegration(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -5005,6 +5006,7 @@ pub enum PluginCommand {
         anchor: Option<PreviewAnchor>,
     },
     GetSavedSessionPreview(String),
+    DesktopIntegration(String),
     MarkSessionPaneSeen {
         session_name: String,
         pane_id: PaneId,
@@ -5212,6 +5214,7 @@ setting_keys! {
     WindowCursorBlink => (Window, "cursor_blink", false, Flag),
     WindowCursorUnfocusedHollow => (Window, "cursor_unfocused_hollow", false, Flag),
     WindowStartupMode => (Window, "startup_mode", true, Text),
+    WindowTerminalRequests => (Window, "terminal_requests", false, Text),
     WindowInitialColumns => (Window, "initial_columns", true, Number),
     WindowInitialRows => (Window, "initial_rows", true, Number),
     WindowOpacity => (Window, "opacity", false, Decimal),
@@ -5275,6 +5278,7 @@ setting_keys! {
     ContextMenu => (Blocks, "context_menu", false, Text),
     AttentionFrameMarkers => (Attention, "frame_markers", false, Flag),
     AttentionHostStatus => (Attention, "host_status", false, Flag),
+    AttentionTabMarkers => (Attention, "tab_markers", false, Flag),
     AttentionIdleRule => (Attention, "idle_rule", false, Text),
     AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
     AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),

@@ -3411,6 +3411,7 @@ pub fn check_event_permission(
         | Event::CommandFinished(..)
         | Event::GlobalAttentionUpdate(..)
         | Event::SessionHistoryUpdate(..)
+        | Event::DesktopIntegration(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {

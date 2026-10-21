@@ -240,6 +240,12 @@ mod tests {
             ["window", "my-session", "--create"].map(OsString::from)
         );
         assert_eq!(arguments(std::iter::empty()), [OsString::from("window")]);
+        let explorer = ["--working-directory", r"C:\Users\me\project"].map(OsString::from);
+        assert_eq!(
+            arguments(explorer.into_iter()),
+            ["window", "--working-directory", r"C:\Users\me\project"].map(OsString::from),
+            "the folder Explorer passes reaches the window, which prefers it to its own folder"
+        );
     }
 
     #[test]

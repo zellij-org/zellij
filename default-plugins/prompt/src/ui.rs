@@ -12,6 +12,7 @@ pub type Hint = (&'static str, &'static str);
 
 pub const MIN_WIDTH: usize = 36;
 pub const MAX_WIDTH: usize = 100;
+const CONFIRM_DEFAULT_WIDTH: usize = 50;
 const LIST_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,6 +132,7 @@ pub enum Screen {
     Menu(MenuScreen),
     Form(FormScreen),
     Notify(NotifyScreen),
+    Info(InfoScreen),
 }
 
 impl Screen {
@@ -236,7 +238,11 @@ impl Screen {
                 screen.set_tab_name(tab_name.clone());
                 Screen::Notify(screen)
             },
+            Spec::Info { message } => Screen::Info(InfoScreen::new(message.clone())),
         }
+    }
+    pub fn has_own_footer(&self) -> bool {
+        matches!(self, Screen::Info(_))
     }
     pub fn has_own_frame(&self) -> bool {
         matches!(self, Screen::Confirm(_))
@@ -273,6 +279,7 @@ impl Screen {
             Screen::Menu(s) => s.handle_key(key),
             Screen::Form(s) => s.handle_key(key),
             Screen::Notify(_) => Step::Nothing,
+            Screen::Info(s) => s.handle_key(key),
         }
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> Step {
@@ -286,6 +293,7 @@ impl Screen {
             Screen::Menu(s) => s.handle_mouse(mouse),
             Screen::Form(s) => s.handle_mouse(mouse),
             Screen::Notify(s) => s.handle_mouse(mouse),
+            Screen::Info(s) => s.handle_mouse(mouse),
         }
     }
     pub fn handle_timer(&mut self) -> bool {
@@ -305,6 +313,7 @@ impl Screen {
             Screen::Menu(s) => s.render(x, y, width, height),
             Screen::Form(s) => s.render(x, y, width, height),
             Screen::Notify(s) => s.render(x, y, width, height),
+            Screen::Info(s) => s.render(x, y, width, height),
         }
     }
     pub fn render_overlays(&mut self, rows: usize, cols: usize) {
@@ -325,6 +334,7 @@ impl Screen {
             Screen::Menu(s) => s.desired_size(),
             Screen::Form(s) => s.desired_size(),
             Screen::Notify(s) => s.desired_size(),
+            Screen::Info(s) => s.desired_size(),
         }
     }
     pub fn hints(&self) -> &'static [Hint] {
@@ -366,7 +376,7 @@ impl Screen {
                 ("<Esc>", "cancel"),
             ],
             Screen::Form(_) => &[("<Tab>", "next"), ("<Ctrl a>", "save"), ("<Esc>", "cancel")],
-            Screen::Notify(_) => &[],
+            Screen::Notify(_) | Screen::Info(_) => &[],
         }
     }
     pub fn status(&self) -> Option<String> {
@@ -401,8 +411,18 @@ impl ConfirmScreen {
         default_yes: Option<bool>,
     ) -> Self {
         let selected = if default_yes == Some(false) { 1 } else { 0 };
+        let longest_word = message
+            .text
+            .split_whitespace()
+            .map(text_width)
+            .max()
+            .unwrap_or(0);
+        let mut dialog = ConfirmDialog::new(title, Text::from(message.clone()));
+        if longest_word + 4 > CONFIRM_DEFAULT_WIDTH {
+            dialog = dialog.width((longest_word + 4).min(MAX_WIDTH - 20));
+        }
         ConfirmScreen {
-            dialog: ConfirmDialog::new(title, Text::from(message.clone()))
+            dialog: dialog
                 .buttons(vec![yes.to_owned(), no.to_owned()])
                 .selected(selected)
                 .footer_rows(2)
@@ -1290,6 +1310,97 @@ pub fn label_text(styled: &StyledText, width: usize) -> Text {
     text
 }
 
+const INFO_TEXT_WIDTH: usize = 56;
+const INFO_KEY: &str = "<Esc>";
+const INFO_ACTION: &str = "Go back";
+
+pub struct InfoScreen {
+    message: StyledText,
+    go_back_hovered: bool,
+    go_back_area: Option<Rect>,
+}
+
+impl InfoScreen {
+    pub fn new(message: StyledText) -> Self {
+        InfoScreen {
+            message,
+            go_back_hovered: false,
+            go_back_area: None,
+        }
+    }
+    fn text_width_wanted(&self) -> usize {
+        self.message
+            .text
+            .split('\n')
+            .map(text_width)
+            .max()
+            .unwrap_or(0)
+            .clamp(MIN_WIDTH, INFO_TEXT_WIDTH)
+    }
+    pub fn desired_size(&self) -> (usize, usize) {
+        let width = self.text_width_wanted();
+        let lines = Text::from(self.message.clone()).wrap(width).len();
+        (width, lines + 4)
+    }
+    pub fn handle_key(&mut self, key: &KeyWithModifier) -> Step {
+        if is_key(key, BareKey::Esc) || is_key(key, BareKey::Enter) {
+            Step::Done(Outcome::Cancelled)
+        } else {
+            Step::Nothing
+        }
+    }
+    pub fn handle_mouse(&mut self, mouse: Mouse) -> Step {
+        let on_go_back = |line: isize, column: usize, area: Option<Rect>| {
+            area.map(|area| area.contains(line, column)).unwrap_or(false)
+        };
+        match mouse {
+            Mouse::LeftClick(line, column) if on_go_back(line, column, self.go_back_area) => {
+                Step::Done(Outcome::Cancelled)
+            },
+            Mouse::Hover(line, column) => {
+                let hovered = on_go_back(line, column, self.go_back_area);
+                let changed = hovered != self.go_back_hovered;
+                self.go_back_hovered = hovered;
+                Step::redraw_if(changed)
+            },
+            _ => Step::Nothing,
+        }
+    }
+    pub fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        if height == 0 || width == 0 {
+            return;
+        }
+        let lines = Text::from(self.message.clone()).wrap(width);
+        let message_rows = height.saturating_sub(4);
+        for (row, line) in lines.into_iter().take(message_rows).enumerate() {
+            print_text_with_coordinates(line, x, y + 1 + row, Some(width), None);
+        }
+        let footer_y = y + height.saturating_sub(2);
+        let separator = " - ";
+        let key_width = text_width(INFO_KEY);
+        print_text_with_coordinates(
+            Text::from(format!("{}{}", INFO_KEY, separator)).color_range(3, ..INFO_KEY.len()),
+            x,
+            footer_y,
+            None,
+            None,
+        );
+        let action_x = x + key_width + separator.len();
+        let action = if self.go_back_hovered {
+            Text::from(INFO_ACTION).selected()
+        } else {
+            Text::from(INFO_ACTION)
+        };
+        print_text_with_coordinates(action, action_x, footer_y, None, None);
+        self.go_back_area = Some(Rect::new(
+            x,
+            footer_y,
+            key_width + separator.len() + text_width(INFO_ACTION),
+            1,
+        ));
+    }
+}
+
 pub struct NotifyScreen {
     title: Option<String>,
     message: StyledText,
@@ -2029,4 +2140,62 @@ mod tests {
         let plain = SelectScreen::new("Delete main?".into(), vec!["a".to_owned()], None);
         assert_eq!(select.desired_size(), plain.desired_size());
     }
+
+    #[test]
+    fn the_info_screen_has_padding_above_the_text_and_below_go_back() {
+        let screen = InfoScreen::new(StyledText::plain("One line of explanation"));
+        let (_, height) = screen.desired_size();
+        assert_eq!(height, 1 + 1 + 1 + 1 + 1);
+    }
+
+    #[test]
+    fn the_info_screen_closes_on_esc_enter_or_a_click_on_go_back_only() {
+        let mut screen = InfoScreen::new(StyledText::plain("Some text"));
+        assert!(matches!(screen.handle_key(&key(BareKey::Char('x'))), Step::Nothing));
+        assert!(matches!(
+            screen.handle_key(&key(BareKey::Esc)),
+            Step::Done(Outcome::Cancelled)
+        ));
+        assert!(matches!(
+            screen.handle_key(&key(BareKey::Enter)),
+            Step::Done(Outcome::Cancelled)
+        ));
+        let (width, height) = screen.desired_size();
+        screen.render(0, 0, width, height);
+        let go_back_line = (height - 2) as isize;
+        assert!(matches!(
+            screen.handle_mouse(Mouse::LeftClick(1, 0)),
+            Step::Nothing
+        ));
+        assert!(matches!(
+            screen.handle_mouse(Mouse::Hover(go_back_line, 8)),
+            Step::Redraw
+        ));
+        assert!(matches!(
+            screen.handle_mouse(Mouse::Hover(go_back_line, 9)),
+            Step::Nothing
+        ));
+        assert!(matches!(
+            screen.handle_mouse(Mouse::LeftClick(go_back_line, 9)),
+            Step::Done(Outcome::Cancelled)
+        ));
+    }
+
+    #[test]
+    fn a_confirm_grows_to_keep_a_long_path_on_one_line() {
+        let path = "/tmp/zellij-test/1234/data/applications/dev.zellij.Zellij.desktop";
+        let message = StyledText::plain(format!("Deletes:\n{}", path));
+        let wide = ConfirmScreen::new("Remove".to_owned(), &message, "Yes", "No", None);
+        let (width, _) = wide.desired_size();
+        assert!(width >= path.len() + 4, "{}", width);
+        let short = ConfirmScreen::new(
+            "Remove".to_owned(),
+            &StyledText::plain("Delete main?"),
+            "Yes",
+            "No",
+            None,
+        );
+        assert!(short.desired_size().0 < width);
+    }
 }
+

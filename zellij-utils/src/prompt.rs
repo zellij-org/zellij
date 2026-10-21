@@ -57,6 +57,7 @@ pub enum PromptElement {
     Menu,
     Form,
     Notify,
+    Info,
 }
 
 impl PromptElement {
@@ -71,6 +72,7 @@ impl PromptElement {
             PromptElement::Menu => "menu",
             PromptElement::Form => "form",
             PromptElement::Notify => "notify",
+            PromptElement::Info => "info",
         }
     }
 }
@@ -94,8 +96,9 @@ impl FromStr for PromptElement {
             "menu" => Ok(PromptElement::Menu),
             "form" => Ok(PromptElement::Form),
             "notify" => Ok(PromptElement::Notify),
+            "info" => Ok(PromptElement::Info),
             other => Err(format!(
-                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form, notify",
+                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form, notify, info",
                 other
             )),
         }
@@ -869,6 +872,9 @@ pub enum PromptSpec {
         show_pane_name: bool,
         show_tab_name: bool,
     },
+    Info {
+        message: StyledText,
+    },
 }
 
 impl PromptSpec {
@@ -883,6 +889,7 @@ impl PromptSpec {
             PromptSpec::Menu { .. } => PromptElement::Menu,
             PromptSpec::Form { .. } => PromptElement::Form,
             PromptSpec::Notify { .. } => PromptElement::Notify,
+            PromptSpec::Info { .. } => PromptElement::Info,
         }
     }
 }
@@ -1001,6 +1008,12 @@ impl PromptRequest {
         })
         .placement(PromptPlacement::Corner(PopupCorner::TopRight))
     }
+    pub fn info(title: impl Into<String>, message: impl Into<StyledText>) -> Self {
+        PromptRequest::new(PromptSpec::Info {
+            message: message.into(),
+        })
+        .title(title)
+    }
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
@@ -1013,7 +1026,8 @@ impl PromptRequest {
         match &mut self.spec {
             PromptSpec::Confirm { message, .. }
             | PromptSpec::Select { message, .. }
-            | PromptSpec::Notify { message, .. } => *message = text,
+            | PromptSpec::Notify { message, .. }
+            | PromptSpec::Info { message } => *message = text,
             PromptSpec::Input { message, .. }
             | PromptSpec::Number { message, .. }
             | PromptSpec::Toggle { message } => *message = Some(text),
@@ -1255,6 +1269,9 @@ impl PromptRequest {
                 if !show_tab_name {
                     insert(&mut args, ARG_NO_TAB_NAME, "true".to_owned());
                 }
+            },
+            PromptSpec::Info { message } => {
+                set_styled(&mut args, message);
             },
         }
         (self.spec.element().name().to_owned(), args, payload)
@@ -1518,6 +1535,14 @@ pub fn parse_request(
                 show_tab_name: !flag(args, ARG_NO_TAB_NAME)?,
             }
         },
+        PromptElement::Info => {
+            let message = message
+                .or_else(|| payload.map(|p| strip_line_ending(p, false)))
+                .ok_or_else(|| "info needs the text to show".to_owned())?;
+            PromptSpec::Info {
+                message: styled(message),
+            }
+        },
     };
     let caller = PromptCallerInfo {
         pane_id: args
@@ -1754,6 +1779,7 @@ mod tests {
             ])
             .remember("Always do this")
             .padded(),
+            PromptRequest::info("About this", "Some explanation"),
         ]
     }
 

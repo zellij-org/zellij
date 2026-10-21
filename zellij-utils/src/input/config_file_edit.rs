@@ -2549,6 +2549,22 @@ pub fn saved_config_after_edits(saved: &Config, runtime: &Config, edits: &[Confi
     new_saved
 }
 
+pub fn set_keybinding_preset_in(path: &Path, preset: &str) -> Result<(), String> {
+    let current = read_config_file(path)
+        .map_err(|e| format!("{} could not be read: {}", path.display(), e))?;
+    let edits = [ConfigEdit::KeybindsAttribute {
+        name: "preset",
+        value: Some(preset.to_owned()),
+    }];
+    let new_contents = apply_edits(current.as_deref(), &edits, &Config::default())?;
+    if let Some(current) = current.as_deref() {
+        back_up(path, current)
+            .map_err(|backup| format!("{} could not be written", backup.display()))?;
+    }
+    std::fs::write(path, new_contents.as_bytes())
+        .map_err(|e| format!("{} could not be written: {}", path.display(), e))
+}
+
 pub fn read_config_file(path: &Path) -> Result<Option<String>, std::io::Error> {
     match std::fs::read_to_string(path) {
         Ok(contents) => Ok(Some(contents)),
@@ -2822,3 +2838,25 @@ pub fn save_config_in_place(
 #[cfg(test)]
 #[path = "./unit/config_file_edit_test.rs"]
 mod config_file_edit_test;
+
+#[cfg(test)]
+mod keybinding_preset_file_tests {
+    use super::*;
+
+    #[test]
+    fn the_keybinding_preset_is_written_and_the_rest_of_the_file_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.kdl");
+        std::fs::write(&path, "// my notes\ntheme \"dracula\"\n").unwrap();
+        set_keybinding_preset_in(&path, "unlock-first").unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("// my notes"), "{}", written);
+        assert!(written.contains("theme \"dracula\""), "{}", written);
+        assert!(written.contains("keybinds preset=\"unlock-first\""), "{}", written);
+        set_keybinding_preset_in(&path, "default").unwrap();
+        let rewritten = std::fs::read_to_string(&path).unwrap();
+        assert!(rewritten.contains("keybinds preset=\"default\""), "{}", rewritten);
+        assert!(!rewritten.contains("unlock-first"), "{}", rewritten);
+    }
+}
+

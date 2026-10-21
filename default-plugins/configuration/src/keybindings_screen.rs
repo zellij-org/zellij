@@ -158,6 +158,7 @@ pub fn category_of(actions: &[String]) -> &'static str {
         | "GoToNextSession"
         | "GoToNextAttention"
         | "ToggleTrayIcon"
+        | "OpenSessionInWindow"
         | "MarkPaneSeen"
         | "MarkAllSeen"
         | "OpenContextMenu" => "Session and plugins",

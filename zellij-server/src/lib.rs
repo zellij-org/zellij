@@ -13,6 +13,8 @@ pub mod tab;
 
 pub mod attention;
 pub mod background_jobs;
+mod desktop_app;
+pub use desktop_app::{set_app_starter, AppStarter};
 mod global_async_runtime;
 mod logging_pipe;
 mod mobile_web;
@@ -3817,6 +3819,8 @@ pub fn start_server_impl(
                     _ => false,
                 };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let in_desktop_window = host_terminal_env
+                    .contains_key(zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY);
                 let switch_context = cli_assets.switch_context.clone().unwrap_or_default();
                 let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
@@ -3833,13 +3837,16 @@ pub fn start_server_impl(
                             &cli_assets.config_file_path,
                         )
                     };
-                // if we successfully wrote the config to disk, it means two things:
-                // 1. It did not exist beforehand
-                // 2. The config folder is writeable
-                //
-                // If these two are true, we should launch the setup wizard, if even one of them is
-                // false, we should never launch it.
-                let should_launch_setup_wizard = successfully_written_config;
+                let created_from_welcome_screen = switch_context.startup_card
+                    == Some(zellij_utils::input::attention::StartupCard::Never);
+                let should_launch_setup_wizard = session_may_show_setup(
+                    is_resumed_session,
+                    layout_is_welcome_screen,
+                    created_from_welcome_screen,
+                    initial_panes.as_ref().map(|p| !p.is_empty()).unwrap_or(false),
+                ) && zellij_utils::desktop_integration::platform::should_offer_setup(
+                    successfully_written_config,
+                );
 
                 let runtime_config_options = match &cli_assets.configuration_options {
                     Some(configuration_options) => {
@@ -3965,15 +3972,29 @@ pub fn start_server_impl(
                         .unwrap()
                 };
 
+                let mut onboarding_pane = onboarding_floating_pane(&Onboarding {
+                    setup_wizard: should_launch_setup_wizard,
+                    in_desktop_window,
+                    is_web_client,
+                    show_release_notes: runtime_config_options.show_release_notes,
+                    show_startup_tips: runtime_config_options.show_startup_tips,
+                    layout_is_welcome_screen,
+                });
                 if layout.has_tabs() {
                     let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
                     for (tab_index, (tab_name, tab_layout, floating_panes_layout)) in
                         layout.tabs().into_iter().enumerate()
                     {
                         let should_focus_tab = tab_index == focused_tab_index;
+                        let mut floating_panes_layout = floating_panes_layout.clone();
+                        if should_focus_tab {
+                            if let Some(pane) = onboarding_pane.take() {
+                                floating_panes_layout.push(pane);
+                            }
+                        }
                         spawn_tabs(
                             Some(tab_layout.clone()),
-                            floating_panes_layout.clone(),
+                            floating_panes_layout,
                             tab_name,
                             (
                                 Some(layout.swap_tiled_layouts.clone()),
@@ -3985,23 +4006,8 @@ pub fn start_server_impl(
                 } else {
                     let mut floating_panes =
                         layout.template.map(|t| t.1).clone().unwrap_or_default();
-                    if should_launch_setup_wizard {
-                        // we only do this here (and only once) because otherwise it will be
-                        // intrusive
-                        let setup_wizard = setup_wizard_floating_pane();
-                        floating_panes.push(setup_wizard);
-                    } else if should_show_release_notes(
-                        runtime_config_options.show_release_notes,
-                        layout_is_welcome_screen,
-                    ) {
-                        let about = about_floating_pane();
-                        floating_panes.push(about);
-                    } else if should_show_startup_tip(
-                        runtime_config_options.show_startup_tips,
-                        layout_is_welcome_screen,
-                    ) {
-                        let tip = tip_floating_pane();
-                        floating_panes.push(tip);
+                    if let Some(pane) = onboarding_pane.take() {
+                        floating_panes.push(pane);
                     }
                     spawn_tabs(
                         None,
@@ -5675,37 +5681,124 @@ fn init_session(
     }
 }
 
-fn setup_wizard_floating_pane() -> FloatingPaneLayout {
-    let mut setup_wizard_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_setup_wizard".to_owned(), "true".to_owned())]);
-    setup_wizard_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "configuration",
-        &Some(configuration),
-        None,
-    ))));
-    setup_wizard_pane
+fn session_may_show_setup(
+    is_resumed_session: bool,
+    layout_is_welcome_screen: bool,
+    created_from_welcome_screen: bool,
+    runs_a_command: bool,
+) -> bool {
+    !is_resumed_session && !layout_is_welcome_screen && !created_from_welcome_screen && !runs_a_command
 }
 
-fn about_floating_pane() -> FloatingPaneLayout {
-    let mut about_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_release_notes".to_owned(), "true".to_owned())]);
-    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "about",
-        &Some(configuration),
-        None,
-    ))));
-    about_pane
+struct Onboarding {
+    setup_wizard: bool,
+    in_desktop_window: bool,
+    is_web_client: bool,
+    show_release_notes: Option<bool>,
+    show_startup_tips: Option<bool>,
+    layout_is_welcome_screen: bool,
 }
 
-fn tip_floating_pane() -> FloatingPaneLayout {
-    let mut about_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_startup_tip".to_owned(), "true".to_owned())]);
-    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "about",
+fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayout> {
+    use zellij_utils::desktop_integration::{Flag, ReminderContext};
+    let window_flag = |mut configuration: BTreeMap<String, String>| {
+        if onboarding.in_desktop_window {
+            configuration.insert("in_desktop_window".to_owned(), "true".to_owned());
+        }
+        configuration
+    };
+    if onboarding.setup_wizard {
+        return Some(plugin_floating_pane(
+            "configuration",
+            window_flag(BTreeMap::from([(
+                "is_setup_wizard".to_owned(),
+                "true".to_owned(),
+            )])),
+        ));
+    }
+    if onboarding.layout_is_welcome_screen {
+        return None;
+    }
+    let state = zellij_utils::desktop_integration::load();
+    if let Some(offer) = launcher_repair_offer(&state) {
+        return Some(plugin_floating_pane(
+            "about",
+            window_flag(BTreeMap::from([
+                ("page".to_owned(), "repair".to_owned()),
+                ("missing".to_owned(), offer.missing.display().to_string()),
+                ("current".to_owned(), offer.current.display().to_string()),
+            ])),
+        ));
+    }
+    if should_show_release_notes(onboarding.show_release_notes, false) {
+        return Some(plugin_floating_pane(
+            "about",
+            window_flag(BTreeMap::from([(
+                "is_release_notes".to_owned(),
+                "true".to_owned(),
+            )])),
+        ));
+    }
+    if onboarding.in_desktop_window && state.needs_welcome_card() {
+        let missing = state.missing_services.clone();
+        let first_time = !state.has(Flag::WelcomeCardShown);
+        let _ = zellij_utils::desktop_integration::update(|state| {
+            state.set(Flag::WelcomeCardShown);
+            if !state.missing_services.is_empty() {
+                state.set(Flag::MissingServicesShown);
+            }
+        });
+        let mut configuration = BTreeMap::from([
+            ("page".to_owned(), "window_welcome".to_owned()),
+            ("missing_services".to_owned(), missing.join("\n")),
+        ]);
+        if !first_time {
+            configuration.insert("only_missing_services".to_owned(), "true".to_owned());
+        }
+        return Some(plugin_floating_pane("about", window_flag(configuration)));
+    }
+    if should_show_startup_tip(onboarding.show_startup_tips, false) {
+        let reminders = ReminderContext {
+            show_startup_tips: onboarding.show_startup_tips.unwrap_or(true),
+            show_release_notes: onboarding.show_release_notes.unwrap_or(true),
+            inside_desktop_window: onboarding.in_desktop_window,
+            web_client: onboarding.is_web_client,
+        };
+        let mut configuration =
+            BTreeMap::from([("is_startup_tip".to_owned(), "true".to_owned())]);
+        if state.should_offer_desktop_tip(&reminders) {
+            configuration.insert("desktop_tip".to_owned(), "true".to_owned());
+            let _ = zellij_utils::desktop_integration::update(|state| {
+                state.set(Flag::DesktopAppIntroduced);
+            });
+        }
+        return Some(plugin_floating_pane("about", window_flag(configuration)));
+    }
+    None
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn launcher_repair_offer(
+    _state: &zellij_utils::desktop_integration::IntegrationState,
+) -> Option<zellij_utils::desktop_integration::RepairOffer> {
+    zellij_utils::desktop_integration::platform::launcher_repair_offer()
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn launcher_repair_offer(
+    _state: &zellij_utils::desktop_integration::IntegrationState,
+) -> Option<zellij_utils::desktop_integration::RepairOffer> {
+    None
+}
+
+fn plugin_floating_pane(alias: &str, configuration: BTreeMap<String, String>) -> FloatingPaneLayout {
+    let mut pane = FloatingPaneLayout::new();
+    pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        alias,
         &Some(configuration),
         None,
     ))));
-    about_pane
+    pane
 }
 
 fn should_show_release_notes(
@@ -6321,5 +6414,19 @@ mod theme_file_tests {
         assert!(session_configuration
             .delete_theme_file(&1, "dracula")
             .is_err());
+    }
+}
+
+#[cfg(test)]
+mod setup_screen_session_tests {
+    use super::session_may_show_setup;
+
+    #[test]
+    fn only_a_plain_new_session_may_show_the_setup_screen() {
+        assert!(session_may_show_setup(false, false, false, false));
+        assert!(!session_may_show_setup(true, false, false, false));
+        assert!(!session_may_show_setup(false, true, false, false));
+        assert!(!session_may_show_setup(false, false, true, false));
+        assert!(!session_may_show_setup(false, false, false, true));
     }
 }

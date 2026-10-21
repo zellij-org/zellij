@@ -25,6 +25,7 @@ pub enum PopupKind {
     Prompt,
     Modal,
     Info,
+    Explanation,
 }
 
 impl PopupKind {
@@ -768,6 +769,11 @@ impl Tab {
             })
             .unwrap_or_default()
     }
+    pub fn mouse_gesture_is_held(&self) -> bool {
+        self.selecting_with_mouse_in_pane.is_some()
+            || self.pane_being_resized_with_mouse.is_some()
+            || self.floating_panes.pane_is_being_moved_with_mouse()
+    }
     pub fn clear_hover_under_popups(&mut self, client_id: ClientId) -> bool {
         super::mouse_handler::clear_hover_for_client(self, client_id)
     }
@@ -787,7 +793,7 @@ impl Tab {
             && (event.left || event.right || event.middle);
         if !inside && is_press {
             return match popup.kind {
-                PopupKind::Menu => Some(PopupMouseOutcome::CloseRequested),
+                PopupKind::Menu | PopupKind::Explanation => Some(PopupMouseOutcome::CloseRequested),
                 PopupKind::Prompt | PopupKind::Modal | PopupKind::Info => {
                     Some(PopupMouseOutcome::Consumed)
                 },

@@ -33,6 +33,7 @@ pub struct TestRunner {
     host_terminal: Option<HostTerminal>,
     cli_options: Option<Options>,
     without_config_file: bool,
+    setup_wizard: bool,
     session_name: Option<String>,
 }
 
@@ -49,6 +50,7 @@ impl TestRunner {
             host_terminal: None,
             cli_options: None,
             without_config_file: false,
+            setup_wizard: false,
             session_name: None,
         }
     }
@@ -60,6 +62,11 @@ impl TestRunner {
 
     pub fn without_config_file(mut self) -> Self {
         self.without_config_file = true;
+        self
+    }
+
+    pub fn with_setup_wizard(mut self) -> Self {
+        self.setup_wizard = true;
         self
     }
 
@@ -166,6 +173,7 @@ impl TestRunner {
             .clone()
             .unwrap_or_else(test_env::unique_session_name);
         let data_dir = test_env::init().join("data");
+        test_env::prepare_setup_wizard(self.setup_wizard);
 
         let cli_args = if self.without_config_file {
             let mut options = test_env::default_test_options();

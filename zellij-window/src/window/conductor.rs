@@ -261,6 +261,10 @@ impl Conductor {
             .collect()
     }
 
+    pub(crate) fn most_recent_window(&self) -> Option<u64> {
+        self.most_recent()
+    }
+
     fn most_recent(&self) -> Option<u64> {
         self.windows
             .iter()

@@ -203,6 +203,50 @@ fn a_backgrounded_session_is_a_usage_error_on_the_window() {
 }
 
 #[test]
+fn the_window_takes_a_command_the_way_terminal_emulators_do() {
+    let args = window_args(&["-e", "vim", "-u", "NONE", "--clean", "file.txt"]);
+    assert_eq!(args.execute, vec!["vim", "-u", "NONE", "--clean", "file.txt"]);
+    assert_eq!(args.command(), &["vim", "-u", "NONE", "--clean", "file.txt"]);
+    assert!(args.waits_for_command());
+    assert!(args.closes_command_on_exit());
+    assert!(args.attach.session_name.is_none());
+
+    let held = window_args(&["--hold", "--working-directory=/tmp", "-e", "ls", "-la"]);
+    assert!(held.hold);
+    assert!(!held.closes_command_on_exit());
+    assert_eq!(held.working_directory, Some(std::path::PathBuf::from("/tmp")));
+    assert_eq!(held.execute, vec!["ls", "-la"]);
+
+    let spaced = window_args(&["--working-directory", "/srv", "-e", "htop"]);
+    assert_eq!(spaced.working_directory, Some(std::path::PathBuf::from("/srv")));
+
+    let plain = window_args(&["--", "htop"]);
+    assert!(!plain.waits_for_command());
+    assert!(!plain.closes_command_on_exit());
+    assert_eq!(plain.command(), &["htop"]);
+}
+
+#[test]
+fn a_waited_command_refuses_the_flags_that_open_something_else() {
+    for argv in [
+        vec!["--watch", "-e", "htop"],
+        vec!["--inbox", "-e", "htop"],
+        vec!["--sessions", "-e", "htop"],
+        vec!["--headless", "-e", "htop"],
+    ] {
+        let mut args = vec!["zellij", "window"];
+        args.extend_from_slice(&argv);
+        assert!(
+            try_parse(&args).is_err(),
+            "`zellij window {}` was accepted",
+            argv.join(" ")
+        );
+    }
+    assert!(window_args(&["--hold"]).validate().is_err());
+    assert!(window_args(&["--hold", "-e", "ls"]).validate().is_ok());
+}
+
+#[test]
 fn the_window_watches_where_attach_cannot() {
     assert!(window_args(&["my-session", "--watch"]).watch);
     assert!(window_args(&["--watch"]).watch);
@@ -500,4 +544,42 @@ fn new_panes_and_runs_can_be_watched_with_notify() {
         },
         other => panic!("zellij run --notify did not parse: {:?}", other),
     }
+}
+
+fn setup_of(args: &[&str]) -> zellij_utils::setup::Setup {
+    match try_parse(args).unwrap().command {
+        Some(Command::Setup(setup)) => setup,
+        other => panic!("expected the setup command, got {:?}", other),
+    }
+}
+
+#[test]
+fn every_setup_screen_action_is_a_setup_flag_and_they_combine() {
+    let setup = setup_of(&[
+        "zellij",
+        "setup",
+        "--copy-to-permanent-folder",
+        "--replace-existing",
+        "--install-desktop-entry",
+        "--make-default-terminal",
+        "--keybinding-preset",
+        "unlock-first",
+    ]);
+    let actions = setup.desktop_actions();
+    assert!(actions.copy_to_permanent_folder);
+    assert!(actions.install_desktop_entry);
+    assert!(actions.make_default_terminal);
+    assert!(!actions.uninstall_desktop_entry);
+    assert!(setup.replace_existing);
+    assert_eq!(setup.keybinding_preset.as_deref(), Some("unlock-first"));
+    assert!(setup.runs_setup_actions());
+    assert!(setup_of(&["zellij", "setup", "--uninstall-desktop-entry"]).runs_setup_actions());
+    assert!(!setup_of(&["zellij", "setup", "--check"]).runs_setup_actions());
+}
+
+#[test]
+fn setup_actions_refuse_the_other_setup_flags_and_replace_needs_a_copy() {
+    assert!(try_parse(&["zellij", "setup", "--install-desktop-entry", "--dump-config"]).is_err());
+    assert!(try_parse(&["zellij", "setup", "--make-default-terminal", "--check"]).is_err());
+    assert!(try_parse(&["zellij", "setup", "--replace-existing"]).is_err());
 }

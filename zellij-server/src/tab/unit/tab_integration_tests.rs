@@ -13294,6 +13294,81 @@ fn click_outside_popup_requests_close_and_click_inside_is_consumed() {
 }
 
 #[test]
+fn a_click_outside_an_explanation_popup_closes_it_but_not_outside_a_prompt() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    for (plugin_id, kind, expected) in [
+        (
+            42,
+            crate::tab::PopupKind::Explanation,
+            crate::tab::PopupMouseOutcome::CloseRequested,
+        ),
+        (
+            43,
+            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupMouseOutcome::Consumed,
+        ),
+    ] {
+        tab.open_popup(
+            client_id,
+            plugin_id,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            kind,
+            20,
+            6,
+            None,
+            String::from("popup"),
+        )
+        .unwrap();
+        assert_eq!(
+            tab.handle_popup_mouse_event(
+                &MouseEvent::new_left_press_event(Position::new(4, 5)),
+                client_id
+            ),
+            Some(crate::tab::PopupMouseOutcome::Consumed)
+        );
+        assert_eq!(
+            tab.handle_popup_mouse_event(
+                &MouseEvent::new_left_press_event(Position::new(15, 80)),
+                client_id
+            ),
+            Some(expected)
+        );
+        tab.close_popup(client_id);
+    }
+}
+
+#[test]
+fn a_press_on_a_pane_is_held_until_its_release() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    assert!(!tab.mouse_gesture_is_held());
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(5, 5)),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.mouse_gesture_is_held());
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(Position::new(5, 5)),
+        client_id,
+    )
+    .unwrap();
+    assert!(!tab.mouse_gesture_is_held());
+}
+
+#[test]
 fn stacked_prompt_popups_hand_keys_back_from_the_newest_to_the_pane() {
     let size = Size {
         cols: 121,

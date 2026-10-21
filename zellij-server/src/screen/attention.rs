@@ -4,6 +4,7 @@ use crate::attention::{now_ms, AttentionEvent};
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::route::NotificationEnd;
 use crate::screen::SessionPaneCommand;
 use crate::tab::Tab;
 use crate::{ClientId, ServerInstruction};
@@ -38,9 +39,36 @@ impl Screen {
             .collect()
     }
 
+    pub(crate) fn wait_for_pane_exit(&mut self, pane_id: PaneId, waiter: NotificationEnd) {
+        let mut waiter = Some(waiter);
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                if let Some(mut refused) = waiter.take().and_then(|w| pane.attach_exit_waiter(w)) {
+                    refused.set_error_message(format!(
+                        "Something else is already waiting for pane {:?}",
+                        pane_id
+                    ));
+                }
+                return;
+            }
+        }
+        if let Some(mut waiter) = waiter {
+            waiter.set_error_message(format!("There is no pane {:?} in this session", pane_id));
+        }
+    }
+
     pub(super) fn tab_attention(&self, tab: &Tab) -> TabAttention {
-        self.attention
-            .tab_attention(tab.id, &Self::attention_pane_ids(tab))
+        let attention = self
+            .attention
+            .tab_attention(tab.id, &Self::attention_pane_ids(tab));
+        if self.attention.config().tab_markers() {
+            attention
+        } else {
+            TabAttention {
+                muted: attention.muted,
+                ..TabAttention::default()
+            }
+        }
     }
 
     pub(super) fn decorate_pane_infos(&self, pane_infos: &mut Vec<PaneInfo>) {

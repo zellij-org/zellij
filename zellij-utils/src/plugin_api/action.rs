@@ -746,6 +746,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleTrayIcon should not have a payload"),
                 None => Ok(Action::ToggleTrayIcon),
             },
+            Some(ProtobufActionName::OpenSessionInWindow) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("OpenSessionInWindow should not have a payload"),
+                    None => Ok(Action::OpenSessionInWindow),
+                }
+            },
             Some(ProtobufActionName::MarkPaneSeen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkPaneSeen {
                     session: payload.session,
@@ -2089,6 +2095,10 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleTrayIcon as i32,
                 optional_payload: None,
             }),
+            Action::OpenSessionInWindow => Ok(ProtobufAction {
+                name: ProtobufActionName::OpenSessionInWindow as i32,
+                optional_payload: None,
+            }),
             Action::MarkPaneSeen { session, pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::MarkPaneSeen as i32,
                 optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
@@ -2500,6 +2510,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::CliPipe { .. }
             | Action::ListClients
             | Action::ListPanes { .. }
+            | Action::WaitForPaneExit { .. }
             | Action::StackPanes { pane_ids: _ }
             | Action::ChangeFloatingPaneCoordinates {
                 pane_id: _,

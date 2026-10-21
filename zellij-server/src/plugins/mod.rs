@@ -1283,6 +1283,8 @@ pub(crate) fn plugin_thread_main(
                                     placement: request.placement,
                                     focused: request.focused,
                                     capture_all_keys: request.capture_all_keys,
+                                    closes_on_outside_click: request.element
+                                        == zellij_utils::prompt::PromptElement::Info,
                                 }),
                         );
                     },

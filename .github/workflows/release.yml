@@ -22,6 +22,47 @@ jobs:
           draft: true
           prerelease: false
 
+  desktop-files:
+    needs: create-release
+    name: desktop-files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create desktop files archive
+        run: |
+          share="desktop-files/share"
+          mkdir -p "$share/applications" "$share/metainfo"
+          cp assets/dev.zellij.Zellij.desktop "$share/applications/"
+          cp assets/dev.zellij.Zellij.metainfo.xml "$share/metainfo/"
+          for size in 128 256 512; do
+            mkdir -p "$share/icons/hicolor/${size}x${size}/apps"
+            cp "zellij-utils/assets/icons/logo${size}.png" "$share/icons/hicolor/${size}x${size}/apps/dev.zellij.Zellij.png"
+          done
+          tar cvzf zellij-desktop-files.tar.gz -C desktop-files share
+          sha256sum zellij-desktop-files.tar.gz > zellij-desktop-files.sha256sum
+
+      - name: Upload desktop files archive
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-desktop-files.tar.gz
+          asset_name: zellij-desktop-files.tar.gz
+          asset_content_type: application/octet-stream
+
+      - name: Upload desktop files checksum
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: zellij-desktop-files.sha256sum
+          asset_name: zellij-desktop-files.sha256sum
+          asset_content_type: text/plain
+
   build-release-normal:
     needs: create-release
     name: build-release-normal

@@ -6695,6 +6695,7 @@ dependencies = [
  "url",
  "uuid",
  "winapi",
+ "windows",
  "windows-sys 0.59.0",
 ]
 

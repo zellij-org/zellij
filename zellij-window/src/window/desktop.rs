@@ -907,6 +907,11 @@ impl Desktop {
             panel: self.conductor.panel_state(),
             live_sessions,
             tray_icon,
+            focused_session: self
+                .conductor
+                .most_recent_window()
+                .and_then(|key| self.windows.get(&key))
+                .and_then(|app| app.session_name().map(str::to_owned)),
         }
     }
 
