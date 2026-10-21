@@ -2213,6 +2213,8 @@ fn route_action_with_origin(
             pane_title,
             popup,
             popup_no_focus,
+            popup_capture_all_keys,
+            popup_outside_click,
             ..
         } => {
             drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
@@ -2251,6 +2253,8 @@ fn route_action_with_origin(
                         caller_pane_id: pane_id,
                         popup,
                         popup_focused: !popup_no_focus,
+                        popup_capture_all_keys,
+                        popup_outside_click: popup_outside_click.unwrap_or_default(),
                     })
                     .with_context(err_context)?;
             } else {

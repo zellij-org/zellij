@@ -36,8 +36,8 @@ use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
         KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipePopupPlacement, PipeSource, SettingKey,
-        WebServerStatus,
+        OutsideClick, PermissionStatus, PermissionType, PipeMessage, PipePopupPlacement,
+        PipeSource, SettingKey, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -168,6 +168,8 @@ pub enum PluginInstruction {
         caller_pane_id: Option<PaneId>,
         popup: Option<PipePopupPlacement>,
         popup_focused: bool,
+        popup_capture_all_keys: bool,
+        popup_outside_click: OutsideClick,
     },
     SetCliPipeExitCode {
         pipe_id: String,
@@ -1132,6 +1134,8 @@ pub(crate) fn plugin_thread_main(
                 caller_pane_id,
                 popup,
                 popup_focused,
+                popup_capture_all_keys,
+                popup_outside_click,
             } => {
                 if wasm_bridge.cli_pipe_is_finished(&pipe_id) {
                     continue;
@@ -1177,6 +1181,8 @@ pub(crate) fn plugin_thread_main(
                                             caller_pane_id,
                                             placement,
                                             focused: popup_focused,
+                                            capture_all_keys: popup_capture_all_keys,
+                                            outside_click: popup_outside_click,
                                         },
                                     ));
                                 },
@@ -1291,8 +1297,7 @@ pub(crate) fn plugin_thread_main(
                                     placement: request.placement,
                                     focused: request.focused,
                                     capture_all_keys: request.capture_all_keys,
-                                    closes_on_outside_click: request.element
-                                        == zellij_utils::prompt::PromptElement::Info,
+                                    outside_click: request.outside_click_or_default(),
                                 }),
                         );
                     },

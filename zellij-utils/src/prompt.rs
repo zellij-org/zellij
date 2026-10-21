@@ -1,4 +1,4 @@
-use crate::data::{PaneId, PopupCorner, StyledText};
+use crate::data::{OutsideClick, PaneId, PopupCorner, StyledText};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -903,6 +903,7 @@ pub struct PromptRequest {
     pub placement: Option<PromptPlacement>,
     pub focused: bool,
     pub capture_all_keys: bool,
+    pub outside_click: Option<OutsideClick>,
     pub spec: PromptSpec,
 }
 
@@ -916,6 +917,7 @@ impl PromptRequest {
             placement: None,
             focused: !matches!(spec, PromptSpec::Notify { .. }),
             capture_all_keys: false,
+            outside_click: None,
             spec,
         }
     }
@@ -1062,6 +1064,17 @@ impl PromptRequest {
     pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
         self.capture_all_keys = capture_all_keys;
         self
+    }
+    pub fn outside_click(mut self, outside_click: OutsideClick) -> Self {
+        self.outside_click = Some(outside_click);
+        self
+    }
+    pub fn outside_click_or_default(&self) -> OutsideClick {
+        match (self.outside_click, self.element) {
+            (Some(outside_click), _) => outside_click,
+            (None, PromptElement::Info) => OutsideClick::Close,
+            (None, _) => OutsideClick::Block,
+        }
     }
     pub fn yes(mut self, label: impl Into<String>) -> Self {
         if let PromptSpec::Confirm { yes, .. } = &mut self.spec {
@@ -1568,6 +1581,30 @@ pub fn parse_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_info_prompts_close_on_an_outside_click_unless_asked() {
+        assert_eq!(
+            PromptRequest::info("About this", "Details").outside_click_or_default(),
+            OutsideClick::Close
+        );
+        assert_eq!(
+            PromptRequest::confirm("Go?").outside_click_or_default(),
+            OutsideClick::Block
+        );
+        assert_eq!(
+            PromptRequest::info("About this", "Details")
+                .outside_click(OutsideClick::Block)
+                .outside_click_or_default(),
+            OutsideClick::Block
+        );
+        assert_eq!(
+            PromptRequest::confirm("Go?")
+                .outside_click(OutsideClick::Close)
+                .outside_click_or_default(),
+            OutsideClick::Close
+        );
+    }
 
     #[test]
     fn durations_accept_common_units() {

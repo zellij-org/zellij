@@ -2403,6 +2403,8 @@ impl From<crate::input::actions::Action>
                 pane_title,
                 popup,
                 popup_no_focus,
+                popup_capture_all_keys,
+                popup_outside_click,
             } => ActionType::CliPipe(CliPipeAction {
                 pipe_id,
                 name,
@@ -2422,6 +2424,8 @@ impl From<crate::input::actions::Action>
                 pane_title,
                 popup: popup.map(|p| p.to_string()),
                 popup_no_focus,
+                popup_capture_all_keys,
+                popup_outside_click: popup_outside_click.map(|o| o.to_string()),
             }),
             crate::input::actions::Action::KeybindPipe {
                 name,
@@ -3516,6 +3520,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .popup
                     .and_then(|p| p.parse::<crate::data::PipePopupPlacement>().ok()),
                 popup_no_focus: cli_pipe_action.popup_no_focus,
+                popup_capture_all_keys: cli_pipe_action.popup_capture_all_keys,
+                popup_outside_click: cli_pipe_action
+                    .popup_outside_click
+                    .and_then(|o| o.parse::<crate::data::OutsideClick>().ok()),
             }),
             ActionType::KeybindPipe(keybind_pipe_action) => {
                 Ok(crate::input::actions::Action::KeybindPipe {

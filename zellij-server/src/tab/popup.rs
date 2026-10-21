@@ -665,18 +665,14 @@ impl Tab {
         }
         true
     }
-    pub fn set_popup_behavior(
-        &mut self,
-        plugin_id: u32,
-        behavior: PopupBehavior,
-    ) -> Option<ClientId> {
+    pub fn set_popup_focused(&mut self, plugin_id: u32, focused: bool) -> Option<ClientId> {
         let client_id = self.popup_client_for_plugin(plugin_id)?;
         let stack = self.popups.get_mut(&client_id)?;
         let position = stack
             .iter()
             .position(|popup| popup.plugin_id() == Some(plugin_id))?;
         let mut popup = stack.remove(position);
-        popup.behavior = behavior;
+        popup.behavior.focused = focused;
         popup.pane.set_should_render(true);
         popup.pane.render_full_viewport();
         stack.push(popup);

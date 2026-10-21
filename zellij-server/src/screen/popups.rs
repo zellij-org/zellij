@@ -627,6 +627,11 @@ impl Screen {
             PopupBehavior::menu()
         } else {
             PopupBehavior::info()
+        }
+        .capturing_all_keys(options.capture_all_keys);
+        let behavior = match options.outside_click {
+            Some(outside_click) => behavior.on_outside_click(outside_click),
+            None => behavior,
         };
         self.request_popup(
             client_id,
@@ -726,6 +731,8 @@ impl Screen {
         caller_pane_id: Option<PaneId>,
         placement: PipePopupPlacement,
         focused: bool,
+        capture_all_keys: bool,
+        outside_click: OutsideClick,
     ) {
         let Some((client_id, tab_id, pane_in_tab)) = self.pipe_popup_owner(caller_pane_id) else {
             let _ = self
@@ -746,8 +753,8 @@ impl Screen {
             caller_pane_id,
             placement,
             focused,
-            false,
-            false,
+            capture_all_keys,
+            outside_click,
         );
     }
     pub fn open_prompt_popup(
@@ -759,7 +766,7 @@ impl Screen {
         placement: Option<PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
-        closes_on_outside_click: bool,
+        outside_click: OutsideClick,
     ) {
         let tab_id = match self.active_tab_ids.get(&owner_client_id) {
             Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
@@ -813,7 +820,7 @@ impl Screen {
             pipe_placement,
             focused,
             capture_all_keys,
-            closes_on_outside_click,
+            outside_click,
         );
     }
     fn load_answer_popup(
@@ -827,7 +834,7 @@ impl Screen {
         placement: PipePopupPlacement,
         focused: bool,
         capture_all_keys: bool,
-        closes_on_outside_click: bool,
+        outside_click: OutsideClick,
     ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
@@ -894,15 +901,13 @@ impl Screen {
                 None => PopupPlacement::CenteredIn(bounds),
             },
         };
-        let behavior = match (focused, capture_all_keys) {
-            (true, _) if closes_on_outside_click => {
-                PopupBehavior::prompt().on_outside_click(OutsideClick::Close)
-            },
-            (true, capture_all_keys) => {
-                PopupBehavior::prompt().capturing_all_keys(capture_all_keys)
-            },
-            (false, _) => PopupBehavior::info(),
-        };
+        let behavior = if focused {
+            PopupBehavior::prompt()
+        } else {
+            PopupBehavior::info()
+        }
+        .capturing_all_keys(capture_all_keys)
+        .on_outside_click(outside_click);
         let mut caller_args = BTreeMap::new();
         if let Some(pane_id) = caller_pane_id {
             let pane_id: zellij_utils::data::PaneId = pane_id.into();
@@ -1207,14 +1212,9 @@ impl Screen {
         }
     }
     pub fn set_popup_focused(&mut self, plugin_id: u32, focused: bool) {
-        let behavior = if focused {
-            PopupBehavior::prompt()
-        } else {
-            PopupBehavior::info()
-        };
         let mut changed_client = None;
         for tab in self.tabs.values_mut() {
-            if let Some(client_id) = tab.set_popup_behavior(plugin_id, behavior) {
+            if let Some(client_id) = tab.set_popup_focused(plugin_id, focused) {
                 changed_client = Some(client_id);
                 break;
             }

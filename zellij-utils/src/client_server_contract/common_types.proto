@@ -794,6 +794,8 @@ message CliPipeAction {
   optional string pane_title = 12;
   optional string popup = 13;
   bool popup_no_focus = 14;
+  bool popup_capture_all_keys = 15;
+  optional string popup_outside_click = 16;
 }
 
 message KeybindPipeAction {

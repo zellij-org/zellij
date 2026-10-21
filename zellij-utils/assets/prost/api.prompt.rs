@@ -16,6 +16,8 @@ pub struct PromptRequest {
     pub focused: bool,
     #[prost(bool, tag="16")]
     pub capture_all_keys: bool,
+    #[prost(string, optional, tag="18")]
+    pub outside_click: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(oneof="prompt_request::Spec", tags="7, 8, 9, 10, 11, 12, 13, 14, 15, 17")]
     pub spec: ::core::option::Option<prompt_request::Spec>,
 }

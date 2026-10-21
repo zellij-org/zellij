@@ -19083,7 +19083,7 @@ fn the_session_card_popup_is_found_by_its_location_and_focus() {
     let mut unfocused = tab.unfocused_popup_plugin_ids(client_id);
     unfocused.sort();
     assert_eq!(unfocused, vec![50, 70]);
-    tab.set_popup_behavior(70, crate::tab::PopupBehavior::prompt());
+    tab.set_popup_focused(70, true);
     assert_eq!(
         tab.popup_for_location(client_id, "session-manager"),
         Some((70, true))

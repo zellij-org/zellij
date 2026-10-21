@@ -865,6 +865,10 @@ pub struct OpenPluginPopupPayload {
     pub focused: ::core::option::Option<bool>,
     #[prost(string, optional, tag="8")]
     pub corner: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="9")]
+    pub capture_all_keys: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="10")]
+    pub outside_click: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -16630,6 +16630,73 @@ fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
 }
 
 #[test]
+fn a_click_outside_a_popup_that_closes_on_outside_click_unloads_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    for (plugin_id, behavior) in [
+        (42, crate::tab::PopupBehavior::prompt()),
+        (
+            43,
+            crate::tab::PopupBehavior::prompt()
+                .on_outside_click(zellij_utils::data::OutsideClick::Close),
+        ),
+    ] {
+        screen
+            .add_popup(
+                plugin_id,
+                client_id,
+                tab_id,
+                run_plugin_or_alias.clone(),
+                crate::tab::PopupPlacement::At(Position::new(3, 3)),
+                behavior,
+                20,
+                5,
+                None,
+            )
+            .unwrap();
+        screen.reveal_popup(plugin_id).unwrap();
+    }
+    let outside = MouseEvent::new_left_press_event(Position::new(15, 80));
+    assert!(screen.handle_popup_mouse_event(&outside, client_id));
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .popup_plugin_id(client_id),
+        Some(42)
+    );
+    assert!(screen.handle_popup_mouse_event(&outside, client_id));
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .popup_plugin_id(client_id),
+        Some(42)
+    );
+    let unloaded: Vec<u32> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Unload(plugin_id) => Some(plugin_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unloaded, vec![43]);
+}
+
+#[test]
 fn closing_the_pane_a_popup_belongs_to_closes_the_popup() {
     let size = Size {
         cols: 121,
@@ -17066,7 +17133,7 @@ fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
         None,
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let (client_id, behavior, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(client_id, 1);
@@ -17094,7 +17161,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(anchor_pane, Some(focused_pane));
@@ -17113,11 +17180,148 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         false,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let (_, behavior, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(behavior, crate::tab::PopupBehavior::info());
     assert_eq!(anchor_pane, None);
+}
+
+#[test]
+fn plugin_popups_take_key_capture_and_outside_click_from_their_options() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::{OutsideClick, PopupOptions};
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:session-manager", &None, None, None).unwrap();
+    for (options, expected) in [
+        (PopupOptions::default(), PopupBehavior::menu()),
+        (
+            PopupOptions {
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Block),
+                ..Default::default()
+            },
+            PopupBehavior::menu()
+                .capturing_all_keys(true)
+                .on_outside_click(OutsideClick::Block),
+        ),
+        (
+            PopupOptions {
+                focused: false,
+                ..Default::default()
+            },
+            PopupBehavior::info(),
+        ),
+    ] {
+        screen.open_plugin_popup_for_plugin(
+            9,
+            1,
+            run_plugin_or_alias.clone(),
+            2,
+            2,
+            30,
+            8,
+            options,
+        );
+        let loaded: Vec<PopupBehavior> = plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::LoadPopup { behavior, .. } => Some(behavior),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(loaded, vec![expected]);
+    }
+}
+
+#[test]
+fn changing_a_popups_focus_keeps_its_key_capture_and_outside_click() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::OutsideClick;
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    let behavior = PopupBehavior::prompt()
+        .capturing_all_keys(true)
+        .on_outside_click(OutsideClick::Close);
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            behavior,
+            20,
+            5,
+            None,
+        )
+        .unwrap();
+    screen.set_popup_focused(42, false);
+    assert!(!screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .focused_popup_takes_all_keys(client_id));
+    screen.set_popup_focused(42, true);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(tab.focused_popup_takes_all_keys(client_id));
+    assert_eq!(tab.popup_behavior_of_plugin(42), Some(behavior));
+}
+
+#[test]
+fn pipe_and_prompt_popups_take_key_capture_and_outside_click_from_the_request() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::OutsideClick;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let focused_pane = screen.get_active_tab(1).unwrap().get_active_pane_id(1);
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    for (capture_all_keys, outside_click, expected) in [
+        (false, OutsideClick::Block, PopupBehavior::prompt()),
+        (
+            false,
+            OutsideClick::Close,
+            PopupBehavior::prompt().on_outside_click(OutsideClick::Close),
+        ),
+        (
+            true,
+            OutsideClick::Close,
+            PopupBehavior::prompt()
+                .capturing_all_keys(true)
+                .on_outside_click(OutsideClick::Close),
+        ),
+    ] {
+        screen.open_pipe_popup(
+            "pipe".to_owned(),
+            run_plugin_or_alias.clone(),
+            focused_pane,
+            zellij_utils::data::PipePopupPlacement::Mouse,
+            true,
+            capture_all_keys,
+            outside_click,
+        );
+        screen.open_prompt_popup(
+            prompt_caller(),
+            1,
+            focused_pane,
+            run_plugin_or_alias.clone(),
+            None,
+            true,
+            capture_all_keys,
+            outside_click,
+        );
+        let loaded: Vec<PopupBehavior> = plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::LoadPopup { behavior, .. } => Some(behavior),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(loaded, vec![expected; 2]);
+    }
 }
 
 #[test]
@@ -17131,7 +17335,7 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         None,
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let failed = plugin_receiver.try_iter().any(|(instruction, _)| {
         matches!(
