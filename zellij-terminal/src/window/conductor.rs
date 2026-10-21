@@ -566,6 +566,9 @@ impl Conductor {
     }
 
     fn quit(&mut self, stop_sessions: bool, facts: &dyn Facts, effects: &mut Vec<Effect>) {
+        if self.quitting {
+            return;
+        }
         self.close_panel(effects);
         let mut stop = if self.hosted && stop_sessions {
             facts.live_sessions()
@@ -1062,6 +1065,38 @@ mod tests {
                 stop_sessions: true
             }),
             vec![Effect::Quit { stop: vec![] }]
+        );
+    }
+
+    #[test]
+    fn a_second_quit_request_while_quitting_does_nothing() {
+        let mut rig = Rig::hosted();
+        rig.world.live = vec!["a".to_owned()];
+        assert_eq!(
+            rig.intent(0, Intent::QuitApp),
+            vec![Effect::Quit {
+                stop: vec![APP_PANEL_SESSION.to_owned()]
+            }]
+        );
+        assert_eq!(
+            rig.feed(Input::QuitRequested {
+                stop_sessions: false
+            }),
+            vec![],
+            "winit asks again on its way out after the first quit"
+        );
+        let mut rig = Rig::single();
+        assert_eq!(
+            rig.feed(Input::QuitRequested {
+                stop_sessions: false
+            }),
+            vec![Effect::Quit { stop: vec![] }]
+        );
+        assert_eq!(
+            rig.feed(Input::QuitRequested {
+                stop_sessions: false
+            }),
+            vec![]
         );
     }
 
