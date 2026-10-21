@@ -1211,6 +1211,18 @@ impl ApplicationHandler<Wake> for Desktop {
         }
     }
 
+    // Quitting from the Dock or at logout reaches the app only here, after macOS has closed
+    // every window: finish it as Cmd+Q would. Any other quit is already under way by now,
+    // so this does nothing.
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        self.run(
+            event_loop,
+            Input::QuitRequested {
+                stop_sessions: false,
+            },
+        );
+    }
+
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         if matches!(self.mode, DesktopMode::Background(_)) {

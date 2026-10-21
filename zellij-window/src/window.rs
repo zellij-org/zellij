@@ -2035,7 +2035,15 @@ impl App {
                 self.on_focus_lost();
             },
             WindowEvent::RedrawRequested => self.draw(),
-            WindowEvent::Destroyed => return Verdict::Close,
+            // Quitting from the Dock or at logout, macOS closes every window before the
+            // app hears of it, while each can still be asked about itself. Elsewhere a
+            // window is destroyed only once the app has let it go.
+            WindowEvent::Destroyed => {
+                if !self.leaving {
+                    self.leave();
+                }
+                return Verdict::Close;
+            },
             _ => {},
         }
         Verdict::Keep
@@ -3776,6 +3784,53 @@ mod tests {
 
     fn remembered(dir: &tempfile::TempDir) -> Option<WindowState> {
         window_state::load_from(&dir.path().join("window-state.json"))
+    }
+
+    #[test]
+    fn a_window_the_system_destroys_still_remembers_its_size() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        assert_eq!(
+            harness.app.on_window_event(WindowEvent::Destroyed),
+            Verdict::Close
+        );
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }),
+            "macOS closes every window before the app hears it is quitting"
+        );
+    }
+
+    #[test]
+    fn a_window_the_system_destroys_lets_its_session_go() {
+        let mut harness = Harness::new(1, true, "");
+        harness.app.on_window_event(WindowEvent::Destroyed);
+        assert_eq!(
+            harness.actions(),
+            vec![Action::Detach],
+            "quitting from the Dock lets every session go, as Cmd+Q does"
+        );
+    }
+
+    #[test]
+    fn a_window_already_leaving_is_not_remembered_again_when_destroyed() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.app.leave();
+        let left = remembered(&dir);
+        harness.app.resized(800, 640);
+        harness.app.on_window_event(WindowEvent::Destroyed);
+        assert_eq!(
+            remembered(&dir),
+            left,
+            "Cmd+Q remembers every window in turn; macOS then closes them all, in its own order"
+        );
     }
 
     #[test]
