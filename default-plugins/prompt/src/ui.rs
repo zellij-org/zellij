@@ -1351,7 +1351,8 @@ impl InfoScreen {
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> Step {
         let on_go_back = |line: isize, column: usize, area: Option<Rect>| {
-            area.map(|area| area.contains(line, column)).unwrap_or(false)
+            area.map(|area| area.contains(line, column))
+                .unwrap_or(false)
         };
         match mouse {
             Mouse::LeftClick(line, column) if on_go_back(line, column, self.go_back_area) => {
@@ -2151,7 +2152,10 @@ mod tests {
     #[test]
     fn the_info_screen_closes_on_esc_enter_or_a_click_on_go_back_only() {
         let mut screen = InfoScreen::new(StyledText::plain("Some text"));
-        assert!(matches!(screen.handle_key(&key(BareKey::Char('x'))), Step::Nothing));
+        assert!(matches!(
+            screen.handle_key(&key(BareKey::Char('x'))),
+            Step::Nothing
+        ));
         assert!(matches!(
             screen.handle_key(&key(BareKey::Esc)),
             Step::Done(Outcome::Cancelled)
@@ -2198,4 +2202,3 @@ mod tests {
         assert!(short.desired_size().0 < width);
     }
 }
-

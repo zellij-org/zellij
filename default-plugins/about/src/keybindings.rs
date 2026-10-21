@@ -122,8 +122,7 @@ impl KeybindingState {
                 keybinds,
                 expected_bind.mode_in(base_mode),
                 &expected_bind.key,
-            )
-            {
+            ) {
                 if currently_bound_actions != expected_bind.actions(base_mode) {
                     conflicts.push((index, currently_bound_actions));
                 }

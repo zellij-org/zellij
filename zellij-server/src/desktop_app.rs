@@ -22,9 +22,7 @@ pub fn open_window(request: OpenWindowRequest) -> Result<(), String> {
 fn start_app_with(request: &OpenWindowRequest) -> Result<(), String> {
     match APP_STARTER.get() {
         Some(start) => start(request),
-        None => Err(
-            "The desktop app is not running and cannot be started from here".to_owned(),
-        ),
+        None => Err("The desktop app is not running and cannot be started from here".to_owned()),
     }
 }
 

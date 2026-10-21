@@ -1132,7 +1132,10 @@ fn the_desktop_entry_is_installed_and_removed_from_the_cli() {
     let applications = desktop.root.path().join("data/applications");
     let output = desktop
         .command(&["setup", "--install-desktop-entry"])
-        .env(zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV, "on")
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "on",
+        )
         .output()
         .expect("zellij runs");
     assert!(
@@ -1157,7 +1160,10 @@ fn the_desktop_entry_is_installed_and_removed_from_the_cli() {
     }
     let status = desktop
         .command(&["setup", "--uninstall-desktop-entry"])
-        .env(zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV, "on")
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "on",
+        )
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -1252,7 +1258,10 @@ fn the_cli_setup_actions_refuse_what_the_setup_screen_would_not_offer() {
     };
     let output = desktop
         .command(&["setup", "--install-desktop-entry"])
-        .env(zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV, "off")
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "off",
+        )
         .output()
         .expect("zellij runs");
     assert!(!output.status.success());
@@ -1262,19 +1271,29 @@ fn the_cli_setup_actions_refuse_what_the_setup_screen_would_not_offer() {
         "{}",
         stderr
     );
-    assert!(!desktop.root.path().join("data/applications").exists()
-        || std::fs::read_dir(desktop.root.path().join("data/applications"))
-            .unwrap()
-            .next()
-            .is_none());
+    assert!(
+        !desktop.root.path().join("data/applications").exists()
+            || std::fs::read_dir(desktop.root.path().join("data/applications"))
+                .unwrap()
+                .next()
+                .is_none()
+    );
     let output = desktop
         .command(&["setup", "--keybinding-preset", "unlock-first"])
         .output()
         .expect("zellij runs");
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let config = std::fs::read_to_string(desktop.root.path().join("config/zellij/config.kdl"))
         .expect("the config file was written");
-    assert!(config.contains("keybinds preset=\"unlock-first\""), "{}", config);
+    assert!(
+        config.contains("keybinds preset=\"unlock-first\""),
+        "{}",
+        config
+    );
     let output = desktop
         .command(&["setup", "--keybinding-preset", "no-such-preset"])
         .output()

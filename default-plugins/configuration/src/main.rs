@@ -67,10 +67,8 @@ impl ZellijPlugin for State {
         if is_setup_wizard || rerun_setup {
             subscribe(&WIZARD_EVENTS);
             set_close_directly(true);
-            self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(
-                is_setup_wizard,
-                own_plugin_id,
-            )));
+            self.screen =
+                Screen::SetupWizard(Box::new(SetupScreen::new(is_setup_wizard, own_plugin_id)));
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
@@ -173,10 +171,7 @@ impl ZellijPlugin for State {
             if settings_screen.take_setup_request() {
                 set_close_directly(true);
                 let own_plugin_id = get_plugin_ids().plugin_id;
-                self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(
-                    false,
-                    own_plugin_id,
-                )));
+                self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(false, own_plugin_id)));
                 return true;
             }
         }

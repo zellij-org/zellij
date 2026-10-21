@@ -693,10 +693,7 @@ impl KeysScreen {
         match event {
             FocusEvent::Element { key, response } => {
                 match (key, response) {
-                    (
-                        KeysField::Preset,
-                        UiResponse::Changed(UiValue::Choice { index, label }),
-                    ) => {
+                    (KeysField::Preset, UiResponse::Changed(UiValue::Choice { index, label })) => {
                         let name = if self.is_setup_wizard {
                             self.preset_names().get(index).cloned().unwrap_or(label)
                         } else {

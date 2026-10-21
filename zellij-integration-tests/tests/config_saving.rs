@@ -213,8 +213,7 @@ fn start_setup_screen() -> TestSession {
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
     zellij.wait_until("the setup screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Welcome to Zellij!")
-            && grid_snapshot.contains("Approve and Finish")
+        grid_snapshot.contains("Welcome to Zellij!") && grid_snapshot.contains("Approve and Finish")
     });
     zellij
 }
@@ -249,10 +248,13 @@ fn the_setup_screen_offers_the_desktop_items_and_the_keybindings_checkbox() {
             && grid_snapshot.contains("<Ctrl c> Don't Show Again")
             && !grid_snapshot.contains("Checking this computer")
     });
-    let screen = zellij.wait_until("without a desktop there is no desktop entry", |grid_snapshot| {
-        !grid_snapshot.contains("Install Desktop Entry")
-            && !grid_snapshot.contains("Make Zellij your Default Terminal")
-    });
+    let screen = zellij.wait_until(
+        "without a desktop there is no desktop entry",
+        |grid_snapshot| {
+            !grid_snapshot.contains("Install Desktop Entry")
+                && !grid_snapshot.contains("Make Zellij your Default Terminal")
+        },
+    );
     assert!(!screen.contains("Please Choose a Keybinding Preset"));
     zellij.kill_session();
 }
@@ -343,7 +345,11 @@ fn open_the_keybindings_info(zellij: &TestSession) {
     zellij.wait_until("the desktop items are known", |grid_snapshot| {
         !grid_snapshot.contains("Checking this computer") && grid_snapshot.contains(KEYS_LINE)
     });
-    click_on(zellij, &format!("{} [?]", KEYS_LINE), KEYS_LINE.chars().count() + 2);
+    click_on(
+        zellij,
+        &format!("{} [?]", KEYS_LINE),
+        KEYS_LINE.chars().count() + 2,
+    );
     zellij.wait_until("the info popup opened", |grid_snapshot| {
         grid_snapshot.contains(KEYS_INFO) && grid_snapshot.contains("<Esc> - Go back")
     });
@@ -358,10 +364,13 @@ fn esc_closes_the_info_popup_and_the_next_click_reaches_the_setup_screen() {
         !grid_snapshot.contains(KEYS_INFO) && grid_snapshot.contains("Welcome to Zellij!")
     });
     click_on(&zellij, KEYS_LINE, 0);
-    zellij.wait_until("the first click ticks the keybindings box", |grid_snapshot| {
-        grid_snapshot.contains(&format!("[x] {}", KEYS_LINE))
-            && grid_snapshot.contains("Approve and Continue")
-    });
+    zellij.wait_until(
+        "the first click ticks the keybindings box",
+        |grid_snapshot| {
+            grid_snapshot.contains(&format!("[x] {}", KEYS_LINE))
+                && grid_snapshot.contains("Approve and Continue")
+        },
+    );
     zellij.kill_session();
 }
 
@@ -407,4 +416,3 @@ fn go_back_on_the_keybindings_screen_returns_to_the_setup_screen() {
     });
     zellij.kill_session();
 }
-

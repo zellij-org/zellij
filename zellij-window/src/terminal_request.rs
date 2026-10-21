@@ -63,7 +63,11 @@ pub fn ensure_app_running() -> bool {
     false
 }
 
-pub fn run_in_app(waited: &Waited, mode: TerminalRequests, request: OpenWindowRequest) -> Result<i32> {
+pub fn run_in_app(
+    waited: &Waited,
+    mode: TerminalRequests,
+    request: OpenWindowRequest,
+) -> Result<i32> {
     if mode == TerminalRequests::ExistingSession {
         if let Some(session) = focused_session() {
             match open_tab(&session, waited) {
@@ -137,7 +141,8 @@ pub fn wait_for_session(name: &str, limit: Duration) -> bool {
 
 fn send_and_collect(session: &str, action: Action) -> Result<Vec<String>> {
     let mut link = SessionLink::open(session).map_err(|e| anyhow!("{}", e))?;
-    link.send(cli_message(action)).map_err(|e| anyhow!("{}", e))?;
+    link.send(cli_message(action))
+        .map_err(|e| anyhow!("{}", e))?;
     let mut lines = vec![];
     loop {
         match link.recv(ANSWER_WAIT).map_err(|e| anyhow!("{}", e))? {
@@ -202,8 +207,8 @@ fn list_panes(session: &str) -> Result<Vec<serde_json::Value>> {
         },
     )?;
     let text = lines.join("\n");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| anyhow!("the pane list could not be read: {}", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| anyhow!("the pane list could not be read: {}", e))?;
     Ok(parsed.as_array().cloned().unwrap_or_default())
 }
 
@@ -214,7 +219,11 @@ pub fn command_pane_in(
 ) -> Option<u32> {
     let program = command
         .first()
-        .map(|c| Path::new(c).file_name().map(|f| f.to_string_lossy().into_owned()))
+        .map(|c| {
+            Path::new(c)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+        })
         .flatten()
         .unwrap_or_default();
     panes

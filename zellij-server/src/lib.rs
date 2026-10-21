@@ -3843,10 +3843,14 @@ pub fn start_server_impl(
                     is_resumed_session,
                     layout_is_welcome_screen,
                     created_from_welcome_screen,
-                    initial_panes.as_ref().map(|p| !p.is_empty()).unwrap_or(false),
-                ) && zellij_utils::desktop_integration::platform::should_offer_setup(
-                    successfully_written_config,
-                );
+                    initial_panes
+                        .as_ref()
+                        .map(|p| !p.is_empty())
+                        .unwrap_or(false),
+                )
+                    && zellij_utils::desktop_integration::platform::should_offer_setup(
+                        successfully_written_config,
+                    );
 
                 let runtime_config_options = match &cli_assets.configuration_options {
                     Some(configuration_options) => {
@@ -5687,7 +5691,10 @@ fn session_may_show_setup(
     created_from_welcome_screen: bool,
     runs_a_command: bool,
 ) -> bool {
-    !is_resumed_session && !layout_is_welcome_screen && !created_from_welcome_screen && !runs_a_command
+    !is_resumed_session
+        && !layout_is_welcome_screen
+        && !created_from_welcome_screen
+        && !runs_a_command
 }
 
 struct Onboarding {
@@ -5764,8 +5771,7 @@ fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayou
             inside_desktop_window: onboarding.in_desktop_window,
             web_client: onboarding.is_web_client,
         };
-        let mut configuration =
-            BTreeMap::from([("is_startup_tip".to_owned(), "true".to_owned())]);
+        let mut configuration = BTreeMap::from([("is_startup_tip".to_owned(), "true".to_owned())]);
         if state.should_offer_desktop_tip(&reminders) {
             configuration.insert("desktop_tip".to_owned(), "true".to_owned());
             let _ = zellij_utils::desktop_integration::update(|state| {
@@ -5791,7 +5797,10 @@ fn launcher_repair_offer(
     None
 }
 
-fn plugin_floating_pane(alias: &str, configuration: BTreeMap<String, String>) -> FloatingPaneLayout {
+fn plugin_floating_pane(
+    alias: &str,
+    configuration: BTreeMap<String, String>,
+) -> FloatingPaneLayout {
     let mut pane = FloatingPaneLayout::new();
     pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
         alias,

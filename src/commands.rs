@@ -175,9 +175,7 @@ fn register_app_starter() {
 fn register_app_starter() {}
 
 #[cfg(feature = "window")]
-fn start_window_app(
-    request: &zellij_utils::app_control::OpenWindowRequest,
-) -> Result<(), String> {
+fn start_window_app(request: &zellij_utils::app_control::OpenWindowRequest) -> Result<(), String> {
     use std::process::{Command, Stdio};
     let program = std::env::current_exe()
         .map_err(|e| format!("Zellij could not find its own program file: {}", e))?;
@@ -289,9 +287,7 @@ pub(crate) fn run_setup_actions(setup: &zellij_utils::setup::Setup, opts: &CliAr
 fn set_keybinding_preset(opts: &CliArgs, preset: &str) -> Result<String, String> {
     let config_file = Config::config_file_path(opts)
         .ok_or_else(|| "There is no config folder to save the keybinding preset in".to_owned())?;
-    let keybinds_dir = config_file
-        .parent()
-        .map(|dir| dir.join("keybinds"));
+    let keybinds_dir = config_file.parent().map(|dir| dir.join("keybinds"));
     zellij_utils::input::keybind_presets::find_keybind_preset(
         preset,
         keybinds_dir.as_deref(),
@@ -299,7 +295,10 @@ fn set_keybinding_preset(opts: &CliArgs, preset: &str) -> Result<String, String>
     )?;
     if !config_file.exists() {
         let defaults = Config::try_from(opts).map_err(|e| e.to_string())?;
-        Config::write_config_to_disk_if_it_does_not_exist(defaults.to_string(true), &Some(config_file.clone()));
+        Config::write_config_to_disk_if_it_does_not_exist(
+            defaults.to_string(true),
+            &Some(config_file.clone()),
+        );
     }
     zellij_utils::input::config_file_edit::set_keybinding_preset_in(&config_file, preset)?;
     Ok(format!(

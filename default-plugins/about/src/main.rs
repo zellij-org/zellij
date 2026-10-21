@@ -140,8 +140,14 @@ impl ZellijPlugin for App {
         } else if page == "repair" {
             self.special = Special::Repair;
             Page::new_repair(
-                configuration.get("missing").map(String::as_str).unwrap_or(""),
-                configuration.get("current").map(String::as_str).unwrap_or(""),
+                configuration
+                    .get("missing")
+                    .map(String::as_str)
+                    .unwrap_or(""),
+                configuration
+                    .get("current")
+                    .map(String::as_str)
+                    .unwrap_or(""),
             )
         } else if self.is_startup_tip {
             self.tip_index = if desktop_tip {
@@ -170,10 +176,8 @@ impl ZellijPlugin for App {
             Event::FailedToWriteConfigToDisk(file_path) if self.waiting_for_opt_out => {
                 self.waiting_for_opt_out = false;
                 request_desktop_integration(&Request::ClearOptOut);
-                self.active_page = Page::new_message(
-                    "Not saved",
-                    &onboarding::opt_out_failed_lines(file_path),
-                );
+                self.active_page =
+                    Page::new_message("Not saved", &onboarding::opt_out_failed_lines(file_path));
                 should_render = true;
             },
             Event::ConfigWasWrittenToDisk if self.waiting_for_opt_out => {
@@ -516,9 +520,7 @@ impl App {
                 self.opt_out();
                 Some(true)
             },
-            BareKey::Char('s')
-                if kind == PageKind::MainScreen || kind == PageKind::DesktopApp =>
-            {
+            BareKey::Char('s') if kind == PageKind::MainScreen || kind == PageKind::DesktopApp => {
                 onboarding::open_setup();
                 Some(true)
             },

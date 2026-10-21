@@ -205,8 +205,14 @@ fn a_backgrounded_session_is_a_usage_error_on_the_window() {
 #[test]
 fn the_window_takes_a_command_the_way_terminal_emulators_do() {
     let args = window_args(&["-e", "vim", "-u", "NONE", "--clean", "file.txt"]);
-    assert_eq!(args.execute, vec!["vim", "-u", "NONE", "--clean", "file.txt"]);
-    assert_eq!(args.command(), &["vim", "-u", "NONE", "--clean", "file.txt"]);
+    assert_eq!(
+        args.execute,
+        vec!["vim", "-u", "NONE", "--clean", "file.txt"]
+    );
+    assert_eq!(
+        args.command(),
+        &["vim", "-u", "NONE", "--clean", "file.txt"]
+    );
     assert!(args.waits_for_command());
     assert!(args.closes_command_on_exit());
     assert!(args.attach.session_name.is_none());
@@ -214,11 +220,17 @@ fn the_window_takes_a_command_the_way_terminal_emulators_do() {
     let held = window_args(&["--hold", "--working-directory=/tmp", "-e", "ls", "-la"]);
     assert!(held.hold);
     assert!(!held.closes_command_on_exit());
-    assert_eq!(held.working_directory, Some(std::path::PathBuf::from("/tmp")));
+    assert_eq!(
+        held.working_directory,
+        Some(std::path::PathBuf::from("/tmp"))
+    );
     assert_eq!(held.execute, vec!["ls", "-la"]);
 
     let spaced = window_args(&["--working-directory", "/srv", "-e", "htop"]);
-    assert_eq!(spaced.working_directory, Some(std::path::PathBuf::from("/srv")));
+    assert_eq!(
+        spaced.working_directory,
+        Some(std::path::PathBuf::from("/srv"))
+    );
 
     let plain = window_args(&["--", "htop"]);
     assert!(!plain.waits_for_command());
@@ -579,7 +591,13 @@ fn every_setup_screen_action_is_a_setup_flag_and_they_combine() {
 
 #[test]
 fn setup_actions_refuse_the_other_setup_flags_and_replace_needs_a_copy() {
-    assert!(try_parse(&["zellij", "setup", "--install-desktop-entry", "--dump-config"]).is_err());
+    assert!(try_parse(&[
+        "zellij",
+        "setup",
+        "--install-desktop-entry",
+        "--dump-config"
+    ])
+    .is_err());
     assert!(try_parse(&["zellij", "setup", "--make-default-terminal", "--check"]).is_err());
     assert!(try_parse(&["zellij", "setup", "--replace-existing"]).is_err());
 }

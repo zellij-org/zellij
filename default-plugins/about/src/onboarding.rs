@@ -60,9 +60,7 @@ fn esc_help() -> Text {
 
 fn platform_shortcuts(platform: Platform) -> &'static str {
     match platform {
-        Platform::Windows => {
-            "Right-click its taskbar icon for Show Inbox and Show Sessions."
-        },
+        Platform::Windows => "Right-click its taskbar icon for Show Inbox and Show Sessions.",
         Platform::MacOs => "Its Dock menu will offer Show Inbox and Show Sessions.",
         _ => "Right-click its launcher for Show Inbox and Show Sessions.",
     }
@@ -85,7 +83,10 @@ impl Page {
         if facts.launcher_installable {
             keys.push(key_line("<i>", "add Zellij to your app menu"));
         }
-        keys.push(key_line("<s>", "Setup Zellij: launcher, default terminal and more"));
+        keys.push(key_line(
+            "<s>",
+            "Setup Zellij: launcher, default terminal and more",
+        ));
         let mut help = String::from("Help:");
         if !facts.in_desktop_window {
             help.push_str(" <w> - Open in a window,");
@@ -116,13 +117,15 @@ impl Page {
             ])
             .with_paragraph(keys)
             .with_paragraph(vec![styled(Text::from(REMOTE_WARNING).color_range(1, ..))])
-            .with_help(Box::new(move |_hovering_over_link, _menu_item_is_selected| {
-                Text::from(help.clone())
-                    .color_substring(1, "<w>")
-                    .color_substring(1, "<i>")
-                    .color_substring(1, "<s>")
-                    .color_substring(1, "<ESC>")
-            }))
+            .with_help(Box::new(
+                move |_hovering_over_link, _menu_item_is_selected| {
+                    Text::from(help.clone())
+                        .color_substring(1, "<w>")
+                        .color_substring(1, "<i>")
+                        .color_substring(1, "<s>")
+                        .color_substring(1, "<ESC>")
+                },
+            ))
     }
 
     pub fn new_inbox(
@@ -140,8 +143,10 @@ impl Page {
             ])
             .with_paragraph(vec![
                 styled(
-                    Text::from("<F9> opens the inbox (or click the indicator, or w in Session mode):")
-                        .color_substring(3, "<F9>"),
+                    Text::from(
+                        "<F9> opens the inbox (or click the indicator, or w in Session mode):",
+                    )
+                    .color_substring(3, "<F9>"),
                 ),
                 line("preview output, reply into a pane, go to it, or mark items seen."),
                 styled(
@@ -257,7 +262,9 @@ impl Page {
         Page::new()
             .with_title(Text::from(title).color_range(2, ..))
             .with_paragraph(lines)
-            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| esc_help()))
+            .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
+                esc_help()
+            }))
     }
 
     pub fn tip_desktop_app() -> Page {
@@ -350,9 +357,12 @@ impl Page {
                         .color_substring(3, &back),
                 ),
                 styled(
-                    Text::from(format!("{} / {} step through recent sessions.", left, right))
-                        .color_substring(3, &left)
-                        .color_substring(3, &right),
+                    Text::from(format!(
+                        "{} / {} step through recent sessions.",
+                        left, right
+                    ))
+                    .color_substring(3, &left)
+                    .color_substring(3, &right),
                 ),
                 styled(
                     Text::from(format!("{} jumps to the next one that needs you.", next))
@@ -403,12 +413,7 @@ pub fn opt_out_failed_lines(path: Option<String>) -> Vec<String> {
 
 pub fn open_setup() {
     let configuration = BTreeMap::from([("rerun_setup".to_owned(), "true".to_owned())]);
-    open_plugin_pane_floating(
-        "zellij:configuration",
-        configuration,
-        None,
-        BTreeMap::new(),
-    );
+    open_plugin_pane_floating("zellij:configuration", configuration, None, BTreeMap::new());
 }
 
 pub fn kdl_for_binds(binds: &[(InputMode, KeyWithModifier, Vec<Action>)]) -> Vec<String> {

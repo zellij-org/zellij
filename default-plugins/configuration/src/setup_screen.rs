@@ -326,7 +326,10 @@ impl SetupScreen {
                 self.notice = Some(match failed.first() {
                     None => ("✓ The desktop entry was uninstalled.".to_owned(), true),
                     Some(outcome) => (
-                        format!("✗ The desktop entry could not be uninstalled: {}", outcome.message),
+                        format!(
+                            "✗ The desktop entry could not be uninstalled: {}",
+                            outcome.message
+                        ),
                         false,
                     ),
                 });
@@ -617,7 +620,10 @@ impl SetupScreen {
         if let Topic::Line(line) = topic {
             if self.line_done(line) {
                 paragraphs.push(match line {
-                    Line::Copy => "Zellij is already in a permanent folder, so it can be run from anywhere.".to_owned(),
+                    Line::Copy => {
+                        "Zellij is already in a permanent folder, so it can be run from anywhere."
+                            .to_owned()
+                    },
                     Line::Entry => "Zellij is already in your app menu.".to_owned(),
                     Line::Terminal => "Zellij is already your default terminal.".to_owned(),
                 });
@@ -886,12 +892,10 @@ impl SetupScreen {
             0
         };
         let body_height = available.saturating_sub(footer_rows).max(1);
-        let focused_line = blocks
-            .iter()
-            .position(|block| match block {
-                Block::Checkbox(checkbox) => Some(checkbox.row) == focused_row,
-                _ => false,
-            });
+        let focused_line = blocks.iter().position(|block| match block {
+            Block::Checkbox(checkbox) => Some(checkbox.row) == focused_row,
+            _ => false,
+        });
         let offset = focused_line
             .map(|line| (line + 2).saturating_sub(body_height))
             .unwrap_or(0)
@@ -985,13 +989,7 @@ impl SetupScreen {
                         uninstall_x + label.len(),
                         Row::Uninstall,
                     ));
-                    print_text_with_coordinates(
-                        uninstall,
-                        uninstall_x,
-                        y,
-                        Some(label.len()),
-                        None,
-                    );
+                    print_text_with_coordinates(uninstall, uninstall_x, y, Some(label.len()), None);
                 }
                 self.clickable
                     .push((y, x, x + 4 + label_length, checkbox.row));
@@ -1031,9 +1029,7 @@ impl SetupScreen {
         blocks.push(Block::Text(Text::from("")));
         match (&self.status, &self.status_error) {
             (None, None) => {
-                blocks.push(Block::Text(
-                    Text::from("Checking this computer…").dim_all(),
-                ));
+                blocks.push(Block::Text(Text::from("Checking this computer…").dim_all()));
                 blocks.push(Block::Text(Text::from("")));
             },
             (None, Some(error)) => {
@@ -1153,9 +1149,8 @@ impl SetupScreen {
                     },
                     OutcomeSection::Note(note) => {
                         for wrapped in wrap(&note, width.saturating_sub(2)) {
-                            blocks.push(Block::Text(
-                                Text::from(format!("  {}", wrapped)).dim_all(),
-                            ));
+                            blocks
+                                .push(Block::Text(Text::from(format!("  {}", wrapped)).dim_all()));
                         }
                     },
                 }
@@ -1171,7 +1166,9 @@ impl SetupScreen {
                 Text::from("✓ Keybindings saved").color_range(2, ..1),
             )),
             Some(Err(path)) => {
-                let file = path.clone().unwrap_or_else(|| "your config file".to_owned());
+                let file = path
+                    .clone()
+                    .unwrap_or_else(|| "your config file".to_owned());
                 for wrapped in wrap(
                     &format!("✗ Keybindings could not be saved to {}", file),
                     width,
@@ -1390,4 +1387,3 @@ mod tests {
         assert!(cut.ends_with('…') && cut.starts_with("    - /a/very"));
     }
 }
-

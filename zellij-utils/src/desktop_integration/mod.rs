@@ -132,7 +132,11 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
         if installable(&Item::CopyBinary) {
             plan.install.push(Item::CopyBinary);
         } else {
-            plan.explain(status, &[Item::CopyBinary], "Copy Zellij to a permanent folder");
+            plan.explain(
+                status,
+                &[Item::CopyBinary],
+                "Copy Zellij to a permanent folder",
+            );
         }
     }
     let mut wants_entry = actions.install_desktop_entry;
@@ -143,7 +147,11 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
                 wants_entry = true;
             }
         } else {
-            plan.explain(status, &[Item::DefaultTerminal], "Make Zellij your default terminal");
+            plan.explain(
+                status,
+                &[Item::DefaultTerminal],
+                "Make Zellij your default terminal",
+            );
         }
     }
     if wants_entry {
@@ -154,9 +162,7 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
         }
     }
     let needs_the_copy = plan.install.iter().any(|item| *item != Item::CopyBinary);
-    if needs_the_copy
-        && installable(&Item::CopyBinary)
-        && !plan.install.contains(&Item::CopyBinary)
+    if needs_the_copy && installable(&Item::CopyBinary) && !plan.install.contains(&Item::CopyBinary)
     {
         plan.install.insert(0, Item::CopyBinary);
         plan.notes.push(
@@ -489,9 +495,8 @@ impl Response {
         })
     }
     pub fn from_json(text: &str) -> Response {
-        serde_json::from_str(text.trim()).unwrap_or_else(|e| {
-            Response::Error(format!("The answer could not be read: {}", e))
-        })
+        serde_json::from_str(text.trim())
+            .unwrap_or_else(|e| Response::Error(format!("The answer could not be read: {}", e)))
     }
 }
 
@@ -614,7 +619,6 @@ pub struct ReminderContext {
     pub web_client: bool,
 }
 
-
 #[cfg(not(target_family = "wasm"))]
 mod storage {
     use super::*;
@@ -648,11 +652,7 @@ mod storage {
             .ok_or_else(|| std::io::Error::other("the state file has no folder"))?;
         std::fs::create_dir_all(parent)?;
         let text = serde_json::to_string_pretty(state).map_err(std::io::Error::other)?;
-        let temporary = parent.join(format!(
-            ".{}.{}.tmp",
-            STATE_FILE_NAME,
-            std::process::id()
-        ));
+        let temporary = parent.join(format!(".{}.{}.tmp", STATE_FILE_NAME, std::process::id()));
         {
             let mut file = std::fs::File::create(&temporary)?;
             file.write_all(text.as_bytes())?;
@@ -837,7 +837,10 @@ pub mod location {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let mut candidates = vec![];
         if let Some(home) = &home {
-            candidates.push(home.join(".nix-profile/bin").join(crate::distribution::name()));
+            candidates.push(
+                home.join(".nix-profile/bin")
+                    .join(crate::distribution::name()),
+            );
         }
         if !user.is_empty() {
             candidates.push(
@@ -847,9 +850,8 @@ pub mod location {
                     .join(crate::distribution::name()),
             );
         }
-        candidates.push(
-            PathBuf::from("/run/current-system/sw/bin").join(crate::distribution::name()),
-        );
+        candidates
+            .push(PathBuf::from("/run/current-system/sw/bin").join(crate::distribution::name()));
         stable_binary_path_from(running, started_from().as_deref(), &candidates)
     }
 
@@ -1186,7 +1188,11 @@ pub mod location {
             std::fs::copy(&store, &profile).unwrap();
             assert_eq!(
                 stable_binary_path_from(&store, Some(&profile), &[]),
-                if cfg!(unix) { profile.clone() } else { store.clone() }
+                if cfg!(unix) {
+                    profile.clone()
+                } else {
+                    store.clone()
+                }
             );
             assert_eq!(stable_binary_path_from(&store, None, &[]), store);
         }
@@ -1396,7 +1402,10 @@ mod tests {
     #[test]
     fn the_setup_plan_explains_what_it_cannot_do() {
         let status = status_with(vec![
-            ItemStatus::already(Item::CopyBinary, "Zellij is already installed at /usr/bin/zellij"),
+            ItemStatus::already(
+                Item::CopyBinary,
+                "Zellij is already installed at /usr/bin/zellij",
+            ),
             ItemStatus::unavailable(Item::Launcher, "Not available over SSH"),
             ItemStatus::already(Item::DefaultTerminal, "Zellij is the default terminal"),
         ]);
@@ -1457,7 +1466,11 @@ mod tests {
     #[test]
     fn files_with_the_same_bytes_are_the_same_copy() {
         let dir = tempfile::tempdir().unwrap();
-        let (a, b, c) = (dir.path().join("a"), dir.path().join("b"), dir.path().join("c"));
+        let (a, b, c) = (
+            dir.path().join("a"),
+            dir.path().join("b"),
+            dir.path().join("c"),
+        );
         std::fs::write(&a, b"zellij").unwrap();
         std::fs::write(&b, b"zellij").unwrap();
         std::fs::write(&c, b"zelliJ").unwrap();

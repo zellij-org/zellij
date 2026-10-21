@@ -723,7 +723,10 @@ mod tests {
         assert_eq!(distribution.project_dirs(), ("", "", "yazelix"));
         assert_eq!(distribution.app_id, "yazelix");
         assert_eq!(
-            distribution.clone().with_app_id("dev.yazelix.Yazelix").app_id,
+            distribution
+                .clone()
+                .with_app_id("dev.yazelix.Yazelix")
+                .app_id,
             "dev.yazelix.Yazelix"
         );
         let overridden = distribution.with_project_dirs("dev", "Yazelix Authors", "Yazelix");

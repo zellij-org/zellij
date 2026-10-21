@@ -1776,8 +1776,13 @@ pub fn section(key: SettingKey) -> &'static str {
         WindowFont | WindowFontSize | WindowFontWeight | WindowSystemFonts | WindowLigatures
         | WindowFontFeatures => "Font",
         WindowCursorStyle | WindowCursorBlink | WindowCursorUnfocusedHollow => "Cursor",
-        WindowStartupMode | WindowTerminalRequests | WindowInitialColumns | WindowInitialRows | WindowOpacity
-        | WindowOpacityMode | WindowBlur => "Window",
+        WindowStartupMode
+        | WindowTerminalRequests
+        | WindowInitialColumns
+        | WindowInitialRows
+        | WindowOpacity
+        | WindowOpacityMode
+        | WindowBlur => "Window",
         WindowPadding | WindowPaddingTop | WindowPaddingRight | WindowPaddingBottom
         | WindowPaddingLeft | WindowPaddingBalance | WindowPaddingColor => "Padding",
         WindowLineHeight

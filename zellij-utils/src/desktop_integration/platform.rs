@@ -1,13 +1,16 @@
 use std::path::{Path, PathBuf};
 
 use crate::desktop_integration::{
-    handle_state_request, load, location, update, Environment, IntegrationState, Item,
-    ItemStatus, Outcome, Owner, Platform, RepairAnswer, Request, Response, Status,
+    handle_state_request, load, location, update, Environment, IntegrationState, Item, ItemStatus,
+    Outcome, Owner, Platform, RepairAnswer, Request, Response, Status,
 };
 
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
 use linux as platform;
-#[cfg(not(any(windows, all(unix, not(target_os = "macos"), not(target_os = "android")))))]
+#[cfg(not(any(
+    windows,
+    all(unix, not(target_os = "macos"), not(target_os = "android"))
+)))]
 use unsupported as platform;
 #[cfg(windows)]
 use windows_desktop as platform;
@@ -61,9 +64,9 @@ pub fn should_offer_setup(first_run: bool) -> bool {
         return true;
     }
     let status = status();
-    Item::all()
-        .into_iter()
-        .any(|item| status.offered(item) && !status.item(item).map(|s| s.installed).unwrap_or(false))
+    Item::all().into_iter().any(|item| {
+        status.offered(item) && !status.item(item).map(|s| s.installed).unwrap_or(false)
+    })
 }
 
 pub fn apply(install: &[Item], remove: &[Item], overwrite_binary: bool) -> Vec<Outcome> {
@@ -189,8 +192,8 @@ pub fn environment() -> Environment {
         },
         None => {},
     }
-    environment.tiling_wm = environment.platform == Platform::Linux
-        && is_tiling_wm(environment.desktop.as_deref());
+    environment.tiling_wm =
+        environment.platform == Platform::Linux && is_tiling_wm(environment.desktop.as_deref());
     environment
 }
 
@@ -199,9 +202,11 @@ pub fn is_tiling_wm(desktop: Option<&str>) -> bool {
         None => true,
         Some(desktop) => {
             let desktop = desktop.to_ascii_lowercase();
-            ["sway", "hyprland", "i3", "bspwm", "niri", "river", "qtile", "dwm"]
-                .iter()
-                .any(|wm| desktop.split(':').any(|part| part == *wm))
+            [
+                "sway", "hyprland", "i3", "bspwm", "niri", "river", "qtile", "dwm",
+            ]
+            .iter()
+            .any(|wm| desktop.split(':').any(|part| part == *wm))
         },
     }
 }
@@ -316,7 +321,11 @@ pub fn upgrade_offer(existing: &Path) -> Option<crate::desktop_integration::Upgr
     }
     Some(Upgrade {
         path: existing.to_path_buf(),
-        from: installed.split_whitespace().last().unwrap_or(&installed).to_owned(),
+        from: installed
+            .split_whitespace()
+            .last()
+            .unwrap_or(&installed)
+            .to_owned(),
         to: running.to_owned(),
     })
 }
@@ -344,9 +353,7 @@ pub fn copy_binary(
     if destination.exists() {
         let existing = std::fs::read(destination).unwrap_or_default();
         if existing == bytes {
-            return Ok(Some(crate::desktop_integration::fingerprint_bytes(
-                &bytes,
-            )));
+            return Ok(Some(crate::desktop_integration::fingerprint_bytes(&bytes)));
         }
         if !overwrite {
             anyhow::bail!(
@@ -373,9 +380,7 @@ pub fn copy_binary(
     std::fs::rename(&temporary, destination).inspect_err(|_| {
         let _ = std::fs::remove_file(&temporary);
     })?;
-    Ok(Some(crate::desktop_integration::fingerprint_bytes(
-        &bytes,
-    )))
+    Ok(Some(crate::desktop_integration::fingerprint_bytes(&bytes)))
 }
 
 pub fn remove_recorded_copy(state: &IntegrationState) -> anyhow::Result<String> {
@@ -430,14 +435,14 @@ mod linux {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
-    use anyhow::{bail, Context, Result};
     use crate::desktop_integration::location::{
         self, has_marker, marker_intact, place_note, place_of,
     };
     use crate::desktop_integration::{
-        load, update, BinaryCopyRecord, Environment, IntegrationState,
-        Item, ItemStatus, Outcome, Owner, RepairOffer,
+        load, update, BinaryCopyRecord, Environment, IntegrationState, Item, ItemStatus, Outcome,
+        Owner, RepairOffer,
     };
+    use anyhow::{bail, Context, Result};
 
     use super::{copy_binary, outcome, owned_status};
     use crate::desktop_integration::desktop_entry::xdg;
@@ -567,7 +572,8 @@ mod linux {
                         .to_owned(),
                 );
             }
-            let status = ItemStatus::unavailable(item, format!("Not available inside {}", container));
+            let status =
+                ItemStatus::unavailable(item, format!("Not available inside {}", container));
             return Some(if item == Item::Launcher {
                 status.with_instructions(instructions)
             } else {
@@ -624,8 +630,9 @@ mod linux {
             .and_then(|path| std::fs::read_to_string(path).ok())
         {
             let status = if marker_intact(&text) {
-                owned_status(Item::Launcher, Owner::Zellij, "Installed by Zellij")
-                    .with_removes(xdg::files_to_remove(&location::data_home().unwrap_or_default()))
+                owned_status(Item::Launcher, Owner::Zellij, "Installed by Zellij").with_removes(
+                    xdg::files_to_remove(&location::data_home().unwrap_or_default()),
+                )
             } else if has_marker(&text) {
                 owned_status(
                     Item::Launcher,
@@ -656,7 +663,10 @@ mod linux {
             return owned_status(
                 Item::Launcher,
                 Owner::Nobody,
-                format!("Zellij was installed by {}, which did not add a launcher", manager),
+                format!(
+                    "Zellij was installed by {}, which did not add a launcher",
+                    manager
+                ),
             )
             .with_hint(hint)
             .with_instructions(tiling_instructions());
@@ -703,7 +713,10 @@ mod linux {
             .clone()
             .map(|note| format!("{} {}", note, text))
             .unwrap_or(text);
-        text.push_str(&format!(" It would be copied to {}.", destination.display()));
+        text.push_str(&format!(
+            " It would be copied to {}.",
+            destination.display()
+        ));
         if let Some(dir) = destination.parent() {
             if !location::path_contains(dir) {
                 text.push_str(&format!(
@@ -716,10 +729,7 @@ mod linux {
             .with_target(destination)
     }
 
-    fn default_terminal_status(
-        environment: &Environment,
-        launcher: &ItemStatus,
-    ) -> ItemStatus {
+    fn default_terminal_status(environment: &Environment, launcher: &ItemStatus) -> ItemStatus {
         if let Some(hidden) = hidden_inside(environment, Item::DefaultTerminal) {
             return hidden;
         }
@@ -748,9 +758,7 @@ mod linux {
     fn manual_default_terminal_instructions(environment: &Environment) -> Vec<String> {
         let mut lines = vec![];
         if environment.tiling_wm {
-            lines.push(
-                "Bind `zellij window` to the key you use to open a terminal.".to_owned(),
-            );
+            lines.push("Bind `zellij window` to the key you use to open a terminal.".to_owned());
         }
         lines.push(
             "On Debian and Ubuntu, `sudo update-alternatives --config x-terminal-emulator` \
@@ -765,8 +773,9 @@ mod linux {
     }
 
     pub fn repair_offer(state: &IntegrationState) -> Option<RepairOffer> {
-        let target = super::entry_binary(&super::environment(), copy_destination().as_deref(), state)
-            .ok()?;
+        let target =
+            super::entry_binary(&super::environment(), copy_destination().as_deref(), state)
+                .ok()?;
         location::repair_offer(state, &target)
     }
 
@@ -793,7 +802,11 @@ mod linux {
     }
 
     fn launcher_binary() -> Result<PathBuf> {
-        super::entry_binary(&super::environment(), copy_destination().as_deref(), &load())
+        super::entry_binary(
+            &super::environment(),
+            copy_destination().as_deref(),
+            &load(),
+        )
     }
 
     fn install_launcher(environment: &Environment) -> Result<String> {
@@ -811,7 +824,12 @@ mod linux {
             state.icons = icons;
         })?;
         let mut lines = vec![format!("Wrote {}", installed.entry.display())];
-        lines.extend(installed.icons.iter().map(|i| format!("Wrote {}", i.display())));
+        lines.extend(
+            installed
+                .icons
+                .iter()
+                .map(|i| format!("Wrote {}", i.display())),
+        );
         lines.extend(
             installed
                 .removed
@@ -885,9 +903,8 @@ mod linux {
                 if let Ok(installed) = xdg::install_into(&data_home, &destination) {
                     message.push_str(&format!("\nWrote {}", installed.entry.display()));
                     let record = installed.record();
-                    let _ = update(move |state: &mut IntegrationState| {
-                        state.launcher = Some(record)
-                    });
+                    let _ =
+                        update(move |state: &mut IntegrationState| state.launcher = Some(record));
                     message.push_str("\nThe launcher now runs the new copy");
                 }
             }
@@ -1003,10 +1020,7 @@ mod linux {
                 },
                 Method::Kde => BTreeMap::from([
                     ("TerminalApplication".to_owned(), command),
-                    (
-                        "TerminalService".to_owned(),
-                        location::launcher_file_name(),
-                    ),
+                    ("TerminalService".to_owned(), location::launcher_file_name()),
                 ]),
                 Method::Cinnamon | Method::Mate => BTreeMap::from([
                     ("exec".to_owned(), command),
@@ -1072,7 +1086,6 @@ mod linux {
                 },
             }
         }
-
     }
 
     fn terminals_list_path() -> Option<PathBuf> {
@@ -1219,10 +1232,7 @@ mod linux {
         let mut command = Command::new("gsettings");
         match value {
             Some(value) => {
-                let quoted = format!(
-                    "'{}'",
-                    value.replace('\\', "\\\\").replace('\'', "\\'")
-                );
+                let quoted = format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"));
                 command.args(["set", schema, key, &quoted]);
             },
             None => {
@@ -1245,7 +1255,8 @@ mod linux {
 
         #[test]
         fn the_first_terminal_skips_comments_and_directives() {
-            let text = "# mine\n/execarg_compat\n-foot.desktop\n+kitty.desktop\nalacritty.desktop\n";
+            let text =
+                "# mine\n/execarg_compat\n-foot.desktop\n+kitty.desktop\nalacritty.desktop\n";
             assert_eq!(first_terminal(text).as_deref(), Some("alacritty.desktop"));
             assert_eq!(first_terminal("# nothing\n"), None);
         }
@@ -1253,17 +1264,33 @@ mod linux {
         #[test]
         fn kdeglobals_keys_are_set_and_removed_without_touching_the_rest() {
             let text = "[General]\nfont=Noto\n\n[KDE]\nSingleClick=false\n";
-            let set = ini_set(text, "General", "TerminalApplication", Some("/bin/zellij window"));
+            let set = ini_set(
+                text,
+                "General",
+                "TerminalApplication",
+                Some("/bin/zellij window"),
+            );
             assert_eq!(
                 ini_get(&set, "General", "TerminalApplication").as_deref(),
                 Some("/bin/zellij window")
             );
             assert_eq!(ini_get(&set, "General", "font").as_deref(), Some("Noto"));
-            assert_eq!(ini_get(&set, "KDE", "SingleClick").as_deref(), Some("false"));
+            assert_eq!(
+                ini_get(&set, "KDE", "SingleClick").as_deref(),
+                Some("false")
+            );
             let removed = ini_set(&set, "General", "TerminalApplication", None);
             assert_eq!(ini_get(&removed, "General", "TerminalApplication"), None);
-            assert_eq!(ini_get(&removed, "General", "font").as_deref(), Some("Noto"));
-            let fresh = ini_set("", "General", "TerminalService", Some("dev.zellij.Zellij.desktop"));
+            assert_eq!(
+                ini_get(&removed, "General", "font").as_deref(),
+                Some("Noto")
+            );
+            let fresh = ini_set(
+                "",
+                "General",
+                "TerminalService",
+                Some("dev.zellij.Zellij.desktop"),
+            );
             assert_eq!(
                 ini_get(&fresh, "General", "TerminalService").as_deref(),
                 Some("dev.zellij.Zellij.desktop")
@@ -1297,13 +1324,13 @@ mod linux {
 mod windows_desktop {
     use std::path::{Path, PathBuf};
 
-    use anyhow::{bail, Context, Result};
-    use windows::Win32::UI::Shell::{FOLDERID_Downloads, FOLDERID_LocalAppData, FOLDERID_Programs};
     use crate::desktop_integration::location::{self, place_note, Place};
     use crate::desktop_integration::{
         load, update, BinaryCopyRecord, Environment, IntegrationState, Item, ItemStatus, Outcome,
         Owner, RepairOffer,
     };
+    use anyhow::{bail, Context, Result};
+    use windows::Win32::UI::Shell::{FOLDERID_Downloads, FOLDERID_LocalAppData, FOLDERID_Programs};
 
     use super::{copy_binary, outcome, owned_status};
     use crate::desktop_integration::com::{known_folder, Com};
@@ -1434,8 +1461,12 @@ mod windows_desktop {
         };
         let shortcut = start_menu::shortcut_path(&programs);
         if msi_value("StartMenuShortcut") {
-            return owned_status(Item::StartMenu, Owner::PackageManager, "Added by the installer")
-                .with_hint(hint);
+            return owned_status(
+                Item::StartMenu,
+                Owner::PackageManager,
+                "Added by the installer",
+            )
+            .with_hint(hint);
         }
         if shortcut.exists() {
             let owner = if state.windows.start_menu.is_some() {
@@ -1465,13 +1496,17 @@ mod windows_desktop {
             } else {
                 Owner::Someone
             };
-            return owned_status(Item::ExplorerItem, owner, "Right-click a folder to open Zellij there")
-                .with_removes(
-                    EXPLORER_KEYS
-                        .iter()
-                        .map(|key| format!(r"HKEY_CURRENT_USER\{}", key))
-                        .collect(),
-                );
+            return owned_status(
+                Item::ExplorerItem,
+                owner,
+                "Right-click a folder to open Zellij there",
+            )
+            .with_removes(
+                EXPLORER_KEYS
+                    .iter()
+                    .map(|key| format!(r"HKEY_CURRENT_USER\{}", key))
+                    .collect(),
+            );
         }
         owned_status(
             Item::ExplorerItem,
@@ -1505,7 +1540,11 @@ mod windows_desktop {
     }
 
     fn current_binary() -> Result<PathBuf> {
-        super::entry_binary(&super::environment(), copy_destination().as_deref(), &load())
+        super::entry_binary(
+            &super::environment(),
+            copy_destination().as_deref(),
+            &load(),
+        )
     }
 
     fn install_copy(overwrite: bool) -> Result<String> {
@@ -1555,10 +1594,7 @@ mod windows_desktop {
         let message = super::remove_recorded_copy(&state)?;
         if let Some(record) = &state.binary_copy {
             if let Some(folder) = record.destination.parent() {
-                let launcher = folder.join(format!(
-                    "{}-window.exe",
-                    crate::distribution::name()
-                ));
+                let launcher = folder.join(format!("{}-window.exe", crate::distribution::name()));
                 if !record.destination.exists() && launcher.exists() {
                     let _ = std::fs::remove_file(&launcher);
                 }
@@ -1575,7 +1611,8 @@ mod windows_desktop {
         let exe = current_binary()?;
         let command = window_command(&exe);
         let start_in = known_folder(&windows::Win32::UI::Shell::FOLDERID_Profile)?;
-        let path = start_menu::install_into(&known_folder(&FOLDERID_Programs)?, &command, &start_in)?;
+        let path =
+            start_menu::install_into(&known_folder(&FOLDERID_Programs)?, &command, &start_in)?;
         let recorded = path.clone();
         update(move |state: &mut IntegrationState| state.windows.start_menu = Some(recorded))?;
         Ok(format!("Wrote {}", path.display()))
@@ -1584,7 +1621,9 @@ mod windows_desktop {
     fn remove_start_menu() -> Result<String> {
         let state = load();
         if state.windows.start_menu.is_none() {
-            return Ok("Zellij did not add the Start menu shortcut, so it was left alone".to_owned());
+            return Ok(
+                "Zellij did not add the Start menu shortcut, so it was left alone".to_owned(),
+            );
         }
         let _com = Com::initialize()?;
         let removed = start_menu::uninstall_from(&known_folder(&FOLDERID_Programs)?)?;
@@ -1771,7 +1810,10 @@ mod windows_desktop {
     }
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos"), not(target_os = "android")))))]
+#[cfg(not(any(
+    windows,
+    all(unix, not(target_os = "macos"), not(target_os = "android"))
+)))]
 mod unsupported {
     use crate::desktop_integration::{
         Environment, IntegrationState, Item, ItemStatus, Outcome, RepairOffer,

@@ -1921,7 +1921,9 @@ fn write_render_output(
     stdout.flush()
 }
 
-fn exit_line_once(reminders: &zellij_utils::desktop_integration::ReminderContext) -> Option<String> {
+fn exit_line_once(
+    reminders: &zellij_utils::desktop_integration::ReminderContext,
+) -> Option<String> {
     use zellij_utils::desktop_integration::{update, Flag};
     let shown = update(|state| {
         if state.has(Flag::ExitLineShown) || !state.reminders_allowed(reminders) {

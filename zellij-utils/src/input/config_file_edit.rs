@@ -2852,11 +2852,18 @@ mod keybinding_preset_file_tests {
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("// my notes"), "{}", written);
         assert!(written.contains("theme \"dracula\""), "{}", written);
-        assert!(written.contains("keybinds preset=\"unlock-first\""), "{}", written);
+        assert!(
+            written.contains("keybinds preset=\"unlock-first\""),
+            "{}",
+            written
+        );
         set_keybinding_preset_in(&path, "default").unwrap();
         let rewritten = std::fs::read_to_string(&path).unwrap();
-        assert!(rewritten.contains("keybinds preset=\"default\""), "{}", rewritten);
+        assert!(
+            rewritten.contains("keybinds preset=\"default\""),
+            "{}",
+            rewritten
+        );
         assert!(!rewritten.contains("unlock-first"), "{}", rewritten);
     }
 }
-

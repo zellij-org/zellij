@@ -4,7 +4,6 @@ pub(crate) mod xdg {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    use anyhow::{bail, Context, Result};
     use crate::desktop_integration::location::{
         self, entry_values, has_marker, FINGERPRINT_KEY, MARKER_KEY,
     };
@@ -12,6 +11,7 @@ pub(crate) mod xdg {
         fingerprint, LauncherRecord, ICON_PNG, ICON_PNG_256, ICON_PNG_512,
     };
     use crate::distribution::app_id as application_id;
+    use anyhow::{bail, Context, Result};
 
     pub fn icons() -> [(&'static str, &'static [u8]); 3] {
         [
@@ -401,7 +401,10 @@ pub(crate) mod xdg {
                 installed.icons,
                 ["128x128", "256x256", "512x512"]
                     .iter()
-                    .map(|size| dir.path().join(icon_dir(size)).join("dev.zellij.Zellij.png"))
+                    .map(|size| dir
+                        .path()
+                        .join(icon_dir(size))
+                        .join("dev.zellij.Zellij.png"))
                     .collect::<Vec<_>>()
             );
 
@@ -515,7 +518,11 @@ pub(crate) mod xdg {
             assert_eq!(installed.removed, vec![old_entry.clone(), old_icon.clone()]);
             assert!(!old_entry.exists());
 
-            write(&old_entry, b"[Desktop Entry]\nName=Hand written\nExec=zellij\n").unwrap();
+            write(
+                &old_entry,
+                b"[Desktop Entry]\nName=Hand written\nExec=zellij\n",
+            )
+            .unwrap();
             let installed = install_into(dir.path(), Path::new("/opt/zellij")).unwrap();
             assert!(installed.removed.is_empty());
             assert!(old_entry.exists());

@@ -35,8 +35,7 @@ pub fn missing_descriptions(
              notification daemon such as mako or dunst."
                 .to_owned()
         } else {
-            "No notification service is running, so desktop notifications cannot appear."
-                .to_owned()
+            "No notification service is running, so desktop notifications cannot appear.".to_owned()
         });
     }
     missing

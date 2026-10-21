@@ -136,7 +136,11 @@ fn pane_is_out_of_view(client: &ClientState, pane_id: &PaneId) -> bool {
     };
     let in_active_tab = active_tab
         .and_then(|position| panes.panes.get(&position))
-        .map(|panes| panes.iter().any(|p| !p.is_plugin && p.id == *id && !p.is_suppressed))
+        .map(|panes| {
+            panes
+                .iter()
+                .any(|p| !p.is_plugin && p.id == *id && !p.is_suppressed)
+        })
         .unwrap_or(false);
     !in_active_tab
 }
