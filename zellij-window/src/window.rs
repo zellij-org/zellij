@@ -1939,6 +1939,12 @@ impl App {
         is_n && wanted
     }
 
+    pub(crate) fn wants_to_close(&self, event: &KeyEvent) -> bool {
+        event.state.is_pressed()
+            && !event.repeat
+            && closes_the_panel(Platform::current(), self.modifiers, &event.logical_key)
+    }
+
     pub(crate) fn modifiers_changed(&mut self, modifiers: winit::event::Modifiers) {
         self.modifiers = modifiers.state();
         self.alt_keys = input::AltKeys::of(&modifiers);
@@ -2752,6 +2758,13 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
 // can leave no config at all: EGL drops every config an X11 visual cannot make see-through.
 fn requires_transparent_configs(platform: Platform) -> bool {
     platform == Platform::MacOs
+}
+
+// The panel has no close button, so macOS greys out Close Window while it is in front and
+// hands Cmd+W to the panel as a key.
+fn closes_the_panel(platform: Platform, modifiers: ModifiersState, key: &Key) -> bool {
+    let is_w = matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("w"));
+    platform == Platform::MacOs && is_w && modifiers == ModifiersState::SUPER
 }
 
 fn transparency_available(
@@ -3815,6 +3828,25 @@ mod tests {
             vec![Action::Detach],
             "quitting from the Dock lets every session go, as Cmd+Q does"
         );
+    }
+
+    #[test]
+    fn cmd_w_closes_the_panel_on_macos_only() {
+        let closes = |platform, modifiers, key: &str| {
+            closes_the_panel(platform, modifiers, &Key::Character(key.into()))
+        };
+        assert!(closes(Platform::MacOs, ModifiersState::SUPER, "w"));
+        assert!(closes(Platform::MacOs, ModifiersState::SUPER, "W"));
+        assert!(!closes(Platform::MacOs, ModifiersState::empty(), "w"));
+        let cmd_ctrl = ModifiersState::SUPER | ModifiersState::CONTROL;
+        assert!(!closes(Platform::MacOs, cmd_ctrl, "w"));
+        let cmd_shift = ModifiersState::SUPER | ModifiersState::SHIFT;
+        assert!(!closes(Platform::MacOs, cmd_shift, "W"));
+        let cmd_option = ModifiersState::SUPER | ModifiersState::ALT;
+        assert!(!closes(Platform::MacOs, cmd_option, "w"));
+        assert!(!closes(Platform::MacOs, ModifiersState::SUPER, "q"));
+        assert!(!closes(Platform::Linux, ModifiersState::SUPER, "w"));
+        assert!(!closes(Platform::Windows, ModifiersState::SUPER, "w"));
     }
 
     #[test]

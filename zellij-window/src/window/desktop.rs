@@ -842,6 +842,13 @@ impl Desktop {
             },
             WindowEvent::Focused(false) => self.run(event_loop, Input::PanelFocusLost),
             WindowEvent::CloseRequested => self.run(event_loop, Input::PanelClosedByUser),
+            WindowEvent::KeyboardInput {
+                event: ref key_event,
+                is_synthetic: false,
+                ..
+            } if panel.app.wants_to_close(key_event) => {
+                self.run(event_loop, Input::PanelClosedByUser)
+            },
             moved @ WindowEvent::CursorMoved { position, .. } => {
                 panel.pointer = Some(position);
                 let grip = panel_grip(&panel.app, position);
