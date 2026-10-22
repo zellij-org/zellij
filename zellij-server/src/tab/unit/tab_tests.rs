@@ -195,6 +195,7 @@ fn create_new_tab_with_plugin_receiver(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -231,6 +232,7 @@ fn create_new_tab_with_plugin_receiver(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -287,6 +289,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -323,6 +326,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,
@@ -385,6 +389,7 @@ fn create_new_tab_with_cell_size(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let search_auto_jump_on_input = true;
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
@@ -421,6 +426,7 @@ fn create_new_tab_with_cell_size(
         debug,
         arrow_fonts,
         styled_underlines,
+        search_auto_jump_on_input,
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
         None,

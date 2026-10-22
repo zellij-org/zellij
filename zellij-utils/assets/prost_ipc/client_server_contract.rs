@@ -2252,6 +2252,8 @@ pub struct Options {
     pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="82")]
     pub grapheme_clusters: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="83")]
+    pub search_auto_jump_on_input: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

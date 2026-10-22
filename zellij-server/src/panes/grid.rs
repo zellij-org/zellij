@@ -1008,6 +1008,7 @@ pub struct Grid {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    pub(crate) search_auto_jump_on_input: bool,
     osc8_hyperlinks: bool,
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
@@ -1399,6 +1400,7 @@ impl Grid {
             debug,
             arrow_fonts,
             styled_underlines,
+            search_auto_jump_on_input: true,
             osc8_hyperlinks,
             lock_renders: false,
             render_lock_opened_at: None,
@@ -4885,6 +4887,9 @@ impl Grid {
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
+    }
+    pub fn update_search_auto_jump_on_input(&mut self, enabled: bool) {
+        self.search_auto_jump_on_input = enabled;
     }
     pub fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
         self.kitty_host_support = supported;

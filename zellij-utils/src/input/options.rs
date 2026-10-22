@@ -344,6 +344,12 @@ pub struct Options {
     #[serde(default)]
     pub styled_underlines: Option<bool>,
 
+    /// Whether to automatically jump to the nearest search result while
+    /// typing the search term (default is true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub search_auto_jump_on_input: Option<bool>,
+
     /// The interval at which to serialize sessions for resurrection (in seconds)
     #[clap(long, value_parser)]
     pub serialization_interval: Option<u64>,
@@ -692,6 +698,9 @@ impl Options {
             .scrollback_lines_to_serialize
             .or(self.scrollback_lines_to_serialize);
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
+        let search_auto_jump_on_input = other
+            .search_auto_jump_on_input
+            .or(self.search_auto_jump_on_input);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
         let disable_session_metadata = other
             .disable_session_metadata
@@ -792,6 +801,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            search_auto_jump_on_input,
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
@@ -897,6 +907,9 @@ impl Options {
             .scrollback_lines_to_serialize
             .or_else(|| self.scrollback_lines_to_serialize.clone());
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
+        let search_auto_jump_on_input = other
+            .search_auto_jump_on_input
+            .or(self.search_auto_jump_on_input);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
         let disable_session_metadata = other
             .disable_session_metadata
@@ -998,6 +1011,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            search_auto_jump_on_input,
             serialization_interval,
             disable_session_metadata,
             support_kitty_keyboard_protocol,
