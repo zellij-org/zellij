@@ -28,6 +28,8 @@ fn mirrors_with(
                 pin_order: 0,
                 lease_until: None,
                 reported_pin: None,
+                parked: false,
+                kept: None,
             },
         );
     }
@@ -204,7 +206,7 @@ impl PinHost for FakePinHost {
 }
 
 #[test]
-fn a_viewer_that_dies_while_its_pin_state_is_sent_is_forgotten_and_the_pane_keeps_its_size() {
+fn a_viewer_that_dies_while_its_pin_state_is_sent_is_forgotten_and_the_pane_gets_its_size_back() {
     let (mut mirrors, mut receivers) = mirrors_with(&[(1, 5, false)]);
     let mut host = FakePinHost::default();
     host.layout_sizes.insert(PaneId::Terminal(5), size(120, 40));
@@ -214,15 +216,15 @@ fn a_viewer_that_dies_while_its_pin_state_is_sent_is_forgotten_and_the_pane_keep
     let settled = mirrors.settle_pins(&mut host, now);
     assert!(settled.removed_subscribers);
     assert!(mirrors.subscribers.is_empty());
-    assert_eq!(
-        mirrors.pinned_panes.get(&PaneId::Terminal(5)),
-        Some(&size(40, 10))
-    );
+    assert_eq!(mirrors.pinned_panes.get(&PaneId::Terminal(5)), None);
     assert_eq!(
         host.applied,
-        vec![(PaneId::Terminal(5), Some(size(40, 10)))]
+        vec![
+            (PaneId::Terminal(5), Some(size(40, 10))),
+            (PaneId::Terminal(5), None)
+        ]
     );
-    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
     assert_eq!(mirrors.next_lease_expiry(now), None);
 }
 
@@ -330,16 +332,25 @@ fn pin_then_move_on(mirrors: &mut PaneMirrors, host: &mut FakePinHost, now: Inst
     mirrors.update_wish(1, size(40, 10), false, true, now);
     mirrors.settle_pins(host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
-    assert!(mirrors.forget_subscribers(vec![(1, MirrorRemoval::Finished)]));
+    assert!(mirrors.park(1));
     mirrors.settle_pins(host, now);
 }
 
+fn kept_sizes(mirrors: &PaneMirrors) -> Vec<Size> {
+    mirrors
+        .subscribers
+        .values()
+        .filter_map(|subscriber| subscriber.kept)
+        .collect()
+}
+
 #[test]
-fn a_pane_keeps_the_pinned_size_after_the_view_moves_on() {
+fn a_pane_keeps_the_pinned_size_while_its_view_is_parked() {
     let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false)]);
     let mut host = pinned_host();
     let now = Instant::now();
     pin_then_move_on(&mut mirrors, &mut host, now);
+    assert_eq!(winner_of(&mirrors, 5, now), None, "a parked view does not pin");
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
     assert_eq!(
         mirrors.pinned_panes.get(&PaneId::Terminal(5)),
@@ -352,6 +363,128 @@ fn a_pane_keeps_the_pinned_size_after_the_view_moves_on() {
         Some(size(40, 10)),
         "the kept size does not run out with the lease"
     );
+}
+
+#[test]
+fn a_parked_view_that_detaches_gives_its_pane_the_layout_size_back() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    pin_then_move_on(&mut mirrors, &mut host, now);
+    assert!(mirrors.forget_subscribers(vec![(1, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
+    assert!(mirrors.pinned_panes.is_empty());
+}
+
+#[test]
+fn a_view_that_detaches_without_parking_gives_the_size_back_too() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    mirrors.update_wish(1, size(40, 10), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
+    assert!(mirrors.forget_subscribers(vec![(1, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
+}
+
+#[test]
+fn a_parked_view_sends_no_pin_state_and_ignores_resizes_until_it_is_unparked() {
+    let (mut mirrors, receivers) = mirrors_with(&[(1, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    pin_then_move_on(&mut mirrors, &mut host, now);
+    let _: Vec<MirrorOutgoing> = receivers[0].try_iter().collect();
+    mirrors.update_wish(1, size(60, 20), true, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
+    assert_eq!(receivers[0].try_iter().count(), 0);
+    assert!(!mirrors.park(1));
+    assert!(mirrors.unpark(1, true, now));
+    assert!(!mirrors.unpark(1, true, now));
+    mirrors.update_wish(1, size(40, 10), false, false, now);
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(
+        host.program_size(PaneId::Terminal(5)),
+        Some(size(40, 10)),
+        "going back to a parked view before it settles does not resize the pane"
+    );
+    assert!(receivers[0].try_iter().any(|outgoing| matches!(
+        outgoing,
+        MirrorOutgoing::Message(SourceMessage::PinState { pinned: false, .. })
+    )));
+    mirrors.update_wish(1, size(40, 10), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(winner_of(&mirrors, 5, now), Some((1, size(40, 10))));
+    assert_eq!(
+        host.applied,
+        vec![(PaneId::Terminal(5), Some(size(40, 10)))],
+        "the pane was resized only once"
+    );
+}
+
+#[test]
+fn unparking_with_resizing_off_gives_the_size_back() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    pin_then_move_on(&mut mirrors, &mut host, now);
+    assert!(mirrors.unpark(1, false, now));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
+}
+
+#[test]
+fn local_focus_or_input_gives_back_the_size_a_parked_view_keeps() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    pin_then_move_on(&mut mirrors, &mut host, now);
+    mirrors.forget_kept_sizes([PaneId::Terminal(5)].iter());
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
+    assert!(kept_sizes(&mirrors).is_empty());
+    assert_eq!(mirrors.subscribers.len(), 1, "the parked view stays attached");
+}
+
+#[test]
+fn when_one_viewer_closes_the_size_another_viewer_keeps_still_applies() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false), (2, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    mirrors.update_wish(1, size(40, 10), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert!(mirrors.park(1));
+    mirrors.update_wish(2, size(50, 12), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(50, 12)));
+    assert!(mirrors.forget_subscribers(vec![(2, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(
+        host.program_size(PaneId::Terminal(5)),
+        Some(size(40, 10)),
+        "the parked viewer still keeps its size"
+    );
+    assert!(mirrors.forget_subscribers(vec![(1, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
+}
+
+#[test]
+fn a_shown_view_keeps_its_pane_when_a_parked_view_of_it_detaches() {
+    let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false), (2, 5, false)]);
+    let mut host = pinned_host();
+    let now = Instant::now();
+    mirrors.update_wish(1, size(40, 10), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert!(mirrors.park(1));
+    mirrors.update_wish(2, size(50, 12), false, true, now);
+    mirrors.settle_pins(&mut host, now);
+    assert!(mirrors.forget_subscribers(vec![(1, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
+    assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(50, 12)));
 }
 
 #[test]
@@ -378,7 +511,7 @@ fn a_closed_pane_forgets_its_kept_size() {
     let now = Instant::now();
     pin_then_move_on(&mut mirrors, &mut host, now);
     mirrors.forget_pane(PaneId::Terminal(5));
-    assert!(mirrors.kept_sizes.is_empty());
+    assert!(kept_sizes(&mirrors).is_empty());
     assert!(mirrors.pinned_panes.is_empty());
 }
 
@@ -391,20 +524,20 @@ fn turning_off_resizing_in_the_source_session_gives_back_kept_sizes() {
     mirrors.resizes_source_pane = false;
     mirrors.settle_pins(&mut host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
-    assert!(mirrors.kept_sizes.is_empty());
+    assert!(kept_sizes(&mirrors).is_empty());
     mirrors.resizes_source_pane = true;
     mirrors.settle_pins(&mut host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
 }
 
 #[test]
-fn turning_off_resizing_for_a_view_gives_back_the_kept_size_of_its_pane_at_once() {
+fn turning_off_resizing_for_a_view_drops_only_its_own_kept_size_at_once() {
     let (mut mirrors, _receivers) = mirrors_with(&[(1, 5, false), (2, 5, false)]);
     let mut host = pinned_host();
     let now = Instant::now();
     mirrors.update_wish(2, size(50, 12), false, true, now);
     mirrors.settle_pins(&mut host, now);
-    assert!(mirrors.forget_subscribers(vec![(2, MirrorRemoval::Finished)]));
+    assert!(mirrors.park(2));
     mirrors.settle_pins(&mut host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(50, 12)));
     mirrors.update_wish(1, size(40, 10), false, false, now);
@@ -419,6 +552,23 @@ fn turning_off_resizing_for_a_view_gives_back_the_kept_size_of_its_pane_at_once(
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
     mirrors.update_wish(1, size(40, 10), false, false, now);
     mirrors.settle_pins(&mut host, now);
+    assert_eq!(
+        host.program_size(PaneId::Terminal(5)),
+        Some(size(50, 12)),
+        "turning resizing off drops only the claim of that view"
+    );
+    assert!(mirrors.forget_subscribers(vec![(2, MirrorRemoval::Finished)]));
+    mirrors.settle_pins(&mut host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
-    assert!(mirrors.kept_sizes.is_empty());
+    assert!(kept_sizes(&mirrors).is_empty());
+}
+
+#[test]
+fn a_pane_that_runs_the_viewing_session_or_one_it_is_nested_in_is_not_mirrored() {
+    let viewer = vec!["outer".to_owned(), "inner".to_owned()];
+    assert!(guest_is_a_viewer(Some("inner".to_owned()), &viewer));
+    assert!(guest_is_a_viewer(Some("outer".to_owned()), &viewer));
+    assert!(!guest_is_a_viewer(Some("elsewhere".to_owned()), &viewer));
+    assert!(!guest_is_a_viewer(None, &viewer));
+    assert!(!guest_is_a_viewer(Some("inner".to_owned()), &[]));
 }

@@ -918,7 +918,12 @@ fn open_sessions_and_select(zellij: &TestSession, name: &str) {
 }
 
 fn preview_frame_of(grid_snapshot: &GridSnapshot, name: &str) -> bool {
+    let live_title = format!(" {} › ", name);
     grid_snapshot.contains(&format!("┌ {} ", name))
+        || grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains('┌') && line.contains(&live_title))
 }
 
 fn wait_for_preview_of(zellij: &TestSession, name: &str, what: &str) {
@@ -1076,7 +1081,7 @@ fn preview_of_a_busy_session(zellij: &TestSession, name: &str) -> GridSnapshot {
 }
 
 #[test]
-fn the_sessions_tab_preview_shows_the_bottom_of_a_running_session() {
+fn the_sessions_tab_shows_the_bottom_of_a_running_session_live() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .with_config(CARD_OFF_INDICATOR_ON)
         .skip_concurrency_slot()
@@ -1087,40 +1092,18 @@ fn the_sessions_tab_preview_shows_the_bottom_of_a_running_session() {
         .with_config(CARD_OFF_INDICATOR_ON)
         .start();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = preview_of_a_busy_session(&zellij, background.session_name());
+    preview_of_a_busy_session(&zellij, background.session_name());
+    let grid_snapshot = zellij.wait_until("the preview is live", |grid_snapshot| {
+        grid_snapshot.contains("click to type") && visible_rows(grid_snapshot).contains(&60)
+    });
     assert!(
         !visible_rows(&grid_snapshot).contains(&1),
         "{}",
         grid_snapshot.text
     );
-    zellij.quit();
-}
-
-#[test]
-fn shift_arrows_pan_the_sessions_preview() {
-    let background = TestRunner::new(TERMINAL_SIZE)
-        .with_config(CARD_OFF_INDICATOR_ON)
-        .skip_concurrency_slot()
-        .start_in_background();
-    let terminal = background.expect_pty_spawn();
-    numbered_output(&terminal, 60);
-    let mut zellij = TestRunner::new(TERMINAL_SIZE)
-        .with_config(CARD_OFF_INDICATOR_ON)
-        .start();
-    claim_first_terminal_and_wait_for_prompt(&zellij);
-    let bottom = preview_of_a_busy_session(&zellij, background.session_name());
-    let first_visible = *visible_rows(&bottom).iter().min().unwrap();
-    let wanted = first_visible.saturating_sub(3);
-    for _ in 0..3 {
-        zellij.send_stdin(&keys::SHIFT_UP);
-    }
-    zellij.wait_until("shift up shows earlier lines", |grid_snapshot| {
-        visible_rows(grid_snapshot).contains(&wanted)
-    });
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
-        let rows = visible_rows(grid_snapshot);
-        rows.contains(&60) && !rows.contains(&wanted)
+    terminal.output(b"row 061\r\n");
+    zellij.wait_until("the live preview follows new output", |grid_snapshot| {
+        visible_rows(grid_snapshot).contains(&61)
     });
     zellij.quit();
 }

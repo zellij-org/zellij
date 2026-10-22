@@ -10,6 +10,8 @@ message PaneMirrorViewerMessage {
     MirrorResizeMsg resize = 3;
     MirrorFrameAckMsg frame_ack = 4;
     MirrorDetachMsg detach = 5;
+    MirrorParkMsg park = 6;
+    MirrorUnparkMsg unpark = 7;
   }
 }
 
@@ -30,6 +32,7 @@ message MirrorAttachMsg {
   bool focused = 5;
   bool resize_allowed = 6;
   bool view_only = 7;
+  repeated string viewer_sessions = 8;
 }
 
 message MirrorKeyInput {
@@ -59,6 +62,12 @@ message MirrorFrameAckMsg {
 
 message MirrorDetachMsg {}
 
+message MirrorParkMsg {}
+
+message MirrorUnparkMsg {
+  bool resize_allowed = 1;
+}
+
 message MirrorAttachedMsg {
   uint32 version = 1;
   repeated string capabilities = 2;
@@ -82,6 +91,7 @@ enum MirrorCloseReason {
   MIRROR_CLOSE_REASON_REJECTED = 3;
   MIRROR_CLOSE_REASON_VERSION_MISMATCH = 4;
   MIRROR_CLOSE_REASON_PANE_NOT_FOUND = 5;
+  MIRROR_CLOSE_REASON_CONTAINS_VIEWER = 6;
 }
 
 message MirrorClosedMsg {

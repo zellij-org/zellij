@@ -29,7 +29,10 @@ use ui::{
     SessionUiInfo,
 };
 
-use inbox::{BrowserTab, BrowserTarget, CardTarget as InboxCardTarget, Inbox, ItemAction, ItemKey};
+use inbox::{
+    BrowserTab, BrowserTarget, CardTarget as InboxCardTarget, Inbox, ItemAction, ItemKey,
+    LiveLayout, SessionsLiveTarget,
+};
 use panel::{render_preview, render_session_tree, Panel, PanelSize, NO_OTHER_SESSIONS_TEXT};
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
@@ -89,6 +92,7 @@ pub(crate) struct State {
     all_keys_scroll: usize,
     last_cols: usize,
     desktop_offer: DesktopOffer,
+    sessions_live_layout: Option<inbox::LiveLayout>,
 }
 
 #[derive(Default)]
@@ -338,20 +342,7 @@ impl State {
                     self.inbox.spinner_armed = false;
                     return self.is_visible && self.inbox_is_shown();
                 },
-                Some(timers::TimerOwner::SessionsPreview) | None => {
-                    self.panel.preview_timer_armed = false;
-                    if !self.is_visible || self.inbox_is_shown() {
-                        return false;
-                    }
-                    let new_saved_time = current_session_last_saved_time();
-                    if new_saved_time != self.current_session_last_saved_time {
-                        self.current_session_last_saved_time = new_saved_time;
-                        should_render = true;
-                    }
-                    if self.refresh_selected_preview() {
-                        should_render = true;
-                    }
-                },
+                None => return false,
             },
             Event::BeforeClose => {
                 if self.panel.size.is_some() {
@@ -594,6 +585,8 @@ impl State {
     fn render_plugin(&mut self, rows: usize, cols: usize) {
         self.inbox.live_view_drawn = false;
         self.inbox.live_layout = None;
+        self.inbox.sessions_target = None;
+        self.sessions_live_layout = None;
         if self.panel.size == Some(PanelSize::Manager)
             && self.shows_browser_tabs()
             && self.inbox.tab == BrowserTab::Inbox
@@ -607,6 +600,10 @@ impl State {
         if self.inbox_browser_will_render() {
             self.inbox
                 .prepare_live_view(0, 1, cols, rows.saturating_sub(1));
+        } else if let Some((layout, target)) = self.plan_sessions_live_view(rows, cols) {
+            self.inbox.sessions_target = Some(target);
+            self.inbox.show_live_view(&layout);
+            self.sessions_live_layout = Some(layout);
         } else {
             self.inbox.clear_live_view();
         }
@@ -625,6 +622,87 @@ impl State {
             && self.panel.size == Some(PanelSize::Manager)
             && self.shows_browser_tabs()
             && self.inbox.tab == BrowserTab::Inbox
+    }
+
+    fn sessions_preview_will_render(&self, cols: usize) -> bool {
+        !(self.panel.is_popup && self.panel.needs_initial_layout)
+            && !self.app_quit
+            && self.pending_remote_window.is_none()
+            && !self.show_all_keys
+            && self.panel.size == Some(PanelSize::Manager)
+            && !self.is_welcome_screen
+            && self.inbox.tab == BrowserTab::Sessions
+            && !self.no_other_sessions()
+            && self.single_screen_state.mode != SingleScreenMode::SelectingLayout
+            && cols >= 60
+    }
+
+    fn sessions_list_cols(cols: usize) -> usize {
+        (cols / 2).max(30)
+    }
+
+    fn sessions_preview_area(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
+        let list_cols = Self::sessions_list_cols(cols);
+        let top = if self.panel.size == Some(PanelSize::Manager) && self.shows_browser_tabs() {
+            1
+        } else {
+            0
+        };
+        let footer = if self.error.is_none() {
+            self.footer_rows_for(cols)
+        } else {
+            0
+        };
+        (
+            list_cols + 1,
+            top,
+            cols.saturating_sub(list_cols + 1),
+            rows.saturating_sub(top + footer),
+        )
+    }
+
+    fn plan_sessions_live_view(
+        &self,
+        rows: usize,
+        cols: usize,
+    ) -> Option<(LiveLayout, SessionsLiveTarget)> {
+        if !self.sessions_preview_will_render(cols) {
+            return None;
+        }
+        let target = self.sessions_live_target()?;
+        let (x, y, width, height) = self.sessions_preview_area(rows, cols);
+        let layout = LiveLayout::around_box(x, y, width, height)?;
+        Some((layout, target))
+    }
+
+    fn sessions_live_target(&self) -> Option<SessionsLiveTarget> {
+        if self.on_exited_header() {
+            return None;
+        }
+        let (name, running, _) = self.selected_session()?;
+        if !running {
+            return None;
+        }
+        let node = if self.panel.tree.node_session == name {
+            self.panel.tree.node
+        } else {
+            session_tree::TreeNode::Session
+        };
+        let (tab_index, pane_index, pane_id) = self.panel.tree.live_pane(&name, node)?;
+        let tab = self.panel.tree.children.get(&name)?.get(tab_index)?;
+        let pane = tab.panes.get(pane_index)?;
+        Some(SessionsLiveTarget {
+            key: ItemKey {
+                session: name,
+                pane_id: PaneId::Terminal(pane_id),
+            },
+            tab: tab.name.clone(),
+            pane: pane.title.clone(),
+        })
+    }
+
+    fn selected_session_is_exited(&self) -> bool {
+        matches!(self.selected_session(), Some((_, false, _)))
     }
 
     fn render_plugin_body(&mut self, rows: usize, cols: usize) {
@@ -680,7 +758,7 @@ impl State {
                 self.render_classic(rows, cols);
             },
             Some(PanelSize::Manager) if cols >= 60 => {
-                let list_cols = (cols / 2).max(30);
+                let list_cols = Self::sessions_list_cols(cols);
                 self.render_welcome_text(list_cols);
                 self.footer_deferred = true;
                 self.render_classic(rows, list_cols);
@@ -691,13 +769,23 @@ impl State {
                 } else {
                     0
                 };
-                render_preview(
-                    &mut self.panel,
-                    list_cols + 1,
-                    top,
-                    cols.saturating_sub(list_cols + 1),
-                    rows.saturating_sub(top + footer),
-                );
+                match self.sessions_live_layout {
+                    Some(layout) => {
+                        self.inbox.live_layout = Some(layout);
+                        self.inbox.render_live_view_box(&layout);
+                    },
+                    None => {
+                        let pannable = self.selected_session_is_exited();
+                        render_preview(
+                            &mut self.panel,
+                            list_cols + 1,
+                            top,
+                            cols.saturating_sub(list_cols + 1),
+                            rows.saturating_sub(top + footer),
+                            pannable,
+                        );
+                    },
+                }
                 if self.error.is_none() {
                     self.render_footer(0, cols, rows, false);
                 }
@@ -804,9 +892,10 @@ impl State {
         cols.saturating_sub(4).max(10)
     }
     fn footer_rows(&self) -> usize {
-        self.sessions_help_block(self.help_width(self.last_cols))
-            .len()
-            + 2
+        self.footer_rows_for(self.last_cols)
+    }
+    fn footer_rows_for(&self, cols: usize) -> usize {
+        self.sessions_help_block(self.help_width(cols)).len() + 2
     }
     fn render_footer(&self, x: usize, width: usize, rows: usize, centered: bool) {
         if self.active_screen == ActiveScreen::SingleScreen {
@@ -1092,6 +1181,9 @@ impl State {
                     && key.bare_key == BareKey::Char('?')
                     && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]))))
         {
+            if !self.inbox_is_shown() {
+                self.current_session_last_saved_time = current_session_last_saved_time();
+            }
             self.show_all_keys = true;
             return true;
         }
@@ -2706,7 +2798,16 @@ impl State {
                 ),
             ));
         }
-        hints.push(hint("<Shift ←↓↑→>", "scroll the preview"));
+        if self.sessions_live_target().is_some() {
+            hints.push(hint("<click the view>", "type into the shown pane"));
+            hints.push(hint(
+                self.inbox.release_key_text(),
+                "stop typing (or click outside the view)",
+            ));
+        }
+        if self.selected_session_is_exited() {
+            hints.push(hint("<Shift ←↓↑→>", "scroll the preview"));
+        }
         if all {
             if self.shows_browser_tabs() {
                 hints.push(hint("<TAB>", "switch to the inbox"));
@@ -3007,7 +3108,8 @@ impl State {
             return;
         }
         match self.selected_session() {
-            Some((name, is_running, is_current)) => {
+            Some((name, is_running, _)) => {
+                let fetch = !is_running || self.sessions_live_target().is_none();
                 let (tab, pane) = if self.panel.tree.node_session == name {
                     match self.panel.tree.node {
                         session_tree::TreeNode::Exited | session_tree::TreeNode::Session => {
@@ -3020,54 +3122,9 @@ impl State {
                     (None, None)
                 };
                 self.panel
-                    .request_tree_preview(&name, is_running, is_current, tab, pane);
-                if is_current {
-                    self.preview_current_session();
-                }
-                if is_running {
-                    self.panel.arm_preview_timer();
-                }
+                    .request_tree_preview(&name, is_running, tab, pane, fetch);
             },
             None => self.panel.clear_preview(),
-        }
-    }
-    fn preview_current_session(&mut self) {
-        let focused = self
-            .current_panes
-            .panes
-            .values()
-            .flatten()
-            .find(|p| p.is_focused && !p.is_plugin)
-            .map(|p| p.id);
-        let contents = focused
-            .and_then(|id| get_pane_scrollback(PaneId::Terminal(id), false).ok())
-            .map(|c| c.viewport.join("\n"))
-            .unwrap_or_default();
-        self.panel.preview = Some(SessionPreview {
-            session_name: self.session_name.clone().unwrap_or_default(),
-            contents,
-            ..Default::default()
-        });
-    }
-    fn refresh_selected_preview(&mut self) -> bool {
-        if !self.is_visible || !matches!(self.panel.size, Some(PanelSize::Manager)) {
-            return false;
-        }
-        match self.selected_session() {
-            Some((name, true, is_current)) => {
-                if is_current {
-                    self.preview_current_session();
-                } else {
-                    get_session_preview_with_history(
-                        &name,
-                        self.panel.preview_tab,
-                        self.panel.preview_pane_id,
-                    );
-                }
-                self.panel.arm_preview_timer();
-                is_current
-            },
-            _ => false,
         }
     }
     fn refresh_layout_list(&mut self) {
@@ -3110,8 +3167,10 @@ impl State {
     }
     fn handle_manager_key(&mut self, key: &KeyWithModifier) -> Option<bool> {
         if let Some(pan_move) = panel::pan_move_for_key(key) {
-            self.panel.preview_pan.apply(pan_move, 0);
-            return Some(true);
+            if self.selected_session_is_exited() {
+                self.panel.preview_pan.apply(pan_move, 0);
+                return Some(true);
+            }
         }
         {
             match key.bare_key {
@@ -3753,6 +3812,13 @@ impl State {
                     }
                     true
                 },
+                Mouse::LeftClick(line, column)
+                    if self.inbox.browser_target_at(line, column)
+                        == Some(BrowserTarget::LiveView) =>
+                {
+                    self.inbox.start_typing();
+                    true
+                },
                 Mouse::LeftClick(line, column) => {
                     if let Some(index) = self.tree_marker_at(line, column) {
                         if let Some(row) = self.panel.tree.rows.get(index).cloned() {
@@ -3760,7 +3826,12 @@ impl State {
                         }
                         return true;
                     }
+                    let typing = self.inbox.is_capturing();
                     match self.tree_row_at(line, column) {
+                        Some(index) if typing => {
+                            self.tree_point_at(index);
+                            true
+                        },
                         Some(index) => {
                             self.tree_point_at(index);
                             if !self.open_tree_child() {
@@ -3770,6 +3841,11 @@ impl State {
                         },
                         None => false,
                     }
+                },
+                Mouse::Hover(..) | Mouse::ScrollDown(_) | Mouse::ScrollUp(_)
+                    if self.inbox.is_capturing() =>
+                {
+                    false
                 },
                 Mouse::Hover(line, column) => match self.tree_row_at(line, column) {
                     Some(index) if self.tree_cursor() != Some(index) => {
@@ -3940,7 +4016,7 @@ mod live_view_state_tests {
     }
 
     #[test]
-    fn the_sessions_view_clears_the_live_view() {
+    fn the_sessions_view_without_a_selected_session_clears_the_live_view() {
         let mut state = browser();
         state.switch_browser_tab(BrowserTab::Sessions);
         state.render_plugin(16, 88);
@@ -4080,5 +4156,289 @@ mod live_view_state_tests {
         report(&mut state, false, Some(LiveViewRelease::Key));
         assert!(state.handle_inbox_mouse(Mouse::ScrollUp(1)));
         assert!(state.inbox.is_selected(&key_of("api", 1)));
+    }
+}
+
+#[cfg(test)]
+mod sessions_live_view_tests {
+    use super::*;
+
+    const ROWS: usize = 30;
+    const COLS: usize = 120;
+
+    fn pane(id: u32, title: &str, focused: bool, is_plugin: bool) -> SessionPreviewPane {
+        SessionPreviewPane {
+            id,
+            is_plugin,
+            title: title.to_owned(),
+            focused,
+            contents: None,
+        }
+    }
+
+    fn tab(name: &str, active: bool, panes: Vec<SessionPreviewPane>) -> SessionPreviewTab {
+        SessionPreviewTab {
+            name: name.to_owned(),
+            active,
+            panes,
+        }
+    }
+
+    fn suggestion(name: &str, is_running: bool, tabs: Vec<SessionPreviewTab>) -> SessionSuggestion {
+        SessionSuggestion {
+            name: name.to_owned(),
+            is_running,
+            tabs,
+            ..Default::default()
+        }
+    }
+
+    fn sessions_browser() -> State {
+        let mut state = State::default();
+        state.active_screen = ActiveScreen::SingleScreen;
+        state.is_visible = true;
+        state.panel.size = Some(PanelSize::Manager);
+        state.inbox.tab = BrowserTab::Sessions;
+        state.inbox.tab_chosen = true;
+        state.handle_event(Event::SessionSuggestions(SessionSuggestions {
+            suggestions: vec![
+                suggestion(
+                    "api",
+                    true,
+                    vec![
+                        tab(
+                            "main",
+                            true,
+                            vec![pane(1, "shell", false, false), pane(2, "server", true, false)],
+                        ),
+                        tab(
+                            "tools",
+                            false,
+                            vec![pane(5, "strider", true, true), pane(6, "logs", false, false)],
+                        ),
+                    ],
+                ),
+                suggestion(
+                    "web",
+                    true,
+                    vec![tab("main", true, vec![pane(3, "picker", true, true)])],
+                ),
+                suggestion("old", false, vec![]),
+            ],
+            ..Default::default()
+        }));
+        state.render_plugin(ROWS, COLS);
+        state.tree_select(0);
+        state.render_plugin(ROWS, COLS);
+        state
+    }
+
+    fn shown(state: &State) -> Option<(String, PaneId)> {
+        state
+            .inbox
+            .live_view_sent
+            .as_ref()
+            .map(|view| (view.target.session.clone(), view.target.pane_id))
+    }
+
+    fn api(id: u32) -> Option<(String, PaneId)> {
+        Some(("api".to_owned(), PaneId::Terminal(id)))
+    }
+
+    fn select(state: &mut State, index: usize) {
+        state.tree_select(index);
+        state.render_plugin(ROWS, COLS);
+    }
+
+    fn expand(state: &mut State) {
+        state.tree_right();
+        state.render_plugin(ROWS, COLS);
+    }
+
+    #[test]
+    fn a_session_tab_or_pane_row_shows_its_pane_live_and_plugins_or_exited_sessions_do_not() {
+        let mut state = sessions_browser();
+        assert_eq!(shown(&state), api(2), "the focused pane of the active tab");
+        assert!(state.sessions_live_layout.is_some());
+        expand(&mut state);
+        select(&mut state, 1);
+        assert_eq!(shown(&state), api(2), "the focused terminal pane of the tab");
+        select(&mut state, 2);
+        assert_eq!(
+            shown(&state),
+            api(6),
+            "the first terminal pane of a tab whose focused pane is a plugin"
+        );
+        expand(&mut state);
+        select(&mut state, 3);
+        assert_eq!(shown(&state), None, "a plugin pane keeps the snapshot");
+        assert!(state.sessions_live_layout.is_none());
+        select(&mut state, 4);
+        assert_eq!(shown(&state), api(6));
+        select(&mut state, 5);
+        assert_eq!(
+            shown(&state),
+            None,
+            "a session whose focused pane is a plugin keeps the snapshot"
+        );
+        select(&mut state, 6);
+        assert!(state.on_exited_header());
+        assert_eq!(shown(&state), None);
+        expand(&mut state);
+        select(&mut state, 7);
+        assert_eq!(
+            state.selected_session(),
+            Some(("old".to_owned(), false, false))
+        );
+        assert_eq!(shown(&state), None, "an exited session keeps its saved preview");
+        assert!(state.sessions_live_layout.is_none());
+    }
+
+    #[test]
+    fn the_sessions_view_is_cleared_whenever_its_preview_is_not_drawn() {
+        let mut state = sessions_browser();
+        assert_eq!(shown(&state), api(2));
+        state.show_all_keys = true;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None, "the all keys list");
+        state.show_all_keys = false;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2));
+        state.single_screen_state.mode = SingleScreenMode::SelectingLayout;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None, "the layout picker");
+        state.single_screen_state.mode = SingleScreenMode::SearchAndSelect;
+        state.render_plugin(ROWS, 50);
+        assert_eq!(shown(&state), None, "the narrow layout");
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2));
+        state.is_welcome_screen = true;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None, "the welcome screen");
+        state.is_welcome_screen = false;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2));
+        state.update(Event::Visible(false));
+        assert_eq!(shown(&state), None, "hidden");
+        state.is_visible = true;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2));
+        state.panel.size = None;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None, "closed");
+    }
+
+    #[test]
+    fn switching_between_the_inbox_and_the_sessions_moves_the_same_view() {
+        let mut state = sessions_browser();
+        let mut attention = SessionAttention::default();
+        let item = AttentionItem {
+            pane_id: PaneId::Terminal(7),
+            tab_id: 0,
+            tab_name: "tab".to_owned(),
+            pane_title: "pane7".to_owned(),
+            attention: PaneAttention {
+                status: AttentionStatus::NeedsYou,
+                text: "question".to_owned(),
+                since_ms: 100,
+                ..Default::default()
+            },
+        };
+        attention.counts.add(&item.attention);
+        attention.items.push(item);
+        state.inbox.update_global(GlobalAttention::build(
+            "here",
+            vec![
+                ("here".to_owned(), Default::default()),
+                ("web".to_owned(), attention),
+            ],
+        ));
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2));
+        state.switch_browser_tab(BrowserTab::Inbox);
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(
+            shown(&state),
+            Some(("web".to_owned(), PaneId::Terminal(7))),
+            "the inbox moves the view to its item"
+        );
+        assert!(state.inbox.sessions_target.is_none());
+        state.switch_browser_tab(BrowserTab::Sessions);
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), api(2), "the sessions move it back");
+    }
+
+    #[test]
+    fn a_click_on_the_view_types_into_its_pane_and_while_typing_rows_only_select() {
+        let mut state = sessions_browser();
+        let layout = state.sessions_live_layout.expect("the view is drawn");
+        assert!(state
+            .inbox
+            .live_view_hint_text()
+            .contains("click to type"));
+        assert!(state.handle_mouse(Mouse::LeftClick(
+            (layout.top + 2) as isize,
+            layout.box_x + 2
+        )));
+        let api_pane = ItemKey {
+            session: "api".to_owned(),
+            pane_id: PaneId::Terminal(2),
+        };
+        assert_eq!(state.inbox.capture_target, Some(api_pane.clone()));
+        state.inbox.apply_live_view_status(inbox::LiveViewStatus {
+            target: Some(PaneAddress::local("api", PaneId::Terminal(2))),
+            state: MirrorState::Live,
+            input_captured: true,
+            input_released_by: None,
+            resize_allowed: true,
+            pinned: true,
+            source_size: None,
+            release_key: "Esc Esc".to_owned(),
+        });
+        state.render_plugin(ROWS, COLS);
+        assert!(state.inbox.live_view_hint_text().starts_with("typing into"));
+        let (web_line, web_range, _) = state
+            .panel
+            .tree
+            .row_targets
+            .iter()
+            .find(|(_, _, index)| *index == 1)
+            .cloned()
+            .expect("the web row is drawn");
+        assert!(!state.handle_mouse(Mouse::Hover(web_line as isize, web_range.start)));
+        assert!(!state.handle_mouse(Mouse::ScrollDown(1)));
+        assert_eq!(state.tree_cursor(), Some(0));
+        assert!(state.handle_mouse(Mouse::LeftClick(web_line as isize, web_range.start)));
+        assert_eq!(state.tree_cursor(), Some(1), "the click selects the row");
+        assert_eq!(
+            state.panel.size,
+            Some(PanelSize::Manager),
+            "the click that ends typing does not open the session"
+        );
+        assert_eq!(state.inbox.capture_target, Some(api_pane));
+    }
+
+    #[test]
+    fn the_all_keys_list_says_how_to_type_into_the_view_and_shift_keys_scroll_only_saved_previews()
+    {
+        let mut state = sessions_browser();
+        let hints = state.sessions_hints(true);
+        assert!(hints
+            .iter()
+            .any(|hint| hint.key == "<click the view>" && hint.label.contains("type")));
+        assert!(hints.iter().any(|hint| hint.key == "<ESC> twice"));
+        assert!(!hints.iter().any(|hint| hint.key == "<Shift ←↓↑→>"));
+        let shift_up = KeyWithModifier::new(BareKey::Up).with_shift_modifier();
+        assert_eq!(state.handle_manager_key(&shift_up), None);
+        assert_eq!(state.panel.preview_pan, panel::PreviewPan::default());
+        select(&mut state, 2);
+        expand(&mut state);
+        select(&mut state, 3);
+        assert!(state.selected_session_is_exited());
+        let hints = state.sessions_hints(true);
+        assert!(hints.iter().any(|hint| hint.key == "<Shift ←↓↑→>"));
+        assert!(!hints.iter().any(|hint| hint.key == "<click the view>"));
+        assert_eq!(state.handle_manager_key(&shift_up), Some(true));
+        assert!(state.panel.preview_pan.rows_up > 0);
     }
 }

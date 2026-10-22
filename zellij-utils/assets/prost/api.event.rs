@@ -2292,6 +2292,7 @@ pub enum MirrorClosedReason {
     MirrorConnectionFailed = 6,
     MirrorConnectionLost = 7,
     MirrorProtocolError = 8,
+    MirrorContainsViewer = 9,
 }
 impl MirrorClosedReason {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2309,6 +2310,7 @@ impl MirrorClosedReason {
             MirrorClosedReason::MirrorConnectionFailed => "MirrorConnectionFailed",
             MirrorClosedReason::MirrorConnectionLost => "MirrorConnectionLost",
             MirrorClosedReason::MirrorProtocolError => "MirrorProtocolError",
+            MirrorClosedReason::MirrorContainsViewer => "MirrorContainsViewer",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2323,6 +2325,7 @@ impl MirrorClosedReason {
             "MirrorConnectionFailed" => Some(Self::MirrorConnectionFailed),
             "MirrorConnectionLost" => Some(Self::MirrorConnectionLost),
             "MirrorProtocolError" => Some(Self::MirrorProtocolError),
+            "MirrorContainsViewer" => Some(Self::MirrorContainsViewer),
             _ => None,
         }
     }

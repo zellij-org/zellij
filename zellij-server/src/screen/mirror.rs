@@ -28,6 +28,8 @@ pub(crate) struct MirrorSubscriber {
     pin_order: u64,
     lease_until: Option<Instant>,
     reported_pin: Option<(bool, Size)>,
+    parked: bool,
+    kept: Option<Size>,
 }
 
 impl MirrorSubscriber {
@@ -52,7 +54,6 @@ pub(crate) struct PaneMirrors {
     tick_at: Option<Instant>,
     attached_at: HashMap<MirrorSubscriberId, Instant>,
     viewed_panes: HashSet<PaneId>,
-    kept_sizes: HashMap<PaneId, Size>,
     focused_panes: HashSet<PaneId>,
 }
 
@@ -66,7 +67,6 @@ impl Default for PaneMirrors {
             tick_at: None,
             attached_at: HashMap::new(),
             viewed_panes: HashSet::new(),
-            kept_sizes: HashMap::new(),
             focused_panes: HashSet::new(),
         }
     }
@@ -85,10 +85,13 @@ impl PaneMirrors {
         let Some(subscriber) = self.subscribers.get_mut(&subscriber_id) else {
             return;
         };
+        if subscriber.parked {
+            return;
+        }
         let held_lease = subscriber.holds_lease(now);
         let claimed = focused && !subscriber.focused;
         if subscriber.resize_allowed && !resize_allowed {
-            self.kept_sizes.remove(&subscriber.pane_id);
+            subscriber.kept = None;
         }
         subscriber.viewer_size = clamp_mirror_size(size);
         subscriber.focused = focused;
@@ -142,15 +145,72 @@ impl PaneMirrors {
     }
 
     pub(crate) fn forget_kept_sizes<'a>(&mut self, pane_ids: impl Iterator<Item = &'a PaneId>) {
-        for pane_id in pane_ids {
-            self.kept_sizes.remove(pane_id);
+        let pane_ids: HashSet<PaneId> = pane_ids.copied().collect();
+        for subscriber in self.subscribers.values_mut() {
+            if pane_ids.contains(&subscriber.pane_id) {
+                subscriber.kept = None;
+            }
         }
     }
 
     pub(crate) fn forget_pane(&mut self, pane_id: PaneId) {
         self.pinned_panes.remove(&pane_id);
         self.viewed_panes.remove(&pane_id);
-        self.kept_sizes.remove(&pane_id);
+        self.forget_kept_sizes(std::iter::once(&pane_id));
+    }
+
+    fn park(&mut self, subscriber_id: MirrorSubscriberId) -> bool {
+        let Some(subscriber) = self.subscribers.get_mut(&subscriber_id) else {
+            return false;
+        };
+        if subscriber.parked {
+            return false;
+        }
+        subscriber.parked = true;
+        subscriber.focused = false;
+        subscriber.resize_allowed = false;
+        subscriber.lease_until = None;
+        self.attached_at.remove(&subscriber_id);
+        true
+    }
+
+    fn unpark(&mut self, subscriber_id: MirrorSubscriberId, resize_allowed: bool, now: Instant) -> bool {
+        let Some(subscriber) = self.subscribers.get_mut(&subscriber_id) else {
+            return false;
+        };
+        if !subscriber.parked {
+            return false;
+        }
+        subscriber.parked = false;
+        if !resize_allowed {
+            subscriber.kept = None;
+        }
+        subscriber.reported_pin = None;
+        subscriber.pacer.request_full_repaint();
+        self.attached_at.insert(subscriber_id, now);
+        true
+    }
+
+    fn kept_claims(&self) -> HashMap<PaneId, Size> {
+        let mut claims: HashMap<PaneId, (u64, MirrorSubscriberId, Size)> = HashMap::new();
+        for (subscriber_id, subscriber) in &self.subscribers {
+            let Some(size) = subscriber.kept else {
+                continue;
+            };
+            let candidate = (subscriber.pin_order, *subscriber_id, size);
+            claims
+                .entry(subscriber.pane_id)
+                .and_modify(|current| {
+                    if (candidate.0, candidate.1) > (current.0, current.1) {
+                        *current = candidate;
+                    }
+                })
+                .or_insert(candidate);
+        }
+        claims
+            .into_iter()
+            .map(|(pane_id, (_, _, size))| (pane_id, size))
+            .collect()
     }
 
     fn next_lease_expiry(&self, now: Instant) -> Option<Instant> {
@@ -183,18 +243,24 @@ impl PaneMirrors {
         loop {
             let winners = choose_pins(&self.subscribers, self.resizes_source_pane, now);
             if !self.resizes_source_pane {
-                self.kept_sizes.clear();
+                for subscriber in self.subscribers.values_mut() {
+                    subscriber.kept = None;
+                }
             }
-            for (pane_id, (_, size)) in &winners {
-                self.kept_sizes.insert(*pane_id, *size);
+            for (subscriber_id, size) in winners.values() {
+                if let Some(subscriber) = self.subscribers.get_mut(subscriber_id) {
+                    subscriber.kept = Some(*size);
+                }
             }
+            let kept = self.kept_claims();
             let mut panes: HashSet<PaneId> = self.pinned_panes.keys().copied().collect();
             panes.extend(winners.keys().copied());
+            panes.extend(kept.keys().copied());
             for pane_id in panes {
                 let wanted = winners
                     .get(&pane_id)
                     .map(|(_, size)| *size)
-                    .or_else(|| self.kept_sizes.get(&pane_id).copied());
+                    .or_else(|| kept.get(&pane_id).copied());
                 if self.pinned_panes.get(&pane_id).copied() == wanted {
                     continue;
                 }
@@ -214,6 +280,9 @@ impl PaneMirrors {
             }
             let mut unreachable = vec![];
             for (subscriber_id, subscriber) in self.subscribers.iter_mut() {
+                if subscriber.parked {
+                    continue;
+                }
                 let Some(pane_size) = host.program_size(subscriber.pane_id) else {
                     continue;
                 };
@@ -279,7 +348,7 @@ pub(crate) fn choose_pins(
         return HashMap::new();
     }
     for (subscriber_id, subscriber) in subscribers {
-        if !subscriber.holds_lease(now) {
+        if subscriber.parked || !subscriber.holds_lease(now) {
             continue;
         }
         let candidate = (subscriber.pin_order, *subscriber_id, subscriber.viewer_size);
@@ -303,6 +372,23 @@ fn find_pane<'a>(
     pane_id: PaneId,
 ) -> Option<&'a dyn crate::tab::Pane> {
     tabs.values().find_map(|tab| tab.get_pane_with_id(pane_id))
+}
+
+pub(crate) fn guest_is_a_viewer(guest: Option<String>, viewer_sessions: &[String]) -> bool {
+    guest
+        .map(|guest| viewer_sessions.iter().any(|viewer| *viewer == guest))
+        .unwrap_or(false)
+}
+
+fn pane_contains_viewer(
+    tabs: &BTreeMap<usize, Tab>,
+    pane_id: PaneId,
+    viewer_sessions: &[String],
+) -> bool {
+    guest_is_a_viewer(
+        find_pane(tabs, pane_id).and_then(|pane| pane.guest_session_name()),
+        viewer_sessions,
+    )
 }
 
 fn pane_exists(tabs: &BTreeMap<usize, Tab>, pane_id: PaneId) -> bool {
@@ -359,6 +445,10 @@ impl Screen {
             outbox.close(MirrorClosedReason::PaneNotFound);
             return;
         };
+        if pane_contains_viewer(&self.tabs, pane_id, &attach.viewer_sessions) {
+            outbox.close(MirrorClosedReason::ContainsViewer);
+            return;
+        }
         let Some(change) = change_counter_of(&self.tabs, pane_id) else {
             outbox.close(MirrorClosedReason::PaneNotFound);
             return;
@@ -386,6 +476,8 @@ impl Screen {
             pin_order: 0,
             lease_until: None,
             reported_pin: None,
+            parked: false,
+            kept: None,
         };
         if !send_frame(&mut subscriber, change, &snapshot) {
             return;
@@ -410,6 +502,47 @@ impl Screen {
         self.remove_mirror_subscribers(vec![(subscriber_id, MirrorRemoval::Finished)]);
     }
 
+    pub(crate) fn mirror_park(&mut self, subscriber_id: MirrorSubscriberId) {
+        if self.pane_mirrors.park(subscriber_id) {
+            self.apply_mirror_pins_and_render();
+        }
+    }
+
+    pub(crate) fn mirror_unpark(&mut self, subscriber_id: MirrorSubscriberId, resize_allowed: bool) {
+        if !self
+            .pane_mirrors
+            .unpark(subscriber_id, resize_allowed, Instant::now())
+        {
+            return;
+        }
+        let pane_id = match self.pane_mirrors.subscribers.get(&subscriber_id) {
+            Some(subscriber) => subscriber.pane_id,
+            None => return,
+        };
+        let change = change_counter_of(&self.tabs, pane_id);
+        let snapshot = mirror_screen_of(&mut self.tabs, pane_id);
+        let alive = match (change, snapshot) {
+            (Some(change), Some(snapshot)) => self
+                .pane_mirrors
+                .subscribers
+                .get_mut(&subscriber_id)
+                .map(|subscriber| send_frame(subscriber, change, &snapshot))
+                .unwrap_or(true),
+            _ => {
+                self.remove_mirror_subscribers(vec![(
+                    subscriber_id,
+                    MirrorRemoval::Closed(MirrorClosedReason::PaneClosed),
+                )]);
+                return;
+            },
+        };
+        if !alive {
+            self.remove_mirror_subscribers(vec![(subscriber_id, MirrorRemoval::Unreachable)]);
+            return;
+        }
+        self.apply_mirror_pins_and_render();
+    }
+
     fn remove_mirror_subscribers(&mut self, removals: Vec<(MirrorSubscriberId, MirrorRemoval)>) {
         if self.pane_mirrors.forget_subscribers(removals) {
             self.apply_mirror_pins_and_render();
@@ -423,7 +556,11 @@ impl Screen {
         focused: bool,
         resize_allowed: bool,
     ) {
-        if !self.pane_mirrors.subscribers.contains_key(&subscriber_id) {
+        let parked = match self.pane_mirrors.subscribers.get(&subscriber_id) {
+            Some(subscriber) => subscriber.parked,
+            None => return,
+        };
+        if parked {
             return;
         }
         self.pane_mirrors
@@ -435,7 +572,7 @@ impl Screen {
         let Some(subscriber) = self.pane_mirrors.subscribers.get_mut(&subscriber_id) else {
             return;
         };
-        if !subscriber.pacer.acknowledge(seq) {
+        if !subscriber.pacer.acknowledge(seq) || subscriber.parked {
             return;
         }
         let pane_id = subscriber.pane_id;
@@ -460,7 +597,7 @@ impl Screen {
         let Some(subscriber) = self.pane_mirrors.subscribers.get(&subscriber_id) else {
             return;
         };
-        if subscriber.view_only {
+        if subscriber.view_only || subscriber.parked {
             return;
         }
         let pane_id = subscriber.pane_id;
@@ -519,7 +656,7 @@ impl Screen {
                 removals.push((*subscriber_id, gone));
                 continue;
             };
-            if !subscriber.pacer.wants_frame(change) {
+            if subscriber.parked || !subscriber.pacer.wants_frame(change) {
                 continue;
             }
             let snapshot = snapshots

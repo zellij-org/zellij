@@ -433,31 +433,17 @@ fn two_clients_each_see_their_own_item_live_and_type_only_into_it() {
 fn wait_until_cleared(
     zellij: &TestSession,
     terminal: &FakePtyHandle,
-    kept_size: (u16, u16),
+    layout_size: (u16, u16),
     what: &str,
     text: &str,
 ) {
     zellij.wait_until(what, |grid_snapshot| {
         !grid_snapshot.contains(text) && !grid_snapshot.contains(TYPING_INTO)
     });
-    assert_eq!(
-        terminal.size(),
-        Some(kept_size),
-        "the source keeps the size of the view once the view is gone"
-    );
-}
-
-fn give_the_size_back(
-    source_client: &TestClient,
-    terminal: &FakePtyHandle,
-    layout_size: (u16, u16),
-) {
-    source_client.send_action(Action::FocusNextPane);
     terminal.wait_for_size(
-        "focusing the pane in its own session gives its size back",
+        "the source gets its layout size back once the view is gone",
         |cols, rows| (cols, rows) == layout_size,
     );
-    source_client.send_action(Action::FocusNextPane);
 }
 
 fn wait_for_the_settled_view(
@@ -474,7 +460,7 @@ fn wait_for_the_settled_view(
 }
 
 #[test]
-fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view() {
+fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give_the_size_back() {
     let (mut zellij, _) = main_session();
     let text = "SOURCE TEXT SEVEN";
     let (other, terminal, source_client, layout_size) =
@@ -488,14 +474,13 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view() {
     wait_until_cleared(
         &zellij,
         &terminal,
-        view_size,
+        layout_size,
         "closing the browser while typing clears the view",
         text,
     );
     zellij.wait_until("the browser is closed", |grid_snapshot| {
         !shows_inbox(grid_snapshot)
     });
-    give_the_size_back(&source_client, &terminal, layout_size);
     zellij.send_stdin(&keys::F9);
     wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
     start_typing(&zellij);
@@ -510,11 +495,10 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view() {
     wait_until_cleared(
         &zellij,
         &terminal,
-        view_size,
-        "the sessions view clears the view while typing",
+        layout_size,
+        "the sessions view without a selected session clears the view while typing",
         text,
     );
-    give_the_size_back(&source_client, &terminal, layout_size);
     zellij.send_stdin(&keys::TAB);
     wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
     zellij.send_stdin(&keys::key('?'));
@@ -524,11 +508,10 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view() {
     wait_until_cleared(
         &zellij,
         &terminal,
-        view_size,
+        layout_size,
         "all keys clears the view",
         text,
     );
-    give_the_size_back(&source_client, &terminal, layout_size);
     zellij.send_stdin(&keys::ESC);
     wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
     start_typing(&zellij);
@@ -536,7 +519,7 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view() {
     wait_until_cleared(
         &zellij,
         &terminal,
-        view_size,
+        layout_size,
         "hiding the floating panes while typing clears the view",
         text,
     );
@@ -1178,5 +1161,112 @@ fn a_double_esc_sent_as_two_plain_escape_bytes_stops_typing() {
     zellij.wait_until("two plain escapes stop typing", |grid_snapshot| {
         !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(TYPE_INTO_IT)
     });
+    zellij.quit();
+}
+
+#[test]
+fn browsing_three_items_resizes_each_once_it_settles_going_back_does_not_and_closing_restores_all()
+{
+    let (mut zellij, _) = main_session();
+    let (third, third_terminal) = item_session("$ the third item", "Third?");
+    wait_for_count(&zellij, 1);
+    let (second, second_terminal) = item_session("$ the second item", "Second?");
+    wait_for_count(&zellij, 2);
+    let (first, first_terminal) = item_session("$ the first item", "First?");
+    wait_for_count(&zellij, 3);
+    let first_layout = layout_size_of(&first_terminal);
+    let second_layout = layout_size_of(&second_terminal);
+    let third_layout = layout_size_of(&third_terminal);
+    open_inbox_on(&zellij, "First?");
+    let view_size = shown_view_size(&zellij, &first, "the first item");
+    first_terminal.wait_for_size("the first item is resized once it settles", |cols, rows| {
+        (cols, rows) == view_size
+    });
+    zellij.send_stdin(&keys::DOWN);
+    wait_for_the_settled_view(
+        &zellij,
+        &second,
+        &second_terminal,
+        "the second item",
+        view_size,
+    );
+    zellij.send_stdin(&keys::DOWN);
+    wait_for_the_settled_view(&zellij, &third, &third_terminal, "the third item", view_size);
+    assert_eq!(first_terminal.size(), Some(view_size));
+    assert_eq!(second_terminal.size(), Some(view_size));
+    let first_sizes = first_terminal.size_history();
+    let mut two_ups = keys::UP.to_vec();
+    two_ups.extend_from_slice(&keys::UP);
+    zellij.send_stdin(&two_ups);
+    wait_for_the_view_of(&zellij, &first, "the first item");
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(
+        first_terminal.size_history(),
+        first_sizes,
+        "going back to an item the browser resized resized it again"
+    );
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the browser is closed", |grid_snapshot| {
+        !shows_inbox(grid_snapshot)
+    });
+    for (terminal, layout_size) in [
+        (&first_terminal, first_layout),
+        (&second_terminal, second_layout),
+        (&third_terminal, third_layout),
+    ] {
+        terminal.wait_for_size(
+            "closing the browser gives every browsed pane its layout size back",
+            |cols, rows| (cols, rows) == layout_size,
+        );
+    }
+    zellij.quit();
+}
+
+#[test]
+fn a_viewing_client_that_detaches_gives_the_panes_it_browsed_their_size_back() {
+    let (mut zellij, _) = main_session();
+    let (older, older_terminal) = item_session("$ the older pane", "Older?");
+    wait_for_count(&zellij, 1);
+    let (newer, newer_terminal) = item_session("$ the newer pane", "Newer?");
+    wait_for_count(&zellij, 2);
+    let older_layout = layout_size_of(&older_terminal);
+    let newer_layout = layout_size_of(&newer_terminal);
+    let second = zellij.attach_client(TERMINAL_SIZE);
+    second.wait_until("the second client is attached", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    second.send_stdin(&keys::ctrl('t'));
+    second.send_stdin(&keys::key('n'));
+    let second_tab_terminal = zellij.expect_pty_spawn();
+    second_tab_terminal.output(b"$ ");
+    second.wait_until("the second client is on its own tab", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.lines()[0].contains("Tab #2")
+    });
+    open_the_browser_for(&second, "Newer?");
+    let grid_snapshot = second.wait_until("the second client shows the newer item", |grid_snapshot| {
+        shown_inside_the_view(grid_snapshot, newer.session_name(), "the newer pane")
+    });
+    let area = view_area(&grid_snapshot, newer.session_name()).unwrap();
+    let view_size = (area.cols as u16, area.rows as u16);
+    newer_terminal.wait_for_size("the newer pane is resized once it settles", |cols, rows| {
+        (cols, rows) == view_size
+    });
+    second.send_stdin(&keys::DOWN);
+    second.wait_until("the second client shows the older item", |grid_snapshot| {
+        shown_inside_the_view(grid_snapshot, older.session_name(), "the older pane")
+    });
+    older_terminal.wait_for_size("the older pane is resized once it settles", |cols, rows| {
+        (cols, rows) == view_size
+    });
+    assert_eq!(newer_terminal.size(), Some(view_size));
+    second.detach();
+    newer_terminal.wait_for_size(
+        "the detached client's browsed pane gets its size back",
+        |cols, rows| (cols, rows) == newer_layout,
+    );
+    older_terminal.wait_for_size(
+        "the detached client's shown pane gets its size back",
+        |cols, rows| (cols, rows) == older_layout,
+    );
     zellij.quit();
 }

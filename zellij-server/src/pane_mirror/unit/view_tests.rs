@@ -154,7 +154,7 @@ fn events_from_an_old_target_are_ignored() {
         Some(PaneAddress::local("new", PaneId::Terminal(1))),
         size(10, 2),
     );
-    assert_eq!(recorded.lock().unwrap().closed, 1);
+    assert_eq!(recorded.lock().unwrap().closed, 0);
     let stale = view.handle_event(
         1,
         MirrorTransportEvent::Message(SourceMessage::Frame {
@@ -164,6 +164,7 @@ fn events_from_an_old_target_are_ignored() {
     );
     assert_eq!(stale, None);
     assert_eq!(view.state(), MirrorState::Connecting);
+    assert!(view.live_screen().is_none());
 }
 
 #[test]
@@ -193,6 +194,7 @@ fn closed_reasons_show_their_placeholder() {
         (MirrorClosedReason::Rejected, "refused"),
         (MirrorClosedReason::VersionMismatch, "Preview not available"),
         (MirrorClosedReason::ConnectionLost, "Preview not available"),
+        (MirrorClosedReason::ContainsViewer, "This pane runs this session"),
     ];
     for (reason, text) in cases {
         let (mut view, _) = view(false);
@@ -372,6 +374,16 @@ fn attach_carries_the_focus_and_resize_setting() {
         size(10, 2),
     );
     let attach = recorded.lock().unwrap().connects[0].1.clone();
+    assert!(attach.viewer_sessions.is_empty());
+    view.set_viewer_sessions(vec!["outer".to_owned(), "inner".to_owned()]);
+    view.set_target(
+        Some(PaneAddress::local("outer", PaneId::Terminal(2))),
+        size(10, 2),
+    );
+    assert_eq!(
+        recorded.lock().unwrap().connects[1].1.viewer_sessions,
+        vec!["outer".to_owned(), "inner".to_owned()]
+    );
     assert!(attach.focused);
     assert!(attach.resize_allowed);
     assert!(!attach.view_only);
@@ -657,4 +669,144 @@ fn the_new_targets_first_frame_or_a_close_replaces_the_held_picture() {
     );
     assert!(view.shown_screen().is_none());
     assert_eq!(view.next_deadline(), None);
+}
+
+fn sent_of(recorded: &Arc<Mutex<Recorded>>) -> Vec<ViewerMessage> {
+    recorded.lock().unwrap().sent.clone()
+}
+
+fn target(id: u32) -> PaneAddress {
+    PaneAddress::local("api", PaneId::Terminal(id))
+}
+
+#[test]
+fn switching_targets_parks_the_old_connection_instead_of_closing_it() {
+    let (mut view, recorded) = live_view(false);
+    recorded.lock().unwrap().sent.clear();
+    view.set_target(Some(target(2)), size(10, 2));
+    assert_eq!(recorded.lock().unwrap().closed, 0);
+    assert_eq!(recorded.lock().unwrap().connects.len(), 2);
+    assert_eq!(sent_of(&recorded), vec![ViewerMessage::Park]);
+    assert_eq!(view.parked_targets(), vec![target(1)]);
+    view.set_target(None, size(10, 2));
+    assert_eq!(view.parked_targets(), vec![target(2), target(1)]);
+    assert_eq!(recorded.lock().unwrap().closed, 0);
+}
+
+#[test]
+fn going_back_to_a_parked_target_unparks_its_connection_without_connecting_again() {
+    let (mut view, recorded) = live_view(false);
+    view.set_target(Some(target(2)), size(10, 2));
+    recorded.lock().unwrap().sent.clear();
+    view.set_target(Some(target(1)), size(12, 3));
+    assert_eq!(recorded.lock().unwrap().connects.len(), 2);
+    assert_eq!(recorded.lock().unwrap().closed, 0);
+    let sent = sent_of(&recorded);
+    assert_eq!(sent[0], ViewerMessage::Park);
+    assert_eq!(
+        sent[1],
+        ViewerMessage::Unpark {
+            resize_allowed: true
+        }
+    );
+    assert_eq!(
+        resizes_sent(&recorded),
+        vec![(size(12, 3), false, false)],
+        "the unparked connection learns the new size and settles again before it resizes"
+    );
+    assert_eq!(view.parked_targets(), vec![target(2)]);
+    assert_eq!(view.state(), MirrorState::Connecting);
+    let update = view
+        .handle_event(
+            1,
+            MirrorTransportEvent::Message(SourceMessage::Frame {
+                frame: frame_of(&["back"], 10, 2),
+                alternate_screen: false,
+            }),
+        )
+        .expect("the unparked connection is the current one again");
+    assert!(update.state_changed);
+    assert_eq!(view.state(), MirrorState::Live);
+    assert!(row_text(view.live_screen().unwrap(), 0).starts_with("back"));
+    assert!(view
+        .handle_event(
+            2,
+            MirrorTransportEvent::Message(SourceMessage::Frame {
+                frame: frame_of(&["other"], 10, 2),
+                alternate_screen: false,
+            }),
+        )
+        .is_none());
+}
+
+#[test]
+fn an_unparked_view_with_resizing_off_says_so() {
+    let (mut view, recorded) = live_view(false);
+    view.set_target(Some(target(2)), size(10, 2));
+    view.set_resize_allowed(false);
+    recorded.lock().unwrap().sent.clear();
+    view.set_target(Some(target(1)), size(10, 2));
+    assert!(sent_of(&recorded).contains(&ViewerMessage::Unpark {
+        resize_allowed: false
+    }));
+}
+
+#[test]
+fn dropping_the_view_detaches_every_parked_connection() {
+    let (mut view, recorded) = live_view(false);
+    view.set_target(Some(target(2)), size(10, 2));
+    view.set_target(Some(target(3)), size(10, 2));
+    assert_eq!(view.parked_targets().len(), 2);
+    assert_eq!(recorded.lock().unwrap().closed, 0);
+    drop(view);
+    assert_eq!(recorded.lock().unwrap().closed, 3);
+}
+
+#[test]
+fn at_most_eight_connections_are_parked_and_the_oldest_is_detached() {
+    let (mut view, recorded) = live_view(false);
+    for id in 2..=(MAX_PARKED_CONNECTIONS as u32 + 2) {
+        view.set_target(Some(target(id)), size(10, 2));
+    }
+    assert_eq!(view.parked_targets().len(), MAX_PARKED_CONNECTIONS);
+    assert_eq!(recorded.lock().unwrap().closed, 1);
+    assert!(!view.parked_targets().contains(&target(1)));
+    assert_eq!(view.parked_targets().first(), Some(&target(9)));
+    view.set_target(Some(target(1)), size(10, 2));
+    assert_eq!(
+        recorded.lock().unwrap().connects.len(),
+        MAX_PARKED_CONNECTIONS + 3,
+        "the detached target connects again"
+    );
+}
+
+#[test]
+fn a_parked_connection_acknowledges_late_frames_and_is_forgotten_when_it_closes() {
+    let (mut view, recorded) = live_view(false);
+    view.set_target(Some(target(2)), size(10, 2));
+    recorded.lock().unwrap().sent.clear();
+    let mut encoder = MirrorFrameEncoder::new();
+    let late = encoder.encode(&screen_of(&["late"], 10, 2)).unwrap();
+    assert_eq!(
+        view.handle_event(
+            1,
+            MirrorTransportEvent::Message(SourceMessage::Frame {
+                frame: late.bytes,
+                alternate_screen: false,
+            }),
+        ),
+        None
+    );
+    assert_eq!(
+        sent_of(&recorded),
+        vec![ViewerMessage::FrameAck { seq: late.seq }]
+    );
+    assert_eq!(view.state(), MirrorState::Connecting);
+    view.handle_event(
+        1,
+        MirrorTransportEvent::Message(SourceMessage::closed(MirrorClosedReason::PaneClosed)),
+    );
+    assert!(view.parked_targets().is_empty());
+    assert_eq!(recorded.lock().unwrap().closed, 1);
+    assert_eq!(view.state(), MirrorState::Connecting);
 }

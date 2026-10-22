@@ -177,6 +177,8 @@ impl Screen {
             .size();
         let target = target_of(&view);
         let default_resize_allowed = self.pane_mirrors.resizes_source_pane;
+        let mut viewer_sessions = self.nested_ancestry.clone();
+        viewer_sessions.push(self.session_name.clone());
         let rect_moved = {
             let mut live_views = self.live_views.borrow_mut();
             let reusable = live_views
@@ -196,6 +198,7 @@ impl Screen {
                     }
                     slot.force_report();
                 }
+                slot.view.set_viewer_sessions(viewer_sessions);
                 if slot.view.target() != target.as_ref() {
                     live_views.cut_drag_of_view(&key);
                     let slot = live_views.get_mut(&key).expect("the live view exists");
@@ -218,6 +221,7 @@ impl Screen {
                     view.view_only,
                     view.resize_allowed.unwrap_or(default_resize_allowed),
                 );
+                mirror_view.set_viewer_sessions(viewer_sessions);
                 mirror_view.set_target(target, viewer_size);
                 let mut slot = LiveViewSlot::new(mirror_view, rect, view.resize_allowed);
                 slot.released_by = released_by;

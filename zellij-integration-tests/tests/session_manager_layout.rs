@@ -9,8 +9,7 @@ use zellij_integration_tests::{
     col, keys, FakePtyHandle, GridSnapshot, Size, TestRunner, TestSession, TERMINAL_SIZE,
 };
 
-const SHIFT_RIGHT: [u8; 6] = *b"\x1b[1;2C";
-const SHIFT_PAGE_UP: [u8; 6] = *b"\x1b[5;2~";
+const CLICK_TO_TYPE: &str = "click to type";
 const BROWSER_TABS: &str = "│ Sessions (";
 const TALL: Size = Size {
     cols: 140,
@@ -59,22 +58,9 @@ fn numbers(grid_snapshot: &GridSnapshot, prefix: &str) -> Vec<usize> {
         .collect()
 }
 
-fn first_number(grid_snapshot: &GridSnapshot, prefix: &str) -> Option<usize> {
-    numbers(grid_snapshot, prefix).into_iter().min()
-}
-
 fn shows_bottom(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
     let shown = numbers(grid_snapshot, prefix);
     shown.contains(&last) && !shown.contains(&1)
-}
-
-fn shows_start(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
-    let shown = numbers(grid_snapshot, prefix);
-    shown.contains(&1) && !shown.contains(&last)
-}
-
-fn shows_line_ends(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
-    numbers(grid_snapshot, "END").contains(&last) && numbers(grid_snapshot, prefix).is_empty()
 }
 
 fn open_sessions_and_select(zellij: &TestSession, name: &str) {
@@ -157,55 +143,6 @@ fn settled(zellij: &TestSession, mut grid_snapshot: GridSnapshot) -> GridSnapsho
 }
 
 #[test]
-fn shift_keys_pan_the_sessions_preview() {
-    let (background, terminal) = background_session_with(ATTENTION_CONFIG);
-    long_numbered_lines(&terminal, "row", 16);
-    let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
-    open_sessions_and_select(&zellij, background.session_name());
-    let bottom = zellij.wait_until("the preview starts at the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    let first_visible = first_number(&bottom, "row").unwrap();
-    assert!(first_visible > 3, "{}", bottom.text);
-    let after_up = first_visible - 3;
-    zellij.send_stdin(&keys::SHIFT_UP);
-    zellij.wait_until("shift up shows three earlier lines", |grid_snapshot| {
-        first_number(grid_snapshot, "row") == Some(after_up)
-    });
-    zellij.send_stdin(&SHIFT_PAGE_UP);
-    zellij.wait_until(
-        "shift page up shows a page of earlier lines",
-        |grid_snapshot| first_number(grid_snapshot, "row").map_or(false, |first| first < after_up),
-    );
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_HOME);
-    zellij.wait_until("shift home jumps to the first line", |grid_snapshot| {
-        shows_start(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom again", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    for _ in 0..6 {
-        zellij.send_stdin(&SHIFT_RIGHT);
-    }
-    zellij.wait_until("shift right shows the ends of the lines", |grid_snapshot| {
-        shows_line_ends(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until(
-        "shift end shows the starts of the lines again",
-        |grid_snapshot| {
-            shows_bottom(grid_snapshot, "row", 16) && !numbers(grid_snapshot, "END").contains(&16)
-        },
-    );
-    zellij.quit();
-}
-
-#[test]
 fn the_inbox_live_view_shows_the_end_of_a_long_output() {
     let (_background, terminal) = background_session_with(ATTENTION_CONFIG);
     let (mut zellij, _) = main_session_sized(TALL);
@@ -227,18 +164,25 @@ fn the_inbox_live_view_shows_the_end_of_a_long_output() {
 }
 
 #[test]
-fn the_sessions_preview_reaches_lines_that_scrolled_off_the_running_sessions_screen() {
+fn the_sessions_preview_of_a_running_session_shows_the_end_of_its_output_live_and_shift_keys_do_not_scroll_it(
+) {
     let (background, terminal) = background_session_with(ATTENTION_CONFIG);
     long_numbered_lines(&terminal, "row", 60);
     let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
     open_sessions_and_select(&zellij, background.session_name());
-    zellij.wait_until("the preview starts at the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 60)
+    zellij.wait_until("the live preview shows the end", |grid_snapshot| {
+        shows_bottom(grid_snapshot, "row", 60) && grid_snapshot.contains(CLICK_TO_TYPE)
     });
     zellij.send_stdin(&keys::SHIFT_HOME);
-    zellij.wait_until(
-        "shift home shows the first line, which is only in the scrollback",
-        |grid_snapshot| shows_start(grid_snapshot, "row", 60),
+    zellij.send_stdin(&keys::SHIFT_UP);
+    terminal.output(b"row 061 printed later\r\n");
+    let grid_snapshot = zellij.wait_until("the live preview follows new output", |grid_snapshot| {
+        shows_bottom(grid_snapshot, "row", 61)
+    });
+    assert!(
+        !numbers(&grid_snapshot, "row").contains(&1),
+        "shift keys scrolled the live preview:\n{}",
+        grid_snapshot.text
     );
     zellij.quit();
 }

@@ -5308,6 +5308,7 @@ fn mirror_closed_reason_to_protobuf(reason: MirrorClosedReason) -> ProtobufMirro
         MirrorClosedReason::ConnectionFailed => ProtobufMirrorClosedReason::MirrorConnectionFailed,
         MirrorClosedReason::ConnectionLost => ProtobufMirrorClosedReason::MirrorConnectionLost,
         MirrorClosedReason::ProtocolError => ProtobufMirrorClosedReason::MirrorProtocolError,
+        MirrorClosedReason::ContainsViewer => ProtobufMirrorClosedReason::MirrorContainsViewer,
     }
 }
 
@@ -5329,6 +5330,9 @@ fn mirror_closed_reason_from_protobuf(value: Option<i32>) -> MirrorClosedReason 
             MirrorClosedReason::ConnectionLost
         },
         Some(ProtobufMirrorClosedReason::MirrorProtocolError) => MirrorClosedReason::ProtocolError,
+        Some(ProtobufMirrorClosedReason::MirrorContainsViewer) => {
+            MirrorClosedReason::ContainsViewer
+        },
         Some(ProtobufMirrorClosedReason::MirrorRejected) | None => MirrorClosedReason::Rejected,
     }
 }

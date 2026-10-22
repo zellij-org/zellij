@@ -42,6 +42,7 @@ fn viewer_messages_survive_the_wire() {
             focused: true,
             resize_allowed: true,
             view_only: true,
+            viewer_sessions: vec!["outer".to_owned(), "inner".to_owned()],
         }),
         ViewerMessage::Input(MirrorInput::Key {
             key: KeyWithModifier::new(BareKey::Up),
@@ -70,6 +71,13 @@ fn viewer_messages_survive_the_wire() {
         },
         ViewerMessage::FrameAck { seq: 42 },
         ViewerMessage::Detach,
+        ViewerMessage::Park,
+        ViewerMessage::Unpark {
+            resize_allowed: true,
+        },
+        ViewerMessage::Unpark {
+            resize_allowed: false,
+        },
     ];
     for message in messages {
         assert_eq!(ViewerMessage::decode(&message.encode()), Ok(message));
@@ -104,6 +112,7 @@ fn source_messages_survive_the_wire() {
         SourceMessage::closed(MirrorClosedReason::SessionEnding),
         SourceMessage::closed(MirrorClosedReason::Rejected),
         SourceMessage::closed(MirrorClosedReason::VersionMismatch),
+        SourceMessage::closed(MirrorClosedReason::ContainsViewer),
         SourceMessage::Closed {
             reason: MirrorClosedReason::PaneNotFound,
             detail: "terminal_9".to_owned(),

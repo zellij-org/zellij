@@ -3,7 +3,6 @@ use zellij_tile::prelude::set_timeout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerOwner {
-    SessionsPreview,
     Clock,
     Spinner,
 }
@@ -57,9 +56,9 @@ mod tests {
     fn each_timer_event_goes_to_the_earliest_timer() {
         let mut timers = Timers::default();
         timers.record(TimerOwner::Clock, 1.0, 0);
-        timers.record(TimerOwner::SessionsPreview, 0.3, 100);
+        timers.record(TimerOwner::Spinner, 0.3, 100);
         timers.record(TimerOwner::Clock, 0.3, 100);
-        assert_eq!(timers.fired(), Some(TimerOwner::SessionsPreview));
+        assert_eq!(timers.fired(), Some(TimerOwner::Spinner));
         assert_eq!(timers.fired(), Some(TimerOwner::Clock));
         assert_eq!(timers.fired(), Some(TimerOwner::Clock));
         assert_eq!(timers.fired(), None);

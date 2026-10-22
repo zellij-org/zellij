@@ -238,6 +238,35 @@ impl SessionTree {
         self.store_children(&preview.session_name, tabs)
     }
 
+    pub fn live_pane(&self, session: &str, node: TreeNode) -> Option<(usize, usize, u32)> {
+        let tabs = self.children.get(session)?;
+        let (tab_index, pane_index) = match node {
+            TreeNode::Exited => return None,
+            TreeNode::Session => {
+                let tab_index = tabs
+                    .iter()
+                    .position(|tab| tab.active)
+                    .or_else(|| (!tabs.is_empty()).then_some(0))?;
+                let pane_index = tabs[tab_index].panes.iter().position(|pane| pane.focused)?;
+                (tab_index, pane_index)
+            },
+            TreeNode::Tab(tab_index) => {
+                let panes = &tabs.get(tab_index)?.panes;
+                let pane_index = panes
+                    .iter()
+                    .position(|pane| pane.focused && !pane.is_plugin)
+                    .or_else(|| panes.iter().position(|pane| !pane.is_plugin))?;
+                (tab_index, pane_index)
+            },
+            TreeNode::Pane(tab_index, pane_index) => (tab_index, pane_index),
+        };
+        let pane = tabs.get(tab_index)?.panes.get(pane_index)?;
+        if pane.is_plugin {
+            return None;
+        }
+        Some((tab_index, pane_index, pane.id))
+    }
+
     fn store_children(&mut self, session: &str, tabs: Vec<TreeTab>) -> bool {
         if self.children.get(session) == Some(&tabs) {
             return false;
@@ -435,5 +464,106 @@ mod tests {
             ..Default::default()
         };
         assert!(!tree.set_children_from_saved(&failed));
+    }
+
+    fn pane(id: u32, title: &str, focused: bool, is_plugin: bool) -> SessionPreviewPane {
+        SessionPreviewPane {
+            id,
+            title: title.to_owned(),
+            focused,
+            is_plugin,
+            ..Default::default()
+        }
+    }
+
+    fn mixed_tabs() -> Vec<SessionPreviewTab> {
+        vec![
+            SessionPreviewTab {
+                name: "work".to_owned(),
+                active: false,
+                panes: vec![
+                    pane(10, "status", false, true),
+                    pane(11, "shell", false, false),
+                    pane(12, "editor", true, false),
+                ],
+            },
+            SessionPreviewTab {
+                name: "tools".to_owned(),
+                active: true,
+                panes: vec![
+                    pane(20, "logs", false, false),
+                    pane(21, "picker", true, true),
+                ],
+            },
+            SessionPreviewTab {
+                name: "plain".to_owned(),
+                active: false,
+                panes: vec![
+                    pane(30, "bar", true, true),
+                    pane(31, "first", false, false),
+                    pane(32, "second", false, false),
+                ],
+            },
+        ]
+    }
+
+    #[test]
+    fn a_session_tab_or_pane_row_selects_the_pane_the_live_preview_shows() {
+        let mut tree = SessionTree::default();
+        tree.set_children_from_tabs("api", &tabs());
+        tree.set_children_from_tabs("web", &mixed_tabs());
+        assert_eq!(
+            tree.live_pane("api", TreeNode::Session),
+            Some((0, 0, 1)),
+            "a session row shows the focused pane of its active tab"
+        );
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Tab(0)),
+            Some((0, 2, 12)),
+            "a tab row shows its focused terminal pane"
+        );
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Tab(2)),
+            Some((2, 1, 31)),
+            "a tab whose focused pane is a plugin shows its first terminal pane"
+        );
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(0, 1)), Some((0, 1, 11)));
+        assert_eq!(tree.live_pane("api", TreeNode::Pane(0, 1)), Some((0, 1, 2)));
+        let mut without_clients = mixed_tabs();
+        for tab in without_clients.iter_mut() {
+            tab.active = false;
+        }
+        tree.set_children_from_tabs("quiet", &without_clients);
+        assert_eq!(
+            tree.live_pane("quiet", TreeNode::Session),
+            Some((0, 2, 12)),
+            "a session without an active tab shows the focused pane of its first tab"
+        );
+    }
+
+    #[test]
+    fn plugin_panes_unknown_sessions_and_exited_sessions_have_no_live_pane() {
+        let mut tree = SessionTree::default();
+        tree.set_children_from_tabs("web", &mixed_tabs());
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Session),
+            None,
+            "the focused pane of the active tab is a plugin"
+        );
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(0, 0)), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(1, 1)), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(9, 0)), None);
+        assert_eq!(tree.live_pane("unknown", TreeNode::Session), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Exited), None);
+        tree.set_children_from_tabs(
+            "empty",
+            &[SessionPreviewTab {
+                name: "only".to_owned(),
+                active: true,
+                panes: vec![pane(1, "plugin", false, true)],
+            }],
+        );
+        assert_eq!(tree.live_pane("empty", TreeNode::Session), None);
+        assert_eq!(tree.live_pane("empty", TreeNode::Tab(0)), None);
     }
 }

@@ -60,6 +60,7 @@ pub struct MirrorAttach {
     pub focused: bool,
     pub resize_allowed: bool,
     pub view_only: bool,
+    pub viewer_sessions: Vec<String>,
 }
 
 impl MirrorAttach {
@@ -72,6 +73,7 @@ impl MirrorAttach {
             focused: false,
             resize_allowed: false,
             view_only: false,
+            viewer_sessions: vec![],
         }
     }
 }
@@ -101,6 +103,10 @@ pub enum ViewerMessage {
         seq: u64,
     },
     Detach,
+    Park,
+    Unpark {
+        resize_allowed: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,6 +169,7 @@ fn close_reason_to_proto(reason: MirrorClosedReason) -> proto::MirrorCloseReason
         MirrorClosedReason::Rejected => proto::MirrorCloseReason::Rejected,
         MirrorClosedReason::VersionMismatch => proto::MirrorCloseReason::VersionMismatch,
         MirrorClosedReason::PaneNotFound => proto::MirrorCloseReason::PaneNotFound,
+        MirrorClosedReason::ContainsViewer => proto::MirrorCloseReason::ContainsViewer,
         MirrorClosedReason::UnsupportedHost
         | MirrorClosedReason::ConnectionFailed
         | MirrorClosedReason::ConnectionLost
@@ -176,6 +183,7 @@ fn close_reason_from_proto(value: i32) -> MirrorClosedReason {
         Ok(proto::MirrorCloseReason::SessionEnding) => MirrorClosedReason::SessionEnding,
         Ok(proto::MirrorCloseReason::VersionMismatch) => MirrorClosedReason::VersionMismatch,
         Ok(proto::MirrorCloseReason::PaneNotFound) => MirrorClosedReason::PaneNotFound,
+        Ok(proto::MirrorCloseReason::ContainsViewer) => MirrorClosedReason::ContainsViewer,
         Ok(proto::MirrorCloseReason::Rejected)
         | Ok(proto::MirrorCloseReason::Unspecified)
         | Err(_) => MirrorClosedReason::Rejected,
@@ -194,6 +202,7 @@ impl ViewerMessage {
                 focused: attach.focused,
                 resize_allowed: attach.resize_allowed,
                 view_only: attach.view_only,
+                viewer_sessions: attach.viewer_sessions.clone(),
             }),
             ViewerMessage::Input(input) => {
                 use proto::mirror_input_msg::Input as I;
@@ -224,6 +233,10 @@ impl ViewerMessage {
             }),
             ViewerMessage::FrameAck { seq } => M::FrameAck(proto::MirrorFrameAckMsg { seq: *seq }),
             ViewerMessage::Detach => M::Detach(proto::MirrorDetachMsg {}),
+            ViewerMessage::Park => M::Park(proto::MirrorParkMsg {}),
+            ViewerMessage::Unpark { resize_allowed } => M::Unpark(proto::MirrorUnparkMsg {
+                resize_allowed: *resize_allowed,
+            }),
         };
         proto::PaneMirrorViewerMessage {
             message: Some(message),
@@ -248,6 +261,7 @@ impl ViewerMessage {
                 focused: attach.focused,
                 resize_allowed: attach.resize_allowed,
                 view_only: attach.view_only,
+                viewer_sessions: attach.viewer_sessions,
             })),
             M::Input(input) => {
                 use proto::mirror_input_msg::Input as I;
@@ -278,6 +292,10 @@ impl ViewerMessage {
             }),
             M::FrameAck(ack) => Ok(ViewerMessage::FrameAck { seq: ack.seq }),
             M::Detach(_) => Ok(ViewerMessage::Detach),
+            M::Park(_) => Ok(ViewerMessage::Park),
+            M::Unpark(unpark) => Ok(ViewerMessage::Unpark {
+                resize_allowed: unpark.resize_allowed,
+            }),
         }
     }
 }

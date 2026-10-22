@@ -159,6 +159,13 @@ pub(crate) fn serve_mirror_connection(
                     Ok(ViewerMessage::FrameAck { seq }) => {
                         ScreenInstruction::MirrorFrameAck { subscriber_id, seq }
                     },
+                    Ok(ViewerMessage::Park) => ScreenInstruction::MirrorPark { subscriber_id },
+                    Ok(ViewerMessage::Unpark { resize_allowed }) => {
+                        ScreenInstruction::MirrorUnpark {
+                            subscriber_id,
+                            resize_allowed,
+                        }
+                    },
                     Ok(ViewerMessage::Detach) => break,
                     Ok(ViewerMessage::Attach(_)) => continue,
                     Err(e) => {

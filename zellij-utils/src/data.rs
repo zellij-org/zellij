@@ -3919,6 +3919,7 @@ pub enum MirrorClosedReason {
     ConnectionFailed,
     ConnectionLost,
     ProtocolError,
+    ContainsViewer,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -28,6 +28,8 @@ pub const LIST_MAX_COLS: usize = 48;
 pub const LIVE_VIEW_MIN_COLS: usize = 30;
 pub const LIVE_VIEW_MIN_ROWS: usize = 8;
 pub const LIVE_VIEW_GAP: usize = 2;
+pub const SESSIONS_VIEW_MIN_COLS: usize = 20;
+pub const SESSIONS_VIEW_MIN_ROWS: usize = 3;
 pub const LIVE_VIEW_REFUSED_TEXT: &str = "Typing was refused: focus the inbox and try again";
 pub const SESSION_COLUMN_MAX: usize = 12;
 pub const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -126,6 +128,13 @@ impl LiveViewStatus {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionsLiveTarget {
+    pub key: ItemKey,
+    pub tab: String,
+    pub pane: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LiveLayout {
     pub list_x: usize,
@@ -176,6 +185,24 @@ impl LiveLayout {
         })
     }
 
+    pub fn around_box(x: usize, y: usize, width: usize, height: usize) -> Option<LiveLayout> {
+        let box_height = height.checked_sub(1)?;
+        if width < SESSIONS_VIEW_MIN_COLS + 2 || box_height < SESSIONS_VIEW_MIN_ROWS + 2 {
+            return None;
+        }
+        Some(LiveLayout {
+            list_x: x,
+            list_width: 0,
+            top: y,
+            list_rows: 0,
+            box_x: x,
+            box_width: width,
+            box_height,
+            status_y: y + box_height,
+            help_y: y + height,
+        })
+    }
+
     pub fn view_rect(&self) -> (usize, usize, usize, usize) {
         (
             self.box_x + 1,
@@ -197,6 +224,7 @@ pub fn closed_reason_text(reason: MirrorClosedReason) -> &'static str {
         MirrorClosedReason::ConnectionFailed => "preview not available",
         MirrorClosedReason::ConnectionLost => "preview not available",
         MirrorClosedReason::ProtocolError => "protocol error",
+        MirrorClosedReason::ContainsViewer => "it runs this session",
     }
 }
 
@@ -316,6 +344,7 @@ pub struct Inbox {
     pub capture_labels: Option<(String, String)>,
     pub live_notice: Option<String>,
     pub resize_requests_in_flight: VecDeque<bool>,
+    pub sessions_target: Option<SessionsLiveTarget>,
 }
 
 pub fn now_ms() -> u64 {
@@ -1063,6 +1092,9 @@ impl Inbox {
                 return Some(key.clone());
             }
         }
+        if let Some(target) = self.sessions_target.as_ref() {
+            return Some(target.key.clone());
+        }
         self.selected_item().map(ItemKey::of)
     }
 
@@ -1169,7 +1201,11 @@ impl Inbox {
         if status.input_captured {
             self.live_notice = None;
             if self.capture_target.is_none() {
-                self.capture_target = self.selected_item().map(ItemKey::of);
+                self.capture_target = self
+                    .sessions_target
+                    .as_ref()
+                    .map(|target| target.key.clone())
+                    .or_else(|| self.selected_item().map(ItemKey::of));
                 self.capture_position = self.selected_position(&self.ordered());
             }
             self.live = Some(status);
@@ -1258,6 +1294,12 @@ impl Inbox {
         if let Some(notice) = self.live_notice.as_ref() {
             return notice.clone();
         }
+        if self.sessions_target.is_some() {
+            return format!(
+                "click to type · {} to stop",
+                self.release_key_text()
+            );
+        }
         String::new()
     }
 
@@ -1285,15 +1327,31 @@ impl Inbox {
     }
 
     fn view_labels(&mut self) -> Option<(String, String)> {
-        let found = self
-            .live_view_target()
-            .and_then(|key| self.find(&key).cloned())
-            .map(|item| {
+        let target = self.live_view_target();
+        let from_sessions = self
+            .sessions_target
+            .as_ref()
+            .filter(|sessions| Some(&sessions.key) == target.as_ref())
+            .map(|sessions| {
                 (
-                    sanitize_display_text(&item.session_label()),
-                    sanitize_display_text(&item.pane_label()),
+                    sanitize_display_text(&sessions.key.session),
+                    format!(
+                        "{} › {}",
+                        sanitize_display_text(&sessions.tab),
+                        sanitize_display_text(&sessions.pane)
+                    ),
                 )
             });
+        let found = from_sessions.or_else(|| {
+            target
+                .and_then(|key| self.find(&key).cloned())
+                .map(|item| {
+                    (
+                        sanitize_display_text(&item.session_label()),
+                        sanitize_display_text(&item.pane_label()),
+                    )
+                })
+        });
         match found {
             Some(labels) => {
                 self.capture_labels = Some(labels.clone());
@@ -1523,7 +1581,7 @@ impl Inbox {
         top_text.dim_range(state_start..state_start + state.chars().count())
     }
 
-    fn render_live_view_box(&mut self, layout: &LiveLayout) {
+    pub fn render_live_view_box(&mut self, layout: &LiveLayout) {
         let x = layout.box_x;
         let y = layout.top;
         let width = layout.box_width;

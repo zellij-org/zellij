@@ -4770,6 +4770,7 @@ fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
             resize_allowed: true,
             view_only: true,
             focused: true,
+            viewer_sessions: vec!["outer".to_owned()],
             ..MirrorAttach::new(PaneId::Terminal(2), Size { cols: 40, rows: 12 })
         }),
         ViewerMessage::Input(MirrorInput::Key {
@@ -4788,6 +4789,13 @@ fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
         },
         ViewerMessage::FrameAck { seq: 9 },
         ViewerMessage::Detach,
+        ViewerMessage::Park,
+        ViewerMessage::Unpark {
+            resize_allowed: true,
+        },
+        ViewerMessage::Unpark {
+            resize_allowed: false,
+        },
     ];
     for message in viewer_messages {
         let payload = message.encode();
@@ -4818,6 +4826,7 @@ fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
             pane_size: Size { cols: 20, rows: 5 },
         },
         SourceMessage::closed(MirrorClosedReason::SessionEnding),
+        SourceMessage::closed(MirrorClosedReason::ContainsViewer),
     ];
     for message in source_messages {
         let payload = message.encode();

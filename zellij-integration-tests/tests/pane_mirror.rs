@@ -796,7 +796,7 @@ fn a_shown_view_pins_the_source_and_crops_the_source_view_and_capture_keeps_the_
 }
 
 #[test]
-fn clearing_the_live_view_keeps_the_size_until_the_pane_is_used_in_its_session() {
+fn clearing_the_live_view_gives_the_pane_its_layout_size_back_at_once() {
     let pinned = capture_and_pin();
     send_to_the_fixture(pinned.zellij(), "live_view_clear", &[]);
     let grid_snapshot = status_shows(
@@ -805,8 +805,12 @@ fn clearing_the_live_view_keeps_the_size_until_the_pane_is_used_in_its_session()
         "released=Some(Cleared)",
     );
     assert!(!grid_snapshot.contains("watched source"));
-    assert_keeps_the_size_after_a_barrier(&pinned.watched, VIEW_SIZE, "after clearing");
-    give_the_size_back_by_typing_in_the_source(&pinned.watched);
+    wait_for_the_release(
+        pinned.terminal(),
+        pinned.layout_size(),
+        "clearing the view gives the pane its layout size back",
+    );
+    assert_not_pinned_after_a_barrier(&pinned.watched, "after clearing");
     let mut viewer = pinned.viewer;
     viewer.zellij.quit();
 }
@@ -838,7 +842,7 @@ fn switching_the_target_keeps_the_old_pane_at_its_size_until_it_is_used_in_its_s
 }
 
 #[test]
-fn closing_the_plugin_pane_keeps_the_size_until_the_pane_is_used_in_its_session() {
+fn closing_the_plugin_pane_gives_the_pane_its_layout_size_back() {
     let pinned = capture_and_pin();
     pinned.zellij().send_stdin(&keys::ctrl('p'));
     pinned.zellij().send_stdin(&keys::key('x'));
@@ -847,10 +851,159 @@ fn closing_the_plugin_pane_keeps_the_size_until_the_pane_is_used_in_its_session(
         .wait_until("the plugin pane is gone", |grid_snapshot| {
             !grid_snapshot.contains("LV ")
         });
-    assert_keeps_the_size_after_a_barrier(&pinned.watched, VIEW_SIZE, "after closing");
-    give_the_size_back_by_typing_in_the_source(&pinned.watched);
+    wait_for_the_release(
+        pinned.terminal(),
+        pinned.layout_size(),
+        "closing the plugin pane gives the pane its layout size back",
+    );
+    assert_not_pinned_after_a_barrier(&pinned.watched, "after closing");
     let mut viewer = pinned.viewer;
     viewer.zellij.quit();
+}
+
+#[test]
+fn switching_the_target_and_then_clearing_the_view_gives_the_old_pane_its_size_back() {
+    let pinned = capture_and_pin();
+    let session = pinned.zellij().session_name().to_owned();
+    pinned
+        .viewer
+        .first_terminal
+        .output(b"$ text of the next target\r\n");
+    show_pane(
+        pinned.zellij(),
+        &session,
+        pinned.viewer.first_terminal.terminal_id(),
+    );
+    pinned
+        .zellij()
+        .wait_until("the next target replaced the first", |grid_snapshot| {
+            occurrences(grid_snapshot, "text of the next target") >= 2
+                && !grid_snapshot.contains("watched source")
+        });
+    assert_keeps_the_size_after_a_barrier(&pinned.watched, VIEW_SIZE, "after the switch");
+    let sizes_before = pinned.terminal().size_history();
+    show_pane(
+        pinned.zellij(),
+        pinned.watched.source.session_name(),
+        pinned.watched.terminal.terminal_id(),
+    );
+    status_shows(
+        pinned.zellij(),
+        "going back shows the first target again",
+        "watched source",
+    );
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(
+        pinned.terminal().size_history(),
+        sizes_before,
+        "going back to the parked target resized the pane"
+    );
+    send_to_the_fixture(pinned.zellij(), "live_view_clear", &[]);
+    wait_for_the_release(
+        pinned.terminal(),
+        pinned.layout_size(),
+        "clearing the view gives the parked pane its layout size back",
+    );
+    let mut viewer = pinned.viewer;
+    viewer.zellij.quit();
+}
+
+fn acknowledge_frames(viewer: &dyn MirrorTransport, events: Vec<MirrorTransportEvent>) {
+    for event in events {
+        if let MirrorTransportEvent::Message(SourceMessage::Frame { frame, .. }) = event {
+            let seq = zellij_utils::structured_render::decode(&frame)
+                .expect("a readable frame")
+                .header()
+                .seq;
+            assert!(viewer.send(ViewerMessage::FrameAck { seq }));
+        }
+    }
+}
+
+#[test]
+fn a_parked_viewer_gets_no_frames_keeps_the_size_and_gives_it_back_when_it_detaches() {
+    let watched = start_watched_source("");
+    let session = watched.source.session_name().to_owned();
+    let pane = watched.terminal.terminal_id();
+    let viewer_size = Size { cols: 40, rows: 10 };
+    let (mut viewer, events) = connect_with(&session, pane, pinning_attach(pane, viewer_size));
+    wait_for_event(&events, "the pin", |event| {
+        is_pin_state(event, true, Some(viewer_size))
+    });
+    wait_for_the_pin_at(
+        &watched.terminal,
+        as_pty_size(viewer_size),
+        "the viewer pins the pane",
+    );
+    assert!(viewer.send(ViewerMessage::Park));
+    assert_keeps_the_size_after_a_barrier(&watched, as_pty_size(viewer_size), "while parked");
+    std::thread::sleep(Duration::from_millis(300));
+    acknowledge_frames(viewer.as_ref(), events.try_iter().collect());
+    watched.terminal.output(b"$ not sent while parked\r\n");
+    watched
+        .view
+        .wait_until("the source shows the new output", |grid_snapshot| {
+            grid_snapshot.contains("not sent while parked")
+        });
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !events.try_iter().any(|event| is_frame(&event)),
+        "a parked viewer got a frame"
+    );
+    assert!(viewer.send(ViewerMessage::Unpark {
+        resize_allowed: true
+    }));
+    wait_for_event(&events, "a frame after unparking", is_frame);
+    assert_eq!(watched.terminal.size(), Some(as_pty_size(viewer_size)));
+    assert!(viewer.send(ViewerMessage::Park));
+    viewer.close();
+    wait_for_the_release(
+        &watched.terminal,
+        watched.layout_size,
+        "a parked viewer that detaches gives the size back",
+    );
+}
+
+#[test]
+fn a_pane_kept_by_one_viewer_stays_at_its_size_when_another_viewer_closes() {
+    let watched = start_watched_source("");
+    let session = watched.source.session_name().to_owned();
+    let pane = watched.terminal.terminal_id();
+    let first_size = Size { cols: 40, rows: 10 };
+    let second_size = Size { cols: 50, rows: 12 };
+    let (mut first, first_events) = connect_with(&session, pane, pinning_attach(pane, first_size));
+    wait_for_event(&first_events, "the first pin", |event| {
+        is_pin_state(event, true, Some(first_size))
+    });
+    wait_for_the_pin_at(
+        &watched.terminal,
+        as_pty_size(first_size),
+        "the first viewer pins the pane",
+    );
+    assert!(first.send(ViewerMessage::Park));
+    let (mut second, second_events) =
+        connect_with(&session, pane, pinning_attach(pane, second_size));
+    wait_for_event(&second_events, "the second pin", |event| {
+        is_pin_state(event, true, Some(second_size))
+    });
+    wait_for_the_pin_at(
+        &watched.terminal,
+        as_pty_size(second_size),
+        "the second viewer pins the pane",
+    );
+    second.close();
+    wait_for_the_pin_at(
+        &watched.terminal,
+        as_pty_size(first_size),
+        "the size the first viewer keeps applies again",
+    );
+    assert_keeps_the_size_after_a_barrier(&watched, as_pty_size(first_size), "after the close");
+    first.close();
+    wait_for_the_release(
+        &watched.terminal,
+        watched.layout_size,
+        "closing the last viewer gives the size back",
+    );
 }
 
 fn attach_a_fixture_client(zellij: &TestSession) -> (TestClient, String) {

@@ -1067,6 +1067,7 @@ enum MirrorClosedReason {
   MirrorConnectionFailed = 6;
   MirrorConnectionLost = 7;
   MirrorProtocolError = 8;
+  MirrorContainsViewer = 9;
 }
 
 message MirrorState {

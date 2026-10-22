@@ -1129,6 +1129,13 @@ pub enum ScreenInstruction {
     MirrorDetach {
         subscriber_id: crate::pane_mirror::MirrorSubscriberId,
     },
+    MirrorPark {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+    },
+    MirrorUnpark {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        resize_allowed: bool,
+    },
     ToggleMirrorResize(ClientId, Option<NotificationEnd>),
     SetMirrorResizesSourcePane(bool),
     MirrorTick,
@@ -1626,6 +1633,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             | ScreenInstruction::MirrorResize { .. }
             | ScreenInstruction::MirrorFrameAck { .. }
             | ScreenInstruction::MirrorDetach { .. }
+            | ScreenInstruction::MirrorPark { .. }
+            | ScreenInstruction::MirrorUnpark { .. }
             | ScreenInstruction::ToggleMirrorResize(..)
             | ScreenInstruction::SetMirrorResizesSourcePane(..)
             | ScreenInstruction::MirrorTick
@@ -15450,6 +15459,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MirrorDetach { subscriber_id } => {
                 screen.mirror_detach(subscriber_id);
+            },
+            ScreenInstruction::MirrorPark { subscriber_id } => {
+                screen.mirror_park(subscriber_id);
+            },
+            ScreenInstruction::MirrorUnpark {
+                subscriber_id,
+                resize_allowed,
+            } => {
+                screen.mirror_unpark(subscriber_id, resize_allowed);
             },
             ScreenInstruction::ToggleMirrorResize(client_id, completion) => {
                 screen.toggle_live_view_resize(client_id, completion);

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 use zellij_utils::data::{KeyWithModifier, MirrorClosedReason, MirrorState, PaneAddress};
@@ -25,11 +25,19 @@ pub struct MirrorUpdate {
     pub redraw: MirrorRedraw,
 }
 
+struct ParkedConnection {
+    target: PaneAddress,
+    generation: u64,
+    transport: Box<dyn MirrorTransport>,
+}
+
 pub struct MirrorView {
     view_id: u32,
     target: Option<PaneAddress>,
     state: MirrorState,
     generation: u64,
+    next_generation: u64,
+    parked: VecDeque<ParkedConnection>,
     transport: Option<Box<dyn MirrorTransport>>,
     connector: Arc<dyn MirrorConnector>,
     route: MirrorEventRoute,
@@ -45,10 +53,12 @@ pub struct MirrorView {
     pin_ready_at: Option<Instant>,
     resize_flag_sent: bool,
     viewer_size: Size,
+    viewer_sessions: Vec<String>,
 }
 
 pub const SWITCH_HOLD: std::time::Duration = std::time::Duration::from_millis(400);
 pub const PIN_SETTLE: std::time::Duration = std::time::Duration::from_millis(300);
+pub const MAX_PARKED_CONNECTIONS: usize = 8;
 
 impl std::fmt::Debug for MirrorView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -68,6 +78,7 @@ impl std::fmt::Debug for MirrorView {
 impl Drop for MirrorView {
     fn drop(&mut self) {
         self.disconnect();
+        self.detach_parked();
     }
 }
 
@@ -84,6 +95,8 @@ impl MirrorView {
             target: None,
             state: MirrorState::NoTarget,
             generation: 0,
+            next_generation: 0,
+            parked: VecDeque::new(),
             transport: None,
             connector,
             route,
@@ -99,7 +112,12 @@ impl MirrorView {
             pin_ready_at: None,
             resize_flag_sent: false,
             viewer_size: Size::default(),
+            viewer_sessions: vec![],
         }
+    }
+
+    pub fn set_viewer_sessions(&mut self, viewer_sessions: Vec<String>) {
+        self.viewer_sessions = viewer_sessions;
     }
 
     pub fn target(&self) -> Option<&PaneAddress> {
@@ -272,6 +290,103 @@ impl MirrorView {
                 .unwrap_or(false)
     }
 
+    pub fn parked_targets(&self) -> Vec<PaneAddress> {
+        self.parked.iter().map(|parked| parked.target.clone()).collect()
+    }
+
+    fn detach_parked(&mut self) {
+        for mut parked in self.parked.drain(..) {
+            parked.transport.close();
+        }
+    }
+
+    fn new_generation(&mut self) -> u64 {
+        self.next_generation += 1;
+        self.next_generation
+    }
+
+    fn park_current(&mut self) {
+        let parkable = matches!(self.state, MirrorState::Connecting | MirrorState::Live);
+        match (self.transport.take(), self.target.clone()) {
+            (Some(transport), Some(target)) if parkable && target.is_local() => {
+                if !transport.send(ViewerMessage::Park) {
+                    let mut transport = transport;
+                    transport.close();
+                } else {
+                    let stale: Vec<usize> = self
+                        .parked
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, parked)| parked.target == target)
+                        .map(|(index, _)| index)
+                        .collect();
+                    for index in stale.into_iter().rev() {
+                        if let Some(mut parked) = self.parked.remove(index) {
+                            parked.transport.close();
+                        }
+                    }
+                    self.parked.push_front(ParkedConnection {
+                        target,
+                        generation: self.generation,
+                        transport,
+                    });
+                    while self.parked.len() > MAX_PARKED_CONNECTIONS {
+                        if let Some(mut oldest) = self.parked.pop_back() {
+                            oldest.transport.close();
+                        }
+                    }
+                }
+            },
+            (Some(mut transport), _) => transport.close(),
+            (None, _) => {},
+        }
+        self.disconnect();
+    }
+
+    fn take_parked(&mut self, target: &PaneAddress) -> Option<ParkedConnection> {
+        let index = self
+            .parked
+            .iter()
+            .position(|parked| parked.target == *target)?;
+        self.parked.remove(index)
+    }
+
+    fn handle_parked_event(&mut self, generation: u64, event: MirrorTransportEvent) {
+        let Some(index) = self
+            .parked
+            .iter()
+            .position(|parked| parked.generation == generation)
+        else {
+            return;
+        };
+        let keep = match event {
+            MirrorTransportEvent::Message(SourceMessage::Frame { frame, .. }) => {
+                match zellij_utils::structured_render::decode(&frame) {
+                    Ok(view) => {
+                        let seq = view.header().seq;
+                        self.parked[index]
+                            .transport
+                            .send(ViewerMessage::FrameAck { seq })
+                    },
+                    Err(_) => false,
+                }
+            },
+            MirrorTransportEvent::Message(SourceMessage::Attached { version, .. }) => {
+                version == PANE_MIRROR_VERSION
+            },
+            MirrorTransportEvent::Message(SourceMessage::PinState { .. }) => true,
+            MirrorTransportEvent::Message(SourceMessage::Closed { .. })
+            | MirrorTransportEvent::Unreadable(_)
+            | MirrorTransportEvent::ConnectFailed(_)
+            | MirrorTransportEvent::Disconnected => false,
+        };
+        if !keep {
+            if let Some(mut parked) = self.parked.remove(index) {
+                parked.transport.close();
+            }
+        }
+    }
+
     fn disconnect(&mut self) {
         if let Some(mut transport) = self.transport.take() {
             transport.close();
@@ -289,20 +404,45 @@ impl MirrorView {
         } else {
             self.held_screen.take()
         };
-        self.disconnect();
+        self.park_current();
         self.held_screen = held;
         self.pin_ready_at = Some(Instant::now() + PIN_SETTLE);
-        self.generation += 1;
         self.viewer_size = viewer_size;
         let previous_state = self.state;
         let previous_target = self.target.clone();
         self.target = target;
-        self.state = match &self.target {
-            None => MirrorState::NoTarget,
-            Some(target) if !target.is_local() => {
+        let wanted = self.target.clone();
+        let parked = wanted
+            .as_ref()
+            .and_then(|target| self.take_parked(target));
+        self.state = match (wanted, parked) {
+            (_, Some(parked)) => {
+                self.generation = parked.generation;
+                let resize_allowed = self.wants_pin();
+                let unparked = parked
+                    .transport
+                    .send(ViewerMessage::Unpark { resize_allowed });
+                self.transport = Some(parked.transport);
+                let now = Instant::now();
+                self.connecting_since = Some(now);
+                if unparked {
+                    self.send_resize(now);
+                    MirrorState::Connecting
+                } else {
+                    self.close_with(MirrorClosedReason::ConnectionLost);
+                    self.state
+                }
+            },
+            (None, None) => {
+                self.generation = self.new_generation();
+                MirrorState::NoTarget
+            },
+            (Some(target), None) if !target.is_local() => {
+                self.generation = self.new_generation();
                 MirrorState::Closed(MirrorClosedReason::UnsupportedHost)
             },
-            Some(target) => {
+            (Some(target), None) => {
+                self.generation = self.new_generation();
                 let generation = self.generation;
                 let view_id = self.view_id;
                 let route = self.route.clone();
@@ -314,9 +454,10 @@ impl MirrorView {
                     view_only: self.view_only,
                     focused: self.focused,
                     resize_allowed,
+                    viewer_sessions: self.viewer_sessions.clone(),
                     ..MirrorAttach::new(target.pane_id, viewer_size)
                 };
-                self.transport = Some(self.connector.connect(target, attach, sink));
+                self.transport = Some(self.connector.connect(&target, attach, sink));
                 let now = Instant::now();
                 self.connecting_since = Some(now);
                 self.last_resize_sent = Some(now);
@@ -347,6 +488,7 @@ impl MirrorView {
         event: MirrorTransportEvent,
     ) -> Option<MirrorUpdate> {
         if generation != self.generation || self.transport.is_none() {
+            self.handle_parked_event(generation, event);
             return None;
         }
         match event {
@@ -507,6 +649,9 @@ impl MirrorView {
             },
             MirrorState::Closed(MirrorClosedReason::ProtocolError) => {
                 "The session sent data that could not be read".to_owned()
+            },
+            MirrorState::Closed(MirrorClosedReason::ContainsViewer) => {
+                "This pane runs this session".to_owned()
             },
         };
         let mut lines = vec![headline];

@@ -4470,7 +4470,7 @@ pub struct ClientPaneMirrorMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaneMirrorViewerMessage {
-    #[prost(oneof="pane_mirror_viewer_message::Message", tags="1, 2, 3, 4, 5")]
+    #[prost(oneof="pane_mirror_viewer_message::Message", tags="1, 2, 3, 4, 5, 6, 7")]
     pub message: ::core::option::Option<pane_mirror_viewer_message::Message>,
 }
 /// Nested message and enum types in `PaneMirrorViewerMessage`.
@@ -4488,6 +4488,10 @@ pub mod pane_mirror_viewer_message {
         FrameAck(super::MirrorFrameAckMsg),
         #[prost(message, tag="5")]
         Detach(super::MirrorDetachMsg),
+        #[prost(message, tag="6")]
+        Park(super::MirrorParkMsg),
+        #[prost(message, tag="7")]
+        Unpark(super::MirrorUnparkMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -4528,6 +4532,8 @@ pub struct MirrorAttachMsg {
     pub resize_allowed: bool,
     #[prost(bool, tag="7")]
     pub view_only: bool,
+    #[prost(string, repeated, tag="8")]
+    pub viewer_sessions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4582,6 +4588,16 @@ pub struct MirrorDetachMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MirrorParkMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MirrorUnparkMsg {
+    #[prost(bool, tag="1")]
+    pub resize_allowed: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MirrorAttachedMsg {
     #[prost(uint32, tag="1")]
     pub version: u32,
@@ -4623,6 +4639,7 @@ pub enum MirrorCloseReason {
     Rejected = 3,
     VersionMismatch = 4,
     PaneNotFound = 5,
+    ContainsViewer = 6,
 }
 impl MirrorCloseReason {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -4637,6 +4654,7 @@ impl MirrorCloseReason {
             MirrorCloseReason::Rejected => "MIRROR_CLOSE_REASON_REJECTED",
             MirrorCloseReason::VersionMismatch => "MIRROR_CLOSE_REASON_VERSION_MISMATCH",
             MirrorCloseReason::PaneNotFound => "MIRROR_CLOSE_REASON_PANE_NOT_FOUND",
+            MirrorCloseReason::ContainsViewer => "MIRROR_CLOSE_REASON_CONTAINS_VIEWER",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -4648,6 +4666,7 @@ impl MirrorCloseReason {
             "MIRROR_CLOSE_REASON_REJECTED" => Some(Self::Rejected),
             "MIRROR_CLOSE_REASON_VERSION_MISMATCH" => Some(Self::VersionMismatch),
             "MIRROR_CLOSE_REASON_PANE_NOT_FOUND" => Some(Self::PaneNotFound),
+            "MIRROR_CLOSE_REASON_CONTAINS_VIEWER" => Some(Self::ContainsViewer),
             _ => None,
         }
     }
