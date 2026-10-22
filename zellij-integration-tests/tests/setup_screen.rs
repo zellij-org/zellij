@@ -168,6 +168,7 @@ fn a_dismissed_setup_screen_returns_in_the_next_session() {
         !grid_snapshot.contains(TITLE)
     });
     first.kill_session();
+    drop(first);
 
     let mut second = start_existing_config();
     wait_for_setup_items(&second);
@@ -184,6 +185,7 @@ fn an_approved_setup_screen_does_not_return() {
         desktop_integration::load_from(&state).has(Flag::SetupApproved)
     });
     first.kill_session();
+    drop(first);
 
     let mut second = start_existing_config();
     assert_no_setup_screen(&second);
