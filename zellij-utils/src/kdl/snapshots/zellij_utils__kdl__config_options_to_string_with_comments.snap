@@ -294,6 +294,12 @@ web_sharing "disabled"
 // 
 // stacked_pane_list false
  
+// Default orientation for new tabbed stacked-pane lists
+//   - vertical (default)
+//   - horizontal
+// 
+// stacked_pane_list_orientation "vertical"
+ 
 // Whether to show tips on startup
 // Default: true
 // 

@@ -19,6 +19,7 @@ use crate::{
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
+        options::StackListOrientation,
     },
     pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
@@ -30,7 +31,7 @@ use std::str::FromStr;
 
 use super::plugins::{PluginAliases, PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::vec::Vec;
 use std::{
     fmt,
@@ -887,6 +888,7 @@ pub struct TiledPaneLayout {
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
     pub is_expanded_in_stack: bool,
+    pub stack_direction: Option<StackListOrientation>,
     pub exclude_from_sync: Option<bool>,
     pub run_instructions_to_ignore: Vec<Option<Run>>,
     pub hide_floating_panes: bool, // only relevant if this is the base layout
@@ -973,6 +975,7 @@ impl TiledPaneLayout {
         max_panes: Option<usize>,
         ignore_percent_split_sizes: bool,
         focus_layout_if_not_focused: bool,
+        stack_directions: &mut HashMap<usize, StackListOrientation>,
     ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
         let layouts = match max_panes {
             Some(max_panes) => {
@@ -1005,6 +1008,7 @@ impl TiledPaneLayout {
                     space,
                     ignore_percent_split_sizes,
                     &mut stack_id,
+                    stack_directions,
                 )?
             },
             None => {
@@ -1015,6 +1019,7 @@ impl TiledPaneLayout {
                     space,
                     ignore_percent_split_sizes,
                     &mut stack_id,
+                    stack_directions,
                 )?
             },
         };
@@ -1880,6 +1885,7 @@ fn split_space(
     total_space_to_split: &PaneGeom,
     ignore_percent_split_sizes: bool,
     next_stack_id: &mut usize,
+    stack_directions: &mut HashMap<usize, StackListOrientation>,
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
@@ -1952,6 +1958,9 @@ fn split_space(
     let stacked = if layout.children_are_stacked {
         let stack_id = *next_stack_id;
         *next_stack_id += 1;
+        if let Some(stack_direction) = layout.stack_direction {
+            stack_directions.insert(stack_id, stack_direction);
+        }
         Some(stack_id)
     } else {
         None
@@ -2025,6 +2034,7 @@ fn split_space(
                 total_space_to_split,
                 ignore_percent_split_sizes,
                 next_stack_id,
+                stack_directions,
             )?;
             // add the only first child to pane_positions only adding the others after all the
             // childfree panes have been added so that the returned vec will be sorted breadth-first

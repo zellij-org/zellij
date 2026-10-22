@@ -160,6 +160,8 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="14")]
     pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
+    #[prost(string, optional, tag="15")]
+    pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1255,6 +1257,7 @@ pub enum ActionName {
     MarkPaneSeen = 143,
     MarkAllSeen = 144,
     ToggleTrayIcon = 145,
+    ToggleStackListOrientation = 146,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1406,6 +1409,7 @@ impl ActionName {
             ActionName::MarkPaneSeen => "MarkPaneSeen",
             ActionName::MarkAllSeen => "MarkAllSeen",
             ActionName::ToggleTrayIcon => "ToggleTrayIcon",
+            ActionName::ToggleStackListOrientation => "ToggleStackListOrientation",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1554,6 +1558,7 @@ impl ActionName {
             "MarkPaneSeen" => Some(Self::MarkPaneSeen),
             "MarkAllSeen" => Some(Self::MarkAllSeen),
             "ToggleTrayIcon" => Some(Self::ToggleTrayIcon),
+            "ToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
             _ => None,
         }
     }

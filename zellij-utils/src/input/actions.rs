@@ -267,6 +267,8 @@ pub enum Action {
     ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Flip the focused stacked-list between vertical (title list) and horizontal (IDE tab bar)
+    ToggleStackListOrientation,
     SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
@@ -1256,6 +1258,7 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
+            CliAction::ToggleStackListOrientation => Ok(vec![Action::ToggleStackListOrientation]),
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::ToggleActiveSyncTabByTabId { id: id as u64 }]),

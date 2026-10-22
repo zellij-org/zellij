@@ -1139,6 +1139,7 @@ impl From<crate::input::options::Options>
             }),
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
+            stacked_pane_list_orientation: options.stacked_pane_list_orientation.map(|o| o.to_string()),
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
@@ -1289,6 +1290,19 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
+            stacked_pane_list_orientation: options
+                .stacked_pane_list_orientation
+                .map(|s| {
+                    s.parse::<crate::input::options::StackListOrientation>()
+                        .map_err(|e| {
+                            anyhow!(
+                                "Invalid StackListOrientation value '{}': {}",
+                                s,
+                                e
+                            )
+                        })
+                })
+                .transpose()?,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
@@ -1541,6 +1555,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedByPaneIdAction,
             ToggleSessionAction,
             ToggleSessionCardAction,
+            ToggleStackListOrientationAction,
             ToggleTabAction,
             ToggleThemeAction,
             ToggleTrayIconAction,
@@ -1722,6 +1737,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::TogglePaneFrames => {
                 ActionType::TogglePaneFrames(TogglePaneFramesAction {})
+            },
+            crate::input::actions::Action::ToggleStackListOrientation => {
+                ActionType::ToggleStackListOrientation(ToggleStackListOrientationAction {})
             },
             crate::input::actions::Action::SetPaneFrameStyle(style) => {
                 let style = match style {
@@ -2757,6 +2775,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::ToggleFocusNoUiFullscreen)
             },
             ActionType::TogglePaneFrames(_) => Ok(crate::input::actions::Action::TogglePaneFrames),
+            ActionType::ToggleStackListOrientation(_) => {
+                Ok(crate::input::actions::Action::ToggleStackListOrientation)
+            },
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
                 let style = crate::input::options::PaneFrameStyle::from_str(
                     &set_pane_frame_style_action.style,
@@ -4855,6 +4876,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
+            stack_direction: layout.stack_direction.map(|d| d.to_string()),
         }
     }
 }
@@ -5300,6 +5322,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
+            stack_direction: layout
+                .stack_direction
+                .as_deref()
+                .map(|direction| {
+                    crate::input::options::StackListOrientation::from_str(direction)
+                        .map_err(|e| anyhow!("Invalid stack_direction: {}", e))
+                })
+                .transpose()?,
         })
     }
 }

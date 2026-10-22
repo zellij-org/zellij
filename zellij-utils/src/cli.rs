@@ -1331,6 +1331,9 @@ pub enum CliAction {
     },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Toggle the focused stacked-list between vertical (title list) and horizontal (IDE tab
+    /// bar)
+    ToggleStackListOrientation,
     SetPaneFrameStyle {
         #[clap(value_enum, value_parser)]
         style: PaneFrameStyle,

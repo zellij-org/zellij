@@ -756,6 +756,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::StackedPaneListOrientation => info(
+            "Stacked pane list orientation",
+            PanesAndLayouts,
+            "Default title list orientation for new stacks",
+            Choice(&["vertical", "horizontal"]),
+            "vertical",
+            Everyone,
+        ),
         SettingKey::NestedSessionHandling => info(
             "Nested sessions",
             PanesAndLayouts,
@@ -1729,7 +1737,11 @@ pub fn section(key: SettingKey) -> &'static str {
             "Clipboard"
         },
         DefaultMode => "New panes",
-        AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
+        AutoLayout
+        | StackedResize
+        | StackedPaneList
+        | StackedPaneListOrientation
+        | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
             "Startup"

@@ -146,6 +146,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         web_sharing,
         stacked_resize,
         stacked_pane_list,
+        stacked_pane_list_orientation,
         show_startup_tips,
         show_release_notes,
         advanced_mouse_actions,
@@ -262,6 +263,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         ),
         (SettingKey::StackedResize, display_text(stacked_resize)),
         (SettingKey::StackedPaneList, display_text(stacked_pane_list)),
+        (
+            SettingKey::StackedPaneListOrientation,
+            display_text(stacked_pane_list_orientation),
+        ),
         (SettingKey::ShowStartupTips, display_text(show_startup_tips)),
         (
             SettingKey::ShowReleaseNotes,
@@ -829,6 +834,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::WebSharing => options.web_sharing = from.web_sharing,
         SettingKey::StackedResize => options.stacked_resize = from.stacked_resize,
         SettingKey::StackedPaneList => options.stacked_pane_list = from.stacked_pane_list,
+        SettingKey::StackedPaneListOrientation => {
+            options.stacked_pane_list_orientation = from.stacked_pane_list_orientation
+        },
         SettingKey::ShowStartupTips => options.show_startup_tips = from.show_startup_tips,
         SettingKey::ShowReleaseNotes => options.show_release_notes = from.show_release_notes,
         SettingKey::AdvancedMouseActions => {

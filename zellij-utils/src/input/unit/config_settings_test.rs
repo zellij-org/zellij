@@ -59,6 +59,9 @@ fn every_option_set() -> Options {
         web_sharing: Some(WebSharing::Disabled),
         stacked_resize: Some(false),
         stacked_pane_list: Some(false),
+        stacked_pane_list_orientation: Some(
+            crate::input::options::StackListOrientation::Horizontal,
+        ),
         show_startup_tips: Some(false),
         show_release_notes: Some(false),
         advanced_mouse_actions: Some(false),

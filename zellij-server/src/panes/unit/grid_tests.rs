@@ -10662,9 +10662,9 @@ fn only_main_prompts_count_as_prompt_returns() {
     let mut grid = create_grid_with_content("\x1b]133;A;k=s\x07> \x1b]133;P;k=r\x07");
     assert!(!grid.pending_prompt_return);
     assert_eq!(prompt_count(&grid.shell_reports.drain()), 0);
-    let mut grid = create_grid_with_content("\x1b]133;P;k=c\x07");
+    let grid = create_grid_with_content("\x1b]133;P;k=c\x07");
     assert!(!grid.pending_prompt_return);
-    let mut grid = create_grid_with_content("\x1b]133;D;0\x07");
+    let grid = create_grid_with_content("\x1b]133;D;0\x07");
     assert!(!grid.pending_prompt_return);
     let mut grid = create_grid_with_content("\x1b]133;A\x07$ ");
     assert!(grid.pending_prompt_return);

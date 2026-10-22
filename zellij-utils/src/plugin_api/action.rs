@@ -341,6 +341,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
             },
+            Some(ProtobufActionName::ToggleStackListOrientation) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleStackListOrientation should not have a payload"),
+                    None => Ok(Action::ToggleStackListOrientation),
+                }
+            },
             Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
                     match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
@@ -1724,6 +1730,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleStackListOrientation => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleStackListOrientation as i32,
                 optional_payload: None,
             }),
             Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {
@@ -3616,6 +3626,11 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            stack_direction: protobuf
+                .stack_direction
+                .as_deref()
+                .map(|direction| direction.parse().map_err(|_| "Invalid stack_direction"))
+                .transpose()?,
             default_fg: None,
             default_bg: None,
             border_style: protobuf.border_style.map(BorderStyleOverride::from),
@@ -3653,6 +3668,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             hide_floating_panes: internal.hide_floating_panes,
             pane_initial_contents: internal.pane_initial_contents,
             border_style: internal.border_style.map(|b| b.into()),
+            stack_direction: internal.stack_direction.map(|d| d.to_string()),
         })
     }
 }
@@ -3868,6 +3884,26 @@ mod tests {
                 position: crate::data::TAB_POSITION_END,
             },
         ]
+    }
+
+    #[test]
+    fn stack_list_orientation_round_trips_over_protobuf() {
+        let original = Action::ToggleStackListOrientation;
+        let protobuf: ProtobufAction = original.clone().try_into().unwrap();
+        assert_eq!(Action::try_from(protobuf).unwrap(), original);
+
+        let original = TiledPaneLayout {
+            children_are_stacked: true,
+            stack_direction: Some(crate::input::options::StackListOrientation::Horizontal),
+            borderless: Some(false),
+            border_style: Some(BorderStyleOverride {
+                all: Some(crate::data::LineStyle::Double),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let protobuf: ProtobufTiledPaneLayout = original.clone().try_into().unwrap();
+        assert_eq!(TiledPaneLayout::try_from(protobuf).unwrap(), original);
     }
 
     #[test]

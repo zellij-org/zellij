@@ -5154,6 +5154,7 @@ setting_keys! {
     WebSharing => (TopLevel, "web_sharing", true, Text),
     StackedResize => (TopLevel, "stacked_resize", false, Flag),
     StackedPaneList => (TopLevel, "stacked_pane_list", false, Flag),
+    StackedPaneListOrientation => (TopLevel, "stacked_pane_list_orientation", true, Text),
     ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
     ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
     AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
