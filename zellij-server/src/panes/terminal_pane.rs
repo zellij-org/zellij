@@ -1197,6 +1197,20 @@ impl Pane for TerminalPane {
     fn take_notification_end(&mut self) -> Option<NotificationEnd> {
         self.notification_end.take()
     }
+    fn attach_exit_waiter(&mut self, mut waiter: NotificationEnd) -> Option<NotificationEnd> {
+        if self.exited() {
+            if let Some(exit_status) = self.exit_status() {
+                waiter.set_exit_status(exit_status);
+            }
+            drop(waiter);
+            return None;
+        }
+        if self.notification_end.is_some() {
+            return Some(waiter);
+        }
+        self.notification_end = Some(waiter);
+        None
+    }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }

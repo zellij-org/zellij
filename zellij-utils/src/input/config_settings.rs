@@ -685,6 +685,10 @@ fn attention_values(
         attention.host_status.map(|v| v.to_string()),
     );
     values.insert(
+        SettingKey::AttentionTabMarkers,
+        attention.tab_markers.map(|v| v.to_string()),
+    );
+    values.insert(
         SettingKey::AttentionIdleRule,
         attention.idle_rule.map(|v| v.as_str().to_owned()),
     );
@@ -734,6 +738,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::AttentionHostStatus => {
             target.attention.host_status = source.attention.host_status;
+            return;
+        },
+        SettingKey::AttentionTabMarkers => {
+            target.attention.tab_markers = source.attention.tab_markers;
             return;
         },
         SettingKey::AttentionIdleRule => {

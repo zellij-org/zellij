@@ -696,6 +696,12 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the SessionHistoryUpdate Event"),
             },
+            Some(ProtobufEventType::DesktopIntegration) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::DesktopIntegrationPayload(payload)) => {
+                    Ok(Event::DesktopIntegration(payload))
+                },
+                _ => Err("Malformed payload for the DesktopIntegration Event"),
+            },
             Some(ProtobufEventType::PaneAttentionChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::PaneAttentionChangedPayload(payload)) => {
                     let pane_id: PaneId = payload
@@ -1494,6 +1500,10 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::SessionHistoryUpdate(info) => Ok(ProtobufEvent {
                 name: ProtobufEventType::SessionHistoryUpdate as i32,
                 payload: Some(event::Payload::SessionHistoryUpdatePayload(info.into())),
+            }),
+            Event::DesktopIntegration(payload) => Ok(ProtobufEvent {
+                name: ProtobufEventType::DesktopIntegration as i32,
+                payload: Some(event::Payload::DesktopIntegrationPayload(payload)),
             }),
             Event::PaneAttentionChanged(pane_id, attention) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
@@ -2837,6 +2847,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::CommandFinished => EventType::CommandFinished,
             ProtobufEventType::GlobalAttentionUpdate => EventType::GlobalAttentionUpdate,
             ProtobufEventType::SessionHistoryUpdate => EventType::SessionHistoryUpdate,
+            ProtobufEventType::DesktopIntegration => EventType::DesktopIntegration,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
@@ -2914,6 +2925,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::CommandFinished => ProtobufEventType::CommandFinished,
             EventType::GlobalAttentionUpdate => ProtobufEventType::GlobalAttentionUpdate,
             EventType::SessionHistoryUpdate => ProtobufEventType::SessionHistoryUpdate,
+            EventType::DesktopIntegration => ProtobufEventType::DesktopIntegration,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,

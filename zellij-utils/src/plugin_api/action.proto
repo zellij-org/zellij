@@ -582,6 +582,7 @@ enum ActionName {
     MarkPaneSeen = 143;
     MarkAllSeen = 144;
     ToggleTrayIcon = 145;
+    OpenSessionInWindow = 146;
 }
 
 message Position {

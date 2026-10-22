@@ -2,14 +2,15 @@ pub use super::generated_api::api::prompt::{
     prompt_request, prompt_result, prompt_value, ChoiceItem as ProtobufChoiceItem,
     ChooseSpec as ProtobufChooseSpec, ConfirmSpec as ProtobufConfirmSpec,
     FormField as ProtobufFormField, FormFieldKind as ProtobufFormFieldKind,
-    FormSpec as ProtobufFormSpec, InputSpec as ProtobufInputSpec, MenuSpec as ProtobufMenuSpec,
-    NotifySpec as ProtobufNotifySpec, NumberSpec as ProtobufNumberSpec,
-    PromptCancelled as ProtobufPromptCancelled, PromptFormEntry as ProtobufPromptFormEntry,
-    PromptFormValue as ProtobufPromptFormValue, PromptPlacement as ProtobufPromptPlacement,
-    PromptPlacementKind as ProtobufPromptPlacementKind, PromptRequest as ProtobufPromptRequest,
-    PromptResult as ProtobufPromptResult, PromptTimedOut as ProtobufPromptTimedOut,
-    PromptValue as ProtobufPromptValue, PromptValueList as ProtobufPromptValueList,
-    SelectSpec as ProtobufSelectSpec, ToggleSpec as ProtobufToggleSpec,
+    FormSpec as ProtobufFormSpec, InfoSpec as ProtobufInfoSpec, InputSpec as ProtobufInputSpec,
+    MenuSpec as ProtobufMenuSpec, NotifySpec as ProtobufNotifySpec,
+    NumberSpec as ProtobufNumberSpec, PromptCancelled as ProtobufPromptCancelled,
+    PromptFormEntry as ProtobufPromptFormEntry, PromptFormValue as ProtobufPromptFormValue,
+    PromptPlacement as ProtobufPromptPlacement, PromptPlacementKind as ProtobufPromptPlacementKind,
+    PromptRequest as ProtobufPromptRequest, PromptResult as ProtobufPromptResult,
+    PromptTimedOut as ProtobufPromptTimedOut, PromptValue as ProtobufPromptValue,
+    PromptValueList as ProtobufPromptValueList, SelectSpec as ProtobufSelectSpec,
+    ToggleSpec as ProtobufToggleSpec,
 };
 use crate::data::PaneId;
 use crate::prompt::{
@@ -280,6 +281,9 @@ impl From<PromptSpec> for prompt_request::Spec {
                 show_pane_name,
                 show_tab_name,
             }),
+            PromptSpec::Info { message } => prompt_request::Spec::Info(ProtobufInfoSpec {
+                message: Some(message.into()),
+            }),
         }
     }
 }
@@ -329,6 +333,9 @@ impl TryFrom<prompt_request::Spec> for PromptSpec {
                 message: spec.message.map(Into::into).unwrap_or_default(),
                 show_pane_name: spec.show_pane_name,
                 show_tab_name: spec.show_tab_name,
+            },
+            prompt_request::Spec::Info(spec) => PromptSpec::Info {
+                message: spec.message.map(Into::into).unwrap_or_default(),
             },
         })
     }
@@ -514,6 +521,7 @@ mod tests {
             PromptRequest::select("S", vec!["a", "b"]).placement(PromptPlacement::Center),
         );
         round_trip_request(PromptRequest::menu(vec![("v", "Label")]));
+        round_trip_request(PromptRequest::info("About", "Text").placement(PromptPlacement::Mouse));
         let colored = StyledText {
             text: "Delete x?".to_owned(),
             indices: vec![vec![], vec![], vec![], vec![7]],

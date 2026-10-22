@@ -1463,6 +1463,7 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutByTabIdAction,
             NoOpAction,
             OpenContextMenuAction,
+            OpenSessionInWindowAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -1549,6 +1550,7 @@ impl From<crate::input::actions::Action>
             UndoRenameTabAction,
             // Tab-targeting
             UndoRenameTabByTabIdAction,
+            WaitForPaneExitAction,
             WatchPaneAction,
             WatchPaneByPaneIdAction,
             WriteAction,
@@ -1994,6 +1996,14 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleTrayIcon => {
                 ActionType::ToggleTrayIcon(ToggleTrayIconAction {})
+            },
+            crate::input::actions::Action::OpenSessionInWindow => {
+                ActionType::OpenSessionInWindow(OpenSessionInWindowAction {})
+            },
+            crate::input::actions::Action::WaitForPaneExit { pane_id } => {
+                ActionType::WaitForPaneExit(WaitForPaneExitAction {
+                    pane_id: Some(pane_id.into()),
+                })
             },
             crate::input::actions::Action::MarkPaneSeen { session, pane_id } => {
                 ActionType::MarkPaneSeen(MarkPaneSeenAction {
@@ -3020,6 +3030,15 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::GoToNextAttention)
             },
             ActionType::ToggleTrayIcon(_) => Ok(crate::input::actions::Action::ToggleTrayIcon),
+            ActionType::OpenSessionInWindow(_) => {
+                Ok(crate::input::actions::Action::OpenSessionInWindow)
+            },
+            ActionType::WaitForPaneExit(a) => Ok(crate::input::actions::Action::WaitForPaneExit {
+                pane_id: a
+                    .pane_id
+                    .ok_or_else(|| anyhow!("WaitForPaneExit missing pane_id"))?
+                    .try_into()?,
+            }),
             ActionType::MarkPaneSeen(a) => Ok(crate::input::actions::Action::MarkPaneSeen {
                 session: a.session,
                 pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,

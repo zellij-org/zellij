@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -134,6 +134,8 @@ pub mod event {
         GlobalAttentionUpdatePayload(super::GlobalAttentionUpdatePayload),
         #[prost(message, tag="60")]
         SessionHistoryUpdatePayload(super::SessionHistoryUpdatePayload),
+        #[prost(string, tag="61")]
+        DesktopIntegrationPayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1584,6 +1586,7 @@ pub enum EventType {
     CommandFinished = 66,
     GlobalAttentionUpdate = 67,
     SessionHistoryUpdate = 68,
+    DesktopIntegration = 69,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1659,6 +1662,7 @@ impl EventType {
             EventType::CommandFinished => "CommandFinished",
             EventType::GlobalAttentionUpdate => "GlobalAttentionUpdate",
             EventType::SessionHistoryUpdate => "SessionHistoryUpdate",
+            EventType::DesktopIntegration => "DesktopIntegration",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1731,6 +1735,7 @@ impl EventType {
             "CommandFinished" => Some(Self::CommandFinished),
             "GlobalAttentionUpdate" => Some(Self::GlobalAttentionUpdate),
             "SessionHistoryUpdate" => Some(Self::SessionHistoryUpdate),
+            "DesktopIntegration" => Some(Self::DesktopIntegration),
             _ => None,
         }
     }

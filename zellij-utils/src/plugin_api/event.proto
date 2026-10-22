@@ -92,6 +92,7 @@ enum EventType {
     CommandFinished = 66;
     GlobalAttentionUpdate = 67;
     SessionHistoryUpdate = 68;
+    DesktopIntegration = 69;
 }
 
 message EventNameList {
@@ -160,6 +161,7 @@ message Event {
     CommandFinishedPayload command_finished_payload = 58;
     GlobalAttentionUpdatePayload global_attention_update_payload = 59;
     SessionHistoryUpdatePayload session_history_update_payload = 60;
+    string desktop_integration_payload = 61;
   }
 }
 

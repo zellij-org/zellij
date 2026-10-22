@@ -101,6 +101,7 @@ impl DesktopNotifications {
 pub struct AttentionConfig {
     pub frame_markers: Option<bool>,
     pub host_status: Option<bool>,
+    pub tab_markers: Option<bool>,
     pub idle_rule: Option<IdleRuleScope>,
     pub done_threshold_secs: Option<u64>,
     pub idle_activity_secs: Option<u64>,
@@ -148,6 +149,9 @@ impl AttentionConfig {
     pub fn host_status(&self) -> bool {
         self.host_status.unwrap_or(true)
     }
+    pub fn tab_markers(&self) -> bool {
+        self.tab_markers.unwrap_or(true)
+    }
     pub fn idle_rule(&self) -> IdleRuleScope {
         self.idle_rule.unwrap_or_default()
     }
@@ -184,6 +188,7 @@ impl AttentionConfig {
             match node.name().value() {
                 "frame_markers" => config.frame_markers = Some(bool_value(node)?),
                 "host_status" => config.host_status = Some(bool_value(node)?),
+                "tab_markers" => config.tab_markers = Some(bool_value(node)?),
                 "idle_rule" => {
                     let value = first_value(node).and_then(|v| v.as_string());
                     config.idle_rule =
@@ -249,6 +254,9 @@ impl AttentionConfig {
         if let Some(v) = self.host_status {
             push("host_status", KdlValue::Bool(v));
         }
+        if let Some(v) = self.tab_markers {
+            push("tab_markers", KdlValue::Bool(v));
+        }
         if let Some(v) = self.idle_rule {
             push("idle_rule", KdlValue::String(v.as_str().to_owned()));
         }
@@ -284,6 +292,7 @@ impl AttentionConfig {
         AttentionConfig {
             frame_markers: other.frame_markers.or(self.frame_markers),
             host_status: other.host_status.or(self.host_status),
+            tab_markers: other.tab_markers.or(self.tab_markers),
             idle_rule: other.idle_rule.or(self.idle_rule),
             done_threshold_secs: other.done_threshold_secs.or(self.done_threshold_secs),
             idle_activity_secs: other.idle_activity_secs.or(self.idle_activity_secs),
@@ -310,6 +319,7 @@ mod tests {
         let config = parse("attention {\n}").unwrap();
         assert!(config.frame_markers());
         assert!(config.host_status());
+        assert!(config.tab_markers());
         assert_eq!(config.idle_rule(), IdleRuleScope::All);
         assert_eq!(config.done_threshold_secs(), 10);
         assert_eq!(config.idle_activity_secs(), 10);
@@ -331,6 +341,7 @@ mod tests {
             attention {
                 frame_markers false
                 host_status false
+                tab_markers false
                 idle_rule "watched"
                 done_threshold_secs 5
                 idle_activity_secs 20
@@ -345,6 +356,7 @@ mod tests {
         .unwrap();
         assert!(!config.frame_markers());
         assert!(!config.host_status());
+        assert!(!config.tab_markers());
         assert_eq!(config.idle_rule(), IdleRuleScope::Watched);
         assert_eq!(config.done_threshold_secs(), 5);
         assert_eq!(config.startup_card(), StartupCard::Never);

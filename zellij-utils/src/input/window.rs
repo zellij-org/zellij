@@ -102,6 +102,45 @@ impl BellMode {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TerminalRequests {
+    #[default]
+    NewSession,
+    ExistingSession,
+}
+
+impl TerminalRequests {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TerminalRequests::NewSession => "new_session",
+            TerminalRequests::ExistingSession => "existing_session",
+        }
+    }
+
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let named = kdl
+            .entries()
+            .iter()
+            .next()
+            .and_then(|entry| entry.value().as_string());
+        match named.map(str::to_ascii_lowercase).as_deref() {
+            Some("new_session") => Ok(TerminalRequests::NewSession),
+            Some("existing_session") => Ok(TerminalRequests::ExistingSession),
+            _ => Err(ConfigError::new_kdl_error(
+                "terminal_requests must be \"new_session\" or \"existing_session\"".to_owned(),
+                kdl.span().offset(),
+                kdl.span().len(),
+            )),
+        }
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("terminal_requests");
+        node.push(KdlValue::String(self.as_str().to_owned()));
+        node
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 pub enum StartupMode {
     Windowed,
@@ -434,6 +473,7 @@ pub struct WindowConfig {
     pub open_links: Option<bool>,
     pub bell: Option<BellMode>,
     pub startup_mode: Option<StartupMode>,
+    pub terminal_requests: Option<TerminalRequests>,
     pub opacity: Option<f32>,
     pub opacity_mode: Option<OpacityMode>,
     pub blur: Option<bool>,
@@ -517,6 +557,9 @@ impl WindowConfig {
         }
         if let Some(startup_mode) = kdl_get_child!(kdl, "startup_mode") {
             window.startup_mode = Some(StartupMode::from_kdl(startup_mode)?);
+        }
+        if let Some(terminal_requests) = kdl_get_child!(kdl, "terminal_requests") {
+            window.terminal_requests = Some(TerminalRequests::from_kdl(terminal_requests)?);
         }
         if let Some(opacity) = kdl_get_child!(kdl, "opacity") {
             window.opacity = Some(opacity_from_kdl(opacity)?);
@@ -683,6 +726,9 @@ impl WindowConfig {
         if let Some(startup_mode) = self.startup_mode {
             children.nodes_mut().push(startup_mode.to_kdl());
         }
+        if let Some(terminal_requests) = self.terminal_requests {
+            children.nodes_mut().push(terminal_requests.to_kdl());
+        }
         if let Some(opacity) = self.opacity {
             let mut opacity_node = KdlNode::new("opacity");
             if opacity.fract() == 0.0 {
@@ -834,6 +880,7 @@ impl WindowConfig {
         merged.open_links = other.open_links.or(merged.open_links);
         merged.bell = other.bell.or(merged.bell);
         merged.startup_mode = other.startup_mode.or(merged.startup_mode);
+        merged.terminal_requests = other.terminal_requests.or(merged.terminal_requests);
         merged.opacity = other.opacity.or(merged.opacity);
         merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
         merged.blur = other.blur.or(merged.blur);
@@ -1236,6 +1283,7 @@ mod tests {
                 open_links false
                 bell "both"
                 startup_mode "fullscreen"
+                terminal_requests "existing_session"
                 opacity 0.85
                 opacity_mode "everything"
                 blur true
@@ -1290,6 +1338,10 @@ mod tests {
         assert_eq!(parsed.open_links, Some(false));
         assert_eq!(parsed.bell, Some(BellMode::Both));
         assert_eq!(parsed.startup_mode, Some(StartupMode::Fullscreen));
+        assert_eq!(
+            parsed.terminal_requests,
+            Some(TerminalRequests::ExistingSession)
+        );
         assert_eq!(parsed.opacity, Some(0.85));
         assert_eq!(parsed.opacity_mode, Some(OpacityMode::Everything));
         assert_eq!(parsed.blur, Some(true));

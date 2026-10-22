@@ -314,6 +314,9 @@ pub fn text_cell_width(text: &str) -> usize {
 }
 
 pub fn parse_text(stringified: &mut String) -> Result<String> {
+    if stringified.is_empty() {
+        return Ok(String::new());
+    }
     let mut utf8 = vec![];
     for stringified_character in stringified.split(',') {
         utf8.push(
@@ -324,4 +327,18 @@ pub fn parse_text(stringified: &mut String) -> Result<String> {
         );
     }
     Ok(String::from_utf8_lossy(&utf8).to_string())
+}
+
+#[cfg(test)]
+mod empty_text_tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_text_component_is_kept() {
+        let mut params = vec!["z".to_owned()];
+        let parsed = parse_text_params(params.iter_mut());
+        assert_eq!(parsed.len(), 1);
+        assert!(parsed[0].text.is_empty());
+        assert!(parsed[0].opaque);
+    }
 }

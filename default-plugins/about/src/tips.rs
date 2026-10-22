@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::active_component::{ActiveComponent, ClickAction};
 use crate::pages::{BulletinList, ComponentLine, Page, TextOrCustomRender};
 
-pub const MAX_TIP_INDEX: usize = 11;
+pub const MAX_TIP_INDEX: usize = crate::onboarding::LAST_ONBOARDING_TIP_INDEX;
 
 impl Page {
     pub fn new_tip_screen(
@@ -38,6 +38,16 @@ impl Page {
             Page::tip_11(link_executable)
         } else if tip_index == 11 {
             Page::tip_12(link_executable, base_mode)
+        } else if tip_index == crate::onboarding::DESKTOP_TIP_INDEX {
+            Page::tip_desktop_app()
+        } else if tip_index == crate::onboarding::DESKTOP_TIP_INDEX + 1 {
+            Page::tip_inbox_keys(base_mode)
+        } else if tip_index == crate::onboarding::DESKTOP_TIP_INDEX + 2 {
+            Page::tip_pane_controls(base_mode)
+        } else if tip_index == crate::onboarding::DESKTOP_TIP_INDEX + 3 {
+            Page::tip_run_notify()
+        } else if tip_index == crate::onboarding::DESKTOP_TIP_INDEX + 4 {
+            Page::tip_session_history(base_mode)
         } else {
             Page::tip_1(link_executable)
         }

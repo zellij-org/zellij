@@ -16,7 +16,6 @@ mod com;
 mod composition;
 mod connection;
 mod dbus;
-mod desktop_entry;
 #[cfg(test)]
 mod differential;
 mod discovery;
@@ -36,6 +35,8 @@ pub mod icns;
 mod identity;
 mod image_io;
 mod input;
+#[cfg(windows)]
+mod jump_list;
 mod kitty;
 #[cfg(windows)]
 mod launcher;
@@ -71,6 +72,7 @@ mod sprites;
 #[cfg(windows)]
 mod taskbar;
 mod terminal;
+mod terminal_request;
 #[cfg(test)]
 mod test_server;
 #[cfg(windows)]
@@ -117,10 +119,21 @@ pub mod test_support {
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     diagnostics::log_crashes();
     identity::declare();
+    if let Err(e) = args.validate() {
+        bail!("{}", e);
+    }
     #[cfg(windows)]
     let unattended = unattended::prepare();
     spawn::forget_launching_session();
-    let result = open(args, opts);
+    if args.waits_for_command() {
+        let code = run_waited(args, opts)?;
+        std::process::exit(code);
+    }
+    let result = if args.background {
+        run_in_background(args, opts)
+    } else {
+        open(args, opts)
+    };
     #[cfg(windows)]
     if let (Some(unattended), Err(error)) = (&unattended, &result) {
         unattended.report(error);
@@ -128,12 +141,101 @@ pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     result
 }
 
-pub fn install_desktop_entry() -> Result<()> {
-    desktop_entry::install()
+#[cfg(windows)]
+pub fn unregister_app() -> Result<Vec<String>> {
+    app_registration::unregister()
 }
 
-pub fn uninstall_desktop_entry() -> Result<()> {
-    desktop_entry::uninstall()
+fn starting_folder(args: &WindowArgs) -> PathBuf {
+    args.working_directory
+        .clone()
+        .map(|dir| match std::env::current_dir() {
+            Ok(cwd) if dir.is_relative() => cwd.join(dir),
+            _ => dir,
+        })
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn terminal_requests(opts: &CliArgs) -> zellij_utils::input::window::TerminalRequests {
+    settings::load(Config::config_file_path(opts).as_deref())
+        .ok()
+        .and_then(|settings| settings.section.terminal_requests)
+        .unwrap_or_default()
+}
+
+fn run_waited(args: WindowArgs, opts: CliArgs) -> Result<i32> {
+    let waited = terminal_request::Waited {
+        command: args.execute.clone(),
+        cwd: starting_folder(&args),
+        hold: args.hold,
+    };
+    if hosted_by_the_app(&args) && terminal_request::ensure_app_running() {
+        let request = OpenWindowRequest {
+            startup_mode: args.startup_mode,
+            force_run_commands: args.attach.force_run_commands,
+            ..Default::default()
+        };
+        match terminal_request::run_in_app(&waited, terminal_requests(&opts), request) {
+            Ok(code) => return Ok(code),
+            Err(e) => report!(
+                "the desktop app could not open the command, so this window runs on its own: {:#}",
+                e
+            ),
+        }
+    }
+    run_waited_alone(args, opts, waited)
+}
+
+fn run_waited_alone(
+    args: WindowArgs,
+    opts: CliArgs,
+    waited: terminal_request::Waited,
+) -> Result<i32> {
+    let name = generate_unique_session_name()
+        .ok_or_else(|| anyhow!("Failed to generate a unique session name, giving up"))?;
+    let mut args = args;
+    args.attach.session_name = Some(name.clone());
+    args.attach.create = true;
+    args.attach.initial_command = waited.command.clone();
+    args.attach.close_on_exit = false;
+    args.execute.clear();
+    args.standalone = true;
+    let waiter = {
+        let waited = waited.clone();
+        std::thread::Builder::new()
+            .name("waited_command".to_owned())
+            .spawn(move || {
+                terminal_request::wait_in_new_session(&name, &waited).unwrap_or_else(|e| {
+                    report!("the command could not be followed: {:#}", e);
+                    terminal_request::FAILURE
+                })
+            })?
+    };
+    let opened = open(args, opts);
+    let code = waiter.join().unwrap_or(terminal_request::FAILURE);
+    if let Err(e) = opened {
+        report!("{:#}", e);
+    }
+    Ok(code)
+}
+
+fn run_in_background(args: WindowArgs, opts: CliArgs) -> Result<()> {
+    if zellij_utils::app_control::app_is_running() {
+        return Ok(());
+    }
+    let config_options = match Setup::from_cli_args(&opts) {
+        Ok((_, _, config_options, _, _)) => config_options,
+        Err(e) => bail!("{}", notice::described(&e)),
+    };
+    let settings = settings::load(Config::config_file_path(&opts).as_deref())?;
+    let dir = zellij_utils::consts::app_dir();
+    match app::instance::claim(&dir, &AppRequest::Ping, app::instance::HANDOFF_WAIT)? {
+        app::instance::Claim::Handed(_) => Ok(()),
+        app::instance::Claim::Primary(instance) => {
+            run_app(instance, None, args, opts, config_options, settings)
+        },
+    }
 }
 
 struct Plan {
@@ -261,7 +363,8 @@ fn resolve(
             opening: Opening::Watcher,
         });
     }
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let current_dir = starting_folder(args);
+    let chosen_folder = args.working_directory.as_ref().map(|_| current_dir.clone());
     let initial_panes = initial_panes_from_cli(
         attach.initial_command.clone(),
         None,
@@ -276,12 +379,19 @@ fn resolve(
                 "Failed to generate a unique session name, giving up",
             ));
         };
-        ClientInfo::New(name, None, None, initial_panes)
+        ClientInfo::New(name, None, chosen_folder, initial_panes)
     } else {
-        let mut resolved =
-            session_resolution::resolve_attach(attach, config_options.clone(), false, None)?;
+        let mut resolved = session_resolution::resolve_attach(
+            attach,
+            config_options.clone(),
+            false,
+            chosen_folder.clone(),
+        )?;
         if let Some(initial_panes) = initial_panes {
             resolved.client.set_initial_panes(initial_panes);
+        }
+        if let (Some(folder), ClientInfo::New(..)) = (chosen_folder, &resolved.client) {
+            resolved.client.set_cwd(folder);
         }
         resolved.client
     };
@@ -535,9 +645,9 @@ fn window_request(args: &WindowArgs) -> OpenWindowRequest {
         session: args.attach.session_name.clone(),
         create: args.attach.create,
         pane_id: None,
-        command: args.attach.initial_command.clone(),
-        cwd: std::env::current_dir().ok(),
-        close_on_exit: args.attach.close_on_exit,
+        command: args.command().to_vec(),
+        cwd: Some(starting_folder(args)),
+        close_on_exit: args.closes_command_on_exit(),
         start_suspended: args.attach.start_suspended,
         force_run_commands: args.attach.force_run_commands,
         startup_mode: args.startup_mode,
@@ -573,7 +683,7 @@ fn launch_app(
         Ok(app::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::instance::Claim::Primary(instance)) => {
-            run_app(instance, first, args, opts, config_options, settings)
+            run_app(instance, Some(first), args, opts, config_options, settings)
         },
         Err(e) if panel_view(&args).is_some() => refuse(
             Refusal::new(format!(
@@ -595,7 +705,7 @@ fn launch_app(
 
 fn run_app(
     instance: app::instance::Instance,
-    first: app::Intent,
+    first: Option<app::Intent>,
     args: WindowArgs,
     opts: CliArgs,
     config_options: SessionOptions,
@@ -605,6 +715,7 @@ fn run_app(
     {
         app::platform_windows::set_process_app_id();
         app::platform_windows::register_app_id();
+        jump_list::install();
     }
     let options = configured(&settings, &args);
     let capabilities = connection::Capabilities {
@@ -629,6 +740,7 @@ fn run_app(
         })?
     };
     let attention = app::attention_config(config_path.as_deref());
+    app::services::check_soon(&attention);
     let notifier = {
         let poster = poster.clone();
         app::notifier::Notifier::spawn(Arc::new(move |event| {
@@ -686,7 +798,7 @@ fn run_app(
         window::DesktopMode::Background(Box::new(window::Hosting {
             background,
             maker: Box::new(launcher),
-            first: Some(first),
+            first,
         })),
         windowing,
     )

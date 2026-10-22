@@ -225,16 +225,20 @@ fn alt_w_in_the_inbox_opens_the_items_pane_in_a_window() {
 }
 
 #[test]
-fn without_the_desktop_app_the_window_keys_are_not_offered_and_do_nothing() {
+fn without_the_desktop_app_alt_w_is_still_offered_and_warns_before_starting_it() {
     let other = other_session();
     let mut zellij = main_session();
-    open_sessions_with(&zellij, other.session_name(), "<F1> all keys");
-    assert!(!zellij.snapshot().contains("<Alt w>"));
+    open_sessions_with(&zellij, other.session_name(), "<Alt w> open it in a window");
+    assert!(!zellij.snapshot().contains("<Alt d>"));
     zellij.send_stdin(&keys::alt('w'));
-    std::thread::sleep(QUIET);
-    assert!(!zellij
-        .snapshot()
-        .contains("You are connected from a terminal"));
+    zellij.wait_until("the warning is shown", |grid_snapshot| {
+        grid_snapshot.contains("You are connected from a terminal")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the list is back", |grid_snapshot| {
+        !grid_snapshot.contains("You are connected from a terminal")
+            && grid_snapshot.contains(other.session_name())
+    });
     zellij.quit();
 }
 

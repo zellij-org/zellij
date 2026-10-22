@@ -636,11 +636,69 @@ pub struct WindowArgs {
         help = "Show or hide the sessions panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
     )]
     pub sessions: bool,
+
+    #[clap(
+        short = 'e',
+        value_name = "COMMAND",
+        num_args = 1..,
+        allow_hyphen_values = true,
+        conflicts_with_all = &["watch", "inbox", "sessions", "headless", "initial_command", "background"],
+        help = "Run this command (and every argument after it) as the first pane, close the pane when it exits, and wait for it, exiting with its exit code (as terminal emulators do)"
+    )]
+    pub execute: Vec<String>,
+
+    #[clap(
+        long,
+        value_name = "DIR",
+        help = "Start in this folder instead of the current one"
+    )]
+    pub working_directory: Option<PathBuf>,
+
+    #[clap(
+        long,
+        help = "Keep the command's pane open after the command exits, showing its output (requires a command)"
+    )]
+    pub hold: bool,
+
+    #[clap(
+        long,
+        hide = true,
+        conflicts_with_all = &["inbox", "sessions", "standalone", "watch", "headless"],
+        help = "Start the desktop app without opening a window"
+    )]
+    pub background: bool,
 }
 
 impl WindowArgs {
     pub const DEFAULT_ROWS: usize = 40;
     pub const DEFAULT_COLS: usize = 120;
+
+    pub fn command(&self) -> &[String] {
+        if self.execute.is_empty() {
+            &self.attach.initial_command
+        } else {
+            &self.execute
+        }
+    }
+
+    pub fn waits_for_command(&self) -> bool {
+        !self.execute.is_empty()
+    }
+
+    pub fn closes_command_on_exit(&self) -> bool {
+        if self.hold {
+            false
+        } else {
+            self.waits_for_command() || self.attach.close_on_exit
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.hold && self.command().is_empty() {
+            return Err("--hold needs a command to keep open: give one with -e".to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]

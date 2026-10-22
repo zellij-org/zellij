@@ -2902,6 +2902,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for GetSavedSessionPreview"),
             },
+            Some(CommandName::DesktopIntegration) => match protobuf_plugin_command.payload {
+                Some(Payload::DesktopIntegrationPayload(request)) => {
+                    Ok(PluginCommand::DesktopIntegration(request))
+                },
+                _ => Err("Mismatched payload for DesktopIntegration"),
+            },
             Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
                 Some(Payload::DeleteThemeFilePayload(name)) => {
                     Ok(PluginCommand::DeleteThemeFile { name })
@@ -5095,6 +5101,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSavedSessionPreview as i32,
                 payload: Some(Payload::GetSavedSessionPreviewPayload(name)),
+            }),
+            PluginCommand::DesktopIntegration(request) => Ok(ProtobufPluginCommand {
+                name: CommandName::DesktopIntegration as i32,
+                payload: Some(Payload::DesktopIntegrationPayload(request)),
             }),
             PluginCommand::DeleteThemeFile { name } => Ok(ProtobufPluginCommand {
                 name: CommandName::DeleteThemeFile as i32,

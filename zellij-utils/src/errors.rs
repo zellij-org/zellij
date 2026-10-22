@@ -455,6 +455,7 @@ pub enum ScreenContext {
     TerminalInputSubmitted,
     TerminalEscapePressed,
     ToggleSessionCard,
+    WaitForPaneExit,
     SetPopupFocused,
     PopupToFloatingPane,
     ShowSwapLayoutNotification,

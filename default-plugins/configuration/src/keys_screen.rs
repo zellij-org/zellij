@@ -57,6 +57,43 @@ pub struct KeysScreen {
     focused: bool,
     naming: Option<PresetNaming>,
     config_file_path: Option<String>,
+    step_of_setup: bool,
+    finished: bool,
+    wants_back: bool,
+    footer_row: std::cell::Cell<Option<usize>>,
+    footer_areas: Vec<(Rect, SetupAction)>,
+    footer_hovered: Option<SetupAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SetupAction {
+    Finish,
+    Back,
+}
+
+const SETUP_ACTIONS: [(&str, &str, SetupAction); 2] = [
+    ("<Ctrl a>", "Finish", SetupAction::Finish),
+    ("<Esc>", "Go back", SetupAction::Back),
+];
+
+fn preset_label(name: &str) -> String {
+    let words: Vec<String> = name
+        .split(['-', '_'])
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut characters = word.chars();
+            match characters.next() {
+                Some(first) => first.to_uppercase().chain(characters).collect(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    let label = words.join(" ");
+    if name == "unlock-first" {
+        format!("{} (Avoids Collisions)", label)
+    } else {
+        label
+    }
 }
 
 struct PresetNaming {
@@ -90,9 +127,26 @@ impl KeysScreen {
             focused: is_setup_wizard,
             naming: None,
             config_file_path: None,
+            step_of_setup: false,
+            finished: false,
+            wants_back: false,
+            footer_row: std::cell::Cell::new(None),
+            footer_areas: vec![],
+            footer_hovered: None,
         };
         screen.rebuild();
         screen
+    }
+    pub fn as_setup_step(mut self) -> Self {
+        self.step_of_setup = true;
+        self.rebuild();
+        self
+    }
+    pub fn take_finished(&mut self) -> bool {
+        std::mem::replace(&mut self.finished, false)
+    }
+    pub fn take_wants_back(&mut self) -> bool {
+        std::mem::replace(&mut self.wants_back, false)
     }
     pub fn is_capturing_keys(&self) -> bool {
         self.capturing_unlock || self.naming.is_some()
@@ -112,9 +166,6 @@ impl KeysScreen {
         } else {
             self.notice.as_ref()
         }
-    }
-    pub fn set_notice(&mut self, notice: Option<String>) {
-        self.notice = notice;
     }
     pub fn set_presets(
         &mut self,
@@ -207,6 +258,11 @@ impl KeysScreen {
                 .iter()
                 .position(|name| *name == self.selection.active.name)
                 .unwrap_or(0);
+            let names: Vec<String> = if self.is_setup_wizard {
+                names.iter().map(|name| preset_label(name)).collect()
+            } else {
+                names
+            };
             self.elements.add(
                 KeysField::Preset,
                 Dropdown::new(Text::from("Preset").color_all(2), names)
@@ -256,7 +312,7 @@ impl KeysScreen {
                     .width(FIELD_WIDTH - LABEL_WIDTH),
                 );
             }
-            if self.is_setup_wizard {
+            if self.is_setup_wizard && !self.step_of_setup {
                 self.elements
                     .add(KeysField::Save, Button::new("Apply and save"));
             }
@@ -619,15 +675,31 @@ impl KeysScreen {
         }
     }
     fn save(&mut self) {
+        if self.step_of_setup {
+            self.finished = true;
+            return;
+        }
         overwrite_config_file();
         request_close();
+    }
+    fn leave(&mut self) {
+        if self.step_of_setup {
+            self.wants_back = true;
+        } else {
+            request_close();
+        }
     }
     fn handle_focus_event(&mut self, event: FocusEvent<KeysField>) -> bool {
         match event {
             FocusEvent::Element { key, response } => {
                 match (key, response) {
-                    (KeysField::Preset, UiResponse::Changed(UiValue::Choice { label, .. })) => {
-                        self.choose_preset(&label)
+                    (KeysField::Preset, UiResponse::Changed(UiValue::Choice { index, label })) => {
+                        let name = if self.is_setup_wizard {
+                            self.preset_names().get(index).cloned().unwrap_or(label)
+                        } else {
+                            label
+                        };
+                        self.choose_preset(&name)
                     },
                     (KeysField::Primary, UiResponse::Changed(UiValue::Choice { label, .. })) => {
                         self.set_leader("primary", label)
@@ -697,14 +769,14 @@ impl KeysScreen {
                     return true;
                 },
                 BareKey::Esc => {
-                    request_close();
+                    self.leave();
                     return true;
                 },
                 _ => {},
             }
         }
         if key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
-            request_close();
+            self.leave();
             return true;
         }
         false
@@ -729,7 +801,35 @@ impl KeysScreen {
             }
             return true;
         }
+        let footer_action = |line: isize, column: usize, areas: &[(Rect, SetupAction)]| {
+            areas
+                .iter()
+                .find(|(area, _)| area.contains(line, column))
+                .map(|(_, action)| *action)
+        };
         match mouse {
+            Mouse::LeftClick(line, column)
+                if footer_action(line, column, &self.footer_areas).is_some() =>
+            {
+                match footer_action(line, column, &self.footer_areas) {
+                    Some(SetupAction::Finish) => self.save(),
+                    Some(SetupAction::Back) => self.leave(),
+                    None => {},
+                }
+                return true;
+            },
+            Mouse::Hover(line, column) if self.step_of_setup => {
+                let hovered = footer_action(line, column, &self.footer_areas);
+                let footer_changed = hovered != self.footer_hovered;
+                self.footer_hovered = hovered;
+                let link_hovered = !self.elements.has_open_overlay()
+                    && !crate::page::under_overlay(line, column)
+                    && self.file_link_at(line, column);
+                let changed = link_hovered != self.file_link_hovered;
+                self.file_link_hovered = link_hovered;
+                let event = self.elements.handle_mouse(mouse);
+                return self.handle_focus_event(event) || changed || footer_changed;
+            },
             Mouse::LeftClick(line, column) if self.file_link_at(line, column) => {
                 if let Some(path) = self.file_link_target.clone() {
                     open_file_floating(FileToOpen::new(path), None, BTreeMap::new());
@@ -840,7 +940,13 @@ impl KeysScreen {
         let mut link_row: Option<(usize, usize, String)> = None;
         let fit = |text: &str| truncate(text, width);
         let mut row = 0;
-        if self.is_setup_wizard {
+        if self.step_of_setup {
+            lines.push((
+                row,
+                Text::from(fit("Please Choose a Keybinding Preset")).color_all(2),
+            ));
+            row += 2;
+        } else if self.is_setup_wizard {
             lines.push((
                 row,
                 Text::from(fit(
@@ -991,6 +1097,15 @@ impl KeysScreen {
             lines.push((row, Text::from(fit(notice)).color_all(3)));
             row += 1;
         }
+        self.footer_row.set(None);
+        if self.step_of_setup && !self.is_custom() {
+            row += 1;
+            lines.push((row, Text::from(fit("You can always change this later."))));
+            row += 2;
+            self.footer_row.set(Some(row));
+            lines.push((row, Text::from("")));
+            row += 1;
+        }
         let total = lines
             .iter()
             .map(|(line_row, _)| *line_row + 1)
@@ -1095,6 +1210,44 @@ impl KeysScreen {
                 _ => {},
             }
         }
+        self.footer_areas.clear();
+        if let Some(footer_row) = self.footer_row.get() {
+            if footer_row >= offset && footer_row < offset + height {
+                let footer_y = y + footer_row - offset;
+                let mut column = x;
+                for (key, label, action) in SETUP_ACTIONS {
+                    let key_width = zellij_tile::graphemes::display_width(key);
+                    let label_width = zellij_tile::graphemes::display_width(label);
+                    if column + key_width + 1 + label_width > x + width {
+                        break;
+                    }
+                    print_text_with_coordinates(
+                        Text::from(key).color_all(3),
+                        column,
+                        footer_y,
+                        None,
+                        None,
+                    );
+                    let label_text = if self.footer_hovered == Some(action) {
+                        Text::from(label).selected()
+                    } else {
+                        Text::from(label)
+                    };
+                    print_text_with_coordinates(
+                        label_text,
+                        column + key_width + 1,
+                        footer_y,
+                        None,
+                        None,
+                    );
+                    self.footer_areas.push((
+                        Rect::new(column, footer_y, key_width + 1 + label_width, 1),
+                        action,
+                    ));
+                    column += key_width + 1 + label_width + 3;
+                }
+            }
+        }
     }
     pub fn render_overlays(&mut self, rows: usize, cols: usize) {
         self.elements.render_overlays(rows, cols);
@@ -1164,4 +1317,19 @@ fn wrap_words(text: &str, width: usize) -> Vec<String> {
         lines.push(line);
     }
     lines
+}
+
+#[cfg(test)]
+mod setup_label_tests {
+    use super::preset_label;
+
+    #[test]
+    fn preset_names_are_capitalised_and_unlock_first_is_marked() {
+        assert_eq!(preset_label("default"), "Default");
+        assert_eq!(preset_label("my_own-keys"), "My Own Keys");
+        assert_eq!(
+            preset_label("unlock-first"),
+            "Unlock First (Avoids Collisions)"
+        );
+    }
 }

@@ -150,6 +150,7 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     cursor_blink false
     cursor_unfocused_hollow false
     startup_mode \"maximized\"
+    terminal_requests \"existing_session\"
     initial_columns 120
     initial_rows 40
     opacity 0.9
@@ -252,6 +253,7 @@ pub(crate) fn every_setting_set() -> Config {
         attention: crate::input::attention::AttentionConfig {
             frame_markers: Some(false),
             host_status: Some(false),
+            tab_markers: Some(false),
             idle_rule: Some(crate::input::attention::IdleRuleScope::Watched),
             done_threshold_secs: Some(30),
             idle_activity_secs: Some(20),

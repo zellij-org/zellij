@@ -88,6 +88,15 @@ pub(crate) struct State {
     show_all_keys: bool,
     all_keys_scroll: usize,
     last_cols: usize,
+    desktop_offer: DesktopOffer,
+}
+
+#[derive(Default)]
+struct DesktopOffer {
+    state: Option<desktop_integration::IntegrationState>,
+    reminders: Option<desktop_integration::ReminderContext>,
+    asked: bool,
+    shown: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +104,24 @@ struct PendingWindow {
     request: SessionWindowRequest,
     leave: bool,
     from_layout_list: bool,
+}
+
+fn reminder_context(mode_info: &ModeInfo) -> desktop_integration::ReminderContext {
+    let snapshot = read_config();
+    let enabled = |key: SettingKey| {
+        snapshot
+            .setting(key)
+            .and_then(|setting| setting.current_value.clone())
+            .map(|value| value != "false")
+            .unwrap_or(true)
+    };
+    let web_client = mode_info.is_web_client.unwrap_or(false);
+    desktop_integration::ReminderContext {
+        show_startup_tips: enabled(SettingKey::ShowStartupTips),
+        show_release_notes: enabled(SettingKey::ShowReleaseNotes),
+        inside_desktop_window: mode_info.remote_client.is_none() && !web_client,
+        web_client,
+    }
 }
 
 const WELCOME_TEXT: &str = "Enter a session name to create it, attach to it if it's running or resurrect it if it's exited.";
@@ -153,7 +180,9 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::Visible,
             EventType::BeforeClose,
+            EventType::DesktopIntegration,
         ]);
+        request_desktop_integration(&desktop_integration::Request::GetState);
         let plugin_id = get_plugin_ids().plugin_id;
         rename_plugin_pane(plugin_id, "Session Manager");
         {
@@ -345,7 +374,17 @@ impl State {
                     }
                 }
             },
+            Event::DesktopIntegration(payload) => {
+                if let desktop_integration::Response::Done(state) =
+                    desktop_integration::Response::from_json(&payload)
+                {
+                    self.desktop_offer.state = Some(state);
+                }
+            },
             Event::ModeUpdate(mode_info) => {
+                if self.desktop_offer.reminders.is_none() {
+                    self.desktop_offer.reminders = Some(reminder_context(&mode_info));
+                }
                 if let Some(session_name) = mode_info.session_name.as_ref() {
                     if !self.is_welcome_screen {
                         self.session_name = Some(session_name.clone());
@@ -2264,7 +2303,7 @@ impl State {
     }
     fn way_available(&self, way: OpenWay, target: &OpenTarget, inbox: bool) -> bool {
         match way {
-            OpenWay::Window => self.desktop_app_running(),
+            OpenWay::Window => true,
             OpenWay::WindowAndLeave => self.can_close_this_window() && !target.current,
             OpenWay::DisconnectOthers if inbox => !target.current || !app_panel::is_enabled(),
             OpenWay::DisconnectOthers if target.is_here() => {
@@ -2434,7 +2473,7 @@ impl State {
         }
     }
     fn new_session_window_from_layout_list(&mut self, leave: bool) -> bool {
-        if !self.desktop_app_running() || (leave && !self.can_close_this_window()) {
+        if leave && !self.can_close_this_window() {
             return false;
         }
         let typed = self.single_screen_state.search_term.clone();
@@ -2511,7 +2550,25 @@ impl State {
         true
     }
     fn refresh_inbox_window_help(&mut self) {
+        self.maybe_offer_desktop_app();
         self.inbox.help_hints = self.inbox_hints(false);
+    }
+    fn maybe_offer_desktop_app(&mut self) {
+        if self.desktop_offer.asked || app_panel::is_enabled() || !self.inbox_is_shown() {
+            return;
+        }
+        let (Some(state), Some(reminders)) =
+            (&self.desktop_offer.state, &self.desktop_offer.reminders)
+        else {
+            return;
+        };
+        self.desktop_offer.asked = true;
+        if state.reminders_allowed(reminders) {
+            self.desktop_offer.shown = true;
+            request_desktop_integration(&desktop_integration::Request::SetFlag(
+                desktop_integration::Flag::DesktopAppIntroduced,
+            ));
+        }
     }
     fn leave_here_text(&self) -> &'static str {
         if self.is_welcome_screen {
@@ -2565,18 +2622,15 @@ impl State {
         hints
     }
     fn layout_window_hints(&self) -> Vec<help::Hint> {
-        let mut hints = vec![];
-        if self.desktop_app_running() {
-            hints.push(help::hint("<Alt w>", "create it in a window"));
-            if self.can_close_this_window() {
-                hints.push(help::hint(
-                    "<Alt d>",
-                    format!("same, {}", self.leave_here_text()),
-                ));
-            }
-            if self.remote_client.is_some() {
-                hints.push(help::hint("(!)", "windows open on the Zellij machine"));
-            }
+        let mut hints = vec![help::hint("<Alt w>", "create it in a window")];
+        if self.can_close_this_window() {
+            hints.push(help::hint(
+                "<Alt d>",
+                format!("same, {}", self.leave_here_text()),
+            ));
+        }
+        if self.remote_client.is_some() {
+            hints.push(help::hint("(!)", "windows open on the Zellij machine"));
         }
         hints
     }
@@ -2636,6 +2690,14 @@ impl State {
         use help::hint;
         let target = self.inbox_open_target();
         if !all {
+            if self.desktop_offer.shown {
+                return vec![
+                    hint("", "Get desktop notifications for this:"),
+                    hint("<Alt w>", "open in a window (it opens on this computer)"),
+                    hint("<x>", "don't show again"),
+                    hint("<ESC>", "close"),
+                ];
+            }
             let mut hints: Vec<help::Hint> = self
                 .open_way_hints(target.as_ref(), true)
                 .into_iter()
@@ -3598,6 +3660,12 @@ impl State {
                 self.after_inbox_selection_change();
             },
             BareKey::Char('n') if plain => self.inbox.toggle_selected_watch(),
+            BareKey::Char('x') if plain && self.desktop_offer.shown => {
+                self.desktop_offer.shown = false;
+                request_desktop_integration(&desktop_integration::Request::SetFlag(
+                    desktop_integration::Flag::RemindersOff,
+                ));
+            },
             _ => return false,
         }
         true

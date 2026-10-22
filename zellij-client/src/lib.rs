@@ -554,12 +554,10 @@ fn prepare_parent_dir(teardown: Option<TerminalTeardown>, path: &Path) {
 }
 
 /// IPC pipe path for a NEW session: register it in the session index under a
-/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
-/// environment (set by the caller just before).
-fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`.
+fn create_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let name = envs::get_session_name().unwrap();
-    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, &name);
+    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, name);
     prepare_parent_dir(teardown, &path);
     check_ipc_pipe_length(&path);
     path
@@ -567,10 +565,9 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
 
 /// IPC pipe path for an EXISTING session: resolve its id via the session index,
 /// falling back to the name-based path of sessions from before ids.
-fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+fn resolve_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let name = envs::get_session_name().unwrap();
-    let path = zellij_utils::consts::session_socket_path(&name);
+    let path = zellij_utils::consts::session_socket_path(name);
     prepare_parent_dir(teardown, &path);
     path
 }
@@ -1166,6 +1163,15 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
+    let reminders = zellij_utils::desktop_integration::ReminderContext {
+        show_startup_tips: config_options.show_startup_tips.unwrap_or(true),
+        show_release_notes: config_options.show_release_notes.unwrap_or(true),
+        inside_desktop_window: std::env::var_os(
+            zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY,
+        )
+        .is_some(),
+        web_client: false,
+    };
     let own_session_name = info.get_session_name().to_owned();
     if let Some(message) = sock_dir_ipc_pipe_length_error(&ZELLIJ_SOCK_DIR) {
         eprintln!("{}", message);
@@ -1243,9 +1249,9 @@ pub fn start_client(
     os_input.update_session_name(own_session_name.clone());
     // A session we start gets a freshly registered id; an existing one is resolved by name.
     let ipc_pipe = if starts_server {
-        create_ipc_pipe(Some(terminal_teardown))
+        create_ipc_pipe(&own_session_name, Some(terminal_teardown))
     } else {
-        resolve_ipc_pipe(Some(terminal_teardown))
+        resolve_ipc_pipe(&own_session_name, Some(terminal_teardown))
     };
 
     if starts_server {
@@ -1748,6 +1754,11 @@ pub fn start_client(
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(goodbye_message.as_bytes());
+        if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+            if let Some(line) = exit_line_once(&reminders) {
+                let _ = stdout.write_all(line.as_bytes());
+            }
+        }
         let _ = stdout.flush();
     } else {
         let clear_screen = "\u{1b}[2J";
@@ -1801,8 +1812,8 @@ pub fn start_server_detached(
                 switch_context: None,
             };
 
+            let ipc_pipe = create_ipc_pipe(&name, None);
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(None);
 
             if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
                 exit_after_startup_error(None, spawn_server_error_message(e));
@@ -1861,8 +1872,8 @@ pub fn start_server_detached(
                 switch_context: None,
             };
 
+            let ipc_pipe = create_ipc_pipe(&name, None);
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(None);
 
             if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
                 exit_after_startup_error(None, spawn_server_error_message(e));
@@ -1905,6 +1916,48 @@ fn write_render_output(
         stdout.write_all(sync.end_seq())?;
     }
     stdout.flush()
+}
+
+fn exit_line_once(
+    reminders: &zellij_utils::desktop_integration::ReminderContext,
+) -> Option<String> {
+    use zellij_utils::desktop_integration::{update, Flag};
+    let shown = update(|state| {
+        if state.has(Flag::ExitLineShown) || !state.reminders_allowed(reminders) {
+            return false;
+        }
+        state.set(Flag::ExitLineShown);
+        state.set(Flag::DesktopAppIntroduced);
+        true
+    })
+    .ok()?;
+    shown.then(exit_line)
+}
+
+fn exit_line() -> String {
+    let name = zellij_utils::distribution::name();
+    let mut line = format!("Zellij can also run as its own app: {} window\n", name);
+    if launcher_missing() {
+        line.push_str(&format!(
+            "Add it to your app menu with: {} setup --install-desktop-entry\n",
+            name
+        ));
+    }
+    line
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn launcher_missing() -> bool {
+    use zellij_utils::desktop_integration::location;
+    let user = location::data_home()
+        .map(|home| location::user_launcher_path(&home).is_file())
+        .unwrap_or(false);
+    !user && location::system_launcher().is_none()
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn launcher_missing() -> bool {
+    false
 }
 
 fn terminal_teardown_message(

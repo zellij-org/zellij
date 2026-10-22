@@ -395,6 +395,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "ToggleTrayIcon",
         "Show or hide the desktop app's tray icon until it restarts",
     ),
+    plain(
+        "OpenSessionInWindow",
+        "Open this session in a desktop window (it opens on the computer running Zellij)",
+    ),
     plain("MarkPaneSeen", "Clear past events of the focused pane"),
     plain(
         "MarkAllSeen",

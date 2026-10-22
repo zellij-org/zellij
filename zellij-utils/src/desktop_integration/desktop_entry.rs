@@ -1,168 +1,185 @@
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
-pub use xdg::{install, uninstall};
-
-#[cfg(target_os = "macos")]
-pub fn install() -> anyhow::Result<()> {
-    anyhow::bail!(MACOS)
-}
-
-#[cfg(target_os = "macos")]
-pub fn uninstall() -> anyhow::Result<()> {
-    anyhow::bail!(MACOS)
-}
-
-#[cfg(target_os = "macos")]
-const MACOS: &str = "installing a desktop entry is not supported on this platform yet. On macOS \
-                     the launcher identity comes from a Zellij.app bundle (Contents/Info.plist, a \
-                     Contents/MacOS entry running this binary with the window verb, and \
-                     Contents/Resources/zellij.icns) rather than from the binary, and writing that \
-                     bundle is part of the macOS bring-up";
-
-#[cfg(windows)]
-pub use start_menu::{install, uninstall};
-
-#[cfg(not(any(
-    all(unix, not(target_os = "macos"), not(target_os = "android")),
-    target_os = "macos",
-    target_os = "windows"
-)))]
-pub fn install() -> anyhow::Result<()> {
-    anyhow::bail!("installing a desktop entry is not supported on this platform")
-}
-
-#[cfg(not(any(
-    all(unix, not(target_os = "macos"), not(target_os = "android")),
-    target_os = "macos",
-    target_os = "windows"
-)))]
-pub fn uninstall() -> anyhow::Result<()> {
-    anyhow::bail!("removing a desktop entry is not supported on this platform")
-}
-
-#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
-mod xdg {
+pub(crate) mod xdg {
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
+    use crate::desktop_integration::location::{
+        self, entry_values, has_marker, FINGERPRINT_KEY, MARKER_KEY,
+    };
+    use crate::desktop_integration::{
+        fingerprint, LauncherRecord, ICON_PNG, ICON_PNG_256, ICON_PNG_512,
+    };
+    use crate::distribution::app_id as application_id;
     use anyhow::{bail, Context, Result};
 
-    use crate::window::{application_id, ICON_PNG};
-
-    const ICON_SIZE: &str = "128x128";
-
-    struct Installed {
-        entry: PathBuf,
-        icon: PathBuf,
+    pub fn icons() -> [(&'static str, &'static [u8]); 3] {
+        [
+            ("128x128", ICON_PNG),
+            ("256x256", ICON_PNG_256),
+            ("512x512", ICON_PNG_512),
+        ]
     }
 
-    pub fn install() -> Result<()> {
-        let data_home = data_home()?;
-        let exe = std::env::current_exe().context("failed to locate the running binary")?;
-        if !exe.is_absolute() {
-            bail!(
-                "the running binary resolved to the relative path {:?}, so no launcher entry can \
-                 be written for it",
-                exe
-            );
-        }
-        let installed = install_into(&data_home, &exe)?;
-        println!("Wrote {}", installed.entry.display());
-        println!("Wrote {}", installed.icon.display());
-        refresh(&data_home);
-        println!(
-            "The entry runs {} — re-run this command if that binary moves.",
-            exe.display()
-        );
-        Ok(())
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Installed {
+        pub entry: PathBuf,
+        pub icons: Vec<PathBuf>,
+        pub removed: Vec<PathBuf>,
+        pub binary: PathBuf,
+        pub fingerprint: String,
     }
 
-    pub fn uninstall() -> Result<()> {
-        let data_home = data_home()?;
-        let removed = uninstall_from(&data_home)?;
-        if removed.is_empty() {
-            println!("Nothing to remove under {}", data_home.display());
-        } else {
-            for path in &removed {
-                println!("Removed {}", path.display());
+    impl Installed {
+        pub fn record(&self) -> LauncherRecord {
+            LauncherRecord {
+                path: self.entry.clone(),
+                binary: self.binary.clone(),
+                fingerprint: self.fingerprint.clone(),
             }
-            refresh(&data_home);
         }
-        Ok(())
     }
 
-    fn install_into(data_home: &Path, exe: &Path) -> Result<Installed> {
-        let exe = exe.to_str().with_context(|| {
+    pub fn install_into(data_home: &Path, binary: &Path) -> Result<Installed> {
+        let binary_text = binary.to_str().with_context(|| {
             format!(
                 "the path of the running binary is not valid UTF-8, which a desktop entry \
                  requires: {:?}",
-                exe
+                binary
             )
         })?;
         let entry = entry_path(data_home);
-        let icon = icon_path(data_home);
-        write(&entry, render(&exec_argument(exe)).as_bytes())?;
-        write(&icon, ICON_PNG)?;
-        Ok(Installed { entry, icon })
+        if let Ok(existing) = std::fs::read_to_string(&entry) {
+            if !has_marker(&existing) && !written_by_an_older_zellij(&existing) {
+                bail!(
+                    "{} exists and was not written by Zellij, so it was left alone",
+                    entry.display()
+                );
+            }
+        }
+        let text = render_installed(&exec_argument(binary_text), binary_text);
+        write(&entry, text.as_bytes())?;
+        let mut written_icons = vec![];
+        for (size, bytes) in icons() {
+            let path = icon_path(data_home, size);
+            write(&path, bytes)?;
+            written_icons.push(path);
+        }
+        let removed = remove_old_launcher(data_home)?;
+        Ok(Installed {
+            entry,
+            icons: written_icons,
+            removed,
+            binary: binary.to_path_buf(),
+            fingerprint: fingerprint(&location::without_marker(&text)),
+        })
     }
 
-    fn uninstall_from(data_home: &Path) -> Result<Vec<PathBuf>> {
-        let mut removed = Vec::new();
-        for path in [entry_path(data_home), icon_path(data_home)] {
-            match std::fs::remove_file(&path) {
-                Ok(()) => removed.push(path),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                Err(e) => {
-                    return Err(e).with_context(|| format!("failed to remove {:?}", path));
-                },
+    pub fn files_to_remove(data_home: &Path) -> Vec<String> {
+        let mut files = vec![];
+        let entry = entry_path(data_home);
+        if std::fs::read_to_string(&entry)
+            .map(|text| has_marker(&text) || written_by_an_older_zellij(&text))
+            .unwrap_or(false)
+        {
+            files.push(entry.display().to_string());
+        }
+        for (size, _) in icons() {
+            let icon = icon_path(data_home, size);
+            if icon.is_file() {
+                files.push(icon.display().to_string());
             }
+        }
+        if old_name() != application_id() {
+            let old_entry = data_home
+                .join("applications")
+                .join(format!("{}.desktop", old_name()));
+            if std::fs::read_to_string(&old_entry)
+                .map(|text| has_marker(&text) || written_by_an_older_zellij(&text))
+                .unwrap_or(false)
+            {
+                files.push(old_entry.display().to_string());
+            }
+        }
+        files
+    }
+
+    pub fn uninstall_from(data_home: &Path) -> Result<Vec<PathBuf>> {
+        let mut removed = Vec::new();
+        let entry = entry_path(data_home);
+        match std::fs::read_to_string(&entry) {
+            Ok(text) if has_marker(&text) || written_by_an_older_zellij(&text) => {
+                remove(&entry, &mut removed)?;
+            },
+            Ok(_) => {
+                println!(
+                    "{} was not written by Zellij, so it was left alone",
+                    entry.display()
+                );
+            },
+            Err(_) => {},
+        }
+        for (size, _) in icons() {
+            remove(&icon_path(data_home, size), &mut removed)?;
+        }
+        removed.extend(remove_old_launcher(data_home)?);
+        Ok(removed)
+    }
+
+    fn remove(path: &Path, removed: &mut Vec<PathBuf>) -> Result<()> {
+        match std::fs::remove_file(path) {
+            Ok(()) => {
+                removed.push(path.to_path_buf());
+                Ok(())
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e).with_context(|| format!("failed to remove {:?}", path)),
+        }
+    }
+
+    fn old_name() -> &'static str {
+        crate::distribution::name()
+    }
+
+    fn remove_old_launcher(data_home: &Path) -> Result<Vec<PathBuf>> {
+        let mut removed = vec![];
+        if old_name() == application_id() {
+            return Ok(removed);
+        }
+        let old_entry = data_home
+            .join("applications")
+            .join(format!("{}.desktop", old_name()));
+        let Ok(text) = std::fs::read_to_string(&old_entry) else {
+            return Ok(removed);
+        };
+        if !has_marker(&text) && !written_by_an_older_zellij(&text) {
+            return Ok(removed);
+        }
+        remove(&old_entry, &mut removed)?;
+        for (size, _) in icons() {
+            let old_icon = data_home
+                .join("icons/hicolor")
+                .join(size)
+                .join("apps")
+                .join(format!("{}.png", old_name()));
+            remove(&old_icon, &mut removed)?;
         }
         Ok(removed)
     }
 
-    fn write(path: &Path, contents: &[u8]) -> Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {:?}", parent))?;
-        }
-        std::fs::write(path, contents).with_context(|| format!("failed to write {:?}", path))
+    fn written_by_an_older_zellij(text: &str) -> bool {
+        let values = entry_values(text);
+        let Some(exec) = values.get("Exec") else {
+            return false;
+        };
+        let Some(program) = exec.strip_suffix(" window") else {
+            return false;
+        };
+        text == older_render(program, old_name()) || text == older_render(program, application_id())
     }
 
-    fn entry_path(data_home: &Path) -> PathBuf {
-        data_home
-            .join("applications")
-            .join(format!("{}.desktop", application_id()))
-    }
-
-    fn icon_path(data_home: &Path) -> PathBuf {
-        data_home
-            .join("icons")
-            .join("hicolor")
-            .join(ICON_SIZE)
-            .join("apps")
-            .join(format!("{}.png", application_id()))
-    }
-
-    fn data_home() -> Result<PathBuf> {
-        if let Some(from_env) = std::env::var_os("XDG_DATA_HOME") {
-            let from_env = PathBuf::from(from_env);
-            if from_env.is_absolute() {
-                return Ok(from_env);
-            }
-        }
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .filter(|home| home.is_absolute())
-            .context(
-                "neither XDG_DATA_HOME nor HOME names an absolute directory, so there is nowhere \
-                 to install to",
-            )?;
-        Ok(home.join(".local").join("share"))
-    }
-
-    pub fn render(exec: &str) -> String {
-        let id = application_id();
-        let name = crate::identity::identity().display_name;
+    fn older_render(exec: &str, id: &str) -> String {
+        let name = crate::distribution::display_name();
         format!(
             "[Desktop Entry]\n\
              Version=1.0\n\
@@ -192,7 +209,95 @@ mod xdg {
         )
     }
 
-    fn exec_argument(path: &str) -> String {
+    pub fn write(path: &Path, contents: &[u8]) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {:?}", parent))?;
+        }
+        std::fs::write(path, contents).with_context(|| format!("failed to write {:?}", path))
+    }
+
+    pub fn entry_path(data_home: &Path) -> PathBuf {
+        location::user_launcher_path(data_home)
+    }
+
+    pub fn icon_path(data_home: &Path, size: &str) -> PathBuf {
+        data_home
+            .join("icons")
+            .join("hicolor")
+            .join(size)
+            .join("apps")
+            .join(format!("{}.png", application_id()))
+    }
+
+    pub fn data_home() -> Result<PathBuf> {
+        location::data_home().context(
+            "neither XDG_DATA_HOME nor HOME names an absolute directory, so there is nowhere \
+             to install to",
+        )
+    }
+
+    pub fn render(exec: &str, try_exec: &str) -> String {
+        let id = application_id();
+        let name = crate::distribution::display_name();
+        format!(
+            "[Desktop Entry]\n\
+             Version=1.0\n\
+             Type=Application\n\
+             Name={name}\n\
+             GenericName=Terminal Workspace\n\
+             Comment=Manage Your Terminal Applications\n\
+             Exec={exec} window\n\
+             TryExec={try_exec}\n\
+             Icon={id}\n\
+             Terminal=false\n\
+             StartupNotify=true\n\
+             StartupWMClass={id}\n\
+             Categories=System;TerminalEmulator;\n\
+             Keywords=terminal;multiplexer;shell;workspace;\n\
+             X-TerminalArgExec=-e\n\
+             X-TerminalArgDir=--working-directory=\n\
+             X-TerminalArgHold=--hold\n\
+             X-ExecArg=-e\n\
+             Actions=inbox;sessions;new-window;\n\
+             \n\
+             [Desktop Action inbox]\n\
+             Name=Show Inbox\n\
+             Exec={exec} window --inbox\n\
+             \n\
+             [Desktop Action sessions]\n\
+             Name=Show Sessions\n\
+             Exec={exec} window --sessions\n\
+             \n\
+             [Desktop Action new-window]\n\
+             Name=New Window\n\
+             Exec={exec} window\n"
+        )
+    }
+
+    #[cfg(test)]
+    pub fn render_packaged() -> String {
+        let name = crate::distribution::name();
+        render(name, name)
+    }
+
+    pub fn render_installed(exec: &str, try_exec: &str) -> String {
+        with_marker(&render(exec, try_exec))
+    }
+
+    pub fn with_marker(body: &str) -> String {
+        let sum = fingerprint(&location::without_marker(body));
+        let marker = format!("{}=true\n{}={}\n", MARKER_KEY, FINGERPRINT_KEY, sum);
+        match body.find("\n\n[") {
+            Some(end_of_main_group) => {
+                let (main, rest) = body.split_at(end_of_main_group + 1);
+                format!("{}{}{}", main, marker, rest)
+            },
+            None => format!("{}{}", body, marker),
+        }
+    }
+
+    pub fn exec_argument(path: &str) -> String {
         const RESERVED: &[char] = &[
             ' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#',
             '(', ')', '`',
@@ -213,7 +318,7 @@ mod xdg {
         quoted
     }
 
-    fn refresh(data_home: &Path) {
+    pub fn refresh(data_home: &Path) {
         best_effort(
             "update-desktop-database",
             &[data_home.join("applications").as_os_str()],
@@ -238,11 +343,11 @@ mod xdg {
             .status();
         match outcome {
             Ok(status) if status.success() => {},
-            Ok(status) => println!(
+            Ok(status) => eprintln!(
                 "{program} exited with {status}; a launcher may need a restart to notice the entry"
             ),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-            Err(e) => println!(
+            Err(e) => eprintln!(
                 "{program} could not be run ({e}); a launcher may need a restart to notice the \
                  entry"
             ),
@@ -252,10 +357,11 @@ mod xdg {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::desktop_integration::location::marker_intact;
 
         const SHIPPED_ASSET: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../assets/zellij.desktop"
+            "/../assets/dev.zellij.Zellij.desktop"
         ));
 
         fn keys(entry: &str) -> Vec<(String, String)> {
@@ -275,21 +381,31 @@ mod xdg {
                 .1
         }
 
+        fn icon_dir(size: &str) -> String {
+            format!("icons/hicolor/{}/apps", size)
+        }
+
         #[test]
-        fn install_writes_an_entry_and_an_icon_under_the_given_data_home() {
+        fn install_writes_an_entry_and_every_icon_size_under_the_given_data_home() {
             let dir = tempfile::TempDir::new().unwrap();
             let exe = PathBuf::from("/opt/zellij/bin/zellij");
             let installed = install_into(dir.path(), &exe).unwrap();
 
             assert_eq!(
                 installed.entry,
-                dir.path().join("applications").join("zellij.desktop")
+                dir.path()
+                    .join("applications")
+                    .join("dev.zellij.Zellij.desktop")
             );
             assert_eq!(
-                installed.icon,
-                dir.path()
-                    .join("icons/hicolor/128x128/apps")
-                    .join("zellij.png")
+                installed.icons,
+                ["128x128", "256x256", "512x512"]
+                    .iter()
+                    .map(|size| dir
+                        .path()
+                        .join(icon_dir(size))
+                        .join("dev.zellij.Zellij.png"))
+                    .collect::<Vec<_>>()
             );
 
             let entry = std::fs::read_to_string(&installed.entry).unwrap();
@@ -297,57 +413,64 @@ mod xdg {
             assert_eq!(value(&entry, "Type"), "Application");
             assert_eq!(value(&entry, "Name"), "Zellij");
             assert_eq!(value(&entry, "Terminal"), "false");
-            assert_eq!(value(&entry, "Icon"), "zellij");
+            assert_eq!(value(&entry, "Icon"), "dev.zellij.Zellij");
             assert_eq!(value(&entry, "Exec"), "/opt/zellij/bin/zellij window");
-            let exec = value(&entry, "Exec");
-            assert!(exec.starts_with('/'), "Exec is not absolute: {exec}");
-            assert!(
-                exec.ends_with(" window"),
-                "Exec does not run the window verb: {exec}"
-            );
+            assert_eq!(value(&entry, "TryExec"), "/opt/zellij/bin/zellij");
+            assert_eq!(value(&entry, "Categories"), "System;TerminalEmulator;");
+            assert_eq!(value(&entry, "X-TerminalArgExec"), "-e");
+            assert_eq!(value(&entry, "X-TerminalArgDir"), "--working-directory=");
+            assert_eq!(value(&entry, "X-TerminalArgHold"), "--hold");
+            assert_eq!(value(&entry, MARKER_KEY), "true");
+            assert!(marker_intact(&entry));
+            assert_eq!(installed.fingerprint, value(&entry, FINGERPRINT_KEY));
             assert!(
                 keys(&entry).iter().all(|(key, _)| !key.is_empty()),
                 "the entry has an empty key:\n{entry}"
             );
 
-            assert_eq!(std::fs::read(&installed.icon).unwrap(), ICON_PNG);
+            assert_eq!(std::fs::read(&installed.icons[0]).unwrap(), ICON_PNG);
+            assert_eq!(std::fs::read(&installed.icons[1]).unwrap(), ICON_PNG_256);
+            assert_eq!(std::fs::read(&installed.icons[2]).unwrap(), ICON_PNG_512);
         }
 
         #[test]
         fn the_entry_passes_desktop_file_validate_where_it_exists() {
             let dir = tempfile::TempDir::new().unwrap();
             let installed = install_into(dir.path(), Path::new("/opt/zellij/bin/zellij")).unwrap();
-            let outcome = Command::new("desktop-file-validate")
-                .arg(&installed.entry)
-                .output();
-            match outcome {
-                Ok(output) => assert!(
-                    output.status.success(),
-                    "desktop-file-validate refused the entry: {}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-                Err(e) => panic!("desktop-file-validate could not be run: {e}"),
+            let shipped = dir.path().join("dev.zellij.Zellij.desktop");
+            std::fs::write(&shipped, SHIPPED_ASSET).unwrap();
+            for entry in [&installed.entry, &shipped] {
+                let outcome = Command::new("desktop-file-validate").arg(entry).output();
+                match outcome {
+                    Ok(output) => assert!(
+                        output.status.success(),
+                        "desktop-file-validate refused {}: {}{}",
+                        entry.display(),
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr)
+                    ),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(e) => panic!("desktop-file-validate could not be run: {e}"),
+                }
             }
         }
 
         #[test]
-        fn the_three_names_agree() {
+        fn the_names_agree() {
             let dir = tempfile::TempDir::new().unwrap();
             let installed = install_into(dir.path(), Path::new("/opt/zellij/bin/zellij")).unwrap();
             let entry = std::fs::read_to_string(&installed.entry).unwrap();
 
             let app_id = application_id();
+            assert_eq!(app_id, "dev.zellij.Zellij");
             assert_eq!(
                 installed.entry.file_stem().unwrap().to_str().unwrap(),
                 app_id
             );
             assert_eq!(value(&entry, "Icon"), app_id);
-            assert_eq!(
-                installed.icon.file_stem().unwrap().to_str().unwrap(),
-                value(&entry, "Icon")
-            );
+            for icon in &installed.icons {
+                assert_eq!(icon.file_stem().unwrap().to_str().unwrap(), app_id);
+            }
             assert_eq!(value(&entry, "StartupWMClass"), app_id);
         }
 
@@ -356,25 +479,53 @@ mod xdg {
             let dir = tempfile::TempDir::new().unwrap();
             let installed = install_into(dir.path(), Path::new("/opt/zellij/bin/zellij")).unwrap();
             let decoy_entry = dir.path().join("applications").join("other.desktop");
-            let decoy_icon = dir
-                .path()
-                .join("icons/hicolor/128x128/apps")
-                .join("other.png");
+            let decoy_icon = dir.path().join(icon_dir("128x128")).join("other.png");
             write(&decoy_entry, b"[Desktop Entry]\n").unwrap();
             write(&decoy_icon, b"not a png").unwrap();
 
             let removed = uninstall_from(dir.path()).unwrap();
 
-            assert_eq!(
-                removed,
-                vec![installed.entry.clone(), installed.icon.clone()]
-            );
+            let mut expected = vec![installed.entry.clone()];
+            expected.extend(installed.icons.clone());
+            assert_eq!(removed, expected);
             assert!(!installed.entry.exists());
-            assert!(!installed.icon.exists());
+            assert!(installed.icons.iter().all(|icon| !icon.exists()));
             assert!(decoy_entry.exists());
             assert!(decoy_icon.exists());
-            assert!(dir.path().join("applications").is_dir());
-            assert!(installed.icon.parent().unwrap().is_dir());
+        }
+
+        #[test]
+        fn a_launcher_zellij_did_not_write_is_never_replaced_or_removed() {
+            let dir = tempfile::TempDir::new().unwrap();
+            let entry = entry_path(dir.path());
+            write(&entry, b"[Desktop Entry]\nName=Mine\n").unwrap();
+            assert!(install_into(dir.path(), Path::new("/opt/zellij")).is_err());
+            assert!(uninstall_from(dir.path()).unwrap().is_empty());
+            assert_eq!(
+                std::fs::read_to_string(&entry).unwrap(),
+                "[Desktop Entry]\nName=Mine\n"
+            );
+        }
+
+        #[test]
+        fn installing_replaces_the_old_launcher_only_when_zellij_wrote_it() {
+            let dir = tempfile::TempDir::new().unwrap();
+            let old_entry = dir.path().join("applications").join("zellij.desktop");
+            let old_icon = dir.path().join(icon_dir("128x128")).join("zellij.png");
+            write(&old_entry, older_render("/opt/zellij", "zellij").as_bytes()).unwrap();
+            write(&old_icon, ICON_PNG).unwrap();
+            let installed = install_into(dir.path(), Path::new("/opt/zellij")).unwrap();
+            assert_eq!(installed.removed, vec![old_entry.clone(), old_icon.clone()]);
+            assert!(!old_entry.exists());
+
+            write(
+                &old_entry,
+                b"[Desktop Entry]\nName=Hand written\nExec=zellij\n",
+            )
+            .unwrap();
+            let installed = install_into(dir.path(), Path::new("/opt/zellij")).unwrap();
+            assert!(installed.removed.is_empty());
+            assert!(old_entry.exists());
         }
 
         #[test]
@@ -384,9 +535,9 @@ mod xdg {
             let installed = install_into(dir.path(), Path::new("/second/zellij")).unwrap();
             let entry = std::fs::read_to_string(&installed.entry).unwrap();
             assert_eq!(value(&entry, "Exec"), "/second/zellij window");
-            assert_eq!(std::fs::read(&installed.icon).unwrap(), ICON_PNG);
+            assert_eq!(value(&entry, "TryExec"), "/second/zellij");
 
-            assert_eq!(uninstall_from(dir.path()).unwrap().len(), 2);
+            assert_eq!(uninstall_from(dir.path()).unwrap().len(), 4);
             assert!(uninstall_from(dir.path()).unwrap().is_empty());
         }
 
@@ -406,7 +557,7 @@ mod xdg {
 
         #[test]
         fn the_entry_offers_inbox_sessions_and_new_window_actions() {
-            let entry = render("/opt/zellij");
+            let entry = render("/opt/zellij", "/opt/zellij");
             assert_eq!(value(&entry, "Actions"), "inbox;sessions;new-window;");
             let section = |name: &str| {
                 let header = format!("[Desktop Action {}]", name);
@@ -432,14 +583,26 @@ mod xdg {
         }
 
         #[test]
-        fn the_shipped_asset_is_the_same_entry_with_a_path_relative_exec() {
-            assert_eq!(SHIPPED_ASSET, render("zellij"));
+        fn the_marker_sits_in_the_main_group() {
+            let entry = render_installed("/opt/zellij", "/opt/zellij");
+            let main_group = entry.split("\n\n[").next().unwrap();
+            assert!(main_group.contains(MARKER_KEY));
+            assert!(main_group.contains(FINGERPRINT_KEY));
+            assert!(marker_intact(&entry));
+        }
+
+        #[test]
+        fn the_shipped_asset_is_the_packaged_entry_without_a_marker() {
+            assert_eq!(SHIPPED_ASSET, render_packaged());
+            assert!(!has_marker(SHIPPED_ASSET));
+            assert_eq!(value(SHIPPED_ASSET, "Exec"), "zellij window");
+            assert_eq!(value(SHIPPED_ASSET, "TryExec"), "zellij");
         }
     }
 }
 
 #[cfg(windows)]
-mod start_menu {
+pub(crate) mod start_menu {
     use std::path::{Path, PathBuf};
 
     use anyhow::{Context, Result};
@@ -447,57 +610,18 @@ mod start_menu {
     use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
     use windows::Win32::System::Com::{CoCreateInstance, IPersistFile, CLSCTX_INPROC_SERVER};
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
-    use windows::Win32::UI::Shell::{FOLDERID_Profile, FOLDERID_Programs, IShellLinkW, ShellLink};
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
-    use crate::com::{known_folder, set_string, Com};
-    use crate::identity::identity;
-    use crate::launcher::{window_command, WindowCommand};
+    use crate::desktop_integration::com::set_string;
+    use crate::desktop_integration::window_command::WindowCommand;
 
     const DESCRIPTION: &str = "Manage Your Terminal Applications";
 
-    pub fn install() -> Result<()> {
-        let _com = Com::initialize()?;
-        let exe = std::env::current_exe().context("failed to locate the running binary")?;
-        let command = window_command(&exe);
-        let start_in = known_folder(&FOLDERID_Profile)?;
-        let path = install_into(&known_folder(&FOLDERID_Programs)?, &command, &start_in)?;
-        println!("Wrote {}", path.display());
-        if !command.uses_launcher() {
-            println!(
-                "No launcher was found next to {}, so the shortcut runs it with `window` and a \
-                 console window opens alongside the zellij window.",
-                exe.display()
-            );
-        }
-        println!(
-            "The shortcut runs {} — re-run this command if that binary moves.",
-            command.program.display()
-        );
-        Ok(())
+    pub fn shortcut_path(dir: &Path) -> PathBuf {
+        dir.join(format!("{}.lnk", crate::distribution::display_name()))
     }
 
-    pub fn uninstall() -> Result<()> {
-        let _com = Com::initialize()?;
-        let dir = known_folder(&FOLDERID_Programs)?;
-        let mut removed: Vec<String> = uninstall_from(&dir)?
-            .map(|path| path.display().to_string())
-            .into_iter()
-            .collect();
-        removed.extend(crate::app_registration::unregister()?);
-        if removed.is_empty() {
-            println!("Nothing to remove");
-        }
-        for item in removed {
-            println!("Removed {}", item);
-        }
-        Ok(())
-    }
-
-    fn shortcut_path(dir: &Path) -> PathBuf {
-        dir.join(format!("{}.lnk", identity().display_name))
-    }
-
-    fn install_into(dir: &Path, command: &WindowCommand, start_in: &Path) -> Result<PathBuf> {
+    pub fn install_into(dir: &Path, command: &WindowCommand, start_in: &Path) -> Result<PathBuf> {
         std::fs::create_dir_all(dir).with_context(|| format!("failed to create {:?}", dir))?;
         let path = shortcut_path(dir);
         unsafe {
@@ -508,7 +632,11 @@ mod start_menu {
             link.SetWorkingDirectory(&HSTRING::from(start_in))?;
             link.SetDescription(&HSTRING::from(DESCRIPTION))?;
             let store: IPropertyStore = link.cast()?;
-            set_string(&store, &PKEY_AppUserModel_ID, &identity().windows_app_id)?;
+            set_string(
+                &store,
+                &PKEY_AppUserModel_ID,
+                &crate::desktop_integration::windows_app_id(),
+            )?;
             store.Commit()?;
             link.cast::<IPersistFile>()?
                 .Save(&HSTRING::from(path.as_path()), true)
@@ -517,7 +645,7 @@ mod start_menu {
         Ok(path)
     }
 
-    fn uninstall_from(dir: &Path) -> Result<Option<PathBuf>> {
+    pub fn uninstall_from(dir: &Path) -> Result<Option<PathBuf>> {
         let path = shortcut_path(dir);
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Some(path)),
@@ -529,7 +657,7 @@ mod start_menu {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::com::get_string;
+        use crate::desktop_integration::com::{get_string, Com};
         use windows::Win32::System::Com::STGM_READ;
 
         struct Read {

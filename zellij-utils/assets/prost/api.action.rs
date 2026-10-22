@@ -1255,6 +1255,7 @@ pub enum ActionName {
     MarkPaneSeen = 143,
     MarkAllSeen = 144,
     ToggleTrayIcon = 145,
+    OpenSessionInWindow = 146,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1406,6 +1407,7 @@ impl ActionName {
             ActionName::MarkPaneSeen => "MarkPaneSeen",
             ActionName::MarkAllSeen => "MarkAllSeen",
             ActionName::ToggleTrayIcon => "ToggleTrayIcon",
+            ActionName::OpenSessionInWindow => "OpenSessionInWindow",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1554,6 +1556,7 @@ impl ActionName {
             "MarkPaneSeen" => Some(Self::MarkPaneSeen),
             "MarkAllSeen" => Some(Self::MarkAllSeen),
             "ToggleTrayIcon" => Some(Self::ToggleTrayIcon),
+            "OpenSessionInWindow" => Some(Self::OpenSessionInWindow),
             _ => None,
         }
     }

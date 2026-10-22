@@ -97,6 +97,7 @@ context_menu {
         item "New pane" { NewPane; }
         item "New tab" { NewTab; }
         item "Back to {}" { ToggleSession; }
+        item "Open in a window" { OpenSessionInWindow; }
     }
     common {
         item "Settings…" {
@@ -784,6 +785,13 @@ web_client {
 //     // nothing remembered yet, "remember" opens windowed at 120x40.
 //     startup_mode "remember"
 //
+//     // Where a command opens when another app uses Zellij as its terminal
+//     // (`zellij window -e <command>`, as xdg-terminal-exec or a file manager
+//     // runs it): "new_session" (the default) gives it a session of its own;
+//     // "existing_session" opens it as a new tab in the session whose window
+//     // was focused last, or in a new session when no window is open.
+//     terminal_requests "new_session"
+//
 //     // The size, in columns and rows, of a window that has no remembered
 //     // size to reopen at. The --cols and --rows arguments still win, and a
 //     // size remembered by "remember" wins over these. A maximized or
@@ -815,4 +823,50 @@ web_client {
 //         bright_cyan "#00ffff"
 //         bright_white "#ffffff"
 //     }
+// }
+
+// Status of panes, tabs and sessions: the symbols on frames and tabs, the inbox,
+// and the desktop app's tray icon and notifications. Every key is optional.
+// To turn all of this off, set the first four keys below to false, startup_card
+// to "never" and desktop_notifications to "none" (and session_indicator false).
+//
+// attention {
+//     // Show what a pane needs (approval, a failure, a finished command) in
+//     // its frame title.
+//     frame_markers true
+//
+//     // Show what a tab's panes need as a symbol in the tab bar.
+//     tab_markers true
+//
+//     // Tell the terminal Zellij runs in what the session needs, when that
+//     // terminal supports it.
+//     host_status true
+//
+//     // Show the desktop app's tray icon (sessions and notifications go on
+//     // when it is hidden).
+//     tray_icon true
+//
+//     // Notice when busy output goes quiet in "all" panes, or only in
+//     // "watched" ones.
+//     idle_rule "all"
+//
+//     // Seconds a successful command must run before it is reported as done.
+//     done_threshold_secs 10
+//
+//     // Seconds of steady output before quiet detection applies.
+//     idle_activity_secs 10
+//
+//     // Seconds of silence after busy output that count as gone quiet.
+//     idle_silence_secs 3
+//
+//     // When a new session shows its session card: "attention" (when
+//     // something needs you), "always" or "never".
+//     startup_card "attention"
+//
+//     // Which inbox items the desktop app shows as desktop notifications:
+//     // "needs_you", "needs_you_failed", "needs_you_failed_done" or "none".
+//     desktop_notifications "needs_you_failed_done"
+//
+//     // Show the program and command text in desktop notifications.
+//     notification_details true
 // }

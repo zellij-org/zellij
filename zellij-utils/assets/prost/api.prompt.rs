@@ -16,7 +16,7 @@ pub struct PromptRequest {
     pub focused: bool,
     #[prost(bool, tag="16")]
     pub capture_all_keys: bool,
-    #[prost(oneof="prompt_request::Spec", tags="7, 8, 9, 10, 11, 12, 13, 14, 15")]
+    #[prost(oneof="prompt_request::Spec", tags="7, 8, 9, 10, 11, 12, 13, 14, 15, 17")]
     pub spec: ::core::option::Option<prompt_request::Spec>,
 }
 /// Nested message and enum types in `PromptRequest`.
@@ -42,6 +42,8 @@ pub mod prompt_request {
         Form(super::FormSpec),
         #[prost(message, tag="15")]
         Notify(super::NotifySpec),
+        #[prost(message, tag="17")]
+        Info(super::InfoSpec),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -185,6 +187,12 @@ pub struct NotifySpec {
     pub show_pane_name: bool,
     #[prost(bool, tag="3")]
     pub show_tab_name: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InfoSpec {
+    #[prost(message, optional, tag="1")]
+    pub message: ::core::option::Option<super::style::StyledText>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

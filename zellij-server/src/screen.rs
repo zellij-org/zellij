@@ -970,6 +970,7 @@ pub enum ScreenInstruction {
     TerminalInputSubmitted(ClientId),
     TerminalEscapePressed(ClientId),
     ToggleSessionCard(ClientId, Option<NotificationEnd>),
+    WaitForPaneExit(PaneId, NotificationEnd),
     SetPopupFocused {
         plugin_id: u32,
         focused: bool,
@@ -1056,6 +1057,7 @@ pub enum ScreenInstruction {
         placement: Option<zellij_utils::prompt::PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
+        closes_on_outside_click: bool,
     },
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
@@ -1509,6 +1511,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalInputSubmitted(..) => ScreenContext::TerminalInputSubmitted,
             ScreenInstruction::TerminalEscapePressed(..) => ScreenContext::TerminalEscapePressed,
             ScreenInstruction::ToggleSessionCard(..) => ScreenContext::ToggleSessionCard,
+            ScreenInstruction::WaitForPaneExit(..) => ScreenContext::WaitForPaneExit,
             ScreenInstruction::SetPopupFocused { .. } => ScreenContext::SetPopupFocused,
             ScreenInstruction::PopupToFloatingPane { .. } => ScreenContext::PopupToFloatingPane,
             ScreenInstruction::ShowSwapLayoutNotification(..) => {
@@ -9449,7 +9452,14 @@ impl Screen {
             self.record_client_input(client_id);
         }
         if self.handle_popup_mouse_event(&event, client_id) {
-            return;
+            let ends_a_held_gesture = event.event_type == MouseEventType::Release
+                && self
+                    .get_active_tab(client_id)
+                    .map(|tab| tab.mouse_gesture_is_held())
+                    .unwrap_or(false);
+            if !ends_a_held_gesture {
+                return;
+            }
         }
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
@@ -14887,6 +14897,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleSessionCard(client_id, _completion_tx) => {
                 screen.toggle_session_card(client_id);
             },
+            ScreenInstruction::WaitForPaneExit(pane_id, waiter) => {
+                screen.wait_for_pane_exit(pane_id, waiter);
+            },
             ScreenInstruction::SetPopupFocused { plugin_id, focused } => {
                 screen.set_popup_focused(plugin_id, focused);
             },
@@ -15055,6 +15068,7 @@ pub(crate) fn screen_thread_main(
                 placement,
                 focused,
                 capture_all_keys,
+                closes_on_outside_click,
             } => {
                 screen.open_prompt_popup(
                     caller,
@@ -15064,6 +15078,7 @@ pub(crate) fn screen_thread_main(
                     placement,
                     focused,
                     capture_all_keys,
+                    closes_on_outside_click,
                 );
             },
             ScreenInstruction::CloseTopPopup(client_id) => {

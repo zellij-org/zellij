@@ -53,7 +53,7 @@ fn registration_key(identity: &Identity) -> String {
 }
 
 fn icon_path(cache_dir: &Path, identity: &Identity) -> PathBuf {
-    cache_dir.join(format!("{}.png", identity.app_id))
+    cache_dir.join(format!("{}.png", identity.name))
 }
 
 fn registration_values(identity: &Identity, icon: &Path) -> [(&'static str, String); 2] {

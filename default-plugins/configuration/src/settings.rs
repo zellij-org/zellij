@@ -259,6 +259,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::AttentionTabMarkers => info(
+            "Status on tabs",
+            Appearance,
+            "Show what a tab's panes need (approval, failure, done) as a symbol in the tab bar",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::AttentionHostStatus => info(
             "Status to outer terminal",
             Sessions,
@@ -1141,6 +1149,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
+        SettingKey::WindowTerminalRequests => info(
+            "Commands from other apps",
+            TerminalWindow,
+            "Where a command opens when another app uses Zellij as its terminal (zellij window -e)",
+            Choice(&["new_session", "existing_session"]),
+            "new_session",
+            OnlyYou,
+        ),
         SettingKey::WindowStartupMode => info(
             "Startup mode",
             TerminalWindow,
@@ -1698,6 +1714,7 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultShell | ScrollbackEditor => "Programs",
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
         AttentionFrameMarkers
+        | AttentionTabMarkers
         | AttentionHostStatus
         | AttentionIdleRule
         | AttentionDoneThresholdSecs
@@ -1759,8 +1776,13 @@ pub fn section(key: SettingKey) -> &'static str {
         WindowFont | WindowFontSize | WindowFontWeight | WindowSystemFonts | WindowLigatures
         | WindowFontFeatures => "Font",
         WindowCursorStyle | WindowCursorBlink | WindowCursorUnfocusedHollow => "Cursor",
-        WindowStartupMode | WindowInitialColumns | WindowInitialRows | WindowOpacity
-        | WindowOpacityMode | WindowBlur => "Window",
+        WindowStartupMode
+        | WindowTerminalRequests
+        | WindowInitialColumns
+        | WindowInitialRows
+        | WindowOpacity
+        | WindowOpacityMode
+        | WindowBlur => "Window",
         WindowPadding | WindowPaddingTop | WindowPaddingRight | WindowPaddingBottom
         | WindowPaddingLeft | WindowPaddingBalance | WindowPaddingColor => "Padding",
         WindowLineHeight

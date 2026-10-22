@@ -1528,6 +1528,33 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::OpenSessionInWindow => {
+            drop(NotificationEnd::new(completion_tx));
+            let session_name = zellij_utils::envs::get_session_name().ok();
+            let _ = std::thread::Builder::new()
+                .name("open_session_in_window".to_owned())
+                .spawn(move || {
+                    let request = zellij_utils::app_control::OpenWindowRequest {
+                        session: session_name,
+                        ..Default::default()
+                    };
+                    if let Err(e) = crate::desktop_app::open_window(request) {
+                        log::info!("The session could not be opened in a window: {}", e);
+                    }
+                });
+        },
+        Action::WaitForPaneExit { pane_id } => {
+            let mut notification =
+                NotificationEnd::new_with_condition(completion_tx, UnblockCondition::OnAnyExit);
+            notification.set_exit_status(1);
+            wait_forever = true;
+            senders
+                .send_to_screen(ScreenInstruction::WaitForPaneExit(
+                    pane_id.into(),
+                    notification,
+                ))
+                .with_context(err_context)?;
+        },
         Action::ToggleTrayIcon => {
             drop(NotificationEnd::new(completion_tx));
             let _ = std::thread::Builder::new()

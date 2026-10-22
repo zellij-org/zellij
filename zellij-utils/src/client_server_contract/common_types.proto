@@ -346,6 +346,8 @@ message Action {
     MarkAllSeenAction mark_all_seen = 180;
     WriteKeyToPaneIdAction write_key_to_pane_id = 181;
     ToggleTrayIconAction toggle_tray_icon = 182;
+    OpenSessionInWindowAction open_session_in_window = 183;
+    WaitForPaneExitAction wait_for_pane_exit = 184;
   }
 }
 
@@ -1425,6 +1427,8 @@ message GoToPreviousSessionAction {}
 message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
+message OpenSessionInWindowAction {}
+message WaitForPaneExitAction { PaneId pane_id = 1; }
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
 message MarkAllSeenAction {
   optional string session = 1;

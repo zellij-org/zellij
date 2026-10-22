@@ -879,6 +879,9 @@ pub trait Pane {
     fn take_notification_end(&mut self) -> Option<NotificationEnd> {
         None
     }
+    fn attach_exit_waiter(&mut self, waiter: NotificationEnd) -> Option<NotificationEnd> {
+        Some(waiter)
+    }
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn invalidate_frame_cache(&mut self) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}

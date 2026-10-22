@@ -3,6 +3,7 @@ use zellij_utils::distribution::{distribution, Distribution};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     pub app_id: &'static str,
+    pub name: &'static str,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub display_name: &'static str,
     #[cfg(windows)]
@@ -15,7 +16,8 @@ pub fn identity() -> Identity {
 
 pub fn identity_of(distribution: &Distribution) -> Identity {
     Identity {
-        app_id: distribution.name,
+        app_id: distribution.app_id,
+        name: distribution.name,
         display_name: distribution.display_name,
         #[cfg(windows)]
         windows_app_id: windows_app_id(distribution.name),
@@ -24,7 +26,7 @@ pub fn identity_of(distribution: &Distribution) -> Identity {
 
 #[cfg(any(windows, test))]
 fn windows_app_id(name: &str) -> String {
-    format!("{}.window", name)
+    zellij_utils::desktop_integration::windows_app_id_for(name)
 }
 
 pub fn declare() {
@@ -71,7 +73,8 @@ mod tests {
         assert_eq!(
             identity_of(&Distribution::zellij()),
             Identity {
-                app_id: "zellij",
+                app_id: "dev.zellij.Zellij",
+                name: "zellij",
                 display_name: "Zellij",
                 #[cfg(windows)]
                 windows_app_id: "zellij.window".to_owned(),
@@ -86,12 +89,23 @@ mod tests {
             identity_of(&acme),
             Identity {
                 app_id: "acme",
+                name: "acme",
                 display_name: "Acme Shell",
                 #[cfg(windows)]
                 windows_app_id: "acme.window".to_owned(),
             },
             "the Windows app id follows the stable name, not the display name"
         );
+    }
+
+    #[test]
+    fn a_distribution_can_choose_its_desktop_app_id() {
+        let acme = Distribution::new("acme", "1.0.0").with_app_id("com.acme.Shell");
+        let identity = identity_of(&acme);
+        assert_eq!(identity.app_id, "com.acme.Shell");
+        assert_eq!(identity.name, "acme");
+        #[cfg(windows)]
+        assert_eq!(identity.windows_app_id, "acme.window");
     }
 
     #[test]

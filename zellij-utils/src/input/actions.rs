@@ -780,6 +780,10 @@ pub enum Action {
     GoToNextSession,
     GoToNextAttention,
     ToggleTrayIcon,
+    OpenSessionInWindow,
+    WaitForPaneExit {
+        pane_id: PaneId,
+    },
     MarkPaneSeen {
         session: Option<String>,
         pane_id: Option<PaneId>,
