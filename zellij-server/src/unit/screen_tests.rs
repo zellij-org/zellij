@@ -959,6 +959,27 @@ macro_rules! log_actions_in_thread {
     };
 }
 
+fn rendered_frames(log: &Arc<Mutex<Vec<ServerInstruction>>>) -> usize {
+    log.lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| matches!(instruction, ServerInstruction::Render(Some(_))))
+        .count()
+}
+
+fn wait_for_rendered_frames(log: &Arc<Mutex<Vec<ServerInstruction>>>, count: usize) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while rendered_frames(log) < count {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for {} rendered frames, got {}",
+            count,
+            rendered_frames(log)
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let client_id = 1;
     let new_terminal_ids = vec![(pid, None)];
@@ -4832,6 +4853,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -4852,17 +4874,17 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 4);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4931,6 +4953,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -4952,17 +4975,17 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 4);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -5231,6 +5254,7 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -5249,15 +5273,15 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneRight(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 5);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -5291,6 +5315,7 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -5307,15 +5332,15 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneLeft(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 5);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
