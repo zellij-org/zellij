@@ -142,6 +142,8 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         support_kitty_keyboard_protocol,
         support_kitty_graphics_protocol,
         grapheme_clusters,
+        mirror_resizes_source_pane,
+        live_view_release_key,
         web_server,
         web_sharing,
         stacked_resize,
@@ -254,6 +256,14 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::GraphemeClusters,
             display_text(grapheme_clusters),
+        ),
+        (
+            SettingKey::MirrorResizesSourcePane,
+            display_text(mirror_resizes_source_pane),
+        ),
+        (
+            SettingKey::LiveViewReleaseKey,
+            live_view_release_key.clone(),
         ),
         (SettingKey::WebServer, display_text(web_server)),
         (
@@ -833,6 +843,12 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             options.support_kitty_graphics_protocol = from.support_kitty_graphics_protocol
         },
         SettingKey::GraphemeClusters => options.grapheme_clusters = from.grapheme_clusters,
+        SettingKey::MirrorResizesSourcePane => {
+            options.mirror_resizes_source_pane = from.mirror_resizes_source_pane
+        },
+        SettingKey::LiveViewReleaseKey => {
+            options.live_view_release_key = from.live_view_release_key.clone()
+        },
         SettingKey::WebServer => options.web_server = from.web_server,
         SettingKey::WebSharing => options.web_sharing = from.web_sharing,
         SettingKey::StackedResize => options.stacked_resize = from.stacked_resize,

@@ -94,8 +94,8 @@ macro_rules! resize_pty {
                 $senders
                     .send_to_pty_writer(PtyWriteInstruction::ResizePty(
                         *pid,
-                        $pane.get_content_columns() as u16,
-                        $pane.get_content_rows() as u16,
+                        $pane.program_columns() as u16,
+                        $pane.program_rows() as u16,
                         None,
                         None,
                     ))
@@ -118,10 +118,8 @@ macro_rules! resize_pty {
             let character_cell_size = $character_cell_size.borrow();
             match *character_cell_size {
                 Some(size_in_pixels) => {
-                    let width_in_pixels =
-                        (size_in_pixels.width * $pane.get_content_columns()) as u16;
-                    let height_in_pixels =
-                        (size_in_pixels.height * $pane.get_content_rows()) as u16;
+                    let width_in_pixels = (size_in_pixels.width * $pane.program_columns()) as u16;
+                    let height_in_pixels = (size_in_pixels.height * $pane.program_rows()) as u16;
                     (Some(width_in_pixels), Some(height_in_pixels))
                 },
                 None => (None, None),
@@ -134,8 +132,8 @@ macro_rules! resize_pty {
                 $senders
                     .send_to_pty_writer(PtyWriteInstruction::ResizePty(
                         *pid,
-                        $pane.get_content_columns() as u16,
-                        $pane.get_content_rows() as u16,
+                        $pane.program_columns() as u16,
+                        $pane.program_rows() as u16,
                         width_in_pixels,
                         height_in_pixels,
                     ))
@@ -329,6 +327,7 @@ pub(crate) struct Tab {
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     typed_input: TypedInput,
+    local_input: HashSet<PaneId>,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -357,6 +356,7 @@ pub(crate) struct Tab {
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
     tab_visible: bool,
     popups: HashMap<ClientId, Vec<popup::Popup>>,
+    live_views: crate::pane_mirror::SharedLiveViews,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -449,6 +449,9 @@ pub trait Pane {
         (self.dump_screen_with_ansi(false, None), None)
     }
     fn mark_unseen_output_start(&mut self) {}
+    fn program_resized_at(&self) -> Option<Instant> {
+        None
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, count: usize, client_id: ClientId);
@@ -933,6 +936,27 @@ pub trait Pane {
     fn terminal_emulator_wants_mouse(&self) -> bool {
         false
     }
+    fn mirror_screen(&mut self) -> Option<zellij_utils::pane_mirror::MirrorScreen> {
+        None
+    }
+    fn mouse_event_for_program(&self, _event: &MouseEvent) -> Option<String> {
+        None
+    }
+    fn program_columns(&self) -> usize {
+        self.get_content_columns()
+    }
+    fn program_rows(&self) -> usize {
+        self.get_content_rows()
+    }
+    fn mirror_pinned_size(&self) -> Option<Size> {
+        None
+    }
+    fn set_mirror_pinned_size(&mut self, _size: Option<Size>) -> bool {
+        false
+    }
+    fn mirror_change_counter(&self) -> u64 {
+        0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1156,6 +1180,7 @@ impl Tab {
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
             typed_input: TypedInput::default(),
+            local_input: HashSet::new(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -1183,6 +1208,7 @@ impl Tab {
             dimmed_clients: HashSet::new(),
             tab_visible: true,
             popups: HashMap::new(),
+            live_views: Default::default(),
         }
     }
 
@@ -4958,6 +4984,56 @@ impl Tab {
         Ok(())
     }
 
+    pub fn send_mouse_event_to_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        event: &MouseEvent,
+    ) -> Result<()> {
+        let Some(pane) = self.get_pane_with_id(pane_id) else {
+            return Ok(());
+        };
+        let inside = event.position.line() >= 0
+            && (event.position.line() as usize) < pane.get_content_rows()
+            && event.position.column() < pane.get_content_columns();
+        if !inside {
+            return Ok(());
+        }
+        if let Some(report) = pane.mouse_event_for_program(event) {
+            self.write_to_pane_id(&None, report.into_bytes(), false, pane_id, None, None)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_mirror_pinned_size(&mut self, pane_id: PaneId, size: Option<Size>) -> bool {
+        let pane = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .get_mut(&pane_id)
+                    .map(|(_, pane)| pane)
+            });
+        let Some(pane) = pane else {
+            return false;
+        };
+        if !pane.set_mirror_pinned_size(size) {
+            return false;
+        }
+        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
+        true
+    }
+
+    pub fn take_local_input(&mut self) -> HashSet<PaneId> {
+        std::mem::take(&mut self.local_input)
+    }
+
+    pub fn note_typed_input(&mut self, pane_id: PaneId) {
+        if let PaneId::Terminal(terminal_id) = pane_id {
+            self.typed_input.record(terminal_id, Instant::now());
+        }
+    }
+
     pub fn paste_to_active_terminal(
         &mut self,
         bytes: Vec<u8>,
@@ -4965,10 +5041,18 @@ impl Tab {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to paste to active terminal for client {client_id}");
+        if let Some(PaneId::Plugin(plugin_id)) = self.live_view_focus(client_id) {
+            if self.live_views.borrow().is_captured(plugin_id, client_id) {
+                self.live_views.borrow_mut().send_paste(client_id, bytes);
+                drop(completion);
+                return Ok(());
+            }
+        }
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
             .with_context(err_context)?;
+        self.local_input.insert(active_pane_id);
         self.paste_to_pane_id(bytes, active_pane_id, completion)
     }
 
@@ -4986,6 +5070,7 @@ impl Tab {
 
         let mut should_update_ui = false;
         let is_sync_panes_active = self.is_sync_panes_active();
+        let live_view_focus = client_id.and_then(|client_id| self.live_view_focus(client_id));
 
         let active_pane = self
             .floating_panes
@@ -5005,6 +5090,21 @@ impl Tab {
             return Ok(should_update_ui);
         }
 
+        if let (PaneId::Plugin(plugin_id), Some(client_id)) = (pane_id, client_id) {
+            if self.live_views.borrow().is_captured(plugin_id, client_id)
+                && live_view_focus == Some(pane_id)
+            {
+                self.live_views.borrow_mut().send_key(
+                    client_id,
+                    key_with_modifier,
+                    &raw_input_bytes,
+                    raw_input_bytes_are_kitty,
+                );
+                drop(completion_tx);
+                return Ok(false);
+            }
+        }
+
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 match active_pane.adjust_input_to_terminal(
@@ -5016,6 +5116,7 @@ impl Tab {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                         if client_id.is_some() {
                             self.typed_input.record(active_terminal_id, Instant::now());
+                            self.local_input.insert(pane_id);
                         }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
@@ -5450,10 +5551,14 @@ impl Tab {
                 .with_context(err_context)
                 .non_fatal();
         }
-        self.render_popups(output, display_will_be_cleared)
-            .with_context(err_context)?;
+        self.render_popups(
+            output,
+            display_will_be_cleared,
+            client_id_override.is_none(),
+        )
+        .with_context(err_context)?;
 
-        self.render_cursor(output);
+        self.render_cursor(output, client_id_override.is_none());
         if output.has_rendered_assets() {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
@@ -5483,25 +5588,54 @@ impl Tab {
             self.should_clear_display_before_rendering = false;
         }
     }
-    fn render_cursor(&mut self, output: &mut Output) {
+    fn render_cursor(&mut self, output: &mut Output, use_live_view_cursor: bool) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            if self.has_focused_popup_for_client(client_id) {
+            let live_view_cursor = if use_live_view_cursor {
+                self.live_view_cursor(client_id)
+            } else {
+                None
+            };
+            if self.has_focused_popup_for_client(client_id) && live_view_cursor.is_none() {
                 output.set_client_cursor(client_id, 0, 0, false, "");
                 output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
                 continue;
             }
-            match self.get_active_terminal_cursor_position(client_id) {
+            let cursor_position = match live_view_cursor.as_ref() {
+                Some((x, y, visible, _)) => Some((*x, *y, *visible)),
+                None => self.get_active_terminal_cursor_position(client_id),
+            };
+            match cursor_position {
                 Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
                         .get_active_pane_id(client_id)
                         .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
-                    let not_occluded = output.cursor_is_visible(
+                    let not_covered_by_floating_panes = output.cursor_is_visible(
                         cursor_position_x,
                         cursor_position_y,
                         active_pane_z_index,
                     );
+                    let not_occluded = match live_view_cursor.as_ref() {
+                        Some(_) => match self.live_view_popup_z_index(client_id) {
+                            Some(popup_z_index) => !output.cursor_is_covered_by_popups(
+                                client_id,
+                                cursor_position_x,
+                                cursor_position_y,
+                                Some(popup_z_index),
+                            ),
+                            None => {
+                                not_covered_by_floating_panes
+                                    && !output.cursor_is_covered_by_popups(
+                                        client_id,
+                                        cursor_position_x,
+                                        cursor_position_y,
+                                        None,
+                                    )
+                            },
+                        },
+                        None => not_covered_by_floating_panes,
+                    };
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
@@ -5511,10 +5645,13 @@ impl Tab {
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
                     } else if not_occluded && is_cursor_visible {
-                        let desired_cursor_shape = self
-                            .get_active_pane(client_id)
-                            .map(|ap| ap.cursor_shape_csi())
-                            .unwrap_or_default();
+                        let desired_cursor_shape = match live_view_cursor.as_ref() {
+                            Some((_, _, _, shape)) => shape.clone(),
+                            None => self
+                                .get_active_pane(client_id)
+                                .map(|ap| ap.cursor_shape_csi())
+                                .unwrap_or_default(),
+                        };
                         let cursor_changed_position_or_shape = self
                             .cursor_positions_and_shape
                             .get(&client_id)
@@ -7204,7 +7341,22 @@ impl Tab {
         passthrough_pane_id: Option<PaneId>,
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
+        self.note_local_click(event);
         MouseHandler::handle_mouse_event(self, event, client_id, passthrough_pane_id, mousebinds)
+    }
+
+    fn note_local_click(&mut self, event: &MouseEvent) {
+        let is_click = event.event_type == zellij_utils::input::mouse::MouseEventType::Press
+            && (event.left || event.right || event.middle);
+        if !is_click {
+            return;
+        }
+        if let Ok(Some(pane)) = MouseHandler::get_pane_at(self, &event.position, false) {
+            let pane_id = pane.pid();
+            if let PaneId::Terminal(_) = pane_id {
+                self.local_input.insert(pane_id);
+            }
+        }
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
@@ -8560,6 +8712,98 @@ impl Tab {
     }
     pub fn update_grapheme_clusters(&mut self, grapheme_clusters: bool) {
         self.grapheme_clusters = grapheme_clusters;
+    }
+    pub fn set_live_views(&mut self, live_views: crate::pane_mirror::SharedLiveViews) {
+        self.tiled_panes.set_live_views(live_views.clone());
+        self.floating_panes.set_live_views(live_views.clone());
+        self.live_views = live_views;
+    }
+    pub fn live_view_focus(&self, client_id: ClientId) -> Option<PaneId> {
+        if let Some(plugin_id) = self.popup_plugin_id(client_id) {
+            return Some(PaneId::Plugin(plugin_id));
+        }
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_active_pane_id(client_id)
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))
+        } else {
+            self.tiled_panes.get_active_pane_id(client_id)
+        }
+    }
+    pub fn live_view_content_area(
+        &self,
+        plugin_id: u32,
+    ) -> Option<crate::pane_mirror::LiveViewRect> {
+        let pane_id = PaneId::Plugin(plugin_id);
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .or_else(|| self.popup_pane(plugin_id))?;
+        Some(crate::pane_mirror::LiveViewRect::new(
+            pane.get_content_x(),
+            pane.get_content_y(),
+            pane.get_content_columns(),
+            pane.get_content_rows(),
+        ))
+    }
+    pub fn mark_plugin_pane_for_full_render(&mut self, plugin_id: u32) {
+        let pane_id = PaneId::Plugin(plugin_id);
+        let pane = match self.get_pane_with_id_mut(pane_id) {
+            Some(pane) => Some(pane),
+            None => self.popup_pane_mut(plugin_id),
+        };
+        if let Some(pane) = pane {
+            pane.set_should_render(true);
+            pane.render_full_viewport();
+        }
+    }
+    pub fn live_view_point_is_covered(
+        &self,
+        client_id: ClientId,
+        plugin_id: u32,
+        position: &Position,
+    ) -> bool {
+        let popups = self.popup_geoms(client_id);
+        if let Some(layer) = self.popup_layer_of(client_id, plugin_id) {
+            return popups
+                .iter()
+                .skip(layer + 1)
+                .any(|geom| geom.contains(position));
+        }
+        if popups.iter().any(|geom| geom.contains(position)) {
+            return true;
+        }
+        let Some(stack) = self.floating_panes.stack() else {
+            return false;
+        };
+        let pane_id = PaneId::Plugin(plugin_id);
+        let first_layer_above = if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_pane_z_index(pane_id)
+                .map(|z_index| z_index + 1)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        stack
+            .layers
+            .iter()
+            .skip(first_layer_above)
+            .any(|geom| geom.contains(position))
+    }
+    fn live_view_popup_z_index(&self, client_id: ClientId) -> Option<usize> {
+        match self.live_view_focus(client_id)? {
+            PaneId::Plugin(plugin_id) => self.popup_z_index_of(client_id, plugin_id),
+            PaneId::Terminal(_) => None,
+        }
+    }
+    fn live_view_cursor(&self, client_id: ClientId) -> Option<(usize, usize, bool, String)> {
+        let PaneId::Plugin(plugin_id) = self.live_view_focus(client_id)? else {
+            return None;
+        };
+        let content = self.live_view_content_area(plugin_id)?;
+        self.live_views
+            .borrow()
+            .cursor(client_id, plugin_id, &content)
     }
     pub fn update_selection_options(
         &mut self,

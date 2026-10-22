@@ -284,6 +284,12 @@ impl BackgroundTestSession {
         expect_pty_spawn(&self.session_context.fake_server_os_api)
     }
 
+    pub fn connected_client_count(&self) -> usize {
+        self.session_context
+            .fake_server_os_api
+            .connected_client_count()
+    }
+
     pub fn attach(self, size: Size) -> TestSession {
         self.attach_focusing(size, None)
     }

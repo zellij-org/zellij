@@ -14,6 +14,7 @@ pub const fn key(character: char) -> [u8; 1] {
 
 pub const ENTER: [u8; 1] = [b'\r'];
 pub const ESC: [u8; 1] = [ESC_BYTE];
+pub const ESC_KEY: [u8; 5] = *b"\x1b[27u";
 pub const SPACE: [u8; 1] = [b' '];
 pub const TAB: [u8; 1] = [b'\t'];
 pub const F9: [u8; 5] = *b"\x1b[20~";

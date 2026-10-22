@@ -242,6 +242,11 @@ impl ZellijPlugin for State {
                 EventType::SavedSessionPreview,
                 EventType::GlobalAttentionUpdate,
                 EventType::SessionHistoryUpdate,
+                EventType::LiveViewStateChanged,
+            ]);
+            request_permission(&[
+                PermissionType::ReadPaneContents,
+                PermissionType::WriteToStdin,
             ]);
             self.panel.request_suggestions();
             self.panel.report_size();
@@ -286,6 +291,9 @@ impl State {
         if self.is_visible && self.shows_ages() {
             self.inbox.arm_clock(inbox::now_ms());
         }
+        if self.is_visible && self.inbox_is_shown() {
+            self.inbox.arm_spinner();
+        }
     }
     fn handle_pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if self.panel.size.is_some() {
@@ -326,13 +334,9 @@ impl State {
                     self.inbox.clock_armed = false;
                     return self.is_visible && self.shows_ages();
                 },
-                Some(timers::TimerOwner::InboxPreview) => {
-                    self.inbox.timer_armed = false;
-                    if self.is_visible && self.inbox_is_shown() {
-                        self.inbox.request_preview();
-                        self.inbox.arm_timer();
-                    }
-                    return false;
+                Some(timers::TimerOwner::Spinner) => {
+                    self.inbox.spinner_armed = false;
+                    return self.is_visible && self.inbox_is_shown();
                 },
                 Some(timers::TimerOwner::SessionsPreview) | None => {
                     self.panel.preview_timer_armed = false;
@@ -358,17 +362,20 @@ impl State {
             Event::Visible(is_visible) => {
                 let was_visible = self.is_visible;
                 self.is_visible = is_visible;
+                if !is_visible {
+                    self.inbox.clear_live_view();
+                }
                 if is_visible && !was_visible {
                     self.panel.request_suggestions();
+                    should_render = self.inbox_is_shown();
                     if !app_panel::is_enabled()
                         && self.panel.size == Some(PanelSize::Manager)
                         && self.shows_browser_tabs()
+                        && !self.inbox.is_capturing()
                         && self.inbox.select_newest_counted()
                     {
-                        self.inbox.reply = None;
                         self.inbox.tab = BrowserTab::Inbox;
                         self.inbox.tab_chosen = true;
-                        self.after_inbox_selection_change();
                         should_render = true;
                     }
                 }
@@ -464,7 +471,6 @@ impl State {
                 }
             },
             Event::GlobalAttentionUpdate(global) => {
-                let previous_preview = self.inbox.selected_item().map(ItemKey::of);
                 self.panel.attention = Some(global.clone());
                 should_render = self.inbox.update_global(global);
                 if self.away_card_is_empty() {
@@ -474,10 +480,10 @@ impl State {
                 if self.panel.size == Some(PanelSize::Card) {
                     self.resize_card_popup();
                 }
-                if self.inbox_is_shown()
-                    && self.inbox.selected_item().map(ItemKey::of) != previous_preview
-                {
-                    self.inbox.request_preview();
+            },
+            event @ Event::LiveViewStateChanged { .. } => {
+                if let Some(status) = inbox::LiveViewStatus::from_event(&event) {
+                    should_render = self.inbox.apply_live_view_status(status);
                 }
             },
             Event::SessionHistoryUpdate(history) => {
@@ -509,10 +515,6 @@ impl State {
                     self.panel.close();
                     return false;
                 }
-            },
-            Event::SessionPreview(preview) if self.inbox.accepts_preview(&preview) => {
-                should_render = self.inbox.preview.as_ref() != Some(&preview);
-                self.inbox.preview = Some(preview);
             },
             Event::SessionPreview(preview) => {
                 let known = self
@@ -590,11 +592,39 @@ impl State {
     }
 
     fn render_plugin(&mut self, rows: usize, cols: usize) {
+        self.inbox.live_view_drawn = false;
+        self.inbox.live_layout = None;
+        if self.panel.size == Some(PanelSize::Manager)
+            && self.shows_browser_tabs()
+            && self.inbox.tab == BrowserTab::Inbox
+        {
+            self.refresh_inbox_window_help();
+            self.inbox.live_mode = self
+                .inbox
+                .plan_live_layout(0, 1, cols, rows.saturating_sub(1))
+                .is_some();
+        }
+        if self.inbox_browser_will_render() {
+            self.inbox
+                .prepare_live_view(0, 1, cols, rows.saturating_sub(1));
+        } else {
+            self.inbox.clear_live_view();
+        }
         self.render_plugin_body(rows, cols);
         if app_panel::is_enabled() {
             self.app_panel_cols = cols;
             app_panel::render_close_button(cols);
         }
+    }
+
+    fn inbox_browser_will_render(&self) -> bool {
+        !(self.panel.is_popup && self.panel.needs_initial_layout)
+            && !self.app_quit
+            && self.pending_remote_window.is_none()
+            && !self.show_all_keys
+            && self.panel.size == Some(PanelSize::Manager)
+            && self.shows_browser_tabs()
+            && self.inbox.tab == BrowserTab::Inbox
     }
 
     fn render_plugin_body(&mut self, rows: usize, cols: usize) {
@@ -1059,7 +1089,6 @@ impl State {
         if self.panel.size == Some(PanelSize::Manager)
             && (key.bare_key == BareKey::F(1)
                 || (self.inbox_is_shown()
-                    && self.inbox.reply.is_none()
                     && key.bare_key == BareKey::Char('?')
                     && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]))))
         {
@@ -2339,9 +2368,6 @@ impl State {
             return None;
         }
         if self.inbox_is_shown() {
-            if self.inbox.reply.is_some() {
-                return None;
-            }
             let Some(target) = self.inbox_open_target() else {
                 return Some(false);
             };
@@ -2551,6 +2577,11 @@ impl State {
     fn refresh_inbox_window_help(&mut self) {
         self.maybe_offer_desktop_app();
         self.inbox.help_hints = self.inbox_hints(false);
+        self.inbox.offer_hints = if self.desktop_offer.shown {
+            self.inbox.help_hints.clone()
+        } else {
+            vec![]
+        };
     }
     fn maybe_offer_desktop_app(&mut self) {
         if self.desktop_offer.asked || app_panel::is_enabled() || !self.inbox_is_shown() {
@@ -2713,12 +2744,32 @@ impl State {
         let item = self.inbox.selected_item();
         let muted = item.map(|i| i.item.attention.is_muted()).unwrap_or(false);
         let watched = item.map(|i| i.item.attention.watched).unwrap_or(false);
-        let mut hints = vec![
-            hint("<ENTER>", "go to the pane"),
+        let mut hints = if self.inbox.live_mode {
+            vec![
+                hint("<ENTER> <→>", "type into the shown pane"),
+                hint("<g>", "go to the pane"),
+                hint(
+                    "<z>",
+                    format!(
+                        "resize the pane to the view ({})",
+                        if self.inbox.current_resize_allowed() {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    ),
+                ),
+                hint(
+                    self.inbox.release_key_text(),
+                    "stop typing (or click outside the view)",
+                ),
+            ]
+        } else {
+            vec![hint("<ENTER> <g>", "go to the pane")]
+        };
+        hints.extend([
             hint("<↓↑>", "select"),
-            hint("<r>", "reply"),
             hint("<c>", "dismiss (mark seen)"),
-            hint("<p>", "show or hide the latest output"),
             hint("<ESC>", "close"),
             hint("<m>", if muted { "unmute" } else { "mute" }),
             hint(
@@ -2730,12 +2781,20 @@ impl State {
                 },
             ),
             hint("<C>", "dismiss everything"),
-        ];
+        ]);
         hints.extend(self.open_way_hints(target.as_ref(), true));
         let on_off = |on: bool| if on { "on" } else { "off" };
         hints.push(hint(
             "<f>",
             format!("this session only ({})", on_off(self.inbox.only_here)),
+        ));
+        hints.push(hint(
+            "<s>",
+            if self.inbox.group_by_session {
+                "group by status"
+            } else {
+                "group by session"
+            },
         ));
         hints.push(hint(
             "<a>",
@@ -2744,7 +2803,6 @@ impl State {
                 on_off(self.inbox.show_quiet)
             ),
         ));
-        hints.push(hint("<Shift ←↓↑→>", "scroll the output"));
         hints.push(hint("<TAB>", "switch to sessions"));
         hints.push(hint("<?>", "this list"));
         hints
@@ -3397,7 +3455,6 @@ impl State {
             self.set_app_panel_title("Quit");
             return;
         }
-        self.inbox.reply = None;
         self.single_screen_state.search_term.clear();
         self.single_screen_state.selected_index = None;
         let tab = match view {
@@ -3406,9 +3463,8 @@ impl State {
             _ => BrowserTab::Inbox,
         };
         self.switch_browser_tab(tab);
-        if tab == BrowserTab::Inbox {
+        if tab == BrowserTab::Inbox && !self.inbox.is_capturing() {
             self.inbox.select_newest_counted();
-            self.after_inbox_selection_change();
         }
     }
 
@@ -3425,13 +3481,9 @@ impl State {
         self.inbox.tab = tab;
         self.inbox.tab_chosen = true;
         self.inbox.select_newest_on_arrival = false;
-        self.inbox.reply = None;
         self.follow_app_panel_title();
         match tab {
-            BrowserTab::Inbox => {
-                self.inbox.request_preview();
-                self.inbox.arm_timer();
-            },
+            BrowserTab::Inbox => {},
             BrowserTab::Sessions => {
                 self.preselect_previous_session();
                 self.request_preview_for_selection();
@@ -3473,10 +3525,6 @@ impl State {
         }
         self.inbox_requested = false;
         self.go_to_size(PanelSize::Manager);
-        if self.inbox.tab == BrowserTab::Inbox {
-            self.inbox.request_preview();
-            self.inbox.arm_timer();
-        }
     }
     fn go_back_to_previous(&mut self) {
         run_action(actions::Action::ToggleSession, BTreeMap::new());
@@ -3590,74 +3638,38 @@ impl State {
     fn item_action(&mut self, action: ItemAction) -> bool {
         match action {
             ItemAction::Go => self.go_to_selected_inbox_item(),
-            ItemAction::Reply => {
-                self.inbox.start_reply();
+            ItemAction::Type => {
+                self.inbox.start_typing();
             },
             ItemAction::Dismiss => self.inbox.mark_selected_seen(),
-            ItemAction::Preview => {
-                self.inbox.preview_open = !self.inbox.preview_open;
-                self.after_inbox_selection_change();
-            },
         }
         true
     }
-    fn after_inbox_selection_change(&mut self) {
-        self.inbox.request_preview();
-        self.inbox.arm_timer();
-    }
     fn handle_inbox_key(&mut self, key: KeyWithModifier) -> bool {
-        if self.inbox.reply.is_some() {
-            if key.bare_key == BareKey::Esc && key.has_no_modifiers() {
-                self.inbox.reply = None;
-            } else {
-                self.inbox.send_reply_key(key);
-                self.inbox.arm_timer();
-            }
-            return true;
-        }
-        if let Some(pan_move) = panel::pan_move_for_key(&key) {
-            self.inbox.pan_preview(pan_move);
-            return true;
-        }
         let plain = key.has_no_modifiers();
         let shift = key.has_only_modifiers(&[KeyModifier::Shift]);
+        let live = self.inbox.shows_live_view();
         match key.bare_key {
             BareKey::Esc if plain => self.size_down(),
             BareKey::Tab if plain => self.switch_browser_tab(BrowserTab::Sessions),
-            BareKey::Down if plain => {
-                self.inbox.move_selection(1);
-                self.after_inbox_selection_change();
+            BareKey::Down if plain => self.inbox.move_selection(1),
+            BareKey::Up if plain => self.inbox.move_selection(-1),
+            BareKey::PageDown if plain => self.inbox.move_selection(10),
+            BareKey::PageUp if plain => self.inbox.move_selection(-10),
+            BareKey::Enter if plain && live => {
+                self.inbox.start_typing();
             },
-            BareKey::Up if plain => {
-                self.inbox.move_selection(-1);
-                self.after_inbox_selection_change();
-            },
-            BareKey::PageDown if plain => {
-                self.inbox.move_selection(10);
-                self.after_inbox_selection_change();
-            },
-            BareKey::PageUp if plain => {
-                self.inbox.move_selection(-10);
-                self.after_inbox_selection_change();
+            BareKey::Right if plain && live => {
+                self.inbox.start_typing();
             },
             BareKey::Enter if plain => self.go_to_selected_inbox_item(),
-            BareKey::Char('p') | BareKey::Char(' ') if plain => {
-                self.item_action(ItemAction::Preview);
-            },
-            BareKey::Char('r') if plain => {
-                self.inbox.start_reply();
-            },
+            BareKey::Char('g') if plain => self.go_to_selected_inbox_item(),
+            BareKey::Char('z') if plain && live => self.inbox.toggle_resize(),
             BareKey::Char('c') if plain => self.inbox.mark_selected_seen(),
             BareKey::Char('C') if plain || shift => mark_all_seen(None),
             BareKey::Char('m') if plain => self.inbox.cycle_selected_mute(),
-            BareKey::Char('f') if plain => {
-                self.inbox.flip_here_only();
-                self.after_inbox_selection_change();
-            },
-            BareKey::Char('a') if plain => {
-                self.inbox.toggle_show_quiet();
-                self.after_inbox_selection_change();
-            },
+            BareKey::Char('f') if plain => self.inbox.flip_here_only(),
+            BareKey::Char('a') if plain => self.inbox.toggle_show_quiet(),
             BareKey::Char('n') if plain => self.inbox.toggle_selected_watch(),
             BareKey::Char('x') if plain && self.desktop_offer.shown => {
                 self.desktop_offer.shown = false;
@@ -3665,6 +3677,7 @@ impl State {
                     desktop_integration::Flag::RemindersOff,
                 ));
             },
+            BareKey::Char('s') if plain => self.inbox.toggle_grouping(),
             _ => return false,
         }
         true
@@ -3678,42 +3691,47 @@ impl State {
     }
 
     fn handle_inbox_mouse(&mut self, mouse: Mouse) -> bool {
+        let typing = self.inbox.is_capturing();
         match mouse {
-            Mouse::LeftClick(line, column) => match self.inbox.browser_target_at(line, column) {
-                Some(BrowserTarget::Tab(tab)) => {
-                    self.switch_browser_tab(tab);
-                    true
-                },
-                Some(BrowserTarget::Item(key)) => {
-                    self.inbox.reply = None;
-                    if self.inbox.is_selected(&key) {
-                        self.go_to_selected_inbox_item();
-                        return true;
-                    }
-                    self.inbox.select_item(key);
-                    self.after_inbox_selection_change();
-                    true
-                },
-                Some(BrowserTarget::Preview) => self.inbox.start_reply(),
-                Some(BrowserTarget::Action(action)) => self.item_action(action),
-                Some(BrowserTarget::ShowQuiet) => {
-                    self.inbox.toggle_show_quiet();
-                    self.after_inbox_selection_change();
-                    true
-                },
-                None => false,
-            },
-            Mouse::ScrollDown(lines) if self.inbox.reply.is_none() => {
+            Mouse::LeftClick(line, column) => self.handle_inbox_click(line, column, typing),
+            Mouse::ScrollDown(_) | Mouse::ScrollUp(_) if typing => false,
+            Mouse::ScrollDown(lines) => {
                 self.inbox.move_selection(lines.max(1) as isize);
-                self.after_inbox_selection_change();
                 true
             },
-            Mouse::ScrollUp(lines) if self.inbox.reply.is_none() => {
+            Mouse::ScrollUp(lines) => {
                 self.inbox.move_selection(-(lines.max(1) as isize));
-                self.after_inbox_selection_change();
                 true
             },
             _ => false,
+        }
+    }
+    fn handle_inbox_click(&mut self, line: isize, column: usize, typing: bool) -> bool {
+        match self.inbox.browser_target_at(line, column) {
+            Some(BrowserTarget::Tab(tab)) => {
+                self.switch_browser_tab(tab);
+                true
+            },
+            Some(BrowserTarget::Item(key)) => {
+                if !self.inbox.is_selected(&key) {
+                    self.inbox.select_item(key);
+                } else if !self.inbox.shows_live_view() {
+                    self.go_to_selected_inbox_item();
+                } else if !typing {
+                    self.inbox.start_typing();
+                }
+                true
+            },
+            Some(BrowserTarget::LiveView) => {
+                self.inbox.start_typing();
+                true
+            },
+            Some(BrowserTarget::Action(action)) => self.item_action(action),
+            Some(BrowserTarget::ShowQuiet) => {
+                self.inbox.toggle_show_quiet();
+                true
+            },
+            None => false,
         }
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> bool {
@@ -3838,5 +3856,229 @@ mod remote_window_tests {
             leaving.last().map(|l| l.as_str()),
             Some("<Enter> open it anyway    <Esc> cancel")
         );
+    }
+}
+
+#[cfg(test)]
+mod live_view_state_tests {
+    use super::*;
+
+    fn attention_item(session: &str, id: u32) -> AttentionItem {
+        AttentionItem {
+            pane_id: PaneId::Terminal(id),
+            tab_id: 0,
+            tab_name: "tab".to_owned(),
+            pane_title: format!("pane{}", id),
+            attention: PaneAttention {
+                status: AttentionStatus::NeedsYou,
+                text: format!("question from {}", session),
+                since_ms: 100,
+                ..Default::default()
+            },
+        }
+    }
+
+    fn browser() -> State {
+        let mut state = State::default();
+        state.is_visible = true;
+        state.panel.size = Some(PanelSize::Manager);
+        let session = |name: &str, id: u32| {
+            let mut attention = SessionAttention::default();
+            let item = attention_item(name, id);
+            attention.counts.add(&item.attention);
+            attention.items.push(item);
+            (name.to_owned(), attention)
+        };
+        state.inbox.update_global(GlobalAttention::build(
+            "here",
+            vec![
+                ("here".to_owned(), Default::default()),
+                session("api", 1),
+                session("web", 2),
+            ],
+        ));
+        state.inbox.tab = BrowserTab::Inbox;
+        state.inbox.tab_chosen = true;
+        state.render_plugin(16, 88);
+        assert!(
+            state.inbox.live_view_sent.is_some(),
+            "the inbox shows the live view"
+        );
+        state
+    }
+
+    #[test]
+    fn the_all_keys_list_clears_the_live_view() {
+        let mut state = browser();
+        state.show_all_keys = true;
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_sent, None);
+        state.show_all_keys = false;
+        state.render_plugin(16, 88);
+        assert!(state.inbox.live_view_sent.is_some());
+    }
+
+    #[test]
+    fn the_remote_window_warning_clears_the_live_view() {
+        let mut state = browser();
+        state.remote_client = Some("from a terminal".to_owned());
+        state.pending_remote_window = Some(PendingWindow {
+            request: SessionWindowRequest::existing("api", None, true),
+            leave: false,
+            from_layout_list: false,
+        });
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_sent, None);
+    }
+
+    #[test]
+    fn the_quit_question_clears_the_live_view() {
+        let mut state = browser();
+        state.app_quit = true;
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_sent, None);
+    }
+
+    #[test]
+    fn the_sessions_view_clears_the_live_view() {
+        let mut state = browser();
+        state.switch_browser_tab(BrowserTab::Sessions);
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_sent, None);
+    }
+
+    #[test]
+    fn hiding_the_plugin_clears_the_live_view() {
+        let mut state = browser();
+        state.update(Event::Visible(false));
+        assert_eq!(state.inbox.live_view_sent, None);
+    }
+
+    #[test]
+    fn a_narrow_browser_lists_the_items_without_a_live_view() {
+        let mut state = browser();
+        state.render_plugin(16, 60);
+        assert_eq!(state.inbox.live_view_sent, None);
+        assert!(!state.inbox.shows_live_view());
+    }
+
+    #[test]
+    fn enter_types_into_the_view_and_g_goes_to_the_pane() {
+        let mut state = browser();
+        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        assert_eq!(
+            state.inbox.capture_target,
+            Some(ItemKey {
+                session: "api".to_owned(),
+                pane_id: PaneId::Terminal(1),
+            })
+        );
+        assert_eq!(state.panel.size, Some(PanelSize::Manager));
+        let mut narrow = browser();
+        narrow.render_plugin(16, 60);
+        narrow.handle_inbox_key(KeyWithModifier::new(BareKey::Enter));
+        assert_eq!(narrow.inbox.capture_target, None);
+        assert_eq!(narrow.panel.size, None);
+        let mut go = browser();
+        go.handle_inbox_key(KeyWithModifier::new(BareKey::Char('g')));
+        assert_eq!(go.panel.size, None);
+    }
+
+    fn key_of(session: &str, id: u32) -> ItemKey {
+        ItemKey {
+            session: session.to_owned(),
+            pane_id: PaneId::Terminal(id),
+        }
+    }
+
+    fn row_of(state: &State, key: &ItemKey) -> (isize, usize) {
+        state
+            .inbox
+            .browser_targets
+            .iter()
+            .find(|(_, _, target)| *target == BrowserTarget::Item(key.clone()))
+            .map(|(y, columns, _)| (*y as isize, columns.start))
+            .expect("the row is drawn")
+    }
+
+    fn report(state: &mut State, captured: bool, released_by: Option<LiveViewRelease>) {
+        let status = inbox::LiveViewStatus {
+            target: Some(PaneAddress::local("api", PaneId::Terminal(1))),
+            state: MirrorState::Live,
+            input_captured: captured,
+            input_released_by: released_by,
+            resize_allowed: true,
+            pinned: false,
+            source_size: None,
+            release_key: "Esc Esc".to_owned(),
+        };
+        state.inbox.apply_live_view_status(status);
+        state.render_plugin(16, 88);
+    }
+
+    #[test]
+    fn a_click_on_the_selected_row_that_ends_typing_does_not_start_typing_again() {
+        let mut state = browser();
+        let api = key_of("api", 1);
+        assert!(state.inbox.is_selected(&api));
+        let (line, column) = row_of(&state, &api);
+        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        report(&mut state, true, None);
+        assert!(state.handle_inbox_mouse(Mouse::LeftClick(line, column)));
+        report(&mut state, false, Some(LiveViewRelease::ClickOutside));
+        assert_eq!(
+            state.inbox.capture_target, None,
+            "the click that ended typing arrives before the release and does not start it again"
+        );
+        assert!(!state.inbox.is_capturing());
+        state.handle_inbox_mouse(Mouse::LeftClick(line, column));
+        assert_eq!(state.inbox.capture_target, Some(api));
+    }
+
+    #[test]
+    fn a_click_on_the_selected_row_after_a_release_the_plugin_never_saw_starts_typing() {
+        for unseen in [
+            LiveViewRelease::ClickOutside,
+            LiveViewRelease::FocusLost,
+            LiveViewRelease::Key,
+        ] {
+            let mut state = browser();
+            let api = key_of("api", 1);
+            let (line, column) = row_of(&state, &api);
+            assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+            report(&mut state, true, None);
+            report(&mut state, false, Some(unseen));
+            state.handle_inbox_mouse(Mouse::LeftClick(line, column));
+            assert_eq!(
+                state.inbox.capture_target,
+                Some(api),
+                "the first click after a release by {:?} starts typing",
+                unseen
+            );
+        }
+    }
+
+    #[test]
+    fn while_typing_a_click_on_a_row_selects_it_without_starting_typing_and_the_wheel_does_nothing()
+    {
+        let mut state = browser();
+        let (api, web) = (key_of("api", 1), key_of("web", 2));
+        let (api_line, api_column) = row_of(&state, &api);
+        let (web_line, web_column) = row_of(&state, &web);
+        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        report(&mut state, true, None);
+        assert!(state.inbox.is_capturing());
+        assert!(!state.handle_inbox_mouse(Mouse::ScrollDown(1)));
+        assert!(!state.handle_inbox_mouse(Mouse::ScrollUp(1)));
+        assert_eq!(state.inbox.selection, None);
+        assert!(state.inbox.is_selected(&api));
+        state.handle_inbox_mouse(Mouse::LeftClick(api_line, api_column));
+        assert_eq!(state.inbox.capture_target, Some(api.clone()));
+        state.handle_inbox_mouse(Mouse::LeftClick(web_line, web_column));
+        assert_eq!(state.inbox.selection, Some(web.clone()));
+        assert_eq!(state.inbox.capture_target, Some(api));
+        report(&mut state, false, Some(LiveViewRelease::Key));
+        assert!(state.handle_inbox_mouse(Mouse::ScrollUp(1)));
+        assert!(state.inbox.is_selected(&key_of("api", 1)));
     }
 }

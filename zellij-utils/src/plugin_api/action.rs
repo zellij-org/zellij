@@ -762,6 +762,12 @@ impl TryFrom<ProtobufAction> for Action {
                     None => Ok(Action::OpenSessionInWindow),
                 }
             },
+            Some(ProtobufActionName::ToggleMirrorResize) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleMirrorResize should not have a payload"),
+                    None => Ok(Action::ToggleMirrorResize),
+                }
+            },
             Some(ProtobufActionName::MarkPaneSeen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkPaneSeen {
                     session: payload.session,
@@ -2115,6 +2121,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::OpenSessionInWindow => Ok(ProtobufAction {
                 name: ProtobufActionName::OpenSessionInWindow as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleMirrorResize => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleMirrorResize as i32,
                 optional_payload: None,
             }),
             Action::MarkPaneSeen { session, pane_id } => Ok(ProtobufAction {
@@ -3927,6 +3937,15 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{:?} did not decode: {}", original, e));
             assert_eq!(original, decoded);
         }
+    }
+
+    #[test]
+    fn toggle_mirror_resize_round_trips_over_protobuf() {
+        let protobuf: ProtobufAction = Action::ToggleMirrorResize.try_into().unwrap();
+        assert_eq!(protobuf.name, ProtobufActionName::ToggleMirrorResize as i32);
+        assert_eq!(protobuf.optional_payload, None);
+        let decoded: Action = protobuf.try_into().unwrap();
+        assert_eq!(decoded, Action::ToggleMirrorResize);
     }
 
     #[test]

@@ -216,6 +216,8 @@ fn is_self_command(command: &PluginCommand) -> bool {
             | PluginCommand::CloseSelf
             | PluginCommand::SetSelfMouseSelectionSupport(..)
             | PluginCommand::SetSelfCollapsed(..)
+            | PluginCommand::SetLiveView(..)
+            | PluginCommand::SetLiveViewInput(..)
     ) || self_command_has_response(command)
 }
 
@@ -754,6 +756,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         Some(session_name),
                         crate::screen::SessionPaneCommand::Focus(pane_id),
                     ),
+                    PluginCommand::SetLiveView(view) => set_live_view(env, view),
+                    PluginCommand::SetLiveViewInput(capture) => set_live_view_input(env, capture),
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
                     },
@@ -6623,13 +6627,28 @@ pub(crate) fn check_command_permission(
         None => return (PermissionStatus::Granted, None),
     };
 
-    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
-        if permissions.contains(&permission) {
-            return (PermissionStatus::Granted, None);
-        }
+    let granted = plugin_env.permissions.lock().unwrap().clone();
+    let missing = std::iter::once(permission)
+        .chain(additional_required_permissions(command).iter().copied())
+        .find(|required| {
+            !granted
+                .as_ref()
+                .map(|granted| granted.contains(required))
+                .unwrap_or(false)
+        });
+    match missing {
+        None => (PermissionStatus::Granted, None),
+        Some(missing) => (PermissionStatus::Denied, Some(missing)),
     }
+}
 
-    (PermissionStatus::Denied, Some(permission))
+fn additional_required_permissions(command: &PluginCommand) -> &'static [PermissionType] {
+    match command {
+        PluginCommand::SetLiveView(..) | PluginCommand::SetLiveViewInput(..) => {
+            &[PermissionType::WriteToStdin]
+        },
+        _ => &[],
+    }
 }
 
 fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
@@ -6671,6 +6690,9 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::WriteCharsToPaneId(..)
         | PluginCommand::WriteToSessionPane { .. }
         | PluginCommand::SendKeyToSessionPane { .. } => PermissionType::WriteToStdin,
+        PluginCommand::SetLiveView(..) | PluginCommand::SetLiveViewInput(..) => {
+            PermissionType::ReadPaneContents
+        },
         PluginCommand::MarkSessionPaneSeen { .. }
         | PluginCommand::MarkAllSeen { .. }
         | PluginCommand::OpenSessionWindow(..)
@@ -6949,4 +6971,22 @@ mod prompt_tests {
             PathBuf::from("/tmp/prompt.wasm")
         )));
     }
+}
+
+fn set_live_view(env: &PluginEnv, view: Option<zellij_utils::data::LiveView>) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::SetLiveView {
+        plugin_pane_id: self_pane_id(env),
+        client_id: acting_client(env),
+        view,
+    });
+}
+
+fn set_live_view_input(env: &PluginEnv, capture: bool) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetLiveViewInput {
+            plugin_pane_id: self_pane_id(env),
+            client_id: acting_client(env),
+            capture,
+        });
 }

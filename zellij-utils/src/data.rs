@@ -1288,6 +1288,17 @@ pub enum Event {
     GlobalAttentionUpdate(crate::attention::GlobalAttention),
     SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
     DesktopIntegration(String),
+    LiveViewStateChanged {
+        target: Option<PaneAddress>,
+        state: MirrorState,
+        input_captured: bool,
+        input_released_by: Option<LiveViewRelease>,
+        resize_allowed: bool,
+        view_only: bool,
+        pinned: bool,
+        source_size: Option<crate::pane_size::Size>,
+        release_key: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -3874,6 +3885,125 @@ pub enum PaneId {
     Plugin(u32),
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HostId(pub String);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PaneAddress {
+    pub host: Option<HostId>,
+    pub session: String,
+    pub pane_id: PaneId,
+}
+
+impl PaneAddress {
+    pub fn local(session: impl Into<String>, pane_id: PaneId) -> Self {
+        PaneAddress {
+            host: None,
+            session: session.into(),
+            pane_id,
+        }
+    }
+    pub fn is_local(&self) -> bool {
+        self.host.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MirrorClosedReason {
+    PaneClosed,
+    PaneNotFound,
+    SessionEnding,
+    Rejected,
+    VersionMismatch,
+    UnsupportedHost,
+    ConnectionFailed,
+    ConnectionLost,
+    ProtocolError,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MirrorState {
+    #[default]
+    NoTarget,
+    Connecting,
+    Live,
+    Closed(MirrorClosedReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LiveView {
+    pub target: PaneAddress,
+    pub x: usize,
+    pub y: usize,
+    pub cols: usize,
+    pub rows: usize,
+    pub resize_allowed: Option<bool>,
+    pub view_only: bool,
+}
+
+impl LiveView {
+    pub fn new(target: PaneAddress, x: usize, y: usize, cols: usize, rows: usize) -> Self {
+        LiveView {
+            target,
+            x,
+            y,
+            cols,
+            rows,
+            resize_allowed: None,
+            view_only: false,
+        }
+    }
+}
+
+pub const DEFAULT_LIVE_VIEW_RELEASE_KEY: &str = "Esc Esc";
+pub const LIVE_VIEW_DOUBLE_PRESS_MS: u64 = 400;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveViewReleaseGesture {
+    pub key: KeyWithModifier,
+    pub double: bool,
+}
+
+impl LiveViewReleaseGesture {
+    pub fn parse(text: &str) -> Option<Self> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.is_empty() {
+            return None;
+        }
+        if words.len() % 2 == 0 {
+            let (first, second) = words.split_at(words.len() / 2);
+            if first == second {
+                if let Ok(key) = first.join(" ").parse::<KeyWithModifier>() {
+                    return Some(LiveViewReleaseGesture { key, double: true });
+                }
+            }
+        }
+        words
+            .join(" ")
+            .parse::<KeyWithModifier>()
+            .ok()
+            .map(|key| LiveViewReleaseGesture { key, double: false })
+    }
+
+    pub fn display(text: &str) -> String {
+        match Self::parse(text) {
+            Some(gesture) if gesture.double => format!("<{}> twice", gesture.key),
+            Some(gesture) => format!("<{}>", gesture.key),
+            None => format!("<{}>", text.trim()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LiveViewRelease {
+    Key,
+    ClickOutside,
+    FocusLost,
+    Plugin,
+    Cleared,
+    NotAllowed,
+}
+
 impl Default for PaneId {
     fn default() -> Self {
         PaneId::Terminal(0)
@@ -5044,6 +5174,8 @@ pub enum PluginCommand {
         session_name: String,
         pane_id: PaneId,
     },
+    SetLiveView(Option<LiveView>),
+    SetLiveViewInput(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5155,6 +5287,8 @@ setting_keys! {
     SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true, Flag),
     SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true, Flag),
     GraphemeClusters => (TopLevel, "grapheme_clusters", false, Flag),
+    MirrorResizesSourcePane => (TopLevel, "mirror_resizes_source_pane", false, Flag),
+    LiveViewReleaseKey => (TopLevel, "live_view_release_key", false, Text),
     WebServer => (TopLevel, "web_server", true, Flag),
     WebSharing => (TopLevel, "web_sharing", true, Text),
     StackedResize => (TopLevel, "stacked_resize", false, Flag),
@@ -5896,5 +6030,58 @@ mod extract_text_cluster_tests {
         );
         assert_eq!(extract_text_to_column(line, 2), "ae\u{0301}");
         assert_eq!(extract_text_by_columns(line, 3, 5), "\u{1F468}\u{200D}");
+    }
+}
+
+#[cfg(test)]
+mod live_view_release_gesture_tests {
+    use super::*;
+
+    #[test]
+    fn a_key_written_twice_is_a_double_press_and_a_single_key_is_one_press() {
+        assert_eq!(
+            LiveViewReleaseGesture::parse("Esc Esc"),
+            Some(LiveViewReleaseGesture {
+                key: KeyWithModifier::new(BareKey::Esc),
+                double: true,
+            })
+        );
+        assert_eq!(
+            LiveViewReleaseGesture::parse("  Ctrl q   Ctrl q "),
+            Some(LiveViewReleaseGesture {
+                key: KeyWithModifier::new(BareKey::Char('q')).with_ctrl_modifier(),
+                double: true,
+            })
+        );
+        assert_eq!(
+            LiveViewReleaseGesture::parse("Ctrl Alt Home"),
+            Some(LiveViewReleaseGesture {
+                key: KeyWithModifier::new(BareKey::Home)
+                    .with_ctrl_modifier()
+                    .with_alt_modifier(),
+                double: false,
+            })
+        );
+        assert_eq!(
+            LiveViewReleaseGesture::parse("Esc"),
+            Some(LiveViewReleaseGesture {
+                key: KeyWithModifier::new(BareKey::Esc),
+                double: false,
+            })
+        );
+        assert_eq!(LiveViewReleaseGesture::parse(""), None);
+        assert_eq!(LiveViewReleaseGesture::parse("Esc Tab"), None);
+        assert_eq!(LiveViewReleaseGesture::parse("not a key"), None);
+        assert!(LiveViewReleaseGesture::parse(DEFAULT_LIVE_VIEW_RELEASE_KEY).is_some());
+    }
+
+    #[test]
+    fn the_gesture_is_shown_as_a_key_hint() {
+        assert_eq!(LiveViewReleaseGesture::display("Esc Esc"), "<ESC> twice");
+        assert_eq!(
+            LiveViewReleaseGesture::display("Ctrl Alt Home"),
+            "<Ctrl Alt HOME>"
+        );
+        assert_eq!(LiveViewReleaseGesture::display(" odd text "), "<odd text>");
     }
 }

@@ -375,6 +375,25 @@ pub struct Options {
     #[serde(default)]
     pub grapheme_clusters: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether a focused mirror of a pane may resize that pane's program to the \
+                mirror's size, and whether new mirrors resize their source pane by default \
+                (true or false, default true)"
+    )]
+    #[serde(default)]
+    pub mirror_resizes_source_pane: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "The key that gives typing back to a plugin while a live pane view inside it is \
+                taking the keyboard (default \"Esc Esc\", a key written twice means pressing it twice)"
+    )]
+    #[serde(default)]
+    pub live_view_release_key: Option<String>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -703,6 +722,12 @@ impl Options {
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
         let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
+        let mirror_resizes_source_pane = other
+            .mirror_resizes_source_pane
+            .or(self.mirror_resizes_source_pane);
+        let live_view_release_key = other
+            .live_view_release_key
+            .or_else(|| self.live_view_release_key.clone());
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -797,6 +822,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,
@@ -908,6 +935,12 @@ impl Options {
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
         let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
+        let mirror_resizes_source_pane = other
+            .mirror_resizes_source_pane
+            .or(self.mirror_resizes_source_pane);
+        let live_view_release_key = other
+            .live_view_release_key
+            .or_else(|| self.live_view_release_key.clone());
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -1003,6 +1036,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,

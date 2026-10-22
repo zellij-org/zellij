@@ -1,0 +1,90 @@
+syntax = "proto3";
+package client_server_contract;
+
+import "common_types.proto";
+
+message PaneMirrorViewerMessage {
+  oneof message {
+    MirrorAttachMsg attach = 1;
+    MirrorInputMsg input = 2;
+    MirrorResizeMsg resize = 3;
+    MirrorFrameAckMsg frame_ack = 4;
+    MirrorDetachMsg detach = 5;
+  }
+}
+
+message PaneMirrorSourceMessage {
+  oneof message {
+    MirrorAttachedMsg attached = 1;
+    MirrorFrameMsg frame = 2;
+    MirrorClosedMsg closed = 3;
+    MirrorPinStateMsg pin_state = 4;
+  }
+}
+
+message MirrorAttachMsg {
+  uint32 version = 1;
+  repeated string capabilities = 2;
+  PaneId target_pane_id = 3;
+  Size viewer_size = 4;
+  bool focused = 5;
+  bool resize_allowed = 6;
+  bool view_only = 7;
+}
+
+message MirrorKeyInput {
+  KeyWithModifier key = 1;
+  bytes raw_bytes = 2;
+  bool is_kitty_keyboard_protocol = 3;
+}
+
+message MirrorInputMsg {
+  oneof input {
+    MirrorKeyInput key = 1;
+    bytes bytes = 2;
+    bytes paste = 3;
+    MouseEvent mouse = 4;
+  }
+}
+
+message MirrorResizeMsg {
+  Size size = 1;
+  bool focused = 2;
+  bool resize_allowed = 3;
+}
+
+message MirrorFrameAckMsg {
+  uint64 seq = 1;
+}
+
+message MirrorDetachMsg {}
+
+message MirrorAttachedMsg {
+  uint32 version = 1;
+  repeated string capabilities = 2;
+  Size pane_size = 3;
+}
+
+message MirrorFrameMsg {
+  bytes frame = 1;
+  bool alternate_screen = 2;
+}
+
+message MirrorPinStateMsg {
+  bool pinned = 1;
+  Size pane_size = 2;
+}
+
+enum MirrorCloseReason {
+  MIRROR_CLOSE_REASON_UNSPECIFIED = 0;
+  MIRROR_CLOSE_REASON_PANE_CLOSED = 1;
+  MIRROR_CLOSE_REASON_SESSION_ENDING = 2;
+  MIRROR_CLOSE_REASON_REJECTED = 3;
+  MIRROR_CLOSE_REASON_VERSION_MISMATCH = 4;
+  MIRROR_CLOSE_REASON_PANE_NOT_FOUND = 5;
+}
+
+message MirrorClosedMsg {
+  MirrorCloseReason reason = 1;
+  string detail = 2;
+}

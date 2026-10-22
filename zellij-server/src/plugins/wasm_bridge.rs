@@ -651,6 +651,9 @@ impl WasmBridge {
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(pid));
         if self.shared_slot_owner.contains_key(&pid) {
             self.unload_shared_slot(pid);
             return Ok(());
@@ -756,6 +759,9 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
         let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
         self.apply_prompt_actions(prompt_actions);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
@@ -2943,6 +2949,11 @@ impl WasmBridge {
         };
         let slot_ids: Vec<PluginId> = info.slots.iter().copied().collect();
         let mut loading_context = info.loading_context.clone();
+        for slot_id in &slot_ids {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(*slot_id));
+        }
         if let Some(first_client_id) = self.get_first_client_id() {
             loading_context.client_id = first_client_id;
         }
@@ -3419,6 +3430,7 @@ pub fn check_event_permission(
         },
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
+        Event::LiveViewStateChanged { .. } => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };

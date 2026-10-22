@@ -252,6 +252,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     plain("ShowFloatingPanes", "Show floating panes"),
     plain("HideFloatingPanes", "Hide floating panes"),
     plain("TogglePanePinned", "Pin or unpin a floating pane"),
+    plain(
+        "ToggleMirrorResize",
+        "Turn source resizing on or off for the live view in the focused pane",
+    ),
     plain("ToggleActiveSyncTab", "Send input to every pane in the tab"),
     plain("TogglePaneInGroup", "Add or remove the pane from the group"),
     plain(

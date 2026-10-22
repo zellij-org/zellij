@@ -9,7 +9,7 @@ import "prompt.proto";
 package api.event;
 
 enum EventType {
-    reserved 43;
+    reserved 43, 70;
     /// The input mode or relevant metadata changed
     ModeUpdate = 0;
     /// The tab state in the app was changed
@@ -93,6 +93,7 @@ enum EventType {
     GlobalAttentionUpdate = 67;
     SessionHistoryUpdate = 68;
     DesktopIntegration = 69;
+    LiveViewStateChanged = 71;
 }
 
 message EventNameList {
@@ -100,7 +101,7 @@ message EventNameList {
 }
 
 message Event {
-  reserved 37;
+  reserved 37, 62;
   EventType name = 1;
   oneof payload {
     ModeUpdatePayload mode_update_payload = 2;
@@ -162,6 +163,7 @@ message Event {
     GlobalAttentionUpdatePayload global_attention_update_payload = 59;
     SessionHistoryUpdatePayload session_history_update_payload = 60;
     string desktop_integration_payload = 61;
+    LiveViewStateChangedPayload live_view_state_changed_payload = 63;
   }
 }
 
@@ -773,6 +775,7 @@ message ResurrectableSession {
 }
 
 message PaneInfo {
+    reserved 31;
     uint32 id = 1;
     bool is_plugin = 2;
     bool is_focused = 3;
@@ -1039,4 +1042,60 @@ message SavedSessionPreviewPayload {
   optional string folder = 2;
   repeated SavedTabPreview tabs = 3;
   optional string error = 4;
+}
+
+message PaneAddress {
+  optional string host = 1;
+  string session = 2;
+  PaneId pane_id = 3;
+}
+
+enum MirrorStateKind {
+  MirrorNoTarget = 0;
+  MirrorConnecting = 1;
+  MirrorLive = 2;
+  MirrorClosed = 3;
+}
+
+enum MirrorClosedReason {
+  MirrorPaneClosed = 0;
+  MirrorPaneNotFound = 1;
+  MirrorSessionEnding = 2;
+  MirrorRejected = 3;
+  MirrorVersionMismatch = 4;
+  MirrorUnsupportedHost = 5;
+  MirrorConnectionFailed = 6;
+  MirrorConnectionLost = 7;
+  MirrorProtocolError = 8;
+}
+
+message MirrorState {
+  MirrorStateKind kind = 1;
+  optional MirrorClosedReason closed_reason = 2;
+}
+
+enum LiveViewRelease {
+  LiveViewReleaseKey = 0;
+  LiveViewReleaseClickOutside = 1;
+  LiveViewReleaseFocusLost = 2;
+  LiveViewReleasePlugin = 3;
+  LiveViewReleaseCleared = 4;
+  LiveViewReleaseNotAllowed = 5;
+}
+
+message LiveViewSize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+message LiveViewStateChangedPayload {
+  optional PaneAddress target = 1;
+  MirrorState state = 2;
+  bool input_captured = 3;
+  optional LiveViewRelease input_released_by = 4;
+  bool resize_allowed = 5;
+  bool view_only = 6;
+  bool pinned = 7;
+  optional LiveViewSize source_size = 8;
+  string release_key = 9;
 }

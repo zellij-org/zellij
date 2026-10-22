@@ -3,6 +3,8 @@ use std::fmt;
 
 use crate::data::PaneId;
 
+pub const PEER_SCAN_INTERVAL_ENV_VAR: &str = "ZELLIJ_PEER_SCAN_INTERVAL_MS";
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
 )]

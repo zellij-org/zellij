@@ -4,7 +4,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 222, 223")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -412,6 +412,10 @@ pub mod plugin_command {
         OpenSessionWindowPayload(super::OpenSessionWindowPayload),
         #[prost(string, tag="217")]
         DesktopIntegrationPayload(::prost::alloc::string::String),
+        #[prost(message, tag="222")]
+        SetLiveViewPayload(super::SetLiveViewPayload),
+        #[prost(message, tag="223")]
+        SetLiveViewInputPayload(super::SetLiveViewInputPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2621,6 +2625,36 @@ pub struct SetSoftKeyboardPayload {
     #[prost(bool, tag="1")]
     pub on: bool,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LiveView {
+    #[prost(message, optional, tag="1")]
+    pub target: ::core::option::Option<super::event::PaneAddress>,
+    #[prost(uint32, tag="2")]
+    pub x: u32,
+    #[prost(uint32, tag="3")]
+    pub y: u32,
+    #[prost(uint32, tag="4")]
+    pub cols: u32,
+    #[prost(uint32, tag="5")]
+    pub rows: u32,
+    #[prost(bool, optional, tag="6")]
+    pub resize_allowed: ::core::option::Option<bool>,
+    #[prost(bool, tag="7")]
+    pub view_only: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetLiveViewPayload {
+    #[prost(message, optional, tag="1")]
+    pub view: ::core::option::Option<LiveView>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetLiveViewInputPayload {
+    #[prost(bool, tag="1")]
+    pub capture: bool,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -2873,6 +2907,8 @@ pub enum CommandName {
     FocusSessionPane = 272,
     OpenSessionWindow = 273,
     DesktopIntegration = 274,
+    SetLiveView = 279,
+    SetLiveViewInput = 280,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -3130,6 +3166,8 @@ impl CommandName {
             CommandName::FocusSessionPane => "FocusSessionPane",
             CommandName::OpenSessionWindow => "OpenSessionWindow",
             CommandName::DesktopIntegration => "DesktopIntegration",
+            CommandName::SetLiveView => "SetLiveView",
+            CommandName::SetLiveViewInput => "SetLiveViewInput",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -3384,6 +3422,8 @@ impl CommandName {
             "FocusSessionPane" => Some(Self::FocusSessionPane),
             "OpenSessionWindow" => Some(Self::OpenSessionWindow),
             "DesktopIntegration" => Some(Self::DesktopIntegration),
+            "SetLiveView" => Some(Self::SetLiveView),
+            "SetLiveViewInput" => Some(Self::SetLiveViewInput),
             _ => None,
         }
     }

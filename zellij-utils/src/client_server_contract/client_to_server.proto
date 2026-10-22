@@ -39,6 +39,7 @@ message ClientToServerMsg {
     FontFamiliesMsg font_families = 32;
     RequestSessionAttentionMsg request_session_attention = 33;
     PeerAttentionChangedMsg peer_attention_changed = 34;
+    ClientPaneMirrorMsg pane_mirror = 35;
   }
 }
 
@@ -196,4 +197,8 @@ message FontFamiliesMsg {
 
 message RenderFrameAckMsg {
   uint64 seq = 1;
+}
+
+message ClientPaneMirrorMsg {
+  bytes payload = 1;
 }

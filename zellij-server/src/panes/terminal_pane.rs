@@ -131,6 +131,7 @@ type IsFirstRun = bool;
 #[allow(clippy::too_many_arguments)]
 pub struct TerminalPane {
     pub grid: Grid,
+    program_resized_at: Option<Instant>,
     pub pid: u32,
     pub selectable: bool,
     pub geom: PaneGeom,
@@ -180,6 +181,7 @@ pub struct TerminalPane {
     /// has been written.
     pending_pty_input: VecDeque<u8>,
     kitty_interceptor: KittyApcInterceptor,
+    mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
 }
 
 impl Pane for TerminalPane {
@@ -328,6 +330,7 @@ impl Pane for TerminalPane {
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
+            .filter(|(x, y, _)| self.cursor_is_in_the_visible_area(*x, *y))
             .map(|(x, y, is_visible)| (x + left, y + top, is_visible))
     }
     fn is_mid_frame(&self) -> bool {
@@ -481,6 +484,9 @@ impl Pane for TerminalPane {
     }
     fn set_should_render(&mut self, should_render: bool) {
         self.grid.should_render = should_render;
+        if should_render {
+            self.grid.note_change();
+        }
     }
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
@@ -520,10 +526,23 @@ impl Pane for TerminalPane {
             if rows < 1 || columns < 1 {
                 return Ok(None);
             }
+            let full_redraw = self.grid.will_render_all_lines();
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
                     if rendered_assets.is_some() {
                         self.set_should_render(false);
+                    }
+                    if self.mirror_pinned_size.is_some() {
+                        return Ok(rendered_assets.map(
+                            |(chunks, raw_vte_output, sixel_chunks, kitty_chunks)| {
+                                (
+                                    self.crop_pinned_chunks(chunks, full_redraw),
+                                    raw_vte_output,
+                                    sixel_chunks,
+                                    kitty_chunks,
+                                )
+                            },
+                        ));
                     }
                     return Ok(rendered_assets);
                 },
@@ -579,6 +598,16 @@ impl Pane for TerminalPane {
         let frame_params_blank_title = frame_params.blank_title;
         let pane_title = if frame_params.blank_title {
             String::new()
+        } else if let Some(pinned_size) = self
+            .mirror_pinned_size
+            .filter(|_| self.pane_frame_color_override.is_none())
+        {
+            format!(
+                "{} (mirrored {}x{})",
+                self.title_with_bell_indicator(normal_title),
+                pinned_size.cols,
+                pinned_size.rows
+            )
         } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
@@ -743,6 +772,9 @@ impl Pane for TerminalPane {
         max_scrollback: usize,
     ) -> (String, Option<usize>) {
         self.grid.preview_with_anchor(anchor, max_scrollback)
+    }
+    fn program_resized_at(&self) -> Option<Instant> {
+        self.program_resized_at
     }
     fn mark_unseen_output_start(&mut self) {
         self.grid.mark_unseen_output_start();
@@ -1454,6 +1486,37 @@ impl Pane for TerminalPane {
     fn terminal_emulator_wants_mouse(&self) -> bool {
         self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
     }
+    fn mirror_screen(&mut self) -> Option<zellij_utils::pane_mirror::MirrorScreen> {
+        Some(self.grid.mirror_screen())
+    }
+    fn mouse_event_for_program(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_event_signal(event)
+    }
+    fn program_columns(&self) -> usize {
+        self.mirror_pinned_size
+            .map(|size| size.cols)
+            .unwrap_or_else(|| self.get_content_columns())
+    }
+    fn program_rows(&self) -> usize {
+        self.mirror_pinned_size
+            .map(|size| size.rows)
+            .unwrap_or_else(|| self.get_content_rows())
+    }
+    fn mirror_pinned_size(&self) -> Option<zellij_utils::pane_size::Size> {
+        self.mirror_pinned_size
+    }
+    fn set_mirror_pinned_size(&mut self, size: Option<zellij_utils::pane_size::Size>) -> bool {
+        if self.mirror_pinned_size == size {
+            return false;
+        }
+        self.mirror_pinned_size = size;
+        self.reflow_lines();
+        self.render_full_viewport();
+        true
+    }
+    fn mirror_change_counter(&self) -> u64 {
+        self.grid.change_counter
+    }
 }
 
 impl TerminalPane {
@@ -1586,6 +1649,8 @@ impl TerminalPane {
             guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
             kitty_interceptor: KittyApcInterceptor::new(),
+            mirror_pinned_size: None,
+            program_resized_at: None,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -1613,8 +1678,11 @@ impl TerminalPane {
         }
     }
     fn reflow_lines(&mut self) {
-        let rows = self.get_content_rows();
-        let cols = self.get_content_columns();
+        let rows = self.program_rows();
+        let cols = self.program_columns();
+        if (self.grid.height, self.grid.width) != (rows, cols) {
+            self.program_resized_at = Some(Instant::now());
+        }
         self.grid.change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
@@ -1635,7 +1703,29 @@ impl TerminalPane {
             // do not render cursor if there's no room for it
             return None;
         }
-        self.grid.cursor_coordinates()
+        self.grid
+            .cursor_coordinates()
+            .filter(|(x, y, _)| self.cursor_is_in_the_visible_area(*x, *y))
+    }
+    fn cursor_is_in_the_visible_area(&self, x: usize, y: usize) -> bool {
+        self.mirror_pinned_size.is_none()
+            || (x < self.get_content_columns() && y < self.get_content_rows())
+    }
+    fn crop_pinned_chunks(
+        &self,
+        chunks: Vec<CharacterChunk>,
+        full_redraw: bool,
+    ) -> Vec<CharacterChunk> {
+        crop_and_pad_chunks(
+            chunks,
+            self.get_content_x(),
+            self.get_content_y(),
+            self.get_content_columns(),
+            self.get_content_rows(),
+            self.grid.width,
+            self.grid.height,
+            full_redraw,
+        )
     }
     fn render_first_run_banner(&mut self) {
         let columns = self.get_content_columns();
@@ -1781,6 +1871,60 @@ impl TerminalPane {
             AdjustedInput::DropToShellInThisPane { working_dir }
         })
     }
+}
+
+pub(crate) fn crop_and_pad_chunks(
+    chunks: Vec<CharacterChunk>,
+    x: usize,
+    y: usize,
+    cols: usize,
+    rows: usize,
+    grid_cols: usize,
+    grid_rows: usize,
+    full_redraw: bool,
+) -> Vec<CharacterChunk> {
+    let mut cropped = Vec::with_capacity(chunks.len());
+    for mut chunk in chunks {
+        if chunk.y < y || chunk.y >= y + rows || chunk.x >= x + cols {
+            continue;
+        }
+        let available = x + cols - chunk.x;
+        let mut kept_width = 0;
+        let mut kept = 0;
+        for character in &chunk.terminal_characters {
+            if kept_width + character.width() > available {
+                break;
+            }
+            kept_width += character.width();
+            kept += 1;
+        }
+        if kept < chunk.terminal_characters.len() {
+            chunk.terminal_characters.truncate(kept);
+            for _ in kept_width..available {
+                chunk.terminal_characters.push(EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        cropped.push(chunk);
+    }
+    if full_redraw {
+        if grid_cols < cols {
+            for row in 0..grid_rows.min(rows) {
+                cropped.push(CharacterChunk::new(
+                    vec![EMPTY_TERMINAL_CHARACTER; cols - grid_cols],
+                    x + grid_cols,
+                    y + row,
+                ));
+            }
+        }
+        for row in grid_rows.min(rows)..rows {
+            cropped.push(CharacterChunk::new(
+                vec![EMPTY_TERMINAL_CHARACTER; cols],
+                x,
+                y + row,
+            ));
+        }
+    }
+    cropped
 }
 
 #[cfg(test)]

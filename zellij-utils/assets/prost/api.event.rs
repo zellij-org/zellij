@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -136,6 +136,8 @@ pub mod event {
         SessionHistoryUpdatePayload(super::SessionHistoryUpdatePayload),
         #[prost(string, tag="61")]
         DesktopIntegrationPayload(::prost::alloc::string::String),
+        #[prost(message, tag="63")]
+        LiveViewStateChangedPayload(super::LiveViewStateChangedPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1501,6 +1503,54 @@ pub struct SavedSessionPreviewPayload {
     #[prost(string, optional, tag="4")]
     pub error: ::core::option::Option<::prost::alloc::string::String>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneAddress {
+    #[prost(string, optional, tag="1")]
+    pub host: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag="2")]
+    pub session: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="3")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MirrorState {
+    #[prost(enumeration="MirrorStateKind", tag="1")]
+    pub kind: i32,
+    #[prost(enumeration="MirrorClosedReason", optional, tag="2")]
+    pub closed_reason: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LiveViewSize {
+    #[prost(uint32, tag="1")]
+    pub cols: u32,
+    #[prost(uint32, tag="2")]
+    pub rows: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LiveViewStateChangedPayload {
+    #[prost(message, optional, tag="1")]
+    pub target: ::core::option::Option<PaneAddress>,
+    #[prost(message, optional, tag="2")]
+    pub state: ::core::option::Option<MirrorState>,
+    #[prost(bool, tag="3")]
+    pub input_captured: bool,
+    #[prost(enumeration="LiveViewRelease", optional, tag="4")]
+    pub input_released_by: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub resize_allowed: bool,
+    #[prost(bool, tag="6")]
+    pub view_only: bool,
+    #[prost(bool, tag="7")]
+    pub pinned: bool,
+    #[prost(message, optional, tag="8")]
+    pub source_size: ::core::option::Option<LiveViewSize>,
+    #[prost(string, tag="9")]
+    pub release_key: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -1587,6 +1637,7 @@ pub enum EventType {
     GlobalAttentionUpdate = 67,
     SessionHistoryUpdate = 68,
     DesktopIntegration = 69,
+    LiveViewStateChanged = 71,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1663,6 +1714,7 @@ impl EventType {
             EventType::GlobalAttentionUpdate => "GlobalAttentionUpdate",
             EventType::SessionHistoryUpdate => "SessionHistoryUpdate",
             EventType::DesktopIntegration => "DesktopIntegration",
+            EventType::LiveViewStateChanged => "LiveViewStateChanged",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1736,6 +1788,7 @@ impl EventType {
             "GlobalAttentionUpdate" => Some(Self::GlobalAttentionUpdate),
             "SessionHistoryUpdate" => Some(Self::SessionHistoryUpdate),
             "DesktopIntegration" => Some(Self::DesktopIntegration),
+            "LiveViewStateChanged" => Some(Self::LiveViewStateChanged),
             _ => None,
         }
     }
@@ -2191,6 +2244,123 @@ impl FolderRelation {
             "FolderRelationOther" => Some(Self::Other),
             "FolderRelationHere" => Some(Self::Here),
             "FolderRelationSubfolder" => Some(Self::Subfolder),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum MirrorStateKind {
+    MirrorNoTarget = 0,
+    MirrorConnecting = 1,
+    MirrorLive = 2,
+    MirrorClosed = 3,
+}
+impl MirrorStateKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            MirrorStateKind::MirrorNoTarget => "MirrorNoTarget",
+            MirrorStateKind::MirrorConnecting => "MirrorConnecting",
+            MirrorStateKind::MirrorLive => "MirrorLive",
+            MirrorStateKind::MirrorClosed => "MirrorClosed",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "MirrorNoTarget" => Some(Self::MirrorNoTarget),
+            "MirrorConnecting" => Some(Self::MirrorConnecting),
+            "MirrorLive" => Some(Self::MirrorLive),
+            "MirrorClosed" => Some(Self::MirrorClosed),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum MirrorClosedReason {
+    MirrorPaneClosed = 0,
+    MirrorPaneNotFound = 1,
+    MirrorSessionEnding = 2,
+    MirrorRejected = 3,
+    MirrorVersionMismatch = 4,
+    MirrorUnsupportedHost = 5,
+    MirrorConnectionFailed = 6,
+    MirrorConnectionLost = 7,
+    MirrorProtocolError = 8,
+}
+impl MirrorClosedReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            MirrorClosedReason::MirrorPaneClosed => "MirrorPaneClosed",
+            MirrorClosedReason::MirrorPaneNotFound => "MirrorPaneNotFound",
+            MirrorClosedReason::MirrorSessionEnding => "MirrorSessionEnding",
+            MirrorClosedReason::MirrorRejected => "MirrorRejected",
+            MirrorClosedReason::MirrorVersionMismatch => "MirrorVersionMismatch",
+            MirrorClosedReason::MirrorUnsupportedHost => "MirrorUnsupportedHost",
+            MirrorClosedReason::MirrorConnectionFailed => "MirrorConnectionFailed",
+            MirrorClosedReason::MirrorConnectionLost => "MirrorConnectionLost",
+            MirrorClosedReason::MirrorProtocolError => "MirrorProtocolError",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "MirrorPaneClosed" => Some(Self::MirrorPaneClosed),
+            "MirrorPaneNotFound" => Some(Self::MirrorPaneNotFound),
+            "MirrorSessionEnding" => Some(Self::MirrorSessionEnding),
+            "MirrorRejected" => Some(Self::MirrorRejected),
+            "MirrorVersionMismatch" => Some(Self::MirrorVersionMismatch),
+            "MirrorUnsupportedHost" => Some(Self::MirrorUnsupportedHost),
+            "MirrorConnectionFailed" => Some(Self::MirrorConnectionFailed),
+            "MirrorConnectionLost" => Some(Self::MirrorConnectionLost),
+            "MirrorProtocolError" => Some(Self::MirrorProtocolError),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LiveViewRelease {
+    Key = 0,
+    ClickOutside = 1,
+    FocusLost = 2,
+    Plugin = 3,
+    Cleared = 4,
+    NotAllowed = 5,
+}
+impl LiveViewRelease {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            LiveViewRelease::Key => "LiveViewReleaseKey",
+            LiveViewRelease::ClickOutside => "LiveViewReleaseClickOutside",
+            LiveViewRelease::FocusLost => "LiveViewReleaseFocusLost",
+            LiveViewRelease::Plugin => "LiveViewReleasePlugin",
+            LiveViewRelease::Cleared => "LiveViewReleaseCleared",
+            LiveViewRelease::NotAllowed => "LiveViewReleaseNotAllowed",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LiveViewReleaseKey" => Some(Self::Key),
+            "LiveViewReleaseClickOutside" => Some(Self::ClickOutside),
+            "LiveViewReleaseFocusLost" => Some(Self::FocusLost),
+            "LiveViewReleasePlugin" => Some(Self::Plugin),
+            "LiveViewReleaseCleared" => Some(Self::Cleared),
+            "LiveViewReleaseNotAllowed" => Some(Self::NotAllowed),
             _ => None,
         }
     }

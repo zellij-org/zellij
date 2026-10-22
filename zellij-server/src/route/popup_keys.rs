@@ -72,6 +72,7 @@ pub(crate) fn popup_action_rule(action: &Action) -> PopupActionRule {
         | Action::ToggleFocusNoUiFullscreen
         | Action::TogglePaneEmbedOrFloating
         | Action::TogglePanePinned
+        | Action::ToggleMirrorResize
         | Action::Resize { .. }
         | Action::MovePane { .. }
         | Action::MovePaneBackwards
@@ -556,6 +557,7 @@ mod tests {
             (Action::ToggleFocusFullscreen, Ignore),
             (Action::TogglePaneEmbedOrFloating, Ignore),
             (Action::TogglePanePinned, Ignore),
+            (Action::ToggleMirrorResize, Ignore),
             (
                 Action::Resize {
                     resize: zellij_utils::data::Resize::Increase,

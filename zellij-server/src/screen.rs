@@ -41,6 +41,8 @@ use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
 mod attention;
+mod live_view;
+mod mirror;
 mod popups;
 
 use log::{debug, warn};
@@ -1105,6 +1107,50 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    MirrorAttach {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        attach: zellij_utils::pane_mirror::MirrorAttach,
+        outbox: crate::pane_mirror::MirrorOutbox,
+    },
+    MirrorInput {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        input: zellij_utils::pane_mirror::MirrorInput,
+    },
+    MirrorResize {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        size: Size,
+        focused: bool,
+        resize_allowed: bool,
+    },
+    MirrorFrameAck {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        seq: u64,
+    },
+    MirrorDetach {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+    },
+    ToggleMirrorResize(ClientId, Option<NotificationEnd>),
+    SetMirrorResizesSourcePane(bool),
+    MirrorTick,
+    MirrorTransportEvent {
+        view_id: u32,
+        generation: u64,
+        event: zellij_utils::pane_mirror::MirrorTransportEvent,
+    },
+    SetLiveView {
+        plugin_pane_id: u32,
+        client_id: ClientId,
+        view: Option<zellij_utils::data::LiveView>,
+    },
+    SetLiveViewInput {
+        plugin_pane_id: u32,
+        client_id: ClientId,
+        capture: bool,
+    },
+    ClearLiveViewsOfPlugin(u32),
+    ReleaseLiveViewInputWithKey(ClientId),
+    ReportLiveViewCaptureChange,
+    SetLiveViewReleaseKey(Option<String>),
     DesktopNotificationResponse(Vec<u8>, ClientId),
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
     ClearHintTextCache,
@@ -1575,6 +1621,21 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            ScreenInstruction::MirrorAttach { .. }
+            | ScreenInstruction::MirrorInput { .. }
+            | ScreenInstruction::MirrorResize { .. }
+            | ScreenInstruction::MirrorFrameAck { .. }
+            | ScreenInstruction::MirrorDetach { .. }
+            | ScreenInstruction::ToggleMirrorResize(..)
+            | ScreenInstruction::SetMirrorResizesSourcePane(..)
+            | ScreenInstruction::MirrorTick
+            | ScreenInstruction::MirrorTransportEvent { .. }
+            | ScreenInstruction::SetLiveView { .. }
+            | ScreenInstruction::SetLiveViewInput { .. }
+            | ScreenInstruction::ClearLiveViewsOfPlugin(..)
+            | ScreenInstruction::ReleaseLiveViewInputWithKey(..)
+            | ScreenInstruction::ReportLiveViewCaptureChange
+            | ScreenInstruction::SetLiveViewReleaseKey(..) => ScreenContext::PaneMirror,
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
@@ -2081,6 +2142,9 @@ pub(crate) struct Screen {
         HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
     remote_actions: crate::session_link::RemoteActions,
     pub(crate) pending_session_card_away_since: HashMap<ClientId, u64>,
+    pane_mirrors: mirror::PaneMirrors,
+    mirror_connector: Arc<dyn zellij_utils::pane_mirror::MirrorConnector>,
+    live_views: crate::pane_mirror::SharedLiveViews,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2372,6 +2436,9 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            pane_mirrors: Default::default(),
+            mirror_connector: Arc::new(zellij_utils::pane_mirror::LocalSocketConnector),
+            live_views: Default::default(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
@@ -5574,6 +5641,9 @@ impl Screen {
 
         self.sync_structured_client_viewports();
         self.sync_attention_visibility();
+        self.sync_live_views();
+        self.apply_mirror_pins();
+        self.deliver_to_mirrors();
 
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
@@ -6339,6 +6409,7 @@ impl Screen {
         tab.update_selection_options(self.osc133_command_selection, self.word_separators.clone());
         tab.update_context_menu_enabled(self.context_menu_enabled);
         tab.update_grapheme_clusters(self.grapheme_clusters);
+        tab.set_live_views(self.live_views.clone());
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -9605,6 +9676,9 @@ impl Screen {
         if event.event_type == MouseEventType::Press {
             self.record_client_input(client_id);
         }
+        if self.handle_live_view_mouse_event(&event, client_id) {
+            return;
+        }
         if self.handle_popup_mouse_event(&event, client_id) {
             let ends_a_held_gesture = event.event_type == MouseEventType::Release
                 && self
@@ -10352,6 +10426,10 @@ impl Screen {
         }
     }
     fn notify_pane_closed_to_subscribers(&mut self, pane_id: zellij_utils::data::PaneId) {
+        self.notify_mirrors_pane_closed(pane_id.into());
+        if let zellij_utils::data::PaneId::Plugin(plugin_pane_id) = pane_id {
+            self.forget_live_views_of_closed_pane(plugin_pane_id);
+        }
         let mut dead_subscribers = Vec::new();
 
         for (subscriber_id, subscription) in &mut self.pane_render_subscribers {
@@ -10462,6 +10540,7 @@ pub(crate) fn screen_thread_main(
     default_layout: Box<Layout>,
     default_keybinds: SharedKeybinds,
     session_id: String,
+    live_view_captures: crate::pane_mirror::SharedLiveViewCaptures,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -10612,6 +10691,7 @@ pub(crate) fn screen_thread_main(
         session_id,
     );
     screen.default_keybinds = default_keybinds;
+    screen.live_views.borrow_mut().captures = live_view_captures;
     screen.default_context_menu_config = config.context_menu.clone();
     screen.default_mousebinds = config.mousebinds.clone();
     screen.update_context_menu_enabled(config_options.context_menu_enabled.unwrap_or(true));
@@ -10620,6 +10700,9 @@ pub(crate) fn screen_thread_main(
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
     screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
     screen.update_grapheme_clusters(config_options.grapheme_clusters.unwrap_or(true));
+    screen
+        .set_mirror_resizes_source_pane(config_options.mirror_resizes_source_pane.unwrap_or(true));
+    screen.set_live_view_release_key(config_options.live_view_release_key.clone());
     screen.on_quit = config_options.on_quit.unwrap_or_default();
     screen.set_host_notification_protocol(host_notification_protocol);
     screen
@@ -11050,6 +11133,7 @@ pub(crate) fn screen_thread_main(
                 completion,
             ) => {
                 screen.record_client_input(client_id);
+                screen.release_live_view_if_unreachable(client_id);
                 if screen.send_key_to_popup(
                     client_id,
                     key_with_modifier.clone(),
@@ -11096,6 +11180,15 @@ pub(crate) fn screen_thread_main(
                             )]));
                         continue;
                     }
+                }
+                if screen.write_to_live_view(
+                    client_id,
+                    &key_with_modifier,
+                    &raw_bytes,
+                    is_kitty_keyboard_protocol,
+                ) {
+                    screen.render(None)?;
+                    continue;
                 }
                 let mut state_changed = false;
                 let client_input_mode = screen.get_client_input_mode(client_id);
@@ -12861,6 +12954,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::Exit => {
+                screen.close_all_mirror_subscribers(
+                    zellij_utils::data::MirrorClosedReason::SessionEnding,
+                );
                 break;
             },
             ScreenInstruction::ToggleTab(
@@ -12913,6 +13009,7 @@ pub(crate) fn screen_thread_main(
                 screen.last_session_history_infos.remove(&client_id);
                 screen.pending_session_card_away_since.remove(&client_id);
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
+                screen.clear_live_views_of_client(client_id);
                 screen.remove_client(client_id).non_fatal();
                 if was_attached {
                     screen.log_and_report_session_state().non_fatal();
@@ -14420,6 +14517,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                     None => {
+                        screen.release_live_view_if_unreachable(client_id);
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
@@ -15325,6 +15423,75 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            ScreenInstruction::MirrorAttach {
+                subscriber_id,
+                attach,
+                outbox,
+            } => {
+                screen.mirror_attach(subscriber_id, attach, outbox);
+            },
+            ScreenInstruction::MirrorInput {
+                subscriber_id,
+                input,
+            } => {
+                screen.mirror_input(subscriber_id, input);
+            },
+            ScreenInstruction::MirrorResize {
+                subscriber_id,
+                size,
+                focused,
+                resize_allowed,
+            } => {
+                screen.mirror_resize(subscriber_id, size, focused, resize_allowed);
+            },
+            ScreenInstruction::MirrorFrameAck { subscriber_id, seq } => {
+                screen.mirror_frame_ack(subscriber_id, seq);
+            },
+            ScreenInstruction::MirrorDetach { subscriber_id } => {
+                screen.mirror_detach(subscriber_id);
+            },
+            ScreenInstruction::ToggleMirrorResize(client_id, completion) => {
+                screen.toggle_live_view_resize(client_id, completion);
+            },
+            ScreenInstruction::SetMirrorResizesSourcePane(resizes_source_pane) => {
+                screen.set_mirror_resizes_source_pane(resizes_source_pane);
+            },
+            ScreenInstruction::MirrorTick => {
+                screen.mirror_tick();
+            },
+            ScreenInstruction::MirrorTransportEvent {
+                view_id,
+                generation,
+                event,
+            } => {
+                screen.handle_live_view_transport_event(view_id, generation, event);
+            },
+            ScreenInstruction::SetLiveView {
+                plugin_pane_id,
+                client_id,
+                view,
+            } => {
+                screen.set_live_view(plugin_pane_id, client_id, view);
+            },
+            ScreenInstruction::SetLiveViewInput {
+                plugin_pane_id,
+                client_id,
+                capture,
+            } => {
+                screen.set_live_view_input(plugin_pane_id, client_id, capture);
+            },
+            ScreenInstruction::ClearLiveViewsOfPlugin(plugin_pane_id) => {
+                screen.clear_live_views_of_plugin(plugin_pane_id);
+            },
+            ScreenInstruction::ReleaseLiveViewInputWithKey(client_id) => {
+                screen.release_live_view_input(client_id, zellij_utils::data::LiveViewRelease::Key);
+            },
+            ScreenInstruction::ReportLiveViewCaptureChange => {
+                screen.after_live_view_capture_change();
+            },
+            ScreenInstruction::SetLiveViewReleaseKey(release_key) => {
+                screen.set_live_view_release_key(release_key);
             },
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                 plugin_id,

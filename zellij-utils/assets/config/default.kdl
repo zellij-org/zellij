@@ -385,6 +385,11 @@ context_menu {
 //
 // grapheme_clusters false
 
+// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default
+// Default: true
+//
+// mirror_resizes_source_pane false
+
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.

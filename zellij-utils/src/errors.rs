@@ -499,6 +499,7 @@ pub enum ScreenContext {
     DesktopNotificationResponse,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
+    PaneMirror,
     // Pane-targeting CLI variants
     ScrollUpWithPaneId,
     ScrollDownWithPaneId,
@@ -767,6 +768,7 @@ pub enum BackgroundJobContext {
     QueryZellijWebServerStatus,
     ClearHelpText,
     RevealPopup,
+    MirrorTick,
     ClearCommandOutputFlash,
     FlashPaneBell,
     StopFlashPaneBell,

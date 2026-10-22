@@ -29,15 +29,19 @@ pub use super::generated_api::api::{
         KeybindPresetSource as ProtobufKeybindPresetSource,
         KeybindPresetWithError as ProtobufKeybindPresetWithError, LayoutInfo as ProtobufLayoutInfo,
         LayoutMetadata as ProtobufLayoutMetadata, LayoutParsingError as ProtobufLayoutParsingError,
-        LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        LayoutWithError as ProtobufLayoutWithError, LiveViewRelease as ProtobufLiveViewRelease,
+        LiveViewSize as ProtobufLiveViewSize,
+        LiveViewStateChangedPayload as ProtobufLiveViewStateChangedPayload,
+        MirrorClosedReason as ProtobufMirrorClosedReason, MirrorState as ProtobufMirrorState,
+        MirrorStateKind as ProtobufMirrorStateKind, ModeUpdatePayload as ProtobufModeUpdatePayload,
         NestedSessionEndReason as ProtobufNestedSessionEndReason,
         NestedSessionKeybindsError as ProtobufNestedSessionKeybindsError,
         NestedSessionKeybindsResponse as ProtobufNestedSessionKeybindsResponse,
         NestedSessionKeybindsResult as ProtobufNestedSessionKeybindsResult,
-        PaneContents as ProtobufPaneContents, PaneContentsEntry as ProtobufPaneContentsEntry,
-        PaneFrameStyle as ProtobufPaneFrameStyle, PaneId as ProtobufPaneId,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        PaneMetadata as ProtobufPaneMetadata,
+        PaneAddress as ProtobufPaneAddress, PaneContents as ProtobufPaneContents,
+        PaneContentsEntry as ProtobufPaneContentsEntry, PaneFrameStyle as ProtobufPaneFrameStyle,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
@@ -69,6 +73,8 @@ use crate::data::{
     PluginInfo, SelectedText, SessionInfo, SettingKey, Style, StyledText, TabInfo, TabMetadata,
     WebServerStatus, WebSharing,
 };
+#[allow(hidden_glob_reexports)]
+use crate::data::{HostId, LiveViewRelease, MirrorClosedReason, MirrorState, PaneAddress};
 
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
@@ -701,6 +707,28 @@ impl TryFrom<ProtobufEvent> for Event {
                     Ok(Event::DesktopIntegration(payload))
                 },
                 _ => Err("Malformed payload for the DesktopIntegration Event"),
+            },
+            Some(ProtobufEventType::LiveViewStateChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::LiveViewStateChangedPayload(payload)) => {
+                    Ok(Event::LiveViewStateChanged {
+                        target: payload.target.map(pane_address_from_protobuf).transpose()?,
+                        state: mirror_state_from_protobuf(payload.state),
+                        input_captured: payload.input_captured,
+                        input_released_by: payload
+                            .input_released_by
+                            .map(live_view_release_from_protobuf)
+                            .transpose()?,
+                        resize_allowed: payload.resize_allowed,
+                        view_only: payload.view_only,
+                        pinned: payload.pinned,
+                        source_size: payload.source_size.map(|size| crate::pane_size::Size {
+                            cols: size.cols as usize,
+                            rows: size.rows as usize,
+                        }),
+                        release_key: payload.release_key,
+                    })
+                },
+                _ => Err("Malformed payload for the LiveViewStateChanged Event"),
             },
             Some(ProtobufEventType::PaneAttentionChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::PaneAttentionChangedPayload(payload)) => {
@@ -1504,6 +1532,36 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::DesktopIntegration(payload) => Ok(ProtobufEvent {
                 name: ProtobufEventType::DesktopIntegration as i32,
                 payload: Some(event::Payload::DesktopIntegrationPayload(payload)),
+            }),
+            Event::LiveViewStateChanged {
+                target,
+                state,
+                input_captured,
+                input_released_by,
+                resize_allowed,
+                view_only,
+                pinned,
+                source_size,
+                release_key,
+            } => Ok(ProtobufEvent {
+                name: ProtobufEventType::LiveViewStateChanged as i32,
+                payload: Some(event::Payload::LiveViewStateChangedPayload(
+                    ProtobufLiveViewStateChangedPayload {
+                        target: target.map(pane_address_to_protobuf).transpose()?,
+                        state: Some(mirror_state_to_protobuf(state)),
+                        input_captured,
+                        input_released_by: input_released_by
+                            .map(|release| live_view_release_to_protobuf(release) as i32),
+                        resize_allowed,
+                        view_only,
+                        pinned,
+                        source_size: source_size.map(|size| ProtobufLiveViewSize {
+                            cols: size.cols.min(u32::MAX as usize) as u32,
+                            rows: size.rows.min(u32::MAX as usize) as u32,
+                        }),
+                        release_key,
+                    },
+                )),
             }),
             Event::PaneAttentionChanged(pane_id, attention) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
@@ -2848,6 +2906,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::GlobalAttentionUpdate => EventType::GlobalAttentionUpdate,
             ProtobufEventType::SessionHistoryUpdate => EventType::SessionHistoryUpdate,
             ProtobufEventType::DesktopIntegration => EventType::DesktopIntegration,
+            ProtobufEventType::LiveViewStateChanged => EventType::LiveViewStateChanged,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
@@ -2926,6 +2985,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::GlobalAttentionUpdate => ProtobufEventType::GlobalAttentionUpdate,
             EventType::SessionHistoryUpdate => ProtobufEventType::SessionHistoryUpdate,
             EventType::DesktopIntegration => ProtobufEventType::DesktopIntegration,
+            EventType::LiveViewStateChanged => ProtobufEventType::LiveViewStateChanged,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
@@ -5211,5 +5271,218 @@ mod session_suggestion_conversions {
                 error: None,
             }));
         }
+    }
+}
+
+pub(crate) fn pane_address_to_protobuf(
+    address: PaneAddress,
+) -> Result<ProtobufPaneAddress, &'static str> {
+    Ok(ProtobufPaneAddress {
+        host: address.host.map(|host| host.0),
+        session: address.session,
+        pane_id: Some(address.pane_id.try_into()?),
+    })
+}
+
+pub(crate) fn pane_address_from_protobuf(
+    address: ProtobufPaneAddress,
+) -> Result<PaneAddress, &'static str> {
+    Ok(PaneAddress {
+        host: address.host.map(HostId),
+        session: address.session,
+        pane_id: address
+            .pane_id
+            .ok_or("PaneAddress without a pane id")?
+            .try_into()?,
+    })
+}
+
+fn mirror_closed_reason_to_protobuf(reason: MirrorClosedReason) -> ProtobufMirrorClosedReason {
+    match reason {
+        MirrorClosedReason::PaneClosed => ProtobufMirrorClosedReason::MirrorPaneClosed,
+        MirrorClosedReason::PaneNotFound => ProtobufMirrorClosedReason::MirrorPaneNotFound,
+        MirrorClosedReason::SessionEnding => ProtobufMirrorClosedReason::MirrorSessionEnding,
+        MirrorClosedReason::Rejected => ProtobufMirrorClosedReason::MirrorRejected,
+        MirrorClosedReason::VersionMismatch => ProtobufMirrorClosedReason::MirrorVersionMismatch,
+        MirrorClosedReason::UnsupportedHost => ProtobufMirrorClosedReason::MirrorUnsupportedHost,
+        MirrorClosedReason::ConnectionFailed => ProtobufMirrorClosedReason::MirrorConnectionFailed,
+        MirrorClosedReason::ConnectionLost => ProtobufMirrorClosedReason::MirrorConnectionLost,
+        MirrorClosedReason::ProtocolError => ProtobufMirrorClosedReason::MirrorProtocolError,
+    }
+}
+
+fn mirror_closed_reason_from_protobuf(value: Option<i32>) -> MirrorClosedReason {
+    match value.and_then(|value| ProtobufMirrorClosedReason::try_from(value).ok()) {
+        Some(ProtobufMirrorClosedReason::MirrorPaneClosed) => MirrorClosedReason::PaneClosed,
+        Some(ProtobufMirrorClosedReason::MirrorPaneNotFound) => MirrorClosedReason::PaneNotFound,
+        Some(ProtobufMirrorClosedReason::MirrorSessionEnding) => MirrorClosedReason::SessionEnding,
+        Some(ProtobufMirrorClosedReason::MirrorVersionMismatch) => {
+            MirrorClosedReason::VersionMismatch
+        },
+        Some(ProtobufMirrorClosedReason::MirrorUnsupportedHost) => {
+            MirrorClosedReason::UnsupportedHost
+        },
+        Some(ProtobufMirrorClosedReason::MirrorConnectionFailed) => {
+            MirrorClosedReason::ConnectionFailed
+        },
+        Some(ProtobufMirrorClosedReason::MirrorConnectionLost) => {
+            MirrorClosedReason::ConnectionLost
+        },
+        Some(ProtobufMirrorClosedReason::MirrorProtocolError) => MirrorClosedReason::ProtocolError,
+        Some(ProtobufMirrorClosedReason::MirrorRejected) | None => MirrorClosedReason::Rejected,
+    }
+}
+
+fn mirror_state_to_protobuf(state: MirrorState) -> ProtobufMirrorState {
+    match state {
+        MirrorState::NoTarget => ProtobufMirrorState {
+            kind: ProtobufMirrorStateKind::MirrorNoTarget as i32,
+            closed_reason: None,
+        },
+        MirrorState::Connecting => ProtobufMirrorState {
+            kind: ProtobufMirrorStateKind::MirrorConnecting as i32,
+            closed_reason: None,
+        },
+        MirrorState::Live => ProtobufMirrorState {
+            kind: ProtobufMirrorStateKind::MirrorLive as i32,
+            closed_reason: None,
+        },
+        MirrorState::Closed(reason) => ProtobufMirrorState {
+            kind: ProtobufMirrorStateKind::MirrorClosed as i32,
+            closed_reason: Some(mirror_closed_reason_to_protobuf(reason) as i32),
+        },
+    }
+}
+
+fn mirror_state_from_protobuf(state: Option<ProtobufMirrorState>) -> MirrorState {
+    let Some(state) = state else {
+        return MirrorState::NoTarget;
+    };
+    match ProtobufMirrorStateKind::try_from(state.kind).ok() {
+        Some(ProtobufMirrorStateKind::MirrorConnecting) => MirrorState::Connecting,
+        Some(ProtobufMirrorStateKind::MirrorLive) => MirrorState::Live,
+        Some(ProtobufMirrorStateKind::MirrorClosed) => {
+            MirrorState::Closed(mirror_closed_reason_from_protobuf(state.closed_reason))
+        },
+        Some(ProtobufMirrorStateKind::MirrorNoTarget) | None => MirrorState::NoTarget,
+    }
+}
+
+fn live_view_release_to_protobuf(release: LiveViewRelease) -> ProtobufLiveViewRelease {
+    match release {
+        LiveViewRelease::Key => ProtobufLiveViewRelease::Key,
+        LiveViewRelease::ClickOutside => ProtobufLiveViewRelease::ClickOutside,
+        LiveViewRelease::FocusLost => ProtobufLiveViewRelease::FocusLost,
+        LiveViewRelease::Plugin => ProtobufLiveViewRelease::Plugin,
+        LiveViewRelease::Cleared => ProtobufLiveViewRelease::Cleared,
+        LiveViewRelease::NotAllowed => ProtobufLiveViewRelease::NotAllowed,
+    }
+}
+
+fn live_view_release_from_protobuf(value: i32) -> Result<LiveViewRelease, &'static str> {
+    match ProtobufLiveViewRelease::try_from(value) {
+        Ok(ProtobufLiveViewRelease::Key) => Ok(LiveViewRelease::Key),
+        Ok(ProtobufLiveViewRelease::ClickOutside) => Ok(LiveViewRelease::ClickOutside),
+        Ok(ProtobufLiveViewRelease::FocusLost) => Ok(LiveViewRelease::FocusLost),
+        Ok(ProtobufLiveViewRelease::Plugin) => Ok(LiveViewRelease::Plugin),
+        Ok(ProtobufLiveViewRelease::Cleared) => Ok(LiveViewRelease::Cleared),
+        Ok(ProtobufLiveViewRelease::NotAllowed) => Ok(LiveViewRelease::NotAllowed),
+        Err(_) => Err("Unknown live view release reason"),
+    }
+}
+
+#[cfg(test)]
+mod live_view_event_tests {
+    use super::*;
+
+    #[test]
+    fn live_view_state_changes_survive_the_plugin_boundary() {
+        let states = vec![
+            MirrorState::NoTarget,
+            MirrorState::Connecting,
+            MirrorState::Live,
+            MirrorState::Closed(MirrorClosedReason::PaneClosed),
+            MirrorState::Closed(MirrorClosedReason::PaneNotFound),
+            MirrorState::Closed(MirrorClosedReason::SessionEnding),
+            MirrorState::Closed(MirrorClosedReason::Rejected),
+            MirrorState::Closed(MirrorClosedReason::VersionMismatch),
+            MirrorState::Closed(MirrorClosedReason::UnsupportedHost),
+            MirrorState::Closed(MirrorClosedReason::ConnectionFailed),
+            MirrorState::Closed(MirrorClosedReason::ConnectionLost),
+            MirrorState::Closed(MirrorClosedReason::ProtocolError),
+        ];
+        let releases = [
+            None,
+            Some(LiveViewRelease::Key),
+            Some(LiveViewRelease::ClickOutside),
+            Some(LiveViewRelease::FocusLost),
+            Some(LiveViewRelease::Plugin),
+            Some(LiveViewRelease::Cleared),
+            Some(LiveViewRelease::NotAllowed),
+        ];
+        for state in states {
+            for target in [
+                None,
+                Some(PaneAddress::local("api", PaneId::Terminal(3))),
+                Some(PaneAddress {
+                    host: Some(HostId("laptop".to_owned())),
+                    session: "remote".to_owned(),
+                    pane_id: PaneId::Terminal(1),
+                }),
+            ] {
+                for input_released_by in releases {
+                    for (input_captured, resize_allowed, view_only, pinned, source_size) in [
+                        (false, false, false, false, None),
+                        (
+                            true,
+                            true,
+                            false,
+                            true,
+                            Some(crate::pane_size::Size { cols: 80, rows: 24 }),
+                        ),
+                        (
+                            false,
+                            false,
+                            true,
+                            false,
+                            Some(crate::pane_size::Size { cols: 1, rows: 1 }),
+                        ),
+                    ] {
+                        let event = Event::LiveViewStateChanged {
+                            target: target.clone(),
+                            state,
+                            input_captured,
+                            input_released_by,
+                            resize_allowed,
+                            view_only,
+                            pinned,
+                            source_size,
+                            release_key: String::from("Ctrl Alt Home"),
+                        };
+                        let protobuf: ProtobufEvent = event.clone().try_into().unwrap();
+                        let decoded: Event = protobuf.try_into().unwrap();
+                        assert_eq!(decoded, event);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_event_type_of_live_view_changes_survives_the_plugin_boundary() {
+        let protobuf: ProtobufEventType = EventType::LiveViewStateChanged.try_into().unwrap();
+        let decoded: EventType = protobuf.try_into().unwrap();
+        assert_eq!(decoded, EventType::LiveViewStateChanged);
+    }
+
+    #[test]
+    fn the_numbers_of_the_removed_mirror_event_stay_reserved() {
+        let proto = include_str!("event.proto");
+        assert!(proto.contains("reserved 43, 70;"));
+        assert!(proto.contains("reserved 37, 62;"));
+        assert!(proto.contains("reserved 31;"));
+        assert!(!proto.contains("MirrorStateChanged"));
+        assert!(!proto.contains("MirrorPaneInfo"));
+        assert_ne!(ProtobufEventType::LiveViewStateChanged as i32, 70);
     }
 }

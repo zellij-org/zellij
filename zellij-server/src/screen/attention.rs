@@ -173,7 +173,20 @@ impl Screen {
         let pane_id = zellij_utils::data::PaneId::Terminal(pid);
         if self.attention.has_pane(&pane_id) {
             let was_unseen = self.attention.unseen_output_since(&pane_id).is_some();
-            self.attention.on_output(pane_id, now_ms());
+            let redraw = self
+                .tabs
+                .values()
+                .find_map(|tab| tab.get_pane_with_id(PaneId::Terminal(pid)))
+                .and_then(|pane| pane.program_resized_at())
+                .map(|at| {
+                    at.elapsed()
+                        < std::time::Duration::from_millis(
+                            crate::attention::tracker::RESIZE_OUTPUT_GRACE_MS,
+                        )
+                })
+                .unwrap_or(false);
+            self.attention
+                .on_output_after_resize(pane_id, now_ms(), redraw);
             if !was_unseen && self.attention.unseen_output_since(&pane_id).is_some() {
                 let server_pane_id = PaneId::Terminal(pid);
                 for tab in self.tabs.values_mut() {

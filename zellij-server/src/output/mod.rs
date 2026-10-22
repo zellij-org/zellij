@@ -1712,6 +1712,58 @@ fn frame_builder_for(
     Some(builder)
 }
 
+pub(crate) fn mirror_cursor_state(
+    x: usize,
+    y: usize,
+    visible: bool,
+    shape_csi: &str,
+) -> CursorState {
+    CursorState {
+        x: x.min(u16::MAX as usize) as u16,
+        y: y.min(u16::MAX as usize) as u16,
+        shape: wire_cursor_shape(shape_csi),
+        visible,
+    }
+}
+
+pub(crate) fn mirror_screen_from_chunks(
+    character_chunks: Vec<CharacterChunk>,
+    cols: usize,
+    rows: usize,
+    styled_underlines: bool,
+    link_handler: &LinkHandler,
+    cursor: CursorState,
+    wants_mouse: bool,
+) -> zellij_utils::pane_mirror::MirrorScreen {
+    use zellij_utils::pane_mirror::MirrorScreen;
+    let cols = cols.min(u16::MAX as usize) as u16;
+    let rows = rows.min(u16::MAX as usize) as u16;
+    let mut builder = FrameBuilder::new(cols, rows, 0);
+    builder.set_full_repaint(true);
+    let mut table = LinkTable::default();
+    let mut links = LinkFlatten {
+        handler: link_handler,
+        table: &mut table,
+    };
+    let flattened = flatten_chunks(
+        character_chunks,
+        None,
+        None,
+        styled_underlines,
+        None,
+        Some(&mut links),
+        &mut builder,
+    );
+    let mut screen = match flattened {
+        Ok(()) => MirrorScreen::from_frame(&builder.finish())
+            .unwrap_or_else(|_| MirrorScreen::blank(cols, rows)),
+        Err(_) => MirrorScreen::blank(cols, rows),
+    };
+    screen.cursor = cursor;
+    screen.wants_mouse = wants_mouse;
+    screen
+}
+
 fn link_flatten<'a>(
     handler: Option<&'a LinkHandler>,
     state: Option<&'a mut StructuredClientState>,
@@ -1855,6 +1907,9 @@ impl Output {
             self.client_character_chunks.insert(*client_id, vec![]);
             self.client_pane_rects.insert(*client_id, vec![]);
         }
+    }
+    pub fn link_handler(&self) -> Option<Rc<RefCell<LinkHandler>>> {
+        self.link_handler.clone()
     }
     pub fn add_pane_rect(&mut self, client_id: ClientId, pane_rect: PaneRect, scroll: PaneScroll) {
         if let Some(pane_rects) = self.client_pane_rects.get_mut(&client_id) {
@@ -2585,6 +2640,17 @@ impl Output {
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y, z_index))
             .unwrap_or(true)
+    }
+    pub fn cursor_is_covered_by_popups(
+        &self,
+        client_id: ClientId,
+        cursor_x: usize,
+        cursor_y: usize,
+        z_index: Option<usize>,
+    ) -> bool {
+        self.popup_cover_for(client_id, z_index)
+            .map(|cover| !cover.cursor_is_visible(cursor_x, cursor_y, None))
+            .unwrap_or(false)
     }
     pub fn add_pane_contents(
         &mut self,

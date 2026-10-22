@@ -21,6 +21,7 @@ mod mobile_web;
 pub mod nested_guest;
 pub mod notifications;
 mod pane_groups;
+pub mod pane_mirror;
 mod plugins;
 mod pty;
 mod pty_writer;
@@ -1076,6 +1077,7 @@ pub(crate) struct SessionMetaData {
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
     pub modal_popup_clients: HashSet<ClientId>,
+    pub live_view_captures: crate::pane_mirror::SharedLiveViewCaptures,
     pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
@@ -1156,6 +1158,9 @@ impl SessionMetaData {
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
         self.modal_popup_clients.remove(&client_id);
+        if let Ok(mut captures) = self.live_view_captures.lock() {
+            captures.forget_client(client_id);
+        }
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -1358,6 +1363,19 @@ impl SessionMetaData {
                 .senders
                 .send_to_screen(ScreenInstruction::SetGraphemeClusters(
                     new_config.options.grapheme_clusters.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetMirrorResizesSourcePane(
+                    new_config
+                        .options
+                        .mirror_resizes_source_pane
+                        .unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetLiveViewReleaseKey(
+                    new_config.options.live_view_release_key.clone(),
                 ));
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
@@ -2679,6 +2697,7 @@ mod session_state_tests {
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
             modal_popup_clients: HashSet::new(),
+            live_view_captures: Default::default(),
             terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
@@ -3355,6 +3374,16 @@ fn handle_new_connection(
                 #[cfg(windows)]
                 reply_stream,
                 ServerToClientMsg::Connected,
+            );
+            return Ok(());
+        },
+        ClientToServerMsg::PaneMirror { payload } => {
+            crate::pane_mirror::source::serve_mirror_connection(
+                session_data,
+                receiver,
+                #[cfg(windows)]
+                reply_stream,
+                payload,
             );
             return Ok(());
         },
@@ -5434,6 +5463,7 @@ fn init_session(
 
     let default_mode = config.options.default_mode.unwrap_or_default();
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
+    let live_view_captures = crate::pane_mirror::SharedLiveViewCaptures::default();
     let applied_env = AppliedEnv::at_startup(config.env.inner());
 
     let pty_thread = thread::Builder::new()
@@ -5485,6 +5515,7 @@ fn init_session(
             let config = config.clone();
             let default_keybinds = default_keybinds.clone();
             let session_id = session_id.clone();
+            let live_view_captures = live_view_captures.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -5495,6 +5526,7 @@ fn init_session(
                     layout,
                     default_keybinds,
                     session_id,
+                    live_view_captures,
                 )
                 .fatal();
             }
@@ -5672,6 +5704,7 @@ fn init_session(
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
         modal_popup_clients: HashSet::new(),
+        live_view_captures,
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
         sent_window_settings: HashMap::new(),

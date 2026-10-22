@@ -529,6 +529,8 @@ fn test_client_messages() {
                 support_kitty_keyboard_protocol: Some(true),
                 support_kitty_graphics_protocol: Some(false),
                 grapheme_clusters: Some(false),
+                mirror_resizes_source_pane: Some(false),
+                live_view_release_key: Some("Ctrl Alt End".to_owned()),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
@@ -3278,6 +3280,12 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleMirrorResize,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::StackPanes { pane_ids: vec![] },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -4749,4 +4757,82 @@ fn by_id_actions_without_a_pane_id_are_rejected_over_ipc() {
         });
         assert!(decoded.is_err(), "{} decoded without a pane id", described);
     }
+}
+
+#[test]
+fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
+    use crate::data::MirrorClosedReason;
+    use crate::pane_mirror::{
+        MirrorAttach, MirrorInput, SourceMessage, ViewerMessage, PANE_MIRROR_VERSION,
+    };
+    let viewer_messages = vec![
+        ViewerMessage::Attach(MirrorAttach {
+            resize_allowed: true,
+            view_only: true,
+            focused: true,
+            ..MirrorAttach::new(PaneId::Terminal(2), Size { cols: 40, rows: 12 })
+        }),
+        ViewerMessage::Input(MirrorInput::Key {
+            key: KeyWithModifier::new(BareKey::Down),
+            raw_bytes: b"\x1b[B".to_vec(),
+            is_kitty_keyboard_protocol: false,
+        }),
+        ViewerMessage::Input(MirrorInput::Paste(b"hi".to_vec())),
+        ViewerMessage::Input(MirrorInput::Mouse(MouseEvent::new_scroll_up_event(
+            Position::new(1, 1),
+        ))),
+        ViewerMessage::Resize {
+            size: Size { cols: 20, rows: 5 },
+            focused: true,
+            resize_allowed: true,
+        },
+        ViewerMessage::FrameAck { seq: 9 },
+        ViewerMessage::Detach,
+    ];
+    for message in viewer_messages {
+        let payload = message.encode();
+        test_client_roundtrip!(ClientToServerMsg::PaneMirror {
+            payload: payload.clone()
+        });
+        let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+            ClientToServerMsg::PaneMirror { payload }.into();
+        match ClientToServerMsg::try_from(proto).unwrap() {
+            ClientToServerMsg::PaneMirror { payload } => {
+                assert_eq!(ViewerMessage::decode(&payload), Ok(message))
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+    let source_messages = vec![
+        SourceMessage::Attached {
+            version: PANE_MIRROR_VERSION,
+            capabilities: vec!["structured-frame".to_owned()],
+            pane_size: Size { cols: 80, rows: 24 },
+        },
+        SourceMessage::Frame {
+            frame: vec![4, 0, 1, 2],
+            alternate_screen: true,
+        },
+        SourceMessage::PinState {
+            pinned: true,
+            pane_size: Size { cols: 20, rows: 5 },
+        },
+        SourceMessage::closed(MirrorClosedReason::SessionEnding),
+    ];
+    for message in source_messages {
+        let payload = message.encode();
+        test_server_roundtrip!(ServerToClientMsg::PaneMirror {
+            payload: payload.clone()
+        });
+        let proto: crate::client_server_contract::client_server_contract::ServerToClientMsg =
+            ServerToClientMsg::PaneMirror { payload }.into();
+        match ServerToClientMsg::try_from(proto).unwrap() {
+            ServerToClientMsg::PaneMirror { payload } => {
+                assert_eq!(SourceMessage::decode(&payload), Ok(message))
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+    test_client_roundtrip!(ClientToServerMsg::PaneMirror { payload: vec![] });
+    test_server_roundtrip!(ServerToClientMsg::PaneMirror { payload: vec![] });
 }

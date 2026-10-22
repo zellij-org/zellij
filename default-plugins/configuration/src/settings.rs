@@ -90,6 +90,7 @@ pub enum TextCheck {
     IpAddress,
     Decimal { min_milli: i64, max_milli: i64 },
     KeyList,
+    Key,
     WordList,
     Colour,
 }
@@ -762,6 +763,22 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Show stacked panes as a list of titles",
             Toggle,
             "true",
+            Everyone,
+        ),
+        SettingKey::MirrorResizesSourcePane => info(
+            "Mirrors resize their source pane",
+            PanesAndLayouts,
+            "Let a focused mirror resize the mirrored pane's program to fit it",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::LiveViewReleaseKey => info(
+            "Live view release key",
+            PanesAndLayouts,
+            "Key that stops typing into a live pane view and gives the keys back to its plugin",
+            Text(TextCheck::Key),
+            "Esc Esc",
             Everyone,
         ),
         SettingKey::NestedSessionHandling => info(
@@ -1670,7 +1687,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 32] = [
+pub const SECTION_ORDER: [&str; 33] = [
     "Theme",
     "Display",
     "Attention",
@@ -1683,6 +1700,7 @@ pub const SECTION_ORDER: [&str; 32] = [
     "Clipboard",
     "New panes",
     "Layouts",
+    "Mirrors",
     "Nested sessions",
     "Startup",
     "Resurrection",
@@ -1747,6 +1765,7 @@ pub fn section(key: SettingKey) -> &'static str {
         },
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
+        MirrorResizesSourcePane | LiveViewReleaseKey => "Mirrors",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
             "Startup"
@@ -1923,6 +1942,13 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
                 None => Ok(()),
             }
         },
+        TextCheck::Key => match LiveViewReleaseGesture::parse(text) {
+            Some(_) => Ok(()),
+            None => Err(format!(
+                "{} is not a key, eg. Esc Esc or Ctrl Alt Home",
+                text.trim()
+            )),
+        },
         TextCheck::WordList => {
             if split_setting_list(text)
                 .iter()
@@ -2058,6 +2084,22 @@ mod tests {
             describe(SettingKey::GraphemeClusters).kind,
             SettingKind::Toggle
         );
+    }
+
+    #[test]
+    fn the_mirror_resize_toggle_is_listed_with_the_pane_settings() {
+        assert!(
+            settings_in(Category::PanesAndLayouts).contains(&SettingKey::MirrorResizesSourcePane)
+        );
+        assert_eq!(section(SettingKey::MirrorResizesSourcePane), "Mirrors");
+        assert_eq!(
+            describe(SettingKey::MirrorResizesSourcePane).kind,
+            SettingKind::Toggle
+        );
+        assert!(settings_in(Category::PanesAndLayouts).contains(&SettingKey::LiveViewReleaseKey));
+        assert_eq!(section(SettingKey::LiveViewReleaseKey), "Mirrors");
+        assert!(check_text(TextCheck::Key, "Ctrl Alt Home").is_ok());
+        assert!(check_text(TextCheck::Key, "Ctrl-Alt-Home").is_err());
     }
 
     #[test]
