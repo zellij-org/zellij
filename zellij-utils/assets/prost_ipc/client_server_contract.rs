@@ -1752,6 +1752,8 @@ pub struct RunCommandAction {
     pub use_terminal_title: bool,
     #[prost(bool, tag="9")]
     pub notify: bool,
+    #[prost(bool, tag="10")]
+    pub drop_to_shell_on_exit: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

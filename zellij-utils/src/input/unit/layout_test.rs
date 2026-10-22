@@ -2642,3 +2642,28 @@ fn plugin_aliases_with_different_names_are_not_equivalent() {
     );
     assert!(!requested.is_equivalent_to_run(&running));
 }
+
+#[test]
+fn shell_return_requires_a_command_and_excludes_close_on_exit() {
+    for raw in [
+        r#"layout { pane drop_to_shell_on_exit=true; }"#,
+        r#"layout { pane command="vi" drop_to_shell_on_exit=true close_on_exit=true; }"#,
+        r#"layout { pane command="vi" drop_to_shell_on_exit="yes"; }"#,
+    ] {
+        assert!(Layout::from_kdl(raw, None, None, None).is_err(), "{raw}");
+    }
+}
+
+#[test]
+fn explicit_and_legacy_commands_keep_their_existing_exit_behavior() {
+    for raw in [
+        r#"layout { pane command="vi"; }"#,
+        r#"layout { pane command="vi" drop_to_shell_on_exit=false; }"#,
+    ] {
+        let layout = Layout::from_kdl(raw, None, None, None).unwrap();
+        let pane = &layout.template.as_ref().unwrap().0.children[0];
+        assert!(
+            matches!(&pane.run, Some(Run::Command(command)) if !command.drop_to_shell_on_exit && command.hold_on_close)
+        );
+    }
+}

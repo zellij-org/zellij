@@ -2109,6 +2109,7 @@ fn test_client_messages() {
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: true,
+                    drop_to_shell_on_exit: true,
                     notify: Default::default(),
                 })),
                 ..Default::default()
@@ -2141,6 +2142,7 @@ fn test_client_messages() {
                         context: empty_context.clone(),
                     }),
                     use_terminal_title: true,
+                    drop_to_shell_on_exit: true,
                     notify: Default::default(),
                 })),
                 ..Default::default()
@@ -4748,5 +4750,38 @@ fn by_id_actions_without_a_pane_id_are_rejected_over_ipc() {
             action_type: Some(action_type),
         });
         assert!(decoded.is_err(), "{} decoded without a pane id", described);
+    }
+}
+
+#[test]
+fn command_notification_and_shell_return_have_independent_wire_fields() {
+    use crate::client_server_contract::client_server_contract as proto;
+    use prost::Message;
+
+    for (notify, drop_to_shell_on_exit, bytes) in [
+        (false, false, vec![]),
+        (true, false, vec![0x48, 1]),
+        (false, true, vec![0x50, 1]),
+        (true, true, vec![0x48, 1, 0x50, 1]),
+    ] {
+        let command = proto::RunCommandAction::decode(bytes.as_slice()).unwrap();
+        assert_eq!(command.notify, notify);
+        assert_eq!(command.drop_to_shell_on_exit, drop_to_shell_on_exit);
+        assert_eq!(command.encode_to_vec(), bytes);
+        let run: Run = proto::Run {
+            run_type: Some(proto::run::RunType::Command(command)),
+        }
+        .try_into()
+        .unwrap();
+        let Run::Command(command) = &run else {
+            panic!("expected a command");
+        };
+        assert_eq!(command.notify, notify);
+        assert_eq!(command.drop_to_shell_on_exit, drop_to_shell_on_exit);
+        let encoded: proto::Run = run.into();
+        let Some(proto::run::RunType::Command(command)) = encoded.run_type else {
+            panic!("expected a command");
+        };
+        assert_eq!(command.encode_to_vec(), bytes);
     }
 }
