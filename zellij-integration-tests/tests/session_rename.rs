@@ -3,8 +3,7 @@
 use std::time::{Duration, Instant};
 
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, default_timeout, keys, TestRunner,
-    TERMINAL_SIZE,
+    claim_first_terminal_and_wait_for_prompt, col, default_timeout, keys, TestRunner, TERMINAL_SIZE,
 };
 use zellij_utils::cli::CliAction;
 use zellij_utils::sessions::resolve_session_socket_path;
@@ -128,7 +127,8 @@ fn rename_from_session_mode_shows_the_draft_live_and_applies_it_on_enter() {
     zellij.wait_until("the status bar leaves session mode", |grid_snapshot| {
         !grid_snapshot.contains("RENAMING SESSION") && !grid_snapshot.contains("Detach")
     });
-    let after_enter = String::from_utf8_lossy(&zellij.raw_bytes()[bytes_before_enter..]).into_owned();
+    let after_enter =
+        String::from_utf8_lossy(&zellij.raw_bytes()[bytes_before_enter..]).into_owned();
     assert!(
         !after_enter.contains(&format!("({})", old_name)),
         "the old session name flashed in the bar after pressing Enter"

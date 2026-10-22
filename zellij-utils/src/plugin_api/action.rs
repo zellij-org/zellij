@@ -658,8 +658,7 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::SessionNameInput"),
             },
-            Some(ProtobufActionName::UndoRenameSession) => match protobuf_action.optional_payload
-            {
+            Some(ProtobufActionName::UndoRenameSession) => match protobuf_action.optional_payload {
                 Some(_) => Err("UndoRenameSession should not have a payload"),
                 None => Ok(Action::UndoRenameSession),
             },
