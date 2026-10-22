@@ -36,7 +36,10 @@ const POPUP_EDGE_LINES: usize = 1000;
 fn is_text_entry_mode(input_mode: &InputMode) -> bool {
     matches!(
         input_mode,
-        InputMode::RenamePane | InputMode::RenameTab | InputMode::EnterSearch
+        InputMode::RenamePane
+            | InputMode::RenameTab
+            | InputMode::RenameSession
+            | InputMode::EnterSearch
     )
 }
 
@@ -80,6 +83,8 @@ pub(crate) fn popup_action_rule(action: &Action) -> PopupActionRule {
         | Action::UndoRenamePane
         | Action::TabNameInput { .. }
         | Action::UndoRenameTab
+        | Action::SessionNameInput { .. }
+        | Action::UndoRenameSession
         | Action::TogglePaneInGroup
         | Action::ToggleGroupMarking => Ignore,
         Action::SwitchToMode { input_mode } | Action::SwitchModeForAllClients { input_mode }
@@ -546,6 +551,7 @@ mod tests {
             (Action::FocusNextPane, Underneath),
             (switch_to(InputMode::Pane), Underneath),
             (switch_to(InputMode::RenameTab), Ignore),
+            (switch_to(InputMode::RenameSession), Ignore),
             (switch_to(InputMode::EnterSearch), Ignore),
             (Action::ToggleFocusFullscreen, Ignore),
             (Action::TogglePaneEmbedOrFloating, Ignore),
@@ -560,6 +566,8 @@ mod tests {
             (Action::MovePane { direction: None }, Ignore),
             (Action::TogglePaneInGroup, Ignore),
             (Action::TabNameInput { input: vec![0] }, Ignore),
+            (Action::SessionNameInput { input: vec![0] }, Ignore),
+            (Action::UndoRenameSession, Ignore),
             (
                 Action::SkipConfirm {
                     action: Box::new(Action::CloseFocus),

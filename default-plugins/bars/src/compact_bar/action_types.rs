@@ -65,6 +65,9 @@ impl ActionType {
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameTab => {
                 "Rename tab".to_string()
             },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameSession => {
+                "Rename session".to_string()
+            },
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::EnterSearch => {
                 "Search".to_string()
             },

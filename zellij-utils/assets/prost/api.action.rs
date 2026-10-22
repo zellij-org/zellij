@@ -307,7 +307,7 @@ pub struct OverrideLayoutPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -445,6 +445,8 @@ pub mod action {
         MoveTabToPositionPayload(super::MoveTabToPositionPayload),
         #[prost(message, tag="69")]
         SessionPanePayload(super::SessionPanePayload),
+        #[prost(bytes, tag="70")]
+        SessionNameInputPayload(::prost::alloc::vec::Vec<u8>),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1256,6 +1258,8 @@ pub enum ActionName {
     MarkAllSeen = 144,
     ToggleTrayIcon = 145,
     OpenSessionInWindow = 146,
+    SessionNameInput = 147,
+    UndoRenameSession = 148,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1408,6 +1412,8 @@ impl ActionName {
             ActionName::MarkAllSeen => "MarkAllSeen",
             ActionName::ToggleTrayIcon => "ToggleTrayIcon",
             ActionName::OpenSessionInWindow => "OpenSessionInWindow",
+            ActionName::SessionNameInput => "SessionNameInput",
+            ActionName::UndoRenameSession => "UndoRenameSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1557,6 +1563,8 @@ impl ActionName {
             "MarkAllSeen" => Some(Self::MarkAllSeen),
             "ToggleTrayIcon" => Some(Self::ToggleTrayIcon),
             "OpenSessionInWindow" => Some(Self::OpenSessionInWindow),
+            "SessionNameInput" => Some(Self::SessionNameInput),
+            "UndoRenameSession" => Some(Self::UndoRenameSession),
             _ => None,
         }
     }

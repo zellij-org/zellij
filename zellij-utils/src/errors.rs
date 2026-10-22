@@ -399,6 +399,8 @@ pub enum ScreenContext {
     NewInPlacePluginPane,
     SerializeLayoutForResurrection,
     RenameSession,
+    UpdateSessionNameDraft,
+    UndoRenameSession,
     DumpLayoutToPlugin,
     GetFocusedPaneInfo,
     GetPaneInfo,

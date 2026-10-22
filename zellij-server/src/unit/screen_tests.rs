@@ -19468,3 +19468,159 @@ fn a_session_preview_with_an_anchor_includes_lines_that_scrolled_off_the_pane() 
     assert_eq!(with_history.anchor_line, None);
     assert_eq!(with_history.pane_id, Some((1, false)));
 }
+
+mod session_rename {
+    use super::*;
+    use crate::plugins::{PromptCaller, SERVER_NOTICE_CALLER_ID};
+    use zellij_utils::data::{InputMode, SessionInfo};
+    use zellij_utils::prompt::PromptSpec;
+
+    struct Harness {
+        screen: Screen,
+        plugin_receiver: Receiver<(PluginInstruction, ErrorContext)>,
+    }
+
+    fn harness() -> Harness {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let (mut screen, _tty, _server_receiver) =
+            create_new_screen_with_capture(size, true, true, true, true);
+        let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
+            channels::unbounded();
+        screen
+            .bus
+            .senders
+            .replace_to_plugin(SenderWithContext::new(to_plugin));
+        new_tab(&mut screen, 1, 0);
+        screen.add_client(2, false).expect("TEST");
+        while plugin_receiver.try_recv().is_ok() {}
+        Harness {
+            screen,
+            plugin_receiver,
+        }
+    }
+
+    fn shown_name(screen: &Screen, client_id: ClientId) -> Option<String> {
+        screen
+            .mode_info
+            .get(&client_id)
+            .and_then(|mode_info| mode_info.session_name.clone())
+    }
+
+    fn prompts(h: &Harness) -> Vec<(PromptCaller, zellij_utils::prompt::PromptRequest)> {
+        h.plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::PromptRequest {
+                    caller, request, ..
+                } => Some((caller, request)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn start_renaming(h: &mut Harness, client_id: ClientId) {
+        h.screen
+            .change_mode(InputMode::RenameSession, Some(InputMode::Normal), client_id)
+            .expect("TEST");
+        h.screen
+            .update_session_name_draft(vec![0], client_id)
+            .expect("TEST");
+    }
+
+    fn type_text(h: &mut Harness, client_id: ClientId, text: &str) {
+        h.screen
+            .update_session_name_draft(text.as_bytes().to_vec(), client_id)
+            .expect("TEST");
+    }
+
+    #[test]
+    fn the_draft_is_shown_only_to_the_client_renaming() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "new-nam");
+        type_text(&mut h, 1, "e");
+        type_text(&mut h, 1, "x");
+        type_text(&mut h, 1, "\u{007F}");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("new-name"));
+        assert_ne!(shown_name(&h.screen, 2).as_deref(), Some("new-name"));
+        assert_eq!(h.screen.session_name, "zellij-test");
+    }
+
+    #[test]
+    fn escape_brings_back_the_current_name_without_renaming() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "other");
+        h.screen.undo_session_rename(1).expect("TEST");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        h.screen
+            .change_mode(InputMode::Session, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        assert!(prompts(&h).is_empty());
+    }
+
+    #[test]
+    fn a_taken_name_shows_a_popup_and_snaps_back() {
+        let mut h = harness();
+        h.screen
+            .peer_sessions_cache
+            .insert("taken".to_owned(), SessionInfo::new("taken".to_owned()));
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "taken");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("taken"));
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        let prompts = prompts(&h);
+        let [(caller, request)] = &prompts[..] else {
+            panic!("expected one prompt, got {:?}", prompts);
+        };
+        assert_eq!(caller.plugin_id, SERVER_NOTICE_CALLER_ID);
+        assert_eq!(caller.client_id, 1);
+        assert_eq!(request.title.as_deref(), Some("Could not rename session"));
+        let PromptSpec::Info { message } = &request.spec else {
+            panic!("expected an info popup, got {:?}", request.spec);
+        };
+        assert!(message.text.contains("already exists"), "{}", message.text);
+    }
+
+    #[test]
+    fn an_empty_name_shows_a_popup_and_snaps_back() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        assert_eq!(prompts(&h).len(), 1);
+    }
+
+    #[test]
+    fn leaving_with_the_same_name_does_nothing() {
+        let mut h = harness();
+        h.screen
+            .change_mode(InputMode::RenameSession, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert!(prompts(&h).is_empty());
+    }
+
+    #[test]
+    fn typing_outside_rename_mode_changes_nothing() {
+        let mut h = harness();
+        type_text(&mut h, 1, "stray");
+        assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
+        assert!(h.screen.session_rename_drafts.is_empty());
+    }
+}

@@ -1119,6 +1119,7 @@ fn is_restricted_mode(mode: InputMode) -> bool {
             | InputMode::EnterSearch
             | InputMode::RenameTab
             | InputMode::RenamePane
+            | InputMode::RenameSession
             | InputMode::Prompt
             | InputMode::Tmux
     )

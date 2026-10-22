@@ -396,6 +396,10 @@ pub enum Action {
         input: Vec<u8>,
     },
     UndoRenameTab,
+    SessionNameInput {
+        input: Vec<u8>,
+    },
+    UndoRenameSession,
     MoveTab {
         direction: Direction,
     },

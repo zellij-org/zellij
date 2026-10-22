@@ -826,6 +826,8 @@ pub enum ScreenInstruction {
     ),
     SerializeLayoutForResurrection,
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
+    UpdateSessionNameDraft(Vec<u8>, ClientId, Option<NotificationEnd>),
+    UndoRenameSession(ClientId, Option<NotificationEnd>),
     ListClientsMetadata(Option<PathBuf>, ClientId, Option<NotificationEnd>), // Option<PathBuf> - default shell
     ListPanes {
         show_all: bool,
@@ -1426,6 +1428,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::SerializeLayoutForResurrection
             },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
+            ScreenInstruction::UpdateSessionNameDraft(..) => ScreenContext::UpdateSessionNameDraft,
+            ScreenInstruction::UndoRenameSession(..) => ScreenContext::UndoRenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::ListPanes { .. } => ScreenContext::ListPanes,
             ScreenInstruction::ListTabs { .. } => ScreenContext::ListTabs,
@@ -1955,6 +1959,7 @@ pub(crate) struct Screen {
     last_mouse_positions: HashMap<ClientId, Position>,
     rename_pane_targets: HashMap<ClientId, PaneId>,
     rename_tab_targets: HashMap<ClientId, usize>,
+    session_rename_drafts: HashMap<ClientId, String>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -2319,6 +2324,7 @@ impl Screen {
             last_mouse_positions: HashMap::new(),
             rename_pane_targets: HashMap::new(),
             rename_tab_targets: HashMap::new(),
+            session_rename_drafts: HashMap::new(),
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -6646,6 +6652,7 @@ impl Screen {
         self.close_popup_for_client(client_id);
         self.rename_pane_targets.remove(&client_id);
         self.rename_tab_targets.remove(&client_id);
+        self.session_rename_drafts.remove(&client_id);
         self.context_menu_configs.remove(&client_id);
         self.client_mousebinds.remove(&client_id);
         self.last_client_input.remove(&client_id);
@@ -7792,8 +7799,22 @@ impl Screen {
         let previous_mode = mode_info.mode;
         mode_info.mode = new_mode;
         mode_info.base_mode = base_mode;
-        if mode_info.session_name.as_ref() != Some(&self.session_name) {
-            mode_info.session_name = Some(self.session_name.clone());
+        let pending_session_rename = if new_mode == InputMode::RenameSession {
+            if !self.session_rename_drafts.contains_key(&client_id) {
+                self.session_rename_drafts
+                    .insert(client_id, self.session_name.clone());
+            }
+            None
+        } else {
+            self.session_rename_drafts.remove(&client_id)
+        };
+        let session_rename_error = match pending_session_rename {
+            Some(new_name) if new_name != self.session_name => self.rename_session(new_name)?.err(),
+            _ => None,
+        };
+        let displayed_session_name = self.displayed_session_name(client_id);
+        if mode_info.session_name.as_ref() != Some(&displayed_session_name) {
+            mode_info.session_name = Some(displayed_session_name);
         }
         mode_info.remote_client = self.client_location(client_id);
 
@@ -7833,6 +7854,139 @@ impl Screen {
         }
 
         self.style = mode_info.style;
+        self.propagate_mode_info(mode_info, client_id)?;
+        if let Some(error_text) = session_rename_error {
+            log::error!("{}", error_text);
+            self.show_session_rename_error(client_id, error_text);
+        }
+        Ok(())
+    }
+
+    fn displayed_session_name(&self, client_id: ClientId) -> String {
+        self.session_rename_drafts
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.session_name.clone())
+    }
+
+    fn refresh_displayed_session_name(&mut self, client_id: ClientId) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        mode_info.session_name = Some(self.displayed_session_name(client_id));
+        self.propagate_mode_info(mode_info, client_id)
+    }
+
+    pub fn update_session_name_draft(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        let in_rename_mode = self
+            .mode_info
+            .get(&client_id)
+            .map(|mode_info| mode_info.mode == InputMode::RenameSession)
+            .unwrap_or(false);
+        if !in_rename_mode {
+            return Ok(());
+        }
+        let Ok(s) = str::from_utf8(&buf) else {
+            return Ok(());
+        };
+        let current_name = self.session_name.clone();
+        let draft = self
+            .session_rename_drafts
+            .entry(client_id)
+            .or_insert(current_name);
+        match s {
+            "\0" => draft.clear(),
+            "\u{007F}" | "\u{0008}" => {
+                zellij_utils::graphemes::pop_cluster(draft);
+            },
+            c => draft.push_str(&clean_string_from_control_and_linebreak(c)),
+        }
+        self.refresh_displayed_session_name(client_id)
+    }
+
+    pub fn undo_session_rename(&mut self, client_id: ClientId) -> Result<()> {
+        if self.session_rename_drafts.remove(&client_id).is_some() {
+            self.refresh_displayed_session_name(client_id)?;
+        }
+        Ok(())
+    }
+
+    pub fn rename_session(&mut self, name: String) -> Result<std::result::Result<(), String>> {
+        if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+            return Ok(Err(error_text));
+        }
+        let (_, resurrectable_sessions) = crate::background_jobs::scan_session_list_default_dirs(
+            &self.session_name,
+            &[],
+            &BTreeMap::new(),
+        );
+        let running_session_exists = zellij_utils::sessions::get_sessions()
+            .map(|sessions| sessions.iter().any(|(session, _)| session == &name))
+            .unwrap_or(false);
+        if self.peer_sessions_cache.contains_key(&name) || running_session_exists {
+            return Ok(Err("A session by this name already exists.".to_owned()));
+        }
+        if self.resurrectable_sessions_cache.contains_key(&name)
+            || resurrectable_sessions.contains_key(&name)
+        {
+            return Ok(Err(
+                "A resurrectable session by this name exists, cannot use this name.".to_owned(),
+            ));
+        }
+        let err_context = || format!("Failed to rename session");
+        let old_session_name = self.session_name.clone();
+
+        self.session_name = name.clone();
+        self.default_mode_info.session_name = Some(name.clone());
+        for (_client_id, mode_info) in self.mode_info.iter_mut() {
+            mode_info.session_name = Some(name.clone());
+        }
+        for (_, tab) in self.tabs.iter_mut() {
+            tab.rename_session(name.clone()).with_context(err_context)?;
+        }
+        let clients_with_drafts: Vec<ClientId> =
+            self.session_rename_drafts.keys().copied().collect();
+        for client_id in clients_with_drafts {
+            self.refresh_displayed_session_name(client_id)
+                .with_context(err_context)?;
+        }
+
+        zellij_utils::sessions::rename_session(&self.session_id, &name);
+
+        self.peer_sessions_cache.remove(&old_session_name);
+        self.log_and_report_session_state()
+            .with_context(err_context)?;
+
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
+                    old_name: old_session_name,
+                    new_name: name.clone(),
+                },
+            ));
+
+        set_session_name(name.clone());
+        let connected_client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+        for client_id in connected_client_ids {
+            if let Some(os_input) = &mut self.bus.os_input {
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::RenamedSession { name: name.clone() },
+                );
+            }
+        }
+        Ok(Ok(()))
+    }
+
+    fn propagate_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -10950,6 +11104,13 @@ pub(crate) fn screen_thread_main(
                         if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
                         {
                             screen.update_active_tab_name(raw_bytes, client_id)?;
+                            state_changed = true;
+                        }
+                    },
+                    Some(InputMode::RenameSession) => {
+                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
+                        {
+                            screen.update_session_name_draft(raw_bytes, client_id)?;
                             state_changed = true;
                         }
                     },
@@ -14113,13 +14274,8 @@ pub(crate) fn screen_thread_main(
                     })
                     .with_context(err_context)?;
             },
-            ScreenInstruction::RenameSession(
-                name,
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+            ScreenInstruction::RenameSession(name, client_id, _completion_tx) => {
+                if let Err(error_text) = screen.rename_session(name)? {
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
                         let _ = os_input.send_to_client(
@@ -14129,80 +14285,15 @@ pub(crate) fn screen_thread_main(
                             },
                         );
                     }
-                } else if screen.peer_sessions_cache.contains_key(&name) {
-                    let error_text = "A session by this name already exists.";
-                    log::error!("{}", error_text);
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input.send_to_client(
-                            client_id,
-                            ServerToClientMsg::LogError {
-                                lines: vec![error_text.to_owned()],
-                            },
-                        );
-                    }
-                } else if screen.resurrectable_sessions_cache.contains_key(&name) {
-                    let error_text =
-                        "A resurrectable session by this name exists, cannot use this name.";
-                    log::error!("{}", error_text);
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input.send_to_client(
-                            client_id,
-                            ServerToClientMsg::LogError {
-                                lines: vec![error_text.to_owned()],
-                            },
-                        );
-                    }
-                } else {
-                    let err_context = || format!("Failed to rename session");
-                    let old_session_name = screen.session_name.clone();
-
-                    // update state
-                    screen.session_name = name.clone();
-                    screen.default_mode_info.session_name = Some(name.clone());
-                    for (_client_id, mode_info) in screen.mode_info.iter_mut() {
-                        mode_info.session_name = Some(name.clone());
-                    }
-                    for (_, tab) in screen.tabs.iter_mut() {
-                        tab.rename_session(name.clone()).with_context(err_context)?;
-                    }
-
-                    // Record the new name in the session index. Nothing on disk is
-                    // renamed: the socket/pipe and the session-info cache folder
-                    // are both named by the stable session id — which is what makes
-                    // rename work for Windows named pipes (they cannot be renamed).
-                    zellij_utils::sessions::rename_session(&screen.session_id, &name);
-
-                    // report
-                    screen
-                        .log_and_report_session_state()
-                        .with_context(err_context)?;
-
-                    let _ = screen
-                        .bus
-                        .senders
-                        .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::SessionSuggestions(
-                            crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
-                                old_name: old_session_name.clone(),
-                                new_name: name.clone(),
-                            },
-                        ),
-                    );
-
-                    // set the env variable
-                    set_session_name(name.clone());
-                    let connected_client_ids: Vec<ClientId> =
-                        screen.active_tab_ids.keys().copied().collect();
-                    for client_id in connected_client_ids {
-                        if let Some(os_input) = &mut screen.bus.os_input {
-                            let _ = os_input.send_to_client(
-                                client_id,
-                                ServerToClientMsg::RenamedSession { name: name.clone() },
-                            );
-                        }
-                    }
                 }
+            },
+            ScreenInstruction::UpdateSessionNameDraft(input, client_id, _completion_tx) => {
+                screen.update_session_name_draft(input, client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::UndoRenameSession(client_id, _completion_tx) => {
+                screen.undo_session_rename(client_id)?;
+                screen.render(None)?;
             },
             ScreenInstruction::Reconfigure {
                 client_id,

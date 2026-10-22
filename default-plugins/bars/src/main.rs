@@ -39,6 +39,20 @@ impl Role {
     }
 }
 
+pub fn displayed_session_name(mode_info: &ModeInfo) -> Option<String> {
+    if mode_info.mode == InputMode::RenameSession {
+        return match mode_info.session_name.as_deref() {
+            Some(name) if !name.is_empty() => Some(name.to_owned()),
+            _ => Some("Enter name...".to_owned()),
+        };
+    }
+    mode_info.session_name.clone()
+}
+
+pub fn session_name_hidden(mode_info: &ModeInfo) -> bool {
+    mode_info.style.hide_session_name && mode_info.mode != InputMode::RenameSession
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ClientSeed {
     pub mode_info: ModeInfo,

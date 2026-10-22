@@ -136,10 +136,15 @@ keybinds {
         bind "Ctrl c" { SwitchToMode "Normal"; }
         bind "Esc" { UndoRenamePane; SwitchToMode "Pane"; }
     }
+    renamesession {
+        bind "Ctrl c" { SwitchToMode "Normal"; }
+        bind "Esc" { UndoRenameSession; SwitchToMode "Session"; }
+    }
     session {
         bind "{primary} o" { SwitchToMode "Normal"; }
         bind "{primary} s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         bind "]" { FocusHostSession; SwitchToMode "Normal"; }
         bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }

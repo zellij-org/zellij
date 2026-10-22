@@ -1520,6 +1520,7 @@ impl From<crate::input::actions::Action>
             SwitchModeForAllClientsAction,
             SwitchSessionAction,
             SwitchToModeAction,
+            SessionNameInputAction,
             TabNameInputAction,
             ToggleActiveSyncTabAction,
             ToggleActiveSyncTabByTabIdAction,
@@ -1547,6 +1548,7 @@ impl From<crate::input::actions::Action>
             ToggleTrayIconAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
+            UndoRenameSessionAction,
             UndoRenameTabAction,
             // Tab-targeting
             UndoRenameTabByTabIdAction,
@@ -1940,6 +1942,14 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::UndoRenameTab => {
                 ActionType::UndoRenameTab(UndoRenameTabAction {})
+            },
+            crate::input::actions::Action::SessionNameInput { input } => {
+                ActionType::SessionNameInput(SessionNameInputAction {
+                    input: input.into_iter().map(|b| b as u32).collect(),
+                })
+            },
+            crate::input::actions::Action::UndoRenameSession => {
+                ActionType::UndoRenameSession(UndoRenameSessionAction {})
             },
             crate::input::actions::Action::MoveTab { direction } => {
                 ActionType::MoveTab(MoveTabAction {
@@ -2989,6 +2999,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::UndoRenameTab(_) => Ok(crate::input::actions::Action::UndoRenameTab),
+            ActionType::SessionNameInput(session_name_action) => {
+                Ok(crate::input::actions::Action::SessionNameInput {
+                    input: session_name_action
+                        .input
+                        .into_iter()
+                        .map(|b| b as u8)
+                        .collect(),
+                })
+            },
+            ActionType::UndoRenameSession(_) => {
+                Ok(crate::input::actions::Action::UndoRenameSession)
+            },
             ActionType::MoveTab(move_tab_action) => Ok(crate::input::actions::Action::MoveTab {
                 direction: proto_i32_to_direction(move_tab_action.direction)?,
             }),
@@ -4015,6 +4037,7 @@ fn input_mode_to_proto_i32(mode: InputMode) -> i32 {
         InputMode::Move => ProtoInputMode::Move as i32,
         InputMode::Prompt => ProtoInputMode::Prompt as i32,
         InputMode::Tmux => ProtoInputMode::Tmux as i32,
+        InputMode::RenameSession => ProtoInputMode::RenameSession as i32,
     }
 }
 
@@ -4034,6 +4057,7 @@ fn proto_i32_to_input_mode(i: i32) -> Result<InputMode> {
         Some(ProtoInputMode::Move) => Ok(InputMode::Move),
         Some(ProtoInputMode::Prompt) => Ok(InputMode::Prompt),
         Some(ProtoInputMode::Tmux) => Ok(InputMode::Tmux),
+        Some(ProtoInputMode::RenameSession) => Ok(InputMode::RenameSession),
         _ => Err(anyhow!("Invalid InputMode value: {}", i)),
     }
 }

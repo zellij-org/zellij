@@ -141,9 +141,14 @@ keybinds {
         bind "Ctrl c" "Enter" { SwitchToMode "Locked"; }
         bind "Esc" { UndoRenamePane; SwitchToMode "Pane"; }
     }
+    renamesession {
+        bind "Ctrl c" "Enter" { SwitchToMode "Locked"; }
+        bind "Esc" { UndoRenameSession; SwitchToMode "Session"; }
+    }
     session {
         bind "o" { SwitchToMode "Normal"; }
         bind "d" { Detach; }
+        bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         bind "]" { FocusHostSession; SwitchToMode "Locked"; }
         bind "[" { FocusGuestSession; SwitchToMode "Locked"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Locked"; }
@@ -195,14 +200,14 @@ keybinds {
             SwitchToMode "Locked"
         }
     }
-    shared_except "renametab" "renamepane" "entersearch" {
+    shared_except "renametab" "renamepane" "renamesession" "entersearch" {
         bind "F9" { ToggleSessionCard; }
     }
-    shared_except "locked" "renametab" "renamepane" {
+    shared_except "locked" "renametab" "renamepane" "renamesession" {
         bind "{unlock}" { SwitchToMode "Locked"; }
         bind "{primary} q" { Quit; }
     }
-    shared_except "renamepane" "renametab" "entersearch" "locked" {
+    shared_except "renamepane" "renametab" "renamesession" "entersearch" "locked" {
         bind "esc" { SwitchToMode "locked"; }
     }
     shared_among "normal" "locked" {
@@ -221,25 +226,25 @@ keybinds {
         bind "{secondary} p" { TogglePaneInGroup; }
         bind "{secondary} Shift p" { ToggleGroupMarking; }
     }
-    shared_except "locked" "renametab" "renamepane" {
+    shared_except "locked" "renametab" "renamepane" "renamesession" {
         bind "Enter" { SwitchToMode "Locked"; }
     }
-    shared_except "pane" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "pane" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "p" { SwitchToMode "Pane"; }
     }
-    shared_except "resize" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "resize" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "r" { SwitchToMode "Resize"; }
     }
-    shared_except "scroll" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "scroll" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "s" { SwitchToMode "Scroll"; }
     }
-    shared_except "session" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "session" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "o" { SwitchToMode "Session"; }
     }
-    shared_except "tab" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "tab" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "t" { SwitchToMode "Tab"; }
     }
-    shared_except "move" "locked" "renametab" "renamepane" "entersearch" {
+    shared_except "move" "locked" "renametab" "renamepane" "renamesession" "entersearch" {
         bind "m" { SwitchToMode "Move"; }
     }
 }

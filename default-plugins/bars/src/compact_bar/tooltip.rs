@@ -279,6 +279,7 @@ impl<'a> TooltipRenderer<'a> {
                 InputMode::EnterSearch => "Entering search term...".to_owned(),
                 InputMode::RenameTab => "Renaming tab...".to_owned(),
                 InputMode::RenamePane => "Renaming pane...".to_owned(),
+                InputMode::RenameSession => "Renaming session...".to_owned(),
                 _ => {
                     format!("{:?}", self.mode_info.mode)
                 },
