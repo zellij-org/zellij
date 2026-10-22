@@ -124,8 +124,42 @@ fn an_older_zellij_on_the_path_is_offered_an_update_instead_of_a_copy() {
     zellij.kill_session();
 }
 
+fn approve_with_nothing_ticked(zellij: &TestSession) {
+    wait_for_setup_items(zellij);
+    for label in [COPY, ENTRY] {
+        let ticked = format!("[x] {}", label);
+        if zellij.snapshot().contains(&ticked) {
+            click_on(zellij, &ticked, 4);
+            zellij.wait_until("the item is unticked", |grid_snapshot| {
+                !grid_snapshot.contains(&ticked)
+            });
+        }
+    }
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the setup screen closed", |grid_snapshot| {
+        !grid_snapshot.contains(TITLE)
+    });
+}
+
+fn assert_no_setup_screen(zellij: &TestSession) {
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('w'));
+    zellij.wait_until("session manager opened", |grid_snapshot| {
+        grid_snapshot.contains("Session: ")
+    });
+    zellij.send_stdin(&keys::ESC);
+    let grid_snapshot = zellij.wait_until("session manager closed", |grid_snapshot| {
+        !grid_snapshot.contains("Session: ")
+    });
+    assert!(
+        !grid_snapshot.contains(TITLE),
+        "the setup screen came back:\n{}",
+        grid_snapshot.text
+    );
+}
+
 #[test]
-fn a_dismissed_setup_screen_returns_in_the_next_session_until_it_is_approved() {
+fn a_dismissed_setup_screen_returns_in_the_next_session() {
     assume_a_desktop_without_zellij_on_the_path(None);
     let mut first = start_first_run();
     wait_for_setup_items(&first);
@@ -137,41 +171,23 @@ fn a_dismissed_setup_screen_returns_in_the_next_session_until_it_is_approved() {
 
     let mut second = start_existing_config();
     wait_for_setup_items(&second);
-    for label in [COPY, ENTRY] {
-        let ticked = format!("[x] {}", label);
-        if second.snapshot().contains(&ticked) {
-            click_on(&second, &ticked, 4);
-            second.wait_until("the item is unticked", |grid_snapshot| {
-                grid_snapshot.contains(&format!("[ ] {}", label))
-            });
-        }
-    }
-    second.send_stdin(&keys::ENTER);
-    second.wait_until("the setup screen closed", |grid_snapshot| {
-        !grid_snapshot.contains(TITLE)
-    });
+    second.kill_session();
+}
+
+#[test]
+fn an_approved_setup_screen_does_not_return() {
+    assume_a_desktop_without_zellij_on_the_path(None);
+    let mut first = start_first_run();
+    approve_with_nothing_ticked(&first);
     let state = desktop_integration::state_path();
     wait_for("the approval to be saved", || {
         desktop_integration::load_from(&state).has(Flag::SetupApproved)
     });
-    second.kill_session();
+    first.kill_session();
 
-    let mut third = start_existing_config();
-    third.send_stdin(&keys::ctrl('o'));
-    third.send_stdin(&keys::key('w'));
-    third.wait_until("session manager opened", |grid_snapshot| {
-        grid_snapshot.contains("Session: ")
-    });
-    third.send_stdin(&keys::ESC);
-    let grid_snapshot = third.wait_until("session manager closed", |grid_snapshot| {
-        !grid_snapshot.contains("Session: ")
-    });
-    assert!(
-        !grid_snapshot.contains(TITLE),
-        "an approved setup screen came back:\n{}",
-        grid_snapshot.text
-    );
-    third.kill_session();
+    let mut second = start_existing_config();
+    assert_no_setup_screen(&second);
+    second.kill_session();
 }
 
 #[test]

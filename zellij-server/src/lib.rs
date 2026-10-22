@@ -3976,14 +3976,18 @@ pub fn start_server_impl(
                         .unwrap()
                 };
 
-                let mut onboarding_pane = onboarding_floating_pane(&Onboarding {
-                    setup_wizard: should_launch_setup_wizard,
-                    in_desktop_window,
-                    is_web_client,
-                    show_release_notes: runtime_config_options.show_release_notes,
-                    show_startup_tips: runtime_config_options.show_startup_tips,
-                    layout_is_welcome_screen,
-                });
+                let mut onboarding_pane = if is_resumed_session {
+                    None
+                } else {
+                    onboarding_floating_pane(&Onboarding {
+                        setup_wizard: should_launch_setup_wizard,
+                        in_desktop_window,
+                        is_web_client,
+                        show_release_notes: runtime_config_options.show_release_notes,
+                        show_startup_tips: runtime_config_options.show_startup_tips,
+                        layout_is_welcome_screen,
+                    })
+                };
                 if layout.has_tabs() {
                     let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
                     for (tab_index, (tab_name, tab_layout, floating_panes_layout)) in
