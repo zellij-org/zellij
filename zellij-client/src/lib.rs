@@ -554,12 +554,10 @@ fn prepare_parent_dir(teardown: Option<TerminalTeardown>, path: &Path) {
 }
 
 /// IPC pipe path for a NEW session: register it in the session index under a
-/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
-/// environment (set by the caller just before).
-fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`.
+fn create_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let name = envs::get_session_name().unwrap();
-    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, &name);
+    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, name);
     prepare_parent_dir(teardown, &path);
     check_ipc_pipe_length(&path);
     path
@@ -567,10 +565,9 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
 
 /// IPC pipe path for an EXISTING session: resolve its id via the session index,
 /// falling back to the name-based path of sessions from before ids.
-fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+fn resolve_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let name = envs::get_session_name().unwrap();
-    let path = zellij_utils::consts::session_socket_path(&name);
+    let path = zellij_utils::consts::session_socket_path(name);
     prepare_parent_dir(teardown, &path);
     path
 }
@@ -1252,9 +1249,9 @@ pub fn start_client(
     os_input.update_session_name(own_session_name.clone());
     // A session we start gets a freshly registered id; an existing one is resolved by name.
     let ipc_pipe = if starts_server {
-        create_ipc_pipe(Some(terminal_teardown))
+        create_ipc_pipe(&own_session_name, Some(terminal_teardown))
     } else {
-        resolve_ipc_pipe(Some(terminal_teardown))
+        resolve_ipc_pipe(&own_session_name, Some(terminal_teardown))
     };
 
     if starts_server {
@@ -1815,8 +1812,8 @@ pub fn start_server_detached(
                 switch_context: None,
             };
 
+            let ipc_pipe = create_ipc_pipe(&name, None);
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(None);
 
             if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
                 exit_after_startup_error(None, spawn_server_error_message(e));
@@ -1875,8 +1872,8 @@ pub fn start_server_detached(
                 switch_context: None,
             };
 
+            let ipc_pipe = create_ipc_pipe(&name, None);
             os_input.update_session_name(name);
-            let ipc_pipe = create_ipc_pipe(None);
 
             if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
                 exit_after_startup_error(None, spawn_server_error_message(e));
