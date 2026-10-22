@@ -167,6 +167,12 @@ impl<'de> Visitor<'de> for HexColorVisitor {
             return self.visit_str(stripped);
         }
 
+        if !s.is_ascii() {
+            return Err(Error::custom(
+                "Hex color must be of form \"#RGB\" or \"#RRGGBB\"",
+            ));
+        }
+
         if s.len() == 3 {
             Ok(HexColor(
                 u8::from_str_radix(&s[0..1], 16).map_err(E::custom)? * 0x11,
