@@ -258,6 +258,7 @@ message Action {
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
     MoveTabToPositionPayload move_tab_to_position_payload = 68;
     SessionPanePayload session_pane_payload = 69;
+    bytes session_name_input_payload = 70;
   }
 }
 
@@ -583,6 +584,8 @@ enum ActionName {
     MarkAllSeen = 144;
     ToggleTrayIcon = 145;
     OpenSessionInWindow = 146;
+    SessionNameInput = 147;
+    UndoRenameSession = 148;
 }
 
 message Position {

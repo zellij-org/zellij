@@ -583,14 +583,15 @@ impl TabBar {
         } else {
             vec![]
         };
+        let session_name = crate::displayed_session_name(&client.mode_info);
         let (line, new_tab_button_range, breadcrumb_range, session_indicator_range) = tab_line(
-            client.mode_info.session_name.as_deref(),
+            session_name.as_deref(),
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),
             client.mode_info.style.colors,
             client.mode_info.capabilities,
-            client.mode_info.style.hide_session_name,
+            crate::session_name_hidden(&client.mode_info),
             &self.session_indicator,
             &background,
             client.active_pane_scroll,

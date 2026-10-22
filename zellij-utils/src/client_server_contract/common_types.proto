@@ -348,6 +348,8 @@ message Action {
     ToggleTrayIconAction toggle_tray_icon = 182;
     OpenSessionInWindowAction open_session_in_window = 183;
     WaitForPaneExitAction wait_for_pane_exit = 184;
+    SessionNameInputAction session_name_input = 185;
+    UndoRenameSessionAction undo_rename_session = 186;
   }
 }
 
@@ -407,6 +409,7 @@ message GoToPreviousTabAction {}
 message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
+message UndoRenameSessionAction {}
 message DetachAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
@@ -623,6 +626,10 @@ message GoToTabNameAction {
 }
 
 message TabNameInputAction {
+  repeated uint32 input = 1;
+}
+
+message SessionNameInputAction {
   repeated uint32 input = 1;
 }
 
@@ -843,6 +850,7 @@ enum InputMode {
   INPUT_MODE_MOVE = 12;
   INPUT_MODE_PROMPT = 13;
   INPUT_MODE_TMUX = 14;
+  INPUT_MODE_RENAME_SESSION = 15;
 }
 
 enum Direction {

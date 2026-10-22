@@ -4507,14 +4507,10 @@ fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
 
 fn rename_session(env: &PluginEnv, new_session_name: String) {
     let error_msg = || format!("failed to rename session in plugin {}", env.name());
-    if new_session_name.contains('/') {
-        log::error!("Session names cannot contain \'/\'");
-    } else {
-        let action = Action::RenameSession {
-            name: new_session_name,
-        };
-        apply_action!(action, error_msg, env);
-    }
+    let action = Action::RenameSession {
+        name: new_session_name,
+    };
+    apply_action!(action, error_msg, env);
 }
 
 fn disconnect_other_clients(env: &PluginEnv) {

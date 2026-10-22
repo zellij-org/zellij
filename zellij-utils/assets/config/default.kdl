@@ -96,6 +96,7 @@ context_menu {
     bar {
         item "New pane" { NewPane; }
         item "New tab" { NewTab; }
+        item "Rename session" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         item "Back to {}" { ToggleSession; }
         item "Open in a window" { OpenSessionInWindow; }
     }

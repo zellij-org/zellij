@@ -1317,6 +1317,23 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SessionNameInput { input } => {
+            senders
+                .send_to_screen(ScreenInstruction::UpdateSessionNameDraft(
+                    input,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::UndoRenameSession => {
+            senders
+                .send_to_screen(ScreenInstruction::UndoRenameSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::GoToTabById { id } => {
             senders
                 .send_to_screen(ScreenInstruction::GoToTabWithId(

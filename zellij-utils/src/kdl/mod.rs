@@ -114,6 +114,7 @@ pub fn action_without_arguments(
         "CloseTab" => Ok(Action::CloseTab),
         "ToggleTab" => Ok(Action::ToggleTab),
         "UndoRenameTab" => Ok(Action::UndoRenameTab),
+        "UndoRenameSession" => Ok(Action::UndoRenameSession),
         "Detach" => Ok(Action::Detach),
         "SetDarkTheme" => Ok(Action::SetDarkTheme),
         "SetLightTheme" => Ok(Action::SetLightTheme),
@@ -489,6 +490,7 @@ impl Action {
             }),
             "PaneNameInput" => Ok(Action::PaneNameInput { input: bytes }),
             "TabNameInput" => Ok(Action::TabNameInput { input: bytes }),
+            "SessionNameInput" => Ok(Action::SessionNameInput { input: bytes }),
             "SearchInput" => Ok(Action::SearchInput { input: bytes }),
             "GoToTab" => {
                 let tab_index = *bytes.get(0).ok_or_else(|| {
@@ -919,6 +921,14 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
+            Action::SessionNameInput { input: bytes } => {
+                let mut node = KdlNode::new("SessionNameInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            },
+            Action::UndoRenameSession => Some(KdlNode::new("UndoRenameSession")),
             Action::MoveTab { direction } => {
                 let mut node = KdlNode::new("MoveTab");
                 let direction = match direction {
@@ -1917,6 +1927,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "UndoRenameTab" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "UndoRenameSession" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "ToggleMouseMode" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
@@ -2306,6 +2319,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
+                parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "SessionNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
             "SearchInput" => {
@@ -9058,6 +9074,63 @@ fn can_bind_named_swap_layout_actions() {
         Some(&vec![Action::ApplyFloatingSwapLayout {
             name: "staggered".to_owned()
         }])
+    );
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
+}
+
+#[test]
+fn can_bind_session_rename_actions() {
+    let fake_config = r#"
+        keybinds {
+            session {
+                bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
+            }
+            renamesession {
+                bind "Esc" { UndoRenameSession; SwitchToMode "Session"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(
+            &InputMode::Session,
+            &KeyWithModifier::new(BareKey::Char('r'))
+        ),
+        Some(&vec![
+            Action::SwitchToMode {
+                input_mode: InputMode::RenameSession
+            },
+            Action::SessionNameInput { input: vec![0] },
+        ])
+    );
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(
+            &InputMode::RenameSession,
+            &KeyWithModifier::new(BareKey::Esc)
+        ),
+        Some(&vec![
+            Action::UndoRenameSession,
+            Action::SwitchToMode {
+                input_mode: InputMode::Session
+            },
+        ])
     );
     let serialized = Keybinds::to_kdl(&deserialized, true);
     let deserialized_from_serialized = Keybinds::from_kdl(

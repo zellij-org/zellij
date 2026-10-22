@@ -1874,6 +1874,8 @@ pub enum InputMode {
     /// `Tmux` mode allows for basic tmux keybindings functionality
     #[serde(alias = "tmux")]
     Tmux,
+    #[serde(alias = "renamesession")]
+    RenameSession,
 }
 
 impl Default for InputMode {
@@ -2057,6 +2059,7 @@ impl FromStr for InputMode {
             "scroll" | "Scroll" => Ok(InputMode::Scroll),
             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+            "renamesession" | "RenameSession" => Ok(InputMode::RenameSession),
             "session" | "Session" => Ok(InputMode::Session),
             "move" | "Move" => Ok(InputMode::Move),
             "prompt" | "Prompt" => Ok(InputMode::Prompt),

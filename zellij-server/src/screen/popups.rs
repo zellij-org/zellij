@@ -31,6 +31,7 @@ pub const SESSION_MANAGER_PLUGIN_ALIAS: &str = "session-manager";
 pub const SESSION_CARD_COLS: usize = 72;
 pub const SESSION_CARD_ROWS: usize = 13;
 pub const SWAP_LAYOUT_NOTIFICATION_MS: u64 = 2000;
+pub const SESSION_RENAME_ERROR_REQUEST_ID: u64 = 1;
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
 pub const PIPE_POPUP_INITIAL_ROWS: usize = 8;
 
@@ -1163,6 +1164,23 @@ impl Screen {
                     plugin_id: SERVER_NOTICE_CALLER_ID,
                     client_id,
                     request_id: 0,
+                },
+                owner_client_id: client_id,
+                caller_pane_id: None,
+                request,
+            });
+    }
+    pub fn show_session_rename_error(&mut self, client_id: ClientId, error_text: String) {
+        let request =
+            zellij_utils::prompt::PromptRequest::info("Could not rename session", error_text);
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::PromptRequest {
+                caller: PromptCaller {
+                    plugin_id: SERVER_NOTICE_CALLER_ID,
+                    client_id,
+                    request_id: SESSION_RENAME_ERROR_REQUEST_ID,
                 },
                 owner_client_id: client_id,
                 caller_pane_id: None,

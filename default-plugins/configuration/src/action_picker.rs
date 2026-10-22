@@ -137,6 +137,7 @@ pub const MODES: &[&str] = &[
     "entersearch",
     "renametab",
     "renamepane",
+    "renamesession",
     "session",
     "tmux",
 ];
@@ -284,6 +285,12 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         &[positional("Byte", ArgKind::Number, true)],
     ),
     plain("UndoRenameTab", "Undo the tab rename"),
+    with_args(
+        "SessionNameInput",
+        "Start renaming the session",
+        &[positional("Byte", ArgKind::Number, true)],
+    ),
+    plain("UndoRenameSession", "Undo the session rename"),
     plain("ScrollUp", "Scroll up one line"),
     plain("ScrollDown", "Scroll down one line"),
     plain("PageScrollUp", "Scroll up one page"),

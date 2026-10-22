@@ -694,6 +694,14 @@ impl KeybindProcessor {
             InputMode::Session => {
                 let ordered_predicates = vec![
                     |action: &Action| matches!(action, Action::Detach),
+                    |action: &Action| {
+                        matches!(
+                            action,
+                            Action::SwitchToMode {
+                                input_mode: InputMode::RenameSession
+                            }
+                        )
+                    },
                     |action: &Action| action.launches_plugin("session-manager"),
                     |action: &Action| action.launches_plugin("plugin-manager"),
                     |action: &Action| action.launches_plugin("configuration"),
@@ -704,6 +712,7 @@ impl KeybindProcessor {
             InputMode::EnterSearch
             | InputMode::RenameTab
             | InputMode::RenamePane
+            | InputMode::RenameSession
             | InputMode::Prompt
             | InputMode::Tmux => Vec::new(),
         }
