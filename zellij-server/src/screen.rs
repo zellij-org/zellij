@@ -2068,6 +2068,7 @@ pub(crate) struct Screen {
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
     last_forwarded_osc7: HashMap<ClientId, Option<String>>,
+    last_forwarded_user_variables: HashMap<ClientId, BTreeMap<String, String>>,
     pub attention: crate::attention::AttentionTracker,
     last_session_attention: Option<zellij_utils::attention::SessionAttention>,
     pub(crate) global_attention: Option<zellij_utils::attention::GlobalAttention>,
@@ -2425,6 +2426,7 @@ impl Screen {
             host_notification_protocol: HostNotificationProtocol::default(),
             client_host_terminal_env: HashMap::new(),
             last_forwarded_osc7: HashMap::new(),
+            last_forwarded_user_variables: HashMap::new(),
             attention: crate::attention::AttentionTracker::default(),
             last_session_attention: None,
             global_attention: None,
@@ -5717,7 +5719,47 @@ impl Screen {
                 }
             }
 
-            if non_watcher_output_was_dirty || has_bell || has_osc7_update {
+            let mut has_user_variable_update = false;
+            for (&client_id, &tab_index) in &self.active_tab_ids {
+                if self.watcher_clients.contains_key(&client_id) {
+                    continue;
+                }
+                let current = self
+                    .tabs
+                    .get(&tab_index)
+                    .and_then(|tab| tab.get_active_pane(client_id))
+                    .and_then(|pane| pane.user_variables())
+                    .cloned()
+                    .unwrap_or_default();
+                let previous = self
+                    .last_forwarded_user_variables
+                    .entry(client_id)
+                    .or_default();
+                // Clear variables owned by the previous pane, without touching host-only variables.
+                for name in previous.keys().filter(|name| !current.contains_key(*name)) {
+                    output.add_post_vte_instruction_to_client(
+                        client_id,
+                        &format!("\x1b]1337;SetUserVar={}=\x07", name),
+                    );
+                    has_user_variable_update = true;
+                }
+                for (name, value) in &current {
+                    if previous.get(name) != Some(value) {
+                        output.add_post_vte_instruction_to_client(
+                            client_id,
+                            &format!("\x1b]1337;SetUserVar={}={}\x07", name, value),
+                        );
+                        has_user_variable_update = true;
+                    }
+                }
+                *previous = current;
+            }
+
+            if non_watcher_output_was_dirty
+                || has_bell
+                || has_osc7_update
+                || has_user_variable_update
+            {
                 let mut serialized_output = output.serialize().context(err_context)?;
                 self.pace_structured_payloads(&mut serialized_output)
                     .context(err_context)?;
@@ -6738,6 +6780,7 @@ impl Screen {
         self.background_plugin_subscriptions
             .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
         self.last_forwarded_osc7.remove(&client_id);
+        self.last_forwarded_user_variables.remove(&client_id);
         self.client_host_focused.remove(&client_id);
         self.client_notification_protocols.remove(&client_id);
         self.client_host_terminal_env.remove(&client_id);
