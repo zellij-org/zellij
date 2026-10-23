@@ -286,8 +286,7 @@ fn muting_a_pane_hides_its_status() {
 
 #[test]
 fn a_watched_busy_pane_reports_going_quiet_but_a_pane_at_a_prompt_does_not() {
-    let (mut zellij, busy, at_prompt) =
-        start_with_two_panes(runner().with_config(FAST_IDLE_RULE));
+    let (mut zellij, busy, at_prompt) = start_with_two_panes(runner().with_config(FAST_IDLE_RULE));
     at_prompt.output(b"\x1b]133;A\x1b\\$ ");
     let _focused = split_right_pane_down(&zellij);
     watch(&zellij, &busy);
@@ -301,9 +300,8 @@ fn a_watched_busy_pane_reports_going_quiet_but_a_pane_at_a_prompt_does_not() {
 
 #[test]
 fn the_host_terminal_is_told_what_the_session_needs() {
-    let (mut zellij, agent, _right) = start_with_two_panes(
-        runner().with_host_terminal(HostTerminal::ProgramStatus),
-    );
+    let (mut zellij, agent, _right) =
+        start_with_two_panes(runner().with_host_terminal(HostTerminal::ProgramStatus));
     agent.output(&program_status(&format!(
         "state=blocked:kind=permission:msg={}",
         encoded("Allow edit?")
@@ -590,8 +588,7 @@ fn save_and_resurrect(zellij: &mut TestSession) {
 
 #[test]
 fn mute_ignore_and_tab_mute_are_restored_after_resurrection() {
-    let (mut zellij, left, right) =
-        start_with_two_panes(runner().with_config(SERIALIZING));
+    let (mut zellij, left, right) = start_with_two_panes(runner().with_config(SERIALIZING));
     let _third = open_second_tab(&zellij);
     zellij.run_cli_action(CliAction::MutePane {
         pane_id: pane_id(&left),
@@ -638,9 +635,7 @@ fn mute_ignore_and_tab_mute_are_restored_after_resurrection() {
 
 #[test]
 fn a_muted_session_stays_muted_after_resurrection() {
-    let mut zellij = runner()
-        .with_config(SERIALIZING)
-        .start();
+    let mut zellij = runner().with_config(SERIALIZING).start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     zellij.run_cli_action(CliAction::MuteSession);
@@ -666,8 +661,7 @@ fn a_muted_session_stays_muted_after_resurrection() {
 
 #[test]
 fn a_watch_is_not_restored_after_resurrection() {
-    let (mut zellij, left, _right) =
-        start_with_two_panes(runner().with_config(SERIALIZING));
+    let (mut zellij, left, _right) = start_with_two_panes(runner().with_config(SERIALIZING));
     watch(&zellij, &left);
     wait_for_session_attention(&zellij, "the pane is watched", |attention| {
         attention.items.iter().any(|item| item.attention.watched)
@@ -857,9 +851,7 @@ fn new_command_pane_with_notify(command: &[&str]) -> CliAction {
 
 #[test]
 fn notify_on_a_new_command_pane_reports_when_it_finishes() {
-    let mut zellij = runner()
-        .with_config(SESSION_INDICATOR_ON)
-        .start();
+    let mut zellij = runner().with_config(SESSION_INDICATOR_ON).start();
     let first = claim_first_terminal_and_wait_for_prompt(&zellij);
     first.disable_echo();
     zellij.run_cli_action(new_command_pane_with_notify(&["false"]));
@@ -886,8 +878,7 @@ fn notify_on_a_new_command_pane_reports_when_it_finishes() {
 #[test]
 fn frame_markers_false_hides_every_pane_marker_but_keeps_the_indicator() {
     let (mut zellij, left, _right) = start_with_two_panes(
-        runner()
-            .with_config("session_indicator true\nattention {\n    frame_markers false\n}"),
+        runner().with_config("session_indicator true\nattention {\n    frame_markers false\n}"),
     );
     left.output(&program_status("state=blocked:kind=question"));
     zellij.wait_until("the indicator counts the item", |grid_snapshot| {
@@ -923,9 +914,8 @@ fn host_status_false_never_tells_the_host_terminal() {
 
 #[test]
 fn a_successful_command_counts_as_done_only_after_the_threshold() {
-    let (mut zellij, left, _right) = start_with_two_panes(
-        runner().with_config("attention {\n    done_threshold_secs 1\n}"),
-    );
+    let (mut zellij, left, _right) =
+        start_with_two_panes(runner().with_config("attention {\n    done_threshold_secs 1\n}"));
     shell_command(&left, "A", "true", "D;0");
     left.output(b"\x1b]133;A\x1b\\$ quick done\r\n");
     zellij.wait_until("the quick command finished", |grid_snapshot| {
