@@ -42,6 +42,7 @@ fn replace_pane_in_place_with_held_command(
         tab_id: None,
         border_style: None,
         notify: Default::default(),
+        env: vec![],
     });
     zellij.expect_pty_spawn()
 }

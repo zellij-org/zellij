@@ -186,6 +186,7 @@ fn open_tab(session: &str, waited: &Waited) -> Result<u32> {
             cwd: Some(waited.cwd.clone()),
             initial_panes,
             first_pane_unblock_condition: None,
+            env: Default::default(),
         },
     )?;
     let tab_id = lines

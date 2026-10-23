@@ -4,6 +4,7 @@ expression: output
 ---
 NewTab(
     None,
+    {},
     None,
     Some(
         TiledPaneLayout {

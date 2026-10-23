@@ -413,6 +413,7 @@ fn new_pane_cli_action(
         tab_id: None,
         border_style: None,
         notify: Default::default(),
+        env: vec![],
     }
 }
 

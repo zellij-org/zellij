@@ -846,6 +846,7 @@ fn new_command_pane_with_notify(command: &[&str]) -> CliAction {
         tab_id: None,
         border_style: None,
         notify: true,
+        env: vec![],
     }
 }
 
