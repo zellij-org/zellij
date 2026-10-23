@@ -1347,6 +1347,7 @@ impl SessionMetaData {
                         .options
                         .nested_session_handling
                         .unwrap_or_default(),
+                    resize_session_to: new_config.options.resize_session_to.unwrap_or_default(),
                 })
                 .unwrap();
             let _ = self

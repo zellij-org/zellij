@@ -418,3 +418,11 @@ web_sharing "disabled"
 //   - "detach" (detach without asking)
 // 
 // on_quit "ask_quit"
+ 
+// How to size a session that is attached from multiple clients at once.
+// Options:
+//   - "smallest" (Default — fit the smallest client so everyone sees the whole session)
+//   - "largest" (fit the largest client; smaller clients see a part of the session)
+//   - "focused" (follow the most recently active client)
+// 
+// resize_session_to "smallest"

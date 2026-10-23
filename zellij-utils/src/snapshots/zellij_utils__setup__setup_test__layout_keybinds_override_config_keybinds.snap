@@ -161,6 +161,7 @@ Config {
         session_indicator: None,
         swap_layout_notification: None,
         on_quit: None,
+        resize_session_to: None,
     },
     themes: {},
     plugins: PluginAliases {

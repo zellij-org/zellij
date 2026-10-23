@@ -864,6 +864,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "ask_quit",
             Everyone,
         ),
+        SettingKey::ResizeSessionTo => info(
+            "Resize session to",
+            Sessions,
+            "How to size a session attached from multiple clients at once",
+            Choice(&["smallest", "largest", "focused"]),
+            "smallest",
+            Everyone,
+        ),
         SettingKey::OnForceClose => info(
             "On force close",
             Sessions,
@@ -1756,7 +1764,9 @@ pub fn section(key: SettingKey) -> &'static str {
         | ScrollbackLinesToSerialize
         | SerializationInterval
         | PostCommandDiscoveryHook => "Resurrection",
-        MirrorSession | OnForceClose | OnQuit | DisableSessionMetadata => "Behaviour",
+        MirrorSession | OnForceClose | OnQuit | ResizeSessionTo | DisableSessionMetadata => {
+            "Behaviour"
+        },
         WebServer
         | WebSharing
         | WebServerIp

@@ -2266,6 +2266,8 @@ pub struct Options {
     pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="82")]
     pub grapheme_clusters: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="83")]
+    pub resize_session_to: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
