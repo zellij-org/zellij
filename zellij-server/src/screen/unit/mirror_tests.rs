@@ -350,7 +350,11 @@ fn a_pane_keeps_the_pinned_size_while_its_view_is_parked() {
     let mut host = pinned_host();
     let now = Instant::now();
     pin_then_move_on(&mut mirrors, &mut host, now);
-    assert_eq!(winner_of(&mirrors, 5, now), None, "a parked view does not pin");
+    assert_eq!(
+        winner_of(&mirrors, 5, now),
+        None,
+        "a parked view does not pin"
+    );
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(40, 10)));
     assert_eq!(
         mirrors.pinned_panes.get(&PaneId::Terminal(5)),
@@ -446,7 +450,11 @@ fn local_focus_or_input_gives_back_the_size_a_parked_view_keeps() {
     mirrors.settle_pins(&mut host, now);
     assert_eq!(host.program_size(PaneId::Terminal(5)), Some(size(120, 40)));
     assert!(kept_sizes(&mirrors).is_empty());
-    assert_eq!(mirrors.subscribers.len(), 1, "the parked view stays attached");
+    assert_eq!(
+        mirrors.subscribers.len(),
+        1,
+        "the parked view stays attached"
+    );
 }
 
 #[test]

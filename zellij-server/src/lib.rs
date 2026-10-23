@@ -2910,11 +2910,9 @@ theme \"first\"
         let session = session_data.read().unwrap();
         let session = session.as_ref().unwrap();
         session.publish_live_view_release_keys();
-        let announced = screen_receiver
-            .try_iter()
-            .any(|(instruction, _)| {
-                matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
-            });
+        let announced = screen_receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+        });
         session.publish_live_view_release_keys();
         assert!(
             !screen_receiver.try_iter().any(|(instruction, _)| {
@@ -2933,7 +2931,10 @@ theme \"first\"
             "keybinds {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
         );
         assert!(announced);
-        assert_eq!(published, checked, "the hint and the route thread use the same keys");
+        assert_eq!(
+            published, checked,
+            "the hint and the route thread use the same keys"
+        );
         assert_eq!(published.len(), 3);
         assert_eq!(release_key_text_for(published), "F9");
         let (published, checked, _) = published_release_keys(
@@ -2941,8 +2942,7 @@ theme \"first\"
         );
         assert_eq!(published, checked);
         assert_eq!(release_key_text_for(published), "Alt i");
-        let (published, checked, _) =
-            published_release_keys("keybinds clear-defaults=true {\n}\n");
+        let (published, checked, _) = published_release_keys("keybinds clear-defaults=true {\n}\n");
         assert!(published.is_empty() && checked.is_empty());
         assert_eq!(
             release_key_text_for(published),
@@ -6604,7 +6604,10 @@ mod adopted_history_tests {
         );
         let mut walked = merged.clone();
         assert_eq!(walked.apply(HistoryMove::Back, "s2"), Some("s1".to_owned()));
-        assert_eq!(walked.apply(HistoryMove::Back, "s1"), Some("far".to_owned()));
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "s1"),
+            Some("far".to_owned())
+        );
         assert_eq!(
             walked.apply(HistoryMove::Back, "far"),
             Some("older".to_owned())

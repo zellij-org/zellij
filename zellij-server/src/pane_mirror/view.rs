@@ -291,7 +291,10 @@ impl MirrorView {
     }
 
     pub fn parked_targets(&self) -> Vec<PaneAddress> {
-        self.parked.iter().map(|parked| parked.target.clone()).collect()
+        self.parked
+            .iter()
+            .map(|parked| parked.target.clone())
+            .collect()
     }
 
     fn detach_parked(&mut self) {
@@ -412,9 +415,7 @@ impl MirrorView {
         let previous_target = self.target.clone();
         self.target = target;
         let wanted = self.target.clone();
-        let parked = wanted
-            .as_ref()
-            .and_then(|target| self.take_parked(target));
+        let parked = wanted.as_ref().and_then(|target| self.take_parked(target));
         self.state = match (wanted, parked) {
             (_, Some(parked)) => {
                 self.generation = parked.generation;

@@ -519,9 +519,10 @@ impl Desktop {
                     .filter(|requester| *requester != key)
                     .and_then(|requester| self.windows.get(&requester))
                     .and_then(|requester| requester.window());
-                let mut activate = self.activator.as_mut().map(|activator| {
-                    move |token| activator.activate(window, token, requester)
-                });
+                let mut activate = self
+                    .activator
+                    .as_mut()
+                    .map(|activator| move |token| activator.activate(window, token, requester));
                 bring_forward(
                     window,
                     activate

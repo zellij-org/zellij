@@ -194,7 +194,10 @@ fn closed_reasons_show_their_placeholder() {
         (MirrorClosedReason::Rejected, "refused"),
         (MirrorClosedReason::VersionMismatch, "Preview not available"),
         (MirrorClosedReason::ConnectionLost, "Preview not available"),
-        (MirrorClosedReason::ContainsViewer, "This pane runs this session"),
+        (
+            MirrorClosedReason::ContainsViewer,
+            "This pane runs this session",
+        ),
     ];
     for (reason, text) in cases {
         let (mut view, _) = view(false);

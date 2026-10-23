@@ -174,7 +174,12 @@ impl PaneMirrors {
         true
     }
 
-    fn unpark(&mut self, subscriber_id: MirrorSubscriberId, resize_allowed: bool, now: Instant) -> bool {
+    fn unpark(
+        &mut self,
+        subscriber_id: MirrorSubscriberId,
+        resize_allowed: bool,
+        now: Instant,
+    ) -> bool {
         let Some(subscriber) = self.subscribers.get_mut(&subscriber_id) else {
             return false;
         };
@@ -508,7 +513,11 @@ impl Screen {
         }
     }
 
-    pub(crate) fn mirror_unpark(&mut self, subscriber_id: MirrorSubscriberId, resize_allowed: bool) {
+    pub(crate) fn mirror_unpark(
+        &mut self,
+        subscriber_id: MirrorSubscriberId,
+        resize_allowed: bool,
+    ) {
         if !self
             .pane_mirrors
             .unpark(subscriber_id, resize_allowed, Instant::now())

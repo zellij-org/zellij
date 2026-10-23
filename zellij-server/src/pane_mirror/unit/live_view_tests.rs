@@ -409,7 +409,10 @@ fn with_several_bindings_the_hint_shows_f9_first_and_otherwise_the_simplest_key(
     );
     let reversed = keys_bound_to_the_inbox(vec![(&ctrl_b, &toggle), (&alt_i, &toggle)]);
     let forward = keys_bound_to_the_inbox(vec![(&alt_i, &toggle), (&ctrl_b, &toggle)]);
-    assert_eq!(reversed, forward, "the order does not depend on map iteration");
+    assert_eq!(
+        reversed, forward,
+        "the order does not depend on map iteration"
+    );
 }
 
 #[test]

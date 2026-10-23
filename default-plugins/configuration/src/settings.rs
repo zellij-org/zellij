@@ -2071,7 +2071,10 @@ mod tests {
             binding(InputMode::Locked, "Alt l", "ToggleSessionCard", false),
         ];
         assert_eq!(release_key_placeholder(&rebound, normal), "Alt i");
-        assert_eq!(release_key_placeholder(&rebound, InputMode::Locked), "Alt l");
+        assert_eq!(
+            release_key_placeholder(&rebound, InputMode::Locked),
+            "Alt l"
+        );
         assert_eq!(release_key_placeholder(&rebound, InputMode::Pane), "F9");
         let mut with_f9 = rebound.clone();
         with_f9.push(binding(normal, "F9", "ToggleSessionCard", false));
