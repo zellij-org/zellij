@@ -987,7 +987,10 @@ fn osc_status(buf: &[u8]) -> SeqStatus {
                 Some(&b'\\') => return SeqStatus::Complete(i + 2),
                 // Bare ESC followed by something other than `\` —
                 // malformed under the ST-only termination we accept.
-                Some(_) => return SeqStatus::Malformed,
+                // 2026-10-18 修复：以前返回 Malformed，调用方只丢弃 ESC，OSC 内容
+                // （如 `4;150;rgb:...`）会作为键盘输入泄漏进 pane。现在把已读部分
+                // 整体丢弃（Complete(i)），裸 ESC 留在流里由下一轮重新解析。
+                Some(_) => return SeqStatus::Complete(i),
                 // ESC at the very tail; the next chunk may bring `\`
                 // and finish the sequence.
                 None => return SeqStatus::NeedMore,
