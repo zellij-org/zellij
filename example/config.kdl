@@ -1,3 +1,8 @@
+// Maximum interval between double-tap keys, in milliseconds (default: 600).
+// Only keys with a DoubleTap binding wait before executing their single-tap action.
+// Example inside a mode: bind "DoubleTap Ctrl g" { SwitchToMode "Normal"; }
+// double_tap_delay 600
+
 // If you'd like to override the default keybindings completely, be sure to change "keybinds" to "keybinds clear-defaults=true"
 keybinds {
     normal {

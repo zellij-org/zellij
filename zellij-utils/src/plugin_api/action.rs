@@ -2832,6 +2832,7 @@ impl TryFrom<ProtobufKeyWithModifier> for KeyWithModifier {
                 Some(ProtobufKeyModifier::Alt) => crate::data::KeyModifier::Alt,
                 Some(ProtobufKeyModifier::Shift) => crate::data::KeyModifier::Shift,
                 Some(ProtobufKeyModifier::Super) => crate::data::KeyModifier::Super,
+                Some(ProtobufKeyModifier::DoubleTap) => crate::data::KeyModifier::DoubleTap,
                 _ => continue,
             };
             key_modifiers.insert(key_modifier);
@@ -2892,6 +2893,7 @@ impl TryFrom<KeyWithModifier> for ProtobufKeyWithModifier {
                 crate::data::KeyModifier::Alt => ProtobufKeyModifier::Alt as i32,
                 crate::data::KeyModifier::Shift => ProtobufKeyModifier::Shift as i32,
                 crate::data::KeyModifier::Super => ProtobufKeyModifier::Super as i32,
+                crate::data::KeyModifier::DoubleTap => ProtobufKeyModifier::DoubleTap as i32,
             })
             .collect();
 

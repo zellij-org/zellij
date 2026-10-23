@@ -83,6 +83,7 @@ enum KeyModifier {
   KEY_MODIFIER_ALT = 2;
   KEY_MODIFIER_SHIFT = 3;
   KEY_MODIFIER_SUPER = 4;
+  KEY_MODIFIER_DOUBLE_TAP = 5;
 }
 
 message Style {
@@ -1337,6 +1338,7 @@ message Options {
   reserved 80;
   optional string on_quit = 81;
   optional bool grapheme_clusters = 82;
+  optional uint64 double_tap_delay = 83;
 }
 
 enum OnForceClose {

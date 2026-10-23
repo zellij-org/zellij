@@ -8,6 +8,8 @@ use std::str::FromStr;
 
 use std::net::IpAddr;
 
+pub const DEFAULT_DOUBLE_TAP_DELAY: u64 = 600;
+
 pub const DEFAULT_WORD_SEPARATORS: &str = "[]{}<>()";
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ValueEnum)]
@@ -259,6 +261,10 @@ pub struct Options {
     /// Set the handling of mouse events (true or false)
     /// Can be temporarily bypassed by the [SHIFT] key
     pub mouse_mode: Option<bool>,
+    /// Maximum interval between double-tap keys in milliseconds (default: 600).
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub double_tap_delay: Option<u64>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Set display of the pane frames (true or false)
@@ -643,6 +649,7 @@ impl Options {
     // TODO: Maybe a good candidate for a macro?
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
+        let double_tap_delay = other.double_tap_delay.or(self.double_tap_delay);
         let pane_frames = other.pane_frames.or(self.pane_frames);
         let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = other.auto_layout.or(self.auto_layout);
@@ -775,6 +782,7 @@ impl Options {
             keybinds_secondary,
             keybinds_unlock,
             mouse_mode,
+            double_tap_delay,
             pane_frames,
             pane_frame_style,
             mirror_session,
@@ -848,6 +856,7 @@ impl Options {
 
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
+        let double_tap_delay = other.double_tap_delay.or(self.double_tap_delay);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let pane_frame_style = other.pane_frame_style.or(self.pane_frame_style);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
@@ -981,6 +990,7 @@ impl Options {
             keybinds_secondary,
             keybinds_unlock,
             mouse_mode,
+            double_tap_delay,
             pane_frames,
             pane_frame_style,
             mirror_session,

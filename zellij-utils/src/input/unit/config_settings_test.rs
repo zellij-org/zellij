@@ -33,6 +33,7 @@ fn every_option_set() -> Options {
         keybinds_secondary: None,
         keybinds_unlock: None,
         mouse_mode: Some(false),
+        double_tap_delay: Some(350),
         pane_frames: Some(false),
         pane_frame_style: Some(PaneFrameStyle::Full),
         mirror_session: Some(true),

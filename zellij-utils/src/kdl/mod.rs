@@ -3279,6 +3279,13 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let keybinds_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "keybinds_dir")
             .map(|(string, _entry)| PathBuf::from(string));
+        let double_tap_delay =
+            match kdl_property_first_arg_as_i64_or_error!(kdl_options, "double_tap_delay") {
+                Some((value, entry)) => Some(u64::try_from(value).map_err(|_| {
+                    kdl_parsing_error!("double_tap_delay must be non-negative".to_owned(), entry)
+                })?),
+                None => None,
+            };
         let mouse_mode =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
         let scroll_buffer_size =
@@ -3506,6 +3513,7 @@ impl Options {
             keybinds_secondary: None,
             keybinds_unlock: None,
             mouse_mode,
+            double_tap_delay,
             pane_frames,
             pane_frame_style,
             mirror_session,
@@ -5535,6 +5543,11 @@ impl Options {
         }
         if let Some(keybinds_dir) = self.keybinds_dir_to_kdl(add_comments) {
             nodes.push(keybinds_dir);
+        }
+        if let Some(delay) = self.double_tap_delay {
+            let mut node = KdlNode::new("double_tap_delay");
+            node.push(delay.min(i64::MAX as u64) as i64);
+            nodes.push(node);
         }
         if let Some(mouse_mode) = self.mouse_mode_to_kdl(add_comments) {
             nodes.push(mouse_mode);
@@ -11072,4 +11085,121 @@ fn run_with_background_parses_and_is_written_back() {
     let written = action.to_kdl().unwrap();
     let reparsed = Action::try_from((&written, &Options::default())).unwrap();
     assert_eq!(reparsed, expected);
+}
+
+#[cfg(test)]
+mod double_tap_tests {
+    use super::*;
+    use crate::data::KeyModifier;
+
+    #[test]
+    fn double_tap_config_round_trips_and_unbinds_independently() {
+        let config = Config::from_kdl(
+            r#"
+            double_tap_delay 250
+            keybinds clear-defaults=true {
+                normal {
+                    bind "Ctrl g" { SwitchToMode "Locked"; }
+                    bind "DoubleTap Ctrl g" { SwitchToMode "Pane"; }
+                }
+            }
+        "#,
+            None,
+        )
+        .unwrap();
+        let single: KeyWithModifier = "Ctrl g".parse().unwrap();
+        let double: KeyWithModifier = "DoubleTap Ctrl g".parse().unwrap();
+        assert!(double.key_modifiers.contains(&KeyModifier::DoubleTap));
+        assert_eq!(double.to_string(), "DoubleTap Ctrl g");
+        assert_ne!(single, double);
+        assert_eq!(config.options.double_tap_delay, Some(250));
+        let actions = config
+            .keybinds
+            .get_actions_for_key_in_mode(&InputMode::Normal, &double)
+            .unwrap();
+        assert_eq!(
+            actions,
+            &vec![Action::SwitchToMode {
+                input_mode: InputMode::Pane
+            }]
+        );
+        let reparsed = Config::from_kdl(&config.to_string(false), None).unwrap();
+        assert_eq!(config.options, reparsed.options);
+        assert_eq!(config.keybinds, reparsed.keybinds);
+        let unbound = Config::from_kdl(
+            r#"keybinds { normal { unbind "DoubleTap Ctrl g"; }; }"#,
+            Some(config),
+        )
+        .unwrap();
+        assert!(unbound
+            .keybinds
+            .get_actions_for_key_in_mode(&InputMode::Normal, &double)
+            .is_none());
+        assert!(unbound
+            .keybinds
+            .get_actions_for_key_in_mode(&InputMode::Normal, &single)
+            .is_some());
+    }
+
+    #[test]
+    fn double_tap_delay_validates_and_merges() {
+        assert!(Config::from_kdl("double_tap_delay -1", None).is_err());
+        assert!(Config::from_kdl("double_tap_delay true", None).is_err());
+        assert_eq!(Options::default().double_tap_delay.unwrap_or(600), 600);
+        let base = Config::from_kdl("double_tap_delay 350", None).unwrap();
+        let preserved = Config::from_kdl("", Some(base)).unwrap();
+        assert_eq!(preserved.options.double_tap_delay, Some(350));
+        let overridden = Config::from_kdl("double_tap_delay 0", Some(preserved)).unwrap();
+        assert_eq!(overridden.options.double_tap_delay, Some(0));
+    }
+
+    #[test]
+    fn double_tap_keys_and_delay_survive_ipc_and_plugin_conversion() {
+        use crate::client_server_contract::client_server_contract::Options as ProtoOptions;
+        use crate::plugin_api::key::ProtobufKey;
+        let key: KeyWithModifier = "DoubleTap Ctrl g".parse().unwrap();
+        let wire: ProtobufKey = key.clone().try_into().unwrap();
+        assert_eq!(KeyWithModifier::try_from(wire).unwrap(), key);
+        let config = Config::from_kdl("double_tap_delay 425", None).unwrap();
+        let wire: ProtoOptions = config.options.clone().into();
+        let options = Options::try_from(wire).unwrap();
+        assert_eq!(options.double_tap_delay, Some(425));
+        let proto: crate::client_server_contract::client_server_contract::KeyModifier =
+            KeyModifier::DoubleTap.into();
+        assert_eq!(
+            KeyModifier::try_from(proto).unwrap(),
+            KeyModifier::DoubleTap
+        );
+    }
+
+    #[test]
+    fn double_tap_ctrl_j_does_not_resolve_to_single_tap() {
+        let config = Config::from_kdl(
+            r#"
+            keybinds clear-defaults=true {
+                normal {
+                    bind "Ctrl j" { SwitchToMode "Locked"; }
+                    bind "DoubleTap Ctrl j" { SwitchToMode "Pane"; }
+                }
+            }
+        "#,
+            None,
+        )
+        .unwrap();
+        let actions = config
+            .keybinds
+            .get_actions_for_key_in_mode_or_default_action(
+                &InputMode::Normal,
+                &"DoubleTap Ctrl j".parse().unwrap(),
+                vec![10],
+                InputMode::Normal,
+                false,
+            );
+        assert_eq!(
+            actions,
+            vec![Action::SwitchToMode {
+                input_mode: InputMode::Pane
+            }]
+        );
+    }
 }

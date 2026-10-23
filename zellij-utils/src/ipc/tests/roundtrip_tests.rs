@@ -507,6 +507,7 @@ fn test_client_messages() {
                 keybinds_secondary: Some("Alt".to_owned()),
                 keybinds_unlock: Some("Ctrl g".to_owned()),
                 mouse_mode: Some(true),
+                double_tap_delay: Some(350),
                 pane_frames: Some(true),
                 pane_frame_style: Some(PaneFrameStyle::Full),
                 mirror_session: Some(true),

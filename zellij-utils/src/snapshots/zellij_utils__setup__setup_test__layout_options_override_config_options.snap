@@ -20,6 +20,7 @@ Options {
     keybinds_secondary: None,
     keybinds_unlock: None,
     mouse_mode: None,
+    double_tap_delay: None,
     pane_frames: Some(
         false,
     ),

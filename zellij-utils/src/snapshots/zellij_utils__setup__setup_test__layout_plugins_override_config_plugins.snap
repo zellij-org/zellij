@@ -3814,6 +3814,7 @@ Config {
         layout_dir: None,
         theme_dir: None,
         mouse_mode: None,
+        double_tap_delay: None,
         pane_frames: None,
         mirror_session: None,
         on_force_close: None,

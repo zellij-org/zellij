@@ -2266,6 +2266,8 @@ pub struct Options {
     pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="82")]
     pub grapheme_clusters: ::core::option::Option<bool>,
+    #[prost(uint64, optional, tag="83")]
+    pub double_tap_delay: ::core::option::Option<u64>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2942,6 +2944,7 @@ pub enum KeyModifier {
     Alt = 2,
     Shift = 3,
     Super = 4,
+    DoubleTap = 5,
 }
 impl KeyModifier {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2955,6 +2958,7 @@ impl KeyModifier {
             KeyModifier::Alt => "KEY_MODIFIER_ALT",
             KeyModifier::Shift => "KEY_MODIFIER_SHIFT",
             KeyModifier::Super => "KEY_MODIFIER_SUPER",
+            KeyModifier::DoubleTap => "KEY_MODIFIER_DOUBLE_TAP",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2965,6 +2969,7 @@ impl KeyModifier {
             "KEY_MODIFIER_ALT" => Some(Self::Alt),
             "KEY_MODIFIER_SHIFT" => Some(Self::Shift),
             "KEY_MODIFIER_SUPER" => Some(Self::Super),
+            "KEY_MODIFIER_DOUBLE_TAP" => Some(Self::DoubleTap),
             _ => None,
         }
     }

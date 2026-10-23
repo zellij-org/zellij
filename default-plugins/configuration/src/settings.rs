@@ -519,6 +519,18 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "none",
             OnlyYou,
         ),
+        SettingKey::DoubleTapDelay => info(
+            "Double-tap delay",
+            TerminalSupport,
+            "Maximum interval between double-tap keys, in milliseconds",
+            Number {
+                min: 0,
+                max: 10000,
+                step: 50,
+            },
+            "600",
+            OnlyYou,
+        ),
         SettingKey::MouseMode => info(
             "Mouse mode",
             MouseAndClipboard,
@@ -1821,7 +1833,8 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowColorBrightMagenta
         | WindowColorBrightCyan
         | WindowColorBrightWhite => "Terminal colours",
-        ScrollBufferSize
+        DoubleTapDelay
+        | ScrollBufferSize
         | SupportKittyKeyboardProtocol
         | SupportKittyGraphicsProtocol
         | HostNotificationProtocol

@@ -36,7 +36,9 @@ use zellij_utils::{
 
 use crate::ClientId;
 
+mod double_tap;
 mod popup_keys;
+use double_tap::{DoubleTap, Resolution};
 pub(crate) use popup_keys::PopupKeyAction;
 pub use popup_keys::PopupScroll;
 
@@ -2831,17 +2833,97 @@ pub(crate) fn route_thread_main(
     client_id: ClientId,
     first_instruction: Option<ClientToServerMsg>,
 ) -> Result<()> {
+    // Keep socket reads on one thread: timing out a partially read protobuf frame
+    // would lose framing. The route thread can safely time out the channel instead.
+    let (input_sender, input_receiver) = zellij_utils::channels::bounded(256);
+    thread::Builder::new()
+        .name(format!("client-input-{client_id}"))
+        .spawn(move || loop {
+            let message = receiver.try_recv_client_msg();
+            let disconnected = matches!(message, Err(IpcReceiveError::Disconnected));
+            if input_sender
+                .send((message, std::time::Instant::now()))
+                .is_err()
+                || disconnected
+            {
+                break;
+            }
+        })?;
+    let mut double_tap = DoubleTap::default();
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
     let mut consecutive_unknown_messages_received = 0;
-    let mut first_instruction =
-        first_instruction.map(|instruction| (instruction, ErrorContext::default()));
+    let mut first_instruction = first_instruction.map(|instruction| {
+        (
+            (instruction, ErrorContext::default()),
+            std::time::Instant::now(),
+        )
+    });
     let mut cleanup_requested = false;
     'route_loop: loop {
+        let mut replaying_single = false;
+        let mut received_at = std::time::Instant::now();
         let received = match first_instruction.take() {
-            Some(instruction) => Ok(instruction),
-            None => receiver.try_recv_client_msg(),
+            Some((instruction, timestamp)) => {
+                received_at = timestamp;
+                Ok(instruction)
+            },
+            None => {
+                let result = if let Some(deadline) = double_tap.deadline() {
+                    input_receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                } else {
+                    input_receiver
+                        .recv()
+                        .map_err(|_| zellij_utils::channels::RecvTimeoutError::Disconnected)
+                };
+                match result {
+                    Ok((message, timestamp)) => {
+                        received_at = timestamp;
+                        message
+                    },
+                    Err(zellij_utils::channels::RecvTimeoutError::Timeout) => {
+                        let (key, context) = double_tap.flush().unwrap();
+                        replaying_single = true;
+                        Ok((key, context))
+                    },
+                    Err(_) => Err(IpcReceiveError::Disconnected),
+                }
+            },
+        };
+        let received = match received {
+            Ok(input) if !replaying_single => {
+                let resolution = double_tap.resolve(input, received_at, |key| {
+                    if session_state.read().unwrap().is_watcher(&client_id) {
+                        return None;
+                    }
+                    session_data.read().unwrap().as_ref().and_then(|s| {
+                        if s.key_passthrough_clients.contains_key(&client_id)
+                            || s.popup_clients.contains(&client_id)
+                        {
+                            return None;
+                        }
+                        let (keybinds, mode, _) = s.get_client_keybinds_and_mode(&client_id)?;
+                        let mut double_key = key.clone();
+                        double_key.key_modifiers.insert(KeyModifier::DoubleTap);
+                        keybinds.get_actions_for_key_in_mode(mode, &double_key)?;
+                        Some(Duration::from_millis(
+                            s.session_configuration
+                                .get_client_double_tap_delay(&client_id),
+                        ))
+                    })
+                });
+                match resolution {
+                    Resolution::Wait => continue,
+                    Resolution::Dispatch(input) => Ok(input),
+                    Resolution::SingleThenInput(single, next) => {
+                        first_instruction = Some((next, received_at));
+                        Ok(single)
+                    },
+                }
+            },
+            other => other,
         };
         match received {
             Ok((instruction, err_ctx)) => {

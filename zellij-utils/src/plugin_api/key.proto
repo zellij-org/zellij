@@ -8,6 +8,7 @@ message Key {
     ALT = 1;
     SHIFT = 2;
     SUPER = 3;
+  DOUBLE_TAP = 4;
   }
 
   enum NamedKey {

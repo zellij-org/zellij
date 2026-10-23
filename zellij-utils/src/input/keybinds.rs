@@ -45,7 +45,11 @@ impl Keybinds {
         self.0
             .get(mode)
             .and_then(|mode_keybindings| {
-                if raw_bytes == &[10] {
+                if raw_bytes == &[10]
+                    && !key_with_modifier
+                        .key_modifiers
+                        .contains(&crate::data::KeyModifier::DoubleTap)
+                {
                     handle_ctrl_j(&mode_keybindings, &raw_bytes, key_is_kitty_protocol)
                 } else {
                     mode_keybindings.get(key_with_modifier).cloned()

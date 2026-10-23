@@ -120,6 +120,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         keybinds_secondary: _keybinds_secondary_is_command_line_only,
         keybinds_unlock: _keybinds_unlock_is_command_line_only,
         mouse_mode,
+        double_tap_delay,
         pane_frames,
         pane_frame_style,
         mirror_session,
@@ -194,6 +195,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (SettingKey::ThemeDir, path_text(theme_dir)),
         (SettingKey::KeybindsDir, path_text(keybinds_dir)),
         (SettingKey::MouseMode, display_text(mouse_mode)),
+        (SettingKey::DoubleTapDelay, display_text(double_tap_delay)),
         (SettingKey::PaneFrames, display_text(pane_frames)),
         (
             SettingKey::PaneFrameStyle,
@@ -797,6 +799,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::ThemeDir => options.theme_dir = from.theme_dir.clone(),
         SettingKey::KeybindsDir => options.keybinds_dir = from.keybinds_dir.clone(),
         SettingKey::MouseMode => options.mouse_mode = from.mouse_mode,
+        SettingKey::DoubleTapDelay => options.double_tap_delay = from.double_tap_delay,
         SettingKey::PaneFrames => options.pane_frames = from.pane_frames,
         SettingKey::PaneFrameStyle => options.pane_frame_style = from.pane_frame_style,
         SettingKey::MirrorSession => options.mirror_session = from.mirror_session,

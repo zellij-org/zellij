@@ -70,6 +70,7 @@ impl KeyShortcut {
                 KeyModifier::Ctrl => "^C",
                 KeyModifier::Alt => "^A",
                 KeyModifier::Super => "^Su",
+                KeyModifier::DoubleTap => "DoubleTap ",
                 KeyModifier::Shift => "^Sh",
             })
             .collect::<Vec<_>>()

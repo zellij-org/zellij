@@ -99,6 +99,7 @@ impl From<KeyModifier> for ProtoKeyModifier {
             KeyModifier::Alt => ProtoKeyModifier::Alt,
             KeyModifier::Shift => ProtoKeyModifier::Shift,
             KeyModifier::Super => ProtoKeyModifier::Super,
+            KeyModifier::DoubleTap => ProtoKeyModifier::DoubleTap,
         }
     }
 }
@@ -112,6 +113,7 @@ impl TryFrom<ProtoKeyModifier> for KeyModifier {
             ProtoKeyModifier::Alt => Ok(KeyModifier::Alt),
             ProtoKeyModifier::Shift => Ok(KeyModifier::Shift),
             ProtoKeyModifier::Super => Ok(KeyModifier::Super),
+            ProtoKeyModifier::DoubleTap => Ok(KeyModifier::DoubleTap),
             ProtoKeyModifier::Unspecified => Err(anyhow!("Unspecified key modifier")),
         }
     }

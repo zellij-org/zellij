@@ -63,6 +63,7 @@ impl TryFrom<ProtobufKeyModifier> for KeyModifier {
             ProtobufKeyModifier::Alt => Ok(KeyModifier::Alt),
             ProtobufKeyModifier::Shift => Ok(KeyModifier::Shift),
             ProtobufKeyModifier::Super => Ok(KeyModifier::Super),
+            ProtobufKeyModifier::DoubleTap => Ok(KeyModifier::DoubleTap),
         }
     }
 }
@@ -75,6 +76,7 @@ impl TryFrom<KeyModifier> for ProtobufKeyModifier {
             KeyModifier::Alt => Ok(ProtobufKeyModifier::Alt),
             KeyModifier::Shift => Ok(ProtobufKeyModifier::Shift),
             KeyModifier::Super => Ok(ProtobufKeyModifier::Super),
+            KeyModifier::DoubleTap => Ok(ProtobufKeyModifier::DoubleTap),
         }
     }
 }

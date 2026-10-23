@@ -164,7 +164,11 @@ impl Hash for KeyWithModifier {
 
 impl fmt::Display for KeyWithModifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.key_modifiers.is_empty() {
+        if self.key_modifiers.contains(&KeyModifier::DoubleTap) {
+            let mut single = self.clone();
+            single.key_modifiers.remove(&KeyModifier::DoubleTap);
+            write!(f, "DoubleTap {}", single)
+        } else if self.key_modifiers.is_empty() {
             write!(f, "{}", self.bare_key)
         } else {
             write!(
@@ -189,6 +193,7 @@ impl Into<Modifiers> for &KeyModifier {
             KeyModifier::Alt => Modifiers::ALT,
             KeyModifier::Ctrl => Modifiers::CTRL,
             KeyModifier::Super => Modifiers::SUPER,
+            KeyModifier::DoubleTap => Modifiers::empty(),
         }
     }
 }
@@ -307,6 +312,8 @@ pub enum KeyModifier {
     Alt,
     Shift,
     Super,
+    /// A synthetic modifier used for double-tap bindings.
+    DoubleTap,
 }
 
 impl FromStr for KeyModifier {
@@ -317,6 +324,7 @@ impl FromStr for KeyModifier {
             "alt" => Ok(KeyModifier::Alt),
             "ctrl" => Ok(KeyModifier::Ctrl),
             "super" => Ok(KeyModifier::Super),
+            "doubletap" => Ok(KeyModifier::DoubleTap),
             _ => Err("unsupported modifier".into()),
         }
     }
@@ -5133,6 +5141,7 @@ setting_keys! {
     ThemeDir => (TopLevel, "theme_dir", false, Text),
     KeybindsDir => (TopLevel, "keybinds_dir", false, Text),
     MouseMode => (TopLevel, "mouse_mode", true, Flag),
+    DoubleTapDelay => (TopLevel, "double_tap_delay", false, Number),
     PaneFrames => (TopLevel, "pane_frames", false, Flag),
     PaneFrameStyle => (TopLevel, "pane_frame_style", false, Text),
     MirrorSession => (TopLevel, "mirror_session", true, Flag),

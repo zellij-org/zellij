@@ -1729,6 +1729,7 @@ pub enum KeyModifier {
     Alt = 2,
     Shift = 3,
     Super = 4,
+    DoubleTap = 5,
 }
 impl KeyModifier {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1742,6 +1743,7 @@ impl KeyModifier {
             KeyModifier::Alt => "KEY_MODIFIER_ALT",
             KeyModifier::Shift => "KEY_MODIFIER_SHIFT",
             KeyModifier::Super => "KEY_MODIFIER_SUPER",
+            KeyModifier::DoubleTap => "KEY_MODIFIER_DOUBLE_TAP",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1752,6 +1754,7 @@ impl KeyModifier {
             "KEY_MODIFIER_ALT" => Some(Self::Alt),
             "KEY_MODIFIER_SHIFT" => Some(Self::Shift),
             "KEY_MODIFIER_SUPER" => Some(Self::Super),
+            "KEY_MODIFIER_DOUBLE_TAP" => Some(Self::DoubleTap),
             _ => None,
         }
     }

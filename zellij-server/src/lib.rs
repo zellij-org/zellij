@@ -847,6 +847,14 @@ impl SessionConfiguration {
             .and_then(|c| c.options.default_mode.clone())
             .unwrap_or_default()
     }
+    pub fn get_client_double_tap_delay(&self, client_id: &ClientId) -> u64 {
+        self.runtime_config
+            .get(client_id)
+            .unwrap_or(&self.saved_config)
+            .options
+            .double_tap_delay
+            .unwrap_or(zellij_utils::input::options::DEFAULT_DOUBLE_TAP_DELAY)
+    }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
         self.runtime_config
             .get(client_id)
