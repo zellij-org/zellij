@@ -159,6 +159,7 @@ struct Surfaces {
     surface: Surface<WindowSurface>,
     context: PossiblyCurrentContext,
     renderer: Renderer,
+    size: winit::dpi::PhysicalSize<u32>,
 }
 
 pub(crate) type Switching = Box<dyn FnMut(&ConnectToSession, Geometry) -> Result<Connection>>;
@@ -612,6 +613,9 @@ impl App {
     fn reflow(&mut self, width: u32, height: u32) {
         if has_no_area(width, height) {
             return;
+        }
+        if let Some(surfaces) = &mut self.surfaces {
+            surfaces.size = winit::dpi::PhysicalSize::new(width, height);
         }
         self.selecting = false;
         self.set_selection(None);
@@ -1426,7 +1430,7 @@ impl App {
         let Some(surfaces) = self.surfaces.as_mut() else {
             return;
         };
-        let size = surfaces.window.inner_size();
+        let size = surfaces.size;
         let target = (size.width.max(1), size.height.max(1));
         let margins = match self.options.padding_color {
             PaddingColor::Background => Vec::new(),
@@ -1458,12 +1462,14 @@ impl App {
         let Some(surfaces) = self.surfaces.as_mut() else {
             return;
         };
-        if let Err(e) = surfaces.context.make_current(&surfaces.surface) {
-            report!(
-                "the window's drawing context could not be made current: {}",
-                e
-            );
-            return;
+        if !surfaces.context.is_current() {
+            if let Err(e) = surfaces.context.make_current(&surfaces.surface) {
+                report!(
+                    "the window's drawing context could not be made current: {}",
+                    e
+                );
+                return;
+            }
         }
         surfaces.renderer.draw_retained(
             &self.retained,
@@ -1761,6 +1767,7 @@ impl App {
             glow::Context::from_loader_function_cstr(|symbol| display.get_proc_address(symbol))
         };
 
+        let size = window.inner_size();
         Ok(Surfaces {
             #[cfg(windows)]
             _taskbar: crate::taskbar::describe(&window),
@@ -1776,6 +1783,7 @@ impl App {
             surface,
             context,
             renderer: Renderer::new(gl)?,
+            size,
         })
     }
 }
@@ -1878,7 +1886,8 @@ impl App {
                 }
             },
             WindowEvent::Resized(size) => {
-                if let Some(surfaces) = &self.surfaces {
+                if let Some(surfaces) = &mut self.surfaces {
+                    surfaces.size = size;
                     surfaces
                         .window
                         .resize_surface(&surfaces.surface, &surfaces.context);
