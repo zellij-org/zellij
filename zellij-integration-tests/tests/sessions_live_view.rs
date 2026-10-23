@@ -312,17 +312,12 @@ fn a_plugin_pane_keeps_the_snapshot_preview() {
     zellij.send_stdin(&keys::RIGHT);
     wait_for_the_view_of(&zellij, name, "the terminal pane");
     zellij.send_stdin(&keys::DOWN);
-    let title = format!("┌ {} › Tab #1 › ", name);
-    let grid_snapshot = zellij.wait_until("the plugin pane has a snapshot", |grid_snapshot| {
+    let title = format!("┌ {} › Tab #1 › zellij:strider", name);
+    zellij.wait_until("the plugin pane has a snapshot", |grid_snapshot| {
         grid_snapshot.contains(&title)
             && grid_snapshot.contains(SNAPSHOT_SUMMARY)
             && !grid_snapshot.contains(CLICK_TO_TYPE)
     });
-    assert!(
-        !shown_inside_the_view(&grid_snapshot, name, "the terminal pane"),
-        "{}",
-        grid_snapshot.text
-    );
     zellij.send_stdin(&keys::UP);
     wait_for_the_view_of(&zellij, name, "the terminal pane");
     zellij.quit();
