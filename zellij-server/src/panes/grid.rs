@@ -687,6 +687,7 @@ macro_rules! dump_screen_with_ansi {
         let mut is_first = true;
         let mut buf = String::new();
         let mut last_styles: Option<RcCharacterStyles> = None;
+        let mut emitted_cell = false;
 
         for (index, line) in $lines.iter().enumerate() {
             let line = line.with_trailing_blanks();
@@ -720,10 +721,15 @@ macro_rules! dump_screen_with_ansi {
                     last_styles = Some(tc.styles.clone());
                 }
                 tc.push_text_to(&mut buf);
+                emitted_cell = true;
             }
             is_first = false;
         }
-        buf.push_str("\u{1b}[m");
+
+        if emitted_cell {
+            buf.push_str("\u{1b}[m");
+        }
+
         buf
     }};
 }
