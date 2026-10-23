@@ -268,6 +268,8 @@ enum CommandName {
   DesktopIntegration = 274;
   SetLiveView = 279;
   SetLiveViewInput = 280;
+  Paste = 281;
+  PasteToPaneId = 282;
 }
 
 message PluginCommand {
@@ -476,6 +478,8 @@ message PluginCommand {
     string desktop_integration_payload = 217;
     SetLiveViewPayload set_live_view_payload = 222;
     SetLiveViewInputPayload set_live_view_input_payload = 223;
+    string paste_payload = 224;
+    PasteToPaneIdPayload paste_to_pane_id_payload = 225;
   }
 }
 
@@ -1031,6 +1035,11 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message PasteToPaneIdPayload {
+  string chars_to_paste = 1;
   PaneId pane_id = 2;
 }
 
