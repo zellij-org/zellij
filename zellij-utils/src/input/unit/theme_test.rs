@@ -298,6 +298,30 @@ fn quoted_rgb_and_bare_hex_colors_read_like_the_number_form() {
 }
 
 #[test]
+fn invalid_length_hex_colors() {
+    assert!(theme_with_fg("\"#\"").is_err());
+    assert!(theme_with_fg("\"#6\"").is_err());
+    assert!(theme_with_fg("\"#6f\"").is_err());
+    assert!(theme_with_fg("\"#6fd\"").is_ok());
+    assert!(theme_with_fg("\"#6fde\"").is_err());
+    assert!(theme_with_fg("\"#6fde2\"").is_err());
+    assert!(theme_with_fg("\"#6fde21\"").is_ok());
+    assert!(theme_with_fg("\"#6fde211\"").is_err());
+}
+
+#[test]
+fn invalid_char_hex_colors() {
+    assert!(theme_with_fg("\"#é0\"").is_err()); // len() == 4
+    assert!(theme_with_fg("\"#é0000\"").is_err()); // len() == 7
+    assert!(theme_with_fg("\"#gggggg\"").is_err());
+    assert!(theme_with_fg("\"#ggg\"").is_err());
+    assert!(theme_with_fg("\"#ffffff\"").is_ok());
+    assert!(theme_with_fg("\"#fff\"").is_ok());
+    assert!(theme_with_fg("\"#......\"").is_err());
+    assert!(theme_with_fg("\"#...\"").is_err());
+}
+
+#[test]
 fn color_values_outside_0_to_255_are_rejected() {
     assert!(theme_with_fg("111 222 333").is_err());
     assert!(theme_with_fg("-1 0 0").is_err());
