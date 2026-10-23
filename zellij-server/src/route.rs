@@ -370,6 +370,7 @@ fn route_action_with_origin(
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
     let action_name = action.to_string();
+    let is_new_blocking_pane = matches!(&action, Action::NewBlockingPane { .. });
 
     if !action.is_mouse_action() {
         // mouse actions should only send InputReceived to plugins
@@ -2741,6 +2742,17 @@ fn route_action_with_origin(
                 );
             }
         }
+    } else if is_new_blocking_pane {
+        if let Some(cli_client_id) = cli_client_id {
+            if let Some(ref os_input) = os_input {
+                let _ = os_input.send_to_client(
+                    cli_client_id,
+                    ServerToClientMsg::Exit {
+                        exit_reason: ExitReason::Normal,
+                    },
+                );
+            }
+        }
     }
     // Return tab ID to CLI clients as plain text
     if let Some(tab_id) = result.affected_tab_id {
@@ -2757,14 +2769,16 @@ fn route_action_with_origin(
     }
     // Return pane ID to CLI clients as plain text
     if let Some(pane_id) = result.affected_pane_id {
-        if let Some(cli_client_id) = cli_client_id {
-            if let Some(ref os_input) = os_input {
-                let _ = os_input.send_to_client(
-                    cli_client_id,
-                    ServerToClientMsg::Log {
-                        lines: vec![pane_id.to_string()],
-                    },
-                );
+        if !is_new_blocking_pane {
+            if let Some(cli_client_id) = cli_client_id {
+                if let Some(ref os_input) = os_input {
+                    let _ = os_input.send_to_client(
+                        cli_client_id,
+                        ServerToClientMsg::Log {
+                            lines: vec![pane_id.to_string()],
+                        },
+                    );
+                }
             }
         }
     }

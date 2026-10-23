@@ -6,10 +6,10 @@ use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use zellij_utils::cli::PromptCli;
-use zellij_utils::data::Palette;
+use zellij_utils::data::{NewPanePlacement, Palette};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::Action;
-use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
+use zellij_utils::ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::Size;
 use zellij_utils::prompt::PromptElement;
 
@@ -77,12 +77,10 @@ impl ClientOsApi for ScriptedOsApi {
         Box::new(self.clone())
     }
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        if let ClientToServerMsg::Action {
-            action: Action::CliPipe { payload, .. },
-            ..
-        } = msg
-        {
-            self.sent_payloads.lock().unwrap().push(payload);
+        if let ClientToServerMsg::Action { action, .. } = msg {
+            if let Action::CliPipe { payload, .. } = action {
+                self.sent_payloads.lock().unwrap().push(payload);
+            }
             if let Some(replies) = self.replies.lock().unwrap().pop_front() {
                 self.inbox.lock().unwrap().extend(replies);
             }
@@ -580,4 +578,70 @@ fn queued_prompt_lines_are_sent_together_but_pipe_lines_are_not() {
         crate::cli_client::next_payload(&mut queued, false),
         Some(Some("a\n".to_owned()))
     );
+}
+
+#[test]
+fn blocking_pane_ignores_unrelated_unblock_input_thread() {
+    let blocking_action = Action::NewBlockingPane {
+        placement: NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+            border_style: None,
+        },
+        pane_name: None,
+        command: None,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        tab_id: None,
+    };
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![
+            ServerToClientMsg::UnblockInputThread,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Normal,
+            },
+        ]],
+    );
+    assert_eq!(run(&os_api, blocking_action), 0);
+}
+
+#[test]
+fn blocking_pane_returns_exit_status_after_unrelated_unblock_input_thread() {
+    let blocking_action = Action::NewBlockingPane {
+        placement: NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+            border_style: None,
+        },
+        pane_name: None,
+        command: None,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        tab_id: None,
+    };
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![
+            ServerToClientMsg::UnblockInputThread,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::CustomExitStatus(42),
+            },
+        ]],
+    );
+    assert_eq!(run(&os_api, blocking_action), 42);
+}
+
+#[test]
+fn non_blocking_action_unblocks_on_unblock_input_thread() {
+    let non_blocking_action = Action::RenameSession {
+        name: "test".to_string(),
+    };
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![ServerToClientMsg::UnblockInputThread]],
+    );
+    assert_eq!(run(&os_api, non_blocking_action), 0);
 }
