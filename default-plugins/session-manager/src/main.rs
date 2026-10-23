@@ -266,8 +266,7 @@ impl ZellijPlugin for State {
     }
     fn update(&mut self, event: Event) -> bool {
         app_panel::begin_event();
-        let user_input = matches!(event, Event::Key(_))
-            || matches!(event, Event::Mouse(ref mouse) if !matches!(mouse, Mouse::Hover(..)));
+        let user_input = is_user_choice(&event);
         let attention = matches!(event, Event::GlobalAttentionUpdate(_));
         if user_input {
             self.inbox.select_newest_on_arrival = false;
@@ -3773,6 +3772,30 @@ impl State {
             },
             _ => false,
         }
+    }
+}
+
+fn is_user_choice(event: &Event) -> bool {
+    match event {
+        Event::Key(_) => true,
+        Event::Mouse(mouse) => !matches!(mouse, Mouse::Hover(..) | Mouse::Release(..)),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod user_choice_tests {
+    use super::*;
+
+    #[test]
+    fn the_release_of_the_click_that_opened_the_panel_is_not_a_choice() {
+        assert!(!is_user_choice(&Event::Mouse(Mouse::Release(-1, 0))));
+        assert!(!is_user_choice(&Event::Mouse(Mouse::Hover(3, 4))));
+        assert!(is_user_choice(&Event::Mouse(Mouse::LeftClick(3, 4))));
+        assert!(is_user_choice(&Event::Mouse(Mouse::ScrollDown(1))));
+        assert!(is_user_choice(&Event::Key(KeyWithModifier::new(
+            BareKey::Down
+        ))));
     }
 }
 
