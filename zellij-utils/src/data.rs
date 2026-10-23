@@ -5379,6 +5379,7 @@ setting_keys! {
     WindowOpenLinks => (Window, "open_links", false, Flag),
     WindowOpenLinksWithShift => (Window, "open_links_with_shift", false, Flag),
     WindowShiftDragSelects => (Window, "shift_drag_selects", false, Flag),
+    WindowReuseSessionWindows => (Window, "reuse_session_windows", false, Flag),
     WindowMiddleClickPaste => (Window, "middle_click_paste", false, Flag),
     WindowHidePointerWhileTyping => (Window, "hide_pointer_while_typing", false, Flag),
     WindowMacosOptionAsAlt => (Window, "macos_option_as_alt", false, Text),

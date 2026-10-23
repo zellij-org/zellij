@@ -339,6 +339,16 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::FontFamilies {
         families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
     });
+    test_client_roundtrip!(ClientToServerMsg::AdoptSessionHistory {
+        history: crate::session_history::SessionHistory {
+            back: vec!["docs".to_owned(), "api".to_owned()],
+            forward: vec!["notes".to_owned()],
+            last: Some("api".to_owned()),
+        },
+    });
+    test_client_roundtrip!(ClientToServerMsg::AdoptSessionHistory {
+        history: crate::session_history::SessionHistory::default(),
+    });
     test_client_roundtrip!(ClientToServerMsg::DetachSession {
         client_ids: vec![1],
     });

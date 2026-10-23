@@ -3300,6 +3300,10 @@ pub(crate) fn route_thread_main(
                             let _ = to_server
                                 .send(ServerInstruction::FontFamilies(client_id, families));
                         },
+                        ClientToServerMsg::AdoptSessionHistory { history } => {
+                            let _ = to_server
+                                .send(ServerInstruction::AdoptSessionHistory(client_id, history));
+                        },
                         ClientToServerMsg::BackgroundColor {
                             color: ref background_color_instruction,
                         } => {

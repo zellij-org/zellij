@@ -765,6 +765,13 @@ web_client {
 //     // borders.
 //     shift_drag_selects true
 //
+//     // Whether a session is shown in at most one desktop app window. When on,
+//     // switching a window to a session that another app window already shows
+//     // brings that other window forward and closes the switching one; the
+//     // session it left keeps running. When off, the window always switches in
+//     // place. Windows opened with --standalone always switch in place.
+//     reuse_session_windows true
+//
 //     // How opaque the window is, from 0.0 (invisible) to 1.0 (solid). Needs
 //     // a compositor; without one the window stays solid.
 //     opacity 1.0

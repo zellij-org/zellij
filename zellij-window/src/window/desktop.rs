@@ -9,11 +9,13 @@ use winit::event::{ElementState, MouseButton};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::window::{CursorIcon, ResizeDirection, WindowId};
 use zellij_utils::app_control::{OpenWindowRequest, PopupView};
-use zellij_utils::data::PaneId;
+use zellij_utils::data::{ConnectToSession, PaneId};
 use zellij_utils::input::actions::Action;
 
 use super::conductor::{Conductor, Effect, Facts, Input};
-use super::{as_panel, terminal_app, with_activation, App, Session, TerminalWindow, Verdict, Wake};
+use super::{
+    as_panel, terminal_app, with_activation, App, Session, Switched, TerminalWindow, Verdict, Wake,
+};
 use crate::app::tray::Anchor;
 use crate::app::{AppEvent, Background, Intent};
 use crate::client_loop::Ending;
@@ -383,7 +385,14 @@ impl Desktop {
                 }
             },
             Effect::BringPanelForward { token } => self.bring_panel_forward(token),
-            Effect::RaiseWindow { key, pane, token } => self.raise(key, pane, token),
+            Effect::RaiseWindow {
+                key,
+                pane,
+                tab,
+                history,
+                token,
+                requester,
+            } => self.raise(key, pane, tab, history, token, requester),
             Effect::SendAction { key, action } => {
                 if let Some(app) = self.windows.get(&key) {
                     app.send_action(action);
@@ -486,17 +495,33 @@ impl Desktop {
         None
     }
 
-    fn raise(&mut self, key: u64, pane: Option<PaneId>, token: Option<String>) {
+    fn raise(
+        &mut self,
+        key: u64,
+        pane: Option<PaneId>,
+        tab: Option<usize>,
+        history: Option<zellij_utils::session_history::SessionHistory>,
+        token: Option<String>,
+        requester: Option<u64>,
+    ) {
         let Some(app) = self.windows.get(&key) else {
             return;
         };
+        if let Some(history) = history {
+            app.adopt_history(history);
+        }
+        #[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+        let _ = requester;
         if let Some(window) = app.window() {
             #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
             {
-                let mut activate = self
-                    .activator
-                    .as_mut()
-                    .map(|activator| move |token| activator.activate(window, token, None));
+                let requester = requester
+                    .filter(|requester| *requester != key)
+                    .and_then(|requester| self.windows.get(&requester))
+                    .and_then(|requester| requester.window());
+                let mut activate = self.activator.as_mut().map(|activator| {
+                    move |token| activator.activate(window, token, requester)
+                });
                 bring_forward(
                     window,
                     activate
@@ -512,6 +537,43 @@ impl Desktop {
         crate::app::tray::activate();
         if let Some(pane_id) = pane {
             app.send_action(Action::FocusPaneByPaneId { pane_id });
+        } else if let Some(position) = tab {
+            app.send_action(Action::GoToTab {
+                index: position as u32,
+            });
+        }
+    }
+
+    fn switched(&mut self, event_loop: &ActiveEventLoop, key: u64, to: ConnectToSession) {
+        let showing = {
+            let background = match &self.mode {
+                DesktopMode::Background(hosting) => Some(&hosting.background),
+                DesktopMode::Single => None,
+            };
+            let world = World {
+                windows: &self.windows,
+                background,
+            };
+            self.conductor
+                .window_showing(to.name.as_deref(), key, &world)
+        };
+        let switched = match self.windows.get_mut(&key) {
+            Some(app) => app.on_switch(to, showing),
+            None => return,
+        };
+        match switched {
+            Switched::Kept => {},
+            Switched::Closed => self.close_window(event_loop, key, false),
+            Switched::HandedOver(handover) => {
+                self.run(
+                    event_loop,
+                    Input::HandedOver {
+                        handover,
+                        from: key,
+                    },
+                );
+                self.close_window(event_loop, key, false);
+            },
         }
     }
 
@@ -609,6 +671,7 @@ impl Desktop {
         };
         let made = hosting.maker.make(connection, pending.prepared);
         let mut app = with_activation(terminal_app(made, ticket, proxy), pending.token);
+        app.set_standalone(false);
         let verdict = app.on_resumed(event_loop);
         self.windows.insert(ticket, app);
         if verdict == Verdict::Close {
@@ -847,7 +910,7 @@ impl Desktop {
             AppEvent::RaiseWindows { pane } => {
                 let keys: Vec<u64> = self.windows.keys().copied().collect();
                 for key in keys {
-                    self.raise(key, pane, None);
+                    self.raise(key, pane, None, None, None, None);
                 }
                 return;
             },
@@ -1077,6 +1140,9 @@ impl ApplicationHandler<Wake> for Desktop {
                         }
                     },
                 }
+            },
+            Wake::Window(key, super::WindowWake::Finished(Ending::Switched(to))) => {
+                self.switched(event_loop, key, to)
             },
             Wake::Window(key, wake) => {
                 let verdict = match self.windows.get_mut(&key) {

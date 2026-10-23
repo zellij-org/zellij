@@ -40,6 +40,7 @@ message ClientToServerMsg {
     RequestSessionAttentionMsg request_session_attention = 33;
     PeerAttentionChangedMsg peer_attention_changed = 34;
     ClientPaneMirrorMsg pane_mirror = 35;
+    AdoptSessionHistoryMsg adopt_session_history = 36;
   }
 }
 
@@ -201,4 +202,8 @@ message RenderFrameAckMsg {
 
 message ClientPaneMirrorMsg {
   bytes payload = 1;
+}
+
+message AdoptSessionHistoryMsg {
+  SessionHistory history = 1;
 }

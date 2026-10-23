@@ -1486,6 +1486,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
+        SettingKey::WindowReuseSessionWindows => info(
+            "One window per session",
+            TerminalWindow,
+            "Switching to a session that already has a window brings that window forward and closes this one",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::WindowMiddleClickPaste => info(
             "Middle-click paste",
             TerminalWindow,
@@ -1844,6 +1852,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowOpenLinks
         | WindowOpenLinksWithShift
         | WindowShiftDragSelects
+        | WindowReuseSessionWindows
         | WindowMiddleClickPaste
         | WindowHidePointerWhileTyping
         | WindowMacosOptionAsAlt => "Window behaviour",

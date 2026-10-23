@@ -279,6 +279,9 @@ pub enum ClientToServerMsg {
     PaneMirror {
         payload: Vec<u8>,
     },
+    AdoptSessionHistory {
+        history: crate::session_history::SessionHistory,
+    },
 }
 
 // Types of messages sent from the server to the client

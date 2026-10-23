@@ -5,7 +5,9 @@ use zellij_utils::app_control::{OpenWindowRequest, PopupView};
 use zellij_utils::consts::{APP_PANEL_SESSION, APP_QUIT_REQUEST};
 use zellij_utils::data::{ConnectToSession, PaneId};
 use zellij_utils::input::actions::Action;
+use zellij_utils::session_history::SessionHistory;
 
+use super::Handover;
 use crate::app::route::{pane_focus, route, AttachedWindow, Route};
 use crate::app::{panel_toggle, Intent, PanelToggle};
 
@@ -43,6 +45,10 @@ pub(crate) enum Input {
     PanelSwitched {
         to: ConnectToSession,
         token: Option<String>,
+    },
+    HandedOver {
+        handover: Handover,
+        from: u64,
     },
     QuitRequested {
         stop_sessions: bool,
@@ -83,7 +89,10 @@ pub(crate) enum Effect {
     RaiseWindow {
         key: u64,
         pane: Option<PaneId>,
+        tab: Option<usize>,
+        history: Option<SessionHistory>,
         token: Option<String>,
+        requester: Option<u64>,
     },
     SendAction {
         key: u64,
@@ -226,6 +235,19 @@ impl Conductor {
             Input::PanelSwitched { to, token } => {
                 self.panel_switched(to, token, now, facts, &mut effects)
             },
+            Input::HandedOver { handover, from } => {
+                if self.windows.contains_key(&handover.window) {
+                    effects.push(Effect::RaiseWindow {
+                        key: handover.window,
+                        pane: handover.pane,
+                        tab: handover.tab,
+                        history: handover.history,
+                        token: None,
+                        requester: Some(from),
+                    });
+                    self.note_focus(handover.window);
+                }
+            },
             Input::QuitRequested { stop_sessions } => self.quit(stop_sessions, facts, &mut effects),
         }
         effects
@@ -261,6 +283,27 @@ impl Conductor {
             .collect()
     }
 
+    pub(crate) fn window_showing(
+        &self,
+        session: Option<&str>,
+        switching: u64,
+        facts: &dyn Facts,
+    ) -> Option<u64> {
+        let session = session?;
+        if !self.hosted {
+            return None;
+        }
+        let others: Vec<AttachedWindow> = self
+            .attached(facts)
+            .into_iter()
+            .filter(|window| window.key != switching)
+            .collect();
+        match route(session, None, &others) {
+            Route::Raise { window, .. } => Some(window),
+            Route::Open { .. } => None,
+        }
+    }
+
     pub(crate) fn most_recent_window(&self) -> Option<u64> {
         self.most_recent()
     }
@@ -291,7 +334,10 @@ impl Conductor {
                         effects.push(Effect::RaiseWindow {
                             key: window,
                             pane,
+                            tab: None,
+                            history: None,
                             token,
+                            requester: None,
                         });
                         self.note_focus(window);
                     },
@@ -898,7 +944,10 @@ mod tests {
                 Effect::RaiseWindow {
                     key: window,
                     pane: Some(PaneId::Terminal(3)),
-                    token: Some("t".to_owned())
+                    tab: None,
+                    history: None,
+                    token: Some("t".to_owned()),
+                    requester: None
                 }
             ]
         );
@@ -1034,7 +1083,10 @@ mod tests {
             vec![Effect::RaiseWindow {
                 key: first,
                 pane: None,
-                token: None
+                tab: None,
+                history: None,
+                token: None,
+                requester: None
             }]
         );
         rig.feed(Input::WindowFocused(second));
@@ -1252,6 +1304,126 @@ mod tests {
                 action: Action::ToggleSession
             }]
         );
+    }
+
+    #[test]
+    fn a_switch_finds_another_app_window_on_the_session_but_never_the_switching_one() {
+        let mut rig = Rig::hosted();
+        let docs = rig.window_on("docs");
+        let api = rig.window_on("api");
+        let second_api = rig.window_on("api");
+        rig.feed(Input::WindowFocused(api));
+        assert_eq!(
+            rig.conductor.window_showing(Some("api"), docs, &rig.world),
+            Some(api)
+        );
+        assert_eq!(
+            rig.conductor.window_showing(Some("api"), api, &rig.world),
+            Some(second_api)
+        );
+        assert_eq!(
+            rig.conductor.window_showing(Some("docs"), docs, &rig.world),
+            None,
+            "the only window on the session is the one switching"
+        );
+        assert_eq!(
+            rig.conductor
+                .window_showing(Some("elsewhere"), docs, &rig.world),
+            None,
+            "no window shows the session"
+        );
+        assert_eq!(rig.conductor.window_showing(None, docs, &rig.world), None);
+    }
+
+    #[test]
+    fn a_session_shown_only_outside_the_app_is_never_a_window_to_raise() {
+        let mut rig = Rig::hosted();
+        rig.world.live = vec!["api".to_owned(), "docs".to_owned()];
+        let docs = rig.window_on("docs");
+        assert_eq!(
+            rig.conductor.window_showing(Some("api"), docs, &rig.world),
+            None,
+            "a standalone window on the session is not one of the app's windows"
+        );
+        let mut rig = Rig::single();
+        rig.conductor.adopt(1);
+        rig.world.sessions.insert(1, "docs".to_owned());
+        rig.conductor.adopt(2);
+        rig.world.sessions.insert(2, "api".to_owned());
+        assert_eq!(
+            rig.conductor.window_showing(Some("api"), 1, &rig.world),
+            None,
+            "a standalone window never hands over"
+        );
+    }
+
+    #[test]
+    fn a_handed_over_switch_raises_the_window_with_its_tab_pane_and_history() {
+        let mut rig = Rig::hosted();
+        let docs = rig.window_on("docs");
+        let api = rig.window_on("api");
+        rig.feed(Input::WindowFocused(docs));
+        let history = SessionHistory {
+            back: vec!["docs".to_owned()],
+            forward: vec![],
+            last: Some("docs".to_owned()),
+        };
+        let effects = rig.feed(Input::HandedOver {
+            handover: Handover {
+                window: api,
+                tab: Some(2),
+                pane: Some(PaneId::Terminal(4)),
+                history: Some(history.clone()),
+            },
+            from: docs,
+        });
+        assert_eq!(
+            effects,
+            vec![Effect::RaiseWindow {
+                key: api,
+                pane: Some(PaneId::Terminal(4)),
+                tab: Some(2),
+                history: Some(history),
+                token: None,
+                requester: Some(docs)
+            }]
+        );
+        assert_eq!(rig.conductor.most_recent_window(), Some(api));
+        assert!(rig
+            .feed(Input::HandedOver {
+                handover: Handover {
+                    window: 99,
+                    tab: None,
+                    pane: None,
+                    history: None,
+                },
+                from: docs,
+            })
+            .is_empty());
+    }
+
+    #[test]
+    fn closing_the_switching_window_after_a_handover_never_quits_the_app() {
+        let mut rig = Rig::hosted();
+        let docs = rig.window_on("docs");
+        let api = rig.window_on("api");
+        rig.feed(Input::HandedOver {
+            handover: Handover {
+                window: api,
+                tab: None,
+                pane: None,
+                history: None,
+            },
+            from: docs,
+        });
+        assert_eq!(
+            rig.feed(Input::WindowClosed {
+                key: docs,
+                by_user: false
+            }),
+            vec![Effect::SetAccessory(false)]
+        );
+        assert!(!rig.conductor.should_exit());
     }
 
     #[test]

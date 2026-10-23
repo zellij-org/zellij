@@ -167,6 +167,7 @@ pub enum ServerInstruction {
     ConfigWrittenToDisk(Config),
     WindowSettingsChanged(ClientId, Box<WindowSettings>),
     FontFamilies(ClientId, Vec<String>),
+    AdoptSessionHistory(ClientId, zellij_utils::session_history::SessionHistory),
     HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
@@ -313,6 +314,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
             ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
+            ServerInstruction::AdoptSessionHistory(..) => ServerContext::AdoptSessionHistory,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {
                 ServerContext::HostTerminalThemeModeChanged
             },
@@ -4892,6 +4894,22 @@ pub fn start_server_impl(
                     session_data.font_families.insert(client_id, families);
                 }
             },
+            ServerInstruction::AdoptSessionHistory(client_id, history) => {
+                let merged = adopt_client_history(
+                    &mut client_histories,
+                    &own_session_name,
+                    client_id,
+                    history,
+                );
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    let _ = session_data.senders.send_to_screen(
+                        ScreenInstruction::UpdateClientSessionHistory {
+                            client_id,
+                            history: merged,
+                        },
+                    );
+                }
+            },
             ServerInstruction::WindowSettingsChanged(client_id, settings) => {
                 send_to_client!(
                     client_id,
@@ -6219,6 +6237,18 @@ fn attach_switch_context(
 }
 
 #[inline(never)]
+fn adopt_client_history(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    client_id: ClientId,
+    handed: zellij_utils::session_history::SessionHistory,
+) -> zellij_utils::session_history::SessionHistory {
+    let history = client_histories.entry(client_id).or_default();
+    history.adopt(handed, own_session_name);
+    history.clone()
+}
+
+#[inline(never)]
 fn report_attached_client_history(
     client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
     senders: &ThreadSenders,
@@ -6533,6 +6563,68 @@ mod theme_file_tests {
         assert!(session_configuration
             .delete_theme_file(&1, "dracula")
             .is_err());
+    }
+}
+
+#[cfg(test)]
+mod adopted_history_tests {
+    use super::adopt_client_history;
+    use std::collections::HashMap;
+    use zellij_utils::session_history::{HistoryMove, SessionHistory};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn a_handed_over_history_is_the_most_recent_and_toggling_returns_where_the_user_came_from() {
+        let mut client_histories = HashMap::new();
+        client_histories.insert(
+            7,
+            SessionHistory {
+                back: names(&["older", "s2"]),
+                forward: names(&["ahead"]),
+                last: Some("older".to_owned()),
+            },
+        );
+        let handed = SessionHistory {
+            back: names(&["far", "s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 7, handed);
+        assert_eq!(merged.back, names(&["older", "far", "s1"]));
+        assert!(merged.forward.is_empty());
+        assert_eq!(merged.last.as_deref(), Some("s1"));
+        assert_eq!(client_histories.get(&7), Some(&merged));
+        let mut toggled = merged.clone();
+        assert_eq!(
+            toggled.apply(HistoryMove::Toggle, "s2"),
+            Some("s1".to_owned())
+        );
+        let mut walked = merged.clone();
+        assert_eq!(walked.apply(HistoryMove::Back, "s2"), Some("s1".to_owned()));
+        assert_eq!(walked.apply(HistoryMove::Back, "s1"), Some("far".to_owned()));
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "far"),
+            Some("older".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_client_with_no_history_of_its_own_takes_the_handed_over_one() {
+        let mut client_histories = HashMap::new();
+        let handed = SessionHistory {
+            back: names(&["s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 3, handed.clone());
+        assert_eq!(merged, handed);
+        assert!(
+            adopt_client_history(&mut client_histories, "s2", 4, SessionHistory::default())
+                .is_empty()
+        );
     }
 }
 

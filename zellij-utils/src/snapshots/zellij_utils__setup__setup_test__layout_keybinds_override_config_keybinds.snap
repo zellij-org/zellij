@@ -5298,6 +5298,7 @@ Config {
         open_links_with_shift: None,
         shift_drag_selects: None,
         copy_keys: None,
+        reuse_session_windows: None,
     },
     session_suggestions: SessionSuggestionsConfig {
         facts: [],

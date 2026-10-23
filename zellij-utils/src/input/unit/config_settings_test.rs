@@ -179,6 +179,7 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     open_links false
     open_links_with_shift false
     shift_drag_selects false
+    reuse_session_windows false
     middle_click_paste false
     hide_pointer_while_typing true
     macos_option_as_alt \"both\"

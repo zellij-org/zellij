@@ -197,6 +197,53 @@ impl SessionHistory {
             self.last = Some(new_name.to_owned());
         }
     }
+    pub fn adopt(&mut self, handed: SessionHistory, current: &str) {
+        let came_from = handed.last.clone().filter(|name| name != current);
+        let mut handed_back: Vec<String> = handed.back;
+        handed_back.extend(came_from.clone());
+        let mut forward: Vec<String> = Vec::new();
+        for name in handed.forward.into_iter().rev() {
+            if name != current && !handed_back.contains(&name) && !forward.contains(&name) {
+                forward.insert(0, name);
+            }
+        }
+        let mut back: Vec<String> = Vec::new();
+        for name in std::mem::take(&mut self.back)
+            .into_iter()
+            .chain(handed_back)
+            .rev()
+        {
+            if name != current && !forward.contains(&name) && !back.contains(&name) {
+                back.insert(0, name);
+            }
+        }
+        self.back = back;
+        self.forward = forward;
+        self.last = came_from.or_else(|| self.last.take().filter(|name| name != current));
+        while self.back.len() + self.forward.len() > SESSION_HISTORY_LIMIT {
+            let keep = self.last.clone();
+            if let Some(index) = self
+                .back
+                .iter()
+                .position(|name| Some(name) != keep.as_ref())
+            {
+                self.back.remove(index);
+            } else if let Some(index) = self
+                .forward
+                .iter()
+                .position(|name| Some(name) != keep.as_ref())
+            {
+                self.forward.remove(index);
+            } else {
+                break;
+            }
+        }
+        if let Some(last) = self.last.clone() {
+            if !self.back.contains(&last) && !self.forward.contains(&last) {
+                self.last = None;
+            }
+        }
+    }
     pub fn info(&self, current: &str) -> SessionHistoryInfo {
         let mut history = self.clone();
         history.remove_session(current);
@@ -363,6 +410,137 @@ mod tests {
         history.rename_session("b", "beta");
         assert_eq!(history.back, vec!["a", "beta"]);
         assert_eq!(history.previous(), Some("beta"));
+    }
+
+    #[test]
+    fn an_adopted_history_is_the_most_recent_and_points_back_where_the_user_came_from() {
+        let mut own = SessionHistory::default();
+        visit(&mut own, &["notes", "logs", "api"]);
+        let mut handed = SessionHistory::default();
+        visit(&mut handed, &["docs", "web", "api"]);
+        own.adopt(handed, "api");
+        assert_eq!(own.back, vec!["notes", "logs", "docs", "web"]);
+        assert!(own.forward.is_empty());
+        assert_eq!(own.last.as_deref(), Some("web"));
+        assert_eq!(own.previous(), Some("web"));
+        assert_eq!(
+            own.apply(HistoryMove::Toggle, "api"),
+            Some("web".to_owned())
+        );
+    }
+
+    #[test]
+    fn adopting_replaces_own_forward_entries_and_drops_the_current_one() {
+        let mut own = SessionHistory {
+            back: vec!["a".to_owned(), "here".to_owned()],
+            forward: vec!["f1".to_owned(), "b".to_owned()],
+            last: Some("a".to_owned()),
+        };
+        let handed = SessionHistory {
+            back: vec!["b".to_owned(), "from".to_owned()],
+            forward: vec!["here".to_owned(), "f0".to_owned()],
+            last: Some("from".to_owned()),
+        };
+        own.adopt(handed, "here");
+        assert_eq!(own.back, vec!["a", "b", "from"]);
+        assert_eq!(own.forward, vec!["f0"]);
+        assert_eq!(own.last.as_deref(), Some("from"));
+    }
+
+    #[test]
+    fn going_back_after_adopting_visits_the_handed_over_sessions_before_the_own_ones() {
+        let mut own = SessionHistory::default();
+        visit(&mut own, &["o1", "o2", "here"]);
+        let mut handed = SessionHistory::default();
+        visit(&mut handed, &["h1", "h2", "from", "here"]);
+        own.adopt(handed, "here");
+        let mut current = "here".to_owned();
+        let mut visited = vec![];
+        while let Some(target) = own.go_back(&current) {
+            visited.push(target.clone());
+            current = target;
+        }
+        assert_eq!(visited, vec!["from", "h2", "h1", "o2", "o1"]);
+    }
+
+    #[test]
+    fn adopting_keeps_each_session_at_its_most_recent_place() {
+        let mut own = SessionHistory {
+            back: vec!["x".to_owned(), "y".to_owned(), "z".to_owned()],
+            forward: vec!["ahead".to_owned()],
+            last: Some("z".to_owned()),
+        };
+        let handed = SessionHistory {
+            back: vec!["y".to_owned(), "w".to_owned(), "x".to_owned()],
+            forward: vec!["z".to_owned(), "f".to_owned(), "z".to_owned()],
+            last: Some("x".to_owned()),
+        };
+        own.adopt(handed, "here");
+        assert_eq!(own.back, vec!["y", "w", "x"]);
+        assert_eq!(own.forward, vec!["f", "z"]);
+        assert_eq!(own.last.as_deref(), Some("x"));
+        assert_eq!(own.go_back("here"), Some("x".to_owned()));
+    }
+
+    #[test]
+    fn adopting_at_the_limit_drops_the_oldest_own_entries_and_keeps_where_the_user_came_from() {
+        let mut own = SessionHistory {
+            back: (0..10).map(|i| format!("o{}", i)).collect(),
+            forward: vec![],
+            last: Some("o9".to_owned()),
+        };
+        let handed_names: Vec<String> = (0..15).map(|i| format!("h{}", i)).collect();
+        let handed = SessionHistory {
+            back: handed_names.clone(),
+            forward: vec![],
+            last: handed_names.last().cloned(),
+        };
+        own.adopt(handed, "here");
+        let mut expected: Vec<String> = (5..10).map(|i| format!("o{}", i)).collect();
+        expected.extend(handed_names);
+        assert_eq!(own.back, expected);
+        assert_eq!(own.back.len(), SESSION_HISTORY_LIMIT);
+        assert_eq!(own.last.as_deref(), Some("h14"));
+        assert_eq!(own.go_back("here"), Some("h14".to_owned()));
+    }
+
+    #[test]
+    fn adopting_at_the_limit_never_drops_where_the_user_came_from() {
+        let mut own = SessionHistory {
+            back: vec![],
+            forward: vec![],
+            last: None,
+        };
+        let handed = SessionHistory {
+            back: vec!["from".to_owned()],
+            forward: (0..25).map(|i| format!("f{}", i)).collect(),
+            last: Some("from".to_owned()),
+        };
+        own.adopt(handed, "here");
+        assert_eq!(own.back, vec!["from"]);
+        assert_eq!(own.forward.len(), SESSION_HISTORY_LIMIT - 1);
+        assert_eq!(own.forward.first().map(|s| s.as_str()), Some("f6"));
+        assert_eq!(own.last.as_deref(), Some("from"));
+    }
+
+    #[test]
+    fn an_adopted_history_stays_capped_without_losing_where_the_user_came_from() {
+        let names: Vec<String> = (0..20).map(|i| format!("h{}", i)).collect();
+        let handed = SessionHistory {
+            back: names.clone(),
+            forward: vec![],
+            last: names.last().cloned(),
+        };
+        let mut own = SessionHistory {
+            back: (0..20).map(|i| format!("o{}", i)).collect(),
+            forward: vec![],
+            last: Some("o19".to_owned()),
+        };
+        own.adopt(handed, "here");
+        assert_eq!(own.back.len(), SESSION_HISTORY_LIMIT);
+        assert_eq!(own.last.as_deref(), Some("h19"));
+        assert_eq!(own.back, names);
+        assert_eq!(own.back.last().map(|s| s.as_str()), Some("h19"));
     }
 
     #[test]

@@ -711,6 +711,7 @@ pub enum ServerContext {
     ConfigWrittenToDisk,
     WindowSettingsChanged,
     FontFamilies,
+    AdoptSessionHistory,
     FailedToWriteConfigToDisk,
     RebindKeys,
     ReplaceConfigBlocks,

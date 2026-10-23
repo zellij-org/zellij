@@ -4,13 +4,13 @@ use crate::data::ClientId;
 
 use crate::{
     client_server_contract::client_server_contract::{
-        client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
-        AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
-        ClientPaneMirrorMsg, ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg,
-        ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg,
-        DetachSessionMsg, EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
-        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        client_to_server_msg, server_to_client_msg, ActionMsg, AdoptSessionHistoryMsg,
+        AttachClientMsg, AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg,
+        ClientExitedMsg, ClientPaneMirrorMsg, ClientToServerMsg as ProtoClientToServerMsg,
+        ColorRegistersMsg, ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg,
+        DesktopNotificationResponseMsg, DetachSessionMsg, EmitNestedSessionFrameMsg, ExitMsg,
+        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
+        FontFamiliesMsg, ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
         HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
         HostTerminalFocusChangedMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
@@ -233,6 +233,11 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::PaneMirror { payload } => {
                 client_to_server_msg::Message::PaneMirror(ClientPaneMirrorMsg { payload })
+            },
+            ClientToServerMsg::AdoptSessionHistory { history } => {
+                client_to_server_msg::Message::AdoptSessionHistory(AdoptSessionHistoryMsg {
+                    history: Some(history.into()),
+                })
             },
         };
 
@@ -457,6 +462,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::PaneMirror(msg)) => {
                 Ok(ClientToServerMsg::PaneMirror {
                     payload: msg.payload,
+                })
+            },
+            Some(client_to_server_msg::Message::AdoptSessionHistory(msg)) => {
+                Ok(ClientToServerMsg::AdoptSessionHistory {
+                    history: msg.history.map(Into::into).unwrap_or_default(),
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),

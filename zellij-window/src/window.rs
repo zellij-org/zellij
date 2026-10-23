@@ -89,6 +89,55 @@ pub(crate) enum Verdict {
     Close,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Handover {
+    pub window: u64,
+    pub tab: Option<usize>,
+    pub pane: Option<zellij_utils::data::PaneId>,
+    pub history: Option<zellij_utils::session_history::SessionHistory>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Switched {
+    Kept,
+    Closed,
+    HandedOver(Handover),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Followed {
+    Kept,
+    Ended,
+    HandedOver(Handover),
+}
+
+pub(crate) fn window_to_reuse(
+    standalone: bool,
+    reuse_session_windows: bool,
+    switching: u64,
+    showing: Option<u64>,
+) -> Option<u64> {
+    if standalone || !reuse_session_windows {
+        return None;
+    }
+    showing.filter(|window| *window != switching)
+}
+
+fn handover_to(window: u64, target: ConnectToSession) -> Handover {
+    Handover {
+        window,
+        tab: target.tab_position,
+        pane: target.pane_id.map(|(id, plugin)| {
+            if plugin {
+                zellij_utils::data::PaneId::Plugin(id)
+            } else {
+                zellij_utils::data::PaneId::Terminal(id)
+            }
+        }),
+        history: target.switch_context.map(|context| context.history),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum WindowLook {
     Terminal,
@@ -221,6 +270,7 @@ pub(crate) struct App {
     layer: ScrollLayer,
     wayland: bool,
     momentum: Momentum,
+    standalone: bool,
 }
 
 pub(crate) struct Session {
@@ -1526,15 +1576,25 @@ impl App {
         );
     }
 
-    fn follow(&mut self, switch_to: Option<ConnectToSession>) -> bool {
+    fn follow(&mut self, switch_to: Option<ConnectToSession>, showing: Option<u64>) -> Followed {
         self.stop_momentum();
         let Some(session) = self.session.as_mut() else {
-            return false;
+            return Followed::Ended;
         };
         session.collect();
         let Some(target) = switch_to else {
-            return false;
+            return Followed::Ended;
         };
+        if let Some(window) = window_to_reuse(
+            self.standalone,
+            self.options.reuse_session_windows,
+            self.key,
+            showing,
+        ) {
+            session.detacher.abandon();
+            self.sender = None;
+            return Followed::HandedOver(handover_to(window, target));
+        }
         let geometry = self.geometry.get();
         match session.reconnect(&target, geometry) {
             Ok(connection) => {
@@ -1557,13 +1617,34 @@ impl App {
                 if !self.focused {
                     self.report_focus();
                 }
-                true
+                Followed::Kept
             },
             Err(e) => {
                 session.detacher.abandon();
                 self.stranded(e);
-                true
+                Followed::Kept
             },
+        }
+    }
+
+    pub(crate) fn on_switch(&mut self, to: ConnectToSession, showing: Option<u64>) -> Switched {
+        match self.follow(Some(to), showing) {
+            Followed::Kept => Switched::Kept,
+            Followed::Ended => Switched::Closed,
+            Followed::HandedOver(handover) => Switched::HandedOver(handover),
+        }
+    }
+
+    pub(crate) fn set_standalone(&mut self, standalone: bool) {
+        self.standalone = standalone;
+    }
+
+    pub(crate) fn adopt_history(&self, history: zellij_utils::session_history::SessionHistory) {
+        if let Err(e) = self.tell(ClientToServerMsg::AdoptSessionHistory { history }) {
+            report!(
+                "the window could not hand its session the history it took over: {}",
+                e
+            );
         }
     }
 
@@ -1582,7 +1663,7 @@ impl App {
 
     fn session_ended(&mut self, ending: Ending) -> bool {
         if let Ending::Switched(to) = ending {
-            return !self.follow(Some(to));
+            return self.follow(Some(to), None) == Followed::Ended;
         }
         self.stop_momentum();
         if let Some(session) = self.session.as_mut() {
@@ -2394,6 +2475,7 @@ impl Rendering {
             layer: ScrollLayer::default(),
             wayland: false,
             momentum: Momentum::default(),
+            standalone: true,
         }
     }
 }
@@ -2745,6 +2827,7 @@ mod tests {
             scroll_momentum: true,
             scroll_momentum_friction: 2.0,
             option_as_alt: OptionAsAlt::Left,
+            reuse_session_windows: true,
         }
     }
 
@@ -3254,6 +3337,89 @@ mod tests {
         );
         assert!(harness.app.leaving);
         assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn a_switch_reuses_another_app_window_only_when_allowed() {
+        assert_eq!(window_to_reuse(false, true, 1, Some(2)), Some(2));
+        assert_eq!(
+            window_to_reuse(false, false, 1, Some(2)),
+            None,
+            "with the setting off the window switches in place"
+        );
+        assert_eq!(
+            window_to_reuse(true, true, 1, Some(2)),
+            None,
+            "a standalone window always switches in place"
+        );
+        assert_eq!(
+            window_to_reuse(false, true, 1, None),
+            None,
+            "no other window shows the session"
+        );
+        assert_eq!(
+            window_to_reuse(false, true, 1, Some(1)),
+            None,
+            "the only window on the session is the switching one"
+        );
+    }
+
+    #[test]
+    fn a_handover_carries_the_pane_tab_and_history_of_the_switch() {
+        let history = zellij_utils::session_history::SessionHistory {
+            back: vec!["s1".to_owned()],
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let handover = handover_to(
+            5,
+            ConnectToSession {
+                name: Some("s2".to_owned()),
+                tab_position: Some(3),
+                pane_id: Some((7, true)),
+                switch_context: Some(zellij_utils::session_history::SwitchContext {
+                    history: history.clone(),
+                    from_session: Some("s1".to_owned()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            handover,
+            Handover {
+                window: 5,
+                tab: Some(3),
+                pane: Some(zellij_utils::data::PaneId::Plugin(7)),
+                history: Some(history),
+            }
+        );
+        let bare = handover_to(
+            5,
+            ConnectToSession {
+                name: Some("s2".to_owned()),
+                pane_id: Some((2, false)),
+                ..Default::default()
+            },
+        );
+        assert_eq!(bare.pane, Some(zellij_utils::data::PaneId::Terminal(2)));
+        assert_eq!(bare.tab, None);
+        assert_eq!(bare.history, None);
+    }
+
+    #[test]
+    fn a_raised_window_hands_the_adopted_history_to_its_session() {
+        let harness = Harness::new(1, true, "");
+        let history = zellij_utils::session_history::SessionHistory {
+            back: vec!["s1".to_owned()],
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        harness.app.adopt_history(history.clone());
+        assert_eq!(
+            harness.sent(),
+            vec![ClientToServerMsg::AdoptSessionHistory { history }]
+        );
     }
 
     #[test]
@@ -6407,7 +6573,7 @@ mod tests {
                 (
                     "a session switch",
                     Box::new(|f: &mut Fling| {
-                        f.harness.app.follow(None);
+                        f.harness.app.follow(None, None);
                     }),
                 ),
                 (

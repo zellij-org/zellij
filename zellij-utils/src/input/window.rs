@@ -506,6 +506,7 @@ pub struct WindowConfig {
     pub open_links_with_shift: Option<bool>,
     pub shift_drag_selects: Option<bool>,
     pub copy_keys: Option<Vec<KeyWithModifier>>,
+    pub reuse_session_windows: Option<bool>,
 }
 
 impl WindowConfig {
@@ -653,6 +654,9 @@ impl WindowConfig {
         }
         if let Some(copy_keys) = kdl_get_child!(kdl, "copy_keys") {
             window.copy_keys = Some(keys_from_kdl(copy_keys)?);
+        }
+        if let Some(reuse) = kdl_get_child_entry_bool_value!(kdl, "reuse_session_windows") {
+            window.reuse_session_windows = Some(reuse);
         }
 
         Ok(window)
@@ -842,6 +846,7 @@ impl WindowConfig {
         for (name, value) in [
             ("open_links_with_shift", self.open_links_with_shift),
             ("shift_drag_selects", self.shift_drag_selects),
+            ("reuse_session_windows", self.reuse_session_windows),
         ] {
             if let Some(value) = value {
                 let mut flag_node = KdlNode::new(name);
@@ -924,6 +929,7 @@ impl WindowConfig {
         merged.open_links_with_shift = other.open_links_with_shift.or(merged.open_links_with_shift);
         merged.shift_drag_selects = other.shift_drag_selects.or(merged.shift_drag_selects);
         merged.copy_keys = other.copy_keys.or(merged.copy_keys);
+        merged.reuse_session_windows = other.reuse_session_windows.or(merged.reuse_session_windows);
         merged
     }
 }
@@ -1984,6 +1990,30 @@ mod tests {
         assert_eq!(merged.shift_drag_selects, Some(true));
         assert_eq!(merged.open_links_with_shift, Some(false));
         assert_eq!(merged.copy_keys, parsed.copy_keys);
+    }
+
+    #[test]
+    fn reusing_session_windows_round_trips_through_kdl_and_merges() {
+        let parsed = section("window {\n reuse_session_windows false\n}").unwrap();
+        assert_eq!(parsed.reuse_session_windows, Some(false));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert!(
+            emitted.contains("reuse_session_windows false"),
+            "{}",
+            emitted
+        );
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.reuse_session_windows, None);
+
+        let merged = parsed.clone().merge(WindowConfig {
+            reuse_session_windows: Some(true),
+            ..WindowConfig::default()
+        });
+        assert_eq!(merged.reuse_session_windows, Some(true));
+        let kept = parsed.merge(WindowConfig::default());
+        assert_eq!(kept.reuse_session_windows, Some(false));
     }
 
     #[test]
