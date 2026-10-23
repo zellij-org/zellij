@@ -163,6 +163,32 @@ pub const INPUT_MODES: &[&str] = &[
     "normal", "locked", "pane", "tab", "resize", "move", "scroll", "session", "tmux",
 ];
 
+pub fn release_key_placeholder(entries: &[KeybindingEntry], mode: InputMode) -> String {
+    let primary = KeyWithModifier::new(BareKey::F(9));
+    let mut keys: Vec<&KeyWithModifier> = entries
+        .iter()
+        .filter(|entry| entry.mode == mode && !entry.unbound)
+        .filter(|entry| {
+            entry.actions.iter().any(|action| {
+                action
+                    .split(|c: char| c.is_whitespace() || c == '{' || c == ';')
+                    .next()
+                    == Some("ToggleSessionCard")
+            })
+        })
+        .map(|entry| &entry.key)
+        .collect();
+    keys.sort_by(|a, b| {
+        (**b == primary)
+            .cmp(&(**a == primary))
+            .then(a.key_modifiers.len().cmp(&b.key_modifiers.len()))
+            .then(a.cmp(b))
+    });
+    keys.first()
+        .map(|key| key.to_string())
+        .unwrap_or_else(|| primary.to_string())
+}
+
 fn info(
     name: &'static str,
     category: Category,
@@ -2010,6 +2036,38 @@ pub fn kdl_for(key: SettingKey, value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
+
+    fn binding(mode: InputMode, key: &str, action: &str, unbound: bool) -> KeybindingEntry {
+        KeybindingEntry {
+            mode,
+            key: KeyWithModifier::from_str(key).unwrap(),
+            actions: vec![action.to_owned()],
+            source: KeybindingSource::User,
+            unbound,
+            preset_actions: None,
+            unsaved: false,
+        }
+    }
+
+    #[test]
+    fn the_release_key_placeholder_follows_the_inbox_binding_or_is_f9() {
+        let normal = InputMode::Normal;
+        assert_eq!(release_key_placeholder(&[], normal), "F9");
+        let rebound = vec![
+            binding(normal, "F9", "ToggleSessionCard", true),
+            binding(normal, "Ctrl Alt y", "ToggleSessionCard", false),
+            binding(normal, "Alt i", "ToggleSessionCard;", false),
+            binding(normal, "Alt n", "NewPane", false),
+            binding(InputMode::Locked, "Alt l", "ToggleSessionCard", false),
+        ];
+        assert_eq!(release_key_placeholder(&rebound, normal), "Alt i");
+        assert_eq!(release_key_placeholder(&rebound, InputMode::Locked), "Alt l");
+        assert_eq!(release_key_placeholder(&rebound, InputMode::Pane), "F9");
+        let mut with_f9 = rebound.clone();
+        with_f9.push(binding(normal, "F9", "ToggleSessionCard", false));
+        assert_eq!(release_key_placeholder(&with_f9, normal), "F9");
+    }
 
     #[test]
     fn every_setting_has_a_category_and_a_fitting_element() {

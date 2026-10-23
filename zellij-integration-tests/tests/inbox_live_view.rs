@@ -1,7 +1,7 @@
 #![cfg(unix)]
 
 use std::time::Duration;
-use zellij_integration_tests::attention::needs_you;
+use zellij_integration_tests::attention::{needs_you, program_status};
 use zellij_integration_tests::inbox::{
     background_session_with, inbox_shows, open_inbox, open_inbox_on, press_esc, press_release_key,
     press_type_key, shows_inbox, ATTENTION_CONFIG, RELEASE_KEY_HINT, SESSIONS_HELP, TYPE_INTO_IT,
@@ -225,6 +225,35 @@ fn moving_the_selection_switches_the_view_to_the_new_items_pane() {
         "{}",
         grid_snapshot.text
     );
+    zellij.quit();
+}
+
+#[test]
+fn clicking_an_item_and_clicking_it_again_goes_to_its_pane_instead_of_typing() {
+    let (mut zellij, _) = main_session();
+    let (older, older_terminal) = item_session("$ pane of the older item", "Older?");
+    wait_for_count(&zellij, 1);
+    let (newer, _) = item_session("$ pane of the newer item", "Newer?");
+    wait_for_count(&zellij, 2);
+    open_inbox_on(&zellij, "Newer?");
+    wait_for_the_view_of(&zellij, &newer, "pane of the newer item");
+    let row_text = row_of("●", older.session_name());
+    let grid_snapshot = zellij.wait_until("the older item is listed", |grid_snapshot| {
+        grid_snapshot.contains(&row_text)
+    });
+    let (column, row) = grid_snapshot.position_of(&row_text).unwrap();
+    zellij.send_stdin(&keys::sgr_click(column + 3, row));
+    wait_for_the_view_of(&zellij, &older, "pane of the older item");
+    assert!(
+        !zellij.main_client().has_exited(),
+        "the first click went to the pane"
+    );
+    zellij.send_stdin(&keys::sgr_click(column + 3, row));
+    let (switch, _previous) = zellij.follow_switch_into(older);
+    assert_eq!(switch.pane_id, Some((older_terminal.terminal_id(), false)));
+    zellij.wait_until("the switched client is attached", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
     zellij.quit();
 }
 
@@ -474,6 +503,16 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
     open_inbox_on(&zellij, "Clear?");
     let view_size = shown_view_size(&zellij, &other, text);
     wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
+    start_typing(&zellij);
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until(
+        "pressing the inbox key while typing stops typing",
+        |grid_snapshot| {
+            !grid_snapshot.contains(TYPING_INTO)
+                && shows_inbox(grid_snapshot)
+                && grid_snapshot.contains(TYPE_INTO_IT)
+        },
+    );
     start_typing(&zellij);
     zellij.main_client().send_action(Action::ToggleSessionCard);
     wait_until_cleared(
@@ -1185,7 +1224,7 @@ fn esc_then_a_key_that_runs_a_keybinding_then_esc_does_not_stop_typing() {
 }
 
 #[test]
-fn a_click_on_the_selected_row_starts_typing_again_after_a_click_in_another_pane_ended_it() {
+fn a_click_on_the_selected_row_goes_there_after_a_click_in_another_pane_ended_typing() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = item_session("$ clicked elsewhere", "Elsewhere?");
     wait_for_count(&zellij, 1);
@@ -1205,12 +1244,11 @@ fn a_click_on_the_selected_row_starts_typing_again_after_a_click_in_another_pane
         .position_of(&row_of("●", other.session_name()))
         .expect("the selected row is drawn");
     zellij.send_stdin(&keys::sgr_click(column + 2, row));
-    zellij.wait_until(
-        "the click on the selected row starts typing",
-        |grid_snapshot| grid_snapshot.contains(TYPING_INTO),
-    );
-    type_into(&zellij, &terminal, "typed again");
-    press_release_key(&zellij);
+    let (switch, _previous) = zellij.follow_switch_into(other);
+    assert_eq!(switch.pane_id, Some((terminal.terminal_id(), false)));
+    zellij.wait_until("the switched client is attached", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
     zellij.quit();
 }
 
@@ -1498,6 +1536,107 @@ fn a_configured_release_key_beats_the_inbox_binding() {
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("F9 keeps closing the inbox", |grid_snapshot| {
         !shows_inbox(grid_snapshot) && !grid_snapshot.contains(TYPING_INTO)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn browsing_over_a_working_item_that_goes_idle_does_not_keep_a_working_row() {
+    let (mut zellij, _) = main_session();
+    let (other, terminal) = background_session_with(ATTENTION_CONFIG);
+    terminal.output(b"$ the working pane\r\n");
+    terminal.output(&program_status("state=working:app=claude"));
+    zellij_integration_tests::attention::wait_for_counted(other.session_name(), 1);
+    open_inbox_on(&zellij, "the working pane");
+    let working_row = zellij.wait_until("the working item is listed", |grid_snapshot| {
+        shows_inbox(grid_snapshot)
+            && grid_snapshot.contains("Working")
+            && shown_inside_the_view(grid_snapshot, other.session_name(), "the working pane")
+    });
+    assert!(working_row.contains("Inbox (1)"), "{}", working_row.text);
+    terminal.output(&program_status("state=idle:app=claude"));
+    zellij_integration_tests::attention::wait_for_counted(other.session_name(), 0);
+    zellij.wait_until("the working row goes at once", |grid_snapshot| {
+        shows_inbox(grid_snapshot)
+            && grid_snapshot.contains("Inbox (0)")
+            && !grid_snapshot.contains("Working")
+            && grid_snapshot.contains("Nothing in the inbox")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_held_item_of_another_session_goes_once_that_session_ends() {
+    let (mut zellij, _) = main_session();
+    let (failed, asking, failed_row) = browse_to_a_failed_item_until_it_is_seen(&zellij);
+    zellij.send_stdin(&keys::UP);
+    let grid_snapshot = wait_for_the_view_of(&zellij, &asking, "the asking pane");
+    assert!(
+        grid_snapshot.contains(&failed_row),
+        "the seen item is not held:\n{}",
+        grid_snapshot.text
+    );
+    zellij_utils::session_link::stop_session(failed.session_name(), Duration::from_secs(2))
+        .unwrap();
+    zellij.wait_until("the held item goes with its session", |grid_snapshot| {
+        !grid_snapshot.contains(&failed_row)
+            && shown_inside_the_view(grid_snapshot, asking.session_name(), "the asking pane")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn rebinding_the_inbox_key_while_typing_shows_the_new_key_in_the_hint() {
+    let (mut zellij, _) = main_session();
+    let (other, terminal) = item_session("$ rebound while typing", "Rebind now?");
+    wait_for_count(&zellij, 1);
+    open_inbox_on(&zellij, "Rebind now?");
+    wait_for_the_view_of(&zellij, &other, "rebound while typing");
+    start_typing(&zellij);
+    assert!(zellij
+        .snapshot()
+        .contains(&format!("· {} or click", RELEASE_KEY_HINT)));
+    let config_file_path = zellij
+        .config_file_path()
+        .expect("the session has a config file");
+    let mut config = std::fs::read_to_string(&config_file_path).unwrap();
+    config.push('\n');
+    config.push_str(F8_OPENS_THE_INBOX);
+    config.push('\n');
+    std::fs::write(&config_file_path, config).unwrap();
+    zellij.wait_until("the hint shows the new key", |grid_snapshot| {
+        grid_snapshot.contains("· <F8> or click") && grid_snapshot.contains(TYPING_INTO)
+    });
+    type_into(&zellij, &terminal, "still typing");
+    zellij.send_stdin(&keys::F8);
+    zellij.wait_until("the new key stops typing", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(TYPE_INTO_IT)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn alt_esc_does_not_stop_typing_with_the_default_release_key() {
+    let (mut zellij, _) = main_session();
+    let (other, terminal) = item_session("$ alt escape", "Alt escape?");
+    wait_for_count(&zellij, 1);
+    open_inbox_on(&zellij, "Alt escape?");
+    wait_for_the_view_of(&zellij, &other, "alt escape");
+    start_typing(&zellij);
+    zellij.send_stdin(b"\x1b\x1b");
+    type_into(&zellij, &terminal, "after alt esc");
+    assert!(
+        zellij.snapshot().contains(TYPING_INTO),
+        "Alt Esc stopped typing"
+    );
+    assert!(
+        terminal.stdin_bytes().ends_with(b"\x1b\x1bafter alt esc"),
+        "Alt Esc did not reach the program: {:?}",
+        String::from_utf8_lossy(&terminal.stdin_bytes())
+    );
+    press_release_key(&zellij);
+    zellij.wait_until("F9 stops typing", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO)
     });
     zellij.quit();
 }

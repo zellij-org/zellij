@@ -527,7 +527,10 @@ mod tests {
             Some((2, 1, 31)),
             "a tab whose focused pane is a plugin shows its first terminal pane"
         );
-        assert_eq!(tree.live_pane("web", TreeNode::Pane(0, 1)), Some((0, 1, 11)));
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Pane(0, 1)),
+            Some((0, 1, 11))
+        );
         assert_eq!(tree.live_pane("api", TreeNode::Pane(0, 1)), Some((0, 1, 2)));
         let mut without_clients = mixed_tabs();
         for tab in without_clients.iter_mut() {

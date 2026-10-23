@@ -93,6 +93,7 @@ pub(crate) struct State {
     last_cols: usize,
     desktop_offer: DesktopOffer,
     sessions_live_layout: Option<inbox::LiveLayout>,
+    clicked_tree_row: Option<(String, session_tree::TreeNode)>,
 }
 
 #[derive(Default)]
@@ -2667,7 +2668,7 @@ impl State {
     }
     fn selected_inbox_target(&self) -> Option<(String, PaneId, bool)> {
         self.inbox
-            .selected_item()
+            .selected_target()
             .map(|item| (item.session.clone(), item.item.pane_id, item.is_current))
     }
     fn inbox_go_disconnecting(&mut self) -> bool {
@@ -2875,7 +2876,7 @@ impl State {
             hints.push(hint("<?>", "all keys"));
             return hints;
         }
-        let item = self.inbox.selected_item();
+        let item = self.inbox.selected_target();
         let muted = item.map(|i| i.item.attention.is_muted()).unwrap_or(false);
         let watched = item.map(|i| i.item.attention.watched).unwrap_or(false);
         let mut hints = if self.inbox.live_mode {
@@ -3304,8 +3305,31 @@ impl State {
         )
     }
     fn tree_select(&mut self, index: usize) {
+        self.clicked_tree_row = None;
         self.tree_point_at(index);
         self.panel.tree.follow = true;
+    }
+    fn tree_row_identity(&self, index: usize) -> Option<(String, session_tree::TreeNode)> {
+        self.panel
+            .tree
+            .rows
+            .get(index)
+            .map(|row| (row.session.clone(), row.node))
+    }
+    fn is_second_click_on(&self, index: usize) -> bool {
+        let exited_header = self
+            .panel
+            .tree
+            .rows
+            .get(index)
+            .map(|row| row.node == session_tree::TreeNode::Exited)
+            .unwrap_or(false);
+        if exited_header {
+            return true;
+        }
+        self.tree_cursor() == Some(index)
+            && self.clicked_tree_row.is_some()
+            && self.clicked_tree_row == self.tree_row_identity(index)
     }
     fn tree_point_at(&mut self, index: usize) {
         let Some(row) = self.panel.tree.rows.get(index).cloned() else {
@@ -3807,10 +3831,8 @@ impl State {
             Some(BrowserTarget::Item(key)) => {
                 if !self.inbox.is_selected(&key) {
                     self.inbox.select_item(key);
-                } else if !self.inbox.shows_live_view() {
-                    self.go_to_selected_inbox_item();
                 } else if !typing {
-                    self.inbox.start_typing();
+                    self.go_to_selected_inbox_item();
                 }
                 true
             },
@@ -3865,7 +3887,13 @@ impl State {
                             self.tree_point_at(index);
                             true
                         },
+                        Some(index) if !self.is_second_click_on(index) => {
+                            self.tree_point_at(index);
+                            self.clicked_tree_row = self.tree_row_identity(index);
+                            true
+                        },
                         Some(index) => {
+                            self.clicked_tree_row = None;
                             self.tree_point_at(index);
                             if !self.open_tree_child() {
                                 self.handle_selection();
@@ -4159,7 +4187,7 @@ mod live_view_state_tests {
     }
 
     #[test]
-    fn a_click_on_the_selected_row_that_ends_typing_does_not_start_typing_again() {
+    fn a_click_on_the_selected_row_that_ends_typing_neither_types_nor_goes_there() {
         let mut state = browser();
         let api = key_of("api", 1);
         assert!(state.inbox.is_selected(&api));
@@ -4173,31 +4201,59 @@ mod live_view_state_tests {
             "the click that ended typing arrives before the release and does not start it again"
         );
         assert!(!state.inbox.is_capturing());
+        assert_eq!(
+            state.panel.size,
+            Some(PanelSize::Manager),
+            "the click that ended typing does not go to the pane"
+        );
         state.handle_inbox_mouse(Mouse::LeftClick(line, column));
-        assert_eq!(state.inbox.capture_target, Some(api));
+        assert_eq!(state.inbox.capture_target, None);
+        assert_eq!(
+            state.panel.size, None,
+            "the next click on the selected row goes to the pane"
+        );
     }
 
     #[test]
-    fn a_click_on_the_selected_row_after_a_release_the_plugin_never_saw_starts_typing() {
+    fn a_click_on_the_selected_row_after_a_release_the_plugin_never_saw_goes_there() {
         for unseen in [
             LiveViewRelease::ClickOutside,
             LiveViewRelease::FocusLost,
             LiveViewRelease::Key,
         ] {
             let mut state = browser();
-            let api = key_of("api", 1);
-            let (line, column) = row_of(&state, &api);
+            let (line, column) = row_of(&state, &key_of("api", 1));
             assert!(state.handle_inbox_key(alt_enter()));
             report(&mut state, true, None);
             report(&mut state, false, Some(unseen));
             state.handle_inbox_mouse(Mouse::LeftClick(line, column));
+            assert_eq!(state.inbox.capture_target, None);
             assert_eq!(
-                state.inbox.capture_target,
-                Some(api),
-                "the first click after a release by {:?} starts typing",
+                state.panel.size, None,
+                "the first click after a release by {:?} goes to the pane",
                 unseen
             );
         }
+    }
+
+    #[test]
+    fn clicking_a_row_selects_it_and_clicking_it_again_goes_there() {
+        let mut state = browser();
+        let web = key_of("web", 2);
+        let (line, column) = row_of(&state, &web);
+        assert!(state.handle_inbox_mouse(Mouse::LeftClick(line, column)));
+        assert!(state.inbox.is_selected(&web));
+        assert_eq!(state.inbox.capture_target, None, "the first click selects");
+        state.render_plugin(16, 88);
+        assert_eq!(
+            state.panel.size,
+            Some(PanelSize::Manager),
+            "the first click does not go to the pane"
+        );
+        let (line, column) = row_of(&state, &web);
+        assert!(state.handle_inbox_mouse(Mouse::LeftClick(line, column)));
+        assert_eq!(state.inbox.capture_target, None, "a row click never types");
+        assert_eq!(state.panel.size, None, "the second click goes to the pane");
     }
 
     #[test]
@@ -4275,12 +4331,18 @@ mod sessions_live_view_tests {
                         tab(
                             "main",
                             true,
-                            vec![pane(1, "shell", false, false), pane(2, "server", true, false)],
+                            vec![
+                                pane(1, "shell", false, false),
+                                pane(2, "server", true, false),
+                            ],
                         ),
                         tab(
                             "tools",
                             false,
-                            vec![pane(5, "strider", true, true), pane(6, "logs", false, false)],
+                            vec![
+                                pane(5, "strider", true, true),
+                                pane(6, "logs", false, false),
+                            ],
                         ),
                     ],
                 ),
@@ -4338,7 +4400,11 @@ mod sessions_live_view_tests {
         assert!(state.sessions_live_layout.is_some());
         expand(&mut state);
         select(&mut state, 1);
-        assert_eq!(shown(&state), api(2), "the focused terminal pane of the tab");
+        assert_eq!(
+            shown(&state),
+            api(2),
+            "the focused terminal pane of the tab"
+        );
         select(&mut state, 2);
         assert_eq!(
             shown(&state),
@@ -4370,7 +4436,11 @@ mod sessions_live_view_tests {
             state.selected_session(),
             Some(("old".to_owned(), false, false))
         );
-        assert_eq!(shown(&state), None, "an exited session keeps its saved preview");
+        assert_eq!(
+            shown(&state),
+            None,
+            "an exited session keeps its saved preview"
+        );
         assert!(hidden(&state));
         assert!(state.sessions_live_layout.is_none());
     }
@@ -4495,6 +4565,76 @@ mod sessions_live_view_tests {
             "the click that ends typing does not open the session"
         );
         assert_eq!(state.inbox.capture_target, Some(api_pane));
+    }
+
+    fn tree_row_target(state: &State, index: usize) -> (isize, usize) {
+        let (line, range, _) = state
+            .panel
+            .tree
+            .row_targets
+            .iter()
+            .find(|(_, _, row)| *row == index)
+            .cloned()
+            .expect("the row is drawn");
+        (line as isize, range.start)
+    }
+
+    #[test]
+    fn clicking_a_row_selects_it_and_clicking_it_again_attaches() {
+        let mut state = sessions_browser();
+        state.tree_select(1);
+        state.render_plugin(ROWS, COLS);
+        let (api_line, api_column) = tree_row_target(&state, 0);
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        assert_eq!(
+            state.tree_cursor(),
+            Some(0),
+            "the first click selects the row"
+        );
+        assert!(
+            state.single_screen_state.selected_index.is_some(),
+            "the first click does not attach"
+        );
+        state.render_plugin(ROWS, COLS);
+        assert!(state.sessions_live_layout.is_some());
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        assert_eq!(state.inbox.capture_target, None, "a row click never types");
+        assert_eq!(
+            state.single_screen_state.selected_index, None,
+            "the second click attaches"
+        );
+    }
+
+    #[test]
+    fn a_hover_does_not_count_as_the_first_click() {
+        let mut state = sessions_browser();
+        state.tree_select(1);
+        state.render_plugin(ROWS, COLS);
+        let (api_line, api_column) = tree_row_target(&state, 0);
+        assert!(state.handle_mouse(Mouse::Hover(api_line, api_column)));
+        assert_eq!(state.tree_cursor(), Some(0));
+        state.render_plugin(ROWS, COLS);
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        assert!(
+            state.single_screen_state.selected_index.is_some(),
+            "a click after a hover only selects"
+        );
+        state.render_plugin(ROWS, COLS);
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        assert_eq!(state.single_screen_state.selected_index, None);
+    }
+
+    #[test]
+    fn a_click_after_moving_with_the_keys_only_selects() {
+        let mut state = sessions_browser();
+        let (api_line, api_column) = tree_row_target(&state, 0);
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        state.tree_move(1);
+        state.tree_move(-1);
+        state.render_plugin(ROWS, COLS);
+        assert!(state.handle_mouse(Mouse::LeftClick(api_line, api_column)));
+        assert!(state.single_screen_state.selected_index.is_some());
+        assert_eq!(state.inbox.capture_target, None);
     }
 
     #[test]

@@ -1161,6 +1161,23 @@ impl SessionMetaData {
             .map(|bindings| crate::pane_mirror::live_view::keys_bound_to_the_inbox(bindings))
             .unwrap_or_default()
     }
+    pub fn publish_live_view_release_keys(&self) {
+        let bound_keys: BTreeMap<ClientId, Vec<KeyWithModifier>> = self
+            .current_input_modes
+            .keys()
+            .map(|client_id| (*client_id, self.live_view_release_keys(client_id)))
+            .collect();
+        let changed = self
+            .live_view_captures
+            .lock()
+            .map(|mut captures| captures.publish_bound_keys(bound_keys))
+            .unwrap_or(false);
+        if changed {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::LiveViewReleaseKeysChanged);
+        }
+    }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
         self.modal_popup_clients.remove(&client_id);
@@ -2885,6 +2902,53 @@ theme \"first\"
         );
     }
 
+    fn published_release_keys(config: &str) -> (Vec<KeyWithModifier>, Vec<KeyWithModifier>, bool) {
+        let (session_data, screen_receiver, _plugin_receiver) =
+            test_session(session_configuration_with_one_client(config), None);
+        let session = session_data.read().unwrap();
+        let session = session.as_ref().unwrap();
+        session.publish_live_view_release_keys();
+        let announced = screen_receiver
+            .try_iter()
+            .any(|(instruction, _)| {
+                matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+            });
+        session.publish_live_view_release_keys();
+        assert!(
+            !screen_receiver.try_iter().any(|(instruction, _)| {
+                matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+            }),
+            "unchanged keys are not announced again"
+        );
+        let published = session.live_view_captures.lock().unwrap().bound_keys_of(1);
+        (published, session.live_view_release_keys(&1), announced)
+    }
+
+    #[test]
+    fn the_release_key_hint_comes_from_the_keys_the_route_thread_checks() {
+        use crate::pane_mirror::live_view::release_key_text_for;
+        let (published, checked, announced) = published_release_keys(
+            "keybinds {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert!(announced);
+        assert_eq!(published, checked, "the hint and the route thread use the same keys");
+        assert_eq!(published.len(), 3);
+        assert_eq!(release_key_text_for(published), "F9");
+        let (published, checked, _) = published_release_keys(
+            "keybinds clear-defaults=true {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert_eq!(published, checked);
+        assert_eq!(release_key_text_for(published), "Alt i");
+        let (published, checked, _) =
+            published_release_keys("keybinds clear-defaults=true {\n}\n");
+        assert!(published.is_empty() && checked.is_empty());
+        assert_eq!(
+            release_key_text_for(published),
+            "F9",
+            "the desktop panel has no bindings and shows F9"
+        );
+    }
+
     fn reconfigure_session(
         session_data: &Arc<RwLock<Option<SessionMetaData>>>,
         client_id: ClientId,
@@ -3843,6 +3907,9 @@ pub fn start_server_impl(
                     )),
                 );
             }
+        }
+        if let Some(session_data) = session_data.read().unwrap().as_ref() {
+            session_data.publish_live_view_release_keys();
         }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));

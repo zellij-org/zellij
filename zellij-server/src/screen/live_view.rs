@@ -1,7 +1,5 @@
 use super::Screen;
-use crate::pane_mirror::live_view::{
-    keys_bound_to_the_inbox, parse_release_key, release_key_text_for, DragButton,
-};
+use crate::pane_mirror::live_view::{parse_release_key, release_key_text_for, DragButton};
 use crate::pane_mirror::{
     LiveViewKeyOutcome, LiveViewRect, LiveViewReport, LiveViewSlot, MirrorEventRoute, MirrorView,
 };
@@ -94,20 +92,14 @@ impl Screen {
     }
 
     fn live_view_release_key_text(&self, client_id: ClientId) -> String {
-        if let Some(text) = self.live_views.borrow().release_key_text.clone() {
+        let live_views = self.live_views.borrow();
+        if let Some(text) = live_views.release_key_text.clone() {
             return text;
         }
-        let (mode, _) = self.current_mode_for_client(client_id);
-        let keybinds = self
-            .client_keybinds
-            .get(&client_id)
-            .unwrap_or(&self.default_keybinds);
-        let bound = keybinds
-            .iter()
-            .find(|(bound_mode, _)| *bound_mode == mode)
-            .map(|(_, bindings)| {
-                keys_bound_to_the_inbox(bindings.iter().map(|(key, actions)| (key, actions)))
-            })
+        let bound = live_views
+            .captures
+            .lock()
+            .map(|captures| captures.bound_keys_of(client_id))
             .unwrap_or_default();
         release_key_text_for(bound)
     }

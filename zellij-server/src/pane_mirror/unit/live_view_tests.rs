@@ -377,12 +377,52 @@ fn the_keys_bound_to_the_inbox_are_the_ones_that_toggle_the_session_card() {
     let lock = vec![Action::SwitchToMode {
         input_mode: zellij_utils::data::InputMode::Locked,
     }];
-    let bindings = vec![(&f9_key, &toggle), (&ctrl_g, &lock), (&ctrl_y, &toggle)];
+    let bindings = vec![(&ctrl_y, &toggle), (&ctrl_g, &lock), (&f9_key, &toggle)];
     let bound = keys_bound_to_the_inbox(bindings);
-    assert_eq!(bound, vec![ctrl_y.clone(), f9_key.clone()]);
-    assert_eq!(release_key_text_for(bound), "Ctrl y");
+    assert_eq!(bound, vec![f9_key.clone(), ctrl_y.clone()]);
+    assert_eq!(release_key_text_for(bound), "F9");
     assert_eq!(release_key_text_for(vec![]), "F9");
     assert_eq!(release_keys_or_default(vec![]), vec![f9_key]);
+}
+
+#[test]
+fn with_several_bindings_the_hint_shows_f9_first_and_otherwise_the_simplest_key() {
+    let toggle = vec![Action::ToggleSessionCard];
+    let f9_key = f9();
+    let alt_i = KeyWithModifier::new(BareKey::Char('i')).with_alt_modifier();
+    let ctrl_alt_a = KeyWithModifier::new(BareKey::Char('a'))
+        .with_ctrl_modifier()
+        .with_alt_modifier();
+    let ctrl_b = KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier();
+    let bound = keys_bound_to_the_inbox(vec![
+        (&ctrl_alt_a, &toggle),
+        (&alt_i, &toggle),
+        (&f9_key, &toggle),
+    ]);
+    assert_eq!(release_key_text_for(bound), "F9");
+    let bound = keys_bound_to_the_inbox(vec![(&ctrl_alt_a, &toggle), (&alt_i, &toggle)]);
+    assert_eq!(bound, vec![alt_i.clone(), ctrl_alt_a.clone()]);
+    assert_eq!(
+        release_key_text_for(bound),
+        "Alt i",
+        "not the alphabetically first Ctrl Alt a"
+    );
+    let reversed = keys_bound_to_the_inbox(vec![(&ctrl_b, &toggle), (&alt_i, &toggle)]);
+    let forward = keys_bound_to_the_inbox(vec![(&alt_i, &toggle), (&ctrl_b, &toggle)]);
+    assert_eq!(reversed, forward, "the order does not depend on map iteration");
+}
+
+#[test]
+fn the_published_keys_are_kept_per_client_and_change_only_when_they_differ() {
+    let mut captures = LiveViewCaptures::default();
+    assert!(captures.bound_keys_of(CLIENT).is_empty());
+    let alt_i = KeyWithModifier::new(BareKey::Char('i')).with_alt_modifier();
+    let published = BTreeMap::from([(CLIENT, vec![alt_i.clone()])]);
+    assert!(captures.publish_bound_keys(published.clone()));
+    assert!(!captures.publish_bound_keys(published));
+    assert_eq!(captures.bound_keys_of(CLIENT), vec![alt_i]);
+    captures.forget_client(CLIENT);
+    assert!(captures.bound_keys_of(CLIENT).is_empty());
 }
 
 #[test]

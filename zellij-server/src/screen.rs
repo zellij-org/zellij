@@ -1158,6 +1158,7 @@ pub enum ScreenInstruction {
     ReleaseLiveViewInputWithKey(ClientId),
     ReportLiveViewCaptureChange,
     SetLiveViewReleaseKey(Option<String>),
+    LiveViewReleaseKeysChanged,
     DesktopNotificationResponse(Vec<u8>, ClientId),
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
     ClearHintTextCache,
@@ -1644,7 +1645,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             | ScreenInstruction::ClearLiveViewsOfPlugin(..)
             | ScreenInstruction::ReleaseLiveViewInputWithKey(..)
             | ScreenInstruction::ReportLiveViewCaptureChange
-            | ScreenInstruction::SetLiveViewReleaseKey(..) => ScreenContext::PaneMirror,
+            | ScreenInstruction::SetLiveViewReleaseKey(..)
+            | ScreenInstruction::LiveViewReleaseKeysChanged => ScreenContext::PaneMirror,
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
@@ -15512,6 +15514,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetLiveViewReleaseKey(release_key) => {
                 screen.set_live_view_release_key(release_key);
+            },
+            ScreenInstruction::LiveViewReleaseKeysChanged => {
+                screen.report_live_views();
             },
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                 plugin_id,

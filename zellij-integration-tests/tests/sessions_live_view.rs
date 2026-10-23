@@ -329,6 +329,38 @@ fn a_plugin_pane_keeps_the_snapshot_preview() {
 }
 
 #[test]
+fn clicking_a_session_and_clicking_it_again_attaches_instead_of_typing() {
+    let (mut zellij, _) = main_session();
+    let (first, _) = source_session("$ first source");
+    let (second, _) = source_session("$ second source");
+    let (first_name, second_name) = (
+        first.session_name().to_owned(),
+        second.session_name().to_owned(),
+    );
+    open_the_sessions(&zellij, &[&first_name, &second_name]);
+    select_session(&zellij, &first_name);
+    wait_for_the_view_of(&zellij, &first_name, "first source");
+    let grid_snapshot = zellij.snapshot();
+    let row = listed_row(&grid_snapshot, &second_name).expect("the second session is listed");
+    let line = grid_snapshot.lines()[row].clone();
+    let column = line[..line.find(second_name.as_str()).unwrap()]
+        .chars()
+        .count();
+    zellij.send_stdin(&keys::sgr_click(column + 1, row));
+    wait_for_the_view_of(&zellij, &second_name, "second source");
+    assert!(
+        !zellij.main_client().has_exited(),
+        "the first click attached"
+    );
+    zellij.send_stdin(&keys::sgr_click(column + 1, row));
+    let (_switch, _previous) = zellij.follow_switch_into(second);
+    zellij.wait_until("the switched client is attached", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    zellij.quit();
+}
+
+#[test]
 fn a_click_on_the_view_types_into_the_pane_and_f9_stops_typing() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = source_session("$ type in here");

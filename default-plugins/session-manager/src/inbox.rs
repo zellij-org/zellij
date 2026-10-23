@@ -349,12 +349,49 @@ pub struct Inbox {
     pub sessions_target: Option<SessionsLiveTarget>,
     pub listed: Vec<GlobalAttentionItem>,
     pub held: Vec<ItemKey>,
-    dropped: Vec<ItemKey>,
+    dropped: Vec<DroppedItem>,
     shown_items: Vec<GlobalAttentionItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DroppedItem {
+    key: ItemKey,
+    status: AttentionStatus,
+    since_ms: u64,
+}
+
+impl DroppedItem {
+    fn of(item: &GlobalAttentionItem) -> Self {
+        DroppedItem {
+            key: ItemKey::of(item),
+            status: item.item.attention.effective_status(),
+            since_ms: item.item.attention.since_ms,
+        }
+    }
+
+    fn still_matches(&self, item: &GlobalAttentionItem) -> bool {
+        item.item.attention.effective_status() == self.status
+            && item.item.attention.since_ms <= self.since_ms
+    }
 }
 
 fn always_listed(item: &GlobalAttentionItem) -> bool {
     item.is_counted() || item.item.attention.watched
+}
+
+fn holdable(item: &GlobalAttentionItem) -> bool {
+    !item.is_muted()
+        && matches!(
+            item.item.attention.effective_status(),
+            AttentionStatus::Done | AttentionStatus::Failed
+        )
+}
+
+fn holds(known: &GlobalAttentionItem, server: Option<&GlobalAttentionItem>) -> bool {
+    holdable(known)
+        && server
+            .map(|item| !item.is_muted() && item.item.attention.status.is_idle())
+            .unwrap_or(true)
 }
 
 fn ends_the_pane(state: MirrorState) -> bool {
@@ -704,41 +741,39 @@ impl Inbox {
             .find(|item| item.is_same_pane(&key.session, &key.pane_id))
     }
 
+    fn session_runs(&self, session: &str) -> bool {
+        self.global
+            .as_ref()
+            .map(|global| global.has_session(session))
+            .unwrap_or(true)
+    }
+
     fn refresh_listed(&mut self) {
         let dropped = std::mem::take(&mut self.dropped);
         self.dropped = dropped
             .into_iter()
-            .filter(|key| self.server_item(key).is_some())
+            .filter(|dropped| {
+                self.server_item(&dropped.key)
+                    .map(|item| dropped.still_matches(item))
+                    .unwrap_or(false)
+            })
             .collect();
         let listed = std::mem::take(&mut self.listed);
         self.listed = listed
             .into_iter()
-            .filter(|known| {
-                let session_runs = self
-                    .global
-                    .as_ref()
-                    .map(|global| global.has_session(&known.session))
-                    .unwrap_or(true);
-                let let_go = match self.server_item(&ItemKey::of(known)) {
-                    Some(item) => item.is_muted(),
-                    None => known.item.attention.watched,
-                };
-                session_runs && !let_go
+            .filter(|known| self.session_runs(&known.session))
+            .filter_map(|known| {
+                let server = self.server_item(&ItemKey::of(&known));
+                if holds(&known, server) {
+                    let mut kept = known;
+                    kept.item.attention.watched = server
+                        .map(|item| item.item.attention.watched)
+                        .unwrap_or(false);
+                    return Some(kept);
+                }
+                server.filter(|item| self.lists(item)).cloned()
             })
             .collect();
-        let fresh: Vec<GlobalAttentionItem> = self
-            .listed
-            .iter()
-            .map(|known| {
-                self.server_items()
-                    .iter()
-                    .find(|item| item.is_same_pane(&known.session, &known.item.pane_id))
-                    .filter(|item| self.lists(item))
-                    .cloned()
-                    .unwrap_or_else(|| known.clone())
-            })
-            .collect();
-        self.listed = fresh;
         self.rebuild_items();
     }
 
@@ -749,7 +784,7 @@ impl Inbox {
             let key = ItemKey::of(item);
             let known = self.listed.iter().find(|known| ItemKey::of(known) == key);
             match known {
-                Some(known) if !self.lists(item) => {
+                Some(known) if holds(known, Some(item)) => {
                     items.push(known.clone());
                     held.push(key);
                 },
@@ -758,11 +793,7 @@ impl Inbox {
         }
         for known in &self.listed {
             let key = ItemKey::of(known);
-            if !self
-                .server_items()
-                .iter()
-                .any(|item| ItemKey::of(item) == key)
-            {
+            if self.server_item(&key).is_none() && holds(known, None) {
                 items.push(known.clone());
                 held.push(key);
             }
@@ -771,11 +802,28 @@ impl Inbox {
         self.held = held;
     }
 
+    fn is_dropped(&self, key: &ItemKey) -> bool {
+        self.dropped.iter().any(|dropped| dropped.key == *key)
+    }
+
+    fn drop_key(&mut self, key: &ItemKey) {
+        if self.is_dropped(key) {
+            return;
+        }
+        let known = self
+            .server_item(key)
+            .or_else(|| self.find(key))
+            .map(DroppedItem::of);
+        if let Some(dropped) = known {
+            self.dropped.push(dropped);
+        }
+    }
+
     fn remember_listed(&mut self, order: &[usize]) {
         for index in order {
             let item = &self.shown_items[*index];
             let key = ItemKey::of(item);
-            if self.dropped.contains(&key) {
+            if self.is_dropped(&key) {
                 continue;
             }
             match self
@@ -839,9 +887,7 @@ impl Inbox {
             return;
         };
         self.mark_selected_seen();
-        if !self.dropped.contains(&key) {
-            self.dropped.push(key.clone());
-        }
+        self.drop_key(&key);
         self.forget_listed_where(|known| ItemKey::of(known) == key);
     }
 
@@ -850,9 +896,7 @@ impl Inbox {
         let previous_position = self.selected_position(&self.ordered());
         let keys: Vec<ItemKey> = self.items().iter().map(ItemKey::of).collect();
         for key in keys {
-            if !self.dropped.contains(&key) {
-                self.dropped.push(key);
-            }
+            self.drop_key(&key);
         }
         self.listed.clear();
         self.rebuild_items();
@@ -942,7 +986,11 @@ impl Inbox {
     pub fn quiet_count(&self) -> usize {
         self.items()
             .iter()
-            .filter(|item| self.matches_filter(item) && !self.always_listed(item))
+            .filter(|item| {
+                self.matches_filter(item)
+                    && !self.always_listed(item)
+                    && !self.is_held(&ItemKey::of(item))
+            })
             .count()
     }
 
@@ -1017,9 +1065,14 @@ impl Inbox {
     }
 
     pub fn toggle_selected_watch(&self) {
-        if let Some(item) = self.selected_item() {
+        if let Some(item) = self.selected_target() {
             toggle_session_pane_watch(&item.session, item.item.pane_id);
         }
+    }
+
+    pub fn selected_target(&self) -> Option<&GlobalAttentionItem> {
+        let shown = self.selected_item()?;
+        Some(self.server_item(&ItemKey::of(shown)).unwrap_or(shown))
     }
 
     pub fn counted_count(&self) -> usize {
@@ -1138,7 +1191,7 @@ impl Inbox {
     }
 
     pub fn go_to_selected(&self) -> bool {
-        match self.selected_item() {
+        match self.selected_target() {
             Some(item) => {
                 focus_session_pane(&item.session, item.item.pane_id);
                 true
@@ -1148,13 +1201,13 @@ impl Inbox {
     }
 
     pub fn mark_selected_seen(&self) {
-        if let Some(item) = self.selected_item() {
+        if let Some(item) = self.selected_target() {
             mark_session_pane_seen(&item.session, item.item.pane_id);
         }
     }
 
     pub fn cycle_selected_mute(&self) {
-        let Some(item) = self.selected_item() else {
+        let Some(item) = self.selected_target() else {
             return;
         };
         let attention = &item.item.attention;
@@ -1292,7 +1345,7 @@ impl Inbox {
         if let Some(target) = self.sessions_target.as_ref() {
             return Some(target.key.clone());
         }
-        self.selected_item().map(ItemKey::of)
+        self.selected_target().map(ItemKey::of)
     }
 
     pub fn live_view_request(&self, layout: &LiveLayout) -> LiveView {
@@ -1424,10 +1477,12 @@ impl Inbox {
                 session: target.session.clone(),
                 pane_id: target.pane_id,
             };
-            if !self.dropped.contains(&key) {
-                self.dropped.push(key.clone());
-            }
-            changed |= self.forget_listed_where(|known| ItemKey::of(known) == key);
+            self.drop_key(&key);
+            let session_ended =
+                status.state == MirrorState::Closed(MirrorClosedReason::SessionEnding);
+            changed |= self.forget_listed_where(|known| {
+                ItemKey::of(known) == key || (session_ended && known.session == key.session)
+            });
         }
         if status.input_captured {
             self.live_notice = None;
@@ -1868,14 +1923,21 @@ impl Inbox {
             print_text_with_coordinates(detail, x, layout.status_y, Some(detail_room), None);
         }
         if !hint.is_empty() {
-            let text = if capturing {
-                key_hint_text(&hint).color_range(0, 0.."typing into".chars().count())
-            } else if self.live_notice.is_some() {
-                Text::from(hint.as_str()).error_color_all()
-            } else {
-                key_hint_text(&hint).dim_all()
-            };
+            let text = self.view_hint(&hint, capturing);
             print_text_with_coordinates(text, hint_x, layout.status_y, Some(hint_width), None);
+        }
+    }
+
+    fn view_hint(&self, hint: &str, capturing: bool) -> Text {
+        if capturing {
+            key_hint_text(hint).color_range(0, 0.."typing into".chars().count())
+        } else if self.live_notice.is_some() {
+            Text::from(hint).error_color_all()
+        } else {
+            crate::help::line_text(&crate::help::BlockLine {
+                text: hint.to_owned(),
+                secondary: true,
+            })
         }
     }
 
@@ -2047,8 +2109,12 @@ impl Inbox {
                 lines.push(BlockLine::Blank);
             }
             let header_start = lines.len();
+            let counted_members = members
+                .iter()
+                .filter(|index| !self.is_held(&ItemKey::of(&self.items()[**index])))
+                .count();
             lines.push(BlockLine::Text {
-                text: group_heading(&section, members.len(), width),
+                text: group_heading(&section, counted_members, width),
                 gutter: None,
                 target: None,
             });
@@ -4011,5 +4077,249 @@ mod tests {
         render(&mut inbox, 88, 15, false);
         inbox.update_global(with_sessions(vec![], &["api", "zed", "web"]));
         assert!(sessions_in_order(&inbox).is_empty());
+    }
+
+    #[test]
+    fn a_working_or_needs_you_item_that_goes_away_is_dropped_while_done_and_failed_are_held() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 400),
+            item("work", 2, AttentionStatus::Working, 300),
+            item("web", 3, AttentionStatus::Done, 200),
+            item("docs", 4, AttentionStatus::Failed, 100),
+        ]));
+        render(&mut inbox, 88, 15, false);
+        inbox.update_global(with_sessions(
+            vec![item("work", 2, AttentionStatus::Quiet, 300)],
+            &["api", "web", "docs"],
+        ));
+        assert_eq!(sessions_in_order(&inbox), vec!["docs", "web"]);
+        assert!(inbox.is_held(&key("web", 3)));
+        assert!(inbox.is_held(&key("docs", 4)));
+        assert!(!inbox.is_held(&key("api", 1)));
+        assert!(!inbox.is_held(&key("work", 2)));
+        assert!(inbox.find(&key("api", 1)).is_none());
+        assert!(
+            !inbox.has_working_items(),
+            "no Working row or spinner is left"
+        );
+        assert_eq!(
+            status_title(inbox.find(&key("work", 2)).unwrap()),
+            "Went Quiet"
+        );
+        inbox.update_global(with_sessions(
+            vec![item("api", 1, AttentionStatus::NeedsYou, 400)],
+            &["work", "web", "docs"],
+        ));
+        assert!(inbox.find(&key("work", 2)).is_none());
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs", "web"]);
+    }
+
+    #[test]
+    fn a_seen_done_result_on_a_watched_pane_is_held_in_its_section() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            watched(item("zed", 5, AttentionStatus::Done, 300)),
+            watched(item("api", 7, AttentionStatus::Idle, 0)),
+            item("web", 2, AttentionStatus::Failed, 200),
+        ]));
+        inbox.select_item(key("zed", 5));
+        render(&mut inbox, 88, 15, false);
+        let sections_before = section_order(&inbox);
+        let places_before = places_in_order(&inbox);
+        inbox.update_global(global(vec![
+            watched(item("zed", 5, AttentionStatus::Idle, 0)),
+            watched(item("api", 7, AttentionStatus::Idle, 0)),
+            item("web", 2, AttentionStatus::Failed, 200),
+        ]));
+        assert!(inbox.is_held(&key("zed", 5)));
+        assert_eq!(status_title(inbox.find(&key("zed", 5)).unwrap()), "Done");
+        assert_eq!(section_order(&inbox), sections_before);
+        assert_eq!(places_in_order(&inbox), places_before);
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("zed", 5)));
+        assert!(inbox.forget_listed(), "closing the inbox lets it go");
+        assert!(!inbox.is_held(&key("zed", 5)));
+        assert_eq!(
+            status_title(inbox.find(&key("zed", 5)).unwrap()),
+            "Watching"
+        );
+    }
+
+    #[test]
+    fn actions_on_a_held_item_use_the_servers_copy_and_the_row_follows_the_watch_state() {
+        let api = item("api", 1, AttentionStatus::NeedsYou, 300);
+        let docs = item("docs", 3, AttentionStatus::Done, 100);
+        let mut inbox = browsed();
+        inbox.update_global(with_sessions(vec![api.clone(), docs.clone()], &["web"]));
+        assert!(inbox.is_held(&key("web", 2)));
+        assert_eq!(
+            inbox.selected_target().map(status_title),
+            Some("Done"),
+            "with no server copy the held one is all there is"
+        );
+        let mut watched_web = watched(item("web", 2, AttentionStatus::Idle, 0));
+        watched_web.item.attention.ignore_output = true;
+        inbox.update_global(global(vec![api.clone(), watched_web, docs.clone()]));
+        assert!(inbox.is_held(&key("web", 2)));
+        let shown = inbox.find(&key("web", 2)).unwrap().clone();
+        assert_eq!(status_title(&shown), "Done", "the held copy is shown");
+        assert!(
+            shown.item.attention.watched,
+            "the row shows the new watch state"
+        );
+        assert_eq!(Section::of(&shown), Section::Watching);
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("web", 2)));
+        let target = inbox.selected_target().unwrap();
+        assert_eq!(
+            (
+                status_title(target),
+                target.item.attention.ignore_output,
+                target.item.attention.since_ms
+            ),
+            ("Watching", true, 0),
+            "m, n and Enter act on the server's copy"
+        );
+        assert_eq!(inbox.live_view_target(), Some(key("web", 2)));
+        inbox.update_global(with_sessions(vec![api, docs], &["web"]));
+        assert!(inbox.is_held(&key("web", 2)));
+        assert!(!inbox.find(&key("web", 2)).unwrap().item.attention.watched);
+    }
+
+    #[test]
+    fn a_held_item_of_another_session_goes_when_its_session_ends_or_its_pane_is_reported_closed() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("web", 2, AttentionStatus::Done, 300),
+            item("web", 3, AttentionStatus::Failed, 250),
+            item("docs", 4, AttentionStatus::Done, 200),
+            item("api", 5, AttentionStatus::Done, 100),
+        ]));
+        inbox.select_item(key("docs", 4));
+        render(&mut inbox, 88, 15, false);
+        let all_seen = with_sessions(vec![], &["web", "docs", "api"]);
+        inbox.update_global(all_seen.clone());
+        assert_eq!(sessions_in_order(&inbox), vec!["web", "web", "docs", "api"]);
+        let mut not_found = live_status(Some(key("docs", 4)), false);
+        not_found.state = MirrorState::Closed(MirrorClosedReason::PaneNotFound);
+        inbox.apply_live_view_status(not_found);
+        assert_eq!(sessions_in_order(&inbox), vec!["web", "web", "api"]);
+        assert_ne!(
+            inbox.selected_target().map(ItemKey::of),
+            Some(key("docs", 4)),
+            "Enter never goes to the closed pane"
+        );
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sessions_in_order(&inbox), vec!["web", "web", "api"]);
+        let mut ended = live_status(Some(key("web", 2)), false);
+        ended.state = MirrorState::Closed(MirrorClosedReason::SessionEnding);
+        inbox.apply_live_view_status(ended);
+        assert_eq!(sessions_in_order(&inbox), vec!["api"]);
+        let mut api_left = all_seen;
+        api_left.sessions.retain(|session| session.name != "api");
+        inbox.update_global(api_left);
+        assert!(sessions_in_order(&inbox).is_empty());
+        assert_eq!(inbox.selected_target(), None);
+    }
+
+    #[test]
+    fn a_working_item_dismissed_with_c_is_held_again_once_it_is_done_and_seen() {
+        let api = item("api", 1, AttentionStatus::NeedsYou, 300);
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            api.clone(),
+            item("work", 2, AttentionStatus::Working, 100),
+        ]));
+        inbox.select_item(key("work", 2));
+        render(&mut inbox, 88, 15, false);
+        inbox.dismiss_selected();
+        render(&mut inbox, 88, 15, false);
+        assert!(
+            !inbox
+                .listed
+                .iter()
+                .any(|known| ItemKey::of(known) == key("work", 2)),
+            "a dismissed item is not remembered while it keeps working"
+        );
+        inbox.update_global(global(vec![
+            api.clone(),
+            item("work", 2, AttentionStatus::Done, 500),
+        ]));
+        render(&mut inbox, 88, 15, false);
+        inbox.update_global(with_sessions(vec![api], &["work"]));
+        assert!(inbox.is_held(&key("work", 2)));
+        assert_eq!(status_title(inbox.find(&key("work", 2)).unwrap()), "Done");
+    }
+
+    #[test]
+    fn headings_and_the_quiet_line_count_only_what_the_server_still_lists() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("web", 2, AttentionStatus::Done, 400),
+            item("docs", 3, AttentionStatus::Done, 300),
+            item("api", 4, AttentionStatus::Done, 200),
+            item("zed", 6, AttentionStatus::Done, 150),
+            item("build", 5, AttentionStatus::Working, 100),
+        ]));
+        render(&mut inbox, 88, 15, false);
+        inbox.update_global(with_sessions(
+            vec![
+                item("api", 4, AttentionStatus::Done, 200),
+                item("zed", 6, AttentionStatus::Done, 150),
+                item("build", 5, AttentionStatus::Quiet, 100),
+            ],
+            &["web", "docs"],
+        ));
+        assert_eq!(inbox.tab_titles(1).0, "Inbox (2)");
+        assert_eq!(sessions_in_order(&inbox), vec!["web", "docs", "api", "zed"]);
+        let lines = contents(&inbox.block_lines(60, 1000, false));
+        assert!(lines.contains(&"Done (2)".to_owned()), "{:?}", lines);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("1 more item with only new output")),
+            "{:?}",
+            lines
+        );
+        assert_eq!(inbox.quiet_count(), 1);
+        inbox.update_global(with_sessions(
+            vec![item("build", 5, AttentionStatus::Quiet, 100)],
+            &["web", "docs", "api", "zed"],
+        ));
+        let lines = contents(&inbox.block_lines(60, 1000, false));
+        assert!(lines.contains(&"Done".to_owned()), "{:?}", lines);
+        assert_eq!(inbox.quiet_count(), 1);
+        inbox.toggle_grouping();
+        let lines = contents(&inbox.block_lines(60, 1000, false));
+        assert!(lines.contains(&"web".to_owned()), "{:?}", lines);
+        assert!(!lines.iter().any(|line| line.contains("(")), "{:?}", lines);
+    }
+
+    #[test]
+    fn alt_enter_is_coloured_as_a_key_in_the_hint_lines_and_the_key_list() {
+        let key_range: Vec<usize> = (0..TYPE_KEY.chars().count()).collect();
+        let inbox = sample();
+        let under_view = inbox.view_hint(TYPE_INTO_IT_HINT, false);
+        assert_eq!(level(&under_view, 3), key_range);
+        assert!(level(&under_view, 4)
+            .iter()
+            .all(|index| *index >= TYPE_KEY.chars().count()));
+        assert!(!level(&under_view, 4).is_empty(), "the label is dimmed");
+        let all_keys = crate::help::all_keys_lines(
+            &[
+                crate::help::hint("<ENTER>", "go to the pane"),
+                crate::help::hint(TYPE_KEY, "type into the shown pane"),
+            ],
+            80,
+        );
+        let listed = key_hint_text(&all_keys[1]);
+        assert_eq!(level(&listed, 3), key_range);
+        let line = "<ENTER> go  <Alt ENTER> type  <c> dismiss  <?> more";
+        let footer = crate::help::line_text(&crate::help::BlockLine {
+            text: line.to_owned(),
+            secondary: false,
+        });
+        let start = line.find(TYPE_KEY).unwrap();
+        assert!((start..start + TYPE_KEY.len()).all(|index| level(&footer, 3).contains(&index)));
+        assert!(!level(&footer, 3).contains(&(start + TYPE_KEY.len())));
     }
 }

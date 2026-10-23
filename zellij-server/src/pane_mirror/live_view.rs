@@ -35,6 +35,7 @@ pub enum LiveViewReleaseKey {
 pub struct LiveViewCaptures {
     gestures: BTreeMap<ClientId, LiveViewReleaseKey>,
     presses: BTreeMap<ClientId, std::time::Instant>,
+    bound_keys: BTreeMap<ClientId, Vec<KeyWithModifier>>,
 }
 
 impl LiveViewCaptures {
@@ -61,6 +62,22 @@ impl LiveViewCaptures {
     pub fn forget_client(&mut self, client_id: ClientId) {
         self.gestures.remove(&client_id);
         self.presses.remove(&client_id);
+        self.bound_keys.remove(&client_id);
+    }
+
+    pub fn publish_bound_keys(
+        &mut self,
+        bound_keys: BTreeMap<ClientId, Vec<KeyWithModifier>>,
+    ) -> bool {
+        if self.bound_keys == bound_keys {
+            return false;
+        }
+        self.bound_keys = bound_keys;
+        true
+    }
+
+    pub fn bound_keys_of(&self, client_id: ClientId) -> Vec<KeyWithModifier> {
+        self.bound_keys.get(&client_id).cloned().unwrap_or_default()
     }
 
     pub fn key_pressed(
@@ -94,7 +111,13 @@ pub fn keys_bound_to_the_inbox<'a>(
         })
         .map(|(key, _)| key.clone())
         .collect();
-    keys.sort_by_key(|key| key.to_string());
+    let primary = default_release_key().key;
+    keys.sort_by(|a, b| {
+        (*b == primary)
+            .cmp(&(*a == primary))
+            .then(a.key_modifiers.len().cmp(&b.key_modifiers.len()))
+            .then(a.cmp(b))
+    });
     keys.dedup();
     keys
 }

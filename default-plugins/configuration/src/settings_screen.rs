@@ -9,7 +9,7 @@ use crate::mousebindings_screen::MousebindingsScreen;
 use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
     check_text, describe, inherits_from, is_row_kind, kdl_for, mode_choice_label, option_value,
-    parse_hex_colour, section, settings_in, sort_for_display, Category, Scope, SettingInfo,
+    parse_hex_colour, release_key_placeholder, section, settings_in, sort_for_display, Category, Scope, SettingInfo,
     SettingKind, TextCheck, BUNDLED_FONT, CATEGORIES, INPUT_MODES, MISSING_SUFFIX, UNSET_CHOICE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
@@ -617,6 +617,16 @@ impl SettingsScreen {
             })
             .unwrap_or(0)
     }
+    fn text_placeholder(&self, key: SettingKey, info: &SettingInfo) -> String {
+        if key != SettingKey::LiveViewReleaseKey {
+            return info.default.to_owned();
+        }
+        let mode = self
+            .current_value(SettingKey::DefaultMode)
+            .and_then(|mode| mode.parse().ok())
+            .unwrap_or(InputMode::Normal);
+        release_key_placeholder(&self.snapshot.keybindings, mode)
+    }
     fn toggle_value(&self, key: SettingKey) -> bool {
         self.current_value(key)
             .unwrap_or_else(|| describe(key).default.to_owned())
@@ -675,7 +685,7 @@ impl SettingsScreen {
             SettingKind::Text(_) => TextInput::new(self.current_value(key).unwrap_or_default())
                 .label(info.name)
                 .label_width(label_width)
-                .placeholder(info.default)
+                .placeholder(self.text_placeholder(key, &info))
                 .into(),
             SettingKind::Number { min, max, step } => {
                 NumberStepper::new(info.name, self.number_value(key, min))
