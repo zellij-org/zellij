@@ -9,7 +9,7 @@ use zellij_integration_tests::{
     col, keys, FakePtyHandle, GridSnapshot, Size, TestRunner, TestSession, TERMINAL_SIZE,
 };
 
-const CLICK_TO_TYPE: &str = "click to type";
+const CLICK_TO_TYPE: &str = zellij_integration_tests::inbox::TYPE_INTO_IT_HINT;
 const BROWSER_TABS: &str = "│ Sessions (";
 const TALL: Size = Size {
     cols: 140,
@@ -243,7 +243,7 @@ fn the_inbox_shows_the_pane_live_beside_the_list_when_wide_and_only_the_list_whe
     wait_for_indicator(&wide, "the item is counted", "● 1");
     open_inbox_on(&wide, text);
     let grid_snapshot = wide.wait_until("the live view shows the pane", |grid_snapshot| {
-        grid_snapshot.contains("some output") && grid_snapshot.contains("<ENTER> type")
+        grid_snapshot.contains("some output") && grid_snapshot.contains("<Alt ENTER> type")
     });
     let (output_column, _) = grid_snapshot.position_of("some output").unwrap();
     let (item_column, _) = grid_snapshot.position_of(&row).unwrap();

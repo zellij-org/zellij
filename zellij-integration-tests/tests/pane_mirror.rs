@@ -3,7 +3,7 @@
 use crossbeam::channel::{unbounded, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use zellij_integration_tests::inbox::press_release_key;
+use zellij_integration_tests::inbox::{press_esc, press_release_key};
 use zellij_integration_tests::{
     keys, BackgroundTestSession, CliCaller, FakePtyHandle, GridSnapshot, LayoutInfo, TestClient,
     TestRunner, TestSession, TERMINAL_SIZE,
@@ -647,7 +647,7 @@ fn the_wheel_scrolls_an_alternate_screen_program_without_mouse_tracking() {
 }
 
 #[test]
-fn only_the_first_esc_of_the_release_key_reaches_the_source_and_capture_ends() {
+fn the_release_key_never_reaches_the_source_and_capture_ends() {
     let (source, terminal) = start_source();
     terminal.output(b"$ release key source\r\n");
     let mut viewer = start_viewer();
@@ -684,7 +684,7 @@ fn only_the_first_esc_of_the_release_key_reaches_the_source_and_capture_ends() {
         stdin.ends_with(b"c")
     });
     assert!(
-        stdin.ends_with(b"a\x1bc"),
+        stdin.ends_with(b"ac"),
         "something reached the source between the captures: {:?}",
         String::from_utf8_lossy(&stdin)
     );
@@ -1083,9 +1083,9 @@ fn a_viewer_client_that_detaches_releases_the_pin() {
         third_id,
         third_grid.text
     );
-    press_release_key(&third_client);
+    press_esc(&third_client);
     third_client.wait_until(
-        "the release key of a client that never captured reaches its plugin",
+        "an esc of a client that never captured reaches its plugin",
         |grid_snapshot| grid_snapshot.contains("input key=ESC"),
     );
     third_client.detach();

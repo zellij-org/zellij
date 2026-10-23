@@ -1155,6 +1155,12 @@ impl SessionMetaData {
             _ => None,
         }
     }
+    pub fn live_view_release_keys(&self, client_id: &ClientId) -> Vec<KeyWithModifier> {
+        self.get_client_keybinds_and_mode(client_id)
+            .and_then(|(keybinds, mode, _)| keybinds.0.get(mode))
+            .map(|bindings| crate::pane_mirror::live_view::keys_bound_to_the_inbox(bindings))
+            .unwrap_or_default()
+    }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
         self.modal_popup_clients.remove(&client_id);

@@ -3956,7 +3956,7 @@ impl LiveView {
     }
 }
 
-pub const DEFAULT_LIVE_VIEW_RELEASE_KEY: &str = "Esc Esc";
+pub const DEFAULT_LIVE_VIEW_RELEASE_KEY: &str = "F9";
 pub const LIVE_VIEW_DOUBLE_PRESS_MS: u64 = 400;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6073,12 +6073,22 @@ mod live_view_release_gesture_tests {
         assert_eq!(LiveViewReleaseGesture::parse(""), None);
         assert_eq!(LiveViewReleaseGesture::parse("Esc Tab"), None);
         assert_eq!(LiveViewReleaseGesture::parse("not a key"), None);
-        assert!(LiveViewReleaseGesture::parse(DEFAULT_LIVE_VIEW_RELEASE_KEY).is_some());
+        assert_eq!(
+            LiveViewReleaseGesture::parse(DEFAULT_LIVE_VIEW_RELEASE_KEY),
+            Some(LiveViewReleaseGesture {
+                key: KeyWithModifier::new(BareKey::F(9)),
+                double: false,
+            })
+        );
     }
 
     #[test]
     fn the_gesture_is_shown_as_a_key_hint() {
         assert_eq!(LiveViewReleaseGesture::display("Esc Esc"), "<ESC> twice");
+        assert_eq!(
+            LiveViewReleaseGesture::display(DEFAULT_LIVE_VIEW_RELEASE_KEY),
+            "<F9>"
+        );
         assert_eq!(
             LiveViewReleaseGesture::display("Ctrl Alt Home"),
             "<Ctrl Alt HOME>"

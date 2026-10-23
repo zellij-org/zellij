@@ -8093,6 +8093,7 @@ impl Screen {
         if self.nested_via_client_id == Some(client_id) {
             self.report_upward();
         }
+        self.report_live_views();
         Ok(())
     }
 
@@ -9259,6 +9260,7 @@ impl Screen {
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
         self.update_keybinds(new_keybinds, client_id);
+        self.report_live_views();
         self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());

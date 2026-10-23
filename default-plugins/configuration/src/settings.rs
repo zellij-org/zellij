@@ -778,7 +778,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             PanesAndLayouts,
             "Key that stops typing into a live pane view and gives the keys back to its plugin",
             Text(TextCheck::Key),
-            "Esc Esc",
+            "F9",
             Everyone,
         ),
         SettingKey::NestedSessionHandling => info(

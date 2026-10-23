@@ -153,7 +153,7 @@ fn typing_into_the_live_view_writes_into_a_pane_of_another_session_and_keeps_its
     zellij.wait_until("the inbox shows the item's row", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Allow edit?")
     });
-    zellij.send_stdin(&keys::ENTER);
+    zellij.send_stdin(&keys::ALT_ENTER);
     zellij.wait_until("typing started", |grid_snapshot| {
         grid_snapshot.contains("typing into")
     });
@@ -415,9 +415,9 @@ fn the_dropdown_opens_on_the_newest_counted_item() {
     zellij.wait_until("the dropdown opens on the inbox", |grid_snapshot| {
         shows_inbox(grid_snapshot)
             && grid_snapshot.contains("Newer question?")
-            && grid_snapshot.contains("<g> go")
+            && grid_snapshot.contains("<ENTER> go")
     });
-    zellij.send_stdin(&keys::key('g'));
+    zellij.send_stdin(&keys::ENTER);
     let _previous = follow(&mut zellij, newer);
     drop(older);
     zellij.quit();
@@ -489,10 +489,10 @@ fn showing_a_hidden_session_manager_again_selects_the_newest_item() {
         |grid_snapshot| {
             shows_inbox(grid_snapshot)
                 && grid_snapshot.contains("While hidden?")
-                && grid_snapshot.contains("<g> go")
+                && grid_snapshot.contains("<ENTER> go")
         },
     );
-    zellij.send_stdin(&keys::key('g'));
+    zellij.send_stdin(&keys::ENTER);
     let _previous = follow(&mut zellij, background);
     zellij.quit();
 }
@@ -647,9 +647,9 @@ fn going_to_an_item_shows_done_and_the_way_back_once_it_clears() {
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
-        grid_snapshot.contains("Go there?") && grid_snapshot.contains("<g> go")
+        grid_snapshot.contains("Go there?") && grid_snapshot.contains("<ENTER> go")
     });
-    zellij.send_stdin(&keys::key('g'));
+    zellij.send_stdin(&keys::ENTER);
     let _previous = follow(&mut zellij, background);
     terminal.output(&program_status("state=clear"));
     let expected = format!("back to {}", first);

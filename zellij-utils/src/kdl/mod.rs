@@ -4608,7 +4608,7 @@ impl Options {
             "{}\n{}\n{}\n{}",
             " ",
             "// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard",
-            "// Default: \"Esc Esc\" (a key written twice means pressing it twice quickly)",
+            "// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)",
             "// ",
         );
 

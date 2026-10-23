@@ -389,7 +389,8 @@ pub struct Options {
         long,
         value_parser,
         help = "The key that gives typing back to a plugin while a live pane view inside it is \
-                taking the keyboard (default \"Esc Esc\", a key written twice means pressing it twice)"
+                taking the keyboard (default: the key bound to ToggleSessionCard, F9 if none; a key \
+                written twice means pressing it twice)"
     )]
     #[serde(default)]
     pub live_view_release_key: Option<String>,

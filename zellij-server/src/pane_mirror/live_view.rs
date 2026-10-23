@@ -14,6 +14,7 @@ use zellij_utils::data::{
     Event, KeyModifier, KeyWithModifier, LiveViewRelease, LiveViewReleaseGesture, MirrorState,
     PaneAddress, DEFAULT_LIVE_VIEW_RELEASE_KEY, LIVE_VIEW_DOUBLE_PRESS_MS,
 };
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::pane_mirror::MirrorInput;
 use zellij_utils::pane_size::Size;
@@ -23,14 +24,21 @@ pub type LiveViewKey = (u32, ClientId);
 pub type SharedLiveViews = Rc<RefCell<LiveViews>>;
 pub type SharedLiveViewCaptures = Arc<Mutex<LiveViewCaptures>>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum LiveViewReleaseKey {
+    #[default]
+    Bound,
+    Configured(LiveViewReleaseGesture),
+}
+
 #[derive(Debug, Default)]
 pub struct LiveViewCaptures {
-    gestures: BTreeMap<ClientId, LiveViewReleaseGesture>,
+    gestures: BTreeMap<ClientId, LiveViewReleaseKey>,
     presses: BTreeMap<ClientId, std::time::Instant>,
 }
 
 impl LiveViewCaptures {
-    pub fn set(&mut self, client_id: ClientId, gesture: Option<LiveViewReleaseGesture>) {
+    pub fn set(&mut self, client_id: ClientId, gesture: Option<LiveViewReleaseKey>) {
         self.presses.remove(&client_id);
         match gesture {
             Some(gesture) => {
@@ -55,11 +63,47 @@ impl LiveViewCaptures {
         self.presses.remove(&client_id);
     }
 
-    pub fn key_pressed(&mut self, client_id: ClientId, key: &KeyWithModifier) -> bool {
+    pub fn key_pressed(
+        &mut self,
+        client_id: ClientId,
+        key: &KeyWithModifier,
+        bound_keys: impl FnOnce() -> Vec<KeyWithModifier>,
+    ) -> bool {
         match self.gestures.get(&client_id) {
-            Some(gesture) => is_release_press(gesture, key, &mut self.presses, client_id),
+            Some(LiveViewReleaseKey::Configured(gesture)) => {
+                is_release_press(gesture, key, &mut self.presses, client_id)
+            },
+            Some(LiveViewReleaseKey::Bound) => {
+                self.presses.remove(&client_id);
+                release_keys_or_default(bound_keys()).contains(key)
+            },
             None => false,
         }
+    }
+}
+
+pub fn keys_bound_to_the_inbox<'a>(
+    bindings: impl IntoIterator<Item = (&'a KeyWithModifier, &'a Vec<Action>)>,
+) -> Vec<KeyWithModifier> {
+    let mut keys: Vec<KeyWithModifier> = bindings
+        .into_iter()
+        .filter(|(_, actions)| {
+            actions
+                .iter()
+                .any(|action| matches!(action, Action::ToggleSessionCard))
+        })
+        .map(|(key, _)| key.clone())
+        .collect();
+    keys.sort_by_key(|key| key.to_string());
+    keys.dedup();
+    keys
+}
+
+pub fn release_keys_or_default(bound_keys: Vec<KeyWithModifier>) -> Vec<KeyWithModifier> {
+    if bound_keys.is_empty() {
+        vec![default_release_key().key]
+    } else {
+        bound_keys
     }
 }
 
@@ -373,10 +417,11 @@ pub fn merge_redraw(pending: &mut MirrorRedraw, redraw: MirrorRedraw) {
 pub struct LiveViews {
     views: BTreeMap<LiveViewKey, LiveViewSlot>,
     next_view_id: u32,
-    pub release_key: LiveViewReleaseGesture,
-    pub release_key_text: String,
+    pub release_key: LiveViewReleaseKey,
+    pub release_key_text: Option<String>,
     pub styled_underlines: bool,
-    announced_captures: BTreeMap<ClientId, LiveViewReleaseGesture>,
+    announced_captures: BTreeMap<ClientId, LiveViewReleaseKey>,
+    reported_release_keys: BTreeMap<ClientId, String>,
     mouse_drags: BTreeMap<ClientId, LiveViewDrag>,
     pub captures: SharedLiveViewCaptures,
 }
@@ -386,10 +431,11 @@ impl Default for LiveViews {
         LiveViews {
             views: BTreeMap::new(),
             next_view_id: 0,
-            release_key: default_release_key(),
-            release_key_text: DEFAULT_LIVE_VIEW_RELEASE_KEY.to_owned(),
+            release_key: LiveViewReleaseKey::Bound,
+            release_key_text: None,
             styled_underlines: true,
             announced_captures: BTreeMap::new(),
+            reported_release_keys: BTreeMap::new(),
             mouse_drags: BTreeMap::new(),
             captures: Arc::new(Mutex::new(LiveViewCaptures::default())),
         }
@@ -401,21 +447,25 @@ pub fn default_release_key() -> LiveViewReleaseGesture {
         .expect("the default live view release key is a key")
 }
 
-pub fn parse_release_key(release_key: Option<&str>) -> LiveViewReleaseGesture {
-    match release_key {
-        Some(text) => match LiveViewReleaseGesture::parse(text) {
-            Some(gesture) => gesture,
-            None => {
-                log::error!(
-                    "The live view release key {:?} is not a key, using {:?}",
-                    text,
-                    DEFAULT_LIVE_VIEW_RELEASE_KEY
-                );
-                default_release_key()
-            },
+pub fn parse_release_key(release_key: Option<&str>) -> Option<(LiveViewReleaseGesture, String)> {
+    let text = release_key.map(str::trim).filter(|text| !text.is_empty())?;
+    match LiveViewReleaseGesture::parse(text) {
+        Some(gesture) => Some((gesture, text.to_owned())),
+        None => {
+            log::error!(
+                "The live view release key {:?} is not a key, using the key bound to ToggleSessionCard",
+                text
+            );
+            None
         },
-        None => default_release_key(),
     }
+}
+
+pub fn release_key_text_for(bound_keys: Vec<KeyWithModifier>) -> String {
+    release_keys_or_default(bound_keys)
+        .first()
+        .map(|key| key.to_string())
+        .unwrap_or_else(|| DEFAULT_LIVE_VIEW_RELEASE_KEY.to_owned())
 }
 
 fn is_a_merged_double_press(gesture: &LiveViewReleaseGesture, key: &KeyWithModifier) -> bool {
@@ -688,7 +738,7 @@ impl LiveViews {
         }
     }
 
-    pub fn capture_changes(&mut self) -> Vec<(ClientId, Option<LiveViewReleaseGesture>)> {
+    pub fn capture_changes(&mut self) -> Vec<(ClientId, Option<LiveViewReleaseKey>)> {
         let current: BTreeSet<ClientId> = self
             .views
             .iter()
@@ -711,6 +761,32 @@ impl LiveViews {
             }
         }
         changes
+    }
+
+    pub fn set_release_key(&mut self, configured: Option<(LiveViewReleaseGesture, String)>) {
+        match configured {
+            Some((gesture, text)) => {
+                self.release_key = LiveViewReleaseKey::Configured(gesture);
+                self.release_key_text = Some(text);
+            },
+            None => {
+                self.release_key = LiveViewReleaseKey::Bound;
+                self.release_key_text = None;
+            },
+        }
+    }
+
+    pub fn clients(&self) -> BTreeSet<ClientId> {
+        self.views.keys().map(|(_, client_id)| *client_id).collect()
+    }
+
+    pub fn note_release_keys(&mut self, release_keys: BTreeMap<ClientId, String>) {
+        for ((_, client_id), slot) in self.views.iter_mut() {
+            if self.reported_release_keys.get(client_id) != release_keys.get(client_id) {
+                slot.force_report();
+            }
+        }
+        self.reported_release_keys = release_keys;
     }
 }
 

@@ -272,9 +272,9 @@ web_client {
 // mirror_resizes_source_pane false
  
 // The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard
-// Default: "Esc Esc" (a key written twice means pressing it twice quickly)
+// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)
 // 
-// live_view_release_key "Esc Esc"
+// live_view_release_key "F9"
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.

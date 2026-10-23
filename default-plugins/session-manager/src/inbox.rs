@@ -31,6 +31,8 @@ pub const LIVE_VIEW_GAP: usize = 2;
 pub const SESSIONS_VIEW_MIN_COLS: usize = 20;
 pub const SESSIONS_VIEW_MIN_ROWS: usize = 3;
 pub const LIVE_VIEW_REFUSED_TEXT: &str = "Typing was refused: focus the inbox and try again";
+pub const TYPE_KEY: &str = "<Alt ENTER>";
+pub const TYPE_INTO_IT_HINT: &str = "<Alt ENTER> type into it";
 pub const SESSION_COLUMN_MAX: usize = 12;
 pub const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 pub const SPINNER_FRAME_MS: u64 = 100;
@@ -345,6 +347,25 @@ pub struct Inbox {
     pub live_notice: Option<String>,
     pub resize_requests_in_flight: VecDeque<bool>,
     pub sessions_target: Option<SessionsLiveTarget>,
+    pub listed: Vec<GlobalAttentionItem>,
+    pub held: Vec<ItemKey>,
+    dropped: Vec<ItemKey>,
+    shown_items: Vec<GlobalAttentionItem>,
+}
+
+fn always_listed(item: &GlobalAttentionItem) -> bool {
+    item.is_counted() || item.item.attention.watched
+}
+
+fn ends_the_pane(state: MirrorState) -> bool {
+    matches!(
+        state,
+        MirrorState::Closed(
+            MirrorClosedReason::PaneClosed
+                | MirrorClosedReason::PaneNotFound
+                | MirrorClosedReason::SessionEnding
+        )
+    )
 }
 
 pub fn now_ms() -> u64 {
@@ -610,6 +631,7 @@ impl Inbox {
             .map(|key| self.find(key).is_some())
             .unwrap_or(false);
         self.global = Some(global);
+        self.refresh_listed();
         let capturing = self.is_capturing();
         if self.select_newest_on_arrival && self.counted_count() > 0 && !capturing {
             self.select_newest_on_arrival = false;
@@ -652,16 +674,189 @@ impl Inbox {
     }
 
     pub fn find(&self, key: &ItemKey) -> Option<&GlobalAttentionItem> {
-        self.global
-            .as_ref()
-            .and_then(|g| g.find(&key.session, &key.pane_id))
+        self.items()
+            .iter()
+            .find(|item| item.is_same_pane(&key.session, &key.pane_id))
     }
 
     fn items(&self) -> &[GlobalAttentionItem] {
+        &self.shown_items
+    }
+
+    fn server_items(&self) -> &[GlobalAttentionItem] {
         self.global
             .as_ref()
             .map(|g| g.items.as_slice())
             .unwrap_or(&[])
+    }
+
+    fn lists(&self, item: &GlobalAttentionItem) -> bool {
+        self.show_quiet || always_listed(item)
+    }
+
+    pub fn is_held(&self, key: &ItemKey) -> bool {
+        self.held.contains(key)
+    }
+
+    fn server_item(&self, key: &ItemKey) -> Option<&GlobalAttentionItem> {
+        self.server_items()
+            .iter()
+            .find(|item| item.is_same_pane(&key.session, &key.pane_id))
+    }
+
+    fn refresh_listed(&mut self) {
+        let dropped = std::mem::take(&mut self.dropped);
+        self.dropped = dropped
+            .into_iter()
+            .filter(|key| self.server_item(key).is_some())
+            .collect();
+        let listed = std::mem::take(&mut self.listed);
+        self.listed = listed
+            .into_iter()
+            .filter(|known| {
+                let session_runs = self
+                    .global
+                    .as_ref()
+                    .map(|global| global.has_session(&known.session))
+                    .unwrap_or(true);
+                let let_go = match self.server_item(&ItemKey::of(known)) {
+                    Some(item) => item.is_muted(),
+                    None => known.item.attention.watched,
+                };
+                session_runs && !let_go
+            })
+            .collect();
+        let fresh: Vec<GlobalAttentionItem> = self
+            .listed
+            .iter()
+            .map(|known| {
+                self.server_items()
+                    .iter()
+                    .find(|item| item.is_same_pane(&known.session, &known.item.pane_id))
+                    .filter(|item| self.lists(item))
+                    .cloned()
+                    .unwrap_or_else(|| known.clone())
+            })
+            .collect();
+        self.listed = fresh;
+        self.rebuild_items();
+    }
+
+    fn rebuild_items(&mut self) {
+        let mut items = vec![];
+        let mut held = vec![];
+        for item in self.server_items() {
+            let key = ItemKey::of(item);
+            let known = self.listed.iter().find(|known| ItemKey::of(known) == key);
+            match known {
+                Some(known) if !self.lists(item) => {
+                    items.push(known.clone());
+                    held.push(key);
+                },
+                _ => items.push(item.clone()),
+            }
+        }
+        for known in &self.listed {
+            let key = ItemKey::of(known);
+            if !self
+                .server_items()
+                .iter()
+                .any(|item| ItemKey::of(item) == key)
+            {
+                items.push(known.clone());
+                held.push(key);
+            }
+        }
+        self.shown_items = items;
+        self.held = held;
+    }
+
+    fn remember_listed(&mut self, order: &[usize]) {
+        for index in order {
+            let item = &self.shown_items[*index];
+            let key = ItemKey::of(item);
+            if self.dropped.contains(&key) {
+                continue;
+            }
+            match self
+                .listed
+                .iter_mut()
+                .find(|known| ItemKey::of(known) == key)
+            {
+                Some(known) => *known = item.clone(),
+                None => self.listed.push(item.clone()),
+            }
+        }
+    }
+
+    pub fn forget_listed(&mut self) -> bool {
+        self.dropped.clear();
+        if self.listed.is_empty() {
+            return false;
+        }
+        self.listed.clear();
+        self.rebuild_items();
+        true
+    }
+
+    fn forget_listed_where(&mut self, gone: impl Fn(&GlobalAttentionItem) -> bool) -> bool {
+        let before = self.listed.len();
+        let previous_position = self.selected_position(&self.ordered());
+        self.listed.retain(|known| !gone(known));
+        if self.listed.len() == before {
+            return false;
+        }
+        self.rebuild_items();
+        self.keep_selection_at(previous_position);
+        true
+    }
+
+    fn keep_selection_at(&mut self, previous_position: Option<usize>) {
+        if self.is_capturing() {
+            return;
+        }
+        let Some(key) = self.selection.clone() else {
+            return;
+        };
+        if self.find(&key).is_some() {
+            return;
+        }
+        let order = self.ordered();
+        self.selection = previous_position
+            .and_then(|position| order.get(position.min(order.len().saturating_sub(1))))
+            .map(|index| ItemKey::of(&self.items()[*index]));
+    }
+
+    pub fn forget_closed_panes_here(&mut self, open_panes: &[u32]) -> bool {
+        self.forget_listed_where(|known| {
+            known.is_current
+                && matches!(known.item.pane_id, PaneId::Terminal(id) if !open_panes.contains(&id))
+        })
+    }
+
+    pub fn dismiss_selected(&mut self) {
+        let Some(key) = self.selected_item().map(ItemKey::of) else {
+            return;
+        };
+        self.mark_selected_seen();
+        if !self.dropped.contains(&key) {
+            self.dropped.push(key.clone());
+        }
+        self.forget_listed_where(|known| ItemKey::of(known) == key);
+    }
+
+    pub fn dismiss_all(&mut self) {
+        mark_all_seen(None);
+        let previous_position = self.selected_position(&self.ordered());
+        let keys: Vec<ItemKey> = self.items().iter().map(ItemKey::of).collect();
+        for key in keys {
+            if !self.dropped.contains(&key) {
+                self.dropped.push(key);
+            }
+        }
+        self.listed.clear();
+        self.rebuild_items();
+        self.keep_selection_at(previous_position);
     }
 
     pub fn matches_filter(&self, item: &GlobalAttentionItem) -> bool {
@@ -676,6 +871,7 @@ impl Inbox {
     pub fn toggle_show_quiet(&mut self) {
         self.show_quiet = !self.show_quiet;
         self.list_scroll = 0;
+        self.rebuild_items();
     }
 
     pub fn toggle_grouping(&mut self) {
@@ -794,6 +990,7 @@ impl Inbox {
             .unwrap_or(false)
         {
             self.show_quiet = true;
+            self.rebuild_items();
         }
         self.selection = Some(key);
     }
@@ -847,14 +1044,14 @@ impl Inbox {
 
     pub fn card_content(&self, now: u64) -> CardContent {
         let counted: Vec<usize> = self
-            .items()
+            .server_items()
             .iter()
             .enumerate()
             .filter(|(_, item)| item.is_counted() && self.changed_while_away(item))
             .map(|(index, _)| index)
             .collect();
         let activity = self
-            .items()
+            .server_items()
             .iter()
             .filter(|i| i.is_activity() && self.changed_while_away(i))
             .count();
@@ -1150,6 +1347,26 @@ impl Inbox {
         }
     }
 
+    pub fn hide_live_view(&mut self) {
+        let Some(sent) = self.live_view_sent.as_ref() else {
+            return;
+        };
+        let hidden = LiveView {
+            target: PaneAddress::local("", PaneId::Terminal(0)),
+            x: sent.x,
+            y: sent.y,
+            cols: 0,
+            rows: 0,
+            resize_allowed: sent.resize_allowed,
+            view_only: false,
+        };
+        if *sent == hidden {
+            return;
+        }
+        set_live_view(Some(hidden.clone()));
+        self.live_view_sent = Some(hidden);
+    }
+
     pub fn clear_live_view(&mut self) {
         if self.live_view_sent.take().is_some() {
             self.resize_requests_in_flight.clear();
@@ -1197,7 +1414,21 @@ impl Inbox {
     pub fn apply_live_view_status(&mut self, status: LiveViewStatus) -> bool {
         let was_captured = self.is_capturing();
         self.adopt_resize_allowed(&status);
-        let changed = self.live.as_ref() != Some(&status);
+        let mut changed = self.live.as_ref() != Some(&status);
+        if let Some(target) = status
+            .target
+            .as_ref()
+            .filter(|_| ends_the_pane(status.state))
+        {
+            let key = ItemKey {
+                session: target.session.clone(),
+                pane_id: target.pane_id,
+            };
+            if !self.dropped.contains(&key) {
+                self.dropped.push(key.clone());
+            }
+            changed |= self.forget_listed_where(|known| ItemKey::of(known) == key);
+        }
         if status.input_captured {
             self.live_notice = None;
             if self.capture_target.is_none() {
@@ -1294,11 +1525,8 @@ impl Inbox {
         if let Some(notice) = self.live_notice.as_ref() {
             return notice.clone();
         }
-        if self.sessions_target.is_some() {
-            return format!(
-                "click to type · {} to stop",
-                self.release_key_text()
-            );
+        if self.live_view_target().is_some() {
+            return TYPE_INTO_IT_HINT.to_owned();
         }
         String::new()
     }
@@ -1343,14 +1571,12 @@ impl Inbox {
                 )
             });
         let found = from_sessions.or_else(|| {
-            target
-                .and_then(|key| self.find(&key).cloned())
-                .map(|item| {
-                    (
-                        sanitize_display_text(&item.session_label()),
-                        sanitize_display_text(&item.pane_label()),
-                    )
-                })
+            target.and_then(|key| self.find(&key).cloned()).map(|item| {
+                (
+                    sanitize_display_text(&item.session_label()),
+                    sanitize_display_text(&item.pane_label()),
+                )
+            })
         });
         match found {
             Some(labels) => {
@@ -1619,11 +1845,29 @@ impl Inbox {
             None,
         );
         let hint = truncate_plain(&self.live_view_hint_text(), width);
-        if hint.is_empty() {
-            if let Some(detail) = self.selected_detail(width) {
-                print_text_with_coordinates(detail, x, layout.status_y, Some(width), None);
-            }
+        let detail_room = if hint.is_empty() {
+            width
         } else {
+            width.saturating_sub(hint.width() + 2)
+        };
+        let detail = if self.sessions_target.is_none()
+            && !capturing
+            && self.live_notice.is_none()
+            && detail_room >= MIN_TEXT_WIDTH
+        {
+            self.selected_detail(detail_room)
+        } else {
+            None
+        };
+        let (hint_x, hint_width) = if detail.is_some() {
+            (x + width - hint.width(), hint.width())
+        } else {
+            (x, width)
+        };
+        if let Some(detail) = detail {
+            print_text_with_coordinates(detail, x, layout.status_y, Some(detail_room), None);
+        }
+        if !hint.is_empty() {
             let text = if capturing {
                 key_hint_text(&hint).color_range(0, 0.."typing into".chars().count())
             } else if self.live_notice.is_some() {
@@ -1631,7 +1875,7 @@ impl Inbox {
             } else {
                 key_hint_text(&hint).dim_all()
             };
-            print_text_with_coordinates(text, x, layout.status_y, Some(width), None);
+            print_text_with_coordinates(text, hint_x, layout.status_y, Some(hint_width), None);
         }
     }
 
@@ -1700,8 +1944,8 @@ impl Inbox {
             ];
         }
         vec![
-            (crate::help::hint("<ENTER>", "type"), ItemAction::Type),
-            (crate::help::hint("<g>", "go"), ItemAction::Go),
+            (crate::help::hint("<ENTER>", "go"), ItemAction::Go),
+            (crate::help::hint(TYPE_KEY, "type"), ItemAction::Type),
             (crate::help::hint("<c>", "dismiss"), ItemAction::Dismiss),
         ]
     }
@@ -1784,6 +2028,7 @@ impl Inbox {
             lines.push(BlockLine::Blank);
         }
         let order = self.ordered();
+        self.remember_listed(&order);
         let selected = self.list_selected_position(&order);
         let show_age = self.live_layout.is_none();
         let mut position = 0;
@@ -1815,7 +2060,16 @@ impl Inbox {
                 } else {
                     lines.len()
                 };
-                let mut text = pane_row(&item, session_width, width, now, show_age, simplified_ui);
+                let held = self.is_held(&ItemKey::of(&item));
+                let mut text = pane_row(
+                    &item,
+                    session_width,
+                    width,
+                    now,
+                    show_age,
+                    simplified_ui,
+                    held,
+                );
                 if is_selected {
                     text = text.selected();
                 }
@@ -1899,7 +2153,10 @@ impl Inbox {
         let mut y = 1;
         let last_y = rows.saturating_sub(2);
         let widths = ColumnWidths::measure(
-            content.items.iter().map(|index| (&self.items()[*index], 0)),
+            content
+                .items
+                .iter()
+                .map(|index| (&self.server_items()[*index], 0)),
             now,
             content_width,
         );
@@ -1907,7 +2164,7 @@ impl Inbox {
             if y > last_y {
                 break;
             }
-            let item = self.items()[*index].clone();
+            let item = self.server_items()[*index].clone();
             let key = ItemKey::of(&item);
             let mut text =
                 item_line(&item, &widths, 0, content_width, now, simplified_ui).style(&item);
@@ -2213,6 +2470,7 @@ fn pane_row(
     now: u64,
     show_age: bool,
     simplified_ui: bool,
+    held: bool,
 ) -> Text {
     let symbol = item_symbol(item, simplified_ui);
     let session = truncate_plain(&session_name(item), session_width);
@@ -2252,6 +2510,9 @@ fn pane_row(
     let line = truncate_plain(&format!("{}{}{}", head, pane, tail), width);
     let padded = format!("{}{}", line, " ".repeat(width.saturating_sub(line.width())));
     let total = line.chars().count();
+    if held {
+        return Text::from(padded.as_str()).dim_all();
+    }
     let session_len = if session_width == 0 {
         0
     } else {
@@ -2503,7 +2764,7 @@ mod tests {
         assert_eq!(
             live,
             vec![crate::help::BlockLine {
-                text: "<ENTER> type  <g> go  <c> dismiss  <?> more".to_owned(),
+                text: "<ENTER> go  <Alt ENTER> type  <c> dismiss  <?> more".to_owned(),
                 secondary: false,
             }]
         );
@@ -2512,7 +2773,7 @@ mod tests {
             .into_iter()
             .map(|line| line.text)
             .collect();
-        assert_eq!(narrow, vec!["<ENTER> type  <g> go  <?> more"]);
+        assert_eq!(narrow, vec!["<ENTER> go  <?> more"]);
     }
 
     #[test]
@@ -2944,7 +3205,7 @@ mod tests {
             resize_allowed: true,
             pinned: captured,
             source_size: None,
-            release_key: "Esc Esc".to_owned(),
+            release_key: "F9".to_owned(),
         }
     }
 
@@ -2977,15 +3238,26 @@ mod tests {
                 .map(|view| view.target.clone()),
             Some(PaneAddress::local("here", PaneId::Terminal(2)))
         );
-        assert_eq!(inbox.list_selected_position(&inbox.ordered()), None);
+        assert_eq!(
+            inbox.list_selected_position(&inbox.ordered()),
+            Some(2),
+            "the cleared target stays listed while the inbox is open"
+        );
         assert_eq!(
             inbox.live_view_hint_text(),
-            "typing into here › pane2 · <ESC> twice or click outside to return"
+            "typing into here › pane2 · <F9> or click outside to return"
         );
         let mut released = live_status(Some(key("here", 2)), false);
         released.input_released_by = Some(LiveViewRelease::Key);
         inbox.apply_live_view_status(released);
         assert!(!inbox.is_capturing());
+        assert_eq!(
+            inbox.selected_item().map(ItemKey::of),
+            Some(key("here", 2)),
+            "a listed item the server cleared stays while the inbox is open"
+        );
+        assert!(inbox.is_held(&key("here", 2)));
+        inbox.dismiss_selected();
         assert_eq!(
             inbox.selected_item().map(ItemKey::of),
             Some(key("other", 5))
@@ -3004,7 +3276,7 @@ mod tests {
         assert_eq!(inbox.live_view_hint_text(), LIVE_VIEW_REFUSED_TEXT);
         assert_eq!(inbox.capture_target, None);
         inbox.move_selection(1);
-        assert_eq!(inbox.live_view_hint_text(), "");
+        assert_eq!(inbox.live_view_hint_text(), TYPE_INTO_IT_HINT);
     }
 
     #[test]
@@ -3331,7 +3603,7 @@ mod tests {
             100,
         );
         long.item.pane_title = "build-the-whole-workspace-now".to_owned();
-        let row = pane_row(&long, SESSION_COLUMN_MAX, 40, 200, false, false);
+        let row = pane_row(&long, SESSION_COLUMN_MAX, 40, 200, false, false, false);
         assert_eq!(row.content(), "● a-very-long…  build-the-wh…rkspace-now");
         assert_eq!(
             level(&row, SESSION_EMPHASIS),
@@ -3339,7 +3611,15 @@ mod tests {
         );
         assert_eq!(level(&row, 0), vec![0]);
         assert!(level(&row, 4).is_empty());
-        let listed = pane_row(&long, SESSION_COLUMN_MAX, 60, 200 + 180_000, true, false);
+        let listed = pane_row(
+            &long,
+            SESSION_COLUMN_MAX,
+            60,
+            200 + 180_000,
+            true,
+            false,
+            false,
+        );
         assert_eq!(
             listed.content().trim_end(),
             "● a-very-long…  build-the-whole-workspace-now · text 1 · 3m"
@@ -3350,10 +3630,10 @@ mod tests {
         let total = listed.content().trim_end().chars().count();
         assert_eq!(level(&listed, 4), (pane_end..total).collect::<Vec<_>>());
         let here = item("here", 2, AttentionStatus::Failed, 100);
-        let row = pane_row(&here, 4, 30, 200, false, false);
+        let row = pane_row(&here, 4, 30, 200, false, false, false);
         assert_eq!(row.content().trim_end(), "✗ here  pane2");
         assert_eq!(level(&row, 6), vec![0]);
-        let by_session = pane_row(&here, 0, 30, 200, false, false);
+        let by_session = pane_row(&here, 0, 30, 200, false, false, false);
         assert_eq!(by_session.content().trim_end(), "✗ pane2");
         assert!(level(&by_session, SESSION_EMPHASIS).is_empty());
         let mut inbox = mixed();
@@ -3559,5 +3839,177 @@ mod tests {
             Some(false),
             "the action is still adopted once the replies are in"
         );
+    }
+
+    fn with_sessions(items: Vec<GlobalAttentionItem>, names: &[&str]) -> GlobalAttention {
+        let mut global = global(items);
+        for name in names {
+            if !global.has_session(name) {
+                global.sessions.push(GlobalSessionAttention {
+                    name: (*name).to_owned(),
+                    is_current: false,
+                    attention: Default::default(),
+                });
+            }
+        }
+        global
+    }
+
+    fn browsed() -> Inbox {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 300),
+            item("web", 2, AttentionStatus::Done, 200),
+            item("docs", 3, AttentionStatus::Done, 100),
+        ]));
+        inbox.select_item(key("web", 2));
+        render(&mut inbox, 88, 15, false);
+        inbox
+    }
+
+    fn row_for(inbox: &mut Inbox, session: &str) -> Text {
+        inbox
+            .block_lines(60, 200, false)
+            .into_iter()
+            .find_map(|line| match line {
+                BlockLine::Item { text, .. } if text.content().contains(session) => Some(text),
+                _ => None,
+            })
+            .expect("the row is listed")
+    }
+
+    #[test]
+    fn a_done_item_seen_while_browsing_stays_dimmed_and_selected_until_the_inbox_closes() {
+        let mut inbox = browsed();
+        assert_eq!(inbox.counted_count(), 3);
+        inbox.update_global(with_sessions(
+            vec![
+                item("api", 1, AttentionStatus::NeedsYou, 300),
+                item("docs", 3, AttentionStatus::Done, 100),
+            ],
+            &["web"],
+        ));
+        assert_eq!(inbox.counted_count(), 2, "the count drops at once");
+        assert_eq!(inbox.tab_titles(1).0, "Inbox (2)");
+        assert_eq!(
+            sessions_in_order(&inbox),
+            vec!["api", "web", "docs"],
+            "the seen item keeps its place"
+        );
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("web", 2)));
+        assert!(inbox.is_held(&key("web", 2)));
+        let held_row = row_for(&mut inbox, "web");
+        assert_eq!(
+            level(&held_row, 4).len(),
+            held_row.content().chars().count()
+        );
+        assert!(level(&held_row, 4).len() > 0);
+        let docs_row = row_for(&mut inbox, "docs");
+        assert!(level(&docs_row, 4).len() < docs_row.content().chars().count());
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(
+            inbox
+                .live_view_sent
+                .as_ref()
+                .map(|view| view.target.clone()),
+            Some(PaneAddress::local("web", PaneId::Terminal(2))),
+            "the seen item is still shown live"
+        );
+        inbox.move_selection(1);
+        inbox.move_selection(-1);
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("web", 2)));
+        assert!(inbox.forget_listed(), "closing the inbox drops it");
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs"]);
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs"]);
+    }
+
+    #[test]
+    fn a_seen_item_that_comes_back_is_shown_as_the_server_has_it() {
+        let mut inbox = browsed();
+        inbox.update_global(with_sessions(
+            vec![item("api", 1, AttentionStatus::NeedsYou, 300)],
+            &["web", "docs"],
+        ));
+        assert!(inbox.is_held(&key("web", 2)));
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 300),
+            item("web", 2, AttentionStatus::Failed, 400),
+        ]));
+        assert!(!inbox.is_held(&key("web", 2)));
+        assert_eq!(status_title(inbox.find(&key("web", 2)).unwrap()), "Failed");
+    }
+
+    #[test]
+    fn dismissing_a_seen_item_removes_it_while_the_inbox_stays_open() {
+        let mut inbox = browsed();
+        inbox.update_global(with_sessions(
+            vec![
+                item("api", 1, AttentionStatus::NeedsYou, 300),
+                item("docs", 3, AttentionStatus::Done, 100),
+            ],
+            &["web"],
+        ));
+        assert!(inbox.is_held(&key("web", 2)));
+        inbox.dismiss_selected();
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs"]);
+        assert_eq!(
+            inbox.selected_item().map(ItemKey::of),
+            Some(key("docs", 3)),
+            "the selection stays in place"
+        );
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs"]);
+    }
+
+    #[test]
+    fn a_seen_item_goes_once_its_pane_or_session_is_gone() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("here", 4, AttentionStatus::Done, 300),
+            item("web", 2, AttentionStatus::Done, 200),
+            item("docs", 3, AttentionStatus::Done, 100),
+        ]));
+        render(&mut inbox, 88, 15, false);
+        let mut sessions_left = with_sessions(vec![], &["docs", "web"]);
+        inbox.update_global(sessions_left.clone());
+        assert_eq!(sessions_in_order(&inbox), vec!["here", "web", "docs"]);
+        assert!(!inbox.forget_closed_panes_here(&[4]));
+        assert!(inbox.forget_closed_panes_here(&[1]));
+        assert_eq!(sessions_in_order(&inbox), vec!["web", "docs"]);
+        let mut closed = live_status(Some(key("web", 2)), false);
+        closed.state = MirrorState::Closed(MirrorClosedReason::PaneClosed);
+        inbox.apply_live_view_status(closed);
+        assert_eq!(sessions_in_order(&inbox), vec!["docs"]);
+        sessions_left
+            .sessions
+            .retain(|session| session.name != "docs");
+        inbox.update_global(sessions_left);
+        assert!(sessions_in_order(&inbox).is_empty());
+    }
+
+    #[test]
+    fn muting_unwatching_or_dismissing_everything_lets_listed_items_go() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 300),
+            watched(item("zed", 5, AttentionStatus::Idle, 0)),
+            item("web", 2, AttentionStatus::Done, 200),
+        ]));
+        render(&mut inbox, 88, 15, false);
+        inbox.update_global(with_sessions(
+            vec![
+                muted(item("api", 1, AttentionStatus::NeedsYou, 300)),
+                item("web", 2, AttentionStatus::Done, 200),
+            ],
+            &["zed"],
+        ));
+        assert_eq!(sessions_in_order(&inbox), vec!["web"]);
+        assert!(inbox.held.is_empty());
+        render(&mut inbox, 88, 15, false);
+        inbox.dismiss_all();
+        render(&mut inbox, 88, 15, false);
+        inbox.update_global(with_sessions(vec![], &["api", "zed", "web"]));
+        assert!(sessions_in_order(&inbox).is_empty());
     }
 }

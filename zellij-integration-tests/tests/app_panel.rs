@@ -66,9 +66,9 @@ fn the_app_panel_shows_the_inbox_and_going_to_an_item_switches_the_client() {
     );
     panel.send_stdin(&keys::TAB);
     panel.wait_until("back on the inbox", |grid_snapshot| {
-        grid_snapshot.contains("Which bran") && grid_snapshot.contains("<g> go")
+        grid_snapshot.contains("Which bran") && grid_snapshot.contains("<ENTER> go")
     });
-    panel.send_stdin(&keys::key('g'));
+    panel.send_stdin(&keys::ENTER);
     let switched = panel
         .join_main_client()
         .expect("going to the item switches the client away");
@@ -615,8 +615,8 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
         |grid_snapshot| {
             grid_snapshot.contains("Inbox (1)")
                 && grid_snapshot.contains("Which branch to use?")
-                && grid_snapshot.contains("<ENTER> type")
-                && grid_snapshot.contains("<g> go")
+                && grid_snapshot.contains("<Alt ENTER> type")
+                && grid_snapshot.contains("<ENTER> go")
                 && grid_snapshot.contains(&title)
         },
     );

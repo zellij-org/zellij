@@ -6,10 +6,11 @@ use crate::{
 pub const INBOX_HELP: &str = "<?> more";
 pub const INBOX_LIST_HELP: &str = "<?> all keys";
 pub const ITEM_ACTIONS: &str = "<c> dismiss";
-pub const GO_KEY: &str = "<g> go";
-pub const TYPE_INTO_IT: &str = "<ENTER> type";
+pub const GO_KEY: &str = "<ENTER> go";
+pub const TYPE_INTO_IT: &str = "<Alt ENTER> type";
+pub const TYPE_INTO_IT_HINT: &str = "<Alt ENTER> type into it";
 pub const TYPING_INTO: &str = "typing into";
-pub const RELEASE_KEY_HINT: &str = "<ESC> twice";
+pub const RELEASE_KEY_HINT: &str = "<F9>";
 pub const SESSIONS_HELP: &str = "<F1> all keys";
 pub const ATTENTION_CONFIG: &str = "session_indicator true\nmouse_mode true";
 
@@ -78,6 +79,9 @@ pub fn press_esc(client: &impl TypesKeys) {
 }
 
 pub fn press_release_key(client: &impl TypesKeys) {
-    press_esc(client);
-    press_esc(client);
+    client.type_bytes(&keys::F9);
+}
+
+pub fn press_type_key(client: &impl TypesKeys) {
+    client.type_bytes(&keys::ALT_ENTER);
 }

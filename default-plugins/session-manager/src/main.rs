@@ -267,9 +267,11 @@ impl ZellijPlugin for State {
             let view = pipe_message.payload.unwrap_or_else(|| "auto".to_owned());
             self.app_panel_auto_pending = app_panel::waits_for_items(&view);
             self.show_app_panel_view(Some(&view));
+            self.settle_inbox_hold();
             return true;
         }
-        let should_render = self.handle_pipe(pipe_message);
+        let mut should_render = self.handle_pipe(pipe_message);
+        should_render |= self.settle_inbox_hold();
         self.keep_ages_fresh();
         should_render
     }
@@ -282,6 +284,7 @@ impl ZellijPlugin for State {
         }
         let mut should_render = self.handle_event(event);
         should_render |= self.settle_app_panel_view(user_input, attention);
+        should_render |= self.settle_inbox_hold();
         self.keep_ages_fresh();
         should_render
     }
@@ -291,6 +294,27 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    fn settle_inbox_hold(&mut self) -> bool {
+        if self.is_visible && self.inbox_is_shown() {
+            return self.forget_closed_inbox_panes();
+        }
+        self.inbox.forget_listed();
+        false
+    }
+    fn forget_closed_inbox_panes(&mut self) -> bool {
+        if self.current_panes.panes.is_empty() {
+            return false;
+        }
+        let open_panes: Vec<u32> = self
+            .current_panes
+            .panes
+            .values()
+            .flatten()
+            .filter(|pane| !pane.is_plugin)
+            .map(|pane| pane.id)
+            .collect();
+        self.inbox.forget_closed_panes_here(&open_panes)
+    }
     fn keep_ages_fresh(&mut self) {
         if self.is_visible && self.shows_ages() {
             self.inbox.arm_clock(inbox::now_ms());
@@ -604,6 +628,10 @@ impl State {
             self.inbox.sessions_target = Some(target);
             self.inbox.show_live_view(&layout);
             self.sessions_live_layout = Some(layout);
+        } else if self.sessions_preview_will_render(cols)
+            && (self.selected_session().is_some() || self.on_exited_header())
+        {
+            self.inbox.hide_live_view();
         } else {
             self.inbox.clear_live_view();
         }
@@ -2309,6 +2337,10 @@ enum OpenWay {
     DisconnectOthers,
 }
 
+fn is_alt_enter(key: &KeyWithModifier) -> bool {
+    key.bare_key == BareKey::Enter && key.has_only_modifiers(&[KeyModifier::Alt])
+}
+
 fn open_way(key: &KeyWithModifier) -> Option<OpenWay> {
     if !key.has_only_modifiers(&[KeyModifier::Alt]) {
         return None;
@@ -2799,6 +2831,7 @@ impl State {
             ));
         }
         if self.sessions_live_target().is_some() {
+            hints.push(hint(inbox::TYPE_KEY, "type into the shown pane"));
             hints.push(hint("<click the view>", "type into the shown pane"));
             hints.push(hint(
                 self.inbox.release_key_text(),
@@ -2847,8 +2880,9 @@ impl State {
         let watched = item.map(|i| i.item.attention.watched).unwrap_or(false);
         let mut hints = if self.inbox.live_mode {
             vec![
-                hint("<ENTER> <→>", "type into the shown pane"),
-                hint("<g>", "go to the pane"),
+                hint("<ENTER>", "go to the pane"),
+                hint(inbox::TYPE_KEY, "type into the shown pane"),
+                hint("<click the view>", "type into the shown pane"),
                 hint(
                     "<z>",
                     format!(
@@ -2866,7 +2900,7 @@ impl State {
                 ),
             ]
         } else {
-            vec![hint("<ENTER> <g>", "go to the pane")]
+            vec![hint("<ENTER>", "go to the pane")]
         };
         hints.extend([
             hint("<↓↑>", "select"),
@@ -3166,6 +3200,9 @@ impl State {
         }
     }
     fn handle_manager_key(&mut self, key: &KeyWithModifier) -> Option<bool> {
+        if is_alt_enter(key) {
+            return Some(self.inbox.start_typing());
+        }
         if let Some(pan_move) = panel::pan_move_for_key(key) {
             if self.selected_session_is_exited() {
                 self.panel.preview_pan.apply(pan_move, 0);
@@ -3700,7 +3737,7 @@ impl State {
             ItemAction::Type => {
                 self.inbox.start_typing();
             },
-            ItemAction::Dismiss => self.inbox.mark_selected_seen(),
+            ItemAction::Dismiss => self.inbox.dismiss_selected(),
         }
         true
     }
@@ -3715,17 +3752,13 @@ impl State {
             BareKey::Up if plain => self.inbox.move_selection(-1),
             BareKey::PageDown if plain => self.inbox.move_selection(10),
             BareKey::PageUp if plain => self.inbox.move_selection(-10),
-            BareKey::Enter if plain && live => {
-                self.inbox.start_typing();
-            },
-            BareKey::Right if plain && live => {
+            BareKey::Enter if is_alt_enter(&key) => {
                 self.inbox.start_typing();
             },
             BareKey::Enter if plain => self.go_to_selected_inbox_item(),
-            BareKey::Char('g') if plain => self.go_to_selected_inbox_item(),
             BareKey::Char('z') if plain && live => self.inbox.toggle_resize(),
-            BareKey::Char('c') if plain => self.inbox.mark_selected_seen(),
-            BareKey::Char('C') if plain || shift => mark_all_seen(None),
+            BareKey::Char('c') if plain => self.inbox.dismiss_selected(),
+            BareKey::Char('C') if plain || shift => self.inbox.dismiss_all(),
             BareKey::Char('m') if plain => self.inbox.cycle_selected_mute(),
             BareKey::Char('f') if plain => self.inbox.flip_here_only(),
             BareKey::Char('a') if plain => self.inbox.toggle_show_quiet(),
@@ -4038,10 +4071,14 @@ mod live_view_state_tests {
         assert!(!state.inbox.shows_live_view());
     }
 
+    fn alt_enter() -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Enter).with_alt_modifier()
+    }
+
     #[test]
-    fn enter_types_into_the_view_and_g_goes_to_the_pane() {
+    fn enter_goes_to_the_pane_and_alt_enter_types_into_the_view() {
         let mut state = browser();
-        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        assert!(state.handle_inbox_key(alt_enter()));
         assert_eq!(
             state.inbox.capture_target,
             Some(ItemKey {
@@ -4050,14 +4087,43 @@ mod live_view_state_tests {
             })
         );
         assert_eq!(state.panel.size, Some(PanelSize::Manager));
+        let mut go = browser();
+        assert!(go.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        assert_eq!(go.inbox.capture_target, None);
+        assert_eq!(go.panel.size, None);
         let mut narrow = browser();
         narrow.render_plugin(16, 60);
-        narrow.handle_inbox_key(KeyWithModifier::new(BareKey::Enter));
+        narrow.handle_inbox_key(alt_enter());
         assert_eq!(narrow.inbox.capture_target, None);
+        assert_eq!(narrow.panel.size, Some(PanelSize::Manager));
+        narrow.handle_inbox_key(KeyWithModifier::new(BareKey::Enter));
         assert_eq!(narrow.panel.size, None);
-        let mut go = browser();
-        go.handle_inbox_key(KeyWithModifier::new(BareKey::Char('g')));
-        assert_eq!(go.panel.size, None);
+    }
+
+    #[test]
+    fn g_and_right_do_nothing_in_the_inbox() {
+        let mut state = browser();
+        for bare_key in [BareKey::Char('g'), BareKey::Right] {
+            assert!(!state.handle_inbox_key(KeyWithModifier::new(bare_key)));
+            assert_eq!(state.inbox.capture_target, None);
+            assert_eq!(state.panel.size, Some(PanelSize::Manager));
+        }
+    }
+
+    #[test]
+    fn the_inbox_key_line_and_all_keys_list_name_enter_and_alt_enter() {
+        let mut state = browser();
+        let hints = state.inbox_hints(true);
+        let keys: Vec<&str> = hints.iter().map(|hint| hint.key.as_str()).collect();
+        assert!(keys.contains(&"<ENTER>"));
+        assert!(keys.contains(&inbox::TYPE_KEY));
+        assert!(keys.contains(&"<click the view>"));
+        assert!(keys.contains(&"<F9>"));
+        assert!(!keys
+            .iter()
+            .any(|key| key.contains("<g>") || key.contains("→")));
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_hint_text(), inbox::TYPE_INTO_IT_HINT);
     }
 
     fn key_of(session: &str, id: u32) -> ItemKey {
@@ -4086,7 +4152,7 @@ mod live_view_state_tests {
             resize_allowed: true,
             pinned: false,
             source_size: None,
-            release_key: "Esc Esc".to_owned(),
+            release_key: "F9".to_owned(),
         };
         state.inbox.apply_live_view_status(status);
         state.render_plugin(16, 88);
@@ -4098,7 +4164,7 @@ mod live_view_state_tests {
         let api = key_of("api", 1);
         assert!(state.inbox.is_selected(&api));
         let (line, column) = row_of(&state, &api);
-        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        assert!(state.handle_inbox_key(alt_enter()));
         report(&mut state, true, None);
         assert!(state.handle_inbox_mouse(Mouse::LeftClick(line, column)));
         report(&mut state, false, Some(LiveViewRelease::ClickOutside));
@@ -4121,7 +4187,7 @@ mod live_view_state_tests {
             let mut state = browser();
             let api = key_of("api", 1);
             let (line, column) = row_of(&state, &api);
-            assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+            assert!(state.handle_inbox_key(alt_enter()));
             report(&mut state, true, None);
             report(&mut state, false, Some(unseen));
             state.handle_inbox_mouse(Mouse::LeftClick(line, column));
@@ -4141,7 +4207,7 @@ mod live_view_state_tests {
         let (api, web) = (key_of("api", 1), key_of("web", 2));
         let (api_line, api_column) = row_of(&state, &api);
         let (web_line, web_column) = row_of(&state, &web);
-        assert!(state.handle_inbox_key(KeyWithModifier::new(BareKey::Enter)));
+        assert!(state.handle_inbox_key(alt_enter()));
         report(&mut state, true, None);
         assert!(state.inbox.is_capturing());
         assert!(!state.handle_inbox_mouse(Mouse::ScrollDown(1)));
@@ -4238,7 +4304,17 @@ mod sessions_live_view_tests {
             .inbox
             .live_view_sent
             .as_ref()
+            .filter(|view| !view.target.session.is_empty())
             .map(|view| (view.target.session.clone(), view.target.pane_id))
+    }
+
+    fn hidden(state: &State) -> bool {
+        state
+            .inbox
+            .live_view_sent
+            .as_ref()
+            .map(|view| view.target.session.is_empty() && view.cols == 0 && view.rows == 0)
+            .unwrap_or(false)
     }
 
     fn api(id: u32) -> Option<(String, PaneId)> {
@@ -4272,6 +4348,10 @@ mod sessions_live_view_tests {
         expand(&mut state);
         select(&mut state, 3);
         assert_eq!(shown(&state), None, "a plugin pane keeps the snapshot");
+        assert!(
+            hidden(&state),
+            "the view is kept without a target so the browsed panes keep their size"
+        );
         assert!(state.sessions_live_layout.is_none());
         select(&mut state, 4);
         assert_eq!(shown(&state), api(6));
@@ -4291,6 +4371,7 @@ mod sessions_live_view_tests {
             Some(("old".to_owned(), false, false))
         );
         assert_eq!(shown(&state), None, "an exited session keeps its saved preview");
+        assert!(hidden(&state));
         assert!(state.sessions_live_layout.is_none());
     }
 
@@ -4300,21 +4381,21 @@ mod sessions_live_view_tests {
         assert_eq!(shown(&state), api(2));
         state.show_all_keys = true;
         state.render_plugin(ROWS, COLS);
-        assert_eq!(shown(&state), None, "the all keys list");
+        assert_eq!(state.inbox.live_view_sent, None, "the all keys list");
         state.show_all_keys = false;
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), api(2));
         state.single_screen_state.mode = SingleScreenMode::SelectingLayout;
         state.render_plugin(ROWS, COLS);
-        assert_eq!(shown(&state), None, "the layout picker");
+        assert_eq!(state.inbox.live_view_sent, None, "the layout picker");
         state.single_screen_state.mode = SingleScreenMode::SearchAndSelect;
         state.render_plugin(ROWS, 50);
-        assert_eq!(shown(&state), None, "the narrow layout");
+        assert_eq!(state.inbox.live_view_sent, None, "the narrow layout");
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), api(2));
         state.is_welcome_screen = true;
         state.render_plugin(ROWS, COLS);
-        assert_eq!(shown(&state), None, "the welcome screen");
+        assert_eq!(state.inbox.live_view_sent, None, "the welcome screen");
         state.is_welcome_screen = false;
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), api(2));
@@ -4326,6 +4407,7 @@ mod sessions_live_view_tests {
         state.panel.size = None;
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), None, "closed");
+        assert_eq!(state.inbox.live_view_sent, None);
     }
 
     #[test]
@@ -4372,10 +4454,7 @@ mod sessions_live_view_tests {
     fn a_click_on_the_view_types_into_its_pane_and_while_typing_rows_only_select() {
         let mut state = sessions_browser();
         let layout = state.sessions_live_layout.expect("the view is drawn");
-        assert!(state
-            .inbox
-            .live_view_hint_text()
-            .contains("click to type"));
+        assert_eq!(state.inbox.live_view_hint_text(), inbox::TYPE_INTO_IT_HINT);
         assert!(state.handle_mouse(Mouse::LeftClick(
             (layout.top + 2) as isize,
             layout.box_x + 2
@@ -4393,7 +4472,7 @@ mod sessions_live_view_tests {
             resize_allowed: true,
             pinned: true,
             source_size: None,
-            release_key: "Esc Esc".to_owned(),
+            release_key: "F9".to_owned(),
         });
         state.render_plugin(ROWS, COLS);
         assert!(state.inbox.live_view_hint_text().starts_with("typing into"));
@@ -4419,6 +4498,28 @@ mod sessions_live_view_tests {
     }
 
     #[test]
+    fn alt_enter_types_into_the_shown_pane_and_enter_still_attaches() {
+        let mut state = sessions_browser();
+        let alt_enter = KeyWithModifier::new(BareKey::Enter).with_alt_modifier();
+        assert_eq!(state.handle_manager_key(&alt_enter), Some(true));
+        assert_eq!(
+            state.inbox.capture_target,
+            Some(ItemKey {
+                session: "api".to_owned(),
+                pane_id: PaneId::Terminal(2),
+            })
+        );
+        assert_eq!(state.panel.size, Some(PanelSize::Manager));
+        let mut exited = sessions_browser();
+        select(&mut exited, 2);
+        expand(&mut exited);
+        select(&mut exited, 3);
+        assert!(exited.selected_session_is_exited());
+        assert_eq!(exited.handle_manager_key(&alt_enter), Some(false));
+        assert_eq!(exited.inbox.capture_target, None);
+    }
+
+    #[test]
     fn the_all_keys_list_says_how_to_type_into_the_view_and_shift_keys_scroll_only_saved_previews()
     {
         let mut state = sessions_browser();
@@ -4426,7 +4527,10 @@ mod sessions_live_view_tests {
         assert!(hints
             .iter()
             .any(|hint| hint.key == "<click the view>" && hint.label.contains("type")));
-        assert!(hints.iter().any(|hint| hint.key == "<ESC> twice"));
+        assert!(hints
+            .iter()
+            .any(|hint| hint.key == inbox::TYPE_KEY && hint.label.contains("type")));
+        assert!(hints.iter().any(|hint| hint.key == "<F9>"));
         assert!(!hints.iter().any(|hint| hint.key == "<Shift ←↓↑→>"));
         let shift_up = KeyWithModifier::new(BareKey::Up).with_shift_modifier();
         assert_eq!(state.handle_manager_key(&shift_up), None);
@@ -4438,6 +4542,7 @@ mod sessions_live_view_tests {
         let hints = state.sessions_hints(true);
         assert!(hints.iter().any(|hint| hint.key == "<Shift ←↓↑→>"));
         assert!(!hints.iter().any(|hint| hint.key == "<click the view>"));
+        assert!(!hints.iter().any(|hint| hint.key == inbox::TYPE_KEY));
         assert_eq!(state.handle_manager_key(&shift_up), Some(true));
         assert!(state.panel.preview_pan.rows_up > 0);
     }

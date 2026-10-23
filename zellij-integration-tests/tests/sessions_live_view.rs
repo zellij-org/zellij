@@ -12,7 +12,7 @@ use zellij_integration_tests::{
 };
 
 const BROWSER_TABS: &str = "│ Sessions (";
-const CLICK_TO_TYPE: &str = "click to type";
+const CLICK_TO_TYPE: &str = zellij_integration_tests::inbox::TYPE_INTO_IT_HINT;
 const SNAPSHOT_SUMMARY: &str = "Clients attached";
 const END: &[u8] = b"\x1b[F";
 
@@ -45,7 +45,10 @@ fn source_session(text: &str) -> (BackgroundTestSession, FakePtyHandle) {
     (session, terminal)
 }
 
-fn source_session_with_layout(layout: &str, terminals: usize) -> (BackgroundTestSession, Vec<FakePtyHandle>) {
+fn source_session_with_layout(
+    layout: &str,
+    terminals: usize,
+) -> (BackgroundTestSession, Vec<FakePtyHandle>) {
     let session = TestRunner::new(TERMINAL_SIZE)
         .with_config(ATTENTION_CONFIG)
         .with_layout(LayoutInfo::Stringified(layout.to_owned()))
@@ -110,9 +113,10 @@ fn view_size_of(grid_snapshot: &GridSnapshot, session: &str) -> (u16, u16) {
 }
 
 fn listed_row(grid_snapshot: &GridSnapshot, name: &str) -> Option<usize> {
-    grid_snapshot.lines().iter().position(|line| {
-        line.contains(name) && !line.contains('┌') && !line.contains('└')
-    })
+    grid_snapshot
+        .lines()
+        .iter()
+        .position(|line| line.contains(name) && !line.contains('┌') && !line.contains('└'))
 }
 
 fn shown_session(grid_snapshot: &GridSnapshot) -> Option<String> {
@@ -120,7 +124,11 @@ fn shown_session(grid_snapshot: &GridSnapshot) -> Option<String> {
         let start = line.find('┌')? + '┌'.len_utf8();
         let rest = &line[start..];
         let end = rest.find(" › ")?;
-        rest[..end].trim().rsplit(' ').next().map(|name| name.to_owned())
+        rest[..end]
+            .trim()
+            .rsplit(' ')
+            .next()
+            .map(|name| name.to_owned())
     })
 }
 
@@ -223,8 +231,7 @@ fn the_sessions_tab_shows_the_focused_pane_of_a_running_session_live() {
 #[test]
 fn selecting_a_tab_row_and_a_pane_row_switches_the_view_to_that_pane() {
     let (mut zellij, _) = main_session();
-    let (other, terminals) =
-        source_session_with_layout("layout {\n    pane\n    pane\n}\n", 2);
+    let (other, terminals) = source_session_with_layout("layout {\n    pane\n    pane\n}\n", 2);
     terminals[0].output(b"$ text of the focused pane\r\n");
     terminals[1].output(b"$ text of the other pane\r\n");
     let name = other.session_name();
@@ -322,7 +329,7 @@ fn a_plugin_pane_keeps_the_snapshot_preview() {
 }
 
 #[test]
-fn a_click_on_the_view_types_into_the_pane_and_a_double_esc_stops_typing() {
+fn a_click_on_the_view_types_into_the_pane_and_f9_stops_typing() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = source_session("$ type in here");
     let name = other.session_name();
@@ -339,14 +346,18 @@ fn a_click_on_the_view_types_into_the_pane_and_a_double_esc_stops_typing() {
         stdin.ends_with(b"hello")
     });
     press_release_key(&zellij);
-    zellij.wait_until("a double esc stops typing", |grid_snapshot| {
+    zellij.wait_until("F9 stops typing", |grid_snapshot| {
         !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(CLICK_TO_TYPE)
     });
     zellij.send_stdin(b"x");
     zellij.wait_until("keys go to the search field again", |grid_snapshot| {
         !grid_snapshot.contains(CLICK_TO_TYPE)
     });
-    assert!(terminal.stdin_bytes().ends_with(b"hello\x1b"));
+    assert!(
+        terminal.stdin_bytes().ends_with(b"hello"),
+        "F9 reached the pane: {:?}",
+        String::from_utf8_lossy(&terminal.stdin_bytes())
+    );
     zellij.quit();
 }
 
@@ -400,8 +411,7 @@ fn browsing_sessions_resizes_each_pane_once_it_settles_going_back_does_not_and_c
 }
 
 #[test]
-fn switching_between_the_inbox_and_the_sessions_keeps_the_browsed_panes_until_the_browser_closes()
-{
+fn switching_between_the_inbox_and_the_sessions_keeps_the_browsed_panes_until_the_browser_closes() {
     let (mut zellij, _) = main_session();
     let (item, item_terminal) = source_session("$ the inbox item pane");
     item_terminal.output(&needs_you("Switch tabs?"));
@@ -427,12 +437,8 @@ fn switching_between_the_inbox_and_the_sessions_keeps_the_browsed_panes_until_th
     zellij.send_stdin(&keys::TAB);
     wait_until_listed(&zellij, &[item.session_name(), plain.session_name()]);
     select_session(&zellij, plain.session_name());
-    let sessions_view_size = wait_for_the_settled_view(
-        &zellij,
-        &plain,
-        &plain_terminal,
-        "the plain session pane",
-    );
+    let sessions_view_size =
+        wait_for_the_settled_view(&zellij, &plain, &plain_terminal, "the plain session pane");
     zellij.send_stdin(&keys::TAB);
     zellij.wait_until("the inbox shows the item again", |grid_snapshot| {
         shown_inside_the_view(grid_snapshot, item.session_name(), "the inbox item pane")
@@ -488,4 +494,84 @@ fn a_nested_session_does_not_show_or_resize_the_pane_of_its_parent_that_runs_it(
         host_pane_sizes,
         "the pane that runs the nested session was resized"
     );
+}
+
+#[test]
+fn alt_enter_types_into_the_shown_pane_with_or_without_kitty_encoding() {
+    let (mut zellij, _) = main_session();
+    let (other, terminal) = source_session("$ alt enter here");
+    let name = other.session_name();
+    open_the_sessions(&zellij, &[name]);
+    select_session(&zellij, name);
+    wait_for_the_view_of(&zellij, name, "alt enter here");
+    for (alt_enter, typed) in [
+        (keys::ALT_ENTER.to_vec(), "legacy"),
+        (keys::ALT_ENTER_KITTY.to_vec(), "kitty"),
+    ] {
+        zellij.send_stdin(&alt_enter);
+        zellij.wait_until("alt enter starts typing", |grid_snapshot| {
+            grid_snapshot.contains(TYPING_INTO)
+        });
+        zellij.send_stdin(typed.as_bytes());
+        terminal.wait_for_stdin("the typed text reached the pane", |stdin| {
+            stdin.ends_with(typed.as_bytes())
+        });
+        press_release_key(&zellij);
+        zellij.wait_until("F9 stops typing", |grid_snapshot| {
+            !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(CLICK_TO_TYPE)
+        });
+    }
+    assert!(
+        terminal.stdin_bytes().ends_with(b"legacykitty"),
+        "{:?}",
+        String::from_utf8_lossy(&terminal.stdin_bytes())
+    );
+    zellij.quit();
+}
+
+#[test]
+fn a_selection_without_a_live_pane_keeps_the_browsed_pane_at_its_size_until_the_browser_closes() {
+    let (mut zellij, _) = main_session();
+    let (other, terminals) = source_session_with_layout(
+        "layout {\n    pane\n    pane {\n        plugin location=\"zellij:strider\"\n    }\n}\n",
+        1,
+    );
+    terminals[0].output(b"$ the browsed pane\r\n");
+    let layout_size = layout_size_of(&terminals[0]);
+    let name = other.session_name();
+    open_the_sessions(&zellij, &[name]);
+    select_session(&zellij, name);
+    let view_size = wait_for_the_settled_view(&zellij, &other, &terminals[0], "the browsed pane");
+    let settled_sizes = terminals[0].size_history();
+    zellij.send_stdin(&keys::RIGHT);
+    zellij.wait_until("the session shows its tab", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains("Tab #1 (2 panes)"))
+    });
+    zellij.send_stdin(&keys::RIGHT);
+    zellij.send_stdin(&keys::RIGHT);
+    wait_for_pane_rows(&zellij);
+    zellij.send_stdin(&keys::RIGHT);
+    wait_for_the_view_of(&zellij, name, "the browsed pane");
+    zellij.send_stdin(&keys::DOWN);
+    zellij.wait_until("the plugin pane has a snapshot", |grid_snapshot| {
+        grid_snapshot.contains(SNAPSHOT_SUMMARY) && !grid_snapshot.contains(CLICK_TO_TYPE)
+    });
+    terminals[0].output(b"$ barrier after the plugin row\r\n");
+    zellij.send_stdin(&keys::UP);
+    wait_for_the_view_of(&zellij, name, "barrier after the plugin row");
+    assert_eq!(terminals[0].size(), Some(view_size));
+    assert_eq!(
+        terminals[0].size_history(),
+        settled_sizes,
+        "selecting a pane without a live view gave the browsed pane its size back"
+    );
+    close_the_browser(&zellij);
+    terminals[0].wait_for_size(
+        "closing the browser gives the browsed pane its layout size back",
+        |cols, rows| (cols, rows) == layout_size,
+    );
+    zellij.quit();
 }

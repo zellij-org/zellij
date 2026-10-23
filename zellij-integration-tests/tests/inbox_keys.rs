@@ -4,8 +4,8 @@ use std::time::Duration;
 use zellij_integration_tests::attention::{counted, needs_you, session_counts, wait_for_counted};
 use zellij_integration_tests::inbox::{
     background_session_with, inbox_shows, open_inbox_on, press_esc, press_release_key,
-    session_needing_you, ATTENTION_CONFIG, INBOX_HELP, RELEASE_KEY_HINT, SESSIONS_HELP,
-    TYPING_INTO,
+    press_type_key, session_needing_you, ATTENTION_CONFIG, GO_KEY, INBOX_HELP, RELEASE_KEY_HINT,
+    SESSIONS_HELP, TYPE_INTO_IT, TYPING_INTO,
 };
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
@@ -303,7 +303,7 @@ fn escape_while_typing_reaches_the_pane_and_the_release_key_returns_to_the_list(
     let (_other, terminal) = session_needing_you("Type here?");
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     open_inbox_on(&zellij, "Type here?");
-    zellij.send_stdin(&keys::ENTER);
+    press_type_key(&zellij);
     zellij.wait_until("typing started", |grid_snapshot| {
         grid_snapshot.contains(TYPING_INTO)
     });
@@ -377,9 +377,9 @@ fn clicking_the_go_there_action_switches_to_the_item() {
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     open_inbox_on(&zellij, "Go there?");
     let grid_snapshot = zellij.wait_until("the action is offered", |grid_snapshot| {
-        grid_snapshot.contains("<g> go")
+        grid_snapshot.contains(GO_KEY) && grid_snapshot.contains(TYPE_INTO_IT)
     });
-    click(&zellij, &grid_snapshot, "<g> go");
+    click(&zellij, &grid_snapshot, GO_KEY);
     let (switch, _previous) = zellij.follow_switch_into(other);
     assert_eq!(switch.pane_id, Some((terminal.terminal_id(), false)));
     zellij.wait_until("the switched client is attached", |grid_snapshot| {
@@ -473,7 +473,16 @@ fn question_mark_opens_all_keys_from_the_inbox_and_escape_closes_it() {
     let grid_snapshot = zellij.wait_until("the all keys screen is shown", |grid_snapshot| {
         grid_snapshot.contains("All keys") && grid_snapshot.contains("<C>")
     });
-    for key in ["<C>", "<f>", "<a>", "<s>", "<g>", "<z>", RELEASE_KEY_HINT] {
+    for key in [
+        "<C>",
+        "<f>",
+        "<a>",
+        "<s>",
+        "<ENTER>",
+        "<Alt ENTER>",
+        "<z>",
+        RELEASE_KEY_HINT,
+    ] {
         assert!(
             grid_snapshot.contains(key),
             "{} is missing from the list:\n{}",
@@ -481,6 +490,14 @@ fn question_mark_opens_all_keys_from_the_inbox_and_escape_closes_it() {
             grid_snapshot.text
         );
     }
+    assert!(
+        !grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains('│') && (line.contains("<g>") || line.contains("<→>"))),
+        "removed keys are still listed:\n{}",
+        grid_snapshot.text
+    );
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("escape returns to the inbox", |grid_snapshot| {
         grid_snapshot.contains(INBOX_HELP) && is_selected(grid_snapshot, &other_row)

@@ -67,6 +67,7 @@ struct Fixture {
     live_views: LiveViews,
     recorded: Arc<Mutex<Recorded>>,
     encoder: MirrorFrameEncoder,
+    bound: Vec<KeyWithModifier>,
 }
 
 const CLIENT: ClientId = 1;
@@ -97,6 +98,7 @@ fn fixture_with(view_only: bool) -> Fixture {
         live_views,
         recorded,
         encoder: MirrorFrameEncoder::new(),
+        bound: vec![],
     };
     let first = frame(&mut fixture.encoder, &["hello"]);
     fixture.event(first);
@@ -239,12 +241,13 @@ fn typed_keys_go_to_the_source_only_while_capture_is_on() {
 
 impl Fixture {
     fn route_key(&mut self, key: KeyWithModifier, raw_bytes: &[u8]) -> bool {
+        let bound = self.bound.clone();
         let released = self
             .live_views
             .captures
             .lock()
             .unwrap()
-            .key_pressed(CLIENT, &key);
+            .key_pressed(CLIENT, &key, || bound);
         if released {
             self.live_views.release_client(CLIENT, LiveViewRelease::Key);
             self.live_views.announce_captures();
@@ -255,11 +258,16 @@ impl Fixture {
         false
     }
     fn route_keybinding(&mut self, key: KeyWithModifier) -> bool {
+        let bound = self.bound.clone();
         self.live_views
             .captures
             .lock()
             .unwrap()
-            .key_pressed(CLIENT, &key)
+            .key_pressed(CLIENT, &key, || bound)
+    }
+    fn configure(&mut self, release_key: &str) {
+        self.live_views
+            .set_release_key(parse_release_key(Some(release_key)));
     }
     fn capture(&mut self) {
         self.live_views.start_capture(KEY, true).unwrap();
@@ -271,12 +279,22 @@ fn esc() -> KeyWithModifier {
     KeyWithModifier::new(BareKey::Esc)
 }
 
+fn f9() -> KeyWithModifier {
+    KeyWithModifier::new(BareKey::F(9))
+}
+
+fn esc_twice() -> LiveViewReleaseGesture {
+    parse_release_key(Some("Esc Esc")).unwrap().0
+}
+
 #[test]
 fn a_single_release_key_ends_capture_and_never_reaches_the_source() {
     let mut fixture = fixture();
-    fixture.live_views.release_key = parse_release_key(Some("Ctrl Alt Home"));
+    fixture.configure("Ctrl Alt Home");
     fixture.capture();
-    let release_key = fixture.live_views.release_key.key.clone();
+    let release_key = KeyWithModifier::new(BareKey::Home)
+        .with_ctrl_modifier()
+        .with_alt_modifier();
     assert!(fixture.route_key(release_key.clone(), b"\x1b[1;7H"));
     assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
     assert!(fixture.inputs().is_empty());
@@ -294,20 +312,77 @@ fn a_single_release_key_ends_capture_and_never_reaches_the_source() {
 }
 
 #[test]
-fn the_default_release_key_is_esc_twice_and_the_first_esc_reaches_the_source() {
+fn the_default_release_key_is_f9_and_a_double_esc_reaches_the_source() {
     let mut fixture = fixture();
     fixture.capture();
     assert!(!fixture.route_key(esc(), b"\x1b"));
-    assert_eq!(fixture.inputs().len(), 1);
-    assert!(fixture.route_key(esc(), b"\x1b"));
-    assert_eq!(fixture.inputs().len(), 1, "the second Esc stays in Zellij");
+    assert!(!fixture.route_key(esc(), b"\x1b"));
+    assert_eq!(
+        fixture.inputs().len(),
+        2,
+        "both Esc presses reach the program"
+    );
+    assert!(fixture.live_views.is_captured(PLUGIN, CLIENT));
+    assert!(fixture.route_key(f9(), b"\x1b[20~"));
+    assert_eq!(fixture.inputs().len(), 2, "F9 stays in Zellij");
+    assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
+}
+
+#[test]
+fn the_key_bound_to_the_inbox_releases_and_f9_then_reaches_the_source() {
+    let mut fixture = fixture();
+    let ctrl_y = KeyWithModifier::new(BareKey::Char('y')).with_ctrl_modifier();
+    let alt_i = KeyWithModifier::new(BareKey::Char('i')).with_alt_modifier();
+    fixture.bound = vec![ctrl_y.clone(), alt_i.clone()];
+    fixture.capture();
+    assert!(!fixture.route_key(f9(), b"\x1b[20~"));
+    assert_eq!(fixture.inputs().len(), 1, "F9 reaches the program");
+    assert!(fixture.route_key(alt_i, b"\x1bi"));
     assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
     fixture.capture();
     assert!(
-        !fixture.route_key(esc(), b"\x1b"),
-        "capturing again starts a new count"
+        fixture.route_key(ctrl_y, b"\x19"),
+        "any of the bindings works"
     );
-    assert!(fixture.live_views.is_captured(PLUGIN, CLIENT));
+    assert_eq!(fixture.inputs().len(), 1);
+}
+
+#[test]
+fn a_configured_release_key_beats_the_binding() {
+    let mut fixture = fixture();
+    fixture.bound = vec![f9()];
+    fixture.configure("Esc Esc");
+    fixture.capture();
+    assert!(!fixture.route_key(f9(), b"\x1b[20~"));
+    assert!(!fixture.route_key(esc(), b"\x1b"));
+    assert!(fixture.route_key(esc(), b"\x1b"));
+    assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
+    assert_eq!(
+        fixture.inputs().len(),
+        2,
+        "F9 and the first Esc reach the program"
+    );
+    fixture.configure("not a key");
+    assert_eq!(fixture.live_views.release_key, LiveViewReleaseKey::Bound);
+    fixture.capture();
+    assert!(fixture.route_key(f9(), b"\x1b[20~"));
+}
+
+#[test]
+fn the_keys_bound_to_the_inbox_are_the_ones_that_toggle_the_session_card() {
+    let f9_key = f9();
+    let ctrl_y = KeyWithModifier::new(BareKey::Char('y')).with_ctrl_modifier();
+    let ctrl_g = KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier();
+    let toggle = vec![Action::ToggleSessionCard];
+    let lock = vec![Action::SwitchToMode {
+        input_mode: zellij_utils::data::InputMode::Locked,
+    }];
+    let bindings = vec![(&f9_key, &toggle), (&ctrl_g, &lock), (&ctrl_y, &toggle)];
+    let bound = keys_bound_to_the_inbox(bindings);
+    assert_eq!(bound, vec![ctrl_y.clone(), f9_key.clone()]);
+    assert_eq!(release_key_text_for(bound), "Ctrl y");
+    assert_eq!(release_key_text_for(vec![]), "F9");
+    assert_eq!(release_keys_or_default(vec![]), vec![f9_key]);
 }
 
 #[test]
@@ -329,6 +404,7 @@ fn the_screen_never_releases_on_keys_it_is_sent() {
 #[test]
 fn a_key_that_runs_a_keybinding_between_two_escs_starts_the_double_press_over() {
     let mut fixture = fixture();
+    fixture.configure("Esc Esc");
     fixture.capture();
     assert!(!fixture.route_key(esc(), b"\x1b"));
     let alt_n = KeyWithModifier::new(BareKey::Char('n')).with_alt_modifier();
@@ -377,28 +453,32 @@ fn capture_is_known_to_the_shared_count_as_soon_as_it_starts_and_ends() {
 }
 
 #[test]
-fn the_configured_release_key_is_used_and_a_bad_one_falls_back_to_the_default() {
+fn the_configured_release_key_is_used_and_a_bad_or_missing_one_follows_the_binding() {
     assert_eq!(
         parse_release_key(Some("Ctrl Alt End")),
-        LiveViewReleaseGesture {
-            key: KeyWithModifier::from_str("Ctrl Alt End").unwrap(),
-            double: false,
-        }
+        Some((
+            LiveViewReleaseGesture {
+                key: KeyWithModifier::from_str("Ctrl Alt End").unwrap(),
+                double: false,
+            },
+            "Ctrl Alt End".to_owned()
+        ))
     );
     assert_eq!(
-        parse_release_key(Some("Ctrl q Ctrl q")),
-        LiveViewReleaseGesture {
+        parse_release_key(Some(" Ctrl q Ctrl q ")).map(|(gesture, _)| gesture),
+        Some(LiveViewReleaseGesture {
             key: KeyWithModifier::from_str("Ctrl q").unwrap(),
             double: true,
-        }
+        })
     );
-    assert_eq!(parse_release_key(Some("not a key")), default_release_key());
-    assert_eq!(parse_release_key(None), default_release_key());
+    assert_eq!(parse_release_key(Some("not a key")), None);
+    assert_eq!(parse_release_key(Some("  ")), None);
+    assert_eq!(parse_release_key(None), None);
     assert_eq!(
         default_release_key(),
         LiveViewReleaseGesture {
-            key: KeyWithModifier::new(BareKey::Esc),
-            double: true,
+            key: f9(),
+            double: false,
         }
     );
 }
@@ -413,7 +493,7 @@ fn press(
 
 #[test]
 fn a_single_key_gesture_releases_on_the_first_press() {
-    let gesture = parse_release_key(Some("Ctrl Alt Home"));
+    let gesture = parse_release_key(Some("Ctrl Alt Home")).unwrap().0;
     let mut presses = BTreeMap::new();
     let ctrl_alt_home = KeyWithModifier::new(BareKey::Home)
         .with_ctrl_modifier()
@@ -430,7 +510,7 @@ fn a_single_key_gesture_releases_on_the_first_press() {
 
 #[test]
 fn a_double_gesture_needs_two_presses_within_the_window_with_nothing_between() {
-    let gesture = default_release_key();
+    let gesture = esc_twice();
     let mut presses = BTreeMap::new();
     assert!(!press(&gesture, BareKey::Esc, &mut presses));
     assert!(press(&gesture, BareKey::Esc, &mut presses));
@@ -474,7 +554,7 @@ fn a_double_gesture_needs_two_presses_within_the_window_with_nothing_between() {
 
 #[test]
 fn two_plain_escapes_merged_into_alt_esc_count_as_the_double_press() {
-    let gesture = default_release_key();
+    let gesture = esc_twice();
     let mut presses = BTreeMap::new();
     let alt_esc = KeyWithModifier::new(BareKey::Esc).with_alt_modifier();
     assert!(is_release_press(&gesture, &alt_esc, &mut presses, CLIENT));
@@ -482,7 +562,7 @@ fn two_plain_escapes_merged_into_alt_esc_count_as_the_double_press() {
     assert!(!press(&gesture, BareKey::Esc, &mut presses));
     assert!(is_release_press(&gesture, &alt_esc, &mut presses, CLIENT));
     assert!(presses.is_empty());
-    let single = parse_release_key(Some("Ctrl Alt Home"));
+    let single = parse_release_key(Some("Ctrl Alt Home")).unwrap().0;
     let alt_ctrl_alt_home = KeyWithModifier::new(BareKey::Home)
         .with_ctrl_modifier()
         .with_alt_modifier();
@@ -492,14 +572,14 @@ fn two_plain_escapes_merged_into_alt_esc_count_as_the_double_press() {
         &mut presses,
         CLIENT
     ));
-    let alt_q = parse_release_key(Some("Alt q Alt q"));
+    let alt_q = parse_release_key(Some("Alt q Alt q")).unwrap().0;
     assert!(!is_release_press(
         &alt_q,
         &KeyWithModifier::new(BareKey::Char('q')).with_alt_modifier(),
         &mut presses,
         CLIENT
     ));
-    let ctrl_q = parse_release_key(Some("Ctrl q Ctrl q"));
+    let ctrl_q = parse_release_key(Some("Ctrl q Ctrl q")).unwrap().0;
     let alt_ctrl_q = KeyWithModifier::new(BareKey::Char('q'))
         .with_ctrl_modifier()
         .with_alt_modifier();
@@ -509,6 +589,7 @@ fn two_plain_escapes_merged_into_alt_esc_count_as_the_double_press() {
 #[test]
 fn a_merged_alt_esc_while_capturing_ends_capture_without_reaching_the_source() {
     let mut fixture = fixture();
+    fixture.configure("Esc Esc");
     fixture.capture();
     assert!(fixture.route_key(
         KeyWithModifier::new(BareKey::Esc).with_alt_modifier(),
@@ -596,7 +677,7 @@ fn captures_are_announced_once_and_withdrawn() {
         vec![(CLIENT, Some(release_key.clone()))]
     );
     assert!(fixture.live_views.capture_changes().is_empty());
-    fixture.live_views.release_key = parse_release_key(Some("Ctrl Alt End"));
+    fixture.configure("Ctrl Alt End");
     assert_eq!(fixture.live_views.capture_changes().len(), 1);
     fixture.live_views.release(&KEY, LiveViewRelease::Plugin);
     assert_eq!(fixture.live_views.capture_changes(), vec![(CLIENT, None)]);

@@ -1094,7 +1094,8 @@ fn the_sessions_tab_shows_the_bottom_of_a_running_session_live() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     preview_of_a_busy_session(&zellij, background.session_name());
     let grid_snapshot = zellij.wait_until("the preview is live", |grid_snapshot| {
-        grid_snapshot.contains("click to type") && visible_rows(grid_snapshot).contains(&60)
+        grid_snapshot.contains(zellij_integration_tests::inbox::TYPE_INTO_IT_HINT)
+            && visible_rows(grid_snapshot).contains(&60)
     });
     assert!(
         !visible_rows(&grid_snapshot).contains(&1),

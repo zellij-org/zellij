@@ -13,10 +13,13 @@ pub const fn key(character: char) -> [u8; 1] {
 }
 
 pub const ENTER: [u8; 1] = [b'\r'];
+pub const ALT_ENTER: [u8; 2] = [ESC_BYTE, b'\r'];
+pub const ALT_ENTER_KITTY: [u8; 7] = *b"\x1b[13;3u";
 pub const ESC: [u8; 1] = [ESC_BYTE];
 pub const ESC_KEY: [u8; 5] = *b"\x1b[27u";
 pub const SPACE: [u8; 1] = [b' '];
 pub const TAB: [u8; 1] = [b'\t'];
+pub const F8: [u8; 5] = *b"\x1b[19~";
 pub const F9: [u8; 5] = *b"\x1b[20~";
 pub const UP: [u8; 3] = *b"\x1b[A";
 pub const DOWN: [u8; 3] = *b"\x1b[B";

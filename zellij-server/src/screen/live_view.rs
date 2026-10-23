@@ -1,5 +1,7 @@
 use super::Screen;
-use crate::pane_mirror::live_view::{parse_release_key, DragButton};
+use crate::pane_mirror::live_view::{
+    keys_bound_to_the_inbox, parse_release_key, release_key_text_for, DragButton,
+};
 use crate::pane_mirror::{
     LiveViewKeyOutcome, LiveViewRect, LiveViewReport, LiveViewSlot, MirrorEventRoute, MirrorView,
 };
@@ -8,12 +10,10 @@ use crate::plugins::PluginInstruction;
 use crate::route::NotificationEnd;
 use crate::screen::ScreenInstruction;
 use crate::ClientId;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
-use zellij_utils::data::{
-    InputMode, KeyWithModifier, LiveView, LiveViewRelease, PaneAddress,
-    DEFAULT_LIVE_VIEW_RELEASE_KEY,
-};
+use zellij_utils::data::{InputMode, KeyWithModifier, LiveView, LiveViewRelease, PaneAddress};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_mirror::MirrorTransportEvent;
 use zellij_utils::position::Position;
@@ -93,13 +93,32 @@ impl Screen {
         }
     }
 
+    fn live_view_release_key_text(&self, client_id: ClientId) -> String {
+        if let Some(text) = self.live_views.borrow().release_key_text.clone() {
+            return text;
+        }
+        let (mode, _) = self.current_mode_for_client(client_id);
+        let keybinds = self
+            .client_keybinds
+            .get(&client_id)
+            .unwrap_or(&self.default_keybinds);
+        let bound = keybinds
+            .iter()
+            .find(|(bound_mode, _)| *bound_mode == mode)
+            .map(|(_, bindings)| {
+                keys_bound_to_the_inbox(bindings.iter().map(|(key, actions)| (key, actions)))
+            })
+            .unwrap_or_default();
+        release_key_text_for(bound)
+    }
+
     fn send_live_view_report(
         &self,
         plugin_pane_id: u32,
         client_id: ClientId,
         report: LiveViewReport,
     ) {
-        let release_key = self.live_views.borrow().release_key_text.clone();
+        let release_key = self.live_view_release_key_text(client_id);
         let _ = self
             .bus
             .senders
@@ -111,30 +130,23 @@ impl Screen {
     }
 
     pub(crate) fn set_live_view_release_key(&mut self, release_key: Option<String>) {
-        let release_key_text = release_key
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| zellij_utils::data::LiveViewReleaseGesture::parse(text).is_some())
-            .unwrap_or(DEFAULT_LIVE_VIEW_RELEASE_KEY)
-            .to_owned();
-        let release_key = parse_release_key(release_key.as_deref());
-        let changed = {
+        let configured = parse_release_key(release_key.as_deref());
+        {
             let mut live_views = self.live_views.borrow_mut();
-            let changed = live_views.release_key_text != release_key_text;
-            live_views.release_key = release_key;
-            live_views.release_key_text = release_key_text;
+            live_views.set_release_key(configured);
             live_views.styled_underlines = self.styled_underlines;
-            if changed {
-                for (_, slot) in live_views.iter_mut() {
-                    slot.force_report();
-                }
-            }
-            changed
-        };
-        if changed {
-            self.report_live_views();
-            self.announce_live_view_captures();
         }
+        self.report_live_views();
+        self.announce_live_view_captures();
+    }
+
+    fn note_live_view_release_keys(&mut self) {
+        let clients = self.live_views.borrow().clients();
+        let release_keys: BTreeMap<ClientId, String> = clients
+            .into_iter()
+            .map(|client_id| (client_id, self.live_view_release_key_text(client_id)))
+            .collect();
+        self.live_views.borrow_mut().note_release_keys(release_keys);
     }
 
     pub(crate) fn set_live_view(
@@ -397,6 +409,10 @@ impl Screen {
     }
 
     pub(crate) fn report_live_views(&mut self) {
+        if self.live_views.borrow().is_empty() {
+            return;
+        }
+        self.note_live_view_release_keys();
         let reports: Vec<((u32, ClientId), LiveViewReport)> = self
             .live_views
             .borrow_mut()
