@@ -1844,7 +1844,7 @@ pub enum CliAction {
         #[clap(long)]
         retain_existing_terminal_panes: bool,
 
-        /// Retain existing plugin panes that do not fit with the layout default: false)
+        /// Retain existing plugin panes that do not fit with the layout (default: false)
         #[clap(long)]
         retain_existing_plugin_panes: bool,
 
