@@ -739,13 +739,7 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) -> Option<i32> {
-    let is_blocking = matches!(
-        &action,
-        Action::NewBlockingPane {
-            unblock_condition: Some(_),
-            ..
-        }
-    );
+    let is_blocking = matches!(&action, Action::NewBlockingPane { .. });
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
