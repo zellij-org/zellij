@@ -16,7 +16,7 @@ import "prompt.proto";
 package api.plugin_command;
 
 enum CommandName {
-  reserved 216, 219, 222;
+  reserved 216, 219, 222, 275 to 278;
   Subscribe = 0;
   Unsubscribe = 1;
   SetSelectable = 2;
@@ -266,10 +266,12 @@ enum CommandName {
   FocusSessionPane = 272;
   OpenSessionWindow = 273;
   DesktopIntegration = 274;
+  SetLiveView = 279;
+  SetLiveViewInput = 280;
 }
 
 message PluginCommand {
-  reserved 165, 167;
+  reserved 165, 167, 218 to 221;
   CommandName name = 1;
   oneof payload {
     SubscribePayload subscribe_payload = 2;
@@ -472,6 +474,8 @@ message PluginCommand {
     SendKeyToSessionPanePayload send_key_to_session_pane_payload = 215;
     OpenSessionWindowPayload open_session_window_payload = 216;
     string desktop_integration_payload = 217;
+    SetLiveViewPayload set_live_view_payload = 222;
+    SetLiveViewInputPayload set_live_view_input_payload = 223;
   }
 }
 
@@ -1779,3 +1783,21 @@ message SetSoftKeyboardPayload {
   bool on = 1;
 }
 
+
+message LiveView {
+  event.PaneAddress target = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+  optional bool resize_allowed = 6;
+  bool view_only = 7;
+}
+
+message SetLiveViewPayload {
+  optional LiveView view = 1;
+}
+
+message SetLiveViewInputPayload {
+  bool capture = 1;
+}

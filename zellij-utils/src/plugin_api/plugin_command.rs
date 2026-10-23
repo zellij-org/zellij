@@ -137,8 +137,9 @@ pub use super::generated_api::api::{
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SendKeyToSessionPanePayload, SessionListSnapshot as ProtobufSessionListSnapshot,
         SessionPanePayload, SetCliPipeExitCodePayload, SetCollapsedSlotPayload,
-        SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
-        SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetFloatingPanePinnedPayload, SetLiveViewInputPayload, SetLiveViewPayload,
+        SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
         SetSelfCollapsedPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
@@ -2886,6 +2887,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ToggleSessionPaneWatch"),
             },
+            Some(CommandName::SetLiveView) => match protobuf_plugin_command.payload {
+                Some(Payload::SetLiveViewPayload(payload)) => Ok(PluginCommand::SetLiveView(
+                    payload.view.map(live_view_from_protobuf).transpose()?,
+                )),
+                _ => Err("Mismatched payload for SetLiveView"),
+            },
+            Some(CommandName::SetLiveViewInput) => match protobuf_plugin_command.payload {
+                Some(Payload::SetLiveViewInputPayload(payload)) => {
+                    Ok(PluginCommand::SetLiveViewInput(payload.capture))
+                },
+                _ => Err("Mismatched payload for SetLiveViewInput"),
+            },
             Some(CommandName::FocusSessionPane) => match protobuf_plugin_command.payload {
                 Some(Payload::FocusSessionPanePayload(payload)) => {
                     let (session_name, pane_id) = session_pane_from_payload(payload)?;
@@ -5088,6 +5101,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     session_pane_payload(session_name, pane_id)?,
                 )),
             }),
+            PluginCommand::SetLiveView(view) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetLiveView as i32,
+                payload: Some(Payload::SetLiveViewPayload(SetLiveViewPayload {
+                    view: view.map(live_view_to_protobuf).transpose()?,
+                })),
+            }),
+            PluginCommand::SetLiveViewInput(capture) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetLiveViewInput as i32,
+                payload: Some(Payload::SetLiveViewInputPayload(SetLiveViewInputPayload {
+                    capture,
+                })),
+            }),
             PluginCommand::FocusSessionPane {
                 session_name,
                 pane_id,
@@ -6454,6 +6479,39 @@ mod tests {
                 session_name: "api".to_owned(),
                 pane_id: PaneId::Terminal(3),
             },
+            PluginCommand::SetLiveView(None),
+            PluginCommand::SetLiveView(Some(crate::data::LiveView::new(
+                crate::data::PaneAddress::local("api", PaneId::Terminal(3)),
+                2,
+                1,
+                40,
+                12,
+            ))),
+            PluginCommand::SetLiveView(Some(crate::data::LiveView {
+                target: crate::data::PaneAddress {
+                    host: Some(crate::data::HostId("laptop".to_owned())),
+                    session: "api".to_owned(),
+                    pane_id: PaneId::Terminal(1),
+                },
+                x: 0,
+                y: 0,
+                cols: 1,
+                rows: 1,
+                resize_allowed: Some(false),
+                view_only: true,
+            })),
+            PluginCommand::SetLiveView(Some(crate::data::LiveView {
+                resize_allowed: Some(true),
+                ..crate::data::LiveView::new(
+                    crate::data::PaneAddress::local("", PaneId::Terminal(0)),
+                    5,
+                    6,
+                    7,
+                    8,
+                )
+            })),
+            PluginCommand::SetLiveViewInput(true),
+            PluginCommand::SetLiveViewInput(false),
         ];
         for original in commands {
             let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
@@ -7065,6 +7123,66 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
                 .filter_map(mousebinding_entry_from_protobuf)
                 .collect(),
             font_families: response.font_families,
+        }
+    }
+}
+
+fn live_view_to_protobuf(
+    view: crate::data::LiveView,
+) -> Result<super::generated_api::api::plugin_command::LiveView, &'static str> {
+    let clamp = |value: usize| value.min(u32::MAX as usize) as u32;
+    Ok(super::generated_api::api::plugin_command::LiveView {
+        target: Some(super::event::pane_address_to_protobuf(view.target)?),
+        x: clamp(view.x),
+        y: clamp(view.y),
+        cols: clamp(view.cols),
+        rows: clamp(view.rows),
+        resize_allowed: view.resize_allowed,
+        view_only: view.view_only,
+    })
+}
+
+fn live_view_from_protobuf(
+    view: super::generated_api::api::plugin_command::LiveView,
+) -> Result<crate::data::LiveView, &'static str> {
+    Ok(crate::data::LiveView {
+        target: super::event::pane_address_from_protobuf(
+            view.target.ok_or("LiveView without a target")?,
+        )?,
+        x: view.x as usize,
+        y: view.y as usize,
+        cols: view.cols as usize,
+        rows: view.rows as usize,
+        resize_allowed: view.resize_allowed,
+        view_only: view.view_only,
+    })
+}
+
+#[cfg(test)]
+mod live_view_command_tests {
+    #[test]
+    fn the_numbers_of_the_removed_mirror_commands_stay_reserved() {
+        let proto = include_str!("plugin_command.proto");
+        assert!(proto.contains("reserved 216, 219, 222, 275 to 278;"));
+        assert!(proto.contains("reserved 165, 167, 218 to 221;"));
+        for removed in [
+            "OpenPaneMirror",
+            "SetMirrorTarget",
+            "ClearMirrorTarget",
+            "SetMirrorResizeAllowed",
+        ] {
+            assert!(
+                !proto.contains(removed),
+                "{} is still in the proto",
+                removed
+            );
+        }
+        for number in 275..=278 {
+            assert!(
+                !proto.contains(&format!(" = {};", number)),
+                "{} is used again",
+                number
+            );
         }
     }
 }

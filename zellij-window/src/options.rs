@@ -47,6 +47,7 @@ pub struct Options {
     pub scroll_momentum: bool,
     pub scroll_momentum_friction: f64,
     pub option_as_alt: OptionAsAlt,
+    pub reuse_session_windows: bool,
 }
 
 pub const DEFAULT_SCROLL_ANIMATION_MS: u16 = 100;
@@ -168,6 +169,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
                 .unwrap_or(DEFAULT_SCROLL_MOMENTUM_FRICTION),
         ),
         option_as_alt: section.macos_option_as_alt.unwrap_or_default(),
+        reuse_session_windows: section.reuse_session_windows.unwrap_or(true),
     }
 }
 
@@ -332,6 +334,7 @@ pub struct Change {
     pub scroll_animation: bool,
     pub scroll_momentum: bool,
     pub option_as_alt: bool,
+    pub reuse_session_windows: bool,
 }
 
 impl Change {
@@ -367,6 +370,7 @@ impl Change {
             scroll_momentum: current.scroll_momentum != next.scroll_momentum
                 || current.scroll_momentum_friction != next.scroll_momentum_friction,
             option_as_alt: current.option_as_alt != next.option_as_alt,
+            reuse_session_windows: current.reuse_session_windows != next.reuse_session_windows,
         }
     }
 
@@ -393,6 +397,7 @@ impl Change {
             || self.scroll_animation
             || self.scroll_momentum
             || self.option_as_alt
+            || self.reuse_session_windows
     }
 
     pub fn needs_redraw(&self) -> bool {
@@ -556,6 +561,24 @@ mod tests {
         assert!(options.open_links_with_shift);
         assert!(options.shift_drag_selects);
         assert_eq!(options.copy_keys, default_copy_keys());
+        assert!(options.reuse_session_windows);
+    }
+
+    #[test]
+    fn turning_off_window_reuse_is_read_and_noticed_as_a_change() {
+        let current = resolve(&Settings::default(), None);
+        let next = resolve(
+            &settings(WindowConfig {
+                reuse_session_windows: Some(false),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert!(!next.reuse_session_windows);
+        let change = Change::between(&current, &next);
+        assert!(change.reuse_session_windows);
+        assert!(change.is_anything());
+        assert!(!change.needs_redraw());
     }
 
     #[test]

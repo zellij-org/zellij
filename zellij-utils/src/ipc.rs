@@ -276,6 +276,12 @@ pub enum ClientToServerMsg {
     FontFamilies {
         families: Vec<String>,
     },
+    PaneMirror {
+        payload: Vec<u8>,
+    },
+    AdoptSessionHistory {
+        history: crate::session_history::SessionHistory,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -352,6 +358,9 @@ pub enum ServerToClientMsg {
     },
     SessionPreview {
         preview: Option<crate::data::SessionPreview>,
+    },
+    PaneMirror {
+        payload: Vec<u8>,
     },
 }
 

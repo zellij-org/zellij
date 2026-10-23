@@ -21,6 +21,7 @@ mod mobile_web;
 pub mod nested_guest;
 pub mod notifications;
 mod pane_groups;
+pub mod pane_mirror;
 mod plugins;
 mod pty;
 mod pty_writer;
@@ -166,6 +167,7 @@ pub enum ServerInstruction {
     ConfigWrittenToDisk(Config),
     WindowSettingsChanged(ClientId, Box<WindowSettings>),
     FontFamilies(ClientId, Vec<String>),
+    AdoptSessionHistory(ClientId, zellij_utils::session_history::SessionHistory),
     HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
@@ -312,6 +314,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
             ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
             ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
+            ServerInstruction::AdoptSessionHistory(..) => ServerContext::AdoptSessionHistory,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {
                 ServerContext::HostTerminalThemeModeChanged
             },
@@ -1076,6 +1079,7 @@ pub(crate) struct SessionMetaData {
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
     pub modal_popup_clients: HashSet<ClientId>,
+    pub live_view_captures: crate::pane_mirror::SharedLiveViewCaptures,
     pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
@@ -1153,9 +1157,35 @@ impl SessionMetaData {
             _ => None,
         }
     }
+    pub fn live_view_release_keys(&self, client_id: &ClientId) -> Vec<KeyWithModifier> {
+        self.get_client_keybinds_and_mode(client_id)
+            .and_then(|(keybinds, mode, _)| keybinds.0.get(mode))
+            .map(|bindings| crate::pane_mirror::live_view::keys_bound_to_the_inbox(bindings))
+            .unwrap_or_default()
+    }
+    pub fn publish_live_view_release_keys(&self) {
+        let bound_keys: BTreeMap<ClientId, Vec<KeyWithModifier>> = self
+            .current_input_modes
+            .keys()
+            .map(|client_id| (*client_id, self.live_view_release_keys(client_id)))
+            .collect();
+        let changed = self
+            .live_view_captures
+            .lock()
+            .map(|mut captures| captures.publish_bound_keys(bound_keys))
+            .unwrap_or(false);
+        if changed {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::LiveViewReleaseKeysChanged);
+        }
+    }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
         self.modal_popup_clients.remove(&client_id);
+        if let Ok(mut captures) = self.live_view_captures.lock() {
+            captures.forget_client(client_id);
+        }
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -1358,6 +1388,19 @@ impl SessionMetaData {
                 .senders
                 .send_to_screen(ScreenInstruction::SetGraphemeClusters(
                     new_config.options.grapheme_clusters.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetMirrorResizesSourcePane(
+                    new_config
+                        .options
+                        .mirror_resizes_source_pane
+                        .unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetLiveViewReleaseKey(
+                    new_config.options.live_view_release_key.clone(),
                 ));
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
@@ -2679,6 +2722,7 @@ mod session_state_tests {
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
             modal_popup_clients: HashSet::new(),
+            live_view_captures: Default::default(),
             terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
@@ -2857,6 +2901,53 @@ theme \"first\"
             session.config_snapshot_for(1).font_families,
             Vec::<String>::new(),
             "a client that listed no fonts was given another client's"
+        );
+    }
+
+    fn published_release_keys(config: &str) -> (Vec<KeyWithModifier>, Vec<KeyWithModifier>, bool) {
+        let (session_data, screen_receiver, _plugin_receiver) =
+            test_session(session_configuration_with_one_client(config), None);
+        let session = session_data.read().unwrap();
+        let session = session.as_ref().unwrap();
+        session.publish_live_view_release_keys();
+        let announced = screen_receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+        });
+        session.publish_live_view_release_keys();
+        assert!(
+            !screen_receiver.try_iter().any(|(instruction, _)| {
+                matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+            }),
+            "unchanged keys are not announced again"
+        );
+        let published = session.live_view_captures.lock().unwrap().bound_keys_of(1);
+        (published, session.live_view_release_keys(&1), announced)
+    }
+
+    #[test]
+    fn the_release_key_hint_comes_from_the_keys_the_route_thread_checks() {
+        use crate::pane_mirror::live_view::release_key_text_for;
+        let (published, checked, announced) = published_release_keys(
+            "keybinds {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert!(announced);
+        assert_eq!(
+            published, checked,
+            "the hint and the route thread use the same keys"
+        );
+        assert_eq!(published.len(), 3);
+        assert_eq!(release_key_text_for(published), "F9");
+        let (published, checked, _) = published_release_keys(
+            "keybinds clear-defaults=true {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert_eq!(published, checked);
+        assert_eq!(release_key_text_for(published), "Alt i");
+        let (published, checked, _) = published_release_keys("keybinds clear-defaults=true {\n}\n");
+        assert!(published.is_empty() && checked.is_empty());
+        assert_eq!(
+            release_key_text_for(published),
+            "F9",
+            "the desktop panel has no bindings and shows F9"
         );
     }
 
@@ -3358,6 +3449,16 @@ fn handle_new_connection(
             );
             return Ok(());
         },
+        ClientToServerMsg::PaneMirror { payload } => {
+            crate::pane_mirror::source::serve_mirror_connection(
+                session_data,
+                receiver,
+                #[cfg(windows)]
+                reply_stream,
+                payload,
+            );
+            return Ok(());
+        },
         first_instruction => {
             return handle_client_connection(
                 session_data,
@@ -3808,6 +3909,9 @@ pub fn start_server_impl(
                     )),
                 );
             }
+        }
+        if let Some(session_data) = session_data.read().unwrap().as_ref() {
+            session_data.publish_live_view_release_keys();
         }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
@@ -4790,6 +4894,22 @@ pub fn start_server_impl(
                     session_data.font_families.insert(client_id, families);
                 }
             },
+            ServerInstruction::AdoptSessionHistory(client_id, history) => {
+                let merged = adopt_client_history(
+                    &mut client_histories,
+                    &own_session_name,
+                    client_id,
+                    history,
+                );
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    let _ = session_data.senders.send_to_screen(
+                        ScreenInstruction::UpdateClientSessionHistory {
+                            client_id,
+                            history: merged,
+                        },
+                    );
+                }
+            },
             ServerInstruction::WindowSettingsChanged(client_id, settings) => {
                 send_to_client!(
                     client_id,
@@ -5434,6 +5554,7 @@ fn init_session(
 
     let default_mode = config.options.default_mode.unwrap_or_default();
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
+    let live_view_captures = crate::pane_mirror::SharedLiveViewCaptures::default();
     let applied_env = AppliedEnv::at_startup(config.env.inner());
 
     let pty_thread = thread::Builder::new()
@@ -5485,6 +5606,7 @@ fn init_session(
             let config = config.clone();
             let default_keybinds = default_keybinds.clone();
             let session_id = session_id.clone();
+            let live_view_captures = live_view_captures.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -5495,6 +5617,7 @@ fn init_session(
                     layout,
                     default_keybinds,
                     session_id,
+                    live_view_captures,
                 )
                 .fatal();
             }
@@ -5672,6 +5795,7 @@ fn init_session(
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
         modal_popup_clients: HashSet::new(),
+        live_view_captures,
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
         sent_window_settings: HashMap::new(),
@@ -6113,6 +6237,18 @@ fn attach_switch_context(
 }
 
 #[inline(never)]
+fn adopt_client_history(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    client_id: ClientId,
+    handed: zellij_utils::session_history::SessionHistory,
+) -> zellij_utils::session_history::SessionHistory {
+    let history = client_histories.entry(client_id).or_default();
+    history.adopt(handed, own_session_name);
+    history.clone()
+}
+
+#[inline(never)]
 fn report_attached_client_history(
     client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
     senders: &ThreadSenders,
@@ -6427,6 +6563,71 @@ mod theme_file_tests {
         assert!(session_configuration
             .delete_theme_file(&1, "dracula")
             .is_err());
+    }
+}
+
+#[cfg(test)]
+mod adopted_history_tests {
+    use super::adopt_client_history;
+    use std::collections::HashMap;
+    use zellij_utils::session_history::{HistoryMove, SessionHistory};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn a_handed_over_history_is_the_most_recent_and_toggling_returns_where_the_user_came_from() {
+        let mut client_histories = HashMap::new();
+        client_histories.insert(
+            7,
+            SessionHistory {
+                back: names(&["older", "s2"]),
+                forward: names(&["ahead"]),
+                last: Some("older".to_owned()),
+            },
+        );
+        let handed = SessionHistory {
+            back: names(&["far", "s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 7, handed);
+        assert_eq!(merged.back, names(&["older", "far", "s1"]));
+        assert!(merged.forward.is_empty());
+        assert_eq!(merged.last.as_deref(), Some("s1"));
+        assert_eq!(client_histories.get(&7), Some(&merged));
+        let mut toggled = merged.clone();
+        assert_eq!(
+            toggled.apply(HistoryMove::Toggle, "s2"),
+            Some("s1".to_owned())
+        );
+        let mut walked = merged.clone();
+        assert_eq!(walked.apply(HistoryMove::Back, "s2"), Some("s1".to_owned()));
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "s1"),
+            Some("far".to_owned())
+        );
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "far"),
+            Some("older".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_client_with_no_history_of_its_own_takes_the_handed_over_one() {
+        let mut client_histories = HashMap::new();
+        let handed = SessionHistory {
+            back: names(&["s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 3, handed.clone());
+        assert_eq!(merged, handed);
+        assert!(
+            adopt_client_history(&mut client_histories, "s2", 4, SessionHistory::default())
+                .is_empty()
+        );
     }
 }
 

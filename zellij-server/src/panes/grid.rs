@@ -957,6 +957,7 @@ pub struct Grid {
     sixel_host_support: bool,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
+    pub change_counter: u64,
     pub lock_renders: bool,
     render_lock_opened_at: Option<std::time::Instant>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -1350,6 +1351,7 @@ impl Grid {
             width: columns,
             height: rows,
             should_render: true,
+            change_counter: 0,
             cursor_key_mode: false,
             bracketed_paste_mode: false,
             erasure_mode: false,
@@ -1475,6 +1477,41 @@ impl Grid {
     }
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
+    }
+    pub fn mirror_screen(&mut self) -> zellij_utils::pane_mirror::MirrorScreen {
+        let mut chunks = OutputBuffer::default().changed_chunks_in_viewport(
+            self.viewport.make_contiguous(),
+            self.width,
+            self.height,
+            0,
+            0,
+        );
+        for chunk in chunks.iter_mut() {
+            chunk.add_changed_colors(self.changed_colors);
+            chunk.add_pane_defaults(
+                self.pane_default_fg.map(AnsiCode::RgbCode),
+                self.pane_default_bg.map(AnsiCode::RgbCode),
+            );
+        }
+        let cursor = self
+            .cursor_coordinates()
+            .map(|(x, y, visible)| {
+                crate::output::mirror_cursor_state(x, y, visible, self.cursor_shape().get_csi_str())
+            })
+            .unwrap_or_default();
+        let wants_mouse = self.mouse_tracking != MouseTracking::Off;
+        let link_handler = self.link_handler.borrow();
+        let mut screen = crate::output::mirror_screen_from_chunks(
+            chunks,
+            self.width,
+            self.height,
+            self.styled_underlines,
+            &link_handler,
+            cursor,
+            wants_mouse,
+        );
+        screen.alternate_screen = self.alternate_screen_state.is_some();
+        screen
     }
     pub fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
         if self.alternate_screen_state.is_some() {
@@ -1788,6 +1825,13 @@ impl Grid {
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, false);
+        self.note_change();
+    }
+    pub fn note_change(&mut self) {
+        self.change_counter = self.change_counter.wrapping_add(1);
+    }
+    pub fn will_render_all_lines(&self) -> bool {
+        self.output_buffer.should_update_all_lines
     }
     fn resize_and_reflow(&mut self, new_rows: usize, new_columns: usize, force_rewrap: bool) {
         // Do nothing if this pane hasn't been given a proper size yet
@@ -3133,6 +3177,7 @@ impl Grid {
     }
     pub fn mark_for_rerender(&mut self) {
         self.should_render = true;
+        self.note_change();
     }
     pub fn reset_terminal_state(&mut self) {
         if let Some(alternate_screen_state) = self.alternate_screen_state.as_mut() {

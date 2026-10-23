@@ -3,6 +3,7 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use std::time::Duration;
+use zellij_integration_tests::inbox::{shows_inbox, ITEM_ACTIONS};
 use zellij_integration_tests::{keys, TestRunner, TERMINAL_SIZE};
 use zellij_utils::consts::APP_PANEL_SESSION;
 use zellij_utils::data::LayoutInfo;
@@ -44,9 +45,7 @@ fn the_app_panel_shows_the_inbox_and_going_to_an_item_switches_the_client() {
     terminal.output(&needs_you("Which branch to use?"));
     let mut panel = start_panel();
     panel.wait_until("the panel lists the item", |grid_snapshot| {
-        grid_snapshot.contains("Inbox (1)")
-            && grid_snapshot.contains("NEEDS YOU")
-            && grid_snapshot.contains(background.session_name())
+        grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains(background.session_name())
     });
     let listed: Vec<String> = zellij_utils::sessions::get_sessions()
         .unwrap()
@@ -66,19 +65,10 @@ fn the_app_panel_shows_the_inbox_and_going_to_an_item_switches_the_client() {
         },
     );
     panel.send_stdin(&keys::TAB);
-    let grid_snapshot = panel.wait_until("back on the inbox", |grid_snapshot| {
-        grid_snapshot.contains("Which bran")
+    panel.wait_until("back on the inbox", |grid_snapshot| {
+        grid_snapshot.contains("Which bran") && grid_snapshot.contains("<ENTER> go")
     });
-    std::thread::sleep(Duration::from_millis(300));
-    let lines = grid_snapshot.lines();
-    let row = lines
-        .iter()
-        .position(|line| line.contains("Which bran"))
-        .unwrap();
-    let column = lines[row][..lines[row].find("Which bran").unwrap()]
-        .chars()
-        .count();
-    panel.send_stdin(&keys::sgr_click(column, row));
+    panel.send_stdin(&keys::ENTER);
     let switched = panel
         .join_main_client()
         .expect("going to the item switches the client away");
@@ -217,7 +207,6 @@ const END: &[u8] = b"\x1b[F";
 const DELETE: &[u8] = b"\x1b[3~";
 const BACKSPACE: &[u8] = b"\x7f";
 const SESSIONS_VIEW_ONLY: &str = "Folder";
-const INBOX_VIEW_ONLY: &str = "<?> all keys";
 const EMPTY_PREVIEW: &str = "Select a session to see its preview";
 
 fn send_view(view: &str) {
@@ -322,11 +311,11 @@ fn the_automatic_panel_turns_to_the_inbox_when_an_item_arrives_before_any_input(
     panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())
-            && !grid_snapshot.contains(INBOX_VIEW_ONLY)
+            && !shows_inbox(&grid_snapshot)
     });
     terminal.output(&needs_you("Deploy now?"));
     panel.wait_until("the panel turns to the inbox", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("Deploy now")
+        grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Deploy now")
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -353,7 +342,7 @@ fn after_any_input_the_automatic_panel_stays_where_it_is() {
     std::thread::sleep(Duration::from_millis(500));
     let grid_snapshot = panel.snapshot();
     assert!(
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !grid_snapshot.contains(INBOX_VIEW_ONLY),
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !shows_inbox(&grid_snapshot),
         "the panel left the view the user was using:\n{}",
         grid_snapshot.text
     );
@@ -371,13 +360,13 @@ fn the_view_pipe_switches_a_running_panel() {
     terminal.output(&needs_you("Deploy now?"));
     let mut panel = start_panel_on("inbox");
     panel.wait_until("the panel opens on the inbox", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_VIEW_ONLY) && grid_snapshot.contains("Deploy now")
+        shows_inbox(&grid_snapshot) && grid_snapshot.contains("Deploy now")
     });
     send_view("sessions");
     panel.wait_until("the panel shows the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())
-            && !grid_snapshot.contains(INBOX_VIEW_ONLY)
+            && !shows_inbox(&grid_snapshot)
     });
     send_view("quit");
     panel.wait_until("the panel asks about quitting", |grid_snapshot| {
@@ -385,8 +374,7 @@ fn the_view_pipe_switches_a_running_panel() {
     });
     send_view("inbox");
     panel.wait_until("the panel is back on the inbox", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_VIEW_ONLY)
-            && !grid_snapshot.contains("Quit Zellij and stop all sessions?")
+        shows_inbox(&grid_snapshot) && !grid_snapshot.contains("Quit Zellij and stop all sessions?")
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -403,19 +391,19 @@ fn asking_for_an_empty_inbox_shows_the_sessions_until_tab_is_pressed() {
     panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())
-            && !grid_snapshot.contains(INBOX_VIEW_ONLY)
+            && !shows_inbox(&grid_snapshot)
     });
     send_view("inbox");
     std::thread::sleep(Duration::from_millis(300));
     let grid_snapshot = panel.snapshot();
     assert!(
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !grid_snapshot.contains(INBOX_VIEW_ONLY),
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !shows_inbox(&grid_snapshot),
         "asking for an empty inbox left the sessions:\n{}",
         grid_snapshot.text
     );
     panel.send_stdin(&keys::TAB);
     panel.wait_until("tab shows the empty inbox", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_VIEW_ONLY)
+        shows_inbox(&grid_snapshot)
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -621,19 +609,17 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
     terminal.output(b"$ ");
     terminal.output(&needs_you("Which branch to use?"));
     let mut panel = start_panel();
-    let shown = panel.wait_until("the panel shows the item in full", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU")
-            && grid_snapshot.contains("Which branch to use?")
-            && grid_snapshot.contains("<ENTER> go there")
-    });
-    assert!(
-        !shown.contains("Latest output"),
-        "the output stays hidden until asked for"
+    let title = format!("┌ ● {} › ", background.session_name());
+    panel.wait_until(
+        "the panel shows the item in full beside its live view",
+        |grid_snapshot| {
+            grid_snapshot.contains("Inbox (1)")
+                && grid_snapshot.contains("Which branch to use?")
+                && grid_snapshot.contains("<Alt ENTER> type")
+                && grid_snapshot.contains("<ENTER> go")
+                && grid_snapshot.contains(&title)
+        },
     );
-    panel.send_stdin(&keys::key('p'));
-    panel.wait_until("the output is shown on request", |grid_snapshot| {
-        grid_snapshot.contains("Latest output") && grid_snapshot.contains("hide output")
-    });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
 }
@@ -649,13 +635,13 @@ fn a_panel_asked_for_an_empty_inbox_turns_to_it_when_an_item_arrives_before_any_
     panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())
-            && !grid_snapshot.contains(INBOX_VIEW_ONLY)
+            && !shows_inbox(&grid_snapshot)
     });
     terminal.output(&needs_you("Deploy now?"));
     panel.wait_until("the panel turns to the inbox", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU")
+        grid_snapshot.contains("Inbox (1)")
             && grid_snapshot.contains("Deploy now")
-            && grid_snapshot.contains("<ENTER> go there")
+            && grid_snapshot.contains(ITEM_ACTIONS)
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -682,7 +668,7 @@ fn a_panel_asked_for_an_empty_inbox_stays_on_the_sessions_after_any_input() {
     std::thread::sleep(Duration::from_millis(500));
     let grid_snapshot = panel.snapshot();
     assert!(
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !grid_snapshot.contains(INBOX_VIEW_ONLY),
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !shows_inbox(&grid_snapshot),
         "the panel left the view the user was using:\n{}",
         grid_snapshot.text
     );
@@ -733,7 +719,7 @@ fn only_muted_items_waiting_still_open_the_sessions() {
     std::thread::sleep(Duration::from_millis(500));
     let grid_snapshot = panel.snapshot();
     assert!(
-        !grid_snapshot.contains(INBOX_VIEW_ONLY),
+        !shows_inbox(&grid_snapshot),
         "a muted item opened the inbox:\n{}",
         grid_snapshot.text
     );
@@ -741,7 +727,7 @@ fn only_muted_items_waiting_still_open_the_sessions() {
     std::thread::sleep(Duration::from_millis(300));
     let grid_snapshot = panel.snapshot();
     assert!(
-        !grid_snapshot.contains(INBOX_VIEW_ONLY),
+        !shows_inbox(&grid_snapshot),
         "asking for the inbox with only a muted item left the sessions:\n{}",
         grid_snapshot.text
     );
@@ -766,7 +752,7 @@ fn the_pointer_resting_on_the_panel_does_not_stop_it_turning_to_the_inbox() {
     std::thread::sleep(Duration::from_millis(300));
     terminal.output(&needs_you("Deploy now?"));
     panel.wait_until("the panel turns to the inbox", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("Deploy now")
+        grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Deploy now")
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -842,31 +828,28 @@ fn alt_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
 }
 
 #[test]
-fn on_a_narrow_panel_the_output_opens_below_the_list() {
+fn a_narrow_panel_lists_the_items_without_a_live_view_and_enter_goes_there() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
     let terminal = background.expect_pty_spawn();
-    terminal.output(b"$ ");
+    terminal.output(b"$ shown only when wide\r\n");
     terminal.output(&needs_you("Below or beside?"));
-    let narrow = zellij_integration_tests::Size { cols: 70, rows: 40 };
+    let narrow = zellij_integration_tests::Size { cols: 64, rows: 40 };
     let mut panel = start_panel_sized("auto", narrow);
-    panel.wait_until("the panel shows the item", |grid_snapshot| {
+    let grid_snapshot = panel.wait_until("the panel shows the item", |grid_snapshot| {
         grid_snapshot.contains("Below or beside?") && grid_snapshot.contains("<ENTER> go there")
     });
-    panel.send_stdin(&keys::key('p'));
-    let grid_snapshot = panel.wait_until("the output is shown", |grid_snapshot| {
-        grid_snapshot.contains("Latest output")
-    });
-    let (_, item_row) = grid_snapshot.position_of("Below or beside?").unwrap();
-    let (_, output_row) = grid_snapshot.position_of("Latest output").unwrap();
     assert!(
-        output_row > item_row,
-        "the output is not below the list:\n{}",
+        !grid_snapshot.contains("shown only when wide") && !grid_snapshot.contains(" › "),
+        "a narrow panel shows a live view:\n{}",
         grid_snapshot.text
     );
-    panel.send_stdin(&keys::ESC);
-    assert!(panel.join_main_client().is_none());
+    panel.send_stdin(&keys::ENTER);
+    let switched = panel
+        .join_main_client()
+        .expect("enter goes to the item on a narrow panel");
+    assert_eq!(switched.name.as_deref(), Some(background.session_name()));
 }
 
 #[test]
@@ -881,10 +864,7 @@ fn a_long_list_shows_more_markers() {
         terminal.output(&needs_you(&format!("Long list item {}?", index)));
         sessions.push(background);
     }
-    let short = zellij_integration_tests::Size {
-        cols: 120,
-        rows: 14,
-    };
+    let short = zellij_integration_tests::Size { cols: 120, rows: 9 };
     let mut panel = start_panel_sized("inbox", short);
     panel.wait_until("the list shows a more marker", |grid_snapshot| {
         grid_snapshot.contains("Inbox (4)") && grid_snapshot.contains("more")

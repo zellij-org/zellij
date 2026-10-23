@@ -19,6 +19,15 @@ pub const GLOBAL_PUBLISH_DEBOUNCE: Duration = Duration::from_millis(30);
 pub const SOCKET_FOLDER_SETTLE: Duration = Duration::from_millis(150);
 pub const PEER_WORKERS: usize = 4;
 
+pub fn peer_scan_interval() -> Duration {
+    std::env::var(zellij_utils::attention::PEER_SCAN_INTERVAL_ENV_VAR)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(PEER_SCAN_INTERVAL)
+}
+
 pub fn for_each_peer<T: Send>(
     peers: Vec<String>,
     work: impl Fn(&str) -> T + Sync,
@@ -219,7 +228,7 @@ impl PeerAttentionService {
             let now = Instant::now();
             if now >= self.next_scan {
                 let interval = if self.scan() {
-                    PEER_SCAN_INTERVAL
+                    peer_scan_interval()
                 } else {
                     SOCKET_FOLDER_SETTLE
                 };
@@ -327,15 +336,15 @@ impl PeerAttentionService {
             .last_pushed_name
             .replace(own_name.clone())
             .filter(|previous| previous != &own_name);
-        let app = self.app_socket();
-        if peers.is_empty() && app.is_none() {
+        let app = self.app_sockets();
+        if peers.is_empty() && app.is_empty() {
             return;
         }
         let attention = self.state.local.clone();
         let _ = thread::Builder::new()
             .name("peer_attention_push".to_owned())
             .spawn(move || {
-                if let Some(app) = app.as_ref() {
+                for app in app.iter() {
                     if let Some(previous_name) = previous_name.as_ref() {
                         let _ = push_session_attention_to(app, previous_name, None, true);
                     }
@@ -351,10 +360,17 @@ impl PeerAttentionService {
             });
     }
 
-    fn app_socket(&self) -> Option<PathBuf> {
-        let path = zellij_utils::consts::app_dir_in(&self.sock_dir)
+    fn app_sockets(&self) -> Vec<PathBuf> {
+        let attention = zellij_utils::consts::app_dir_in(&self.sock_dir)
             .join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
-        path.exists().then_some(path)
+        let panel = zellij_utils::consts::session_socket_path_in(
+            &self.sock_dir,
+            zellij_utils::consts::APP_PANEL_SESSION,
+        );
+        [attention, panel]
+            .into_iter()
+            .filter(|path| path.exists())
+            .collect()
     }
 
     fn announce_exit(&mut self) {
@@ -362,7 +378,7 @@ impl PeerAttentionService {
         if own_name.is_empty() || self.state.is_app_session() {
             return;
         }
-        if let Some(app) = self.app_socket() {
+        for app in self.app_sockets() {
             let _ = push_session_attention_to(&app, &own_name, None, false);
         }
         let peers: Vec<String> = self.state.peers.keys().cloned().collect();

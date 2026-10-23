@@ -2053,6 +2053,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(
+        about = "Toggle whether the live view in the focused plugin pane resizes the program of the pane it shows"
+    )]
+    ToggleMirrorResize,
     #[clap(about = "Mute or unmute the attention status of a pane (the focused pane by default)")]
     MutePane {
         #[clap(

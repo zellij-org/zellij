@@ -4,13 +4,13 @@ use crate::data::ClientId;
 
 use crate::{
     client_server_contract::client_server_contract::{
-        client_to_server_msg, server_to_client_msg, ActionMsg, AttachClientMsg,
-        AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg, ClientExitedMsg,
-        ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
-        ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
-        EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
-        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        client_to_server_msg, server_to_client_msg, ActionMsg, AdoptSessionHistoryMsg,
+        AttachClientMsg, AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg,
+        ClientExitedMsg, ClientPaneMirrorMsg, ClientToServerMsg as ProtoClientToServerMsg,
+        ColorRegistersMsg, ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg,
+        DesktopNotificationResponseMsg, DetachSessionMsg, EmitNestedSessionFrameMsg, ExitMsg,
+        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
+        FontFamiliesMsg, ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
         HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
         HostTerminalFocusChangedMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
@@ -21,8 +21,8 @@ use crate::{
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, PeerAttentionChangedMsg,
         QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg,
         RequestSessionAttentionMsg, RequestSessionListMsg, RequestSessionPreviewMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, SessionAttentionMsg, SessionPreviewMsg,
-        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
+        ServerPaneMirrorMsg, ServerToClientMsg as ProtoServerToClientMsg, SessionAttentionMsg,
+        SessionPreviewMsg, SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
@@ -230,6 +230,14 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::FontFamilies { families } => {
                 client_to_server_msg::Message::FontFamilies(FontFamiliesMsg { families })
+            },
+            ClientToServerMsg::PaneMirror { payload } => {
+                client_to_server_msg::Message::PaneMirror(ClientPaneMirrorMsg { payload })
+            },
+            ClientToServerMsg::AdoptSessionHistory { history } => {
+                client_to_server_msg::Message::AdoptSessionHistory(AdoptSessionHistoryMsg {
+                    history: Some(history.into()),
+                })
             },
         };
 
@@ -451,6 +459,16 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     families: msg.families,
                 })
             },
+            Some(client_to_server_msg::Message::PaneMirror(msg)) => {
+                Ok(ClientToServerMsg::PaneMirror {
+                    payload: msg.payload,
+                })
+            },
+            Some(client_to_server_msg::Message::AdoptSessionHistory(msg)) => {
+                Ok(ClientToServerMsg::AdoptSessionHistory {
+                    history: msg.history.map(Into::into).unwrap_or_default(),
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -585,6 +603,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                 server_to_client_msg::Message::SessionAttention(SessionAttentionMsg {
                     attention: Some(attention.into()),
                 })
+            },
+            ServerToClientMsg::PaneMirror { payload } => {
+                server_to_client_msg::Message::PaneMirror(ServerPaneMirrorMsg { payload })
             },
         };
 
@@ -877,6 +898,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                         .unwrap_or_default(),
                 })
             },
+            Some(server_to_client_msg::Message::PaneMirror(msg)) => {
+                Ok(ServerToClientMsg::PaneMirror {
+                    payload: msg.payload,
+                })
+            },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
     }
@@ -1131,6 +1157,8 @@ impl From<crate::input::options::Options>
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
             grapheme_clusters: options.grapheme_clusters,
+            mirror_resizes_source_pane: options.mirror_resizes_source_pane,
+            live_view_release_key: options.live_view_release_key,
             web_server: options.web_server,
             web_sharing: options.web_sharing.map(|w| match w {
                 crate::data::WebSharing::On => ProtoWebSharing::On as i32,
@@ -1277,6 +1305,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
             grapheme_clusters: options.grapheme_clusters,
+            mirror_resizes_source_pane: options.mirror_resizes_source_pane,
+            live_view_release_key: options.live_view_release_key,
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing
@@ -1531,6 +1561,7 @@ impl From<crate::input::actions::Action>
             ToggleFullscreenByPaneIdAction,
             ToggleGroupMarkingAction,
             ToggleHostFullscreenAction,
+            ToggleMirrorResizeAction,
             ToggleMouseModeAction,
             ToggleNoUiFullscreenByPaneIdAction,
             TogglePaneBorderlessAction,
@@ -2014,6 +2045,9 @@ impl From<crate::input::actions::Action>
                 ActionType::WaitForPaneExit(WaitForPaneExitAction {
                     pane_id: Some(pane_id.into()),
                 })
+            },
+            crate::input::actions::Action::ToggleMirrorResize => {
+                ActionType::ToggleMirrorResize(ToggleMirrorResizeAction {})
             },
             crate::input::actions::Action::MarkPaneSeen { session, pane_id } => {
                 ActionType::MarkPaneSeen(MarkPaneSeenAction {
@@ -3061,6 +3095,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .ok_or_else(|| anyhow!("WaitForPaneExit missing pane_id"))?
                     .try_into()?,
             }),
+            ActionType::ToggleMirrorResize(_) => {
+                Ok(crate::input::actions::Action::ToggleMirrorResize)
+            },
             ActionType::MarkPaneSeen(a) => Ok(crate::input::actions::Action::MarkPaneSeen {
                 session: a.session,
                 pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,

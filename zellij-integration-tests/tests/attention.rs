@@ -244,23 +244,44 @@ fn a_bell_and_a_notification_from_an_unfocused_pane_need_you() {
 fn watching_a_pane_notifies_every_time_until_the_watch_is_turned_off() {
     let (mut zellij, shell, _right) = start_with_two_panes(runner());
     watch(&zellij, &shell);
+    unfocus_the_host_window(&zellij);
     shell_command(&shell, "A", "make", "D;0");
     wait_for_markers(&zellij, "●");
-    focus_left_pane(&zellij);
+    refocus_the_host_window(&zellij);
     wait_for_markers(&zellij, "");
-    focus_right_pane(&zellij);
+    unfocus_the_host_window(&zellij);
     shell_command(&shell, "A", "make again", "D;0");
     wait_for_markers(&zellij, "●");
     watch(&zellij, &shell);
-    focus_left_pane(&zellij);
+    refocus_the_host_window(&zellij);
     wait_for_markers(&zellij, "");
-    focus_right_pane(&zellij);
+    unfocus_the_host_window(&zellij);
     shell_command(&shell, "A", "make a third time", "D;0");
     shell.output(b"\x1b]133;A\x1b\\$ marker\r\n");
     zellij.wait_until("the second command finished", |grid_snapshot| {
         grid_snapshot.contains("marker")
     });
     assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    zellij.quit();
+}
+
+#[test]
+fn a_watch_alert_of_a_pane_in_another_tab_clears_once_that_pane_is_focused() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    focus_left_pane(&zellij);
+    watch(&zellij, &left);
+    let _other_tab = open_second_tab(&zellij);
+    shell_command(&left, "A", "make", "D;0");
+    zellij.wait_until(
+        "the finished command raised a watch alert",
+        |grid_snapshot| grid_snapshot.lines()[0].contains("watch alert"),
+    );
+    go_to_tab(&zellij, '1');
+    zellij.wait_until("focusing the pane cleared the alert", |grid_snapshot| {
+        !grid_snapshot.lines()[0].contains("watch alert")
+    });
+    wait_for_markers(&zellij, "");
     zellij.quit();
 }
 
@@ -291,10 +312,12 @@ fn a_watched_busy_pane_reports_going_quiet_but_a_pane_at_a_prompt_does_not() {
     let _focused = split_right_pane_down(&zellij);
     watch(&zellij, &busy);
     watch(&zellij, &at_prompt);
+    let_the_startup_grace_pass();
+    unfocus_the_host_window(&zellij);
     produce_steady_output(&[&busy, &at_prompt], Duration::from_millis(3000));
-    wait_for_markers(&zellij, "●");
+    wait_for_markers(&zellij, "●•");
     std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(markers_on_screen(&zellij.snapshot().text), "●");
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "●•");
     zellij.quit();
 }
 
@@ -360,6 +383,11 @@ fn unfocus_the_host_window(zellij: &TestSession) {
     std::thread::sleep(Duration::from_millis(200));
 }
 
+fn refocus_the_host_window(zellij: &TestSession) {
+    zellij.send_stdin(b"\x1b[I");
+    std::thread::sleep(Duration::from_millis(200));
+}
+
 fn print_lines(terminal: &FakePtyHandle, label: &str) {
     for line in 0..3 {
         terminal.output(format!("{} {}\r\n", label, line).as_bytes());
@@ -372,16 +400,7 @@ fn indicator(zellij: &TestSession) -> String {
 }
 
 fn open_inbox(zellij: &TestSession) {
-    zellij.send_stdin(&keys::F9);
-    let opened = zellij.wait_until("the session manager opens", |grid_snapshot| {
-        grid_snapshot.contains("<?> all keys") || grid_snapshot.contains("<F1> all keys")
-    });
-    if !opened.contains("<?> all keys") {
-        zellij.send_stdin(&keys::TAB);
-        zellij.wait_until("the inbox is shown", |grid_snapshot| {
-            grid_snapshot.contains("<?> all keys")
-        });
-    }
+    zellij_integration_tests::inbox::open_inbox(zellij);
 }
 
 #[test]
@@ -404,9 +423,9 @@ fn plain_output_from_an_unwatched_pane_never_needs_you_while_the_window_is_unfoc
     );
     open_inbox(&zellij);
     let inbox = zellij.wait_until("the new output waits behind the line", |grid_snapshot| {
-        grid_snapshot.contains("with only new output")
+        grid_snapshot.contains("1 more item with only")
     });
-    assert!(!inbox.contains("NEEDS YOU"), "{}", inbox.text);
+    assert!(inbox.contains("Inbox (0)"), "{}", inbox.text);
     zellij.quit();
 }
 
@@ -448,7 +467,11 @@ fn output_from_programs_that_report_their_own_status_is_never_new_output() {
     std::thread::sleep(Duration::from_millis(300));
     let inbox = zellij.snapshot();
     assert!(
-        !inbox.contains("with only new output") && !inbox.contains("NEEDS YOU"),
+        !inbox.contains("with only new output")
+            && !inbox
+                .lines()
+                .iter()
+                .any(|line| line.contains("│▌ ●") || line.contains("│  ●")),
         "{}",
         inbox.text
     );
@@ -456,18 +479,27 @@ fn output_from_programs_that_report_their_own_status_is_never_new_output() {
 }
 
 #[test]
-fn output_from_a_watched_pane_needs_you_while_the_window_is_unfocused_until_refocused() {
+fn output_from_a_watched_pane_is_new_output_and_not_a_watch_alert_until_refocused() {
     let (mut zellij, left, _right) =
         start_with_two_panes(runner().with_config(SESSION_INDICATOR_ON));
     watch(&zellij, &left);
     let_the_startup_grace_pass();
     unfocus_the_host_window(&zellij);
     print_lines(&left, "watched output");
-    wait_for_markers(&zellij, "●");
-    zellij.wait_until("the indicator shows a watch alert", |grid_snapshot| {
-        grid_snapshot.lines()[0].contains("watch alert")
-    });
-    zellij.send_stdin(b"\x1b[I");
+    wait_for_markers(&zellij, "•");
+    left.output(b"barrier after the watched output\r\n");
+    let grid_snapshot = zellij.wait_until(
+        "the output after the watched lines is drawn",
+        |grid_snapshot| grid_snapshot.contains("barrier after the watched output"),
+    );
+    assert_eq!(markers_on_screen(&grid_snapshot.text), "•");
+    let bar = grid_snapshot.lines()[0].clone();
+    assert!(
+        !bar.contains("watch alert") && !bar.contains("need you"),
+        "new output of a watched pane raised an alert: {}",
+        bar
+    );
+    refocus_the_host_window(&zellij);
     wait_for_markers(&zellij, "");
     zellij.quit();
 }
@@ -1016,9 +1048,12 @@ fn vscode_shell_integration_reports_a_failed_command() {
     zellij.wait_until("the failed command is counted", |grid_snapshot| {
         grid_snapshot.lines()[0].contains("✗ 1")
     });
-    open_inbox(&zellij);
-    zellij.wait_briefly("the inbox shows the command", |grid_snapshot| {
-        grid_snapshot.contains("FAILED") && grid_snapshot.contains("make test")
+    wait_for_session_attention(&zellij, "the session reports the command", |attention| {
+        attention.items.iter().any(|item| {
+            item.attention.status == zellij_utils::attention::AttentionStatus::Failed
+                && item.attention.text.contains("exited 1")
+                && item.attention.text.contains("make test")
+        })
     });
     zellij.quit();
 }

@@ -20,7 +20,6 @@ pub const NO_OTHER_SESSIONS_TEXT: &str = "No other sessions.";
 pub const EMPTY_PREVIEW_TEXT: &str = "Select a session to see its preview";
 pub const EMPTY_PREVIEW_HINT: &str = "You can do this by navigating with ";
 pub const NAVIGATE_KEYS: &str = "<←↓↑→>";
-pub const PREVIEW_REFRESH_SECONDS: f64 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanelSize {
@@ -58,7 +57,6 @@ pub struct Panel {
     pub saved_preview: Option<SavedSessionPreview>,
     pub preview_tab: Option<usize>,
     pub preview_session: Option<String>,
-    pub preview_timer_armed: bool,
     pub preview_area: Option<(usize, usize, usize, usize)>,
     pub own_plugin_id: Option<u32>,
     pub tree: crate::session_tree::SessionTree,
@@ -419,9 +417,9 @@ impl Panel {
         &mut self,
         name: &str,
         is_running: bool,
-        is_current: bool,
         tab: Option<usize>,
         pane: Option<usize>,
+        fetch: bool,
     ) {
         let session_changed = self.preview_session.as_deref() != Some(name);
         let tab_changed = self.preview_tab != tab;
@@ -447,7 +445,7 @@ impl Panel {
         self.preview_session = Some(name.to_owned());
         self.preview_tab = tab;
         self.preview_pane = pane;
-        if is_current {
+        if !fetch {
             return;
         }
         if is_running {
@@ -456,16 +454,6 @@ impl Panel {
             }
         } else if session_changed || self.saved_preview.is_none() {
             get_saved_session_preview(name);
-        }
-    }
-
-    pub fn arm_preview_timer(&mut self) {
-        if !self.preview_timer_armed {
-            crate::timers::start(
-                crate::timers::TimerOwner::SessionsPreview,
-                PREVIEW_REFRESH_SECONDS,
-            );
-            self.preview_timer_armed = true;
         }
     }
 }
@@ -1047,7 +1035,14 @@ pub fn render_session_tree(
     panel.tree.rows = rows;
 }
 
-pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, height: usize) {
+pub fn render_preview(
+    panel: &mut Panel,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    pannable: bool,
+) {
     panel.preview_area = Some((x, y, width, height));
     if width < 10 || height < 3 {
         return;
@@ -1140,7 +1135,12 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
     let max_details = height.saturating_sub(2) / 3;
     let details_height = details.len().min(max_details);
     let body_height = height.saturating_sub(2 + details_height);
-    let window = panel.preview_pan.place(&body, body_height, inner_width);
+    let window = if pannable {
+        panel.preview_pan.place(&body, body_height, inner_width)
+    } else {
+        panel.preview_pan.reset();
+        PreviewPan::default().place(&body, body_height, inner_width)
+    };
     for row in 0..body_height {
         let line = body
             .get(window.start + row)
@@ -1153,7 +1153,8 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
             fit_ansi_from(line, window.skip_columns, inner_width),
         );
     }
-    let summary = match (summary, window.label()) {
+    let label = if pannable { window.label() } else { None };
+    let summary = match (summary, label) {
         (Some(summary), Some(label)) => Some(format!("{}  {}", label, summary)),
         (None, Some(label)) => Some(label),
         (summary, None) => summary,

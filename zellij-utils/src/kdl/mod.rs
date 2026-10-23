@@ -133,6 +133,7 @@ pub fn action_without_arguments(
         "GoToNextAttention" => Ok(Action::GoToNextAttention),
         "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
         "OpenSessionInWindow" => Ok(Action::OpenSessionInWindow),
+        "ToggleMirrorResize" => Ok(Action::ToggleMirrorResize),
         "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
             session: None,
             pane_id: None,
@@ -1483,6 +1484,7 @@ impl Action {
             Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
             Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
             Action::OpenSessionInWindow => Some(KdlNode::new("OpenSessionInWindow")),
+            Action::ToggleMirrorResize => Some(KdlNode::new("ToggleMirrorResize")),
             Action::MarkPaneSeen {
                 session: None,
                 pane_id: None,
@@ -1961,6 +1963,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "GoToNextAttention"
             | "ToggleTrayIcon"
             | "OpenSessionInWindow"
+            | "ToggleMirrorResize"
             | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
@@ -3342,6 +3345,12 @@ impl Options {
         let grapheme_clusters =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "grapheme_clusters")
                 .map(|(v, _)| v);
+        let mirror_resizes_source_pane =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mirror_resizes_source_pane")
+                .map(|(v, _)| v);
+        let live_view_release_key =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "live_view_release_key")
+                .map(|(key, _entry)| key.to_string());
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -3528,6 +3537,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,
@@ -4559,6 +4570,61 @@ impl Options {
             Some(node)
         } else if add_comments {
             let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn mirror_resizes_source_pane_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mirror_resizes_source_pane");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mirror_resizes_source_pane) = self.mirror_resizes_source_pane {
+            let mut node = create_node(mirror_resizes_source_pane);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn live_view_release_key_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard",
+            "// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("live_view_release_key");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(live_view_release_key) = &self.live_view_release_key {
+            let mut node = create_node(live_view_release_key);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(crate::data::DEFAULT_LIVE_VIEW_RELEASE_KEY);
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {
@@ -5607,6 +5673,14 @@ impl Options {
         }
         if let Some(grapheme_clusters) = self.grapheme_clusters_to_kdl(add_comments) {
             nodes.push(grapheme_clusters);
+        }
+        if let Some(mirror_resizes_source_pane) =
+            self.mirror_resizes_source_pane_to_kdl(add_comments)
+        {
+            nodes.push(mirror_resizes_source_pane);
+        }
+        if let Some(live_view_release_key) = self.live_view_release_key_to_kdl(add_comments) {
+            nodes.push(live_view_release_key);
         }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
@@ -8995,6 +9069,34 @@ fn can_bind_dismiss_info_popups_and_write_it_back() {
 }
 
 #[test]
+fn can_bind_toggle_mirror_resize_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt m" { ToggleMirrorResize; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let alt_m = KeyWithModifier::new(BareKey::Char('m')).with_alt_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &alt_m),
+        Some(&vec![Action::ToggleMirrorResize])
+    );
+    let written = Action::ToggleMirrorResize
+        .to_kdl()
+        .expect("the action is written back");
+    assert_eq!(written.name().value(), "ToggleMirrorResize");
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, Action::ToggleMirrorResize);
+}
+
+#[test]
 fn can_bind_theme_actions() {
     // Regression test for https://github.com/zellij-org/zellij/issues/5297
     // SetDarkTheme / SetLightTheme / ToggleTheme work via the CLI but used to be
@@ -10396,6 +10498,22 @@ fn grapheme_clusters_config_parsing() {
 
     let config = Config::from_kdl("grapheme_clusters true", None).unwrap();
     assert_eq!(config.options.grapheme_clusters, Some(true));
+}
+
+#[test]
+fn mirror_resizes_source_pane_config_parsing() {
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, None);
+
+    let config = Config::from_kdl("mirror_resizes_source_pane false", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, Some(false));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.mirror_resizes_source_pane, Some(false));
+
+    let config = Config::from_kdl("mirror_resizes_source_pane true", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, Some(true));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.mirror_resizes_source_pane, Some(true));
 }
 
 #[cfg(test)]

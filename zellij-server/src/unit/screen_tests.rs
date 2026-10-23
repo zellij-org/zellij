@@ -463,6 +463,7 @@ impl MockScreen {
         .should_silently_fail();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -476,6 +477,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -546,6 +548,7 @@ impl MockScreen {
         )
         .should_silently_fail();
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -559,6 +562,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -585,6 +589,7 @@ impl MockScreen {
         .should_silently_fail();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -598,6 +603,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -778,6 +784,7 @@ impl MockScreen {
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
             modal_popup_clients: self.session_metadata.modal_popup_clients.clone(),
+            live_view_captures: self.session_metadata.live_view_captures.clone(),
             terminal_command_submitted: self.session_metadata.terminal_command_submitted.clone(),
         }
     }
@@ -841,6 +848,7 @@ impl MockScreen {
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
             modal_popup_clients: Default::default(),
+            live_view_captures: Default::default(),
             terminal_command_submitted: Default::default(),
         };
 

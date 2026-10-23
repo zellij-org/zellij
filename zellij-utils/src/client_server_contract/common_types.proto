@@ -350,6 +350,7 @@ message Action {
     WaitForPaneExitAction wait_for_pane_exit = 184;
     SessionNameInputAction session_name_input = 185;
     UndoRenameSessionAction undo_rename_session = 186;
+    ToggleMirrorResizeAction toggle_mirror_resize = 187;
   }
 }
 
@@ -1337,6 +1338,8 @@ message Options {
   reserved 80;
   optional string on_quit = 81;
   optional bool grapheme_clusters = 82;
+  optional bool mirror_resizes_source_pane = 83;
+  optional string live_view_release_key = 84;
 }
 
 enum OnForceClose {
@@ -1437,6 +1440,7 @@ message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
 message OpenSessionInWindowAction {}
 message WaitForPaneExitAction { PaneId pane_id = 1; }
+message ToggleMirrorResizeAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
 message MarkAllSeenAction {
   optional string session = 1;

@@ -629,6 +629,7 @@ pub enum Action {
         output_json: bool,
     },
     TogglePanePinned,
+    ToggleMirrorResize,
     StackPanes {
         pane_ids: Vec<PaneId>,
     },
@@ -2276,6 +2277,7 @@ impl Action {
                 },
                 None => Ok(vec![Action::TogglePanePinned]),
             },
+            CliAction::ToggleMirrorResize => Ok(vec![Action::ToggleMirrorResize]),
             CliAction::StackPanes { pane_ids } => {
                 let mut malformed_ids = vec![];
                 let pane_ids = pane_ids
@@ -3499,6 +3501,16 @@ mod tests {
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], Action::TogglePanePinned));
+    }
+
+    #[test]
+    fn test_toggle_mirror_resize() {
+        let cli_action = CliAction::ToggleMirrorResize;
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleMirrorResize));
     }
 
     // Extra pane tests

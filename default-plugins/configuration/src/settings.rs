@@ -90,6 +90,7 @@ pub enum TextCheck {
     IpAddress,
     Decimal { min_milli: i64, max_milli: i64 },
     KeyList,
+    Key,
     WordList,
     Colour,
 }
@@ -161,6 +162,32 @@ const LINE_STYLES: &[&str] = &["single", "double", "heavy", "dashed", "heavy_das
 pub const INPUT_MODES: &[&str] = &[
     "normal", "locked", "pane", "tab", "resize", "move", "scroll", "session", "tmux",
 ];
+
+pub fn release_key_placeholder(entries: &[KeybindingEntry], mode: InputMode) -> String {
+    let primary = KeyWithModifier::new(BareKey::F(9));
+    let mut keys: Vec<&KeyWithModifier> = entries
+        .iter()
+        .filter(|entry| entry.mode == mode && !entry.unbound)
+        .filter(|entry| {
+            entry.actions.iter().any(|action| {
+                action
+                    .split(|c: char| c.is_whitespace() || c == '{' || c == ';')
+                    .next()
+                    == Some("ToggleSessionCard")
+            })
+        })
+        .map(|entry| &entry.key)
+        .collect();
+    keys.sort_by(|a, b| {
+        (**b == primary)
+            .cmp(&(**a == primary))
+            .then(a.key_modifiers.len().cmp(&b.key_modifiers.len()))
+            .then(a.cmp(b))
+    });
+    keys.first()
+        .map(|key| key.to_string())
+        .unwrap_or_else(|| primary.to_string())
+}
 
 fn info(
     name: &'static str,
@@ -762,6 +789,22 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Show stacked panes as a list of titles",
             Toggle,
             "true",
+            Everyone,
+        ),
+        SettingKey::MirrorResizesSourcePane => info(
+            "Mirrors resize their source pane",
+            PanesAndLayouts,
+            "Let a focused mirror resize the mirrored pane's program to fit it",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::LiveViewReleaseKey => info(
+            "Live view release key",
+            PanesAndLayouts,
+            "Key that stops typing into a live pane view and gives the keys back to its plugin",
+            Text(TextCheck::Key),
+            "F9",
             Everyone,
         ),
         SettingKey::NestedSessionHandling => info(
@@ -1443,6 +1486,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
+        SettingKey::WindowReuseSessionWindows => info(
+            "One window per session",
+            TerminalWindow,
+            "Switching to a session that already has a window brings that window forward and closes this one",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::WindowMiddleClickPaste => info(
             "Middle-click paste",
             TerminalWindow,
@@ -1670,7 +1721,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 32] = [
+pub const SECTION_ORDER: [&str; 33] = [
     "Theme",
     "Display",
     "Attention",
@@ -1683,6 +1734,7 @@ pub const SECTION_ORDER: [&str; 32] = [
     "Clipboard",
     "New panes",
     "Layouts",
+    "Mirrors",
     "Nested sessions",
     "Startup",
     "Resurrection",
@@ -1747,6 +1799,7 @@ pub fn section(key: SettingKey) -> &'static str {
         },
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
+        MirrorResizesSourcePane | LiveViewReleaseKey => "Mirrors",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
             "Startup"
@@ -1799,6 +1852,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowOpenLinks
         | WindowOpenLinksWithShift
         | WindowShiftDragSelects
+        | WindowReuseSessionWindows
         | WindowMiddleClickPaste
         | WindowHidePointerWhileTyping
         | WindowMacosOptionAsAlt => "Window behaviour",
@@ -1923,6 +1977,13 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
                 None => Ok(()),
             }
         },
+        TextCheck::Key => match LiveViewReleaseGesture::parse(text) {
+            Some(_) => Ok(()),
+            None => Err(format!(
+                "{} is not a key, eg. Esc Esc or Ctrl Alt Home",
+                text.trim()
+            )),
+        },
         TextCheck::WordList => {
             if split_setting_list(text)
                 .iter()
@@ -1984,6 +2045,41 @@ pub fn kdl_for(key: SettingKey, value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
+
+    fn binding(mode: InputMode, key: &str, action: &str, unbound: bool) -> KeybindingEntry {
+        KeybindingEntry {
+            mode,
+            key: KeyWithModifier::from_str(key).unwrap(),
+            actions: vec![action.to_owned()],
+            source: KeybindingSource::User,
+            unbound,
+            preset_actions: None,
+            unsaved: false,
+        }
+    }
+
+    #[test]
+    fn the_release_key_placeholder_follows_the_inbox_binding_or_is_f9() {
+        let normal = InputMode::Normal;
+        assert_eq!(release_key_placeholder(&[], normal), "F9");
+        let rebound = vec![
+            binding(normal, "F9", "ToggleSessionCard", true),
+            binding(normal, "Ctrl Alt y", "ToggleSessionCard", false),
+            binding(normal, "Alt i", "ToggleSessionCard;", false),
+            binding(normal, "Alt n", "NewPane", false),
+            binding(InputMode::Locked, "Alt l", "ToggleSessionCard", false),
+        ];
+        assert_eq!(release_key_placeholder(&rebound, normal), "Alt i");
+        assert_eq!(
+            release_key_placeholder(&rebound, InputMode::Locked),
+            "Alt l"
+        );
+        assert_eq!(release_key_placeholder(&rebound, InputMode::Pane), "F9");
+        let mut with_f9 = rebound.clone();
+        with_f9.push(binding(normal, "F9", "ToggleSessionCard", false));
+        assert_eq!(release_key_placeholder(&with_f9, normal), "F9");
+    }
 
     #[test]
     fn every_setting_has_a_category_and_a_fitting_element() {
@@ -2058,6 +2154,22 @@ mod tests {
             describe(SettingKey::GraphemeClusters).kind,
             SettingKind::Toggle
         );
+    }
+
+    #[test]
+    fn the_mirror_resize_toggle_is_listed_with_the_pane_settings() {
+        assert!(
+            settings_in(Category::PanesAndLayouts).contains(&SettingKey::MirrorResizesSourcePane)
+        );
+        assert_eq!(section(SettingKey::MirrorResizesSourcePane), "Mirrors");
+        assert_eq!(
+            describe(SettingKey::MirrorResizesSourcePane).kind,
+            SettingKind::Toggle
+        );
+        assert!(settings_in(Category::PanesAndLayouts).contains(&SettingKey::LiveViewReleaseKey));
+        assert_eq!(section(SettingKey::LiveViewReleaseKey), "Mirrors");
+        assert!(check_text(TextCheck::Key, "Ctrl Alt Home").is_ok());
+        assert!(check_text(TextCheck::Key, "Ctrl-Alt-Home").is_err());
     }
 
     #[test]

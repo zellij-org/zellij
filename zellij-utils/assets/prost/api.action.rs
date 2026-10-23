@@ -1260,6 +1260,7 @@ pub enum ActionName {
     OpenSessionInWindow = 146,
     SessionNameInput = 147,
     UndoRenameSession = 148,
+    ToggleMirrorResize = 149,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1414,6 +1415,7 @@ impl ActionName {
             ActionName::OpenSessionInWindow => "OpenSessionInWindow",
             ActionName::SessionNameInput => "SessionNameInput",
             ActionName::UndoRenameSession => "UndoRenameSession",
+            ActionName::ToggleMirrorResize => "ToggleMirrorResize",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1565,6 +1567,7 @@ impl ActionName {
             "OpenSessionInWindow" => Some(Self::OpenSessionInWindow),
             "SessionNameInput" => Some(Self::SessionNameInput),
             "UndoRenameSession" => Some(Self::UndoRenameSession),
+            "ToggleMirrorResize" => Some(Self::ToggleMirrorResize),
             _ => None,
         }
     }

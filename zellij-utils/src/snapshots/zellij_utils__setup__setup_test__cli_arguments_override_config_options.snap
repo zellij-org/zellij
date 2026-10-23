@@ -44,6 +44,8 @@ Options {
     support_kitty_keyboard_protocol: None,
     support_kitty_graphics_protocol: None,
     grapheme_clusters: None,
+    mirror_resizes_source_pane: None,
+    live_view_release_key: None,
     web_server: None,
     web_sharing: None,
     stacked_resize: None,

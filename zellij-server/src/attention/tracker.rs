@@ -13,6 +13,7 @@ use super::program_status::{ProgramStatusMessage, ProgramStatusRecords};
 use super::signals::PaneSignal;
 
 pub const STARTUP_OUTPUT_GRACE_MS: u64 = 3000;
+pub const RESIZE_OUTPUT_GRACE_MS: u64 = 1500;
 pub const IDLE_CHECK_THROTTLE_MS: u64 = 250;
 pub const STEADY_ACTIVITY_PERCENT: u64 = 60;
 const MAX_TEXT_CHARS: usize = 200;
@@ -116,6 +117,7 @@ struct PaneTrack {
     last_visible_ms: Option<u64>,
     last_focused_ms: Option<u64>,
     visible: bool,
+    viewed_elsewhere: bool,
     focused: bool,
     burst: Burst,
     last_idle_schedule_ms: u64,
@@ -135,7 +137,10 @@ impl PaneTrack {
         }
     }
     fn seen(&self, at_ms: u64) -> bool {
-        self.visible || self.last_visible_ms.map(|v| v >= at_ms).unwrap_or(false)
+        self.is_looked_at() || self.last_visible_ms.map(|v| v >= at_ms).unwrap_or(false)
+    }
+    fn is_looked_at(&self) -> bool {
+        self.visible || self.viewed_elsewhere
     }
     fn acknowledged(&self, at_ms: u64) -> bool {
         self.focused || self.last_focused_ms.map(|f| f >= at_ms).unwrap_or(false)
@@ -457,13 +462,35 @@ impl AttentionTracker {
         }
     }
 
+    pub fn set_viewed_elsewhere(&mut self, pane_id: PaneId, viewed: bool, now: u64) {
+        let Some(track) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
+        if track.viewed_elsewhere == viewed {
+            return;
+        }
+        track.viewed_elsewhere = viewed;
+        track.last_visible_ms = Some(now);
+        if viewed {
+            track.first_unseen_output_ms = None;
+        }
+        self.resolve(pane_id, now);
+    }
+
     pub fn on_output(&mut self, pane_id: PaneId, now: u64) {
+        self.on_output_after_resize(pane_id, now, false);
+    }
+
+    pub fn on_output_after_resize(&mut self, pane_id: PaneId, now: u64, redraw: bool) {
         let silence_ms = self.silence_ms();
         let activity_ms = self.activity_ms();
         let idle_rule = self.config.idle_rule();
         let track = self.track(pane_id, now);
         track.last_output_ms = Some(now);
-        if !track.visible
+        if redraw {
+            return;
+        }
+        if !track.is_looked_at()
             && now.saturating_sub(track.created_ms) >= STARTUP_OUTPUT_GRACE_MS
             && track.first_unseen_output_ms.is_none()
         {
@@ -914,20 +941,16 @@ impl AttentionTracker {
         }
         if let Some(first_unseen) = track.first_unseen_output_ms {
             let watched = track.watch_armed_ms.is_some();
-            if !track.ignore_output && !track.visible && (watched || !has_records) {
+            if !track.ignore_output && !track.is_looked_at() && (watched || !has_records) {
                 candidates.push(Candidate {
-                    status: if watched {
-                        AttentionStatus::NeedsYou
-                    } else {
-                        AttentionStatus::NewOutput
-                    },
+                    status: AttentionStatus::NewOutput,
                     source: AttentionSource::UnseenOutput,
                     text: "new output".to_owned(),
                     detail: AttentionDetail::default(),
                     since_ms: first_unseen,
                     past: true,
                     on_frame: watched,
-                    from_watch: watched,
+                    from_watch: false,
                 });
             }
         }
@@ -1055,7 +1078,7 @@ impl AttentionTracker {
             }
         }
         if let Some(at) = track.watch_result.as_ref().map(|w| w.at_ms) {
-            if seen_and_acknowledged(track, at) {
+            if track.seen(at) {
                 track.watch_result = None;
             }
         }

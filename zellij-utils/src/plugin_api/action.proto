@@ -586,6 +586,7 @@ enum ActionName {
     OpenSessionInWindow = 146;
     SessionNameInput = 147;
     UndoRenameSession = 148;
+    ToggleMirrorResize = 149;
 }
 
 message Position {

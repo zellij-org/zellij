@@ -55,6 +55,8 @@ fn every_option_set() -> Options {
         support_kitty_keyboard_protocol: Some(false),
         support_kitty_graphics_protocol: Some(false),
         grapheme_clusters: Some(false),
+        mirror_resizes_source_pane: Some(false),
+        live_view_release_key: Some("Ctrl Alt End".to_owned()),
         web_server: Some(true),
         web_sharing: Some(WebSharing::Disabled),
         stacked_resize: Some(false),
@@ -177,6 +179,7 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     open_links false
     open_links_with_shift false
     shift_drag_selects false
+    reuse_session_windows false
     middle_click_paste false
     hide_pointer_while_typing true
     macos_option_as_alt \"both\"

@@ -466,7 +466,7 @@ fn keys_a_window_sends_to_the_inbox_stay_out_of_the_pane_below() {
     press.event_type = zellij_utils::input::mouse::MouseEventType::Release;
     press.left = false;
     window.act(Action::MouseEvent { event: press });
-    window.frame_showing("NEEDS YOU");
+    window.frame_showing("Inbox (1)");
     for _ in 0..4 {
         window.send(key(BareKey::Down));
         std::thread::sleep(Duration::from_millis(100));
@@ -529,7 +529,7 @@ fn text_and_pastes_a_window_sends_while_the_inbox_is_open_go_to_the_inbox_not_th
     press.event_type = zellij_utils::input::mouse::MouseEventType::Release;
     press.left = false;
     window.act(Action::MouseEvent { event: press });
-    window.frame_showing("NEEDS YOU");
+    window.frame_showing("Inbox (1)");
     window.act(Action::WriteChars {
         chars: "c".to_owned(),
     });

@@ -1129,6 +1129,14 @@ pub fn focus_session_pane(session_name: &str, pane_id: PaneId) {
     });
 }
 
+pub fn set_live_view(view: Option<LiveView>) {
+    run_plugin_command(PluginCommand::SetLiveView(view));
+}
+
+pub fn set_live_view_input(capture: bool) {
+    run_plugin_command(PluginCommand::SetLiveViewInput(capture));
+}
+
 pub fn get_saved_session_preview(name: &str) {
     run_plugin_command(PluginCommand::GetSavedSessionPreview(name.to_owned()));
 }

@@ -54,6 +54,7 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::SessionPreview { .. } => "SessionPreview",
         ServerToClientMsg::EmitNestedSessionFrame { .. } => "EmitNestedSessionFrame",
         ServerToClientMsg::HostTerminalThemeChanged { .. } => "HostTerminalThemeChanged",
+        ServerToClientMsg::PaneMirror { .. } => "PaneMirror",
     }
     .to_string()
 }

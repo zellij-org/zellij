@@ -2321,6 +2321,14 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleMirrorResize => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleMirrorResize(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::StackPanes {
             pane_ids: pane_ids_to_stack,
         } => {
@@ -2942,13 +2950,35 @@ pub(crate) fn route_thread_main(
                             // The read guard ends as a temporary in this expression so
                             // `route_action` runs without holding `session_data.read()` —
                             // see the doc comment on `route_action` for why this matters.
+                            let live_view_release =
+                                session_data.read().unwrap().as_ref().and_then(|s| {
+                                    s.live_view_captures
+                                        .lock()
+                                        .ok()?
+                                        .key_pressed(client_id, &key, || {
+                                            s.live_view_release_keys(&client_id)
+                                        })
+                                        .then(|| s.senders.clone())
+                                });
+                            if let Some(senders) = live_view_release {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::ReleaseLiveViewInputWithKey(client_id),
+                                );
+                                return Ok(should_break);
+                            }
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
                                     let in_key_passthrough =
                                         s.key_passthrough_clients.contains_key(&client_id);
-                                    let has_focused_popup = s.popup_clients.contains(&client_id);
-                                    let popup_takes_all_keys =
-                                        s.modal_popup_clients.contains(&client_id);
+                                    let live_view_capture = s
+                                        .live_view_captures
+                                        .lock()
+                                        .map(|captures| captures.is_capturing(client_id))
+                                        .unwrap_or(false);
+                                    let has_focused_popup = !live_view_capture
+                                        && s.popup_clients.contains(&client_id);
+                                    let popup_takes_all_keys = !live_view_capture
+                                        && s.modal_popup_clients.contains(&client_id);
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
                                     let key_actions = popup_keys::key_dispatch(
@@ -3269,6 +3299,10 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::FontFamilies { families } => {
                             let _ = to_server
                                 .send(ServerInstruction::FontFamilies(client_id, families));
+                        },
+                        ClientToServerMsg::AdoptSessionHistory { history } => {
+                            let _ = to_server
+                                .send(ServerInstruction::AdoptSessionHistory(client_id, history));
                         },
                         ClientToServerMsg::BackgroundColor {
                             color: ref background_color_instruction,
@@ -3652,6 +3686,9 @@ pub(crate) fn route_thread_main(
                                     ),
                                 );
                             }
+                        },
+                        ClientToServerMsg::PaneMirror { .. } => {
+                            log::warn!("Ignoring a pane mirror message on a client connection");
                         },
                         ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
                             let _ = send_to_screen_or_retry_queue!(

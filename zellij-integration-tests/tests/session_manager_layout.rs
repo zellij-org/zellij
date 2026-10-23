@@ -2,14 +2,14 @@
 
 use zellij_integration_tests::attention::needs_you;
 use zellij_integration_tests::inbox::{
-    background_session_with, open_inbox_on, ATTENTION_CONFIG, INBOX_HELP, SESSIONS_HELP,
+    background_session_with, open_inbox_on, shows_inbox, ATTENTION_CONFIG, INBOX_LIST_HELP,
+    SESSIONS_HELP,
 };
 use zellij_integration_tests::{
     col, keys, FakePtyHandle, GridSnapshot, Size, TestRunner, TestSession, TERMINAL_SIZE,
 };
 
-const SHIFT_RIGHT: [u8; 6] = *b"\x1b[1;2C";
-const SHIFT_PAGE_UP: [u8; 6] = *b"\x1b[5;2~";
+const CLICK_TO_TYPE: &str = zellij_integration_tests::inbox::TYPE_INTO_IT_HINT;
 const BROWSER_TABS: &str = "│ Sessions (";
 const TALL: Size = Size {
     cols: 140,
@@ -58,22 +58,9 @@ fn numbers(grid_snapshot: &GridSnapshot, prefix: &str) -> Vec<usize> {
         .collect()
 }
 
-fn first_number(grid_snapshot: &GridSnapshot, prefix: &str) -> Option<usize> {
-    numbers(grid_snapshot, prefix).into_iter().min()
-}
-
 fn shows_bottom(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
     let shown = numbers(grid_snapshot, prefix);
     shown.contains(&last) && !shown.contains(&1)
-}
-
-fn shows_start(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
-    let shown = numbers(grid_snapshot, prefix);
-    shown.contains(&1) && !shown.contains(&last)
-}
-
-fn shows_line_ends(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool {
-    numbers(grid_snapshot, "END").contains(&last) && numbers(grid_snapshot, prefix).is_empty()
 }
 
 fn open_sessions_and_select(zellij: &TestSession, name: &str) {
@@ -138,14 +125,8 @@ fn more_marker(grid_snapshot: &GridSnapshot, arrow: &str) -> Option<usize> {
         .and_then(|captures| captures[1].parse().ok())
 }
 
-fn open_output_of(zellij: &TestSession, text: &str) -> GridSnapshot {
-    open_inbox_on(zellij, text);
-    zellij.send_stdin(&keys::key('p'));
-    let grid_snapshot = zellij.wait_until("the output is shown", |grid_snapshot| {
-        grid_snapshot.contains("Latest output")
-            && grid_snapshot.contains("hide output")
-            && grid_snapshot.contains(text)
-    });
+fn open_live_view_of(zellij: &TestSession, text: &str) -> GridSnapshot {
+    let grid_snapshot = open_inbox_on(zellij, text);
     settled(zellij, grid_snapshot)
 }
 
@@ -162,116 +143,46 @@ fn settled(zellij: &TestSession, mut grid_snapshot: GridSnapshot) -> GridSnapsho
 }
 
 #[test]
-fn shift_keys_pan_the_sessions_preview() {
-    let (background, terminal) = background_session_with(ATTENTION_CONFIG);
-    long_numbered_lines(&terminal, "row", 16);
-    let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
-    open_sessions_and_select(&zellij, background.session_name());
-    let bottom = zellij.wait_until("the preview starts at the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    let first_visible = first_number(&bottom, "row").unwrap();
-    assert!(first_visible > 3, "{}", bottom.text);
-    let after_up = first_visible - 3;
-    zellij.send_stdin(&keys::SHIFT_UP);
-    zellij.wait_until("shift up shows three earlier lines", |grid_snapshot| {
-        first_number(grid_snapshot, "row") == Some(after_up)
-    });
-    zellij.send_stdin(&SHIFT_PAGE_UP);
-    zellij.wait_until(
-        "shift page up shows a page of earlier lines",
-        |grid_snapshot| first_number(grid_snapshot, "row").map_or(false, |first| first < after_up),
-    );
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_HOME);
-    zellij.wait_until("shift home jumps to the first line", |grid_snapshot| {
-        shows_start(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom again", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16)
-    });
-    for _ in 0..6 {
-        zellij.send_stdin(&SHIFT_RIGHT);
-    }
-    zellij.wait_until("shift right shows the ends of the lines", |grid_snapshot| {
-        shows_line_ends(grid_snapshot, "row", 16)
-    });
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until(
-        "shift end shows the starts of the lines again",
-        |grid_snapshot| {
-            shows_bottom(grid_snapshot, "row", 16) && !numbers(grid_snapshot, "END").contains(&16)
-        },
-    );
-    zellij.quit();
-}
-
-#[test]
-fn shift_keys_pan_the_inbox_output_from_where_the_notification_began() {
+fn the_inbox_live_view_shows_the_end_of_a_long_output() {
     let (_background, terminal) = background_session_with(ATTENTION_CONFIG);
     let (mut zellij, _) = main_session_sized(TALL);
     long_numbered_lines(&terminal, "line", 40);
     terminal.output(b"\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\make\x1b]133;C\x1b\\\r\n");
     long_numbered_lines(&terminal, "res", 20);
-    terminal.output(b"\x1b]133;D;1\x1b\\");
-    wait_for_indicator(&zellij, "the failed command is counted", "✗ 1");
-    open_output_of(&zellij, "FAILED");
-    let bottom = zellij.wait_until("the output starts at the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "res", 20)
-    });
-    let first_visible = first_number(&bottom, "res").unwrap();
-    assert!(first_visible > 3, "{}", bottom.text);
-    let after_up = first_visible - 3;
-    zellij.send_stdin(&keys::SHIFT_UP);
-    zellij.wait_until("shift up shows three earlier lines", |grid_snapshot| {
-        first_number(grid_snapshot, "res") == Some(after_up)
-    });
-    zellij.send_stdin(&SHIFT_PAGE_UP);
+    terminal.output(&needs_you("Look at the end?"));
+    wait_for_indicator(&zellij, "the item is counted", "● 1");
+    open_live_view_of(&zellij, "Look at the end?");
     zellij.wait_until(
-        "shift page up shows a page of earlier lines",
-        |grid_snapshot| first_number(grid_snapshot, "res").map_or(false, |first| first < after_up),
+        "the live view shows the end of the output",
+        |grid_snapshot| numbers(grid_snapshot, "res").contains(&20),
     );
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "res", 20)
-    });
-    zellij.send_stdin(&keys::SHIFT_HOME);
-    zellij.wait_until(
-        "shift home goes to where the command output begins",
-        |grid_snapshot| {
-            shows_start(grid_snapshot, "res", 20) && !numbers(grid_snapshot, "line").contains(&1)
-        },
-    );
-    zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end returns to the bottom again", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "res", 20)
-    });
-    for _ in 0..6 {
-        zellij.send_stdin(&SHIFT_RIGHT);
-    }
-    zellij.wait_until("shift right shows the ends of the lines", |grid_snapshot| {
-        shows_line_ends(grid_snapshot, "res", 20)
+    terminal.output(b"res 021 printed later\r\n");
+    zellij.wait_until("the live view follows new output", |grid_snapshot| {
+        numbers(grid_snapshot, "res").contains(&21)
     });
     zellij.quit();
 }
 
 #[test]
-fn the_sessions_preview_reaches_lines_that_scrolled_off_the_running_sessions_screen() {
+fn the_sessions_preview_of_a_running_session_shows_the_end_of_its_output_live_and_shift_keys_do_not_scroll_it(
+) {
     let (background, terminal) = background_session_with(ATTENTION_CONFIG);
     long_numbered_lines(&terminal, "row", 60);
     let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
     open_sessions_and_select(&zellij, background.session_name());
-    zellij.wait_until("the preview starts at the bottom", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 60)
+    zellij.wait_until("the live preview shows the end", |grid_snapshot| {
+        shows_bottom(grid_snapshot, "row", 60) && grid_snapshot.contains(CLICK_TO_TYPE)
     });
     zellij.send_stdin(&keys::SHIFT_HOME);
-    zellij.wait_until(
-        "shift home shows the first line, which is only in the scrollback",
-        |grid_snapshot| shows_start(grid_snapshot, "row", 60),
+    zellij.send_stdin(&keys::SHIFT_UP);
+    terminal.output(b"row 061 printed later\r\n");
+    let grid_snapshot = zellij.wait_until("the live preview follows new output", |grid_snapshot| {
+        shows_bottom(grid_snapshot, "row", 61)
+    });
+    assert!(
+        !numbers(&grid_snapshot, "row").contains(&1),
+        "shift keys scrolled the live preview:\n{}",
+        grid_snapshot.text
     );
     zellij.quit();
 }
@@ -311,32 +222,34 @@ fn the_sessions_help_has_an_empty_row_above_and_below_it() {
 }
 
 #[test]
-fn the_inbox_output_opens_below_the_list_when_narrow_and_beside_it_when_wide() {
+fn the_inbox_shows_the_pane_live_beside_the_list_when_wide_and_only_the_list_when_narrow() {
     let text = "Below or beside?";
-    let (_background, terminal) = background_session_with(ATTENTION_CONFIG);
+    let (background, terminal) = background_session_with(ATTENTION_CONFIG);
+    let row = format!("● {}  ", background.session_name());
     terminal.output(b"some output\r\n");
     terminal.output(&needs_you(text));
 
     let (mut narrow, _) = main_session_sized(Size { cols: 80, rows: 40 });
     wait_for_indicator(&narrow, "the item is counted", "● 1");
-    let grid_snapshot = open_output_of(&narrow, text);
-    let (output_column, output_row) = grid_snapshot.position_of("Latest output").unwrap();
-    let (item_column, item_row) = grid_snapshot.position_of("Pane #1 in session").unwrap();
+    let grid_snapshot = open_live_view_of(&narrow, text);
     assert!(
-        output_row > item_row && output_column.abs_diff(item_column) <= 2,
-        "the output is not below the list:\n{}",
+        grid_snapshot.contains("<ENTER> go there") && !grid_snapshot.contains("some output"),
+        "a narrow inbox shows a live view:\n{}",
         grid_snapshot.text
     );
     narrow.quit();
 
     let (mut wide, _) = main_session_sized(TALL);
     wait_for_indicator(&wide, "the item is counted", "● 1");
-    let grid_snapshot = open_output_of(&wide, text);
-    let (output_column, output_row) = grid_snapshot.position_of("Latest output").unwrap();
-    let (item_column, item_row) = grid_snapshot.position_of(text).unwrap();
+    open_inbox_on(&wide, text);
+    let grid_snapshot = wide.wait_until("the live view shows the pane", |grid_snapshot| {
+        grid_snapshot.contains("some output") && grid_snapshot.contains("<Alt ENTER> type")
+    });
+    let (output_column, _) = grid_snapshot.position_of("some output").unwrap();
+    let (item_column, _) = grid_snapshot.position_of(&row).unwrap();
     assert!(
-        output_row < item_row && output_column > item_column + text.chars().count(),
-        "the output is not beside the list:\n{}",
+        output_column > item_column + row.chars().count(),
+        "the live view is not beside the list:\n{}",
         grid_snapshot.text
     );
     wide.quit();
@@ -344,10 +257,7 @@ fn the_inbox_output_opens_below_the_list_when_narrow_and_beside_it_when_wide() {
 
 #[test]
 fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
-    let size = Size {
-        cols: 136,
-        rows: 44,
-    };
+    let size = Size { cols: 88, rows: 44 };
     let word = "Z".repeat(200);
     let (_background, terminal) = background_session_with(ATTENTION_CONFIG);
     terminal.output(&needs_you(&word));
@@ -356,21 +266,23 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
     zellij.send_stdin(&keys::F9);
     let grid_snapshot =
         zellij.wait_until("the inbox shows the item and its help", |grid_snapshot| {
-            grid_snapshot.contains(INBOX_HELP)
+            grid_snapshot.contains(INBOX_LIST_HELP)
                 && grid_snapshot.contains("<ENTER> go there")
                 && grid_snapshot.contains("ZZZZZZZZZZ…")
         });
     let grid_snapshot = settled(&zellij, grid_snapshot);
     let lines = grid_snapshot.lines();
-    let (block_left, text_row) = grid_snapshot.position_of("ZZZZZZZZZZ").unwrap();
+    let (_, text_row) = grid_snapshot.position_of("ZZZZZZZZZZ").unwrap();
     let text_line: Vec<char> = lines[text_row].chars().collect();
-    let block_right = text_line
+    let block_left = text_line
         .iter()
-        .enumerate()
-        .skip(block_left)
-        .find(|(_, c)| **c == '…')
-        .map(|(index, _)| index)
-        .unwrap_or_else(|| panic!("the long text is not cut:\n{}", grid_snapshot.text));
+        .position(|c| *c == '●')
+        .unwrap_or_else(|| panic!("the row has no status symbol:\n{}", grid_snapshot.text));
+    assert!(
+        text_line.contains(&'…'),
+        "the long text is not cut:\n{}",
+        grid_snapshot.text
+    );
     let frame_left = text_line[..block_left]
         .iter()
         .rposition(|c| *c == '│')
@@ -378,10 +290,14 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
     let frame_right = text_line
         .iter()
         .enumerate()
-        .skip(block_right + 1)
+        .skip(block_left + 1)
         .find(|(_, c)| **c == '│')
         .map(|(index, _)| index)
         .unwrap_or_else(|| panic!("no right frame:\n{}", grid_snapshot.text));
+    let block_right = text_line[..frame_right]
+        .iter()
+        .rposition(|c| *c != ' ')
+        .unwrap();
     let left_margin = block_left - frame_left - 1;
     let right_margin = frame_right - block_right - 1;
     assert!(
@@ -405,7 +321,7 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
             .all(|c| c == ' ')
     };
     let tabs_row = grid_snapshot.row_of_line(BROWSER_TABS).unwrap();
-    let help_row = grid_snapshot.row_of_line(INBOX_HELP).unwrap();
+    let help_row = grid_snapshot.row_of_line(INBOX_LIST_HELP).unwrap();
     let block_top = (tabs_row + 1..help_row)
         .find(|row| !blank_in_block(*row))
         .unwrap();
@@ -425,7 +341,10 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
 
 #[test]
 fn more_markers_count_the_notifications_out_of_view_and_follow_scrolling() {
-    let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
+    let (mut zellij, _) = main_session_sized(Size {
+        cols: 120,
+        rows: 15,
+    });
     let mut sessions = vec![];
     for index in 0..6 {
         let (session, terminal) = background_session_with(ATTENTION_CONFIG);
@@ -435,7 +354,7 @@ fn more_markers_count_the_notifications_out_of_view_and_follow_scrolling() {
     }
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the inbox opens", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP)
+        shows_inbox(grid_snapshot)
     });
     for _ in 0..6 {
         zellij.send_stdin(&keys::UP);

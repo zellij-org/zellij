@@ -30,6 +30,7 @@ message ServerToClientMsg {
     HostProgramStatusMsg host_program_status = 23;
     SessionAttentionMsg session_attention = 24;
     SessionPreviewMsg session_preview = 25;
+    ServerPaneMirrorMsg pane_mirror = 26;
   }
 }
 
@@ -197,4 +198,8 @@ message MobileStateMsg {
   repeated MobilePaneMsg panes = 8;
   repeated MobileSessionMsg sessions = 9;
   MobileRenderPrefsMsg render_prefs = 10;
+}
+
+message ServerPaneMirrorMsg {
+  bytes payload = 1;
 }

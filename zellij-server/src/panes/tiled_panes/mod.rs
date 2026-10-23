@@ -71,6 +71,7 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
 
 pub struct TiledPanes {
     pub panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    live_views: crate::pane_mirror::SharedLiveViews,
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -99,6 +100,9 @@ pub struct TiledPanes {
 
 impl TiledPanes {
     #[allow(clippy::too_many_arguments)]
+    pub fn set_live_views(&mut self, live_views: crate::pane_mirror::SharedLiveViews) {
+        self.live_views = live_views;
+    }
     pub fn new(
         display_area: Rc<RefCell<Size>>,
         viewport: Rc<RefCell<Viewport>>,
@@ -119,6 +123,7 @@ impl TiledPanes {
     ) -> Self {
         TiledPanes {
             panes: BTreeMap::new(),
+            live_views: Default::default(),
             display_area,
             viewport,
             connected_clients,
@@ -1373,6 +1378,9 @@ impl TiledPanes {
                     &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
+                if client_id_override.is_none() {
+                    pane_contents_and_ui.set_live_views(self.live_views.clone());
+                }
                 pane_contents_and_ui.set_blank_title(reserved_rows_for_pane > 0);
                 for client_id in &connected_clients {
                     let client_mode = self

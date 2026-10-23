@@ -268,7 +268,7 @@ mod tests {
         vec![
             hint("<ENTER>", "go to pane"),
             hint("<↓↑>", "select"),
-            hint("<r>", "reply"),
+            hint("<n>", "watch"),
             hint("<c>", "mark seen"),
             hint("<ESC>", "close"),
             hint("<m>", "mute"),
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "<ENTER> go to pane  <↓↑> select  <r> reply  <c> mark seen  <ESC> close  <m> mute"
+                "<ENTER> go to pane  <↓↑> select  <n> watch  <c> mark seen  <ESC> close  <m> mute"
             ]
         );
     }

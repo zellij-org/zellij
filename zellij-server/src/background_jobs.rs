@@ -82,6 +82,9 @@ pub enum BackgroundJob {
         plugin_id: u32,
         delay_ms: u64,
     },
+    MirrorTickAfter {
+        delay_ms: u64,
+    },
     ClearCommandOutputFlash {
         pane_id: PaneId,
     },
@@ -137,6 +140,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
             BackgroundJob::RevealPopupAfter { .. } => BackgroundJobContext::RevealPopup,
+            BackgroundJob::MirrorTickAfter { .. } => BackgroundJobContext::MirrorTick,
             BackgroundJob::ClearCommandOutputFlash { .. } => {
                 BackgroundJobContext::ClearCommandOutputFlash
             },
@@ -726,6 +730,15 @@ pub(crate) fn background_jobs_main(
                     async move {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         let _ = senders.send_to_screen(ScreenInstruction::RevealPopup(plugin_id));
+                    }
+                });
+            },
+            BackgroundJob::MirrorTickAfter { delay_ms } => {
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        let _ = senders.send_to_screen(ScreenInstruction::MirrorTick);
                     }
                 });
             },
