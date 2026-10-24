@@ -611,14 +611,15 @@ impl MockScreen {
     /// the base commit: 4 of 4 full runs red, 2-6 failures each). This drains the render pipeline
     /// stage by stage instead, and returns only when it is empty:
     ///
-    /// 1. wait until the background jobs thread has handed back every render request the screen
-    ///    thread has made so far (`RenderPipeline::render_requests` vs `renders_handed_back`);
-    /// 2. `ScreenInstruction::TestBarrier`: the screen thread answers it once it has processed
-    ///    everything sent before it, which — because of step 1 — includes the `RenderToClients`
-    ///    for every request, so the frames for the state the test asked for have been sent;
-    /// 3. if processing those requests made the screen thread ask for more renders (a render can
-    ///    close an empty tab, say), go round again; otherwise the pipeline is empty and the
-    ///    test can tear down.
+    /// 1. `ScreenInstruction::TestBarrier`: the screen thread answers it once it has processed
+    ///    everything sent before it, so it has made the render request for each of those;
+    /// 2. a marker through the background jobs channel: when it is answered, every one of those
+    ///    requests has been received and handed back to the screen thread as `RenderToClients`;
+    /// 3. a second `TestBarrier`: when it is answered, those `RenderToClients` have been
+    ///    processed, so the frames for the state the test asked for have been sent;
+    /// 4. if processing them made the screen thread ask for more renders (a render can close an
+    ///    empty tab, say), go round again; otherwise the pipeline is empty and the test can tear
+    ///    down.
     ///
     /// Nothing is rendered by the harness itself: the frames a test snapshots are exactly the ones
     /// the screen thread produces, in the order it produces them, which is what the stored
