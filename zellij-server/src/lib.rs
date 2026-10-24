@@ -4,6 +4,15 @@ mod os_input_output_unix;
 #[cfg(windows)]
 #[path = "os_input_output_windows.rs"]
 mod os_input_output_windows;
+/// The session name the tests of this crate run under.
+///
+/// `zellij_utils::shared::make_terminal_title` puts the session name into the title it renders
+/// (`\u{1b}]0;Zellij (<session name>) - <pane title>\u{7}`), and a title is only re-sent when it
+/// changes. So if one test sets `ZELLIJ_SESSION_NAME` to a value another test is rendering, the
+/// other test's screen thread renders an extra title-only frame — and whether it does depends on
+/// how the two tests were scheduled. Every test module therefore sets this one value.
+#[cfg(test)]
+pub(crate) const TEST_SESSION_NAME: &str = "zellij-test";
 
 pub mod os_input_output;
 pub mod output;

@@ -198,7 +198,7 @@ impl MockPtyInstructionBus {
 }
 
 fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -283,7 +283,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
 }
 
 fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -381,7 +381,7 @@ fn create_new_tab_with_swap_layouts(
     draw_pane_frames: bool,
     stacked_resize: bool,
 ) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -484,7 +484,7 @@ fn create_new_tab_with_os_api(
     default_mode: ModeInfo,
     os_api: &Box<FakeInputOutput>,
 ) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -569,7 +569,7 @@ fn create_new_tab_with_os_api(
 }
 
 fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -671,7 +671,7 @@ fn create_new_tab_with_mock_pty_writer(
     default_mode: ModeInfo,
     mock_pty_writer: SenderWithContext<PtyWriteInstruction>,
 ) -> Tab {
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -762,7 +762,7 @@ fn create_new_tab_with_sixel_support(
 ) -> Tab {
     // this is like the create_new_tab function but includes stuff needed for sixel,
     // eg. character_cell_size
-    set_session_name("test".into());
+    set_session_name(crate::TEST_SESSION_NAME.into());
     let index = 0;
     let position = 0;
     let name = String::new();
