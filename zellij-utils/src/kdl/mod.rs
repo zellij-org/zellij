@@ -623,7 +623,7 @@ impl Action {
             },
             "New4Pane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane {
+                    return Ok(Action::New4Pane {
                         direction: None,
                         pane_name: None,
                         start_suppressed: false,
