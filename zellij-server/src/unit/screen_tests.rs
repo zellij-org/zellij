@@ -418,8 +418,7 @@ impl RenderPipeline {
                 "the background jobs thread did not answer a barrier within {:?} ({} frames \
                  rendered, {} render requests handed back so far)",
                 RENDER_BARRIER_TIMEOUT,
-                self.render_frames
-                    .load(std::sync::atomic::Ordering::SeqCst),
+                self.render_frames.load(std::sync::atomic::Ordering::SeqCst),
                 self.renders_handed_back
                     .load(std::sync::atomic::Ordering::SeqCst),
             ),
@@ -435,8 +434,7 @@ impl RenderPipeline {
                 "the screen thread did not answer a barrier within {:?} ({} render frames seen): \
                  it is not processing instructions any more",
                 RENDER_BARRIER_TIMEOUT,
-                self.render_frames
-                    .load(std::sync::atomic::Ordering::SeqCst),
+                self.render_frames.load(std::sync::atomic::Ordering::SeqCst),
             );
         }
     }
