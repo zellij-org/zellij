@@ -1354,6 +1354,7 @@ impl From<crate::input::actions::Action>
             MoveTabAction,
             MoveTabByTabIdAction,
             MoveTabToPositionAction,
+            New4PaneAction,
             NewBlockingPaneAction,
             NewFloatingPaneAction,
             NewFloatingPluginPaneAction,
@@ -1641,6 +1642,16 @@ impl From<crate::input::actions::Action>
                 pane_name,
                 start_suppressed,
             } => ActionType::NewPane(NewPaneAction {
+                direction: direction.map(|d| direction_to_proto_i32(d)),
+                pane_name,
+                start_suppressed,
+                near_current_pane: false,
+            }),
+            crate::input::actions::Action::New4Pane {
+                direction,
+                pane_name,
+                start_suppressed,
+            } => ActionType::New4Pane(New4PaneAction {
                 direction: direction.map(|d| direction_to_proto_i32(d)),
                 pane_name,
                 start_suppressed,
@@ -2606,6 +2617,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::ToggleActiveSyncTab)
             },
             ActionType::NewPane(new_pane_action) => Ok(crate::input::actions::Action::NewPane {
+                direction: new_pane_action
+                    .direction
+                    .map(|d| proto_i32_to_direction(d))
+                    .transpose()?,
+                pane_name: new_pane_action.pane_name,
+                start_suppressed: new_pane_action.start_suppressed,
+            }),
+            ActionType::New4Pane(new_pane_action) => Ok(crate::input::actions::Action::NewPane {
                 direction: new_pane_action
                     .direction
                     .map(|d| proto_i32_to_direction(d))

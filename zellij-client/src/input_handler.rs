@@ -453,6 +453,7 @@ impl InputHandler {
             | Action::SwitchToMode { .. }
             | Action::ClearScreen
             | Action::NewPane { .. }
+            | Action::New4Pane { .. }
             | Action::Run { .. }
             | Action::NewTiledPane { .. }
             | Action::NewFloatingPane { .. }

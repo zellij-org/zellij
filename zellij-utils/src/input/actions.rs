@@ -277,6 +277,11 @@ pub enum Action {
         pane_name: Option<String>,
         start_suppressed: bool,
     },
+    New4Pane {
+        direction: Option<Direction>,
+        pane_name: Option<String>,
+        start_suppressed: bool,
+    },
     /// Returns: Created pane ID (format: terminal_<id>)
     NewBlockingPane {
         placement: NewPanePlacement,

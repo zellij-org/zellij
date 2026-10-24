@@ -1650,6 +1650,7 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
+            Action::New4Pane { .. } => Err("Unsupported action"),
             Action::EditFile {
                 payload: open_file_payload,
                 direction,

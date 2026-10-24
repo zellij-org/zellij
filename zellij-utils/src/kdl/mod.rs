@@ -621,6 +621,36 @@ impl Action {
                     })
                 }
             },
+            "New4Pane" => {
+                if string.is_empty() {
+                    return Ok(Action::NewPane {
+                        direction: None,
+                        pane_name: None,
+                        start_suppressed: false,
+                    });
+                } else if string == "stacked" {
+                    return Ok(Action::NewStackedPane {
+                        command: None,
+                        pane_name: None,
+                        near_current_pane: false,
+                        no_focus: false,
+                        tab_id: None,
+                    });
+                } else {
+                    let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                        ConfigError::new_kdl_error(
+                            format!("Invalid direction: '{}'", string),
+                            action_node.span().offset(),
+                            action_node.span().len(),
+                        )
+                    })?;
+                    Ok(Action::NewPane {
+                        direction: Some(direction),
+                        pane_name: None,
+                        start_suppressed: false,
+                    })
+                }
+            },
             "SearchToggleOption" => {
                 let toggle_option = SearchOption::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
@@ -1993,6 +2023,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "NewPane" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "New4Pane" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

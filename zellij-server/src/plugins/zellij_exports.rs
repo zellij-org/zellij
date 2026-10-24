@@ -800,6 +800,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         toggle_floating_panes(env, tab_id)
                     },
                     PluginCommand::NewPane => new_pane(env),
+                    //PluginCommand::New4Pane => new_4_pane(env),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                     PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
@@ -4148,6 +4149,16 @@ fn new_pane(env: &PluginEnv) {
     };
     apply_action!(action, error_msg, env);
 }
+
+// fn new_4_pane(env: &PluginEnv) {
+//     let error_msg = || format!("failed to open new pane in plugin {}", env.name());
+//     let action = Action::NewPane {
+//         direction: None,
+//         pane_name: None,
+//         start_suppressed: false,
+//     };
+//     apply_action!(action, error_msg, env);
+// }
 
 fn undo_rename_pane(env: &PluginEnv) {
     let error_msg = || format!("failed to undo rename pane in plugin {}", env.name());

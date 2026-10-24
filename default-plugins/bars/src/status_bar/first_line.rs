@@ -45,7 +45,9 @@ impl KeyShortcut {
     }
 
     pub fn full_text(&self) -> String {
+        //this is the first shown bar
         match self.action {
+            //KeyAction::Lock => String::from("SHAKED"), // SHAKED
             KeyAction::Lock => String::from("LOCK"),
             KeyAction::Unlock => String::from("UNLOCK"),
             KeyAction::Pane => String::from("PANE"),
@@ -104,7 +106,8 @@ impl KeyShortcut {
     }
     pub fn short_text(&self) -> String {
         match self.action {
-            KeyAction::Lock => String::from("Lo"),
+            KeyAction::Lock => String::from("Ps"), // PABLO
+            //KeyAction::Lock => String::from("Lo"),
             KeyAction::Unlock => String::from("Un"),
             KeyAction::Pane => String::from("Pa"),
             KeyAction::Tab => String::from("Ta"),

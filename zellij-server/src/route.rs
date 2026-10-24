@@ -846,6 +846,36 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::New4Pane {
+            direction,
+            pane_name,
+            start_suppressed,
+        } => {
+            let shell = default_shell.clone();
+            let new_pane_placement = match direction {
+                Some(direction) => NewPanePlacement::Tiled {
+                    direction: Some(direction),
+                    borderless: None,
+                    border_style: None,
+                },
+                None => NewPanePlacement::NoPreference {
+                    borderless: None,
+                    border_style: None,
+                },
+            };
+            senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    shell,
+                    pane_name,
+                    new_pane_placement,
+                    start_suppressed,
+                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(NotificationEnd::new(completion_tx)),
+                    false, // set_blocking
+                    None,
+                ))
+                .with_context(err_context)?;
+        },
         Action::NewBlockingPane {
             placement,
             pane_name,
