@@ -7,6 +7,7 @@ use zellij_utils::input::config_blocks::{
 
 use crate::list_editor::{EntryKind, FieldSpec, FieldValue, ListEditor, Section, SectionedList};
 use crate::page::{actions_summary, is_plain, is_shift_tab, print_dim, Effect, Page, PageResponse};
+use crate::plugin_settings::{PluginSettingsSection, SharedPluginSettingsEntries};
 
 fn text_field(label: &'static str, placeholder: &'static str) -> FieldSpec {
     FieldSpec::text(label, placeholder)
@@ -511,18 +512,22 @@ const MENU_SECTIONS: [&str; 4] = ["pane", "tab", "bar", "common"];
 pub struct BlockPage {
     note: &'static str,
     list: SectionedList,
+    plugin_settings_entries: Option<SharedPluginSettingsEntries>,
 }
 
 impl BlockPage {
     pub fn plugins_and_environment() -> Self {
+        let plugin_settings_entries = SharedPluginSettingsEntries::default();
         BlockPage {
             note: "",
             list: SectionedList::new(vec![
                 Box::new(ListEditor::new(AliasKind).dialog_form()),
                 Box::new(ListEditor::new(LoadPluginKind).dialog_form()),
                 Box::new(ListEditor::new(EnvKind).dialog_form()),
+                Box::new(PluginSettingsSection::new(plugin_settings_entries.clone())),
             ])
             .styled("Plugins and environment", "Show"),
+            plugin_settings_entries: Some(plugin_settings_entries),
         }
     }
     pub fn right_click_menu() -> Self {
@@ -545,6 +550,13 @@ impl BlockPage {
                 .with_cross_moves()
                 .with_shared_columns()
                 .styled("Right-click menu", "Menu"),
+            plugin_settings_entries: None,
+        }
+    }
+    pub fn set_plugin_settings_entries(&mut self, entries: Vec<PluginSettingsEntry>) {
+        if let Some(shared) = self.plugin_settings_entries.as_ref() {
+            *shared.borrow_mut() = entries;
+            self.list.sections_changed();
         }
     }
 }
@@ -621,6 +633,58 @@ impl Page for BlockPage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::list_editor::Row;
+
+    fn press(page: &mut BlockPage, bare_key: BareKey) {
+        page.handle_key(&KeyWithModifier::new(bare_key));
+    }
+
+    fn settings_entry(plugin_id: u32, title: &str) -> PluginSettingsEntry {
+        PluginSettingsEntry {
+            plugin_id,
+            title: title.to_owned(),
+        }
+    }
+
+    #[test]
+    fn plugin_settings_entries_are_listed_last_on_the_plugins_page() {
+        let mut page = BlockPage::plugins_and_environment();
+        page.set_focused(true);
+        page.set_plugin_settings_entries(vec![settings_entry(7, "Status bar")]);
+        let rows = page.list.rows();
+        assert_eq!(rows.last(), Some(&Row::Entry(3, 0)));
+        while page.list.selected() != Row::Entry(3, 0) {
+            press(&mut page, BareKey::Down);
+        }
+        press(&mut page, BareKey::Enter);
+        assert_eq!(page.take_effects(), vec![Effect::OpenPluginSettings(7)]);
+        page.set_plugin_settings_entries(vec![]);
+        assert_eq!(page.list.rows().last(), Some(&Row::Heading(3)));
+    }
+
+    #[test]
+    fn filtering_to_empty_plugin_settings_leaves_hidden_sections_alone() {
+        let mut page = BlockPage::plugins_and_environment();
+        page.set_focused(true);
+        page.list.sections_changed();
+        press(&mut page, BareKey::Up);
+        for _ in 0..4 {
+            press(&mut page, BareKey::Right);
+        }
+        assert_eq!(page.list.rows(), vec![Row::Heading(3)]);
+        press(&mut page, BareKey::Down);
+        for character in [' ', 'a'] {
+            page.handle_key(&KeyWithModifier::new(BareKey::Char(character)));
+        }
+        press(&mut page, BareKey::Enter);
+        assert!(!page.list.is_busy());
+        assert!(page.take_effects().is_empty());
+        // an entry that arrives while the section is filtered is selected right away
+        page.set_plugin_settings_entries(vec![settings_entry(7, "Status bar")]);
+        assert_eq!(page.list.selected(), Row::Entry(3, 0));
+        press(&mut page, BareKey::Enter);
+        assert_eq!(page.take_effects(), vec![Effect::OpenPluginSettings(7)]);
+    }
 
     #[test]
     fn plugin_locations_are_checked() {

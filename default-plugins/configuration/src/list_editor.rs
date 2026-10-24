@@ -1484,6 +1484,10 @@ pub trait Section {
     fn menu_like(&self) -> bool {
         false
     }
+    /// Entries can only be opened, not edited, added, deleted or reverted.
+    fn read_only(&self) -> bool {
+        false
+    }
     fn heading_note(&self) -> Option<String> {
         None
     }
@@ -1894,7 +1898,8 @@ impl SectionedList {
     }
     fn select_first_entry(&mut self) {
         let rows = self.rows();
-        if let Some(row) = rows.iter().find(|row| row.selectable()).copied() {
+        let first = rows.iter().find(|row| row.selectable()).or(rows.first());
+        if let Some(row) = first.copied() {
             self.select(row);
         }
         self.scroll.reset();
@@ -2149,7 +2154,9 @@ impl SectionedList {
             for entry in 0..section.len() {
                 rows.push(Row::Entry(index, entry));
             }
-            rows.push(Row::Actions(index));
+            if !section.actions().is_empty() {
+                rows.push(Row::Actions(index));
+            }
         }
         rows
     }
@@ -2180,7 +2187,9 @@ impl SectionedList {
             for entry in 0..section.len() {
                 rows.push(Row::Entry(index, entry));
             }
-            rows.push(Row::Actions(index));
+            if !section.actions().is_empty() {
+                rows.push(Row::Actions(index));
+            }
         }
         rows
     }
@@ -2197,8 +2206,13 @@ impl SectionedList {
     fn normalize_selection(&mut self) {
         if self.styled.is_some() {
             let rows = self.rows();
-            if !rows.contains(&self.selected) {
+            let resting = !self.selected.selectable() && rows.iter().any(|row| row.selectable());
+            if !rows.contains(&self.selected) || resting {
                 let fallback = match self.selected {
+                    Row::Heading(section) => rows
+                        .iter()
+                        .find(|row| matches!(row, Row::Entry(s, _) if *s == section))
+                        .copied(),
                     Row::Entry(section, entry) => rows
                         .iter()
                         .filter(|row| matches!(row, Row::Entry(s, _) if *s == section))
@@ -2209,8 +2223,11 @@ impl SectionedList {
                         }),
                     _ => None,
                 };
+                // with nothing selectable shown, rest on the heading so that keys act on the
+                // section in view rather than on a hidden one
                 self.selected = fallback
                     .or_else(|| rows.iter().find(|row| row.selectable()).copied())
+                    .or_else(|| rows.first().copied())
                     .unwrap_or(Row::Actions(0));
             }
             return;
@@ -2224,7 +2241,16 @@ impl SectionedList {
             Row::Actions(section) if section < self.sections.len() => Row::Actions(section),
             _ => Row::Actions(0),
         };
-        self.selected = row;
+        let rows = self.rows();
+        self.selected = if rows.contains(&row) {
+            row
+        } else {
+            rows.iter()
+                .find(|row| row.selectable())
+                .or(rows.first())
+                .copied()
+                .unwrap_or(row)
+        };
     }
     fn follow_sections(&mut self, clear: bool) {
         for index in 0..self.sections.len() {
@@ -2235,6 +2261,10 @@ impl SectionedList {
                 self.sections[index].clear_follow();
             }
         }
+        self.normalize_selection();
+    }
+    /// Keeps the selection valid after a section's entries changed outside of a snapshot.
+    pub fn sections_changed(&mut self) {
         self.normalize_selection();
     }
     pub fn set_snapshot(&mut self, snapshot: &ConfigSnapshot) {
@@ -2309,6 +2339,9 @@ impl SectionedList {
         let Row::Entry(section, entry) = self.selected else {
             return;
         };
+        if self.sections[section].read_only() {
+            return;
+        }
         if !self.sections[section].ordered() {
             self.notice = Some("The order of these entries does not matter".to_owned());
             return;
@@ -2817,6 +2850,17 @@ impl SectionedList {
         let mut hints = vec![("<↓↑>", "move")];
         let delete_key = "<Del>";
         match self.selected {
+            Row::Entry(section, _) | Row::Heading(section)
+                if self.sections[section].read_only() =>
+            {
+                if matches!(self.selected, Row::Entry(..)) {
+                    hints.push(("<Enter>", "open"));
+                }
+                if self.styled.is_some() {
+                    hints.push(("</>", "search"));
+                }
+                return hints;
+            },
             Row::Actions(_) => {
                 hints.push(("<←→>", "choose"));
                 hints.push(("<Enter>", "do it"));
