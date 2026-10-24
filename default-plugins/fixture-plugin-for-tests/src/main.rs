@@ -369,6 +369,10 @@ impl ZellijPlugin for State {
             .get("subscribe_nested_session_events")
             .map(|v| v == "true")
             .unwrap_or(false);
+        let should_subscribe_settings_entries = configuration
+            .get("subscribe_settings_entries")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         self.configuration = configuration;
         subscribe(&[
             EventType::InputReceived,
@@ -413,6 +417,9 @@ impl ZellijPlugin for State {
                 EventType::NestedSessionModeUpdate,
                 EventType::NestedSessionEnded,
             ]);
+        }
+        if should_subscribe_settings_entries {
+            subscribe(&[EventType::PluginSettingsEntries]);
         }
         watch_filesystem();
     }
@@ -1323,6 +1330,16 @@ impl ZellijPlugin for State {
                                 Err(e) => format!("Nested keybinds error: {:?}", e),
                             });
                     }
+                },
+                BareKey::Char('n')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    register_settings_entry("Fixture settings");
+                },
+                BareKey::Char('o')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    unregister_settings_entry();
                 },
                 _ => {},
             },

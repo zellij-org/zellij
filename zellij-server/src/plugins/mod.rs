@@ -4,6 +4,7 @@ mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
 mod prompt_requests;
+mod settings_entries;
 mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
@@ -248,6 +249,12 @@ pub enum PluginInstruction {
     GlobalAttentionUpdate(zellij_utils::attention::GlobalAttention),
     SessionHistoryUpdate(ClientId, zellij_utils::session_history::SessionHistoryInfo),
     RequestStateUpdateForPlugin(PluginId),
+    RegisterSettingsEntry {
+        plugin_id: PluginId,
+        plugin_identity: settings_entries::PluginIdentity,
+        title: String,
+    },
+    UnregisterSettingsEntry(PluginId),
     UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
     GetLastSessionSaveTime {
         response_channel: crossbeam::channel::Sender<Option<u64>>,
@@ -354,6 +361,10 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
+            },
+            PluginInstruction::RegisterSettingsEntry { .. } => PluginContext::RegisterSettingsEntry,
+            PluginInstruction::UnregisterSettingsEntry(..) => {
+                PluginContext::UnregisterSettingsEntry
             },
             PluginInstruction::UpdateSessionSaveTime(..) => PluginContext::UpdateSessionSaveTime,
             PluginInstruction::GetLastSessionSaveTime { .. } => {
@@ -1620,6 +1631,16 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);
+            },
+            PluginInstruction::RegisterSettingsEntry {
+                plugin_id,
+                plugin_identity,
+                title,
+            } => {
+                wasm_bridge.register_settings_entry(plugin_id, plugin_identity, &title);
+            },
+            PluginInstruction::UnregisterSettingsEntry(plugin_id) => {
+                wasm_bridge.unregister_settings_entry(plugin_id);
             },
             PluginInstruction::UpdateSessionSaveTime(timestamp_millis) => {
                 // Store timestamp in WasmBridge (as Unix epoch for internal use)

@@ -10,6 +10,7 @@ use crate::plugins::plugin_map::{
     SharedSlot, Subscriptions,
 };
 use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
+use crate::plugins::settings_entries::{PluginIdentity, SettingsEntries};
 use crate::plugins::shared::{
     add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
     remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
@@ -317,6 +318,7 @@ pub struct WasmBridge {
     shared_keys: HashMap<SharedKey, PluginId>,
     shared_slot_owner: HashMap<PluginId, PluginId>,
     shared_module_kinds: HashMap<String, bool>,
+    settings_entries: SettingsEntries,
 }
 
 impl WasmBridge {
@@ -392,6 +394,7 @@ impl WasmBridge {
             shared_keys: HashMap::new(),
             shared_slot_owner: HashMap::new(),
             shared_module_kinds: HashMap::new(),
+            settings_entries: SettingsEntries::default(),
         }
     }
     pub fn load_plugin(
@@ -751,6 +754,7 @@ impl WasmBridge {
             ));
         let prompt_actions = self.prompt_requests.plugin_unloaded(pid);
         self.apply_prompt_actions(prompt_actions);
+        self.settings_entries_changed(|entries| entries.plugin_unloaded(pid));
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
         let _ = self
             .senders
@@ -764,7 +768,10 @@ impl WasmBridge {
             .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
         let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
         self.apply_prompt_actions(prompt_actions);
+        // the reloaded plugin registers again if it still wants an entry
+        self.unregister_settings_entry(plugin_id);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
+            self.unregister_settings_entry(instance_id);
             self.reload_shared_instance(instance_id);
             return Ok(());
         }
@@ -2689,6 +2696,34 @@ impl WasmBridge {
             )]));
         }
     }
+    pub fn register_settings_entry(
+        &mut self,
+        plugin_id: PluginId,
+        plugin_identity: PluginIdentity,
+        title: &str,
+    ) {
+        if self
+            .settings_entries
+            .register(plugin_id, plugin_identity, title)
+        {
+            self.broadcast_settings_entries();
+        }
+    }
+    pub fn unregister_settings_entry(&mut self, plugin_id: PluginId) {
+        self.settings_entries_changed(|entries| entries.unregister(plugin_id));
+    }
+    fn settings_entries_changed(&mut self, change: impl FnOnce(&mut SettingsEntries) -> bool) {
+        if change(&mut self.settings_entries) {
+            self.broadcast_settings_entries();
+        }
+    }
+    fn broadcast_settings_entries(&self) {
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            None,
+            None,
+            Event::PluginSettingsEntries(self.settings_entries.entries()),
+        )]));
+    }
     pub fn state_update_for_plugin(&self, plugin_id: PluginId) {
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
             (
@@ -2706,6 +2741,11 @@ impl WasmBridge {
                     self.available_keybind_presets.clone(),
                     self.available_keybind_preset_errors.clone(),
                 ),
+            ),
+            (
+                Some(plugin_id),
+                None,
+                Event::PluginSettingsEntries(self.settings_entries.entries()),
             ),
         ]));
     }
@@ -2940,6 +2980,7 @@ impl WasmBridge {
             self.send_pipe_releases(pipes_to_release);
             let prompt_actions = self.prompt_requests.plugin_unloaded(instance_id);
             self.apply_prompt_actions(prompt_actions);
+            self.settings_entries_changed(|entries| entries.plugin_unloaded(instance_id));
         } else {
             self.plugin_executor.execute_for_plugin(
                 instance_id,
@@ -3457,6 +3498,7 @@ pub fn check_event_permission(
         | Event::GlobalAttentionUpdate(..)
         | Event::SessionHistoryUpdate(..)
         | Event::DesktopIntegration(..)
+        | Event::PluginSettingsEntries(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3663,6 +3705,7 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
         plugin_id,
         loading_indication,
     ));
+    let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(plugin_id));
 }
 
 pub fn apply_before_close_event_to_plugin(

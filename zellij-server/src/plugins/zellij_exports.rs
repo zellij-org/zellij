@@ -646,6 +646,28 @@ fn desktop_integration(env: &PluginEnv, request: String) {
         });
 }
 
+fn register_settings_entry(env: &PluginEnv, title: String) {
+    let plugin_identity = (
+        env.plugin.location.clone(),
+        env.plugin.initial_userspace_configuration.clone(),
+    );
+    env.senders
+        .send_to_plugin(PluginInstruction::RegisterSettingsEntry {
+            plugin_id: env.plugin_id,
+            plugin_identity,
+            title,
+        })
+        .with_context(|| format!("failed to register a settings entry for {}", env.name()))
+        .non_fatal();
+}
+
+fn unregister_settings_entry(env: &PluginEnv) {
+    env.senders
+        .send_to_plugin(PluginInstruction::UnregisterSettingsEntry(env.plugin_id))
+        .with_context(|| format!("failed to unregister the settings entry of {}", env.name()))
+        .non_fatal();
+}
+
 fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
     if env.shared.is_none() {
         env.pending_popup_size = Some((width, height));
@@ -809,6 +831,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
                     },
+                    PluginCommand::RegisterSettingsEntry(title) => {
+                        register_settings_entry(env, title)
+                    },
+                    PluginCommand::UnregisterSettingsEntry => unregister_settings_entry(env),
                     PluginCommand::DesktopIntegration(request) => {
                         desktop_integration(env, request)
                     },
@@ -6760,7 +6786,9 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::ToggleSessionPaneMute { .. }
         | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
         | PluginCommand::ToggleSessionPaneWatch { .. }
-        | PluginCommand::FocusSessionPane { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::FocusSessionPane { .. }
+        | PluginCommand::RegisterSettingsEntry(..)
+        | PluginCommand::UnregisterSettingsEntry => PermissionType::ChangeApplicationState,
         PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)

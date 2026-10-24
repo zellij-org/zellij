@@ -14609,3 +14609,213 @@ pub fn a_session_pane_preview_is_asked_for_with_its_anchor() {
             .collect::<Vec<_>>()
     );
 }
+
+struct SettingsEntriesScenario {
+    plugin_thread_sender: SenderWithContext<PluginInstruction>,
+    screen_receiver: Receiver<(ScreenInstruction, ErrorContext)>,
+    cache_path: PathBuf,
+    client_id: zellij_utils::data::ClientId,
+    granted_plugins: usize,
+    latest_render: std::collections::HashMap<u32, String>,
+}
+
+impl SettingsEntriesScenario {
+    fn load_subscribed_fixture(&mut self) {
+        let mut configuration = BTreeMap::new();
+        configuration.insert("subscribe_settings_entries".to_owned(), "true".to_owned());
+        let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+            configuration: PluginUserConfiguration::new(configuration),
+            ..Default::default()
+        });
+        let _ = self.plugin_thread_sender.send(PluginInstruction::Load(
+            Some(false),
+            false,
+            false,
+            Some("test_plugin".to_owned()),
+            run_plugin,
+            Some(1),
+            None,
+            self.client_id,
+            Size {
+                cols: 500,
+                rows: 20,
+            },
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+        ));
+        let granted_before = self.granted_plugins;
+        // commands sent before the permission is granted are dropped
+        assert!(
+            self.receive_until(|scenario| scenario.granted_plugins > granted_before),
+            "the fixture never asked for permissions"
+        );
+    }
+    fn send_key_to_all(&self, key: char) {
+        let _ = self
+            .plugin_thread_sender
+            .send(PluginInstruction::Update(vec![(
+                None,
+                Some(self.client_id),
+                Event::Key(
+                    KeyWithModifier::new(BareKey::Char(key))
+                        .with_ctrl_modifier()
+                        .with_alt_modifier(),
+                ),
+            )]));
+    }
+    // the fixture renders every event it received, so the most recent entries event is the last
+    fn latest_entries(&self, plugin_id: u32) -> Option<String> {
+        let render = self.latest_render.get(&plugin_id)?;
+        let start = render.rfind("PluginSettingsEntries(")?;
+        let end = start + render[start..].find("])")? + 2;
+        Some(render[start..end].to_owned())
+    }
+    fn wait_for_entries(&mut self, plugin_id: u32, expected: &str) {
+        let reached = self.receive_until(|scenario| {
+            scenario.latest_entries(plugin_id).as_deref() == Some(expected)
+        });
+        assert!(
+            reached,
+            "plugin {} expected {}, last saw {:?}",
+            plugin_id,
+            expected,
+            self.latest_entries(plugin_id)
+        );
+    }
+    fn receive_until(&mut self, done: impl Fn(&Self) -> bool) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !done(self) {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            match self.screen_receiver.recv_timeout(remaining) {
+                Ok((ScreenInstruction::RequestPluginPermissions(plugin_id, permissions), _)) => {
+                    let _ =
+                        self.plugin_thread_sender
+                            .send(PluginInstruction::PermissionRequestResult(
+                                plugin_id,
+                                Some(self.client_id),
+                                permissions.permissions,
+                                PermissionStatus::Granted,
+                                Some(self.cache_path.clone()),
+                            ));
+                    self.granted_plugins += 1;
+                },
+                Ok((ScreenInstruction::PluginBytes(plugin_render_assets), _)) => {
+                    for asset in plugin_render_assets {
+                        self.latest_render.insert(
+                            asset.plugin_id,
+                            String::from_utf8_lossy(&asset.bytes).to_string(),
+                        );
+                    }
+                },
+                Ok(_) => {},
+                Err(_) => return false,
+            }
+        }
+        true
+    }
+}
+
+fn run_settings_entries_scenario(steps: impl FnOnce(&mut SettingsEntriesScenario)) {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder), None);
+    let client_id = 1;
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let mut scenario = SettingsEntriesScenario {
+        plugin_thread_sender,
+        screen_receiver,
+        cache_path,
+        client_id,
+        granted_plugins: 0,
+        latest_render: std::collections::HashMap::new(),
+    };
+    steps(&mut scenario);
+    teardown();
+}
+
+#[test]
+#[ignore]
+pub fn settings_entries_reach_subscribed_plugins() {
+    run_settings_entries_scenario(|scenario| {
+        scenario.load_subscribed_fixture();
+        // Ctrl+Alt+n registers "Fixture settings", Ctrl+Alt+o unregisters it
+        scenario.send_key_to_all('n');
+        scenario.wait_for_entries(
+            0,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 0, title: \"Fixture settings\" }])",
+        );
+        scenario.send_key_to_all('o');
+        scenario.wait_for_entries(0, "PluginSettingsEntries([])");
+    });
+}
+
+#[test]
+#[ignore]
+pub fn a_plugin_loaded_later_receives_the_registered_settings_entries() {
+    run_settings_entries_scenario(|scenario| {
+        scenario.load_subscribed_fixture();
+        scenario.send_key_to_all('n');
+        scenario.wait_for_entries(
+            0,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 0, title: \"Fixture settings\" }])",
+        );
+        scenario.load_subscribed_fixture();
+        scenario.wait_for_entries(
+            1,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 0, title: \"Fixture settings\" }])",
+        );
+    });
+}
+
+#[test]
+#[ignore]
+pub fn instances_of_a_plugin_share_one_settings_entry_until_the_last_unloads() {
+    run_settings_entries_scenario(|scenario| {
+        scenario.load_subscribed_fixture();
+        scenario.load_subscribed_fixture();
+        scenario.send_key_to_all('n');
+        scenario.wait_for_entries(
+            1,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 0, title: \"Fixture settings\" }])",
+        );
+        let _ = scenario
+            .plugin_thread_sender
+            .send(PluginInstruction::Unload(0));
+        scenario.wait_for_entries(
+            1,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 1, title: \"Fixture settings\" }])",
+        );
+    });
+}
+
+#[test]
+#[ignore]
+pub fn a_reloaded_plugin_loses_its_settings_entry_until_it_registers_again() {
+    run_settings_entries_scenario(|scenario| {
+        scenario.load_subscribed_fixture();
+        scenario.load_subscribed_fixture();
+        scenario.send_key_to_all('n');
+        scenario.wait_for_entries(
+            1,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 0, title: \"Fixture settings\" }])",
+        );
+        let _ = scenario
+            .plugin_thread_sender
+            .send(PluginInstruction::ReloadPluginWithId(0));
+        scenario.wait_for_entries(
+            1,
+            "PluginSettingsEntries([PluginSettingsEntry { plugin_id: 1, title: \"Fixture settings\" }])",
+        );
+    });
+}

@@ -2940,6 +2940,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for DesktopIntegration"),
             },
+            Some(CommandName::RegisterSettingsEntry) => match protobuf_plugin_command.payload {
+                Some(Payload::RegisterSettingsEntryPayload(title)) => {
+                    Ok(PluginCommand::RegisterSettingsEntry(title))
+                },
+                _ => Err("Mismatched payload for RegisterSettingsEntry"),
+            },
+            Some(CommandName::UnregisterSettingsEntry) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("UnregisterSettingsEntry should not have a payload");
+                }
+                Ok(PluginCommand::UnregisterSettingsEntry)
+            },
             Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
                 Some(Payload::DeleteThemeFilePayload(name)) => {
                     Ok(PluginCommand::DeleteThemeFile { name })
@@ -5162,6 +5174,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::GetSavedSessionPreview as i32,
                 payload: Some(Payload::GetSavedSessionPreviewPayload(name)),
             }),
+            PluginCommand::RegisterSettingsEntry(title) => Ok(ProtobufPluginCommand {
+                name: CommandName::RegisterSettingsEntry as i32,
+                payload: Some(Payload::RegisterSettingsEntryPayload(title)),
+            }),
+            PluginCommand::UnregisterSettingsEntry => Ok(ProtobufPluginCommand {
+                name: CommandName::UnregisterSettingsEntry as i32,
+                payload: None,
+            }),
             PluginCommand::DesktopIntegration(request) => Ok(ProtobufPluginCommand {
                 name: CommandName::DesktopIntegration as i32,
                 payload: Some(Payload::DesktopIntegrationPayload(request)),
@@ -6549,6 +6569,18 @@ mod tests {
             PluginCommand::SetLiveViewInput(false),
         ];
         for original in commands {
+            let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            assert_eq!(format!("{:?}", decoded), format!("{:?}", original));
+        }
+    }
+
+    #[test]
+    fn settings_entry_commands_protobuf_round_trip() {
+        for original in [
+            PluginCommand::RegisterSettingsEntry("Status bar".to_owned()),
+            PluginCommand::UnregisterSettingsEntry,
+        ] {
             let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
             let decoded: PluginCommand = protobuf.try_into().expect("decode");
             assert_eq!(format!("{:?}", decoded), format!("{:?}", original));
