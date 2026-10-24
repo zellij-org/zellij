@@ -27,7 +27,7 @@ use zellij_utils::{
     errors::{prelude::*, ErrorContext},
     input::{
         actions::{Action, SearchDirection, SearchOption},
-        command::TerminalAction,
+        command::{RunCommandAction, TerminalAction},
     },
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiveError, IpcReceiverWithContext, ServerToClientMsg,
@@ -262,12 +262,31 @@ fn new_pane_routing(
     }
 }
 
+fn new_pane_command(
+    command: Option<RunCommandAction>,
+    default_shell: Option<TerminalAction>,
+) -> Option<TerminalAction> {
+    match (command, default_shell) {
+        (Some(command), Some(mut default_shell)) if command.command.as_os_str().is_empty() => {
+            if let Some(cwd) = command.cwd {
+                default_shell.change_cwd(cwd);
+            }
+            Some(default_shell)
+        },
+        (Some(command), _) => Some(TerminalAction::RunCommand(command.into())),
+        (None, default_shell) => default_shell,
+    }
+}
+
 fn spawns_command_pane(action: &Action) -> bool {
     match action {
         Action::NewFloatingPane { command, .. }
         | Action::NewInPlacePane { command, .. }
         | Action::NewStackedPane { command, .. }
-        | Action::NewTiledPane { command, .. } => command.is_some(),
+        | Action::NewTiledPane { command, .. } => command
+            .as_ref()
+            .map(|command| !command.command.as_os_str().is_empty())
+            .unwrap_or(false),
         Action::RunInBackground { .. } => true,
         _ => false,
     }
@@ -855,9 +874,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let command = command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let command = new_pane_command(command, default_shell.clone());
             let set_pane_blocking = true;
 
             let notification_end = if let Some(condition) = unblock_condition {
@@ -977,9 +994,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_command(run_command, default_shell.clone());
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
@@ -1004,9 +1019,7 @@ fn route_action_with_origin(
             close_replaced_pane,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_command(run_command, default_shell.clone());
             let explicit_pane_id_to_replace: Option<PaneId> = pane_id_to_replace
                 .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
             let pane_id = explicit_pane_id_to_replace.or(pane_id);
@@ -1043,9 +1056,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_command(run_command, default_shell.clone());
 
             let (pane_placement, client_tab_index_or_paneid) = if let Some(tab_id) = tab_id {
                 (
@@ -1107,9 +1118,7 @@ fn route_action_with_origin(
             border_style,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_command(run_command, default_shell.clone());
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders

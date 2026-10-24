@@ -1323,6 +1323,12 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
+                // An empty command asks the server to use the session's default shell,
+                // while still carrying an explicitly requested working directory.
+                let shell_command = alias_cwd.clone().map(|cwd| RunCommandAction {
+                    cwd: Some(cwd),
+                    ..Default::default()
+                });
                 let unblock_condition = unblock_condition.or_else(|| {
                     if block_until_exit_success {
                         Some(UnblockCondition::OnExitSuccess)
@@ -1356,7 +1362,7 @@ impl Action {
                             ..Default::default()
                         })
                     } else {
-                        None
+                        shell_command
                     };
 
                     let placement = if floating {
@@ -1519,7 +1525,7 @@ impl Action {
                 } else {
                     if floating {
                         Ok(vec![Action::NewFloatingPane {
-                            command: None,
+                            command: shell_command,
                             pane_name: name,
                             coordinates: FloatingPaneCoordinates::merge_border_style(
                                 FloatingPaneCoordinates::new(
@@ -1533,7 +1539,7 @@ impl Action {
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
-                            command: None,
+                            command: shell_command,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
@@ -1543,7 +1549,7 @@ impl Action {
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
-                            command: None,
+                            command: shell_command,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
@@ -1552,7 +1558,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
-                            command: None,
+                            command: shell_command,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
