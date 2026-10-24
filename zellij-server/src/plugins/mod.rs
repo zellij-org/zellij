@@ -1254,12 +1254,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
-                // CliPipe target filtering: never send CLI pipes to disconnected client plugin instances.
-                pipe_messages.retain(|(_plugin_id, client_id, _pipe_message)| {
-                    client_id
-                        .map(|client_id| wasm_bridge.client_is_connected(&client_id))
-                        .unwrap_or(false)
-                });
+                retain_cli_pipe_targets(&mut pipe_messages, &wasm_bridge);
                 let has_recipients = !pipe_messages.is_empty();
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
                 if !has_recipients && !wasm_bridge.cli_pipe_is_pending(&pipe_id) {
@@ -1406,9 +1401,7 @@ pub(crate) fn plugin_thread_main(
                     }
                 }
                 if client_local {
-                    pipe_messages.retain(|(_, target_client_id, _)| {
-                        *target_client_id == Some(cli_client_id)
-                    });
+                    retain_client_local_pipes(&mut pipe_messages, cli_client_id, &wasm_bridge);
                 }
                 wasm_bridge.pipe_messages(
                     pipe_messages,
@@ -1512,9 +1505,7 @@ pub(crate) fn plugin_thread_main(
                     },
                 }
                 if message.client_local {
-                    pipe_messages.retain(|(_, target_client_id, _)| {
-                        *target_client_id == Some(source_client_id)
-                    });
+                    retain_client_local_pipes(&mut pipe_messages, source_client_id, &wasm_bridge);
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
@@ -1865,6 +1856,37 @@ fn pipe_to_specific_plugins(
             },
         },
     }
+}
+
+fn retain_client_local_pipes(
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+    client_id: ClientId,
+    wasm_bridge: &WasmBridge,
+) {
+    pipe_messages.retain_mut(|(plugin_id, target_client_id, _)| match target_client_id {
+        Some(target_client_id) => *target_client_id == client_id,
+        None if (*plugin_id)
+            .map(|plugin_id| wasm_bridge.is_shared_plugin_or_slot(plugin_id))
+            .unwrap_or(false) =>
+        {
+            *target_client_id = Some(client_id);
+            true
+        },
+        None => false,
+    });
+}
+
+fn retain_cli_pipe_targets(
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+    wasm_bridge: &WasmBridge,
+) {
+    pipe_messages.retain(|(plugin_id, client_id, _)| match client_id {
+        Some(client_id) => wasm_bridge.client_is_connected(client_id),
+        None => plugin_id
+            .as_ref()
+            .map(|plugin_id| wasm_bridge.is_shared_plugin_or_slot(*plugin_id))
+            .unwrap_or(false),
+    });
 }
 
 fn load_background_plugin(
