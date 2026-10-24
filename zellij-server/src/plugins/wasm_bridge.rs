@@ -2751,6 +2751,9 @@ impl WasmBridge {
     pub fn shared_instance_ids(&self) -> Vec<PluginId> {
         self.shared_instances.keys().copied().collect()
     }
+    pub fn is_shared_plugin_or_slot(&self, plugin_id: PluginId) -> bool {
+        self.shared_instance_of(plugin_id).is_some()
+    }
     fn shared_instance_of(&self, plugin_id: PluginId) -> Option<PluginId> {
         if let Some(instance_id) = self.shared_slot_owner.get(&plugin_id) {
             Some(*instance_id)
