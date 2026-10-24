@@ -459,12 +459,11 @@ pub fn apply_events_job(
         {
             continue;
         }
-        if is_deduplicated_event(event_type) {
-            if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
-                let key = (event_type, context.client_id);
+        let deduplication_key = if is_deduplicated_event(event_type) {
+            if let Some(shared) = running_plugin.store.data().shared.as_ref() {
                 let already_delivered = shared
                     .last_events
-                    .get(&key)
+                    .get(&(event_type, context.client_id))
                     .map(|(last_event, last_keybinds)| {
                         last_event == &event && last_keybinds == &keybinds
                     })
@@ -472,11 +471,13 @@ pub fn apply_events_job(
                 if already_delivered {
                     continue;
                 }
-                shared
-                    .last_events
-                    .insert(key, (event.clone(), keybinds.clone()));
+                Some((event_type, context.client_id))
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
         match check_event_permission(running_plugin.store.data(), &event) {
             (PermissionStatus::Granted, _) => {},
             (PermissionStatus::Denied, permission) => {
@@ -491,10 +492,20 @@ pub fn apply_events_job(
                 continue;
             },
         }
-        let mut event = event.clone();
+        let event_for_deduplication = deduplication_key.as_ref().map(|_| event.clone());
         super::wasm_bridge::redact_event_for_plugin(running_plugin.store.data(), &mut event);
         match call_update(&mut running_plugin, &event, keybinds.as_deref(), context) {
             Ok(requested) => {
+                if let (Some((event_type, client_id)), Some(event)) =
+                    (deduplication_key, event_for_deduplication)
+                {
+                    if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
+                        // Denied or failed callbacks must remain eligible for a later retry.
+                        shared
+                            .last_events
+                            .insert((event_type, client_id), (event, keybinds.clone()));
+                    }
+                }
                 render = render.merge(requested);
                 if event_type == EventType::PermissionRequestResult {
                     render = render.merge(RenderResponse::All);
