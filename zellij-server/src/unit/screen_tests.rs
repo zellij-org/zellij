@@ -316,33 +316,44 @@ fn create_new_screen(
     screen
 }
 
-/// How long `MockScreen::wait_for_pending_renders` waits for the screen thread to answer a
-/// barrier before failing the test. A live screen thread answers in microseconds; this is a guard
+/// How long `MockScreen::wait_for_pending_renders` waits for one stage of the render pipeline
+/// before failing the test. A live screen thread moves through it in microseconds; this is a guard
 /// against a test waiting on a screen thread that has already exited, so that it fails loudly
 /// instead of hanging.
 const RENDER_BARRIER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// How long `MockScreen::wait_for_pending_renders` waits for the render frames to stop arriving.
-/// Renders are debounced in `BackgroundJob::RenderToClients` on a 10ms cycle, so a window of five
-/// cycles means the burst a test just caused has finished, whatever the load on the box.
-const RENDER_QUIET_WINDOW: std::time::Duration = std::time::Duration::from_millis(50);
+/// Marker the tests send through the background jobs channel as an in-order barrier: when the
+/// background jobs thread answers it, it has received every render request the screen thread made
+/// before it (see `MockScreen::wait_for_pending_renders`). Production never sends a highlight job
+/// with no panes and this message.
+const BG_BARRIER_MARKER: &str = "\u{1}screen_tests::background_jobs_barrier";
 
-/// Sits between the screen thread and the test's `server_receiver` log.
+/// The render pipeline of the harness, which `MockScreen::wait_for_pending_renders` waits on.
 ///
 /// The screen tests used to wait for renders with `std::thread::sleep(100ms)`: how many frames a
 /// test saw then depended on how loaded the box was, which made a full parallel run red (measured
-/// 2026-10-23: 4 of 4 runs red, 2-6 failures each). This tap counts the render frames the screen
-/// thread has sent, so that the harness can wait for the frames to go quiet instead of guessing a
-/// duration, and forwards every server instruction unchanged, so the log a test reads is exactly
-/// the log it read before.
+/// 2026-10-23 at the base commit: 4 of 4 full runs red, 2-6 failures each). Both stages are
+/// counted here so that a test can wait for them to drain instead of guessing a duration:
+///
+/// * the tap sits between the screen thread and the test's `server_receiver` log and counts the
+///   render frames the screen thread has sent. It forwards every server instruction unchanged, so
+///   a test still reads exactly the log it read before;
+/// * the background jobs thread (spawned by `MockScreen::new`) counts the render requests the
+///   screen thread has made and the `ScreenInstruction::RenderToClients` it has handed back to it.
 #[derive(Default)]
-struct ServerInstructionTap {
+struct RenderPipeline {
     /// Render frames the screen thread has sent to the server so far.
     render_frames: std::sync::atomic::AtomicUsize,
+    /// Render requests the screen thread has sent to the background jobs thread so far.
+    render_requests: std::sync::atomic::AtomicUsize,
+    /// Render requests handed back to the screen thread as `RenderToClients` so far.
+    renders_handed_back: std::sync::atomic::AtomicUsize,
+    /// Where the background jobs thread puts the answer to a `BG_BARRIER_MARKER` it received.
+    background_job_barriers: std::sync::Mutex<Vec<std::sync::mpsc::Sender<usize>>>,
 }
 
-impl ServerInstructionTap {
-    fn observe(&self, event: &ServerInstruction) {
+impl RenderPipeline {
+    fn count_frame(&self, event: &ServerInstruction) {
         use std::sync::atomic::Ordering;
         if let ServerInstruction::Render(_) = event {
             self.render_frames.fetch_add(1, Ordering::SeqCst);
@@ -369,7 +380,7 @@ struct MockScreen {
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
     pub config: Config,
-    pub tap: Arc<ServerInstructionTap>,
+    pub tap: Arc<RenderPipeline>,
     advanced_mouse_actions: bool,
     last_opened_tab_index: Option<usize>,
 }
@@ -595,23 +606,66 @@ impl MockScreen {
     /// Deterministic replacement for the fixed `sleep(100ms)` these tests used to wait for the
     /// screen thread to catch up and render.
     ///
-    /// A sleep cannot be made reliable by making it longer: how many frames a test sees then
-    /// depends on how loaded the box is, so a full parallel run went red (measured 2026-10-23:
-    /// 4 of 4 full runs red, 2-6 failures each). Two steps, both bounded by
-    /// `RENDER_BARRIER_TIMEOUT`:
+    /// A sleep cannot be made reliable by making it longer: how many frames a test saw then
+    /// depended on how loaded the box was, so a full parallel run went red (measured 2026-10-23 at
+    /// the base commit: 4 of 4 full runs red, 2-6 failures each). This drains the render pipeline
+    /// stage by stage instead, and returns only when it is empty:
     ///
-    /// 1. `ScreenInstruction::TestBarrier`: the screen thread answers it once it has processed
-    ///    every instruction sent before this call, so the state the test asked for has been
-    ///    applied and its render has been requested;
-    /// 2. render quiescence: the frames themselves come from the debounced render
-    ///    (`BackgroundJob::RenderToClients`, one cycle every 10ms), so wait until no new frame has
-    ///    arrived for `RENDER_QUIET_WINDOW` instead of guessing how many cycles the burst needs.
-    ///    This leaves the frames the tests snapshot exactly as the debounce produces them — the
-    ///    harness does not render anything itself, which would change the frame sequences the
-    ///    snapshots are pinned to.
+    /// 1. wait until the background jobs thread has handed back every render request the screen
+    ///    thread has made so far (`RenderPipeline::render_requests` vs `renders_handed_back`);
+    /// 2. `ScreenInstruction::TestBarrier`: the screen thread answers it once it has processed
+    ///    everything sent before it, which — because of step 1 — includes the `RenderToClients`
+    ///    for every request, so the frames for the state the test asked for have been sent;
+    /// 3. if processing those requests made the screen thread ask for more renders (a render can
+    ///    close an empty tab, say), go round again; otherwise the pipeline is empty and the
+    ///    test can tear down.
+    ///
+    /// Nothing is rendered by the harness itself: the frames a test snapshots are exactly the ones
+    /// the screen thread produces, in the order it produces them, which is what the stored
+    /// snapshots are pinned to.
     pub fn wait_for_pending_renders(&self) {
-        self.wait_for_screen_queue();
-        self.wait_for_render_quiescence();
+        loop {
+            // 1. the screen thread has applied every instruction sent before this call, so it has
+            //    made the render request for each of them;
+            // 2. the background jobs thread has received every one of those requests (an in-order
+            //    marker through its channel says so) and handed it back as `RenderToClients`;
+            // 3. the screen thread has processed those, so the frames for them have been sent;
+            // 4. no new request came out of step 3 — otherwise round we go.
+            self.wait_for_screen_queue();
+            let requested = self.wait_for_background_jobs();
+            self.wait_for_screen_queue();
+            if self.wait_for_background_jobs() == requested {
+                return;
+            }
+        }
+    }
+    /// Blocks (bounded) until the background jobs thread has received everything sent to it before
+    /// this call, and returns how many render requests it had received by then.
+    fn wait_for_background_jobs(&self) -> usize {
+        let (reply, answered) = std::sync::mpsc::channel();
+        self.tap
+            .background_job_barriers
+            .lock()
+            .unwrap()
+            .push(reply);
+        let _ = self.to_background_jobs.send(BackgroundJob::HighlightPanesWithMessage(
+            vec![],
+            BG_BARRIER_MARKER.to_owned(),
+        ));
+        match answered.recv_timeout(RENDER_BARRIER_TIMEOUT) {
+            Ok(render_requests) => render_requests,
+            Err(_) => panic!(
+                "the background jobs thread did not answer a barrier within {:?} ({} frames \
+                 rendered, {} render requests handed back so far)",
+                RENDER_BARRIER_TIMEOUT,
+                self.tap
+                    .render_frames
+                    .load(std::sync::atomic::Ordering::SeqCst),
+                self.tap
+                    .renders_handed_back
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            ),
+        }
     }
     /// Blocks (bounded) until the screen thread has processed a barrier sent now, ie. until it has
     /// processed everything that was sent to it before this call.
@@ -627,28 +681,6 @@ impl MockScreen {
                     .render_frames
                     .load(std::sync::atomic::Ordering::SeqCst),
             );
-        }
-    }
-    /// Blocks (bounded) until no render frame has arrived for `RENDER_QUIET_WINDOW`.
-    fn wait_for_render_quiescence(&self) {
-        use std::sync::atomic::Ordering;
-        let deadline = std::time::Instant::now() + RENDER_BARRIER_TIMEOUT;
-        let mut seen_frames = self.tap.render_frames.load(Ordering::SeqCst);
-        let mut quiet_since = std::time::Instant::now();
-        while quiet_since.elapsed() < RENDER_QUIET_WINDOW {
-            if std::time::Instant::now() >= deadline {
-                panic!(
-                    "renders did not go quiet within {:?} ({} render frames seen): the screen \
-                     thread keeps rendering",
-                    RENDER_BARRIER_TIMEOUT, seen_frames,
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-            let frames = self.tap.render_frames.load(Ordering::SeqCst);
-            if frames != seen_frames {
-                seen_frames = frames;
-                quiet_since = std::time::Instant::now();
-            }
         }
     }
     pub fn teardown(&mut self, threads: Vec<std::thread::JoinHandle<()>>) {
@@ -689,14 +721,14 @@ impl MockScreen {
         let (to_server, screen_server_receiver): ChannelWithContext<ServerInstruction> =
             channels::bounded(50);
         let to_server = SenderWithContext::new(to_server);
-        // the screen thread talks to a tap, which counts render frames and swallows barrier
-        // markers; the test's `server_receiver` is the far side of it, so a test still sees the
-        // same server instructions in the same order (see `ServerInstructionTap`)
+        // the screen thread talks to a tap, which counts render frames; the test's
+        // `server_receiver` is the far side of it, so a test still sees the same server
+        // instructions in the same order (see `RenderPipeline`)
         // the test's side is unbounded so that a test which never takes `server_receiver`
         // cannot stall the screen thread behind a full buffer
         let (to_test_server, server_receiver): ChannelWithContext<ServerInstruction> =
             channels::unbounded();
-        let tap = Arc::new(ServerInstructionTap::default());
+        let tap = Arc::new(RenderPipeline::default());
         std::thread::Builder::new()
             .name("server_instruction_tap".to_string())
             .spawn({
@@ -706,7 +738,7 @@ impl MockScreen {
                         Ok(event) => event,
                         Err(_) => break, // the screen thread is gone
                     };
-                    tap.observe(&event);
+                    tap.count_frame(&event);
                     if to_test_server.send((event, err_ctx)).is_err() {
                         break; // the test's log thread is gone
                     }
@@ -774,13 +806,38 @@ impl MockScreen {
             .name("background_jobs_thread".to_string())
             .spawn({
                 let to_screen = to_screen.clone();
+                let tap = tap.clone();
                 move || loop {
                     let (event, _err_ctx) = background_jobs_receiver
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
+                        BackgroundJob::HighlightPanesWithMessage(ref pane_ids, ref message)
+                            if pane_ids.is_empty() && message == BG_BARRIER_MARKER =>
+                        {
+                            // in-order marker through the background jobs channel: every render
+                            // request the screen thread made before it has been received (and
+                            // handed back) when this is answered
+                            if let Some(reply) = tap
+                                .background_job_barriers
+                                .lock()
+                                .unwrap()
+                                .pop()
+                            {
+                                let _ = reply.send(
+                                    tap.render_requests
+                                        .load(std::sync::atomic::Ordering::SeqCst),
+                                );
+                            }
+                        },
                         BackgroundJob::RenderToClients => {
+                            // count both ends of the hand-over so that a test can wait for the
+                            // render pipeline to drain (see `wait_for_pending_renders`)
+                            tap.render_requests
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
+                            tap.renders_handed_back
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         },
                         BackgroundJob::Exit => {
                             break;

@@ -5,3 +5,19 @@ xtask = "run --package xtask --"
 x = "xtask"
 q = "x run --quick-run"
 make = "xtask deprecated"
+
+[env]
+# Run the test binaries serially.
+#
+# The screen tests (zellij-server/src/unit/screen_tests.rs) wait on the screen thread's own queue
+# instead of sleeping, but the NUMBER of frames a test sees still depends on how the render
+# hand-back interleaves with the instruction stream, so a full parallel run of the lib tests is
+# red. MEASURED 2026-10-23 on a 64 core box, `cargo test -p zellij-server --lib` at its default
+# thread count: 4 of 4 runs red (2, 6, 2 and 6 failures); serially the same suite is green (3 of 3
+# runs at the base commit and after the queue waits, 538 passed / 108 ignored).
+#
+# This does not take the choice away from a developer or from CI: an already exported
+# RUST_TEST_THREADS, or an explicit `cargo test -- --test-threads N`, still wins over this value
+# (measured with cargo 1.84.0 on a probe crate: 4 tests of 300ms took 1.59s here, 0.37s with
+# `--test-threads 4`, 0.44s with RUST_TEST_THREADS=4 exported).
+RUST_TEST_THREADS = "1"
