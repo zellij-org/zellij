@@ -643,15 +643,13 @@ impl MockScreen {
     /// this call, and returns how many render requests it had received by then.
     fn wait_for_background_jobs(&self) -> usize {
         let (reply, answered) = std::sync::mpsc::channel();
-        self.tap
-            .background_job_barriers
-            .lock()
-            .unwrap()
-            .push(reply);
-        let _ = self.to_background_jobs.send(BackgroundJob::HighlightPanesWithMessage(
-            vec![],
-            BG_BARRIER_MARKER.to_owned(),
-        ));
+        self.tap.background_job_barriers.lock().unwrap().push(reply);
+        let _ = self
+            .to_background_jobs
+            .send(BackgroundJob::HighlightPanesWithMessage(
+                vec![],
+                BG_BARRIER_MARKER.to_owned(),
+            ));
         match answered.recv_timeout(RENDER_BARRIER_TIMEOUT) {
             Ok(render_requests) => render_requests,
             Err(_) => panic!(
@@ -818,12 +816,7 @@ impl MockScreen {
                             // in-order marker through the background jobs channel: every render
                             // request the screen thread made before it has been received (and
                             // handed back) when this is answered
-                            if let Some(reply) = tap
-                                .background_job_barriers
-                                .lock()
-                                .unwrap()
-                                .pop()
-                            {
+                            if let Some(reply) = tap.background_job_barriers.lock().unwrap().pop() {
                                 let _ = reply.send(
                                     tap.render_requests
                                         .load(std::sync::atomic::Ordering::SeqCst),
