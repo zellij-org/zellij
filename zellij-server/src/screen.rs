@@ -244,6 +244,13 @@ pub struct TabOverrideResult {
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
+    /// Test-only rendezvous: answered by the screen thread once it has processed every
+    /// instruction sent before it, without touching screen state and without emitting any
+    /// instruction of its own (it is answered before the resize cache is created, so waiting on
+    /// the screen thread costs the pty writer nothing). Used by
+    /// `screen_tests::MockScreen::wait_for_pending_renders` to replace a fixed sleep.
+    #[cfg(test)]
+    TestBarrier(std::sync::mpsc::Sender<()>),
     PtyBytes(u32, VteBytes),
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
@@ -653,6 +660,8 @@ pub enum ScreenInstruction {
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
+            #[cfg(test)]
+            ScreenInstruction::TestBarrier(..) => ScreenContext::Render,
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
@@ -4174,11 +4183,21 @@ pub(crate) fn screen_thread_main(
             .recv()
             .context("failed to receive event on channel")?;
         err_ctx.add_call(ContextType::Screen((&event).into()));
+        // a test-only rendezvous is answered here, before the resize cache is created, so that a
+        // test waiting for the screen thread to catch up emits no pty writer instructions of its
+        // own (see screen_tests::MockScreen::wait_for_pending_renders)
+        #[cfg(test)]
+        if let ScreenInstruction::TestBarrier(ref reply) = event {
+            let _ = reply.send(());
+            continue;
+        }
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
 
         match event {
+            #[cfg(test)]
+            ScreenInstruction::TestBarrier(..) => unreachable!("handled before the match"),
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {

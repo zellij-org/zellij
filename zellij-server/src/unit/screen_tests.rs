@@ -316,6 +316,40 @@ fn create_new_screen(
     screen
 }
 
+/// How long `MockScreen::wait_for_pending_renders` waits for the screen thread to answer a
+/// barrier before failing the test. A live screen thread answers in microseconds; this is a guard
+/// against a test waiting on a screen thread that has already exited, so that it fails loudly
+/// instead of hanging.
+const RENDER_BARRIER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long `MockScreen::wait_for_pending_renders` waits for the render frames to stop arriving.
+/// Renders are debounced in `BackgroundJob::RenderToClients` on a 10ms cycle, so a window of five
+/// cycles means the burst a test just caused has finished, whatever the load on the box.
+const RENDER_QUIET_WINDOW: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Sits between the screen thread and the test's `server_receiver` log.
+///
+/// The screen tests used to wait for renders with `std::thread::sleep(100ms)`: how many frames a
+/// test saw then depended on how loaded the box was, which made a full parallel run red (measured
+/// 2026-10-23: 4 of 4 runs red, 2-6 failures each). This tap counts the render frames the screen
+/// thread has sent, so that the harness can wait for the frames to go quiet instead of guessing a
+/// duration, and forwards every server instruction unchanged, so the log a test reads is exactly
+/// the log it read before.
+#[derive(Default)]
+struct ServerInstructionTap {
+    /// Render frames the screen thread has sent to the server so far.
+    render_frames: std::sync::atomic::AtomicUsize,
+}
+
+impl ServerInstructionTap {
+    fn observe(&self, event: &ServerInstruction) {
+        use std::sync::atomic::Ordering;
+        if let ServerInstruction::Render(_) = event {
+            self.render_frames.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 struct MockScreen {
     pub main_client_id: u16,
     pub pty_receiver: Option<Receiver<(PtyInstruction, ErrorContext)>>,
@@ -335,6 +369,7 @@ struct MockScreen {
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
     pub config: Config,
+    pub tap: Arc<ServerInstructionTap>,
     advanced_mouse_actions: bool,
     last_opened_tab_index: Option<usize>,
 }
@@ -345,7 +380,6 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
         let mut config = self.config.clone();
         config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
@@ -396,8 +430,9 @@ impl MockScreen {
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let should_change_focus_to_new_tab = true;
-        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async
-                                                                   // render
+        // let the screen thread catch up with whatever the test queued before it was started
+        // (eg. a `new_tab` call), so that those renders land before this tab's
+        self.wait_for_pending_renders();
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
             default_shell,
@@ -424,7 +459,7 @@ impl MockScreen {
             None,
         ));
         self.last_opened_tab_index = Some(tab_index);
-        std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+        self.wait_for_pending_renders();
         screen_thread
     }
     // same as the above function, but starts a plugin with a plugin alias
@@ -557,6 +592,65 @@ impl MockScreen {
         ));
         self.last_opened_tab_index = Some(tab_index);
     }
+    /// Deterministic replacement for the fixed `sleep(100ms)` these tests used to wait for the
+    /// screen thread to catch up and render.
+    ///
+    /// A sleep cannot be made reliable by making it longer: how many frames a test sees then
+    /// depends on how loaded the box is, so a full parallel run went red (measured 2026-10-23:
+    /// 4 of 4 full runs red, 2-6 failures each). Two steps, both bounded by
+    /// `RENDER_BARRIER_TIMEOUT`:
+    ///
+    /// 1. `ScreenInstruction::TestBarrier`: the screen thread answers it once it has processed
+    ///    every instruction sent before this call, so the state the test asked for has been
+    ///    applied and its render has been requested;
+    /// 2. render quiescence: the frames themselves come from the debounced render
+    ///    (`BackgroundJob::RenderToClients`, one cycle every 10ms), so wait until no new frame has
+    ///    arrived for `RENDER_QUIET_WINDOW` instead of guessing how many cycles the burst needs.
+    ///    This leaves the frames the tests snapshot exactly as the debounce produces them — the
+    ///    harness does not render anything itself, which would change the frame sequences the
+    ///    snapshots are pinned to.
+    pub fn wait_for_pending_renders(&self) {
+        self.wait_for_screen_queue();
+        self.wait_for_render_quiescence();
+    }
+    /// Blocks (bounded) until the screen thread has processed a barrier sent now, ie. until it has
+    /// processed everything that was sent to it before this call.
+    fn wait_for_screen_queue(&self) {
+        let (reply, answered) = std::sync::mpsc::channel();
+        let _ = self.to_screen.send(ScreenInstruction::TestBarrier(reply));
+        if answered.recv_timeout(RENDER_BARRIER_TIMEOUT).is_err() {
+            panic!(
+                "the screen thread did not answer a barrier within {:?} ({} render frames seen): \
+                 it is not processing instructions any more",
+                RENDER_BARRIER_TIMEOUT,
+                self.tap
+                    .render_frames
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            );
+        }
+    }
+    /// Blocks (bounded) until no render frame has arrived for `RENDER_QUIET_WINDOW`.
+    fn wait_for_render_quiescence(&self) {
+        use std::sync::atomic::Ordering;
+        let deadline = std::time::Instant::now() + RENDER_BARRIER_TIMEOUT;
+        let mut seen_frames = self.tap.render_frames.load(Ordering::SeqCst);
+        let mut quiet_since = std::time::Instant::now();
+        while quiet_since.elapsed() < RENDER_QUIET_WINDOW {
+            if std::time::Instant::now() >= deadline {
+                panic!(
+                    "renders did not go quiet within {:?} ({} render frames seen): the screen \
+                     thread keeps rendering",
+                    RENDER_BARRIER_TIMEOUT, seen_frames,
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            let frames = self.tap.render_frames.load(Ordering::SeqCst);
+            if frames != seen_frames {
+                seen_frames = frames;
+                quiet_since = std::time::Instant::now();
+            }
+        }
+    }
     pub fn teardown(&mut self, threads: Vec<std::thread::JoinHandle<()>>) {
         let _ = self.to_pty.send(PtyInstruction::Exit);
         let _ = self.to_pty_writer.send(PtyWriteInstruction::Exit);
@@ -592,9 +686,33 @@ impl MockScreen {
 
 impl MockScreen {
     pub fn new(size: Size) -> Self {
-        let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
+        let (to_server, screen_server_receiver): ChannelWithContext<ServerInstruction> =
             channels::bounded(50);
         let to_server = SenderWithContext::new(to_server);
+        // the screen thread talks to a tap, which counts render frames and swallows barrier
+        // markers; the test's `server_receiver` is the far side of it, so a test still sees the
+        // same server instructions in the same order (see `ServerInstructionTap`)
+        // the test's side is unbounded so that a test which never takes `server_receiver`
+        // cannot stall the screen thread behind a full buffer
+        let (to_test_server, server_receiver): ChannelWithContext<ServerInstruction> =
+            channels::unbounded();
+        let tap = Arc::new(ServerInstructionTap::default());
+        std::thread::Builder::new()
+            .name("server_instruction_tap".to_string())
+            .spawn({
+                let tap = tap.clone();
+                move || loop {
+                    let (event, err_ctx) = match screen_server_receiver.recv() {
+                        Ok(event) => event,
+                        Err(_) => break, // the screen thread is gone
+                    };
+                    tap.observe(&event);
+                    if to_test_server.send((event, err_ctx)).is_err() {
+                        break; // the test's log thread is gone
+                    }
+                }
+            })
+            .unwrap();
 
         let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
             channels::unbounded();
@@ -693,6 +811,7 @@ impl MockScreen {
             last_opened_tab_index: None,
             config: Config::default(),
             advanced_mouse_actions: true,
+            tap,
         }
     }
     pub fn set_advanced_hover_effects(&mut self, advanced_mouse_actions: bool) {
@@ -1824,9 +1943,8 @@ pub fn mouse_hover_effect() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -1840,7 +1958,7 @@ pub fn mouse_hover_effect() {
         client_id,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -1877,7 +1995,7 @@ pub fn disabled_mouse_hover_effect() {
         client_id,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2131,7 +2249,7 @@ pub fn send_cli_write_chars_action_to_screen() {
         pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -2158,7 +2276,7 @@ pub fn send_cli_write_action_to_screen() {
         pane_id: None,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -2220,9 +2338,9 @@ pub fn send_cli_resize_action_to_screen() {
         resize: Resize::Increase,
         direction: Some(Direction::Left),
     };
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, resize_cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2254,7 +2372,7 @@ pub fn send_cli_focus_next_pane_action() {
     );
     let focus_next_pane_action = CliAction::FocusNextPane;
     send_cli_action_to_server(&session_metadata, focus_next_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2287,7 +2405,7 @@ pub fn send_cli_focus_previous_pane_action() {
     );
     let focus_next_pane_action = CliAction::FocusPreviousPane;
     send_cli_action_to_server(&session_metadata, focus_next_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2322,7 +2440,7 @@ pub fn send_cli_move_focus_pane_action() {
         direction: Direction::Right,
     };
     send_cli_action_to_server(&session_metadata, move_focus_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2357,7 +2475,7 @@ pub fn send_cli_move_focus_or_tab_pane_action() {
         direction: Direction::Right,
     };
     send_cli_action_to_server(&session_metadata, move_focus_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2392,7 +2510,7 @@ pub fn send_cli_move_pane_action() {
         direction: Some(Direction::Right),
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2431,7 +2549,7 @@ pub fn send_cli_dump_screen_action() {
         "fill pane up with something".as_bytes().to_vec(),
     ));
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     assert_snapshot!(format!(
         "{:?}",
@@ -2462,7 +2580,7 @@ pub fn send_cli_edit_scrollback_action() {
         "fill pane up with something".as_bytes().to_vec(),
     ));
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     let dumped_file_name = mock_screen
         .os_input
@@ -2517,12 +2635,12 @@ pub fn send_cli_scroll_up_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // we send two actions here because only the last line in the pane is empty, so one action
     // won't show in a render
     send_cli_action_to_server(&session_metadata, cli_action.clone(), client_id);
     send_cli_action_to_server(&session_metadata, cli_action.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2562,7 +2680,7 @@ pub fn send_cli_scroll_down_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // scroll up some
     send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
     send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
@@ -2572,7 +2690,7 @@ pub fn send_cli_scroll_down_action() {
     // scroll down some
     send_cli_action_to_server(&session_metadata, scroll_down_cli_action.clone(), client_id);
     send_cli_action_to_server(&session_metadata, scroll_down_cli_action.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2609,7 +2727,7 @@ pub fn send_cli_scroll_to_bottom_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // scroll up some
     send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
     send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
@@ -2622,7 +2740,7 @@ pub fn send_cli_scroll_to_bottom_action() {
         scroll_to_bottom_action.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2658,10 +2776,10 @@ pub fn send_cli_scroll_to_top_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // scroll to top
     send_cli_action_to_server(&session_metadata, scroll_to_top_action.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2693,7 +2811,7 @@ pub fn send_cli_page_scroll_up_action() {
     );
     let page_scroll_up_action = CliAction::PageScrollUp;
     let mut pane_contents = String::new();
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
@@ -2701,9 +2819,9 @@ pub fn send_cli_page_scroll_up_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, page_scroll_up_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2739,23 +2857,23 @@ pub fn send_cli_page_scroll_down_action() {
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     // scroll up some
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
 
     // scroll down
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, page_scroll_down_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2794,9 +2912,9 @@ pub fn send_cli_half_page_scroll_up_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(&session_metadata, half_page_scroll_up_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2829,7 +2947,7 @@ pub fn send_cli_half_page_scroll_down_action() {
     let half_page_scroll_up_action = CliAction::HalfPageScrollUp;
     let half_page_scroll_down_action = CliAction::HalfPageScrollDown;
     let mut pane_contents = String::new();
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     for i in 0..20 {
         pane_contents.push_str(&format!("fill pane up with something {}\n\r", i));
     }
@@ -2837,7 +2955,7 @@ pub fn send_cli_half_page_scroll_down_action() {
         0,
         pane_contents.as_bytes().to_vec(),
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     // scroll up some
     send_cli_action_to_server(
@@ -2845,17 +2963,17 @@ pub fn send_cli_half_page_scroll_down_action() {
         half_page_scroll_up_action.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
 
     // scroll down
     send_cli_action_to_server(&session_metadata, half_page_scroll_down_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2887,7 +3005,7 @@ pub fn send_cli_toggle_full_screen_action() {
     );
     let toggle_full_screen_action = CliAction::ToggleFullscreen;
     send_cli_action_to_server(&session_metadata, toggle_full_screen_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2919,7 +3037,7 @@ pub fn send_cli_toggle_pane_frames_action() {
     );
     let toggle_pane_frames_action = CliAction::TogglePaneFrames;
     send_cli_action_to_server(&session_metadata, toggle_pane_frames_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -2963,7 +3081,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
         client_id,
     );
     send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     let received_write_instructions: Vec<_> = received_pty_instructions
         .lock()
@@ -3020,7 +3138,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3069,7 +3187,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3118,7 +3236,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
     let new_pane_instruction = received_pty_instructions
@@ -3178,7 +3296,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         borderless: Some(false),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3219,7 +3337,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3260,7 +3378,7 @@ pub fn send_cli_edit_action_with_line_number() {
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3301,7 +3419,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         near_current_pane: false,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
 }
@@ -3329,7 +3447,7 @@ pub fn send_cli_switch_mode_action() {
     };
     send_cli_action_to_server(&session_metadata, cli_switch_mode, client_id);
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
 
     let switch_mode_action = received_server_instructions
@@ -3369,14 +3487,14 @@ pub fn send_cli_toggle_pane_embed_or_float() {
         toggle_pane_embed_or_floating.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // second time to embed
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3410,13 +3528,13 @@ pub fn send_cli_toggle_floating_panes() {
     let toggle_floating_panes = CliAction::ToggleFloatingPanes;
     // float the focused pane
     send_cli_action_to_server(&session_metadata, toggle_pane_embed_or_floating, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // toggle floating panes (will hide the floated pane from the previous action)
     send_cli_action_to_server(&session_metadata, toggle_floating_panes.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // toggle floating panes (will show the floated pane)
     send_cli_action_to_server(&session_metadata, toggle_floating_panes.clone(), client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3449,7 +3567,7 @@ pub fn send_cli_close_pane_action() {
     );
     let close_pane_action = CliAction::ClosePane;
     send_cli_action_to_server(&session_metadata, close_pane_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3493,7 +3611,7 @@ pub fn send_cli_new_tab_action_default_params() {
         block_until_exit_failure: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
     let new_tab_action =
@@ -3540,7 +3658,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         block_until_exit_failure: false,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let new_tab_instruction = received_plugin_instructions
         .lock()
@@ -3573,7 +3691,7 @@ pub fn send_cli_next_tab_action() {
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -3583,9 +3701,8 @@ pub fn send_cli_next_tab_action() {
     );
     let goto_next_tab = CliAction::GoToNextTab;
     send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
         size,
@@ -3620,7 +3737,7 @@ pub fn send_cli_previous_tab_action() {
     );
     let goto_previous_tab = CliAction::GoToPreviousTab;
     send_cli_action_to_server(&session_metadata, goto_previous_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3656,7 +3773,7 @@ pub fn send_cli_goto_tab_action() {
     );
     let goto_tab = CliAction::GoToTab { index: 1 };
     send_cli_action_to_server(&session_metadata, goto_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3692,7 +3809,7 @@ pub fn send_cli_close_tab_action() {
     );
     let close_tab = CliAction::CloseTab;
     send_cli_action_to_server(&session_metadata, close_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -3730,7 +3847,7 @@ pub fn send_cli_rename_tab() {
         name: "new-tab-name".into(),
     };
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let plugin_rename_tab_instruction = received_plugin_instructions
         .lock()
@@ -3777,10 +3894,10 @@ pub fn send_cli_undo_rename_tab() {
     let undo_rename_tab = CliAction::UndoRenameTab;
     // first rename the tab
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // then undo the tab rename to go back to the default name
     send_cli_action_to_server(&session_metadata, undo_rename_tab, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let plugin_undo_rename_tab_instruction = received_plugin_instructions
         .lock()
@@ -3817,7 +3934,7 @@ pub fn send_cli_query_tab_names_action() {
     );
     let query_tab_names = CliAction::QueryTabNames;
     send_cli_action_to_server(&session_metadata, query_tab_names, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let log_tab_names_instruction = received_server_instructions
         .lock()
@@ -3857,7 +3974,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
     let pty_fill_plugin_cwd_instruction = received_pty_instructions
@@ -3918,7 +4035,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
 
     let plugin_load_instruction_sent = received_plugin_instructions
@@ -4001,7 +4118,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
         skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
 
     let plugin_load_instruction_sent = received_plugin_instructions
@@ -4052,7 +4169,7 @@ pub fn screen_can_suppress_pane() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::SuppressPane(PaneId::Terminal(1), 1));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -4077,9 +4194,8 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free, pane_to_stay];
     let mut mock_screen = MockScreen::new(size);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -4094,7 +4210,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         1,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
@@ -4110,17 +4226,17 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4155,7 +4271,7 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
         1,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4182,9 +4298,8 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free];
     let mut mock_screen = MockScreen::new(size);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), floating_panes_layout.clone());
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -4199,7 +4314,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         1,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
@@ -4347,9 +4462,8 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free, pane_to_stay];
     let mut mock_screen = MockScreen::new(size);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -4364,7 +4478,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         1,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
@@ -4380,17 +4494,17 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4423,9 +4537,8 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free];
     let mut mock_screen = MockScreen::new(size);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
     let screen_thread = mock_screen.run(Some(initial_layout), floating_panes_layout.clone());
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
+    mock_screen.wait_for_pending_renders();
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -4440,7 +4553,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         1,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
@@ -4457,17 +4570,17 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4522,15 +4635,15 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneRight(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4583,15 +4696,15 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneLeft(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4633,7 +4746,7 @@ pub fn send_cli_stack_panes_action() {
         pane_ids: vec!["1".to_owned(), "2".to_owned(), "3".to_owned()],
     };
     send_cli_action_to_server(&session_metadata, stack_panes_action, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -4677,7 +4790,7 @@ pub fn send_cli_change_floating_pane_coordinates_action() {
         change_floating_pane_coordinates_action,
         client_id,
     );
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.wait_for_pending_renders();
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
