@@ -449,9 +449,9 @@ impl RenderPipeline {
 /// hands it back as `ScreenInstruction::RenderToClients`. If the screen thread processed the next
 /// test instruction before that hand-back, the two state changes landed in one frame — so a test
 /// that sent `NewTab` and `ApplyLayout` back to back saw one frame or two depending on the load on
-/// the box (measured 2026-10-23 with the drain in place: 10 of 12 full runs red at 64 threads, 2-8
-/// failures each, and every failure a frame count or a frame that still showed the previous
-/// state).
+/// the box (measured 2026-10-23 with the drain in place: 6 of 6 full runs red at 64 threads, 1-8
+/// failures each, every one a frame count or a frame that still showed the previous state; the
+/// same run serially was green).
 ///
 /// So the tests do not write to the screen thread directly: every instruction goes through this
 /// pump, which forwards one instruction at a time and waits for the pipeline to drain before it
@@ -459,6 +459,10 @@ impl RenderPipeline {
 /// the frame sequence is a property of the screen thread alone, not of how the threads were
 /// scheduled. A test that wants to know the pipeline is empty sends `ScreenInstruction::TestBarrier`
 /// through the same channel (see `MockScreen::wait_for_pending_renders`).
+///
+/// This is not the whole story on its own: the frames also depend on the session name every test
+/// sets, because `zellij_utils::shared::make_terminal_title` puts it into the title it renders (see
+/// `crate::TEST_SESSION_NAME`).
 ///
 /// `ScreenInstruction::Exit` is forwarded and ends the pump: the screen thread is about to stop
 /// answering barriers, so there is nothing left to drain.
