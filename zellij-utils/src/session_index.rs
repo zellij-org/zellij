@@ -350,6 +350,10 @@ fn json_path_for_fact(name: &str) -> String {
     format!("$.\"{}\"", name.replace('"', ""))
 }
 
+fn escape_sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 impl SessionIndex {
     pub fn open_default() -> Result<Self> {
         Self::open(
@@ -420,7 +424,7 @@ impl SessionIndex {
         let statement = format!(
             "CREATE INDEX IF NOT EXISTS sessions_fact_{} ON sessions(json_extract(facts, '{}'))",
             sanitize_identifier(fact),
-            json_path_for_fact(fact)
+            escape_sql_literal(&json_path_for_fact(fact))
         );
         self.conn.execute_batch(&statement)?;
         self.indexed_facts.insert(fact.to_owned());
@@ -758,7 +762,7 @@ impl SessionIndex {
         let sql = format!(
             "SELECT {} FROM sessions WHERE json_extract(facts, '{}') = ?1",
             Self::COLUMNS,
-            json_path_for_fact(fact)
+            escape_sql_literal(&json_path_for_fact(fact))
         );
         self.query_rows(&sql, &[&value])
     }
@@ -1707,6 +1711,39 @@ mod tests {
         assert_eq!(
             test.index.session_id("bar").unwrap(),
             Some("foo".to_owned())
+        );
+    }
+
+    #[test]
+    fn fact_name_with_apostrophe_does_not_break_index_or_query() {
+        let mut test = TestIndex::new();
+        let fact_name = "owner's-project";
+        let mut ctx = context("/work", None, None);
+        ctx.facts.insert(fact_name.to_owned(), "zeta".to_owned());
+        test.add("s1", ctx, 10);
+
+        let rows = test.index.rows_with_fact(fact_name, "zeta").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "s1");
+    }
+
+    #[test]
+    fn fact_name_sql_injection_attempt_does_not_execute_injected_ddl() {
+        let mut test = TestIndex::new();
+        let malicious_fact = "foo'); DROP TABLE sessions; --";
+        let _ = test.index.ensure_fact_index(malicious_fact);
+        let has_table: bool = test
+            .index
+            .conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap();
+        assert!(
+            has_table,
+            "sessions table must not be dropped by injected SQL"
         );
     }
 }
