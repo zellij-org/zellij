@@ -11,7 +11,7 @@ mod swap_layouts;
 use crate::plugins::PluginId;
 use copy_command::CopyCommand;
 pub use mouse_handler::{ContextMenuRequest, MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
-pub use popup::{place_popup, PopupKind, PopupMouseOutcome, PopupPlacement, POPUP_Z_INDEX};
+pub use popup::{place_popup, PopupBehavior, PopupMouseOutcome, PopupPlacement, POPUP_Z_INDEX};
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;

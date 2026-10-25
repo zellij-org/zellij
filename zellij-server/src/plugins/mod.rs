@@ -31,7 +31,7 @@ pub use prompt_requests::{PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::{PipePopupRoute, WasmBridge};
 
-use crate::tab::{PopupKind, PopupPlacement};
+use crate::tab::{PopupBehavior, PopupPlacement};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
@@ -267,7 +267,7 @@ pub enum PluginInstruction {
         tab_index: usize,
         client_id: ClientId,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         anchor_pane: Option<PaneId>,
         size: Size,
         initial_events: Vec<Event>,
@@ -497,7 +497,7 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
                 placement,
-                kind,
+                behavior,
                 anchor_pane,
                 size,
                 initial_events,
@@ -527,7 +527,7 @@ pub(crate) fn plugin_thread_main(
                             tab_id,
                             run_plugin_or_alias,
                             placement,
-                            kind,
+                            behavior,
                             width: size.cols,
                             height: size.rows,
                             anchor_pane,

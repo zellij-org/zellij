@@ -4454,6 +4454,13 @@ impl fmt::Display for PopupCorner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum OutsideClick {
+    #[default]
+    Block,
+    Close,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PopupOptions {
     pub focused: bool,
