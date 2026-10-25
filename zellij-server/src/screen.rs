@@ -14438,7 +14438,9 @@ pub(crate) fn screen_thread_main(
                     }
                 });
 
-                if !found {
+                if found {
+                    screen.report_popup_state_for_plugin(plugin_id);
+                } else {
                     log::error!("PluginId '{}' not found - caching request", plugin_id);
                     pending_events_waiting_for_client.push(
                         ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission),

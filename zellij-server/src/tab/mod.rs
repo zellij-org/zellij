@@ -8650,6 +8650,7 @@ impl Tab {
             if asks_for_permissions {
                 self.reveal_popup(pid);
             }
+            self.set_popup_awaiting_permission(pid, asks_for_permissions);
             self.set_force_render();
             return;
         }

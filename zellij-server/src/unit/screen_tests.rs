@@ -16889,6 +16889,57 @@ fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
     assert_eq!(unloaded, vec![42]);
 }
 
+#[test]
+fn switching_tabs_moves_a_popup_asking_for_permissions_along_with_its_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let first_tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            50,
+            client_id,
+            first_tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupBehavior::info(),
+            20,
+            3,
+            None,
+        )
+        .unwrap();
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .request_plugin_permissions(
+            50,
+            Some(zellij_utils::data::PluginPermission::new(
+                "my-plugin".to_owned(),
+                vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            )),
+        );
+    screen.switch_tab_prev(None, true, client_id).unwrap();
+    let new_tab = screen.get_active_tab(client_id).unwrap();
+    assert_ne!(new_tab.id, first_tab_id);
+    assert_eq!(new_tab.popup_plugin_ids_for_client(client_id), vec![50]);
+    assert!(new_tab.has_focused_popup_for_client(client_id));
+    assert!(!plugin_receiver
+        .try_iter()
+        .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(_))));
+}
+
 struct MockScreenWithPrompt {
     mock_screen: MockScreen,
     session_metadata: SessionMetaData,
@@ -17185,6 +17236,57 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
     let (_, behavior, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(behavior, crate::tab::PopupBehavior::info());
     assert_eq!(anchor_pane, None);
+}
+
+#[test]
+fn a_popup_asking_for_permissions_reports_its_focus_to_the_server() {
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::unbounded();
+    screen.bus.senders.to_server = Some(SenderWithContext::new(to_server));
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupBehavior::info(),
+            40,
+            6,
+            None,
+        )
+        .unwrap();
+    let focus_reports = || -> Vec<bool> {
+        server_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ServerInstruction::PopupStateChanged(1, has_focused_popup, _) => {
+                    Some(has_focused_popup)
+                },
+                _ => None,
+            })
+            .collect()
+    };
+    focus_reports();
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .request_plugin_permissions(
+            42,
+            Some(zellij_utils::data::PluginPermission::new(
+                "my-plugin".to_owned(),
+                vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            )),
+        );
+    screen.report_popup_state_for_plugin(42);
+    assert_eq!(focus_reports(), vec![true]);
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('y'));
+    assert!(screen.send_key_to_popup(client_id, key, vec![b'y'], false));
+    assert_eq!(focus_reports(), vec![false]);
 }
 
 #[test]

@@ -338,6 +338,7 @@ impl Screen {
         new_tab_id: usize,
     ) {
         self.open_context_menus.remove(&client_id);
+        let had_focused_popup = self.client_has_focused_popup(client_id);
         let mut closed_plugin_ids = vec![];
         for tab in self.tabs.values_mut() {
             closed_plugin_ids.append(&mut tab.close_focused_popups(client_id));
@@ -360,7 +361,9 @@ impl Screen {
                 .collect();
             self.unload_popups(&plugin_ids);
         }
-        if !closed_plugin_ids.is_empty() {
+        if !closed_plugin_ids.is_empty()
+            || self.client_has_focused_popup(client_id) != had_focused_popup
+        {
             self.report_popup_state(client_id);
         }
     }
@@ -439,7 +442,8 @@ impl Screen {
         raw_bytes: Vec<u8>,
         is_kitty_keyboard_protocol: bool,
     ) -> bool {
-        match self.get_active_tab_mut(client_id) {
+        let had_focused_popup = self.client_has_focused_popup(client_id);
+        let sent = match self.get_active_tab_mut(client_id) {
             Ok(tab) => tab.send_key_to_popup(
                 client_id,
                 key_with_modifier,
@@ -447,6 +451,19 @@ impl Screen {
                 is_kitty_keyboard_protocol,
             ),
             Err(_) => false,
+        };
+        if self.client_has_focused_popup(client_id) != had_focused_popup {
+            self.report_popup_state(client_id);
+        }
+        sent
+    }
+    pub fn report_popup_state_for_plugin(&self, plugin_id: u32) {
+        if let Some(client_id) = self
+            .tabs
+            .values()
+            .find_map(|tab| tab.popup_client_for_plugin(plugin_id))
+        {
+            self.report_popup_state(client_id);
         }
     }
     pub fn open_context_menu_for_pane(&mut self, request: ContextMenuRequest, client_id: ClientId) {
