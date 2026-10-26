@@ -351,6 +351,7 @@ message Action {
     SessionNameInputAction session_name_input = 185;
     UndoRenameSessionAction undo_rename_session = 186;
     ToggleMirrorResizeAction toggle_mirror_resize = 187;
+    SetResurrectCommandAction set_resurrect_command = 188;
   }
 }
 
@@ -827,6 +828,17 @@ message SetPaneColorAction {
   PaneId pane_id = 1;
   optional string fg = 2;
   optional string bg = 3;
+}
+
+message ResurrectCommand {
+  string command = 1;
+  repeated string args = 2;
+  optional string cwd = 3;
+}
+
+message SetResurrectCommandAction {
+  PaneId pane_id = 1;
+  optional ResurrectCommand resurrect = 2;
 }
 
 message SetPaneBorderStyleAction {

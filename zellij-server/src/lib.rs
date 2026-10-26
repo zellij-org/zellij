@@ -3930,7 +3930,8 @@ pub fn start_server_impl(
                     .contains_key(zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY);
                 let switch_context = cli_assets.switch_context.clone().unwrap_or_default();
                 let mut initial_panes = cli_assets.initial_panes.clone();
-                let (config, layout) = cli_assets.load_config_and_layout();
+                let (config, mut layout) = cli_assets.load_config_and_layout();
+                layout.populate_plugin_aliases_in_swap_layouts(&config.plugins);
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));

@@ -266,7 +266,7 @@ impl TiledPanes {
             .panes
             .iter()
             .find_map(|(pid, p)| {
-                if p.invoked_with() == &run {
+                if Run::fills_same_layout_slot(p.invoked_with(), &run) {
                     Some(pid)
                 } else {
                     None
@@ -1568,7 +1568,7 @@ impl TiledPanes {
         match self
             .panes
             .iter_mut()
-            .find(|(_, p)| p.invoked_with() == &run)
+            .find(|(_, p)| Run::fills_same_layout_slot(p.invoked_with(), &run))
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);

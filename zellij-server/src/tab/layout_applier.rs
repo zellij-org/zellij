@@ -1318,7 +1318,7 @@ impl ExistingTabState {
     ) -> Option<Box<dyn Pane>> {
         let candidates = self.pane_candidates();
         let pane_id = candidates.iter().find_map(|(_pid, p)| {
-            if p.invoked_with() == run {
+            if Run::fills_same_layout_slot(p.invoked_with(), run) {
                 Some(p.pid())
             } else {
                 None
@@ -1389,7 +1389,7 @@ impl ExistingTabState {
         }
         let panes_with_same_contents = candidates
             .iter()
-            .filter(|(_pid, p)| p.invoked_with() == run)
+            .filter(|(_pid, p)| Run::fills_same_layout_slot(p.invoked_with(), run))
             .collect::<Vec<_>>();
         if panes_with_same_contents.len() > 1 {
             panes_with_same_contents

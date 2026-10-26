@@ -1221,6 +1221,24 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SetResurrectCommand { pane_id, resurrect } => match pane_id {
+            zellij_utils::data::PaneId::Terminal(terminal_id) => {
+                senders
+                    .send_to_pty(PtyInstruction::SetResurrectCommand {
+                        terminal_id,
+                        resurrect,
+                        completion_tx: Some(NotificationEnd::new(completion_tx)),
+                    })
+                    .with_context(err_context)?;
+            },
+            zellij_utils::data::PaneId::Plugin(plugin_id) => {
+                let mut notification = NotificationEnd::new(completion_tx);
+                notification.set_error_message(format!(
+                    "Pane plugin_{} is a plugin pane, a resurrect command can only be set for terminal panes",
+                    plugin_id
+                ));
+            },
+        },
         Action::RunInBackground { command } => {
             senders
                 .send_to_pty(PtyInstruction::RunInBackground {

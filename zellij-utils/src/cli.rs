@@ -2246,6 +2246,23 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
         reset: bool,
     },
+    /// Set the command a terminal pane will be resurrected with, instead of the detected one.
+    /// The command stays in effect until cleared with --clear or until the pane is closed.
+    SetResurrectCommand {
+        /// The pane_id of the terminal pane, eg. terminal_1 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Working directory to resurrect the pane in
+        #[clap(long, value_parser, conflicts_with("clear"))]
+        cwd: Option<PathBuf>,
+        /// Remove a previously set resurrect command
+        #[clap(long, value_parser, conflicts_with("command"))]
+        clear: bool,
+        /// The command and its arguments
+        #[clap(last(true), required_unless_present("clear"))]
+        command: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -2339,5 +2356,68 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
+    }
+
+    fn parse_set_resurrect_command(args: &[&str]) -> Result<CliAction, clap::Error> {
+        let mut full_args = vec!["action", "set-resurrect-command"];
+        full_args.extend_from_slice(args);
+        let cli = try_parse(&full_args)?;
+        match cli.command {
+            Some(Command::Action(action)) => Ok(*action),
+            other => panic!("Expected Action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_command() {
+        let action = parse_set_resurrect_command(&[
+            "--pane-id",
+            "terminal_1",
+            "--cwd",
+            "/tmp",
+            "--",
+            "opencode",
+            "-s",
+            "ses_abc",
+        ])
+        .unwrap();
+        match action {
+            CliAction::SetResurrectCommand {
+                pane_id,
+                cwd,
+                clear,
+                command,
+            } => {
+                assert_eq!(pane_id, Some("terminal_1".to_string()));
+                assert_eq!(cwd, Some(PathBuf::from("/tmp")));
+                assert!(!clear);
+                assert_eq!(command, vec!["opencode", "-s", "ses_abc"]);
+            },
+            other => panic!("Expected SetResurrectCommand, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_clear() {
+        let action = parse_set_resurrect_command(&["--clear"]).unwrap();
+        assert!(matches!(
+            action,
+            CliAction::SetResurrectCommand { clear: true, ref command, .. } if command.is_empty()
+        ));
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_command() {
+        assert!(parse_set_resurrect_command(&["--clear", "--", "opencode"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_cwd() {
+        assert!(parse_set_resurrect_command(&["--clear", "--cwd", "/tmp"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_requires_command_or_clear() {
+        assert!(parse_set_resurrect_command(&[]).is_err());
     }
 }

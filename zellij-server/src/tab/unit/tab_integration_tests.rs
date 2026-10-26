@@ -19450,3 +19450,188 @@ fn a_ctrl_drag_over_a_tiled_pane_keeps_visible_floating_panes_on_screen() {
         Some(vec![drawn_terminal_action(10, 3, 81, 8)])
     );
 }
+
+fn bars_geometry_after_closing_a_pane(
+    base_layout: &str,
+    plugin_aliases: &zellij_utils::input::plugins::PluginAliases,
+) -> (
+    zellij_utils::pane_size::PaneGeom,
+    zellij_utils::pane_size::PaneGeom,
+) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane size=1 borderless=true {
+                        plugin location="tab-bar"
+                    }
+                    pane split_direction="vertical" {
+                        pane
+                        pane {
+                            children
+                        }
+                    }
+                    pane size=1 borderless=true {
+                        plugin location="status-bar"
+                    }
+                }
+            }
+        }
+    "#;
+    let (base_layout, base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut new_plugin_ids = HashMap::new();
+    let mut next_plugin_id = 1;
+    for run in base_layout.extract_run_instructions() {
+        if let Some(zellij_utils::input::layout::Run::Plugin(run_plugin_or_alias)) = run {
+            new_plugin_ids.insert(run_plugin_or_alias, vec![next_plugin_id]);
+            next_plugin_id += 1;
+        }
+    }
+    let mut swap_layout =
+        Layout::from_kdl(swap_layouts, Some("file_name.kdl".into()), None, None).unwrap();
+    swap_layout.populate_plugin_aliases_in_swap_layouts(plugin_aliases);
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (
+            swap_layout.swap_tiled_layouts.clone(),
+            swap_layout.swap_floating_layouts.clone(),
+        ),
+        Some((
+            base_layout,
+            base_floating_layout,
+            vec![(1, None), (2, None), (3, None)],
+            vec![],
+            new_plugin_ids,
+        )),
+        true,
+        true,
+    );
+    tab.close_pane(PaneId::Terminal(1), false, None);
+    let tab_bar = tab
+        .get_pane_with_id(PaneId::Plugin(1))
+        .unwrap()
+        .position_and_size();
+    let status_bar = tab
+        .get_pane_with_id(PaneId::Plugin(2))
+        .unwrap()
+        .position_and_size();
+    (tab_bar, status_bar)
+}
+
+fn assert_bars_in_place(
+    tab_bar: zellij_utils::pane_size::PaneGeom,
+    status_bar: zellij_utils::pane_size::PaneGeom,
+) {
+    assert_eq!((tab_bar.y, tab_bar.rows.as_usize()), (0, 1), "tab bar");
+    assert_eq!(
+        (status_bar.y, status_bar.rows.as_usize()),
+        (19, 1),
+        "status bar"
+    );
+}
+
+#[test]
+fn closing_a_pane_keeps_aliased_bars_in_their_swap_layout_slots() {
+    let plugin_aliases = zellij_utils::input::config::Config::from_default_assets()
+        .unwrap()
+        .plugins;
+    let (tab_bar, status_bar) = bars_geometry_after_closing_a_pane(
+        r#"
+        layout {
+            pane size=1 borderless=true {
+                plugin location="tab-bar"
+            }
+            pane split_direction="vertical" {
+                pane
+                pane
+                pane
+            }
+            pane size=1 borderless=true {
+                plugin location="status-bar"
+            }
+        }
+    "#,
+        &plugin_aliases,
+    );
+    assert_bars_in_place(tab_bar, status_bar);
+}
+
+#[test]
+fn closing_a_pane_keeps_resurrected_bars_in_their_swap_layout_slots() {
+    let plugin_aliases = zellij_utils::input::config::Config::from_default_assets()
+        .unwrap()
+        .plugins;
+    let (tab_bar, status_bar) = bars_geometry_after_closing_a_pane(
+        r#"
+        layout {
+            pane size=1 borderless=true {
+                plugin location="zellij:bars" {
+                    role "tab-bar"
+                }
+            }
+            pane split_direction="vertical" {
+                pane
+                pane
+                pane
+            }
+            pane size=1 borderless=true {
+                plugin location="zellij:bars" {
+                    role "status-bar"
+                }
+            }
+        }
+    "#,
+        &plugin_aliases,
+    );
+    assert_bars_in_place(tab_bar, status_bar);
+}
+
+#[test]
+fn closing_a_pane_keeps_resurrected_bars_in_place_with_pre_bars_plugin_aliases() {
+    let plugin_aliases = zellij_utils::input::plugins::PluginAliases::from_data(
+        [
+            ("tab-bar", "zellij:tab-bar"),
+            ("status-bar", "zellij:status-bar"),
+        ]
+        .into_iter()
+        .map(|(alias, location)| {
+            (
+                alias.to_owned(),
+                zellij_utils::input::layout::RunPlugin::from_url(location).unwrap(),
+            )
+        })
+        .collect(),
+    );
+    let (tab_bar, status_bar) = bars_geometry_after_closing_a_pane(
+        r#"
+        layout {
+            pane size=1 borderless=true {
+                plugin location="zellij:bars" {
+                    role "tab-bar"
+                }
+            }
+            pane split_direction="vertical" {
+                pane
+                pane
+                pane
+            }
+            pane size=1 borderless=true {
+                plugin location="zellij:bars" {
+                    role "status-bar"
+                }
+            }
+        }
+    "#,
+        &plugin_aliases,
+    );
+    assert_bars_in_place(tab_bar, status_bar);
+}
