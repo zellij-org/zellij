@@ -447,13 +447,13 @@ mod tests {
         assert_eq!(
             outbound(ClientToServerMsg::Key {
                 key: key.clone(),
-                raw_bytes: vec![0x01],
-                is_kitty_keyboard_protocol: false,
+                raw_bytes: b"\x1b[97;5u".to_vec(),
+                is_kitty_keyboard_protocol: true,
             }),
             Outbound::Control(WebClientToWebServerControlMessagePayload::Key {
                 key,
-                raw_bytes: vec![0x01],
-                is_kitty_keyboard_protocol: false,
+                raw_bytes: b"\x1b[97;5u".to_vec(),
+                is_kitty_keyboard_protocol: true,
             })
         );
     }

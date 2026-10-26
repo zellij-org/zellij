@@ -256,7 +256,19 @@ pub fn chord(press: &Press) -> Option<KeyWithModifier> {
 
 pub fn key_message(press: &Press) -> Option<ClientToServerMsg> {
     typed(press).map(|typed| match typed {
-        Typed::Key(key) => {
+        Typed::Key(key) => key_press_message(key),
+        Typed::Text(text) => text_message(text),
+    })
+}
+
+pub fn key_press_message(key: KeyWithModifier) -> ClientToServerMsg {
+    match key.serialize_kitty() {
+        Some(kitty) => ClientToServerMsg::Key {
+            key,
+            raw_bytes: kitty.into_bytes(),
+            is_kitty_keyboard_protocol: true,
+        },
+        None => {
             let raw_bytes = key
                 .serialize_non_kitty()
                 .map(String::into_bytes)
@@ -267,8 +279,7 @@ pub fn key_message(press: &Press) -> Option<ClientToServerMsg> {
                 is_kitty_keyboard_protocol: false,
             }
         },
-        Typed::Text(text) => text_message(text),
-    })
+    }
 }
 
 pub fn text_message(chars: String) -> ClientToServerMsg {
@@ -452,27 +463,30 @@ mod tests {
     }
 
     #[test]
-    fn control_survives_and_encodes_as_a_control_byte() {
+    fn control_survives_and_encodes_as_a_kitty_sequence() {
         let key = translated(&character("c"), ModifiersState::CONTROL);
         assert_eq!(key.bare_key, BareKey::Char('c'));
         assert!(key.key_modifiers.contains(&KeyModifier::Ctrl));
-        assert_eq!(bytes(&character("c"), ModifiersState::CONTROL), vec![3]);
+        assert_eq!(
+            bytes(&character("c"), ModifiersState::CONTROL),
+            b"\x1b[99;5u"
+        );
     }
 
     #[test]
-    fn control_with_shift_reaches_the_same_control_byte() {
+    fn control_with_shift_is_reported_with_its_shift() {
         assert_eq!(
             bytes(
                 &character("C"),
                 ModifiersState::CONTROL | ModifiersState::SHIFT
             ),
-            vec![3]
+            b"\x1b[99;6u"
         );
     }
 
     #[test]
-    fn alt_encodes_as_an_escape_prefix() {
-        assert_eq!(bytes(&character("a"), ModifiersState::ALT), b"\x1ba");
+    fn alt_encodes_as_a_kitty_sequence() {
+        assert_eq!(bytes(&character("a"), ModifiersState::ALT), b"\x1b[97;3u");
     }
 
     #[test]
@@ -512,7 +526,7 @@ mod tests {
         let cases: [(NamedKey, &[u8]); 8] = [
             (NamedKey::Enter, b"\r"),
             (NamedKey::Tab, b"\t"),
-            (NamedKey::Escape, b"\x1b"),
+            (NamedKey::Escape, b"\x1b[27u"),
             (NamedKey::Backspace, b"\x7f"),
             (NamedKey::ArrowUp, b"\x1b[A"),
             (NamedKey::ArrowDown, b"\x1b[B"),
@@ -531,7 +545,7 @@ mod tests {
         assert!(key.key_modifiers.contains(&KeyModifier::Shift));
         assert_eq!(
             bytes(&Key::Named(NamedKey::Tab), ModifiersState::SHIFT),
-            b"\x1b[Z"
+            b"\x1b[9;2u"
         );
     }
 
@@ -859,7 +873,7 @@ mod tests {
                 logical
             );
         }
-        assert_eq!(bytes(&character("a"), ModifiersState::ALT), b"\x1ba");
+        assert_eq!(bytes(&character("a"), ModifiersState::ALT), b"\x1b[97;3u");
     }
 
     #[test]
@@ -869,7 +883,7 @@ mod tests {
             translate(&pressed),
             Some(KeyWithModifier::new(BareKey::Char('h')).with_alt_modifier())
         );
-        assert_eq!(sent(&pressed), b"\x1bh");
+        assert_eq!(sent(&pressed), b"\x1b[104;3u");
     }
 
     #[test]
@@ -881,7 +895,7 @@ mod tests {
             Some(KeyWithModifier::new(BareKey::Char('+')).with_alt_modifier()),
             "the conversion leaves Shift in the character; that is not Option being spent"
         );
-        assert_eq!(sent(&pressed), b"\x1b+");
+        assert_eq!(sent(&pressed), b"\x1b[43;3u");
         let keys = vec![KeyWithModifier::new(BareKey::Char('+'))
             .with_alt_modifier()
             .with_shift_modifier()];
@@ -1063,11 +1077,15 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_cannot_tell_ctrl_shift_v_from_ctrl_v() {
+    fn a_kitty_pane_can_tell_ctrl_shift_v_from_ctrl_v() {
         let ctrl = ModifiersState::CONTROL;
         let both = ModifiersState::CONTROL | ModifiersState::SHIFT;
-        assert_eq!(bytes(&character("v"), ctrl), vec![0x16]);
-        assert_eq!(bytes(&character("V"), both), vec![0x16]);
+        assert_eq!(bytes(&character("v"), ctrl), b"\x1b[118;5u");
+        assert_eq!(bytes(&character("V"), both), b"\x1b[118;6u");
+    }
+
+    #[test]
+    fn a_legacy_pane_cannot_tell_ctrl_shift_v_from_ctrl_v() {
         for key in [
             KeyWithModifier::new(BareKey::Char('v')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Char('v'))
@@ -1080,7 +1098,6 @@ mod tests {
                 Some("\u{16}"),
                 "{key}"
             );
-            assert_eq!(key.serialize_kitty().as_deref(), Some("\u{16}"), "{key}");
         }
     }
 
@@ -1158,12 +1175,12 @@ mod tests {
     }
 
     #[test]
-    fn every_message_declares_the_non_kitty_encoding() {
+    fn every_message_declares_the_kitty_encoding() {
         match key_message(&press(character("a"), none())).unwrap() {
             ClientToServerMsg::Key {
                 is_kitty_keyboard_protocol,
                 ..
-            } => assert!(!is_kitty_keyboard_protocol),
+            } => assert!(is_kitty_keyboard_protocol),
             other => panic!("expected a key message, got {:?}", other),
         }
     }

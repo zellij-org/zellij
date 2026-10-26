@@ -1029,17 +1029,15 @@ impl Action {
                         )
                     })?;
 
-                    #[cfg(not(target_family = "wasm"))]
-                    let bytes = key
-                        .serialize_kitty()
-                        .map(|s| s.into_bytes())
-                        .unwrap_or_else(Vec::new);
-
-                    #[cfg(target_family = "wasm")]
-                    let bytes = vec![];
-
                     match &pane_id {
                         Some(pane_id_str) => {
+                            #[cfg(not(target_family = "wasm"))]
+                            let bytes = key
+                                .serialize_non_kitty()
+                                .map(|s| s.into_bytes())
+                                .unwrap_or_else(Vec::new);
+                            #[cfg(target_family = "wasm")]
+                            let bytes = vec![];
                             let parsed_pane_id = PaneId::from_str(pane_id_str)
                                 .map_err(|_| format!(
                                     "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
@@ -1051,6 +1049,13 @@ impl Action {
                             });
                         },
                         None => {
+                            #[cfg(not(target_family = "wasm"))]
+                            let bytes = key
+                                .serialize_kitty()
+                                .map(|s| s.into_bytes())
+                                .unwrap_or_else(Vec::new);
+                            #[cfg(target_family = "wasm")]
+                            let bytes = vec![];
                             actions.push(Action::Write {
                                 key_with_modifier: Some(key),
                                 bytes,

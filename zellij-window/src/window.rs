@@ -3664,7 +3664,7 @@ mod tests {
                     'a'
                 )),
                 raw_bytes: b"a".to_vec(),
-                is_kitty_keyboard_protocol: false,
+                is_kitty_keyboard_protocol: true,
             }]
         );
     }
@@ -3703,7 +3703,7 @@ mod tests {
         harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
         harness.press(&character("V"));
         match &harness.sent()[0] {
-            ClientToServerMsg::Key { raw_bytes, .. } => assert_eq!(raw_bytes, &vec![0x16]),
+            ClientToServerMsg::Key { raw_bytes, .. } => assert_eq!(raw_bytes, b"\x1b[118;6u"),
             other => panic!("expected a key, got {:?}", other),
         }
     }
@@ -5638,7 +5638,7 @@ mod tests {
                 vec![ClientToServerMsg::Key {
                     key: KeyWithModifier::new(BareKey::Char('t')),
                     raw_bytes: b"t".to_vec(),
-                    is_kitty_keyboard_protocol: false,
+                    is_kitty_keyboard_protocol: true,
                 }],
                 "an input method that commits ordinary letters must not bypass the session's modes"
             );
@@ -5734,7 +5734,7 @@ mod tests {
             ClientToServerMsg::Key {
                 key: KeyWithModifier::new(BareKey::Char(character)),
                 raw_bytes: character.to_string().into_bytes(),
-                is_kitty_keyboard_protocol: false,
+                is_kitty_keyboard_protocol: true,
             }
         }
 
@@ -5809,7 +5809,9 @@ mod tests {
             harness.app.modifiers = ModifiersState::CONTROL;
             press_with_text(&mut harness, character("c"), "^c");
             match &harness.sent()[0] {
-                ClientToServerMsg::Key { raw_bytes, .. } => assert_eq!(raw_bytes, &vec![3]),
+                ClientToServerMsg::Key { raw_bytes, .. } => {
+                    assert_eq!(raw_bytes, b"\x1b[99;5u")
+                },
                 other => panic!("expected ctrl-c, got {:?}", other),
             }
         }
