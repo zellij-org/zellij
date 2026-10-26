@@ -383,7 +383,6 @@ fn always_listed(item: &GlobalAttentionItem) -> bool {
     item.is_counted() || item.item.attention.watched
 }
 
-
 fn ends_the_pane(state: MirrorState) -> bool {
     matches!(
         state,

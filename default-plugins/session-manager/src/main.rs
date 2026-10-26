@@ -2996,9 +2996,7 @@ impl State {
         if is_running && self.listed_current_session().as_deref() == Some(name) {
             match (pane, tab) {
                 (Some((pane_id, true)), _) => focus_session_pane(name, PaneId::Plugin(pane_id)),
-                (Some((pane_id, false)), _) => {
-                    focus_session_pane(name, PaneId::Terminal(pane_id))
-                },
+                (Some((pane_id, false)), _) => focus_session_pane(name, PaneId::Terminal(pane_id)),
                 (None, Some(tab)) => go_to_tab(tab as u32),
                 (None, None) => {},
             }
@@ -4920,7 +4918,10 @@ mod sessions_live_view_tests {
             .collect();
         assert_eq!(sessions, vec!["api", "web", "here"]);
         select(&mut state, index);
-        assert_eq!(shown(&state), Some(("here".to_owned(), PaneId::Terminal(8))));
+        assert_eq!(
+            shown(&state),
+            Some(("here".to_owned(), PaneId::Terminal(8)))
+        );
         assert_eq!(sent_resize_allowed(&state), Some(false));
         select(&mut state, 0);
         assert_eq!(shown(&state), api(2));
@@ -4944,6 +4945,11 @@ mod sessions_live_view_tests {
         let mut state = sessions_browser();
         state.is_welcome_screen = true;
         state.set_session_name("here");
-        assert!(!state.panel.tree.rows.iter().any(|row| row.session == "here"));
+        assert!(!state
+            .panel
+            .tree
+            .rows
+            .iter()
+            .any(|row| row.session == "here"));
     }
 }
