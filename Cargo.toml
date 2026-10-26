@@ -1,4 +1,5 @@
 [package]
+default-run = "zellij"
 name = "zellij"
 build = "src/build.rs"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
