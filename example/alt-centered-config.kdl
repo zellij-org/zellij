@@ -44,6 +44,7 @@ keybinds {
         bind "Alt k" "Up" { MoveFocus "Up"; }
         bind "p" { SwitchFocus; }
         bind "n" { NewPane; }
+        bind "+" { NewPane "Right"; NewPane "Down"; MoveFocus "Left"; NewPane "Down"; }
         bind "x" { CloseFocus; }
         bind "f" { ToggleFocusFullscreen; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; }

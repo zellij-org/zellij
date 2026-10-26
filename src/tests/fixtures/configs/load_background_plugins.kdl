@@ -16,6 +16,7 @@ keybinds clear-defaults=true {
         bind "k" { MoveFocus "up"; }
         bind "l" { MoveFocus "right"; }
         bind "n" { NewPane; SwitchToMode "locked"; }
+        bind "+" { NewPane "Right"; NewPane "Down"; MoveFocus "Left"; NewPane "Down"; }
         bind "p" { SwitchToMode "normal"; }
         bind "r" { NewPane "right"; SwitchToMode "locked"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "locked"; }
