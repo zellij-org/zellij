@@ -2025,6 +2025,7 @@ pub(crate) struct Screen {
     default_context_menu_config: ContextMenuConfig,
     context_menu_configs: HashMap<ClientId, ContextMenuConfig>,
     default_mousebinds: Arc<Mousebinds>,
+    configured_default_shell: Option<PathBuf>,
     client_mousebinds: HashMap<ClientId, Arc<Mousebinds>>,
     open_context_menus: HashMap<ClientId, (ContextMenuContext, Vec<ContextMenuEntry>)>,
     last_client_input: HashMap<ClientId, std::time::Instant>,
@@ -2390,6 +2391,7 @@ impl Screen {
             client_keybinds: BTreeMap::new(),
             default_context_menu_config: ContextMenuConfig::default(),
             context_menu_configs: HashMap::new(),
+            configured_default_shell: None,
             default_mousebinds: zellij_utils::input::config_settings::default_config()
                 .mousebinds
                 .clone(),
@@ -9265,6 +9267,7 @@ impl Screen {
         self.report_live_views();
         self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
+        self.configured_default_shell = default_shell.clone();
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
@@ -9810,20 +9813,26 @@ impl Screen {
     }
     fn run_mouse_bound_actions(&self, actions: Vec<Action>, client_id: ClientId) {
         let senders = self.bus.senders.clone();
-        let default_mode = self.base_input_mode();
+        let default_mode = self
+            .mode_info
+            .get(&client_id)
+            .and_then(|mode_info| mode_info.base_mode)
+            .unwrap_or_else(|| self.base_input_mode());
+        let default_shell = self.configured_default_shell.clone().map(|command| {
+            TerminalAction::RunCommand(RunCommand {
+                command,
+                use_terminal_title: true,
+                ..Default::default()
+            })
+        });
         std::thread::spawn(move || {
             for action in actions {
-                if let Err(e) = crate::route::route_action(
+                if let Err(e) = crate::route::route_bound_mouse_action(
                     action,
                     client_id,
-                    None,
-                    None,
                     senders.clone(),
-                    None,
-                    None,
+                    default_shell.clone(),
                     default_mode,
-                    None,
-                    false,
                 ) {
                     log::error!("Failed to run a mouse-bound action: {:?}", e);
                 }
@@ -10588,6 +10597,7 @@ pub(crate) fn screen_thread_main(
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
+    let configured_default_shell = config_options.default_shell.clone();
     #[cfg(test)]
     let default_shell = config_options
         .default_shell
@@ -10707,6 +10717,7 @@ pub(crate) fn screen_thread_main(
     screen.live_views.borrow_mut().captures = live_view_captures;
     screen.default_context_menu_config = config.context_menu.clone();
     screen.default_mousebinds = config.mousebinds.clone();
+    screen.configured_default_shell = configured_default_shell;
     screen.update_context_menu_enabled(config_options.context_menu_enabled.unwrap_or(true));
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;

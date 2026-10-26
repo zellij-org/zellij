@@ -270,6 +270,7 @@ mousebinds {
         bind "Triple Left" on="content" { Select; }
         bind "Double Left" on="frame" { ToggleFullscreen; }
         bind "{primary} Left" on="frame" { ResizePane; }
+        bind "{primary} Left" on="content" { DrawFloatingPane; }
         bind "{secondary} Left" { GroupToggle; }
         bind "{secondary} Right" { Ungroup; }
         bind "{secondary} Middle" { Ignore; }

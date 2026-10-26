@@ -578,6 +578,14 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
             true,
         )],
     ),
+    mouse_only(
+        "DrawFloatingPane",
+        "Drag a rectangle to open a floating pane in it",
+        &[
+            positional("Plugin (empty for a terminal)", ArgKind::Text, false),
+            config_pairs(),
+        ],
+    ),
     mouse_only("PassToApp", "Send the event to the app in the pane", &[]),
     mouse_only("Ignore", "Do nothing", &[]),
 ];

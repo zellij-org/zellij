@@ -9224,6 +9224,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -9505,6 +9520,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -9804,6 +9834,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -10085,6 +10130,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -10384,6 +10444,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -10665,6 +10740,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -10964,6 +11054,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -11245,6 +11350,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -11544,6 +11664,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -11825,6 +11960,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -12124,6 +12274,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -12405,6 +12570,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },
@@ -12704,6 +12884,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -12994,6 +13189,21 @@ Config {
                     Ctrl,
                 },
                 click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
                 target: Frame,
             }: MouseBinding {
                 kind: Behaviour(
@@ -13275,6 +13485,21 @@ Config {
             }: MouseBinding {
                 kind: Behaviour(
                     Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    DrawFloatingPane(
+                        None,
+                    ),
                 ),
                 app_first: None,
             },

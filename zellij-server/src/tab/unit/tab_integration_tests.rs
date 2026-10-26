@@ -11721,7 +11721,7 @@ fn test_ctrl_drag_resizes_unfocused_tiled_pane_vertically() {
 }
 
 #[test]
-fn test_ctrl_click_on_pane_body_does_nothing() {
+fn test_ctrl_click_on_pane_body_does_not_resize_or_open_a_pane() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -11742,15 +11742,32 @@ fn test_ctrl_click_on_pane_body_does_nothing() {
 
     // Click in the center of a pane (not on an edge)
     let center_position = Position::new(10, 30);
+    let geoms_before: Vec<_> = tab
+        .tiled_panes
+        .get_panes()
+        .map(|(_, pane)| pane.position_and_size())
+        .collect();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(center_position),
+        client_id,
+    )
+    .unwrap();
     let effect = tab
         .handle_mouse_event(
-            &MouseEvent::new_left_press_with_ctrl_event(center_position),
+            &MouseEvent::new_left_release_with_ctrl_event(center_position),
             client_id,
         )
         .unwrap();
+    let geoms_after: Vec<_> = tab
+        .tiled_panes
+        .get_panes()
+        .map(|(_, pane)| pane.position_and_size())
+        .collect();
 
-    // Should not trigger any state change
-    assert!(!effect.state_changed);
+    assert_eq!(effect.run_actions, None);
+    assert_eq!(geoms_before, geoms_after);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    assert!(!tab.mouse_gesture_is_held());
 }
 
 #[test]
@@ -19121,5 +19138,296 @@ fn a_popup_render_drawn_for_a_stale_size_is_dropped_and_the_size_is_sent_again()
     assert!(
         !tab.drop_popup_render_of_another_size(7, 1, 1),
         "a plugin that is not in a popup keeps every render"
+    );
+}
+
+fn rendered_cell(tab: &mut Tab, size: Size, client_id: ClientId, line: usize, column: usize) -> char {
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap().ansi(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    let row = snapshot.lines().nth(line).unwrap();
+    let (_, cells) = row.split_once("): ").unwrap();
+    cells.chars().nth(column).unwrap_or(' ')
+}
+
+fn drawn_terminal_action(x: usize, y: usize, cols: usize, rows: usize) -> zellij_utils::input::actions::Action {
+    zellij_utils::input::actions::Action::NewFloatingPane {
+        command: None,
+        pane_name: None,
+        coordinates: Some(
+            FloatingPaneCoordinates::default()
+                .with_x_fixed(x)
+                .with_y_fixed(y)
+                .with_width_fixed(cols)
+                .with_height_fixed(rows),
+        ),
+        near_current_pane: false,
+        no_focus: false,
+        tab_id: None,
+    }
+}
+
+#[test]
+fn a_ctrl_drag_on_pane_content_opens_a_floating_terminal_in_the_rectangle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(3, 10)),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.mouse_gesture_is_held());
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    let motion = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_motion_with_ctrl_event(Position::new(10, 90)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(motion.run_actions, None);
+    let release = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_with_ctrl_event(Position::new(10, 90)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(
+        release.run_actions,
+        Some(vec![drawn_terminal_action(10, 3, 81, 8)])
+    );
+    assert!(!tab.mouse_gesture_is_held());
+}
+
+#[test]
+fn a_ctrl_drag_up_and_to_the_left_opens_the_same_rectangle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(10, 90)),
+        client_id,
+    )
+    .unwrap();
+    let release = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_event(Position::new(3, 10)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(
+        release.run_actions,
+        Some(vec![drawn_terminal_action(10, 3, 81, 8)])
+    );
+}
+
+#[test]
+fn a_ctrl_drag_smaller_than_a_pane_opens_nothing() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(3, 10)),
+        client_id,
+    )
+    .unwrap();
+    let release = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_with_ctrl_event(Position::new(5, 40)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(release.run_actions, None);
+    assert!(!tab.mouse_gesture_is_held());
+}
+
+#[test]
+fn a_ctrl_drag_bound_to_a_plugin_opens_that_plugin_in_this_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"Ctrl Alt Left\" { DrawFloatingPane \"filepicker\" { key \"value\"; }; }\n    }\n}\n",
+    );
+    let mut press = MouseEvent::new_left_press_with_ctrl_event(Position::new(2, 70));
+    press.alt = true;
+    click_with(&mut tab, press, client_id, &mousebinds);
+    let release = click_with(
+        &mut tab,
+        MouseEvent::new_left_release_event(Position::new(12, 100)),
+        client_id,
+        &mousebinds,
+    );
+    let mut configuration = BTreeMap::new();
+    configuration.insert("key".to_owned(), "value".to_owned());
+    let plugin = RunPluginOrAlias::from_url("filepicker", &Some(configuration), None, None).unwrap();
+    assert_eq!(
+        release.run_actions,
+        Some(vec![zellij_utils::input::actions::Action::NewFloatingPluginPane {
+            plugin,
+            pane_name: None,
+            skip_cache: false,
+            cwd: None,
+            coordinates: Some(
+                FloatingPaneCoordinates::default()
+                    .with_x_fixed(70)
+                    .with_y_fixed(2)
+                    .with_width_fixed(31)
+                    .with_height_fixed(11),
+            ),
+            no_focus: false,
+            tab_id: Some(tab.id),
+        }])
+    );
+}
+
+#[test]
+fn a_ctrl_drag_shows_an_outline_until_it_is_released() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(3, 10)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_with_ctrl_event(Position::new(10, 90)),
+        client_id,
+    )
+    .unwrap();
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 3, 10), '┌');
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 3, 90), '┐');
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 10, 10), '└');
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 10, 90), '┘');
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 6, 10), '│');
+    assert_eq!(rendered_cell(&mut tab, size, client_id, 3, 60), '─');
+
+    tab.set_force_render();
+    let mut watcher_output = Output::default();
+    tab.render(&mut watcher_output, Some(client_id)).unwrap();
+    let watcher_snapshot = take_snapshot(
+        watcher_output.serialize().unwrap().get(&client_id).unwrap().ansi(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert!(!watcher_snapshot.lines().nth(3).unwrap().contains('┌'));
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_with_ctrl_event(Position::new(10, 90)),
+        client_id,
+    )
+    .unwrap();
+    assert_ne!(rendered_cell(&mut tab, size, client_id, 3, 10), '┌');
+    assert_ne!(rendered_cell(&mut tab, size, client_id, 10, 90), '┘');
+}
+
+#[test]
+fn a_new_press_forgets_a_drawing_whose_release_was_lost() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(3, 10)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_with_ctrl_event(Position::new(10, 90)),
+        client_id,
+    )
+    .unwrap();
+    let press = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(5, 100)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(press.run_actions, None);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+    let release = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_event(Position::new(5, 100)),
+            client_id,
+        )
+        .unwrap();
+    assert_eq!(release.run_actions, None);
+}
+
+#[test]
+fn a_ctrl_drag_over_a_tiled_pane_keeps_visible_floating_panes_on_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(Some(
+            FloatingPaneCoordinates::default()
+                .with_x_fixed(100)
+                .with_y_fixed(12)
+                .with_width_fixed(15)
+                .with_height_fixed(6),
+        )),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_with_ctrl_event(Position::new(3, 10)),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_with_ctrl_event(Position::new(10, 90)),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    let release = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_release_with_ctrl_event(Position::new(10, 90)),
+            client_id,
+        )
+        .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(3)));
+    assert_eq!(
+        release.run_actions,
+        Some(vec![drawn_terminal_action(10, 3, 81, 8)])
     );
 }
