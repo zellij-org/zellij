@@ -25,10 +25,7 @@ use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 use unicode_width::UnicodeWidthChar;
 
 #[cfg(not(target_family = "wasm"))]
-use crate::vendored::termwiz::{
-    input::KittyKeyboardFlags,
-    input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
-};
+use crate::vendored::termwiz::input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers};
 
 pub type ClientId = u32;
 
@@ -604,18 +601,98 @@ impl KeyWithModifier {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_kitty(&self) -> Option<String> {
-        let modifiers = self.to_termwiz_modifiers();
-        let key_code_encode_modes = KeyCodeEncodeModes {
-            encoding: KeyboardEncoding::Kitty(KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES),
-            // all these flags are false because they have been dealt with before this
-            // serialization
-            application_cursor_keys: false,
-            newline_mode: false,
-            modify_other_keys: None,
+        let shift = self.key_modifiers.contains(&KeyModifier::Shift);
+        let alt = self.key_modifiers.contains(&KeyModifier::Alt);
+        let ctrl = self.key_modifiers.contains(&KeyModifier::Ctrl);
+        let sup = self.key_modifiers.contains(&KeyModifier::Super);
+        let modifier_value = |shift: bool| -> u8 {
+            1 + shift as u8 + 2 * alt as u8 + 4 * ctrl as u8 + 8 * sup as u8
         };
-        self.to_termwiz_keycode()
-            .encode(modifiers, key_code_encode_modes, true)
-            .ok()
+        let mods = modifier_value(shift);
+        let csi_u = |code: u32, mods: u8| {
+            if mods > 1 {
+                format!("\u{1b}[{};{}u", code, mods)
+            } else {
+                format!("\u{1b}[{}u", code)
+            }
+        };
+        let csi_letter = |letter: char| {
+            if mods > 1 {
+                format!("\u{1b}[1;{}{}", mods, letter)
+            } else {
+                format!("\u{1b}[{}", letter)
+            }
+        };
+        let ss3_or_csi_letter = |letter: char| {
+            if mods > 1 {
+                format!("\u{1b}[1;{}{}", mods, letter)
+            } else {
+                format!("\u{1b}O{}", letter)
+            }
+        };
+        let csi_tilde = |number: u8| {
+            if mods > 1 {
+                format!("\u{1b}[{};{}~", number, mods)
+            } else {
+                format!("\u{1b}[{}~", number)
+            }
+        };
+        let plain_or_csi_u = |plain: &str, code: u32| {
+            if mods > 1 {
+                csi_u(code, mods)
+            } else {
+                plain.to_owned()
+            }
+        };
+        let encoded = match self.bare_key {
+            BareKey::Char(c) if !(alt || ctrl || sup) => {
+                if shift {
+                    c.to_uppercase().collect()
+                } else {
+                    c.to_string()
+                }
+            },
+            BareKey::Char(c) => {
+                let mut lowercase = c.to_lowercase();
+                match (lowercase.next(), lowercase.next()) {
+                    (Some(lower), None) if lower != c => csi_u(lower as u32, modifier_value(true)),
+                    _ => csi_u(c as u32, mods),
+                }
+            },
+            BareKey::Enter => plain_or_csi_u("\r", 13),
+            BareKey::Tab => plain_or_csi_u("\t", 9),
+            BareKey::Backspace => plain_or_csi_u("\u{7f}", 127),
+            BareKey::Esc => csi_u(27, mods),
+            BareKey::Up => csi_letter('A'),
+            BareKey::Down => csi_letter('B'),
+            BareKey::Right => csi_letter('C'),
+            BareKey::Left => csi_letter('D'),
+            BareKey::Home => csi_letter('H'),
+            BareKey::End => csi_letter('F'),
+            BareKey::F(1) => ss3_or_csi_letter('P'),
+            BareKey::F(2) => ss3_or_csi_letter('Q'),
+            BareKey::F(3) => csi_tilde(13),
+            BareKey::F(4) => ss3_or_csi_letter('S'),
+            BareKey::F(5) => csi_tilde(15),
+            BareKey::F(6) => csi_tilde(17),
+            BareKey::F(7) => csi_tilde(18),
+            BareKey::F(8) => csi_tilde(19),
+            BareKey::F(9) => csi_tilde(20),
+            BareKey::F(10) => csi_tilde(21),
+            BareKey::F(11) => csi_tilde(23),
+            BareKey::F(12) => csi_tilde(24),
+            BareKey::F(n @ 13..=35) => csi_u(57376 + (n as u32 - 13), mods),
+            BareKey::F(_) => return None,
+            BareKey::Insert => csi_tilde(2),
+            BareKey::Delete => csi_tilde(3),
+            BareKey::PageUp => csi_tilde(5),
+            BareKey::PageDown => csi_tilde(6),
+            BareKey::PrintScreen => csi_u(57361, mods),
+            BareKey::Pause => csi_u(57362, mods),
+            BareKey::Menu => csi_u(57363, mods),
+            BareKey::CapsLock | BareKey::ScrollLock | BareKey::NumLock => return None,
+        };
+        Some(encoded)
     }
     pub fn has_no_modifiers(&self) -> bool {
         self.key_modifiers.is_empty()
@@ -6032,6 +6109,114 @@ mod extract_text_cluster_tests {
         );
         assert_eq!(extract_text_to_column(line, 2), "ae\u{0301}");
         assert_eq!(extract_text_by_columns(line, 3, 5), "\u{1F468}\u{200D}");
+    }
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod kitty_serialization_tests {
+    use super::*;
+
+    fn kitty(key: &str) -> Option<String> {
+        KeyWithModifier::from_str(key).unwrap().serialize_kitty()
+    }
+
+    #[test]
+    fn text_keys_stay_text() {
+        assert_eq!(kitty("a").as_deref(), Some("a"));
+        assert_eq!(kitty("A").as_deref(), Some("A"));
+        assert_eq!(kitty("Shift a").as_deref(), Some("A"));
+        assert_eq!(kitty("Space").as_deref(), Some(" "));
+        assert_eq!(
+            KeyWithModifier::new(BareKey::Char('é'))
+                .serialize_kitty()
+                .as_deref(),
+            Some("é")
+        );
+    }
+
+    #[test]
+    fn modified_characters_use_csi_u_with_the_unshifted_codepoint() {
+        assert_eq!(kitty("Ctrl a").as_deref(), Some("\u{1b}[97;5u"));
+        assert_eq!(kitty("Alt a").as_deref(), Some("\u{1b}[97;3u"));
+        assert_eq!(kitty("Super a").as_deref(), Some("\u{1b}[97;9u"));
+        assert_eq!(kitty("Ctrl Alt Shift a").as_deref(), Some("\u{1b}[97;8u"));
+        assert_eq!(kitty("Ctrl Shift v").as_deref(), Some("\u{1b}[118;6u"));
+        assert_eq!(kitty("Ctrl V").as_deref(), Some("\u{1b}[118;6u"));
+        assert_eq!(kitty("Ctrl v").as_deref(), Some("\u{1b}[118;5u"));
+        assert_eq!(kitty("Ctrl Space").as_deref(), Some("\u{1b}[32;5u"));
+        assert_eq!(kitty("Alt !").as_deref(), Some("\u{1b}[33;3u"));
+    }
+
+    #[test]
+    fn enter_tab_and_backspace_are_legacy_only_when_unmodified() {
+        assert_eq!(kitty("Enter").as_deref(), Some("\r"));
+        assert_eq!(kitty("Tab").as_deref(), Some("\t"));
+        assert_eq!(kitty("Backspace").as_deref(), Some("\u{7f}"));
+        assert_eq!(kitty("Shift Enter").as_deref(), Some("\u{1b}[13;2u"));
+        assert_eq!(kitty("Shift Tab").as_deref(), Some("\u{1b}[9;2u"));
+        assert_eq!(kitty("Ctrl Backspace").as_deref(), Some("\u{1b}[127;5u"));
+    }
+
+    #[test]
+    fn escape_is_always_disambiguated() {
+        assert_eq!(kitty("Esc").as_deref(), Some("\u{1b}[27u"));
+        assert_eq!(kitty("Alt Esc").as_deref(), Some("\u{1b}[27;3u"));
+    }
+
+    #[test]
+    fn functional_keys_use_the_kitty_forms() {
+        assert_eq!(kitty("Up").as_deref(), Some("\u{1b}[A"));
+        assert_eq!(kitty("Ctrl Left").as_deref(), Some("\u{1b}[1;5D"));
+        assert_eq!(kitty("Home").as_deref(), Some("\u{1b}[H"));
+        assert_eq!(kitty("Shift End").as_deref(), Some("\u{1b}[1;2F"));
+        assert_eq!(kitty("F1").as_deref(), Some("\u{1b}OP"));
+        assert_eq!(kitty("Alt F2").as_deref(), Some("\u{1b}[1;3Q"));
+        assert_eq!(kitty("F3").as_deref(), Some("\u{1b}[13~"));
+        assert_eq!(kitty("Ctrl F3").as_deref(), Some("\u{1b}[13;5~"));
+        assert_eq!(kitty("F5").as_deref(), Some("\u{1b}[15~"));
+        assert_eq!(kitty("Shift F12").as_deref(), Some("\u{1b}[24;2~"));
+        assert_eq!(kitty("Insert").as_deref(), Some("\u{1b}[2~"));
+        assert_eq!(kitty("Shift Insert").as_deref(), Some("\u{1b}[2;2~"));
+        assert_eq!(kitty("Delete").as_deref(), Some("\u{1b}[3~"));
+        assert_eq!(kitty("PageUp").as_deref(), Some("\u{1b}[5~"));
+        assert_eq!(kitty("Ctrl PageDown").as_deref(), Some("\u{1b}[6;5~"));
+    }
+
+    #[test]
+    fn lock_keys_are_not_reported() {
+        assert_eq!(
+            KeyWithModifier::new(BareKey::CapsLock).serialize_kitty(),
+            None
+        );
+        assert_eq!(
+            KeyWithModifier::new(BareKey::NumLock).serialize_kitty(),
+            None
+        );
+    }
+
+    #[test]
+    fn csi_u_encodings_decode_back_to_the_same_key() {
+        for key in [
+            "Ctrl a",
+            "Ctrl Shift v",
+            "Alt Esc",
+            "Shift Enter",
+            "Super Tab",
+        ] {
+            let encoded = kitty(key).unwrap();
+            let body = encoded
+                .strip_prefix("\u{1b}[")
+                .and_then(|rest| rest.strip_suffix('u'))
+                .unwrap();
+            let (number, modifiers) = body.split_once(';').unwrap();
+            let parsed =
+                KeyWithModifier::from_bytes_with_u(number.as_bytes(), modifiers.as_bytes());
+            assert_eq!(
+                parsed,
+                Some(KeyWithModifier::from_str(key).unwrap()),
+                "{key}"
+            );
+        }
     }
 }
 

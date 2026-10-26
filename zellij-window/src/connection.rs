@@ -344,18 +344,7 @@ pub fn request_detach(sender: &SharedSender, role: Role) -> Result<()> {
             client_id: None,
             is_cli_client: false,
         },
-        Role::Watcher => {
-            let key = KeyWithModifier::new(BareKey::Esc);
-            let raw_bytes = key
-                .serialize_non_kitty()
-                .map(String::into_bytes)
-                .unwrap_or_default();
-            ClientToServerMsg::Key {
-                key,
-                raw_bytes,
-                is_kitty_keyboard_protocol: false,
-            }
-        },
+        Role::Watcher => crate::input::key_press_message(KeyWithModifier::new(BareKey::Esc)),
     };
     send(sender, msg)
 }

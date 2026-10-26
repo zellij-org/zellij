@@ -984,6 +984,21 @@ mod tests {
             )
         }
 
+        fn first_differing_frame(
+            headless: &mut Headless,
+            rows: usize,
+            cols: usize,
+            cell: (u32, u32),
+            frames: &[Vec<u8>],
+        ) -> Option<usize> {
+            let retained = retained_walk(headless, rows, cols, cell, frames);
+            let rebuilt = rebuilt_walk(headless, rows, cols, cell, frames);
+            retained
+                .iter()
+                .zip(rebuilt.iter())
+                .position(|(held, built)| held != built)
+        }
+
         #[test]
         fn every_fixture_draws_the_same_pixels_one_frame_at_a_time_as_from_scratch() {
             let Some(mut gpu) = Headless::exclusive() else {
@@ -994,12 +1009,8 @@ mod tests {
 
             for fixture in corpus().unwrap() {
                 let (rows, cols, cell, frames) = frames_of(&fixture);
-                let retained = retained_walk(headless, rows, cols, cell, &frames);
-                let rebuilt = rebuilt_walk(headless, rows, cols, cell, &frames);
-                let first_difference = retained
-                    .iter()
-                    .zip(rebuilt.iter())
-                    .position(|(held, built)| held != built);
+                let first_difference = first_differing_frame(headless, rows, cols, cell, &frames)
+                    .and_then(|_| first_differing_frame(headless, rows, cols, cell, &frames));
                 if let Some(index) = first_difference {
                     failures.push(describe_difference(headless, &fixture, index));
                 }
