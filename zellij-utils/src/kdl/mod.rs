@@ -6252,6 +6252,37 @@ fn mouse_binding_from_kdl(
                         behaviour_node.span().len(),
                     )
                 })?;
+        let behaviour = match behaviour {
+            MouseBehaviour::DrawFloatingPane(Some(_)) => {
+                let configuration =
+                    KdlLayoutParser::parse_plugin_user_configuration(behaviour_node)?;
+                MouseBehaviour::draw_floating_plugin_pane(
+                    &arguments[0],
+                    Some(configuration.inner().clone()),
+                    None,
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        e,
+                        behaviour_node.span().offset(),
+                        behaviour_node.span().len(),
+                    )
+                })?
+            },
+            MouseBehaviour::DrawFloatingPane(None)
+                if behaviour_node
+                    .children()
+                    .map(|children| !children.nodes().is_empty())
+                    .unwrap_or(false) =>
+            {
+                return Err(ConfigError::new_kdl_error(
+                    "DrawFloatingPane needs a plugin before its configuration".to_owned(),
+                    behaviour_node.span().offset(),
+                    behaviour_node.span().len(),
+                ));
+            },
+            behaviour => behaviour,
+        };
         return Ok(MouseBinding::behaviour(behaviour).with_app_first(app_first));
     }
     let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
@@ -6277,6 +6308,17 @@ pub fn mouse_binding_node(trigger: &MouseTrigger, binding: &MouseBinding) -> Kdl
                     Ok(number) => behaviour_node.push(number),
                     Err(_) => behaviour_node.push(argument),
                 }
+            }
+            let configuration = behaviour.plugin_configuration();
+            if !configuration.is_empty() {
+                let mut configuration_children = KdlDocument::new();
+                for (key, value) in configuration {
+                    let mut configuration_node = KdlNode::new(key);
+                    configuration_node.push(value);
+                    configuration_children.nodes_mut().push(configuration_node);
+                }
+                behaviour_node.set_children(configuration_children);
+                have_children = true;
             }
             children.nodes_mut().push(behaviour_node);
         },

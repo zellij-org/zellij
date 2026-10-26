@@ -319,6 +319,7 @@ pub(crate) struct Tab {
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_press_owner: HashMap<ClientId, mouse_handler::MousePressOwner>,
+    pane_drawings: HashMap<ClientId, mouse_handler::PaneDrawing>,
     mouse_click_tracker: HashMap<ClientId, mouse_handler::MouseClickRecord>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
@@ -1173,6 +1174,7 @@ impl Tab {
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
             mouse_press_owner: HashMap::new(),
+            pane_drawings: HashMap::new(),
             mouse_click_tracker: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
             popup_hover_plugin_id: HashMap::new(),
@@ -2615,6 +2617,7 @@ impl Tab {
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
+        self.pane_drawings.remove(&client_id);
         if is_connected_to_this_tab || was_dimmed {
             self.set_client_dimmed(client_id, false);
             self.set_force_render();
@@ -2640,6 +2643,7 @@ impl Tab {
             .remove(&client_id)
             .unwrap_or_else(|| self.default_mode_info.clone());
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.pane_drawings.remove(&client_id);
         (client_id, client_mode_info)
     }
     pub fn has_no_connected_clients(&self) -> bool {
@@ -5557,6 +5561,10 @@ impl Tab {
             client_id_override.is_none(),
         )
         .with_context(err_context)?;
+        if client_id_override.is_none() {
+            self.render_pane_drawings(output)
+                .with_context(err_context)?;
+        }
 
         self.render_cursor(output, client_id_override.is_none());
         if output.has_rendered_assets() {
@@ -5567,6 +5575,26 @@ impl Tab {
         self.emit_active_pane_scroll_if_changed()
             .with_context(err_context)?;
 
+        Ok(())
+    }
+
+    fn render_pane_drawings(&self, output: &mut Output) -> Result<()> {
+        let viewport = *self.viewport.borrow();
+        let color = self.style.colors.frame_selected.base;
+        let connected_clients = self.connected_clients.borrow();
+        for (client_id, drawing) in &self.pane_drawings {
+            if !connected_clients.contains(client_id) {
+                continue;
+            }
+            let Some(area) = drawing.area(&viewport) else {
+                continue;
+            };
+            output.add_character_chunks_to_client(
+                *client_id,
+                mouse_handler::pane_drawing_outline(&area, color),
+                Some(mouse_handler::PANE_DRAWING_Z_INDEX),
+            )?;
+        }
         Ok(())
     }
 

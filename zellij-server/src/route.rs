@@ -354,6 +354,39 @@ pub(crate) fn route_action(
     )
 }
 
+pub(crate) fn route_bound_mouse_action(
+    action: Action,
+    client_id: ClientId,
+    senders: ThreadSenders,
+    default_shell: Option<TerminalAction>,
+    default_mode: InputMode,
+) -> Result<(bool, Option<ActionCompletionResult>)> {
+    let _ = senders.send_to_plugin(PluginInstruction::UserInput {
+        client_id,
+        action: action.clone(),
+        terminal_id: None,
+        cli_client_id: None,
+    });
+    let origin_pane_id = if spawns_command_pane(&action) {
+        focused_pane_id(&senders, client_id)
+    } else {
+        None
+    };
+    route_action_with_origin(
+        action,
+        client_id,
+        None,
+        None,
+        senders,
+        default_shell,
+        None,
+        default_mode,
+        None,
+        false,
+        origin_pane_id,
+    )
+}
+
 fn route_action_with_origin(
     action: Action,
     client_id: ClientId,
