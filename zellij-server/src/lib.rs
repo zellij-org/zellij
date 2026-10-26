@@ -1466,6 +1466,9 @@ impl Drop for SessionMetaData {
         if let Some(watcher) = self.config_file.keybinds_dir_watcher.as_mut() {
             watcher.stop();
         }
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::SessionEnding);
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);

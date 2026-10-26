@@ -337,11 +337,14 @@ pub struct Inbox {
     pub select_newest_on_arrival: bool,
     pub live: Option<LiveViewStatus>,
     pub resize_allowed: Option<bool>,
+    pub own_resize_allowed: bool,
+    pub current_session: Option<String>,
     pub live_layout: Option<LiveLayout>,
     pub live_view_drawn: bool,
     pub live_mode: bool,
     pub live_view_sent: Option<LiveView>,
     pub capture_target: Option<ItemKey>,
+    capture_tab: Option<BrowserTab>,
     pub capture_position: Option<usize>,
     pub capture_labels: Option<(String, String)>,
     pub live_notice: Option<String>,
@@ -349,6 +352,7 @@ pub struct Inbox {
     pub sessions_target: Option<SessionsLiveTarget>,
     pub listed: Vec<GlobalAttentionItem>,
     pub held: Vec<ItemKey>,
+    viewed: Vec<ItemKey>,
     dropped: Vec<DroppedItem>,
     shown_items: Vec<GlobalAttentionItem>,
 }
@@ -379,20 +383,6 @@ fn always_listed(item: &GlobalAttentionItem) -> bool {
     item.is_counted() || item.item.attention.watched
 }
 
-fn holdable(item: &GlobalAttentionItem) -> bool {
-    !item.is_muted()
-        && matches!(
-            item.item.attention.effective_status(),
-            AttentionStatus::Done | AttentionStatus::Failed
-        )
-}
-
-fn holds(known: &GlobalAttentionItem, server: Option<&GlobalAttentionItem>) -> bool {
-    holdable(known)
-        && server
-            .map(|item| !item.is_muted() && item.item.attention.status.is_idle())
-            .unwrap_or(true)
-}
 
 fn ends_the_pane(state: MirrorState) -> bool {
     matches!(
@@ -670,7 +660,7 @@ impl Inbox {
         self.global = Some(global);
         self.refresh_listed();
         let capturing = self.is_capturing();
-        if self.select_newest_on_arrival && self.counted_count() > 0 && !capturing {
+        if self.select_newest_on_arrival && self.has_rows() && !capturing {
             self.select_newest_on_arrival = false;
             self.tab = BrowserTab::Inbox;
             self.tab_chosen = true;
@@ -689,7 +679,7 @@ impl Inbox {
             }
         }
         if !self.tab_chosen {
-            self.tab = if self.counted_count() == 0 {
+            self.tab = if !self.has_rows() {
                 BrowserTab::Sessions
             } else {
                 BrowserTab::Inbox
@@ -735,6 +725,32 @@ impl Inbox {
         self.held.contains(key)
     }
 
+    fn holds(&self, known: &GlobalAttentionItem, server: Option<&GlobalAttentionItem>) -> bool {
+        !known.is_muted()
+            && !matches!(
+                known.item.attention.effective_status(),
+                AttentionStatus::Idle | AttentionStatus::Working
+            )
+            && self.viewed.contains(&ItemKey::of(known))
+            && server
+                .map(|item| !item.is_muted() && item.item.attention.status.is_idle())
+                .unwrap_or(true)
+    }
+
+    fn note_viewed(&mut self) {
+        let Some(key) = self.live_view_target() else {
+            return;
+        };
+        if self.is_dropped(&key) || self.viewed.contains(&key) {
+            return;
+        }
+        self.viewed.push(key);
+    }
+
+    pub fn has_rows(&self) -> bool {
+        self.counted_count() > 0 || !self.held.is_empty()
+    }
+
     fn server_item(&self, key: &ItemKey) -> Option<&GlobalAttentionItem> {
         self.server_items()
             .iter()
@@ -764,7 +780,7 @@ impl Inbox {
             .filter(|known| self.session_runs(&known.session))
             .filter_map(|known| {
                 let server = self.server_item(&ItemKey::of(&known));
-                if holds(&known, server) {
+                if self.holds(&known, server) {
                     let mut kept = known;
                     kept.item.attention.watched = server
                         .map(|item| item.item.attention.watched)
@@ -784,7 +800,7 @@ impl Inbox {
             let key = ItemKey::of(item);
             let known = self.listed.iter().find(|known| ItemKey::of(known) == key);
             match known {
-                Some(known) if holds(known, Some(item)) => {
+                Some(known) if self.holds(known, Some(item)) => {
                     items.push(known.clone());
                     held.push(key);
                 },
@@ -793,7 +809,7 @@ impl Inbox {
         }
         for known in &self.listed {
             let key = ItemKey::of(known);
-            if self.server_item(&key).is_none() && holds(known, None) {
+            if self.server_item(&key).is_none() && self.holds(known, None) {
                 items.push(known.clone());
                 held.push(key);
             }
@@ -839,6 +855,7 @@ impl Inbox {
 
     pub fn forget_listed(&mut self) -> bool {
         self.dropped.clear();
+        self.viewed.clear();
         if self.listed.is_empty() {
             return false;
         }
@@ -888,6 +905,7 @@ impl Inbox {
         };
         self.mark_selected_seen();
         self.drop_key(&key);
+        self.viewed.retain(|viewed| *viewed != key);
         self.forget_listed_where(|known| ItemKey::of(known) == key);
     }
 
@@ -898,6 +916,7 @@ impl Inbox {
         for key in keys {
             self.drop_key(&key);
         }
+        self.viewed.clear();
         self.listed.clear();
         self.rebuild_items();
         self.keep_selection_at(previous_position);
@@ -959,7 +978,10 @@ impl Inbox {
             .iter()
             .enumerate()
             .filter(|(_, item)| {
-                self.matches_filter(item) && (self.show_quiet || self.always_listed(item))
+                self.matches_filter(item)
+                    && (self.show_quiet
+                        || self.always_listed(item)
+                        || self.is_held(&ItemKey::of(item)))
             })
             .map(|(index, _)| index)
             .collect();
@@ -1049,7 +1071,7 @@ impl Inbox {
             order
                 .iter()
                 .map(|index| &self.items()[*index])
-                .filter(|item| item.is_counted())
+                .filter(|item| item.is_counted() && !self.is_held(&ItemKey::of(item)))
         };
         let newest = counted()
             .find(|item| !item.item.attention.watched)
@@ -1312,18 +1334,48 @@ impl Inbox {
     }
 
     pub fn current_resize_allowed(&self) -> bool {
+        if self.views_own_session() {
+            return self.own_resize_allowed;
+        }
         self.resize_allowed
             .or_else(|| {
                 self.live
                     .as_ref()
-                    .filter(|live| live.target.is_some())
+                    .filter(|live| {
+                        live.target
+                            .as_ref()
+                            .map(|target| !self.is_own_session(&target.session))
+                            .unwrap_or(false)
+                    })
                     .map(|live| live.resize_allowed)
             })
             .unwrap_or(true)
     }
 
     pub fn toggle_resize(&mut self) {
+        if self.views_own_session() {
+            self.own_resize_allowed = !self.own_resize_allowed;
+            return;
+        }
         self.resize_allowed = Some(!self.current_resize_allowed());
+    }
+
+    pub fn is_own_session(&self, session: &str) -> bool {
+        self.current_session.as_deref() == Some(session)
+    }
+
+    fn views_own_session(&self) -> bool {
+        self.live_view_target()
+            .map(|key| self.is_own_session(&key.session))
+            .unwrap_or(false)
+    }
+
+    fn requested_resize_allowed(&self) -> Option<bool> {
+        if self.views_own_session() {
+            Some(self.own_resize_allowed)
+        } else {
+            self.resize_allowed
+        }
     }
 
     pub fn release_key_text(&self) -> String {
@@ -1337,7 +1389,7 @@ impl Inbox {
     }
 
     pub fn live_view_target(&self) -> Option<ItemKey> {
-        if self.is_capturing() {
+        if self.is_capturing() && self.capture_tab == Some(self.tab) {
             if let Some(key) = self.capture_target.as_ref() {
                 return Some(key.clone());
             }
@@ -1345,7 +1397,18 @@ impl Inbox {
         if let Some(target) = self.sessions_target.as_ref() {
             return Some(target.key.clone());
         }
+        if self.tab != BrowserTab::Inbox {
+            return None;
+        }
         self.selected_target().map(ItemKey::of)
+    }
+
+    pub fn leave_tab(&mut self) {
+        if self.is_capturing() || self.capture_target.is_some() {
+            set_live_view_input(false);
+        }
+        self.capture_target = None;
+        self.capture_tab = None;
     }
 
     pub fn live_view_request(&self, layout: &LiveLayout) -> LiveView {
@@ -1360,7 +1423,7 @@ impl Inbox {
             y,
             cols,
             rows,
-            resize_allowed: self.resize_allowed,
+            resize_allowed: self.requested_resize_allowed(),
             view_only: false,
         }
     }
@@ -1395,7 +1458,10 @@ impl Inbox {
 
     pub fn prepare_live_view(&mut self, x: usize, y: usize, cols: usize, rows: usize) {
         match self.plan_live_layout(x, y, cols, rows) {
-            Some(layout) => self.show_live_view(&layout),
+            Some(layout) => {
+                self.note_viewed();
+                self.show_live_view(&layout);
+            },
             None => self.clear_live_view(),
         }
     }
@@ -1436,29 +1502,42 @@ impl Inbox {
         };
         self.live_notice = None;
         self.capture_target = Some(key);
+        self.capture_tab = Some(self.tab);
         self.capture_position = self.selected_position(&self.ordered());
         set_live_view_input(true);
         true
     }
 
     fn adopt_resize_allowed(&mut self, status: &LiveViewStatus) {
-        if status.target.is_none() {
+        let Some(target) = status.target.as_ref() else {
             self.resize_requests_in_flight.clear();
             return;
-        }
+        };
         if let Some(requested) = self.resize_requests_in_flight.front() {
             if *requested == status.resize_allowed {
                 self.resize_requests_in_flight.pop_front();
             }
             return;
         }
+        let own = self.is_own_session(&target.session);
         let reported = Some(status.resize_allowed);
         let previous = self
             .live
             .as_ref()
-            .filter(|live| live.target.is_some())
+            .filter(|live| {
+                live.target
+                    .as_ref()
+                    .map(|previous| self.is_own_session(&previous.session) == own)
+                    .unwrap_or(false)
+            })
             .map(|live| live.resize_allowed);
         let changed_elsewhere = previous.is_some() && previous != reported;
+        if own {
+            if changed_elsewhere {
+                self.own_resize_allowed = status.resize_allowed;
+            }
+            return;
+        }
         if self.resize_allowed.is_none() || changed_elsewhere {
             self.resize_allowed = reported;
         }
@@ -1487,11 +1566,16 @@ impl Inbox {
         if status.input_captured {
             self.live_notice = None;
             if self.capture_target.is_none() {
+                let inbox_item = match self.tab {
+                    BrowserTab::Inbox => self.selected_item().map(ItemKey::of),
+                    BrowserTab::Sessions => None,
+                };
                 self.capture_target = self
                     .sessions_target
                     .as_ref()
                     .map(|target| target.key.clone())
-                    .or_else(|| self.selected_item().map(ItemKey::of));
+                    .or(inbox_item);
+                self.capture_tab = Some(self.tab);
                 self.capture_position = self.selected_position(&self.ordered());
             }
             self.live = Some(status);
@@ -1503,6 +1587,7 @@ impl Inbox {
         self.live = Some(status);
         if was_captured || self.capture_target.is_some() {
             self.capture_target = None;
+            self.capture_tab = None;
             self.settle_selection_after_capture();
         }
         true
@@ -4036,7 +4121,7 @@ mod tests {
             item("web", 2, AttentionStatus::Done, 200),
             item("docs", 3, AttentionStatus::Done, 100),
         ]));
-        render(&mut inbox, 88, 15, false);
+        view(&mut inbox, &[key("web", 2), key("docs", 3), key("here", 4)]);
         let mut sessions_left = with_sessions(vec![], &["docs", "web"]);
         inbox.update_global(sessions_left.clone());
         assert_eq!(sessions_in_order(&inbox), vec!["here", "web", "docs"]);
@@ -4079,8 +4164,15 @@ mod tests {
         assert!(sessions_in_order(&inbox).is_empty());
     }
 
+    fn view(inbox: &mut Inbox, keys: &[ItemKey]) {
+        for key in keys {
+            inbox.select_item(key.clone());
+            render(inbox, 88, 15, false);
+        }
+    }
+
     #[test]
-    fn a_working_or_needs_you_item_that_goes_away_is_dropped_while_done_and_failed_are_held() {
+    fn only_an_item_shown_live_is_held_once_it_goes_away_whatever_its_status() {
         let mut inbox = Inbox::default();
         inbox.update_global(global(vec![
             item("api", 1, AttentionStatus::NeedsYou, 400),
@@ -4088,17 +4180,21 @@ mod tests {
             item("web", 3, AttentionStatus::Done, 200),
             item("docs", 4, AttentionStatus::Failed, 100),
         ]));
-        render(&mut inbox, 88, 15, false);
+        view(&mut inbox, &[key("api", 1)]);
         inbox.update_global(with_sessions(
             vec![item("work", 2, AttentionStatus::Quiet, 300)],
             &["api", "web", "docs"],
         ));
-        assert_eq!(sessions_in_order(&inbox), vec!["docs", "web"]);
-        assert!(inbox.is_held(&key("web", 3)));
-        assert!(inbox.is_held(&key("docs", 4)));
-        assert!(!inbox.is_held(&key("api", 1)));
+        assert_eq!(sessions_in_order(&inbox), vec!["api"]);
+        assert!(inbox.is_held(&key("api", 1)));
+        assert!(!inbox.is_held(&key("web", 3)));
+        assert!(!inbox.is_held(&key("docs", 4)));
         assert!(!inbox.is_held(&key("work", 2)));
-        assert!(inbox.find(&key("api", 1)).is_none());
+        assert!(inbox.find(&key("web", 3)).is_none());
+        assert!(inbox.find(&key("docs", 4)).is_none());
+        assert_eq!(inbox.counted_count(), 0);
+        assert!(inbox.has_rows(), "the read item still counts as a row");
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("api", 1)));
         assert!(
             !inbox.has_working_items(),
             "no Working row or spinner is left"
@@ -4108,11 +4204,79 @@ mod tests {
             "Went Quiet"
         );
         inbox.update_global(with_sessions(
-            vec![item("api", 1, AttentionStatus::NeedsYou, 400)],
+            vec![item("api", 1, AttentionStatus::NeedsYou, 500)],
             &["work", "web", "docs"],
         ));
+        assert!(!inbox.is_held(&key("api", 1)));
         assert!(inbox.find(&key("work", 2)).is_none());
-        assert_eq!(sessions_in_order(&inbox), vec!["api", "docs", "web"]);
+        assert_eq!(sessions_in_order(&inbox), vec!["api"]);
+    }
+
+    #[test]
+    fn an_item_with_new_output_shown_live_stays_listed_until_the_inbox_closes() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 300),
+            item("log", 2, AttentionStatus::NewOutput, 200),
+        ]));
+        inbox.toggle_show_quiet();
+        view(&mut inbox, &[key("log", 2)]);
+        inbox.update_global(with_sessions(
+            vec![item("api", 1, AttentionStatus::NeedsYou, 300)],
+            &["log"],
+        ));
+        inbox.toggle_show_quiet();
+        assert!(inbox.is_held(&key("log", 2)));
+        assert_eq!(sessions_in_order(&inbox), vec!["api", "log"]);
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("log", 2)));
+        assert_eq!(inbox.quiet_count(), 0);
+        assert!(inbox.forget_listed(), "closing the inbox lets it go");
+        assert_eq!(sessions_in_order(&inbox), vec!["api"]);
+    }
+
+    #[test]
+    fn the_newest_unread_item_is_picked_over_a_held_one() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 300),
+            item("web", 2, AttentionStatus::Done, 200),
+        ]));
+        view(&mut inbox, &[key("api", 1)]);
+        inbox.update_global(with_sessions(
+            vec![item("web", 2, AttentionStatus::Done, 200)],
+            &["api"],
+        ));
+        assert!(inbox.is_held(&key("api", 1)));
+        assert!(inbox.select_newest_counted());
+        assert_eq!(inbox.selected_item().map(ItemKey::of), Some(key("web", 2)));
+    }
+
+    #[test]
+    fn a_pane_of_this_session_is_shown_without_resizing_until_z_allows_it() {
+        let sent = |inbox: &Inbox| inbox.live_view_sent.as_ref().and_then(|v| v.resize_allowed);
+        let mut inbox = sample();
+        inbox.current_session = Some("here".to_owned());
+        inbox.select_item(key("here", 2));
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sent(&inbox), Some(false));
+        assert!(!inbox.current_resize_allowed());
+        inbox.toggle_resize();
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sent(&inbox), Some(true));
+        inbox.select_item(key("api", 1));
+        render(&mut inbox, 88, 15, false);
+        assert_eq!(sent(&inbox), None, "other sessions keep their own setting");
+    }
+
+    #[test]
+    fn the_sessions_tab_never_shows_or_types_into_the_inbox_selection() {
+        let mut inbox = sample();
+        render(&mut inbox, 88, 15, false);
+        assert!(inbox.live_view_target().is_some());
+        inbox.tab = BrowserTab::Sessions;
+        assert_eq!(inbox.live_view_target(), None);
+        inbox.apply_live_view_status(live_status(None, true));
+        assert_eq!(inbox.capture_target, None);
     }
 
     #[test]
@@ -4194,8 +4358,10 @@ mod tests {
             item("docs", 4, AttentionStatus::Done, 200),
             item("api", 5, AttentionStatus::Done, 100),
         ]));
-        inbox.select_item(key("docs", 4));
-        render(&mut inbox, 88, 15, false);
+        view(
+            &mut inbox,
+            &[key("web", 2), key("web", 3), key("api", 5), key("docs", 4)],
+        );
         let all_seen = with_sessions(vec![], &["web", "docs", "api"]);
         inbox.update_global(all_seen.clone());
         assert_eq!(sessions_in_order(&inbox), vec!["web", "web", "docs", "api"]);
@@ -4260,7 +4426,7 @@ mod tests {
             item("zed", 6, AttentionStatus::Done, 150),
             item("build", 5, AttentionStatus::Working, 100),
         ]));
-        render(&mut inbox, 88, 15, false);
+        view(&mut inbox, &[key("docs", 3), key("web", 2)]);
         inbox.update_global(with_sessions(
             vec![
                 item("api", 4, AttentionStatus::Done, 200),

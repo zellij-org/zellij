@@ -18004,62 +18004,28 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
     assert!(writes.is_empty());
 }
 
+fn plugin_is_shown(tab: &Tab, plugin_id: u32) -> bool {
+    tab.shown_plugin_ids().contains(&plugin_id)
+}
+
 #[test]
-fn floating_plugin_panes_are_notified_when_their_tab_is_hidden() {
-    // Regression test: Tab::visible() used to only walk the tiled panes, so a plugin living in a
-    // floating pane never learned that its tab had gone away. Plugins that idle on a timer (the
-    // session-manager re-reads the whole session list once a second) went on doing that work
-    // forever, even with no client attached to the session at all.
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
-    let plugin_pane_id = PaneId::Plugin(1);
-    tab.new_pane(
-        plugin_pane_id,
-        None,
-        None,
-        false,
-        true,
-        NewPanePlacement::Floating(None),
-        Some(1),
-        None,
-    )
-    .unwrap();
+fn a_floating_plugin_pane_is_not_shown_while_its_tab_is_hidden() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
+    assert!(plugin_is_shown(&tab, 1));
 
     tab.visible(false).unwrap();
 
-    let mut told_the_floating_plugin = false;
-    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
-        if let PluginInstruction::Update(updates) = instruction {
-            for (pid, _client_id, event) in updates {
-                if pid == Some(1) && matches!(event, Event::Visible(false)) {
-                    told_the_floating_plugin = true;
-                }
-            }
-        }
-    }
-    assert!(
-        told_the_floating_plugin,
-        "a plugin in a floating pane should be sent Event::Visible(false) when its tab is hidden"
-    );
+    assert!(!plugin_is_shown(&tab, 1));
+    assert!(tab.all_plugin_ids().contains(&1));
 }
 
-fn drain_visible_events(
-    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
-) -> Vec<(Option<u32>, bool)> {
-    let mut visible_events = vec![];
-    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
-        if let PluginInstruction::Update(updates) = instruction {
-            for (pid, _client_id, event) in updates {
-                if let Event::Visible(is_visible) = event {
-                    visible_events.push((pid, is_visible));
-                }
-            }
-        }
-    }
-    visible_events
+#[test]
+fn a_plugin_pane_is_not_shown_once_its_tab_has_no_clients() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
+
+    tab.remove_client(1);
+
+    assert!(!plugin_is_shown(&tab, 1));
 }
 
 fn tab_with_floating_plugin_pane(
@@ -18129,79 +18095,106 @@ fn horizontal_scroll_over_a_plugin_pane_is_sent_to_the_plugin_in_the_same_direct
 }
 
 #[test]
-fn floating_plugin_panes_are_notified_when_the_floating_surface_is_hidden() {
-    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
-    drain_visible_events(&plugin_receiver);
+fn a_floating_plugin_pane_is_not_shown_while_the_floating_surface_is_hidden() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
 
     tab.hide_floating_panes();
+    assert!(!plugin_is_shown(&tab, 1));
 
-    assert_eq!(
-        drain_visible_events(&plugin_receiver),
-        vec![(Some(1), false)],
-        "a plugin in a floating pane should be sent Event::Visible(false) when the floating surface is hidden"
-    );
+    tab.show_floating_panes();
+    assert!(plugin_is_shown(&tab, 1));
 }
 
 #[test]
-fn floating_plugin_panes_are_notified_when_the_floating_surface_is_shown() {
-    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
-    tab.hide_floating_panes();
-    drain_visible_events(&plugin_receiver);
-
-    tab.show_floating_panes();
-
-    assert_eq!(
-        drain_visible_events(&plugin_receiver),
-        vec![(Some(1), true)],
-        "a plugin in a floating pane should be sent Event::Visible(true) when the floating surface is shown"
-    );
-}
-
-#[test]
-fn toggling_the_floating_surface_twice_does_not_repeat_the_visibility_event() {
-    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
-    drain_visible_events(&plugin_receiver);
-
-    tab.hide_floating_panes();
-    tab.hide_floating_panes();
-    tab.show_floating_panes();
-    tab.show_floating_panes();
-
-    assert_eq!(
-        drain_visible_events(&plugin_receiver),
-        vec![(Some(1), false), (Some(1), true)],
-        "only actual visibility transitions of the floating surface should be reported"
-    );
-}
-
-#[test]
-fn floating_surface_toggles_in_a_hidden_tab_do_not_notify_plugins() {
-    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+fn showing_the_floating_surface_in_a_hidden_tab_does_not_show_its_plugins() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
     tab.visible(false).unwrap();
-    drain_visible_events(&plugin_receiver);
 
     tab.hide_floating_panes();
     tab.show_floating_panes();
 
-    assert!(
-        drain_visible_events(&plugin_receiver).is_empty(),
-        "a plugin in a hidden tab should not be told it became visible because the floating surface was toggled"
-    );
+    assert!(!plugin_is_shown(&tab, 1));
 }
 
 #[test]
 fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_surface_hidden() {
-    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
     tab.hide_floating_panes();
     tab.visible(false).unwrap();
-    drain_visible_events(&plugin_receiver);
 
     tab.visible(true).unwrap();
 
-    assert!(
-        !drain_visible_events(&plugin_receiver).contains(&(Some(1), true)),
-        "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
-    );
+    assert!(!plugin_is_shown(&tab, 1));
+}
+
+fn add_tiled_plugin_pane(tab: &mut Tab, plugin_id: u32) {
+    tab.new_pane(
+        PaneId::Plugin(plugin_id),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_tiled_plugin_pane_behind_a_fullscreen_pane_is_not_shown() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, _plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    add_tiled_plugin_pane(&mut tab, 2);
+    assert!(plugin_is_shown(&tab, 2));
+
+    tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+    assert!(!plugin_is_shown(&tab, 2));
+
+    tab.toggle_pane_fullscreen(PaneId::Terminal(1));
+    assert!(plugin_is_shown(&tab, 2));
+}
+
+#[test]
+fn a_fullscreen_floating_pane_hides_the_other_floating_and_tiled_plugin_panes() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
+    add_tiled_plugin_pane(&mut tab, 3);
+    tab.new_pane(
+        PaneId::Plugin(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(plugin_is_shown(&tab, 1));
+    assert!(plugin_is_shown(&tab, 2));
+
+    tab.toggle_pane_fullscreen(PaneId::Plugin(2));
+
+    assert!(plugin_is_shown(&tab, 2));
+    assert!(!plugin_is_shown(&tab, 1));
+    assert!(!plugin_is_shown(&tab, 3));
+}
+
+#[test]
+fn a_suppressed_plugin_pane_is_not_shown() {
+    let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
+
+    tab.suppress_pane(PaneId::Plugin(1), Some(1));
+
+    assert!(!plugin_is_shown(&tab, 1));
+    assert!(tab.all_plugin_ids().contains(&1));
 }
 
 #[test]

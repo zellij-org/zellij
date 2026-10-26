@@ -263,6 +263,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    SessionEnding,
     ClearScreen,
     DumpScreen,
     DumpLayout,

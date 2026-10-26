@@ -10098,14 +10098,106 @@ fn reattaching_a_client_restores_floating_pane_visibility_notifications() {
 
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
+    screen.sync_plugin_visibility();
     let _ = capture.drain_visible_events();
     screen.get_active_tab_mut(1).unwrap().hide_floating_panes();
+    screen.sync_plugin_visibility();
 
     assert!(
         capture.drain_visible_events().contains(&(Some(2), false)),
         "a floating plugin must still be told when its surface is hidden after a reattach, \
          otherwise plugins idling on a timer keep working while off screen"
     );
+}
+
+fn screen_with_floating_plugin(plugin_id: u32) -> (Screen, ThemeCapture) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(plugin_id),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(None),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.sync_plugin_visibility();
+    let _ = capture.drain_visible_events();
+    (screen, capture)
+}
+
+#[test]
+fn plugins_are_told_about_their_visibility_only_when_it_changes() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+
+    for show in [false, false, true, true] {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        if show {
+            tab.show_floating_panes();
+        } else {
+            tab.hide_floating_panes();
+        }
+        screen.sync_plugin_visibility();
+    }
+
+    assert_eq!(
+        capture.drain_visible_events(),
+        vec![(Some(2), false), (Some(2), true)]
+    );
+}
+
+#[test]
+fn a_plugin_behind_a_fullscreen_pane_is_told_it_is_hidden() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.hide_floating_panes();
+    tab.new_pane(
+        PaneId::Plugin(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    screen.sync_plugin_visibility();
+    let _ = capture.drain_visible_events();
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .toggle_pane_fullscreen(PaneId::Terminal(1));
+    screen.sync_plugin_visibility();
+
+    assert_eq!(capture.drain_visible_events(), vec![(Some(3), false)]);
+}
+
+#[test]
+fn detaching_the_last_client_hides_the_plugins_and_reattaching_shows_them() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+
+    screen.remove_client(1).expect("TEST");
+    assert!(capture.drain_visible_events().contains(&(Some(2), false)));
+
+    screen.add_client(1, false).expect("TEST");
+    screen.sync_plugin_visibility();
+    assert!(capture.drain_visible_events().contains(&(Some(2), true)));
 }
 
 fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {

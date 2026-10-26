@@ -17,6 +17,7 @@ pub const CARD_SHORTCUT: &str = "<F9>";
 pub const CARD_MIN_LIST_ROWS: usize = 5;
 pub const CARD_SCROLL_MARGIN: usize = 2;
 pub const NO_OTHER_SESSIONS_TEXT: &str = "No other sessions.";
+pub const CURRENT_SESSION_LABEL: &str = "here";
 pub const EMPTY_PREVIEW_TEXT: &str = "Select a session to see its preview";
 pub const EMPTY_PREVIEW_HINT: &str = "You can do this by navigating with ";
 pub const NAVIGATE_KEYS: &str = "<←↓↑→>";
@@ -65,6 +66,7 @@ pub struct Panel {
     pub opened_at_startup: bool,
     pub attention: Option<GlobalAttention>,
     pub previous_session: Option<String>,
+    pub current_session: Option<String>,
     pub preview_pan: PreviewPan,
 }
 
@@ -768,6 +770,7 @@ pub fn render_session_tree(
     let visible = rows.len().saturating_sub(offset).min(capacity);
     let attention = panel.attention.clone();
     let previous_session = panel.previous_session.clone();
+    let current_session = panel.current_session.clone();
     let session_status = |name: &str| {
         attention
             .as_ref()
@@ -778,7 +781,10 @@ pub fn render_session_tree(
     let session_name_text = |row: &crate::ui::components::CachedRowData| {
         let marker = status_marker(session_status(&row.session_name));
         let mut text = format!("{} {}", marker, row.session_name);
-        if previous_session.as_deref() == Some(row.session_name.as_str()) {
+        if current_session.as_deref() == Some(row.session_name.as_str()) {
+            text.push(' ');
+            text.push_str(CURRENT_SESSION_LABEL);
+        } else if previous_session.as_deref() == Some(row.session_name.as_str()) {
             text.push_str(" previous");
         }
         if matches!(row.kind, CachedRowKind::Resurrectable) {
@@ -902,6 +908,10 @@ pub fn render_session_tree(
                 if previous_session.as_deref() == Some(row.session.as_str()) {
                     let start = 2 + name_len + 1;
                     text = text.color_range(2, start..start + "previous".len());
+                }
+                if current_session.as_deref() == Some(row.session.as_str()) {
+                    let start = 2 + name_len + 1;
+                    text = text.dim_range(start..start + CURRENT_SESSION_LABEL.len());
                 }
                 if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
                     text = text.dim_range(name_chars.saturating_sub("ended".len())..name_chars);

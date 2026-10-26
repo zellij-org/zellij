@@ -7459,27 +7459,7 @@ impl Tab {
         Ok(())
     }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
-        // Floating panes must be included here as well: a plugin in a floating pane is just as
-        // hidden as a tiled one when its tab goes away, and plugins that idle on a timer (eg. the
-        // session-manager, which polls the session list once a second) keep that timer armed until
-        // they are told otherwise.
         self.tab_visible = visible;
-        let floating_panes_are_shown = self.floating_panes.panes_are_shown();
-        let tiled_pids = self.tiled_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) => Some(*pid),
-            _ => None,
-        });
-        let floating_pids = self.floating_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) if !visible || floating_panes_are_shown => Some(*pid),
-            _ => None,
-        });
-        let mut plugin_updates = vec![];
-        for pid in tiled_pids.chain(floating_pids) {
-            plugin_updates.push((Some(pid), None, Event::Visible(visible)));
-        }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         if !visible {
             self.mouse_hover_pane_id.clear();
             self.plugin_hover_pane_id.clear();
@@ -7792,49 +7772,53 @@ impl Tab {
     }
     pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
-        let were_shown = self.floating_panes.panes_are_shown();
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
         self.set_force_render();
-        if !were_shown {
-            self.notify_floating_plugins_of_visibility(true);
-        }
     }
 
     pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
-        let were_shown = self.floating_panes.panes_are_shown();
         if self.floating_panes.fullscreen_is_active() {
             self.floating_panes.unset_fullscreen();
         }
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
-        if were_shown {
-            self.notify_floating_plugins_of_visibility(false);
-        }
     }
 
-    fn notify_floating_plugins_of_visibility(&self, visible: bool) {
-        if !self.tab_visible {
-            return;
+    pub fn all_plugin_ids(&self) -> Vec<PluginId> {
+        let mut plugin_ids = self.get_plugin_ids_including_suppressed();
+        for plugin_id in self.all_popup_plugin_ids() {
+            if !plugin_ids.contains(&plugin_id) {
+                plugin_ids.push(plugin_id);
+            }
         }
-        let plugin_updates: Vec<_> = self
-            .floating_panes
-            .pane_ids()
-            .filter_map(|p| match p {
-                PaneId::Plugin(pid) => Some((Some(*pid), None, Event::Visible(visible))),
-                _ => None,
+        plugin_ids
+    }
+
+    pub fn shown_plugin_ids(&self) -> HashSet<PluginId> {
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
+        if !self.tab_visible || connected_clients.is_empty() {
+            return HashSet::new();
+        }
+        let mut pane_ids: Vec<PaneId> = self.floating_panes.rendered_pane_ids();
+        if !self.floating_panes.fullscreen_is_active() {
+            pane_ids.extend(self.tiled_panes.rendered_pane_ids());
+        }
+        let mut plugin_ids: HashSet<PluginId> = pane_ids
+            .into_iter()
+            .filter_map(|pane_id| match pane_id {
+                PaneId::Plugin(plugin_id) => Some(plugin_id),
+                PaneId::Terminal(_) => None,
             })
             .collect();
-        if plugin_updates.is_empty() {
-            return;
+        for client_id in connected_clients {
+            plugin_ids.extend(self.popup_plugin_ids_for_client(client_id));
         }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to set visibility of floating panes to {visible}"))
-            .non_fatal();
+        plugin_ids
     }
 
     pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {

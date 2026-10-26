@@ -56,6 +56,7 @@ pub(crate) struct State {
     app_quit: bool,
     app_panel_initial_view: Option<String>,
     app_panel_auto_pending: bool,
+    app_panel_view_shown: bool,
     app_panel_cols: usize,
     session_name: Option<String>,
     pub(crate) sessions: SessionList,
@@ -296,7 +297,7 @@ impl ZellijPlugin for State {
 
 impl State {
     fn settle_inbox_hold(&mut self) -> bool {
-        if self.is_visible && self.inbox_is_shown() {
+        if self.is_visible && self.browser_is_open() {
             return self.forget_closed_inbox_panes();
         }
         self.inbox.forget_listed();
@@ -380,10 +381,11 @@ impl State {
                 self.is_visible = is_visible;
                 if !is_visible {
                     self.inbox.clear_live_view();
+                    self.app_panel_view_shown = false;
                 }
                 if is_visible && !was_visible {
                     self.panel.request_suggestions();
-                    should_render = self.inbox_is_shown();
+                    should_render = true;
                     if !app_panel::is_enabled()
                         && self.panel.size == Some(PanelSize::Manager)
                         && self.shows_browser_tabs()
@@ -409,7 +411,7 @@ impl State {
                 }
                 if let Some(session_name) = mode_info.session_name.as_ref() {
                     if !self.is_welcome_screen {
-                        self.session_name = Some(session_name.clone());
+                        self.set_session_name(session_name);
                     }
                 }
                 self.colors = Colors::new(mode_info.style.colors);
@@ -433,7 +435,7 @@ impl State {
                     if session_info.is_current_session {
                         self.new_session_info
                             .update_layout_list(session_info.available_layouts.clone());
-                        self.session_name = Some(session_info.name.clone());
+                        self.set_session_name(&session_info.name);
                     }
                 }
                 self.refresh_layout_list();
@@ -622,7 +624,9 @@ impl State {
                 .plan_live_layout(0, 1, cols, rows.saturating_sub(1))
                 .is_some();
         }
-        if self.inbox_browser_will_render() {
+        if !self.is_visible {
+            self.inbox.clear_live_view();
+        } else if self.inbox_browser_will_render() {
             self.inbox
                 .prepare_live_view(0, 1, cols, rows.saturating_sub(1));
         } else if let Some((layout, target)) = self.plan_sessions_live_view(rows, cols) {
@@ -1687,6 +1691,11 @@ impl State {
                     .get_selected_result()
                     .map(|r| r.as_delete_target());
                 match selected {
+                    Some(DeleteTarget::Active(name))
+                        if self.session_name.as_deref() == Some(name.as_str()) =>
+                    {
+                        self.show_error("This is the current session. Quit to stop it.");
+                    },
                     Some(DeleteTarget::Active(name)) => {
                         self.pending_session_stop = Some(name);
                     },
@@ -1942,7 +1951,13 @@ impl State {
                                     is_current_session, ..
                                 } => {
                                     if *is_current_session {
-                                        self.show_error("Already attached...");
+                                        if self.panel.size.is_some() {
+                                            self.panel.size = None;
+                                            self.panel.report_size();
+                                            switched_session = true;
+                                        } else {
+                                            self.show_error("Already attached...");
+                                        }
                                     } else {
                                         self.open_session(&session_name, true);
                                         switched_session = true;
@@ -2124,7 +2139,25 @@ impl State {
             self.sessions
                 .update_session_name(&old_session_name, new_name);
         }
-        self.session_name = Some(new_name.to_owned());
+        self.set_session_name(new_name);
+    }
+
+    fn set_session_name(&mut self, name: &str) {
+        if self.session_name.as_deref() == Some(name) {
+            return;
+        }
+        self.session_name = Some(name.to_owned());
+        self.inbox.current_session = self.session_name.clone();
+        if self.panel.size == Some(PanelSize::Manager) {
+            self.apply_suggestions_to_list();
+        }
+    }
+
+    fn listed_current_session(&self) -> Option<String> {
+        if app_panel::is_enabled() || self.is_welcome_screen {
+            return None;
+        }
+        self.session_name.clone()
     }
 
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
@@ -2960,6 +2993,17 @@ impl State {
         tab: Option<usize>,
         pane: Option<(u32, bool)>,
     ) {
+        if is_running && self.listed_current_session().as_deref() == Some(name) {
+            match (pane, tab) {
+                (Some((pane_id, true)), _) => focus_session_pane(name, PaneId::Plugin(pane_id)),
+                (Some((pane_id, false)), _) => {
+                    focus_session_pane(name, PaneId::Terminal(pane_id))
+                },
+                (None, Some(tab)) => go_to_tab(tab as u32),
+                (None, None) => {},
+            }
+            return;
+        }
         if self.open_disconnecting && is_running {
             switch_session_with_options(ConnectToSession {
                 name: Some(name.to_owned()),
@@ -3051,7 +3095,43 @@ impl State {
                 2
             }
         });
-        let ordered_names: Vec<String> = ordered.iter().map(|s| s.name.clone()).collect();
+        let current = self
+            .listed_current_session()
+            .filter(|name| !suggestions.suggestions.iter().any(|s| s.name == *name));
+        let mut ordered_names: Vec<String> = ordered.iter().map(|s| s.name.clone()).collect();
+        if let Some(current) = current.as_ref() {
+            let first_exited = ordered
+                .iter()
+                .position(|s| !s.is_running)
+                .unwrap_or(ordered.len());
+            ordered_names.insert(first_exited, current.clone());
+            let tab_count = self.last_tab_count.unwrap_or(1).max(1);
+            let pane_count = self.last_terminal_pane_count.unwrap_or(0);
+            running.push(SessionUiInfo {
+                name: current.clone(),
+                tabs: (0..tab_count)
+                    .map(|position| crate::ui::TabUiInfo {
+                        name: format!("Tab #{}", position + 1),
+                        panes: if position == 0 {
+                            (0..pane_count)
+                                .map(|pane_id| crate::ui::PaneUiInfo {
+                                    name: String::new(),
+                                    exit_code: None,
+                                    pane_id: pane_id as u32,
+                                    is_plugin: false,
+                                })
+                                .collect()
+                        } else {
+                            vec![]
+                        },
+                        position,
+                    })
+                    .collect(),
+                connected_users: 1,
+                is_current_session: true,
+                creation_time: std::time::Duration::from_secs(0),
+            });
+        }
         for suggestion in &suggestions.suggestions {
             if suggestion.is_running {
                 let tab_count = suggestion.tabs.len();
@@ -3101,6 +3181,7 @@ impl State {
                     .set_children_from_tabs(&suggestion.name, &suggestion.tabs);
             }
         }
+        self.panel.current_session = current;
         self.single_screen_state.ordered_names = Some(ordered_names);
         self.sessions.set_sessions(running, vec![]);
         self.resurrectable_sessions.update(resumable);
@@ -3492,10 +3573,12 @@ impl State {
         self.panel.size == Some(PanelSize::Card) || self.inbox_is_shown()
     }
     fn inbox_is_shown(&self) -> bool {
-        self.panel.size == Some(PanelSize::Manager)
-            && self.shows_browser_tabs()
+        self.browser_is_open()
             && self.inbox.tab == BrowserTab::Inbox
             && self.renaming_session_name.is_none()
+    }
+    fn browser_is_open(&self) -> bool {
+        self.panel.size == Some(PanelSize::Manager) && self.shows_browser_tabs()
     }
     fn running_session_count(&self) -> usize {
         self.inbox
@@ -3516,7 +3599,7 @@ impl State {
             self.show_app_panel_view(Some(&view));
             return true;
         }
-        if attention && self.app_panel_auto_pending && self.inbox.counted_count() > 0 {
+        if attention && self.app_panel_auto_pending && self.inbox.has_rows() {
             self.app_panel_auto_pending = false;
             if self.inbox.tab != BrowserTab::Inbox {
                 self.show_app_panel_view(Some("inbox"));
@@ -3569,6 +3652,15 @@ impl State {
     }
 
     fn show_app_panel_view(&mut self, view: Option<&str>) {
+        let keeps_the_inbox = self.app_panel_view_shown
+            && !self.app_quit
+            && self.panel.size == Some(PanelSize::Manager)
+            && self.inbox.tab == BrowserTab::Inbox
+            && matches!(view, None | Some("auto") | Some("inbox"));
+        self.app_panel_view_shown = true;
+        if keeps_the_inbox {
+            return;
+        }
         self.app_quit = view == Some("quit");
         self.panel.size = Some(PanelSize::Manager);
         if self.app_quit {
@@ -3579,7 +3671,7 @@ impl State {
         self.single_screen_state.selected_index = None;
         let tab = match view {
             Some("sessions") => BrowserTab::Sessions,
-            _ if self.inbox.counted_count() == 0 => BrowserTab::Sessions,
+            _ if !self.inbox.has_rows() => BrowserTab::Sessions,
             _ => BrowserTab::Inbox,
         };
         self.switch_browser_tab(tab);
@@ -3598,6 +3690,9 @@ impl State {
     }
 
     fn switch_browser_tab(&mut self, tab: BrowserTab) {
+        if self.inbox.tab != tab {
+            self.inbox.leave_tab();
+        }
         self.inbox.tab = tab;
         self.inbox.tab_chosen = true;
         self.inbox.select_newest_on_arrival = false;
@@ -3633,7 +3728,7 @@ impl State {
                 self.inbox.tab = BrowserTab::Inbox;
                 self.inbox.tab_chosen = true;
             },
-            None if self.inbox.counted_count() == 0 && !self.inbox_requested => {
+            None if !self.inbox.has_rows() && !self.inbox_requested => {
                 self.inbox.tab = BrowserTab::Sessions;
                 self.inbox.tab_chosen = true;
             },
@@ -4089,6 +4184,82 @@ mod live_view_state_tests {
         let mut state = browser();
         state.update(Event::Visible(false));
         assert_eq!(state.inbox.live_view_sent, None);
+        state.render_plugin(16, 88);
+        assert_eq!(
+            state.inbox.live_view_sent, None,
+            "a hidden plugin does not show the view again when it redraws"
+        );
+        state.update(Event::Visible(true));
+        state.render_plugin(16, 88);
+        assert!(state.inbox.live_view_sent.is_some());
+    }
+
+    fn only_web_is_left() -> GlobalAttention {
+        let mut attention = SessionAttention::default();
+        let item = attention_item("web", 2);
+        attention.counts.add(&item.attention);
+        attention.items.push(item);
+        GlobalAttention::build(
+            "here",
+            vec![
+                ("here".to_owned(), Default::default()),
+                ("api".to_owned(), Default::default()),
+                ("web".to_owned(), attention),
+            ],
+        )
+    }
+
+    fn nothing_is_left() -> GlobalAttention {
+        GlobalAttention::build(
+            "here",
+            vec![
+                ("here".to_owned(), Default::default()),
+                ("api".to_owned(), Default::default()),
+                ("web".to_owned(), Default::default()),
+            ],
+        )
+    }
+
+    #[test]
+    fn an_item_read_in_the_inbox_stays_across_a_tab_switch_until_the_browser_closes() {
+        let mut state = browser();
+        let api = key_of("api", 1);
+        state.inbox.update_global(only_web_is_left());
+        state.settle_inbox_hold();
+        assert!(state.inbox.is_held(&api));
+        state.switch_browser_tab(BrowserTab::Sessions);
+        state.render_plugin(16, 88);
+        state.settle_inbox_hold();
+        state.switch_browser_tab(BrowserTab::Inbox);
+        state.render_plugin(16, 88);
+        state.settle_inbox_hold();
+        assert!(state.inbox.is_held(&api), "the tab switch keeps it");
+        state.update(Event::Visible(false));
+        assert!(!state.inbox.is_held(&api), "closing lets it go");
+    }
+
+    #[test]
+    fn a_repeated_auto_view_keeps_the_inbox_and_the_item_just_read() {
+        let mut state = browser();
+        let api = key_of("api", 1);
+        state.show_app_panel_view(Some("auto"));
+        state.render_plugin(16, 88);
+        assert!(state.inbox.is_selected(&api));
+        state.inbox.update_global(nothing_is_left());
+        assert_eq!(state.inbox.counted_count(), 0);
+        state.show_app_panel_view(Some("auto"));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox.is_selected(&api));
+        state.show_app_panel_view(Some("inbox"));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox.is_selected(&api));
+        state.update(Event::Visible(false));
+        state.show_app_panel_view(Some("auto"));
+        assert_eq!(
+            state.inbox.tab,
+            BrowserTab::Sessions,
+            "a fresh open with nothing left shows the sessions"
+        );
     }
 
     #[test]
@@ -4518,6 +4689,29 @@ mod sessions_live_view_tests {
         state.switch_browser_tab(BrowserTab::Sessions);
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), api(2), "the sessions move it back");
+        state.switch_browser_tab(BrowserTab::Inbox);
+        state.render_plugin(ROWS, COLS);
+        assert!(state.inbox.start_typing());
+        state.inbox.apply_live_view_status(inbox::LiveViewStatus {
+            target: Some(PaneAddress::local("web", PaneId::Terminal(7))),
+            state: MirrorState::Live,
+            input_captured: true,
+            input_released_by: None,
+            resize_allowed: true,
+            pinned: true,
+            source_size: None,
+            release_key: "F9".to_owned(),
+        });
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), Some(("web".to_owned(), PaneId::Terminal(7))));
+        state.switch_browser_tab(BrowserTab::Sessions);
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(
+            shown(&state),
+            api(2),
+            "typing into the inbox item ends with the tab and the sessions show their own pane"
+        );
+        assert_eq!(state.inbox.capture_target, None);
     }
 
     #[test]
@@ -4685,5 +4879,71 @@ mod sessions_live_view_tests {
         assert!(!hints.iter().any(|hint| hint.key == inbox::TYPE_KEY));
         assert_eq!(state.handle_manager_key(&shift_up), Some(true));
         assert!(state.panel.preview_pan.rows_up > 0);
+    }
+
+    fn with_current_session() -> (State, usize) {
+        let mut state = sessions_browser();
+        state.set_session_name("here");
+        state.panel.tree.set_children_from_tabs(
+            "here",
+            &[tab("main", true, vec![pane(8, "editor", true, false)])],
+        );
+        state.render_plugin(ROWS, COLS);
+        let index = state
+            .panel
+            .tree
+            .rows
+            .iter()
+            .position(|row| row.session == "here")
+            .expect("the current session is listed");
+        (state, index)
+    }
+
+    fn sent_resize_allowed(state: &State) -> Option<bool> {
+        state
+            .inbox
+            .live_view_sent
+            .as_ref()
+            .and_then(|view| view.resize_allowed)
+    }
+
+    #[test]
+    fn the_current_session_is_listed_and_its_preview_does_not_resize_its_panes() {
+        let (mut state, index) = with_current_session();
+        let sessions: Vec<String> = state
+            .panel
+            .tree
+            .rows
+            .iter()
+            .filter(|row| row.node == session_tree::TreeNode::Session)
+            .map(|row| row.session.clone())
+            .collect();
+        assert_eq!(sessions, vec!["api", "web", "here"]);
+        select(&mut state, index);
+        assert_eq!(shown(&state), Some(("here".to_owned(), PaneId::Terminal(8))));
+        assert_eq!(sent_resize_allowed(&state), Some(false));
+        select(&mut state, 0);
+        assert_eq!(shown(&state), api(2));
+        assert_eq!(sent_resize_allowed(&state), None);
+    }
+
+    #[test]
+    fn opening_the_current_session_closes_the_browser_and_it_cannot_be_stopped_from_here() {
+        let (mut state, index) = with_current_session();
+        select(&mut state, index);
+        state.handle_key(KeyWithModifier::new(BareKey::Delete));
+        assert_eq!(state.pending_session_stop, None);
+        assert!(state.error.is_some());
+        state.error = None;
+        state.handle_key(KeyWithModifier::new(BareKey::Enter));
+        assert_eq!(state.panel.size, None);
+    }
+
+    #[test]
+    fn the_current_session_is_not_listed_on_the_welcome_screen() {
+        let mut state = sessions_browser();
+        state.is_welcome_screen = true;
+        state.set_session_name("here");
+        assert!(!state.panel.tree.rows.iter().any(|row| row.session == "here"));
     }
 }

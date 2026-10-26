@@ -55,6 +55,7 @@ pub(crate) struct PaneMirrors {
     attached_at: HashMap<MirrorSubscriberId, Instant>,
     viewed_panes: HashSet<PaneId>,
     focused_panes: HashSet<PaneId>,
+    session_ending: bool,
 }
 
 impl Default for PaneMirrors {
@@ -68,6 +69,7 @@ impl Default for PaneMirrors {
             attached_at: HashMap::new(),
             viewed_panes: HashSet::new(),
             focused_panes: HashSet::new(),
+            session_ending: false,
         }
     }
 }
@@ -438,6 +440,10 @@ impl Screen {
         outbox: MirrorOutbox,
     ) {
         let pane_id: PaneId = attach.target_pane_id.into();
+        if self.pane_mirrors.session_ending {
+            outbox.close(MirrorClosedReason::SessionEnding);
+            return;
+        }
         if attach.version != PANE_MIRROR_VERSION {
             outbox.close(MirrorClosedReason::VersionMismatch);
             return;
@@ -703,6 +709,11 @@ impl Screen {
         if self.pane_mirrors.forget_subscribers(closed) {
             self.schedule_mirror_tick();
         }
+    }
+
+    pub(crate) fn end_mirrors_with_the_session(&mut self) {
+        self.pane_mirrors.session_ending = true;
+        self.close_all_mirror_subscribers(MirrorClosedReason::SessionEnding);
     }
 
     pub(crate) fn close_all_mirror_subscribers(&mut self, reason: MirrorClosedReason) {
