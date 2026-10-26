@@ -14119,6 +14119,27 @@ const WITH_PANE_READ: [PermissionType; 2] = [
 ];
 
 #[test]
+pub fn saved_session_preview_hides_pane_contents_without_pane_read_permission() {
+    let preview = Event::SavedSessionPreview(zellij_utils::data::SavedSessionPreview {
+        session_name: "saved".to_owned(),
+        tabs: vec![zellij_utils::data::SavedTabPreview {
+            name: "tab".to_owned(),
+            focused: true,
+            panes: vec![zellij_utils::data::SavedPanePreview {
+                title: Some("visible-title".to_owned()),
+                contents: Some("hunter2".to_owned()),
+                ..Default::default()
+            }],
+        }],
+        ..Default::default()
+    });
+    let hidden = redacted(&WITHOUT_PANE_READ, preview.clone());
+    assert!(!hidden.contains("hunter2"));
+    assert!(hidden.contains("visible-title"));
+    assert!(redacted(&WITH_PANE_READ, preview).contains("hunter2"));
+}
+
+#[test]
 pub fn command_started_and_finished_hide_the_command_without_pane_read_permission() {
     let started = Event::CommandStarted(
         zellij_utils::data::PaneId::Terminal(1),

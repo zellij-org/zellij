@@ -3168,3 +3168,19 @@ fn a_frame_without_clusters_has_no_cluster_record() {
     let view = zellij_utils::structured_render::decode(&frame).unwrap();
     assert!(view.clusters().is_empty());
 }
+
+#[test]
+fn graphics_media_files_are_private_and_never_reuse_an_existing_file() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("media");
+    super::super::write_private_media(&path, b"pixels").unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"pixels");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o077, 0, "mode {:o}", mode);
+    }
+    assert!(super::super::write_private_media(&path, b"other").is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"pixels");
+}

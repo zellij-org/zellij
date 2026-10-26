@@ -6,6 +6,7 @@ use winit::keyboard::ModifiersState;
 use crate::screen_buffer::ScreenBuffer;
 
 const ALLOWED_SCHEMES: [&str; 6] = ["http", "https", "ftp", "ftps", "mailto", "file"];
+const DELIBERATE_SCHEMES: [&str; 3] = ["file", "ftp", "ftps"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkRun {
@@ -65,6 +66,7 @@ pub fn run_at(buffer: &ScreenBuffer, row: usize, col: usize) -> Option<LinkRun> 
 pub struct Armed {
     pub uri: String,
     pub cell: (u16, u16),
+    pub deliberate: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,18 +98,51 @@ pub fn armed_by_press(
     cell: Option<(u16, u16)>,
     hovered: Option<&LinkRun>,
 ) -> Option<Armed> {
-    if !opening.enabled || !gesture_matches(opening, pane_wants_mouse, modifiers) {
+    if !opening.enabled {
         return None;
     }
     let (x, y) = cell?;
     let run = hovered?;
-    if !run.covers(y as usize, x as usize) || !is_openable(&run.uri) {
+    if !run.covers(y as usize, x as usize)
+        || !is_openable(&run.uri)
+        || !click_opens(opening, pane_wants_mouse, modifiers, &run.uri)
+    {
         return None;
     }
     Some(Armed {
         uri: run.uri.clone(),
         cell: (x, y),
+        deliberate: needs_deliberate_click(&run.uri),
     })
+}
+
+pub fn needs_deliberate_click(uri: &str) -> bool {
+    scheme_of(uri).is_some_and(|scheme| {
+        DELIBERATE_SCHEMES
+            .iter()
+            .any(|deliberate| scheme.eq_ignore_ascii_case(deliberate))
+    })
+}
+
+pub fn deliberate_modifier_held(modifiers: ModifiersState) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.super_key() && !modifiers.control_key() && !modifiers.alt_key()
+    } else {
+        modifiers.control_key() && !modifiers.alt_key() && !modifiers.super_key()
+    }
+}
+
+fn click_opens(
+    opening: Opening,
+    pane_wants_mouse: bool,
+    modifiers: ModifiersState,
+    uri: &str,
+) -> bool {
+    if needs_deliberate_click(uri) {
+        deliberate_modifier_held(modifiers)
+    } else {
+        gesture_matches(opening, pane_wants_mouse, modifiers)
+    }
 }
 
 pub fn released_on(armed: Option<Armed>, cell: Option<(u16, u16)>) -> Option<String> {
@@ -137,8 +172,9 @@ pub fn is_reachable(
     hovered: Option<&LinkRun>,
 ) -> bool {
     opening.enabled
-        && gesture_matches(opening, pane_wants_mouse, modifiers)
-        && hovered.is_some_and(|run| is_openable(&run.uri))
+        && hovered.is_some_and(|run| {
+            is_openable(&run.uri) && click_opens(opening, pane_wants_mouse, modifiers, &run.uri)
+        })
 }
 
 pub fn scheme_of(uri: &str) -> Option<&str> {
@@ -538,6 +574,92 @@ mod tests {
             assert_eq!(armed(false, modifiers, "https://example.com"), None);
             assert_eq!(armed(true, modifiers, "https://example.com"), None);
         }
+    }
+
+    const DELIBERATE: ModifiersState = if cfg!(target_os = "macos") {
+        ModifiersState::SUPER
+    } else {
+        ModifiersState::CONTROL
+    };
+
+    #[test]
+    fn a_plain_click_never_opens_a_file_or_ftp_link() {
+        for uri in [
+            "file:///tmp/x.exe",
+            "FILE://host/share/x.exe",
+            "ftp://example.com/x",
+            "ftps://example.com/x",
+        ] {
+            assert_eq!(armed(false, NONE, uri), None, "{}", uri);
+            assert_eq!(armed(true, NONE, uri), None, "{}", uri);
+            assert_eq!(armed(false, ModifiersState::SHIFT, uri), None, "{}", uri);
+            assert_eq!(
+                armed_by_press(
+                    Opening::WITH_SHIFT,
+                    false,
+                    ModifiersState::SHIFT,
+                    Some((1, 0)),
+                    Some(&run(uri)),
+                ),
+                None,
+                "{}",
+                uri
+            );
+            assert!(!is_reachable(
+                Opening::WITH_SHIFT,
+                false,
+                NONE,
+                Some(&run(uri))
+            ));
+        }
+    }
+
+    #[test]
+    fn the_platform_modifier_opens_a_file_link_and_marks_the_click_as_its_own() {
+        for wants in [false, true] {
+            let armed = armed(wants, DELIBERATE, "file:///tmp/notes.txt")
+                .expect("the deliberate press arms the open");
+            assert!(armed.deliberate);
+            assert_eq!(
+                released_on(Some(armed), Some((1, 0))),
+                Some("file:///tmp/notes.txt".to_owned())
+            );
+        }
+        assert!(armed(false, DELIBERATE | ModifiersState::SHIFT, "file:///tmp/x").is_some());
+        assert_eq!(
+            armed(false, DELIBERATE | ModifiersState::ALT, "file:///tmp/x"),
+            None
+        );
+        assert!(is_reachable(
+            Opening::WITHOUT_SHIFT,
+            true,
+            DELIBERATE,
+            Some(&run("file:///tmp/x"))
+        ));
+        assert_eq!(
+            armed_by_press(
+                Opening::OFF,
+                false,
+                DELIBERATE,
+                Some((1, 0)),
+                Some(&run("file:///tmp/x"))
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn web_links_keep_opening_on_a_plain_click() {
+        let armed = armed(false, NONE, "https://example.com").expect("a plain click opens");
+        assert!(!armed.deliberate);
+        assert!(armed_by_press(
+            Opening::WITHOUT_SHIFT,
+            false,
+            NONE,
+            Some((1, 0)),
+            Some(&run("mailto:someone@example.com"))
+        )
+        .is_some());
     }
 
     #[test]

@@ -3495,6 +3495,13 @@ pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
                 }
             }
         },
+        Event::SavedSessionPreview(preview) => {
+            for tab in preview.tabs.iter_mut() {
+                for pane in tab.panes.iter_mut() {
+                    pane.contents = None;
+                }
+            }
+        },
         _ => {},
     }
 }

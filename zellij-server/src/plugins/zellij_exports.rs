@@ -582,14 +582,32 @@ fn get_saved_session_preview(env: &PluginEnv, name: String) {
         });
 }
 
+fn may_change_desktop_integration(location: &RunPluginLocation) -> bool {
+    matches!(location, RunPluginLocation::Zellij(_))
+}
+
 fn desktop_integration(env: &PluginEnv, request: String) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let plugin_id = env.plugin_id;
     let client_id = acting_client(env);
+    let allowed = may_change_desktop_integration(&env.plugin.location);
+    if !allowed {
+        log::warn!(
+            "Ignoring a desktop integration request from {}: only built-in plugins may make it",
+            env.plugin.location.display()
+        );
+    }
     let _ = std::thread::Builder::new()
         .name("desktop_integration".to_owned())
         .spawn(move || {
-            let response = crate::desktop_app::desktop_integration(&request);
+            let response = if allowed {
+                crate::desktop_app::desktop_integration(&request)
+            } else {
+                zellij_utils::desktop_integration::Response::Error(
+                    "Only built-in plugins may change the desktop integration".to_owned(),
+                )
+                .to_json()
+            };
             if let Some(sender) = send_plugin_instructions {
                 let _ = sender.send(PluginInstruction::Update(vec![(
                     Some(plugin_id),
@@ -6941,6 +6959,19 @@ mod prompt_tests {
             },
             other => panic!("unexpected {:?}", other),
         }
+    }
+
+    #[test]
+    fn only_built_in_plugins_may_change_the_desktop_integration() {
+        assert!(may_change_desktop_integration(&RunPluginLocation::Zellij(
+            PluginTag::new("configuration")
+        )));
+        assert!(!may_change_desktop_integration(&RunPluginLocation::File(
+            PathBuf::from("/tmp/configuration.wasm")
+        )));
+        assert!(!may_change_desktop_integration(&RunPluginLocation::Remote(
+            "https://example.com/configuration.wasm".to_owned()
+        )));
     }
 
     #[test]

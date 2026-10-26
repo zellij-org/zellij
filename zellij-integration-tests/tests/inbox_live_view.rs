@@ -403,10 +403,10 @@ fn z_turns_resizing_off_gives_the_source_its_size_back_and_says_the_view_is_crop
     zellij.quit();
 }
 
-fn open_the_browser_for(client: &TestClient, text: &str) {
+fn open_the_browser_for(client: &TestClient, session: &BackgroundTestSession) {
     client.send_stdin(&keys::F9);
-    client.wait_until("the client's browser shows the item", |grid_snapshot| {
-        inbox_shows(grid_snapshot, text)
+    client.wait_until("the client's browser lists the item", |grid_snapshot| {
+        inbox_shows(grid_snapshot, session.session_name())
     });
 }
 
@@ -430,7 +430,7 @@ fn two_clients_each_see_their_own_item_live_and_type_only_into_it() {
     });
     open_inbox_on(&zellij, "Newer?");
     wait_for_the_view_of(&zellij, &newer, "pane of the newer item");
-    open_the_browser_for(&second, "Older?");
+    open_the_browser_for(&second, &older);
     second.send_stdin(&keys::DOWN);
     let second_grid =
         second.wait_until("the second client shows the older item", |grid_snapshot| {
@@ -1361,7 +1361,7 @@ fn a_viewing_client_that_detaches_gives_the_panes_it_browsed_their_size_back() {
     second.wait_until("the second client is on its own tab", |grid_snapshot| {
         grid_snapshot.status_bar_appears() && grid_snapshot.lines()[0].contains("Tab #2")
     });
-    open_the_browser_for(&second, "Newer?");
+    open_the_browser_for(&second, &newer);
     let grid_snapshot =
         second.wait_until("the second client shows the newer item", |grid_snapshot| {
             shown_inside_the_view(grid_snapshot, newer.session_name(), "the newer pane")

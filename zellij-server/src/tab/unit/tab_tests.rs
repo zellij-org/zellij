@@ -21412,3 +21412,24 @@ fn ctrl_wheel_resizes_and_alt_wheel_jumps_prompts_regardless_of_the_line_count()
     tab.handle_mouse_event(&alt, 1).unwrap();
     assert_ne!(scrolled_lines(&tab), 9);
 }
+
+#[test]
+fn paste_markers_inside_pasted_text_are_removed() {
+    use super::without_paste_markers;
+    assert_eq!(
+        without_paste_markers(b"ls\x1b[201~\nrm -rf ~\n".to_vec()),
+        b"ls\nrm -rf ~\n".to_vec()
+    );
+    assert_eq!(
+        without_paste_markers(b"a\x1b[200~b\x1b[201~c".to_vec()),
+        b"abc".to_vec()
+    );
+    assert_eq!(
+        without_paste_markers(b"\x1b[20\x1b[201~1~echo".to_vec()),
+        b"echo".to_vec()
+    );
+    assert_eq!(
+        without_paste_markers("plain text \u{1b}[31m".as_bytes().to_vec()),
+        "plain text \u{1b}[31m".as_bytes().to_vec()
+    );
+}

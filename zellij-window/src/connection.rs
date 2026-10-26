@@ -118,6 +118,7 @@ pub struct Connection {
     pub session_name: String,
     pub geometry: GeometryHandle,
     pub role: Role,
+    pub remote: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,6 +214,7 @@ pub fn open_at(
         session_name: session_name.to_owned(),
         geometry: GeometryHandle::new(geometry),
         role: opening.role(),
+        remote: false,
     })
 }
 
