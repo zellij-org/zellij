@@ -75,7 +75,7 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
-          #- linux musl riscv64
+          - linux musl riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -86,9 +86,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-#          - build: linux musl riscv64
-#            os: ubuntu-latest
-#            target: riscv64gc-unknown-linux-musl
+          - build: linux musl riscv64
+            os: ubuntu-latest
+            target: riscv64gc-unknown-linux-musl
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -136,6 +136,13 @@ jobs:
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install Zig
+        if: matrix.target == 'riscv64gc-unknown-linux-musl'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/zig.tar.xz" https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -281,7 +288,7 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
-          #- linux musl riscv64
+          - linux musl riscv64
           - macos x64
           - macos aarch64
           - windows x64
@@ -292,9 +299,9 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-#          - build: linux musl riscv64
-#            os: ubuntu-latest
-#            target: riscv64gc-unknown-linux-musl
+          - build: linux musl riscv64
+            os: ubuntu-latest
+            target: riscv64gc-unknown-linux-musl
           - build: macos x64
             os: macos-latest
             target: x86_64-apple-darwin
@@ -342,6 +349,13 @@ jobs:
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
+
+      - name: Install Zig
+        if: matrix.target == 'riscv64gc-unknown-linux-musl'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/zig.tar.xz" https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
