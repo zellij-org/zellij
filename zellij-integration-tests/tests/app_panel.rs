@@ -226,6 +226,7 @@ fn send_view(view: &str) {
             in_place: None,
             cwd: None,
             pane_title: None,
+            client_local: false,
         }],
     )
     .unwrap();
