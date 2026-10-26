@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 895
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -12024,6 +12023,7 @@ Config {
         shift_drag_selects: None,
         copy_keys: None,
         reuse_session_windows: None,
+        allow_remote_clipboard_read: None,
     },
     session_suggestions: SessionSuggestionsConfig {
         facts: [],
