@@ -259,6 +259,12 @@ impl Tab {
             .map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()).collect())
             .unwrap_or_default()
     }
+    pub fn all_popup_plugin_ids(&self) -> Vec<u32> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()))
+            .collect()
+    }
     fn popup_with_plugin_id_mut(&mut self, plugin_id: u32) -> Option<&mut Popup> {
         self.popups
             .values_mut()

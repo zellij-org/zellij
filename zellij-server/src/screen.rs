@@ -434,6 +434,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId, Option<NotificationEnd>),
     MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
+    SessionEnding,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(
         Option<String>,
@@ -1292,6 +1293,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::SessionEnding => ScreenContext::SessionEnding,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
@@ -2142,6 +2144,7 @@ pub(crate) struct Screen {
     pane_not_created_reasons: HashMap<PaneId, PaneNotCreatedReason>,
     mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
     client_host_focused: HashMap<ClientId, bool>,
+    hidden_plugins: HashSet<u32>,
     client_notification_protocols: HashMap<ClientId, NotificationProtocol>,
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
@@ -2507,6 +2510,7 @@ impl Screen {
             pane_not_created_reasons: HashMap::new(),
             mobile_web_prefs: HashMap::new(),
             client_host_focused: HashMap::new(),
+            hidden_plugins: HashSet::new(),
             client_notification_protocols: HashMap::new(),
             host_notification_protocol: HostNotificationProtocol::default(),
             client_host_terminal_env: HashMap::new(),
@@ -5654,6 +5658,7 @@ impl Screen {
 
         self.sync_structured_client_viewports();
         self.sync_attention_visibility();
+        self.sync_plugin_visibility();
         self.sync_live_views();
         self.apply_mirror_pins();
         self.deliver_to_mirrors();
@@ -6858,6 +6863,32 @@ impl Screen {
         Ok(())
     }
 
+    pub(crate) fn sync_plugin_visibility(&mut self) {
+        let mut present = HashSet::new();
+        let mut shown = HashSet::new();
+        for tab in self.tabs.values() {
+            present.extend(tab.all_plugin_ids());
+            shown.extend(tab.shown_plugin_ids());
+        }
+        let mut updates = vec![];
+        for plugin_id in &present {
+            let is_shown = shown.contains(plugin_id);
+            let was_hidden = self.hidden_plugins.contains(plugin_id);
+            if is_shown == was_hidden {
+                updates.push((Some(*plugin_id), None, Event::Visible(is_shown)));
+            }
+        }
+        self.hidden_plugins = present.difference(&shown).copied().collect();
+        if updates.is_empty() {
+            return;
+        }
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(updates))
+            .context("failed to update plugin visibility")
+            .non_fatal();
+    }
+
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
         // Initialize with a default size - will be updated when we receive the actual size
         let default_size = Size { rows: 24, cols: 80 }; // Reasonable default
@@ -7198,6 +7229,7 @@ impl Screen {
         self.reconcile_all_single_pane_focus();
         self.report_plugin_tab_indices();
         self.report_client_visible_plugins();
+        self.sync_plugin_visibility();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -12976,6 +13008,9 @@ pub(crate) fn screen_thread_main(
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
+            },
+            ScreenInstruction::SessionEnding => {
+                screen.end_mirrors_with_the_session();
             },
             ScreenInstruction::Exit => {
                 screen.close_all_mirror_subscribers(
