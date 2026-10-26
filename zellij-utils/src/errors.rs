@@ -583,6 +583,7 @@ pub enum PtyContext {
     UpdateAndReportCwds,
     NotifyCwdFromOsc7,
     RunInBackground,
+    SetResurrectCommand,
     PromptReturned,
     Exit,
 }

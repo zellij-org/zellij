@@ -4855,3 +4855,54 @@ fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
     test_client_roundtrip!(ClientToServerMsg::PaneMirror { payload: vec![] });
     test_server_roundtrip!(ServerToClientMsg::PaneMirror { payload: vec![] });
 }
+
+fn assert_action_wire_roundtrip(action: Action) {
+    use prost::Message;
+
+    let original = ClientToServerMsg::Action {
+        action,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    };
+    let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+        original.clone().into();
+    let bytes = proto.encode_to_vec();
+    let decoded_proto =
+        crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(
+            &bytes[..],
+        )
+        .expect("Failed to decode protobuf bytes");
+    let roundtrip: ClientToServerMsg = decoded_proto
+        .try_into()
+        .expect("Failed to convert decoded protobuf back to Rust");
+    assert_eq!(original, roundtrip);
+}
+
+#[test]
+fn set_resurrect_command_wire_roundtrip() {
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: Some(crate::input::actions::ResurrectCommand {
+            command: PathBuf::from("opencode"),
+            args: vec!["-s".to_owned(), "ses_abc".to_owned()],
+            cwd: Some(PathBuf::from("/tmp/project")),
+        }),
+    });
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: Some(crate::input::actions::ResurrectCommand {
+            command: PathBuf::from("htop"),
+            args: vec![],
+            cwd: None,
+        }),
+    });
+}
+
+#[test]
+fn clear_resurrect_command_wire_roundtrip() {
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: None,
+    });
+}

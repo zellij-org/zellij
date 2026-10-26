@@ -2474,6 +2474,20 @@ impl From<crate::input::actions::Action>
                     bg,
                 })
             },
+            crate::input::actions::Action::SetResurrectCommand { pane_id, resurrect } => {
+                ActionType::SetResurrectCommand(
+                    crate::client_server_contract::client_server_contract::SetResurrectCommandAction {
+                        pane_id: Some(pane_id.into()),
+                        resurrect: resurrect.map(|r| {
+                            crate::client_server_contract::client_server_contract::ResurrectCommand {
+                                command: r.command.to_string_lossy().into_owned(),
+                                args: r.args,
+                                cwd: r.cwd.map(|c| c.to_string_lossy().into_owned()),
+                            }
+                        }),
+                    },
+                )
+            },
             // Pane-targeting CLI-only variants
             crate::input::actions::Action::ScrollUpByPaneId { pane_id } => {
                 ActionType::ScrollUpByPaneId(ScrollUpByPaneIdAction {
@@ -3533,6 +3547,21 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .try_into()?,
                     fg: set_pane_color_action.fg,
                     bg: set_pane_color_action.bg,
+                })
+            },
+            ActionType::SetResurrectCommand(a) => {
+                Ok(crate::input::actions::Action::SetResurrectCommand {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("SetResurrectCommand missing pane_id"))?
+                        .try_into()?,
+                    resurrect: a
+                        .resurrect
+                        .map(|r| crate::input::actions::ResurrectCommand {
+                            command: PathBuf::from(r.command),
+                            args: r.args,
+                            cwd: r.cwd.map(PathBuf::from),
+                        }),
                 })
             },
             // Pane-targeting CLI-only variants
