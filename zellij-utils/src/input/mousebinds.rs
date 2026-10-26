@@ -96,9 +96,7 @@ impl MouseBehaviour {
     pub fn plugin_configuration(&self) -> BTreeMap<String, String> {
         match self {
             MouseBehaviour::DrawFloatingPane(Some(plugin)) => match plugin.as_ref() {
-                RunPluginOrAlias::RunPlugin(run_plugin) => {
-                    run_plugin.configuration.inner().clone()
-                },
+                RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.configuration.inner().clone(),
                 RunPluginOrAlias::Alias(alias) => alias
                     .configuration
                     .as_ref()
@@ -227,7 +225,13 @@ impl MouseBehaviour {
         }
         let entries: Vec<String> = configuration
             .iter()
-            .map(|(key, value)| format!("{} \"{}\";", key, value.replace('\\', "\\\\").replace('"', "\\\"")))
+            .map(|(key, value)| {
+                format!(
+                    "{} \"{}\";",
+                    key,
+                    value.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            })
             .collect();
         format!("{} {{ {} }}", text, entries.join(" "))
     }

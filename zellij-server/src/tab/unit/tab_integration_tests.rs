@@ -19141,7 +19141,13 @@ fn a_popup_render_drawn_for_a_stale_size_is_dropped_and_the_size_is_sent_again()
     );
 }
 
-fn rendered_cell(tab: &mut Tab, size: Size, client_id: ClientId, line: usize, column: usize) -> char {
+fn rendered_cell(
+    tab: &mut Tab,
+    size: Size,
+    client_id: ClientId,
+    line: usize,
+    column: usize,
+) -> char {
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -19155,7 +19161,12 @@ fn rendered_cell(tab: &mut Tab, size: Size, client_id: ClientId, line: usize, co
     cells.chars().nth(column).unwrap_or(' ')
 }
 
-fn drawn_terminal_action(x: usize, y: usize, cols: usize, rows: usize) -> zellij_utils::input::actions::Action {
+fn drawn_terminal_action(
+    x: usize,
+    y: usize,
+    cols: usize,
+    rows: usize,
+) -> zellij_utils::input::actions::Action {
     zellij_utils::input::actions::Action::NewFloatingPane {
         command: None,
         pane_name: None,
@@ -19277,24 +19288,27 @@ fn a_ctrl_drag_bound_to_a_plugin_opens_that_plugin_in_this_tab() {
     );
     let mut configuration = BTreeMap::new();
     configuration.insert("key".to_owned(), "value".to_owned());
-    let plugin = RunPluginOrAlias::from_url("filepicker", &Some(configuration), None, None).unwrap();
+    let plugin =
+        RunPluginOrAlias::from_url("filepicker", &Some(configuration), None, None).unwrap();
     assert_eq!(
         release.run_actions,
-        Some(vec![zellij_utils::input::actions::Action::NewFloatingPluginPane {
-            plugin,
-            pane_name: None,
-            skip_cache: false,
-            cwd: None,
-            coordinates: Some(
-                FloatingPaneCoordinates::default()
-                    .with_x_fixed(70)
-                    .with_y_fixed(2)
-                    .with_width_fixed(31)
-                    .with_height_fixed(11),
-            ),
-            no_focus: false,
-            tab_id: Some(tab.id),
-        }])
+        Some(vec![
+            zellij_utils::input::actions::Action::NewFloatingPluginPane {
+                plugin,
+                pane_name: None,
+                skip_cache: false,
+                cwd: None,
+                coordinates: Some(
+                    FloatingPaneCoordinates::default()
+                        .with_x_fixed(70)
+                        .with_y_fixed(2)
+                        .with_width_fixed(31)
+                        .with_height_fixed(11),
+                ),
+                no_focus: false,
+                tab_id: Some(tab.id),
+            }
+        ])
     );
 }
 
@@ -19327,7 +19341,12 @@ fn a_ctrl_drag_shows_an_outline_until_it_is_released() {
     let mut watcher_output = Output::default();
     tab.render(&mut watcher_output, Some(client_id)).unwrap();
     let watcher_snapshot = take_snapshot(
-        watcher_output.serialize().unwrap().get(&client_id).unwrap().ansi(),
+        watcher_output
+            .serialize()
+            .unwrap()
+            .get(&client_id)
+            .unwrap()
+            .ansi(),
         size.rows,
         size.cols,
         Palette::default(),

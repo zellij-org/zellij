@@ -105,9 +105,8 @@ impl PaneDrawing {
             return None;
         }
         let clamp_column = |column: usize| column.clamp(viewport.x, viewport.x + viewport.cols - 1);
-        let clamp_line = |line: isize| {
-            (line.max(0) as usize).clamp(viewport.y, viewport.y + viewport.rows - 1)
-        };
+        let clamp_line =
+            |line: isize| (line.max(0) as usize).clamp(viewport.y, viewport.y + viewport.rows - 1);
         let (start_x, end_x) = (
             clamp_column(self.start.column()),
             clamp_column(self.end.column()),
@@ -171,11 +170,7 @@ pub fn pane_drawing_outline(area: &Viewport, color: PaletteColor) -> Vec<Charact
     };
     let mut chunks = vec![
         CharacterChunk::new(horizontal_line('┌', '┐'), area.x, area.y),
-        CharacterChunk::new(
-            horizontal_line('└', '┘'),
-            area.x,
-            area.y + area.rows - 1,
-        ),
+        CharacterChunk::new(horizontal_line('└', '┘'), area.x, area.y + area.rows - 1),
     ];
     for line in area.y + 1..area.y + area.rows - 1 {
         chunks.push(CharacterChunk::new(vec![character('│')], area.x, line));
@@ -1353,8 +1348,8 @@ impl MouseHandler {
             .map(|pane| pane.selectable())
             .unwrap_or(false);
         let is_active = tab.get_active_pane_id(client_id) == Some(pane_id);
-        let would_hide_floating_panes = tab.floating_panes.panes_are_visible()
-            && !tab.floating_panes.panes_contain(&pane_id);
+        let would_hide_floating_panes =
+            tab.floating_panes.panes_are_visible() && !tab.floating_panes.panes_contain(&pane_id);
         clear_hover_for_client(tab, client_id);
         let mut state_changed = false;
         if is_selectable && !is_active && !would_hide_floating_panes {

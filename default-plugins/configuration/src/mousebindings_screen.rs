@@ -1291,7 +1291,9 @@ mod action_parts_tests {
     #[test]
     fn drawing_a_floating_pane_is_a_click_behaviour() {
         assert!(is_behaviour("DrawFloatingPane"));
-        assert!(is_behaviour("DrawFloatingPane \"filepicker\" { key \"value\"; }"));
+        assert!(is_behaviour(
+            "DrawFloatingPane \"filepicker\" { key \"value\"; }"
+        ));
         assert_eq!(
             behaviour_of("DrawFloatingPane"),
             Some(MouseBehaviour::DrawFloatingPane(None))

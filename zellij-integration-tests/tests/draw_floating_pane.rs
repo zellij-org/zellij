@@ -130,7 +130,12 @@ fn a_ctrl_drag_opens_a_floating_terminal_that_fills_the_rectangle() {
     let grid_snapshot = zellij.wait_until("the drawn pane is shown", |grid_snapshot| {
         grid_snapshot.contains("DRAWN-MARKER") && floating_pane_count(grid_snapshot) == 1
     });
-    assert_eq!(cell(&grid_snapshot, 5, 11), Some('D'), "{}", grid_snapshot.text);
+    assert_eq!(
+        cell(&grid_snapshot, 5, 11),
+        Some('D'),
+        "{}",
+        grid_snapshot.text
+    );
     zellij.quit();
 }
 
@@ -176,7 +181,12 @@ fn a_drag_smaller_than_a_pane_opens_nothing_and_clears_the_outline() {
         grid_snapshot.contains("AFTER-SMALL-DRAG")
             && !outline_is_drawn(grid_snapshot, (11, 5), (14, 7))
     });
-    assert_eq!(floating_pane_count(&grid_snapshot), 0, "{}", grid_snapshot.text);
+    assert_eq!(
+        floating_pane_count(&grid_snapshot),
+        0,
+        "{}",
+        grid_snapshot.text
+    );
 
     drag(&zellij, CTRL, (11, 5), (71, 16));
     let drawn_terminal = zellij.expect_pty_spawn();
@@ -256,7 +266,12 @@ fn a_ctrl_drag_goes_to_a_program_using_the_mouse_when_the_app_comes_first() {
     let grid_snapshot = zellij.wait_until("output after the drag", |grid_snapshot| {
         grid_snapshot.contains("AFTER-DRAG")
     });
-    assert_eq!(floating_pane_count(&grid_snapshot), 0, "{}", grid_snapshot.text);
+    assert_eq!(
+        floating_pane_count(&grid_snapshot),
+        0,
+        "{}",
+        grid_snapshot.text
+    );
     zellij.quit();
 }
 
@@ -275,7 +290,17 @@ fn a_drag_bound_to_a_plugin_opens_that_plugin_in_the_rectangle() {
         .row_of_line("strider")
         .expect("the plugin pane has a title");
     assert_eq!(title_line, 4, "{}", grid_snapshot.text);
-    assert_eq!(cell(&grid_snapshot, 4, 10), Some('┌'), "{}", grid_snapshot.text);
-    assert_eq!(cell(&grid_snapshot, 15, 70), Some('┘'), "{}", grid_snapshot.text);
+    assert_eq!(
+        cell(&grid_snapshot, 4, 10),
+        Some('┌'),
+        "{}",
+        grid_snapshot.text
+    );
+    assert_eq!(
+        cell(&grid_snapshot, 15, 70),
+        Some('┘'),
+        "{}",
+        grid_snapshot.text
+    );
     zellij.quit();
 }
