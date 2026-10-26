@@ -766,11 +766,11 @@ impl TiledPanes {
                 full_pane_size = position_and_size_of_stack;
             }
 
-            if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
-                return false;
-            } else {
-                return split(SplitDirection::Horizontal, &full_pane_size).is_some();
-            }
+            // if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
+            //     return false;
+            // } else {
+            return split(SplitDirection::Horizontal, &full_pane_size).is_some();
+            // }
         }
         false
     }
@@ -795,9 +795,9 @@ impl TiledPanes {
                 full_pane_size = position_and_size_of_stack;
             }
 
-            if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
-                return false;
-            }
+            // if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
+            //     return false;
+            // }
             return split(SplitDirection::Vertical, &full_pane_size).is_some();
         }
         false
