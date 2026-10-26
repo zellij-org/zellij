@@ -48,6 +48,7 @@ pub struct Options {
     pub scroll_momentum_friction: f64,
     pub option_as_alt: OptionAsAlt,
     pub reuse_session_windows: bool,
+    pub allow_remote_clipboard_read: bool,
 }
 
 pub const DEFAULT_SCROLL_ANIMATION_MS: u16 = 100;
@@ -170,6 +171,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         ),
         option_as_alt: section.macos_option_as_alt.unwrap_or_default(),
         reuse_session_windows: section.reuse_session_windows.unwrap_or(true),
+        allow_remote_clipboard_read: section.allow_remote_clipboard_read.unwrap_or(false),
     }
 }
 

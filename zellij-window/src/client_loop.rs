@@ -35,6 +35,7 @@ pub struct LoopOptions {
     pub config_path: Option<PathBuf>,
     pub settings: Settings,
     pub font_families: Option<Vec<String>>,
+    pub allow_remote_clipboard_read: bool,
 }
 
 impl Default for LoopOptions {
@@ -46,6 +47,7 @@ impl Default for LoopOptions {
             config_path: None,
             settings: Settings::default(),
             font_families: None,
+            allow_remote_clipboard_read: false,
         }
     }
 }
@@ -111,7 +113,12 @@ pub fn run_with_sink(
         session_name,
         geometry,
         role,
+        remote,
     } = connection;
+    let clipboard_for_queries = options
+        .clipboard
+        .as_ref()
+        .filter(|_| !remote || options.allow_remote_clipboard_read);
 
     let mut recorder = match &options.record_path {
         Some(path) => match Recorder::create(path, &session_name, geometry.get()) {
@@ -241,7 +248,7 @@ pub fn run_with_sink(
                     &query_bytes,
                     geometry.get(),
                     &paints,
-                    options.clipboard.as_ref(),
+                    clipboard_for_queries,
                 );
                 if let Err(e) = send(
                     &sender,
@@ -971,6 +978,55 @@ mod tests {
                 ClientToServerMsg::ClientExited,
             ]
         );
+    }
+
+    fn clipboard_reply_over(remote: bool, allow_remote_clipboard_read: bool) -> Vec<u8> {
+        let server = FakeServer::spawn(|side| {
+            side.expect(HANDSHAKE_MESSAGES);
+            side.send(ServerToClientMsg::ForwardQueryToHost {
+                token: 7,
+                query_bytes: b"\x1b]52;c;?\x1b\\".to_vec(),
+                resolve_async: true,
+            });
+            side.send(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::NormalDetached,
+            });
+            side.expect(2);
+        });
+
+        let mut clipboard = crate::clipboard::Clipboard::in_memory();
+        clipboard.set("copied");
+        let mut options = options();
+        options.clipboard = Some(std::sync::Arc::new(std::sync::Mutex::new(clipboard)));
+        options.allow_remote_clipboard_read = allow_remote_clipboard_read;
+
+        let mut connection = attach_at(
+            &server.path,
+            "window-test",
+            geometry(),
+            Capabilities::default(),
+        )
+        .unwrap();
+        connection.remote = remote;
+        run(connection, options).unwrap();
+
+        match &server.finish()[HANDSHAKE_MESSAGES] {
+            ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
+                assert_eq!(*token, 7);
+                reply_bytes.clone()
+            },
+            other => panic!("expected a forwarded reply, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_remote_session_gets_no_clipboard_unless_the_window_allows_it() {
+        let copied = b"\x1b]52;c;Y29waWVk\x1b\\".to_vec();
+        assert_eq!(clipboard_reply_over(false, false), copied);
+        assert!(!clipboard_reply_over(true, false)
+            .windows(b"Y29waWVk".len())
+            .any(|w| w == b"Y29waWVk"));
+        assert_eq!(clipboard_reply_over(true, true), copied);
     }
 
     #[test]

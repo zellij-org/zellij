@@ -122,6 +122,7 @@ pub struct TerminalState {
     assembly: NotificationAssembly,
     geometry: GeometryRecord,
     geometry_stamp: u64,
+    shared_media: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,7 +143,12 @@ impl TerminalState {
             assembly: NotificationAssembly::default(),
             geometry: GeometryRecord::default(),
             geometry_stamp: 0,
+            shared_media: true,
         }
+    }
+
+    pub fn set_shared_media(&mut self, allowed: bool) {
+        self.shared_media = allowed;
     }
 
     pub fn geometry(&self) -> &GeometryRecord {
@@ -248,6 +254,10 @@ impl TerminalState {
                     let pixels = match medium {
                         GraphicsMedium::Inline => {
                             (data.len() >= expected).then(|| data[..expected].to_vec())
+                        },
+                        GraphicsMedium::SharedFile if !self.shared_media => {
+                            report!("refusing image {} carried in a local file", id);
+                            None
                         },
                         GraphicsMedium::SharedFile => match std::str::from_utf8(data) {
                             Ok(path) => kitty::read_shared_media(path, expected),
@@ -742,6 +752,31 @@ mod tests {
 
         assert_eq!(state.graphics().image(9).unwrap().pixels, pixels);
         assert_eq!(state.graphics().placements().count(), 1);
+    }
+
+    #[test]
+    fn a_shared_file_residency_is_refused_when_shared_media_is_off() {
+        let directory = std::env::temp_dir();
+        let path = directory.join(format!("zellij-window-remote-test-{}", std::process::id()));
+        let pixels = rgba([0, 0, 255, 255], 4);
+        std::fs::write(&path, &pixels).unwrap();
+
+        let mut state = TerminalState::new(6, 12);
+        state.set_shared_media(false);
+        apply_graphics(
+            &mut state,
+            &[
+                residency(
+                    9,
+                    GraphicsMedium::SharedFile,
+                    path.to_string_lossy().into_owned().into_bytes(),
+                ),
+                placement(9, 1),
+            ],
+        );
+        let _ = std::fs::remove_file(&path);
+
+        assert!(state.graphics().image(9).is_none());
     }
 
     #[test]

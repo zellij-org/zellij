@@ -4981,6 +4981,7 @@ impl Tab {
     ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+        let bytes = without_paste_markers(bytes);
 
         self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
         self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
@@ -9320,6 +9321,24 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.toggle_pinned();
             self.set_force_render();
+        }
+    }
+}
+
+fn without_paste_markers(mut bytes: Vec<u8>) -> Vec<u8> {
+    const MARKERS: [&[u8]; 2] = [b"\x1b[200~", b"\x1b[201~"];
+    loop {
+        let found = MARKERS.iter().find_map(|marker| {
+            bytes
+                .windows(marker.len())
+                .position(|window| window == *marker)
+                .map(|start| (start, marker.len()))
+        });
+        match found {
+            Some((start, len)) => {
+                bytes.drain(start..start + len);
+            },
+            None => return bytes,
         }
     }
 }

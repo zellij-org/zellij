@@ -507,6 +507,7 @@ pub struct WindowConfig {
     pub shift_drag_selects: Option<bool>,
     pub copy_keys: Option<Vec<KeyWithModifier>>,
     pub reuse_session_windows: Option<bool>,
+    pub allow_remote_clipboard_read: Option<bool>,
 }
 
 impl WindowConfig {
@@ -657,6 +658,9 @@ impl WindowConfig {
         }
         if let Some(reuse) = kdl_get_child_entry_bool_value!(kdl, "reuse_session_windows") {
             window.reuse_session_windows = Some(reuse);
+        }
+        if let Some(allow) = kdl_get_child_entry_bool_value!(kdl, "allow_remote_clipboard_read") {
+            window.allow_remote_clipboard_read = Some(allow);
         }
 
         Ok(window)
@@ -847,6 +851,10 @@ impl WindowConfig {
             ("open_links_with_shift", self.open_links_with_shift),
             ("shift_drag_selects", self.shift_drag_selects),
             ("reuse_session_windows", self.reuse_session_windows),
+            (
+                "allow_remote_clipboard_read",
+                self.allow_remote_clipboard_read,
+            ),
         ] {
             if let Some(value) = value {
                 let mut flag_node = KdlNode::new(name);
@@ -930,6 +938,9 @@ impl WindowConfig {
         merged.shift_drag_selects = other.shift_drag_selects.or(merged.shift_drag_selects);
         merged.copy_keys = other.copy_keys.or(merged.copy_keys);
         merged.reuse_session_windows = other.reuse_session_windows.or(merged.reuse_session_windows);
+        merged.allow_remote_clipboard_read = other
+            .allow_remote_clipboard_read
+            .or(merged.allow_remote_clipboard_read);
         merged
     }
 }
@@ -2014,6 +2025,23 @@ mod tests {
         assert_eq!(merged.reuse_session_windows, Some(true));
         let kept = parsed.merge(WindowConfig::default());
         assert_eq!(kept.reuse_session_windows, Some(false));
+    }
+
+    #[test]
+    fn remote_clipboard_reading_round_trips_through_kdl() {
+        let parsed = section("window {\n allow_remote_clipboard_read true\n}").unwrap();
+        assert_eq!(parsed.allow_remote_clipboard_read, Some(true));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert!(
+            emitted.contains("allow_remote_clipboard_read true"),
+            "{}",
+            emitted
+        );
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+        assert_eq!(
+            section("window {\n}").unwrap().allow_remote_clipboard_read,
+            None
+        );
     }
 
     #[test]

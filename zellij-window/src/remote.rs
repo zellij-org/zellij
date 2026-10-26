@@ -300,6 +300,7 @@ pub fn open(
         session_name,
         geometry: GeometryHandle::new(geometry),
         role: Role::Participant,
+        remote: true,
     })
 }
 

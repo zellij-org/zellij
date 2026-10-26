@@ -1049,6 +1049,7 @@ impl window::WindowMaker for Launcher {
             config_path: self.config_path.clone(),
             settings: prepared.settings.clone(),
             font_families: self.font_families.clone(),
+            allow_remote_clipboard_read: prepared.options.allow_remote_clipboard_read,
             ..Default::default()
         };
         let dialer = self.dialer.clone();
@@ -1194,6 +1195,7 @@ fn drive(
         config_path: windowed.then(|| Config::config_file_path(&opts)).flatten(),
         settings: settings.clone(),
         font_families: windowed.then(installed_font_families),
+        allow_remote_clipboard_read: options.allow_remote_clipboard_read,
         ..Default::default()
     };
     match fonts {

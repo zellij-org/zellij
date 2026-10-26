@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -424,31 +425,110 @@ pub fn read_shared_media(path: &str, expected: usize) -> Option<Vec<u8>> {
         return None;
     }
     let path = Path::new(path);
-    if !path.starts_with(SHM_DIR) && !path.starts_with(std::env::temp_dir()) {
+    let inside = path.starts_with(SHM_DIR) || path.starts_with(std::env::temp_dir());
+    let climbs = path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir));
+    if !inside || climbs {
         report!("refusing to read graphics media from {:?}", path);
         return None;
     }
-    match std::fs::read(path) {
-        Ok(bytes) if bytes.len() >= expected => Some(bytes[..expected].to_vec()),
-        Ok(bytes) => {
+    let file = match open_without_blocking(path) {
+        Ok(file) => file,
+        Err(e) => {
+            report!("failed to read {:?}: {}", path, e);
+            return None;
+        },
+    };
+    match file.metadata() {
+        Ok(metadata) if metadata.is_file() => {},
+        Ok(_) => {
             report!(
-                "{:?} carries {} bytes, not the {} its record named",
-                path,
-                bytes.len(),
-                expected
+                "refusing to read graphics media from {:?}: not a file",
+                path
             );
-            None
+            return None;
         },
         Err(e) => {
             report!("failed to read {:?}: {}", path, e);
-            None
+            return None;
         },
     }
+    let mut bytes = Vec::with_capacity(expected);
+    if let Err(e) = file.take(expected as u64).read_to_end(&mut bytes) {
+        report!("failed to read {:?}: {}", path, e);
+        return None;
+    }
+    if bytes.len() < expected {
+        report!(
+            "{:?} carries {} bytes, not the {} its record named",
+            path,
+            bytes.len(),
+            expected
+        );
+        return None;
+    }
+    Some(bytes)
+}
+
+#[cfg(unix)]
+fn open_without_blocking(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_without_blocking(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn media_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("zellij-window-media-test")
+            .tempdir_in(std::env::temp_dir())
+            .unwrap()
+    }
+
+    #[test]
+    fn shared_media_paths_that_climb_out_of_the_media_directory_are_refused() {
+        let climbing = format!("{}/../etc/passwd", SHM_DIR);
+        assert_eq!(read_shared_media(&climbing, 4), None);
+        let climbing = std::env::temp_dir().join("..").join("etc").join("passwd");
+        assert_eq!(read_shared_media(&climbing.to_string_lossy(), 4), None);
+    }
+
+    #[test]
+    fn shared_media_reads_no_more_than_the_record_names() {
+        let directory = media_dir();
+        let path = directory.path().join("media");
+        std::fs::write(&path, vec![7u8; 64]).unwrap();
+        assert_eq!(
+            read_shared_media(&path.to_string_lossy(), 16),
+            Some(vec![7u8; 16])
+        );
+        assert_eq!(read_shared_media(&path.to_string_lossy(), 65), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_media_that_is_not_a_plain_file_is_refused_without_blocking() {
+        let directory = media_dir();
+        let fifo = directory.path().join("fifo");
+        let name = std::ffi::CString::new(fifo.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        assert_eq!(read_shared_media(&fifo.to_string_lossy(), 4), None);
+        assert_eq!(
+            read_shared_media(&directory.path().to_string_lossy(), 4),
+            None
+        );
+    }
 
     fn observed(stream: &[u8]) -> (Vec<u8>, usize) {
         let mut filter = ApcFilter::new();

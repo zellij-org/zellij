@@ -227,6 +227,23 @@ fn serialize_chunks_with_newlines(
     }
     Ok(vte_output)
 }
+fn write_private_media(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    if let Err(e) = std::io::Write::write_all(&mut file, bytes) {
+        drop(file);
+        let _ = fs::remove_file(path);
+        return Err(e);
+    }
+    Ok(())
+}
+
 fn write_shared_media(rgba: &[u8], host_state: &mut HostKittyState) -> Option<PathBuf> {
     let serial = NEXT_MEDIA_FILE.fetch_add(1, Ordering::Relaxed);
     let file_name = format!("{}-{}-{}", KITTY_MEDIA_PREFIX, std::process::id(), serial);
@@ -235,13 +252,12 @@ fn write_shared_media(rgba: &[u8], host_state: &mut HostKittyState) -> Option<Pa
         false => std::env::temp_dir(),
     };
     let path = directory.join(file_name);
-    if let Err(e) = fs::write(&path, rgba) {
+    if let Err(e) = write_private_media(&path, rgba) {
         log::warn!(
             "failed to write structured graphics media to {:?}, carrying it inline: {}",
             path,
             e
         );
-        let _ = fs::remove_file(&path);
         return None;
     }
     host_state.track_media(path.clone());
@@ -1180,13 +1196,12 @@ fn emit_kitty_local_media(
     host_state: &mut HostKittyState,
 ) -> Result<bool> {
     let (medium, name, path) = kitty_media_target();
-    if let Err(e) = fs::write(&path, rgba) {
+    if let Err(e) = write_private_media(&path, rgba) {
         log::warn!(
             "failed to write kitty media to {:?}, falling back to base64: {}",
             path,
             e
         );
-        let _ = fs::remove_file(&path);
         return Ok(false);
     }
     host_state.track_media_for_image(image_key, path);
