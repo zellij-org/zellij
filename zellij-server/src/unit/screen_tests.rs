@@ -17299,20 +17299,15 @@ fn plugin_popups_take_key_capture_and_outside_click_from_their_options() {
     for (options, expected) in [
         (PopupOptions::default(), PopupBehavior::menu()),
         (
-            PopupOptions {
-                capture_all_keys: true,
-                outside_click: Some(OutsideClick::Block),
-                ..Default::default()
-            },
+            PopupOptions::default()
+                .capture_all_keys(true)
+                .outside_click(OutsideClick::Block),
             PopupBehavior::menu()
                 .capturing_all_keys(true)
                 .on_outside_click(OutsideClick::Block),
         ),
         (
-            PopupOptions {
-                focused: false,
-                ..Default::default()
-            },
+            PopupOptions::default().focused(false),
             PopupBehavior::info(),
         ),
     ] {

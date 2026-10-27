@@ -4503,6 +4503,25 @@ impl Default for PopupOptions {
     }
 }
 
+impl PopupOptions {
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
+    pub fn corner(mut self, corner: PopupCorner) -> Self {
+        self.corner = Some(corner);
+        self
+    }
+    pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
+        self.capture_all_keys = capture_all_keys;
+        self
+    }
+    pub fn outside_click(mut self, outside_click: OutsideClick) -> Self {
+        self.outside_click = Some(outside_click);
+        self
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
 pub enum PipePopupPlacement {
     #[default]
@@ -6270,6 +6289,23 @@ mod popup_placement_tests {
                 corner: None,
                 capture_all_keys: false,
                 outside_click: None,
+            }
+        );
+    }
+
+    #[test]
+    fn popup_options_builders_set_each_option() {
+        assert_eq!(
+            PopupOptions::default()
+                .focused(false)
+                .corner(PopupCorner::BottomLeft)
+                .capture_all_keys(true)
+                .outside_click(OutsideClick::Close),
+            PopupOptions {
+                focused: false,
+                corner: Some(PopupCorner::BottomLeft),
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Close),
             }
         );
     }
