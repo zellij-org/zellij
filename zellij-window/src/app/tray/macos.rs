@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::ffi::CStr;
 
 use anyhow::{anyhow, Result};
 use objc2::rc::Retained;
@@ -8,8 +9,8 @@ use objc2::{
 };
 use objc2_app_kit::{
     NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSApplication,
-    NSEventMask, NSEventType, NSImage, NSMenu, NSMenuItem, NSScreen, NSStatusBar, NSStatusItem,
-    NSVariableStatusItemLength,
+    NSEventMask, NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSMenuItem, NSScreen,
+    NSStatusBar, NSStatusItem, NSVariableStatusItemLength, NSWindow,
 };
 use objc2_foundation::{NSArray, NSData, NSSize, NSString};
 
@@ -277,38 +278,129 @@ fn main_menu_action(tag: i32) -> Option<MenuAction> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MainAction {
+    Ours(isize),
+    // Sent to no target, so AppKit hands it along the responder chain as for any app.
+    Standard(&'static CStr),
+}
+
+#[derive(Clone, Copy)]
+struct MainItem {
+    title: &'static str,
+    key: &'static str,
+    with_option: bool,
+    action: MainAction,
+}
+
+const fn ours(title: &'static str, tag: isize, key: &'static str) -> Option<MainItem> {
+    Some(MainItem {
+        title,
+        key,
+        with_option: false,
+        action: MainAction::Ours(tag),
+    })
+}
+
+const fn standard(
+    title: &'static str,
+    selector: &'static CStr,
+    key: &'static str,
+) -> Option<MainItem> {
+    Some(MainItem {
+        title,
+        key,
+        with_option: false,
+        action: MainAction::Standard(selector),
+    })
+}
+
+// The menu macOS lists the open windows in.
+const WINDOW_MENU: &str = "Window";
+
+const MAIN_MENU: [(&str, &[Option<MainItem>]); 3] = [
+    (
+        "Zellij",
+        &[
+            standard("About Zellij", c"orderFrontStandardAboutPanel:", ""),
+            None,
+            standard("Hide Zellij", c"hide:", "h"),
+            Some(MainItem {
+                title: "Hide Others",
+                key: "h",
+                with_option: true,
+                action: MainAction::Standard(c"hideOtherApplications:"),
+            }),
+            standard("Show All", c"unhideAllApplications:", ""),
+            None,
+            ours("Quit Zellij", 103, "q"),
+        ],
+    ),
+    (
+        "File",
+        &[
+            ours("New Window", 101, "n"),
+            standard("Close Window", c"performClose:", "w"),
+        ],
+    ),
+    (
+        WINDOW_MENU,
+        &[
+            standard("Minimize", c"performMiniaturize:", "m"),
+            standard("Zoom", c"performZoom:", ""),
+            None,
+            ours("Back", 102, ""),
+            None,
+            standard("Bring All to Front", c"arrangeInFront:", ""),
+        ],
+    ),
+];
+
 fn main_menu_item(
     mtm: MainThreadMarker,
     handler: &Handler,
-    title: &str,
-    tag: isize,
-    key: &str,
+    item: &MainItem,
 ) -> Retained<NSMenuItem> {
-    let item = unsafe {
+    let selector = match item.action {
+        MainAction::Ours(_) => sel!(menuItem:),
+        MainAction::Standard(name) => Sel::register(name),
+    };
+    let menu_item = unsafe {
         NSMenuItem::initWithTitle_action_keyEquivalent(
             NSMenuItem::alloc(mtm),
-            &NSString::from_str(title),
-            Some(sel!(menuItem:)),
-            &NSString::from_str(key),
+            &NSString::from_str(item.title),
+            Some(selector),
+            &NSString::from_str(item.key),
         )
     };
-    unsafe { item.setTarget(Some(handler)) };
-    item.setTag(tag);
-    item
+    if item.with_option {
+        menu_item.setKeyEquivalentModifierMask(
+            NSEventModifierFlags::Command | NSEventModifierFlags::Option,
+        );
+    }
+    if let MainAction::Ours(tag) = item.action {
+        unsafe { menu_item.setTarget(Some(handler)) };
+        menu_item.setTag(tag);
+    }
+    menu_item
 }
 
 fn titled(
     mtm: MainThreadMarker,
+    handler: &Handler,
     title: &str,
-    items: Vec<Retained<NSMenuItem>>,
-) -> Retained<NSMenuItem> {
+    items: &[Option<MainItem>],
+) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
     for item in items {
-        menu.addItem(&item);
+        match item {
+            Some(item) => menu.addItem(&main_menu_item(mtm, handler, item)),
+            None => menu.addItem(&NSMenuItem::separatorItem(mtm)),
+        }
     }
     let holder = NSMenuItem::new(mtm);
     holder.setSubmenu(Some(&menu));
-    holder
+    (holder, menu)
 }
 
 pub struct MainMenu {
@@ -319,21 +411,93 @@ pub fn install_main_menu(events: TrayEvents) -> Option<MainMenu> {
     let mtm = MainThreadMarker::new()?;
     let handler = Handler::new(mtm, events);
     let bar = NSMenu::new(mtm);
-    bar.addItem(&titled(
-        mtm,
-        "Zellij",
-        vec![main_menu_item(mtm, &handler, "Quit tray", 103, "q")],
-    ));
-    bar.addItem(&titled(
-        mtm,
-        "File",
-        vec![main_menu_item(mtm, &handler, "New Window", 101, "n")],
-    ));
-    bar.addItem(&titled(
-        mtm,
-        "Window",
-        vec![main_menu_item(mtm, &handler, "Back", 102, "")],
-    ));
-    NSApplication::sharedApplication(mtm).setMainMenu(Some(&bar));
+    let app = NSApplication::sharedApplication(mtm);
+    for (title, items) in MAIN_MENU {
+        let (holder, menu) = titled(mtm, &handler, title, items);
+        bar.addItem(&holder);
+        if title == WINDOW_MENU {
+            app.setWindowsMenu(Some(&menu));
+        }
+    }
+    // With a Window menu macOS offers to merge windows into tabs of one window, which
+    // each zellij window, drawn and sized on its own, is not made for.
+    NSWindow::setAllowsAutomaticWindowTabbing(false, mtm);
+    app.setMainMenu(Some(&bar));
     Some(MainMenu { _handler: handler })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_main_menu_has_the_standard_macos_items() {
+        let layout: Vec<(&str, Vec<Option<(&str, &str, bool)>>)> = MAIN_MENU
+            .iter()
+            .map(|(menu, items)| {
+                (
+                    *menu,
+                    items
+                        .iter()
+                        .map(|item| item.map(|item| (item.title, item.key, item.with_option)))
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            layout,
+            vec![
+                (
+                    "Zellij",
+                    vec![
+                        Some(("About Zellij", "", false)),
+                        None,
+                        Some(("Hide Zellij", "h", false)),
+                        Some(("Hide Others", "h", true)),
+                        Some(("Show All", "", false)),
+                        None,
+                        Some(("Quit Zellij", "q", false)),
+                    ]
+                ),
+                (
+                    "File",
+                    vec![
+                        Some(("New Window", "n", false)),
+                        Some(("Close Window", "w", false)),
+                    ]
+                ),
+                (
+                    "Window",
+                    vec![
+                        Some(("Minimize", "m", false)),
+                        Some(("Zoom", "", false)),
+                        None,
+                        Some(("Back", "", false)),
+                        None,
+                        Some(("Bring All to Front", "", false)),
+                    ]
+                ),
+            ]
+        );
+        let action = |title: &str| {
+            MAIN_MENU
+                .iter()
+                .flat_map(|(_, items)| items.iter().flatten())
+                .find(|item| item.title == title)
+                .map(|item| item.action)
+        };
+        assert_eq!(action("Quit Zellij"), Some(MainAction::Ours(103)));
+        assert_eq!(action("New Window"), Some(MainAction::Ours(101)));
+        assert_eq!(action("Back"), Some(MainAction::Ours(102)));
+        assert_eq!(
+            action("Close Window"),
+            Some(MainAction::Standard(c"performClose:")),
+            "Cmd+W goes the way of the close button"
+        );
+        assert_eq!(
+            action("Minimize"),
+            Some(MainAction::Standard(c"performMiniaturize:"))
+        );
+        assert_eq!(action("Hide Zellij"), Some(MainAction::Standard(c"hide:")));
+    }
 }

@@ -842,6 +842,13 @@ impl Desktop {
             },
             WindowEvent::Focused(false) => self.run(event_loop, Input::PanelFocusLost),
             WindowEvent::CloseRequested => self.run(event_loop, Input::PanelClosedByUser),
+            WindowEvent::KeyboardInput {
+                event: ref key_event,
+                is_synthetic: false,
+                ..
+            } if panel.app.wants_to_close(key_event) => {
+                self.run(event_loop, Input::PanelClosedByUser)
+            },
             moved @ WindowEvent::CursorMoved { position, .. } => {
                 panel.pointer = Some(position);
                 let grip = panel_grip(&panel.app, position);
@@ -1209,6 +1216,18 @@ impl ApplicationHandler<Wake> for Desktop {
         if verdict == Verdict::Close {
             self.close_window(event_loop, key, by_user);
         }
+    }
+
+    // Quitting from the Dock or at logout reaches the app only here, after macOS has closed
+    // every window: finish it as Cmd+Q would. Any other quit is already under way by now,
+    // so this does nothing.
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        self.run(
+            event_loop,
+            Input::QuitRequested {
+                stop_sessions: false,
+            },
+        );
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

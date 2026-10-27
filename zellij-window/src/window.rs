@@ -1939,6 +1939,12 @@ impl App {
         is_n && wanted
     }
 
+    pub(crate) fn wants_to_close(&self, event: &KeyEvent) -> bool {
+        event.state.is_pressed()
+            && !event.repeat
+            && closes_the_panel(Platform::current(), self.modifiers, &event.logical_key)
+    }
+
     pub(crate) fn modifiers_changed(&mut self, modifiers: winit::event::Modifiers) {
         self.modifiers = modifiers.state();
         self.alt_keys = input::AltKeys::of(&modifiers);
@@ -2035,7 +2041,15 @@ impl App {
                 self.on_focus_lost();
             },
             WindowEvent::RedrawRequested => self.draw(),
-            WindowEvent::Destroyed => return Verdict::Close,
+            // Quitting from the Dock or at logout, macOS closes every window before the
+            // app hears of it, while each can still be asked about itself. Elsewhere a
+            // window is destroyed only once the app has let it go.
+            WindowEvent::Destroyed => {
+                if !self.leaving {
+                    self.leave();
+                }
+                return Verdict::Close;
+            },
             _ => {},
         }
         Verdict::Keep
@@ -2744,6 +2758,13 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
 // can leave no config at all: EGL drops every config an X11 visual cannot make see-through.
 fn requires_transparent_configs(platform: Platform) -> bool {
     platform == Platform::MacOs
+}
+
+// The panel has no close button, so macOS greys out Close Window while it is in front and
+// hands Cmd+W to the panel as a key.
+fn closes_the_panel(platform: Platform, modifiers: ModifiersState, key: &Key) -> bool {
+    let is_w = matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("w"));
+    platform == Platform::MacOs && is_w && modifiers == ModifiersState::SUPER
 }
 
 fn transparency_available(
@@ -3776,6 +3797,72 @@ mod tests {
 
     fn remembered(dir: &tempfile::TempDir) -> Option<WindowState> {
         window_state::load_from(&dir.path().join("window-state.json"))
+    }
+
+    #[test]
+    fn a_window_the_system_destroys_still_remembers_its_size() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        assert_eq!(
+            harness.app.on_window_event(WindowEvent::Destroyed),
+            Verdict::Close
+        );
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }),
+            "macOS closes every window before the app hears it is quitting"
+        );
+    }
+
+    #[test]
+    fn a_window_the_system_destroys_lets_its_session_go() {
+        let mut harness = Harness::new(1, true, "");
+        harness.app.on_window_event(WindowEvent::Destroyed);
+        assert_eq!(
+            harness.actions(),
+            vec![Action::Detach],
+            "quitting from the Dock lets every session go, as Cmd+Q does"
+        );
+    }
+
+    #[test]
+    fn cmd_w_closes_the_panel_on_macos_only() {
+        let closes = |platform, modifiers, key: &str| {
+            closes_the_panel(platform, modifiers, &Key::Character(key.into()))
+        };
+        assert!(closes(Platform::MacOs, ModifiersState::SUPER, "w"));
+        assert!(closes(Platform::MacOs, ModifiersState::SUPER, "W"));
+        assert!(!closes(Platform::MacOs, ModifiersState::empty(), "w"));
+        let cmd_ctrl = ModifiersState::SUPER | ModifiersState::CONTROL;
+        assert!(!closes(Platform::MacOs, cmd_ctrl, "w"));
+        let cmd_shift = ModifiersState::SUPER | ModifiersState::SHIFT;
+        assert!(!closes(Platform::MacOs, cmd_shift, "W"));
+        let cmd_option = ModifiersState::SUPER | ModifiersState::ALT;
+        assert!(!closes(Platform::MacOs, cmd_option, "w"));
+        assert!(!closes(Platform::MacOs, ModifiersState::SUPER, "q"));
+        assert!(!closes(Platform::Linux, ModifiersState::SUPER, "w"));
+        assert!(!closes(Platform::Windows, ModifiersState::SUPER, "w"));
+    }
+
+    #[test]
+    fn a_window_already_leaving_is_not_remembered_again_when_destroyed() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.app.leave();
+        let left = remembered(&dir);
+        harness.app.resized(800, 640);
+        harness.app.on_window_event(WindowEvent::Destroyed);
+        assert_eq!(
+            remembered(&dir),
+            left,
+            "Cmd+Q remembers every window in turn; macOS then closes them all, in its own order"
+        );
     }
 
     #[test]
