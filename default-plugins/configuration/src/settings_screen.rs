@@ -2562,7 +2562,10 @@ mod tests {
 
     #[test]
     fn a_font_that_is_not_installed_is_shown_as_missing() {
-        let screen = screen_with(&[(SettingKey::TerminalFont, "Gone Mono")], &["Iosevka Term"]);
+        let screen = screen_with(
+            &[(SettingKey::TerminalFont, "Gone Mono")],
+            &["Iosevka Term"],
+        );
         let (options, shown) = font_choice(&screen);
         assert_eq!(
             options,

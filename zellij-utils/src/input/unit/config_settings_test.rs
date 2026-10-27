@@ -4,9 +4,9 @@ use super::super::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
     PaneFrameStyle,
 };
+use super::super::terminal::TerminalConfig;
 use super::super::theme::{FrameConfig, UiConfig};
 use super::super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
-use super::super::terminal::TerminalConfig;
 use crate::data::{
     BorderStyleOverride, InputMode, LineStyle, SettingKey, SettingSection, ThemeHue, WebSharing,
 };

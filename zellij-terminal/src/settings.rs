@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use zellij_utils::home;
 use zellij_utils::input::config::Config;
-use zellij_utils::input::theme::Themes;
 pub use zellij_utils::input::terminal::TerminalSettings as Settings;
+use zellij_utils::input::theme::Themes;
 use zellij_utils::setup::get_default_themes;
 
 pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
@@ -97,7 +97,10 @@ mod tests {
     #[test]
     fn a_config_without_the_section_leaves_every_option_unset() {
         let (_dir, path) = written("default_mode \"locked\"\n");
-        assert_eq!(load(Some(&path)).unwrap().section, TerminalConfig::default());
+        assert_eq!(
+            load(Some(&path)).unwrap().section,
+            TerminalConfig::default()
+        );
     }
 
     #[test]

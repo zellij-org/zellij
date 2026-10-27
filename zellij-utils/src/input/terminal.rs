@@ -1401,7 +1401,9 @@ mod tests {
             Some(false)
         );
         assert_eq!(
-            section("terminal {\n open_links true\n}").unwrap().open_links,
+            section("terminal {\n open_links true\n}")
+                .unwrap()
+                .open_links,
             Some(true)
         );
         assert_eq!(section("terminal {\n}").unwrap().open_links, None);
@@ -1651,8 +1653,11 @@ mod tests {
             ("none", OptionAsAlt::None),
             ("Left", OptionAsAlt::Left),
         ] {
-            let parsed =
-                section(&format!("terminal {{\n macos_option_as_alt \"{}\"\n}}", text)).unwrap();
+            let parsed = section(&format!(
+                "terminal {{\n macos_option_as_alt \"{}\"\n}}",
+                text
+            ))
+            .unwrap();
             assert_eq!(parsed.macos_option_as_alt, Some(expected), "{}", text);
             let emitted = parsed.to_kdl().unwrap().to_string();
             assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
@@ -1683,7 +1688,10 @@ mod tests {
 
     #[test]
     fn blur_parses_and_an_absent_see_through_setting_stays_unset() {
-        assert_eq!(section("terminal {\n blur true\n}").unwrap().blur, Some(true));
+        assert_eq!(
+            section("terminal {\n blur true\n}").unwrap().blur,
+            Some(true)
+        );
         assert_eq!(
             section("terminal {\n blur false\n}").unwrap().blur,
             Some(false)
@@ -1697,7 +1705,8 @@ mod tests {
     #[test]
     fn a_later_section_supersedes_the_see_through_settings_field_by_field() {
         let first =
-            section("terminal {\n opacity 0.5\n opacity_mode \"everything\"\n blur true\n}").unwrap();
+            section("terminal {\n opacity 0.5\n opacity_mode \"everything\"\n blur true\n}")
+                .unwrap();
         let second = section("terminal {\n opacity 0.9\n}").unwrap();
         let merged = first.merge(second);
         assert_eq!(merged.opacity, Some(0.9));
@@ -2039,7 +2048,9 @@ mod tests {
         );
         assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
         assert_eq!(
-            section("terminal {\n}").unwrap().allow_remote_clipboard_read,
+            section("terminal {\n}")
+                .unwrap()
+                .allow_remote_clipboard_read,
             None
         );
     }
@@ -2094,7 +2105,8 @@ mod tests {
     #[test]
     fn the_scroll_momentum_settings_round_trip_through_kdl() {
         let parsed =
-            section("terminal {\n scroll_momentum false\n scroll_momentum_friction 3.5\n}").unwrap();
+            section("terminal {\n scroll_momentum false\n scroll_momentum_friction 3.5\n}")
+                .unwrap();
         assert_eq!(parsed.scroll_momentum, Some(false));
         assert_eq!(parsed.scroll_momentum_friction, Some(3.5));
         let emitted = parsed.to_kdl().unwrap().to_string();

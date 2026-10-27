@@ -251,7 +251,10 @@ pub fn tiling_wm_commands() -> [(&'static str, &'static str); 3] {
     [
         ("zellij terminal", "open a new window"),
         ("zellij terminal --inbox", "show or hide the inbox"),
-        ("zellij terminal --sessions", "show or hide the session list"),
+        (
+            "zellij terminal --sessions",
+            "show or hide the session list",
+        ),
     ]
 }
 

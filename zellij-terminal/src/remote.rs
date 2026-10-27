@@ -760,7 +760,11 @@ mod tests {
         let directory = tempfile::TempDir::new().unwrap();
         let path = directory.path().join("config.kdl");
         let write = |font_size: u32| {
-            std::fs::write(&path, format!("terminal {{\n font_size {}\n}}\n", font_size)).unwrap()
+            std::fs::write(
+                &path,
+                format!("terminal {{\n font_size {}\n}}\n", font_size),
+            )
+            .unwrap()
         };
         write(14);
 

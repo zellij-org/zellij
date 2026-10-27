@@ -1,8 +1,8 @@
 use zellij_utils::data::{BareKey, HostTerminalThemeMode, KeyWithModifier, PaletteColor, Styling};
-use zellij_utils::input::theme::Theme;
 use zellij_utils::input::terminal::{
     BellMode, CursorStyle, OptionAsAlt, PaddingColor, StartupMode, TerminalConfig, TerminalTheme,
 };
+use zellij_utils::input::theme::Theme;
 
 use crate::color::{Paints, Srgb};
 use crate::font::{
@@ -418,8 +418,8 @@ mod tests {
     use super::*;
     use std::str::FromStr;
     use zellij_utils::data::{KeyModifier, StyleDeclaration, DEFAULT_STYLES};
-    use zellij_utils::input::theme::TerminalColors;
     use zellij_utils::input::terminal::{OpacityMode, OptionAsAlt, TerminalConfig};
+    use zellij_utils::input::theme::TerminalColors;
 
     use crate::color::{ANSI_16, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND};
 

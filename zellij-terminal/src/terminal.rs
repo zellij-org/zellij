@@ -757,7 +757,10 @@ mod tests {
     #[test]
     fn a_shared_file_residency_is_refused_when_shared_media_is_off() {
         let directory = std::env::temp_dir();
-        let path = directory.join(format!("zellij-terminal-remote-test-{}", std::process::id()));
+        let path = directory.join(format!(
+            "zellij-terminal-remote-test-{}",
+            std::process::id()
+        ));
         let pixels = rgba([0, 0, 255, 255], 4);
         std::fs::write(&path, &pixels).unwrap();
 

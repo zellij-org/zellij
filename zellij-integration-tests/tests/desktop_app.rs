@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use zellij_terminal::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 use zellij_utils::app_control::{
     describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, OpenWindowRequest,
     PanelState, PopupView,
@@ -16,7 +17,6 @@ use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
-use zellij_terminal::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 
 const REQUIRE_ENV: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 const BINARY_ENV: &str = "ZELLIJ_TEST_BINARY";

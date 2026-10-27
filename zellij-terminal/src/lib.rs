@@ -620,7 +620,10 @@ fn panel_view(args: &TerminalArgs) -> Option<zellij_utils::app_control::PopupVie
 }
 
 fn hosted_by_the_app(args: &TerminalArgs) -> bool {
-    hosted_by_the_app_with(args, std::env::var_os("ZELLIJ_TERMINAL_STANDALONE").is_some())
+    hosted_by_the_app_with(
+        args,
+        std::env::var_os("ZELLIJ_TERMINAL_STANDALONE").is_some(),
+    )
 }
 
 fn hosted_by_the_app_with(args: &TerminalArgs, standalone_env: bool) -> bool {

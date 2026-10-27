@@ -312,7 +312,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
-            ServerInstruction::TerminalSettingsChanged(..) => ServerContext::TerminalSettingsChanged,
+            ServerInstruction::TerminalSettingsChanged(..) => {
+                ServerContext::TerminalSettingsChanged
+            },
             ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
             ServerInstruction::AdoptSessionHistory(..) => ServerContext::AdoptSessionHistory,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {

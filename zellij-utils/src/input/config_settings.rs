@@ -9,9 +9,9 @@ use super::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
     PaneFrameStyle,
 };
+use super::terminal::TerminalConfig;
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
-use super::terminal::TerminalConfig;
 use crate::data::{
     join_setting_list, BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode,
     LineStyle, SettingKey, SettingValueShape, ThemeHue, WebSharing,
@@ -533,7 +533,10 @@ fn terminal_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
 
 fn terminal_values(window: &TerminalConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
     let document = terminal_document(window);
-    for key in SettingKey::all().into_iter().filter(|key| key.is_terminal()) {
+    for key in SettingKey::all()
+        .into_iter()
+        .filter(|key| key.is_terminal())
+    {
         let text =
             setting_node_in_document(&document, key).and_then(|node| terminal_node_text(key, node));
         values.insert(key, text);

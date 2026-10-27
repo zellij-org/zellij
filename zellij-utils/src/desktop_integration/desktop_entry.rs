@@ -579,7 +579,10 @@ pub(crate) mod xdg {
                 value(&section("sessions"), "Exec"),
                 "/opt/zellij terminal --sessions"
             );
-            assert_eq!(value(&section("new-window"), "Exec"), "/opt/zellij terminal");
+            assert_eq!(
+                value(&section("new-window"), "Exec"),
+                "/opt/zellij terminal"
+            );
         }
 
         #[test]

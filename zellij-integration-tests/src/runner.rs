@@ -581,7 +581,9 @@ impl TestClient {
         self.fake_client_handle.received_server_messages()
     }
 
-    pub fn received_terminal_settings(&self) -> Vec<zellij_utils::input::terminal::TerminalSettings> {
+    pub fn received_terminal_settings(
+        &self,
+    ) -> Vec<zellij_utils::input::terminal::TerminalSettings> {
         self.fake_client_handle.received_terminal_settings()
     }
 

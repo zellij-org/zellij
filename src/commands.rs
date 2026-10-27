@@ -175,7 +175,9 @@ fn register_app_starter() {
 fn register_app_starter() {}
 
 #[cfg(feature = "terminal")]
-fn start_terminal_app(request: &zellij_utils::app_control::OpenWindowRequest) -> Result<(), String> {
+fn start_terminal_app(
+    request: &zellij_utils::app_control::OpenWindowRequest,
+) -> Result<(), String> {
     use std::process::{Command, Stdio};
     let program = std::env::current_exe()
         .map_err(|e| format!("Zellij could not find its own program file: {}", e))?;

@@ -1852,8 +1852,8 @@ pub fn section(key: SettingKey) -> &'static str {
         | WebClientCursorInactiveStyle
         | WebClientMacOptionIsMeta
         | WebClientBaseUrl => "Browser client",
-        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts | TerminalLigatures
-        | TerminalFontFeatures => "Font",
+        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
+        | TerminalLigatures | TerminalFontFeatures => "Font",
         TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => "Cursor",
         TerminalStartupMode
         | TerminalTerminalRequests
@@ -1862,8 +1862,13 @@ pub fn section(key: SettingKey) -> &'static str {
         | TerminalOpacity
         | TerminalOpacityMode
         | TerminalBlur => "Window",
-        TerminalPadding | TerminalPaddingTop | TerminalPaddingRight | TerminalPaddingBottom
-        | TerminalPaddingLeft | TerminalPaddingBalance | TerminalPaddingColor => "Padding",
+        TerminalPadding
+        | TerminalPaddingTop
+        | TerminalPaddingRight
+        | TerminalPaddingBottom
+        | TerminalPaddingLeft
+        | TerminalPaddingBalance
+        | TerminalPaddingColor => "Padding",
         TerminalLineHeight
         | TerminalCellWidth
         | TerminalBaselineOffset
@@ -1882,9 +1887,15 @@ pub fn section(key: SettingKey) -> &'static str {
         | TerminalMiddleClickPaste
         | TerminalHidePointerWhileTyping
         | TerminalMacosOptionAsAlt => "Window behaviour",
-        TerminalPasteKeys | TerminalCopyKeys | TerminalZoomInKeys | TerminalZoomOutKeys
-        | TerminalZoomResetKeys | TerminalFullscreenKeys => "Shortcuts",
-        TerminalColorForeground | TerminalColorBackground | TerminalColorCursor => "Text and cursor",
+        TerminalPasteKeys
+        | TerminalCopyKeys
+        | TerminalZoomInKeys
+        | TerminalZoomOutKeys
+        | TerminalZoomResetKeys
+        | TerminalFullscreenKeys => "Shortcuts",
+        TerminalColorForeground | TerminalColorBackground | TerminalColorCursor => {
+            "Text and cursor"
+        },
         TerminalColorBlack
         | TerminalColorRed
         | TerminalColorGreen
@@ -2250,7 +2261,10 @@ mod tests {
 
     #[test]
     fn line_height_and_cell_width_step_by_five_hundredths() {
-        for key in [SettingKey::TerminalLineHeight, SettingKey::TerminalCellWidth] {
+        for key in [
+            SettingKey::TerminalLineHeight,
+            SettingKey::TerminalCellWidth,
+        ] {
             match describe(key).kind {
                 SettingKind::Decimal {
                     min,
