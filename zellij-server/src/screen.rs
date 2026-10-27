@@ -41,6 +41,7 @@ use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
 mod attention;
+mod hidden_bars;
 mod live_view;
 mod mirror;
 mod popups;
@@ -49,7 +50,7 @@ use log::{debug, warn};
 use zellij_utils::data::{
     BorderStyle, BorderStyleOverride, CommandOrPlugin, ContextMenuContext, ContextMenuEntry,
     ContextMenuTarget, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
+    HiddenBars, HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
     ListPanesResponse, ListTabsResponse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, NewPanePlacement, PaneContents,
     PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport, PaneScrollbackResponse,
@@ -986,6 +987,12 @@ pub enum ScreenInstruction {
     },
     ShowSwapLayoutNotification(ClientId),
     SetSwapLayoutNotification(bool),
+    ToggleBars(Vec<String>, ClientId, Option<NotificationEnd>),
+    HideBars(Vec<String>, ClientId, Option<NotificationEnd>),
+    ShowBars(ClientId, Option<NotificationEnd>),
+    HideBarByPaneId(PaneId, ClientId, Option<NotificationEnd>),
+    SetHiddenBarsNotification(bool),
+    SetModeHintsWhenBarsHidden(bool),
     SetGraphemeClusters(bool),
     GetSessionPreview {
         tab_index: Option<usize>,
@@ -1580,6 +1587,16 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetSwapLayoutNotification(..) => {
                 ScreenContext::SetSwapLayoutNotification
             },
+            ScreenInstruction::ToggleBars(..) => ScreenContext::ToggleBars,
+            ScreenInstruction::HideBars(..) => ScreenContext::HideBars,
+            ScreenInstruction::ShowBars(..) => ScreenContext::ShowBars,
+            ScreenInstruction::HideBarByPaneId(..) => ScreenContext::HideBarByPaneId,
+            ScreenInstruction::SetHiddenBarsNotification(..) => {
+                ScreenContext::SetHiddenBarsNotification
+            },
+            ScreenInstruction::SetModeHintsWhenBarsHidden(..) => {
+                ScreenContext::SetModeHintsWhenBarsHidden
+            },
             ScreenInstruction::SetGraphemeClusters(..) => ScreenContext::SetGraphemeClusters,
             ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
             ScreenInstruction::GetSessionAttention { .. } => ScreenContext::GetSessionAttention,
@@ -2094,6 +2111,10 @@ pub(crate) struct Screen {
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
     pub(crate) swap_layout_notification: bool,
+    pub(crate) hidden_bars: HiddenBars,
+    pub(crate) hidden_bars_notification: bool,
+    pub(crate) mode_hints_when_bars_hidden: bool,
+    pub(crate) mode_hints_requested: HashSet<ClientId>,
     grapheme_clusters: bool,
     pub(crate) on_quit: zellij_utils::input::options::OnQuit,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
@@ -2460,6 +2481,10 @@ impl Screen {
             pending_session_card: None,
             terminal_command_submitted: false,
             swap_layout_notification: true,
+            hidden_bars: HiddenBars::default(),
+            hidden_bars_notification: true,
+            mode_hints_when_bars_hidden: true,
+            mode_hints_requested: HashSet::new(),
             grapheme_clusters: false,
             on_quit: Default::default(),
             last_reported_client_visible_plugins: HashMap::new(),
@@ -2743,6 +2768,7 @@ impl Screen {
             },
         }
         self.clear_bell_for_focused_pane(client_id);
+        self.update_mode_hints(client_id);
     }
 
     /// A helper function to switch to a new tab at specified position.
@@ -7205,7 +7231,13 @@ impl Screen {
         let mut visible: HashMap<ClientId, HashSet<PluginId>> = HashMap::new();
         for (client_id, tab_id) in self.active_tab_ids.iter() {
             if let Some(tab) = self.tabs.get(tab_id) {
-                visible.insert(*client_id, tab.get_plugin_ids().into_iter().collect());
+                visible.insert(
+                    *client_id,
+                    tab.get_plugin_ids()
+                        .into_iter()
+                        .chain(tab.popup_plugin_ids_for_client(*client_id))
+                        .collect(),
+                );
             }
         }
         if visible == self.last_reported_client_visible_plugins {
@@ -8102,7 +8134,8 @@ impl Screen {
         Ok(Ok(()))
     }
 
-    fn propagate_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    fn propagate_mode_info(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+        mode_info.hidden_bars = self.hidden_bars.clone();
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -8130,6 +8163,7 @@ impl Screen {
             self.report_upward();
         }
         self.report_live_views();
+        self.update_mode_hints(client_id);
         Ok(())
     }
 
@@ -10760,6 +10794,12 @@ pub(crate) fn screen_thread_main(
         .set_mirror_resizes_source_pane(config_options.mirror_resizes_source_pane.unwrap_or(true));
     screen.set_live_view_release_key(config_options.live_view_release_key.clone());
     screen.on_quit = config_options.on_quit.unwrap_or_default();
+    screen.hidden_bars = config_options
+        .bars_hidden_on_start
+        .clone()
+        .unwrap_or_default();
+    screen.hidden_bars_notification = config_options.hidden_bars_notification.unwrap_or(true);
+    screen.mode_hints_when_bars_hidden = config_options.mode_hints_when_bars_hidden.unwrap_or(true);
     screen.set_host_notification_protocol(host_notification_protocol);
     screen
         .attention
@@ -12607,6 +12647,7 @@ pub(crate) fn screen_thread_main(
                     (client_id, is_web_client),
                     blocking_terminal,
                 )?;
+                screen.apply_hidden_bars_to_tab(tab_id);
                 let tab_of_layout = screen.tabs.get(&tab_id);
                 let pane_exists_in_tab = |pane_id: &PaneId| {
                     tab_of_layout
@@ -13048,6 +13089,7 @@ pub(crate) fn screen_thread_main(
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
                 screen.show_guest_modals_for_new_client(client_id);
+                screen.show_hidden_bars_notification_on_attach(client_id);
                 let focused_pane_id = screen.get_active_pane_id(&client_id);
                 if let Some(focused) = focused_pane_id {
                     screen.report_key_passthrough_state(client_id, focused, focused);
@@ -13069,6 +13111,7 @@ pub(crate) fn screen_thread_main(
                 screen.pending_session_card_away_since.remove(&client_id);
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.clear_live_views_of_client(client_id);
+                screen.mode_hints_requested.remove(&client_id);
                 screen.remove_client(client_id).non_fatal();
                 if was_attached {
                     screen.log_and_report_session_state().non_fatal();
@@ -13513,6 +13556,7 @@ pub(crate) fn screen_thread_main(
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
+                screen.apply_hidden_bars_to_all_tabs();
                 // Single render and log after all tabs are updated (performance optimization)
                 screen.log_and_report_session_state()?;
                 let _ = screen.render(None);
@@ -13821,6 +13865,7 @@ pub(crate) fn screen_thread_main(
                         PaneNotCreatedReason::TabNotFound,
                     );
                 }
+                screen.apply_hidden_bars_to_tab_with_pane(PaneId::Plugin(plugin_id));
                 screen.finish_pane_creation(
                     PaneId::Plugin(plugin_id),
                     &mut completion_tx,
@@ -15162,6 +15207,30 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetSwapLayoutNotification(enabled) => {
                 screen.swap_layout_notification = enabled;
+            },
+            ScreenInstruction::ToggleBars(bars, client_id, _completion_tx) => {
+                screen.toggle_bars(&bars, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::HideBars(bars, client_id, _completion_tx) => {
+                screen.hide_bars(&bars, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ShowBars(_client_id, _completion_tx) => {
+                screen.show_bars();
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::HideBarByPaneId(pane_id, client_id, _completion_tx) => {
+                screen.hide_bar_by_pane_id(pane_id, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetHiddenBarsNotification(enabled) => {
+                screen.hidden_bars_notification = enabled;
+            },
+            ScreenInstruction::SetModeHintsWhenBarsHidden(enabled) => {
+                screen.mode_hints_when_bars_hidden = enabled;
+                screen.update_mode_hints_for_all_clients();
+                screen.render(None)?;
             },
             ScreenInstruction::SetGraphemeClusters(enabled) => {
                 screen.update_grapheme_clusters(enabled);

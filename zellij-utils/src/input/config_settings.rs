@@ -175,6 +175,9 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         session_indicator,
         swap_layout_notification,
         on_quit,
+        bars_hidden_on_start,
+        hidden_bars_notification,
+        mode_hints_when_bars_hidden,
     } = options;
     let entries = [
         (SettingKey::SimplifiedUi, display_text(simplified_ui)),
@@ -356,6 +359,25 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::OnQuit,
             on_quit.map(|on_quit| on_quit.as_str().to_owned()),
+        ),
+        (
+            SettingKey::BarsHiddenOnStart,
+            bars_hidden_on_start.as_ref().map(|hidden_bars| {
+                let names = hidden_bars.names();
+                if names.is_empty() {
+                    "none".to_owned()
+                } else {
+                    names.join(",")
+                }
+            }),
+        ),
+        (
+            SettingKey::HiddenBarsNotification,
+            display_text(hidden_bars_notification),
+        ),
+        (
+            SettingKey::ModeHintsWhenBarsHidden,
+            display_text(mode_hints_when_bars_hidden),
         ),
     ];
     values.extend(entries);
@@ -901,6 +923,15 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             options.swap_layout_notification = from.swap_layout_notification
         },
         SettingKey::OnQuit => options.on_quit = from.on_quit,
+        SettingKey::BarsHiddenOnStart => {
+            options.bars_hidden_on_start = from.bars_hidden_on_start.clone()
+        },
+        SettingKey::HiddenBarsNotification => {
+            options.hidden_bars_notification = from.hidden_bars_notification
+        },
+        SettingKey::ModeHintsWhenBarsHidden => {
+            options.mode_hints_when_bars_hidden = from.mode_hints_when_bars_hidden
+        },
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {
             frames.hide_session_name = from_frames.hide_session_name

@@ -1407,6 +1407,19 @@ impl SessionMetaData {
             ));
             let _ = self
                 .senders
+                .send_to_screen(ScreenInstruction::SetHiddenBarsNotification(
+                    new_config.options.hidden_bars_notification.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetModeHintsWhenBarsHidden(
+                    new_config
+                        .options
+                        .mode_hints_when_bars_hidden
+                        .unwrap_or(true),
+                ));
+            let _ = self
+                .senders
                 .send_to_screen(ScreenInstruction::SetAttentionConfig(
                     new_config.attention.clone(),
                 ));

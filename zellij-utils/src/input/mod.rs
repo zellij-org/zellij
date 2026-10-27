@@ -71,6 +71,7 @@ mod not_wasm {
             session_ascended: None,
             nested_descend_keys: vec![],
             remote_client: None,
+            hidden_bars: Default::default(),
         }
     }
 

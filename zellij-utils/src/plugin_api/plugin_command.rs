@@ -17,7 +17,8 @@ pub use super::generated_api::api::{
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
         new_tab_unfocused_response, parse_layout_response, plugin_command::Payload,
         rename_layout_response, save_layout_response, save_session_response,
-        show_floating_panes_response, write_theme_file_response, BreakPanesToNewTabPayload,
+        show_floating_panes_response, write_theme_file_response,
+        BarNamesPayload as ProtobufBarNamesPayload, BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -2899,6 +2900,24 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SetLiveViewInput"),
             },
+            Some(CommandName::ToggleBars) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleBarsPayload(payload)) => {
+                    Ok(PluginCommand::ToggleBars(payload.bar_names))
+                },
+                None => Ok(PluginCommand::ToggleBars(vec![])),
+                _ => Err("Mismatched payload for ToggleBars"),
+            },
+            Some(CommandName::HideBars) => match protobuf_plugin_command.payload {
+                Some(Payload::HideBarsPayload(payload)) => {
+                    Ok(PluginCommand::HideBars(payload.bar_names))
+                },
+                None => Ok(PluginCommand::HideBars(vec![])),
+                _ => Err("Mismatched payload for HideBars"),
+            },
+            Some(CommandName::ShowBars) => match protobuf_plugin_command.payload {
+                None => Ok(PluginCommand::ShowBars),
+                _ => Err("ShowBars should not have a payload"),
+            },
             Some(CommandName::FocusSessionPane) => match protobuf_plugin_command.payload {
                 Some(Payload::FocusSessionPanePayload(payload)) => {
                     let (session_name, pane_id) = session_pane_from_payload(payload)?;
@@ -5112,6 +5131,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::SetLiveViewInputPayload(SetLiveViewInputPayload {
                     capture,
                 })),
+            }),
+            PluginCommand::ToggleBars(bar_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleBars as i32,
+                payload: Some(Payload::ToggleBarsPayload(ProtobufBarNamesPayload {
+                    bar_names,
+                })),
+            }),
+            PluginCommand::HideBars(bar_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::HideBars as i32,
+                payload: Some(Payload::HideBarsPayload(ProtobufBarNamesPayload {
+                    bar_names,
+                })),
+            }),
+            PluginCommand::ShowBars => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowBars as i32,
+                payload: None,
             }),
             PluginCommand::FocusSessionPane {
                 session_name,

@@ -572,6 +572,12 @@ fn test_client_messages() {
                 session_indicator: Some(true),
                 swap_layout_notification: Some(false),
                 on_quit: Some(crate::input::options::OnQuit::AskDetach),
+                bars_hidden_on_start: Some(crate::data::HiddenBars::from_names(&[
+                    "tab-bar",
+                    "status-bar",
+                ])),
+                hidden_bars_notification: Some(false),
+                mode_hints_when_bars_hidden: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -1196,6 +1202,34 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePaneFrames,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleBars {
+            bars: vec!["status-bar".to_owned()],
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HideBars { bars: vec![] },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ShowBars,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HideBarByPaneId {
+            pane_id: PaneId::Plugin(4),
+        },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,

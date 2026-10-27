@@ -27,6 +27,7 @@ use crate::{
     ui::pane_contents_and_ui::PaneContentsAndUi,
     ClientId,
 };
+pub use panes_to_hide::CoveredPanes;
 use panes_to_hide::PanesToHide;
 use stacked_panes::StackedPanes;
 use zellij_utils::{
@@ -3211,7 +3212,7 @@ impl TiledPanes {
     ///
     /// Paired with `restore_collapsed_panes`. Nesting is safe: the inner call finds nothing
     /// left to take and restores nothing.
-    pub fn take_collapsed_panes(&mut self) -> HashSet<PaneId> {
+    pub fn take_collapsed_panes(&mut self) -> CoveredPanes {
         self.panes_to_hide.take_covered()
     }
     /// Put back what `take_collapsed_panes` took, and say whether there was anything to put
@@ -3219,17 +3220,62 @@ impl TiledPanes {
     ///
     /// A pane that closed while the set was taken out was never forgotten by `panes_to_hide`,
     /// so anything that is no longer here is dropped on the way in.
-    pub fn restore_collapsed_panes(&mut self, collapsed: HashSet<PaneId>) -> bool {
+    pub fn restore_collapsed_panes(&mut self, mut collapsed: CoveredPanes) -> bool {
         let panes = &self.panes;
-        let still_here: HashSet<PaneId> = collapsed
-            .into_iter()
-            .filter(|pane_id| panes.contains_key(pane_id))
-            .collect();
-        if still_here.is_empty() {
+        collapsed.retain(|pane_id| panes.contains_key(pane_id));
+        if collapsed.is_empty() {
             return false;
         }
-        self.panes_to_hide.restore_covered(still_here);
+        self.panes_to_hide.restore_covered(collapsed);
         true
+    }
+    pub fn set_bar_hidden(&mut self, pane_id: PaneId, hidden: bool) -> bool {
+        if !self.panes.contains_key(&pane_id) {
+            return false;
+        }
+        if !hidden {
+            let holds_no_space_of_its_own = self.panes_to_hide.is_hidden_bar(&pane_id)
+                && !self.panes_to_hide.is_collapsed(&pane_id);
+            if holds_no_space_of_its_own {
+                self.give_space_back_to(pane_id);
+            }
+            return self.panes_to_hide.unset_hidden_bar(&pane_id);
+        }
+        if self.panes_to_hide.is_hidden_bar(&pane_id) {
+            return false;
+        }
+        let changed = self.panes_to_hide.set_hidden_bar(pane_id);
+        if changed {
+            self.move_clients_out_of_pane(pane_id);
+        }
+        changed
+    }
+    fn give_space_back_to(&mut self, pane_id: PaneId) {
+        let Some(space) = self
+            .panes
+            .get(&pane_id)
+            .map(|pane| pane.position_and_size())
+        else {
+            return;
+        };
+        for (neighbor_id, geom) in self.geoms_with_spaces_given_back(&[space]) {
+            if neighbor_id == pane_id {
+                continue;
+            }
+            if let Some(neighbor) = self.panes.get_mut(&neighbor_id) {
+                neighbor.set_geom(geom);
+            }
+        }
+    }
+    pub fn pane_is_hidden_bar(&self, pane_id: &PaneId) -> bool {
+        self.panes_to_hide.is_hidden_bar(pane_id)
+    }
+    pub fn hidden_bar_ids(&self) -> Vec<PaneId> {
+        self.panes
+            .keys()
+            .filter(|pane_id| self.panes_to_hide.is_hidden_bar(pane_id))
+            .copied()
+            .collect()
     }
     pub fn unfocus_all_panes(&mut self) {
         let connected_clients = self.connected_clients.borrow().clone();

@@ -520,7 +520,7 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
 
     zellij.send_stdin(END);
     let grid_snapshot = zellij.wait_until("the common items are shown", |grid_snapshot| {
-        grid_snapshot.contains("Common items") && grid_snapshot.contains("Detach")
+        grid_snapshot.contains("Show bars") && grid_snapshot.contains("Detach")
     });
     click_text(&zellij, &grid_snapshot, "+ Add separator", 0);
     zellij.wait_until("a separator was added", |grid_snapshot| {
@@ -556,7 +556,7 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
     let column = line[..line.find("Delete").unwrap()].chars().count();
     sgr_click(&zellij, column + 2, row + 1);
     zellij.wait_until("the item is gone", |grid_snapshot| {
-        !grid_snapshot.contains("Detach") && grid_snapshot.contains("Common items")
+        !grid_snapshot.contains("Detach") && grid_snapshot.contains("Show bars")
     });
 
     save_and_wait(&zellij);

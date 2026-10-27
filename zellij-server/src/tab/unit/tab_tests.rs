@@ -21433,3 +21433,126 @@ fn paste_markers_inside_pasted_text_are_removed() {
         "plain text \u{1b}[31m".as_bytes().to_vec()
     );
 }
+
+fn set_bar_hidden(tab: &mut Tab, bar: PaneId, hidden: bool) {
+    tab.tiled_panes.set_bar_hidden(bar, hidden);
+    let size = tab.size;
+    tab.resize_whole_tab(size).unwrap();
+}
+
+#[test]
+fn a_hidden_bar_gives_its_row_to_the_pane_above_and_takes_it_back() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let main_pane = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    let before = all_tiled_geoms(&tab);
+
+    set_bar_hidden(&mut tab, bar, true);
+    assert_eq!(geom_of(&tab, main_pane).rows.as_usize(), 20);
+    assert!(tab.tiled_panes.pane_is_hidden_bar(&bar));
+
+    set_bar_hidden(&mut tab, bar, false);
+    assert_eq!(all_tiled_geoms(&tab), before);
+    assert!(!tab.tiled_panes.pane_is_hidden_bar(&bar));
+}
+
+#[test]
+fn showing_the_bars_does_not_expand_a_bar_that_collapsed_itself() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let main_pane = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    tab.set_pane_collapsed(bar, true);
+
+    set_bar_hidden(&mut tab, bar, true);
+    set_bar_hidden(&mut tab, bar, false);
+
+    assert!(tab.tiled_panes.pane_is_collapsed(&bar));
+    assert_eq!(geom_of(&tab, main_pane).rows.as_usize(), 20);
+}
+
+#[test]
+fn a_hidden_bar_follows_the_tab_when_it_is_resized() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let main_pane = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    set_bar_hidden(&mut tab, bar, true);
+
+    tab.resize_whole_tab(Size {
+        cols: 118,
+        rows: 23,
+    })
+    .unwrap();
+    assert_eq!(geom_of(&tab, main_pane).rows.as_usize(), 23);
+    assert_eq!(geom_of(&tab, bar).y, 22);
+    assert_eq!(geom_of(&tab, bar).cols.as_usize(), 118);
+
+    set_bar_hidden(&mut tab, bar, false);
+    assert_eq!(geom_of(&tab, main_pane).rows.as_usize(), 22);
+    assert_eq!(geom_of(&tab, bar).y, 22);
+    assert_eq!(geom_of(&tab, bar).rows.as_usize(), 1);
+}
+
+#[test]
+fn a_hidden_bar_is_serialized_as_if_it_were_shown() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let before = all_tiled_geoms(&tab);
+
+    set_bar_hidden(&mut tab, PaneId::Terminal(1), true);
+
+    assert_ne!(all_tiled_geoms(&tab), before);
+    assert_eq!(tiled_geoms_as_serialized(&tab), before);
+}
+
+#[test]
+fn terminal_panes_are_never_taken_for_bars() {
+    let tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    assert!(tab.bar_pane_ids().is_empty());
+}
+
+#[test]
+fn showing_bars_above_and_below_split_panes_restores_the_layout() {
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    let mut top_bar = TiledPaneLayout::default();
+    top_bar.split_size = Some(SplitSize::Fixed(1));
+    let mut bottom_bar = TiledPaneLayout::default();
+    bottom_bar.split_size = Some(SplitSize::Fixed(1));
+    layout.children = vec![top_bar, TiledPaneLayout::default(), bottom_bar];
+    let mut tab = create_new_tab_with_layout(
+        Size {
+            cols: 120,
+            rows: 24,
+        },
+        layout,
+    );
+    tab.vertical_split(PaneId::Terminal(3), None, 1, None, None)
+        .unwrap();
+    let before = all_tiled_geoms(&tab);
+    let (top_bar, bottom_bar) = (PaneId::Terminal(0), PaneId::Terminal(2));
+
+    tab.tiled_panes.set_bar_hidden(top_bar, true);
+    tab.tiled_panes.set_bar_hidden(bottom_bar, true);
+    let size = tab.size;
+    tab.resize_whole_tab(size).unwrap();
+    assert_ne!(all_tiled_geoms(&tab), before);
+
+    tab.tiled_panes.set_bar_hidden(top_bar, false);
+    tab.tiled_panes.set_bar_hidden(bottom_bar, false);
+    tab.resize_whole_tab(size).unwrap();
+    assert_eq!(all_tiled_geoms(&tab), before);
+}
