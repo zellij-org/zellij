@@ -4,7 +4,7 @@ Type=Application
 Name=Zellij
 GenericName=Terminal Workspace
 Comment=Manage Your Terminal Applications
-Exec=zellij window
+Exec=zellij terminal
 TryExec=zellij
 Icon=dev.zellij.Zellij
 Terminal=false
@@ -20,12 +20,12 @@ Actions=inbox;sessions;new-window;
 
 [Desktop Action inbox]
 Name=Show Inbox
-Exec=zellij window --inbox
+Exec=zellij terminal --inbox
 
 [Desktop Action sessions]
 Name=Show Sessions
-Exec=zellij window --sessions
+Exec=zellij terminal --sessions
 
 [Desktop Action new-window]
 Name=New Window
-Exec=zellij window
+Exec=zellij terminal

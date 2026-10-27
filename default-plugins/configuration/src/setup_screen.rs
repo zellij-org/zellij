@@ -1194,8 +1194,8 @@ impl SetupScreen {
     }
 }
 
-const INTRODUCTION: &str = "Zellij is both a terminal and multiplexer. It can run on its own with zellij window or inside another terminal with zellij. It can also integrate with your desktop and become your default terminal.";
-const INTRODUCTION_COMMANDS: [&str; 2] = ["zellij window", "zellij."];
+const INTRODUCTION: &str = "Zellij is both a terminal and multiplexer. It can run on its own with zellij terminal or inside another terminal with zellij. It can also integrate with your desktop and become your default terminal.";
+const INTRODUCTION_COMMANDS: [&str; 2] = ["zellij terminal", "zellij."];
 
 fn emphasized_ranges(text: &str, commands: &[&str]) -> Vec<(usize, usize)> {
     let mut ranges = vec![];
@@ -1345,7 +1345,7 @@ mod tests {
         }
         let emphasized: String = emphasized.replace('|', " ");
         let words: Vec<&str> = emphasized.split_whitespace().collect();
-        assert_eq!(words, vec!["zellij", "window", "zellij"]);
+        assert_eq!(words, vec!["zellij", "terminal", "zellij"]);
         assert!(plain(&lines[0]).starts_with("Zellij is both"));
     }
 

@@ -110,7 +110,7 @@ pub struct StatusBar {
 }
 
 const DESKTOP_OFFER_TEXT: &str =
-    "Get desktop notifications for this: run `zellij window` (it opens on this computer)";
+    "Get desktop notifications for this: run `zellij terminal` (it opens on this computer)";
 
 #[derive(Default)]
 struct DesktopOffer {
@@ -158,7 +158,7 @@ fn reminder_context(client: &ClientState) -> desktop_integration::ReminderContex
     desktop_integration::ReminderContext {
         show_startup_tips: enabled(SettingKey::ShowStartupTips),
         show_release_notes: enabled(SettingKey::ShowReleaseNotes),
-        inside_desktop_window: client.mode_info.remote_client.is_none() && !web_client,
+        inside_desktop_terminal: client.mode_info.remote_client.is_none() && !web_client,
         web_client,
     }
 }

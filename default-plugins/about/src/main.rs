@@ -102,8 +102,8 @@ impl ZellijPlugin for App {
             .get("desktop_tip")
             .map(|v| v == "true")
             .unwrap_or(false);
-        self.facts.borrow_mut().in_desktop_window = configuration
-            .get("in_desktop_window")
+        self.facts.borrow_mut().in_desktop_terminal = configuration
+            .get("in_desktop_terminal")
             .map(|v| v == "true")
             .unwrap_or(false);
         subscribe(&[
@@ -526,9 +526,9 @@ impl App {
             },
             BareKey::Char('w') if kind == PageKind::DesktopApp => {
                 let facts = self.facts.borrow().clone();
-                if !facts.in_desktop_window {
+                if !facts.in_desktop_terminal {
                     if let Some(session_name) = facts.session_name {
-                        open_session_window(&session_name, false);
+                        open_session_terminal(&session_name, false);
                     }
                 }
                 Some(true)

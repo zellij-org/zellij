@@ -99,7 +99,7 @@ context_menu {
         item "New tab" { NewTab; }
         item "Rename session" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         item "Back to {}" { ToggleSession; }
-        item "Open in a window" { OpenSessionInWindow; }
+        item "Open in a Zellij terminal" { OpenSessionInTerminal; }
         separator
         item "Hide {}" { HideBarByPaneId; }
         item "Hide all bars" { HideBars; }
@@ -632,11 +632,11 @@ web_client {
     font "monospace"
 }
 
-// Options for zellij's own window (`zellij window`). Every key is optional;
-// with the whole section absent the window behaves exactly as it does with no
+// Options for the Zellij terminal (`zellij terminal`). Every key is optional;
+// with the whole section absent the terminal behaves exactly as it does with no
 // configuration at all.
 //
-// window {
+// terminal {
 //     // Font family to render with, resolved through the system's font
 //     // configuration. An unresolvable family falls back to the built-in font.
 //     font "Iosevka Term"
@@ -804,7 +804,7 @@ web_client {
 //     startup_mode "remember"
 //
 //     // Where a command opens when another app uses Zellij as its terminal
-//     // (`zellij window -e <command>`, as xdg-terminal-exec or a file manager
+//     // (`zellij terminal -e <command>`, as xdg-terminal-exec or a file manager
 //     // runs it): "new_session" (the default) gives it a session of its own;
 //     // "existing_session" opens it as a new tab in the session whose window
 //     // was focused last, or in a new session when no window is open.

@@ -9,7 +9,7 @@ pub mod desktop_entry;
 #[cfg(not(target_family = "wasm"))]
 pub mod platform;
 #[cfg(windows)]
-pub mod window_command;
+pub mod terminal_command;
 
 #[cfg(not(target_family = "wasm"))]
 pub const ICON_PNG: &[u8] = include_bytes!("../../assets/icons/logo128.png");
@@ -21,7 +21,7 @@ pub const ICON_PNG_512: &[u8] = include_bytes!("../../assets/icons/logo512.png")
 pub const STATE_FILE_NAME: &str = "desktop_integration.json";
 
 pub fn windows_app_id_for(name: &str) -> String {
-    format!("{}.window", name)
+    format!("{}.terminal", name)
 }
 
 pub fn windows_app_id() -> String {
@@ -249,9 +249,12 @@ pub fn window_welcome_points(only_missing: bool) -> Vec<String> {
 
 pub fn tiling_wm_commands() -> [(&'static str, &'static str); 3] {
     [
-        ("zellij window", "open a new window"),
-        ("zellij window --inbox", "show or hide the inbox"),
-        ("zellij window --sessions", "show or hide the session list"),
+        ("zellij terminal", "open a new window"),
+        ("zellij terminal --inbox", "show or hide the inbox"),
+        (
+            "zellij terminal --sessions",
+            "show or hide the session list",
+        ),
     ]
 }
 
@@ -563,7 +566,7 @@ impl IntegrationState {
         self.flags.insert(flag);
     }
     pub fn reminders_allowed(&self, reminders: &ReminderContext) -> bool {
-        if reminders.inside_desktop_window || reminders.web_client {
+        if reminders.inside_desktop_terminal || reminders.web_client {
             return false;
         }
         if !reminders.show_startup_tips && !reminders.show_release_notes {
@@ -615,7 +618,7 @@ impl IntegrationState {
 pub struct ReminderContext {
     pub show_startup_tips: bool,
     pub show_release_notes: bool,
-    pub inside_desktop_window: bool,
+    pub inside_desktop_terminal: bool,
     pub web_client: bool,
 }
 
@@ -1144,7 +1147,7 @@ pub mod location {
             std::fs::write(&running, b"binary").unwrap();
             let missing = dir.path().join("moved").join("zellij");
             let body = format!(
-                "[Desktop Entry]\nExec={} window\nTryExec={}\n",
+                "[Desktop Entry]\nExec={} terminal\nTryExec={}\n",
                 missing.display(),
                 missing.display()
             );
@@ -1156,7 +1159,7 @@ pub mod location {
             assert_eq!(offer.current, running);
 
             assert!(repair_offer_for(&state, &body, &running, &temporary).is_none());
-            let edited = text.replace("window", "window --inbox");
+            let edited = text.replace("terminal", "terminal --inbox");
             assert!(repair_offer_for(&state, &edited, &running, &temporary).is_none());
 
             let mut declined = IntegrationState::default();
@@ -1208,7 +1211,7 @@ mod tests {
         ReminderContext {
             show_startup_tips: true,
             show_release_notes: true,
-            inside_desktop_window: false,
+            inside_desktop_terminal: false,
             web_client: false,
         }
     }
@@ -1311,7 +1314,7 @@ mod tests {
             ..context()
         }));
         assert!(!state.reminders_allowed(&ReminderContext {
-            inside_desktop_window: true,
+            inside_desktop_terminal: true,
             ..context()
         }));
         assert!(!state.reminders_allowed(&ReminderContext {

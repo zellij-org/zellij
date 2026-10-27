@@ -757,10 +757,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleTrayIcon should not have a payload"),
                 None => Ok(Action::ToggleTrayIcon),
             },
-            Some(ProtobufActionName::OpenSessionInWindow) => {
+            Some(ProtobufActionName::OpenSessionInTerminal) => {
                 match protobuf_action.optional_payload {
-                    Some(_) => Err("OpenSessionInWindow should not have a payload"),
-                    None => Ok(Action::OpenSessionInWindow),
+                    Some(_) => Err("OpenSessionInTerminal should not have a payload"),
+                    None => Ok(Action::OpenSessionInTerminal),
                 }
             },
             Some(ProtobufActionName::ToggleMirrorResize) => {
@@ -2149,8 +2149,8 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleTrayIcon as i32,
                 optional_payload: None,
             }),
-            Action::OpenSessionInWindow => Ok(ProtobufAction {
-                name: ProtobufActionName::OpenSessionInWindow as i32,
+            Action::OpenSessionInTerminal => Ok(ProtobufAction {
+                name: ProtobufActionName::OpenSessionInTerminal as i32,
                 optional_payload: None,
             }),
             Action::ToggleMirrorResize => Ok(ProtobufAction {

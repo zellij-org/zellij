@@ -13935,7 +13935,7 @@ fn plugin_env_with_permissions(granted: &[PermissionType]) -> super::plugin_map:
 }
 
 fn session_pane_commands() -> Vec<(zellij_utils::data::PluginCommand, PermissionType)> {
-    use zellij_utils::data::{PaneId, PluginCommand, SessionWindowRequest};
+    use zellij_utils::data::{PaneId, PluginCommand, SessionTerminalRequest};
     let session_name = "other-session".to_owned();
     let pane_id = PaneId::Terminal(1);
     vec![
@@ -13953,7 +13953,7 @@ fn session_pane_commands() -> Vec<(zellij_utils::data::PluginCommand, Permission
             PermissionType::ChangeApplicationState,
         ),
         (
-            PluginCommand::OpenSessionWindow(SessionWindowRequest::existing(
+            PluginCommand::OpenSessionTerminal(SessionTerminalRequest::existing(
                 &session_name,
                 None,
                 true,

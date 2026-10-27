@@ -107,7 +107,7 @@ struct DesktopOffer {
 
 #[derive(Debug, Clone)]
 struct PendingWindow {
-    request: SessionWindowRequest,
+    request: SessionTerminalRequest,
     leave: bool,
     from_layout_list: bool,
 }
@@ -125,7 +125,7 @@ fn reminder_context(mode_info: &ModeInfo) -> desktop_integration::ReminderContex
     desktop_integration::ReminderContext {
         show_startup_tips: enabled(SettingKey::ShowStartupTips),
         show_release_notes: enabled(SettingKey::ShowReleaseNotes),
-        inside_desktop_window: mode_info.remote_client.is_none() && !web_client,
+        inside_desktop_terminal: mode_info.remote_client.is_none() && !web_client,
         web_client,
     }
 }
@@ -2360,8 +2360,8 @@ fn remote_window_warning_lines(remote: &str, leave: bool) -> Vec<String> {
     lines
 }
 
-fn run_window_request(request: SessionWindowRequest) {
-    request_session_window(request);
+fn run_window_request(request: SessionTerminalRequest) {
+    request_session_terminal(request);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2498,12 +2498,12 @@ impl State {
             OpenWay::DisconnectOthers => target.running,
         }
     }
-    fn window_request_for(&self, target: &OpenTarget) -> Result<SessionWindowRequest, String> {
+    fn window_request_for(&self, target: &OpenTarget) -> Result<SessionTerminalRequest, String> {
         match (target.name.as_deref(), target.exists, target.running) {
             (Some(name), true, true) => {
-                Ok(SessionWindowRequest::existing(name, target.pane, false))
+                Ok(SessionTerminalRequest::existing(name, target.pane, false))
             },
-            (Some(name), true, false) => Ok(SessionWindowRequest::existing(name, None, true)),
+            (Some(name), true, false) => Ok(SessionTerminalRequest::existing(name, None, true)),
             (name, _, _) => {
                 if let Some(name) = name {
                     if name.len() >= 108 {
@@ -2513,7 +2513,7 @@ impl State {
                         return Err("Session name cannot contain '/'".to_owned());
                     }
                 }
-                Ok(SessionWindowRequest::new_session(
+                Ok(SessionTerminalRequest::new_session(
                     name,
                     Some(self.default_layout_info()),
                     self.single_screen_state.new_session_folder.clone(),
@@ -2669,7 +2669,7 @@ impl State {
         } else {
             Some(typed.as_str())
         };
-        let request = SessionWindowRequest::new_session(
+        let request = SessionTerminalRequest::new_session(
             name,
             self.single_screen_state.layout_list.selected_layout_info(),
             self.single_screen_state.new_session_folder.clone(),
@@ -4153,7 +4153,7 @@ mod live_view_state_tests {
         let mut state = browser();
         state.remote_client = Some("from a terminal".to_owned());
         state.pending_remote_window = Some(PendingWindow {
-            request: SessionWindowRequest::existing("api", None, true),
+            request: SessionTerminalRequest::existing("api", None, true),
             leave: false,
             from_layout_list: false,
         });

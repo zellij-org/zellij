@@ -247,7 +247,7 @@ pub(crate) mod xdg {
              Name={name}\n\
              GenericName=Terminal Workspace\n\
              Comment=Manage Your Terminal Applications\n\
-             Exec={exec} window\n\
+             Exec={exec} terminal\n\
              TryExec={try_exec}\n\
              Icon={id}\n\
              Terminal=false\n\
@@ -263,15 +263,15 @@ pub(crate) mod xdg {
              \n\
              [Desktop Action inbox]\n\
              Name=Show Inbox\n\
-             Exec={exec} window --inbox\n\
+             Exec={exec} terminal --inbox\n\
              \n\
              [Desktop Action sessions]\n\
              Name=Show Sessions\n\
-             Exec={exec} window --sessions\n\
+             Exec={exec} terminal --sessions\n\
              \n\
              [Desktop Action new-window]\n\
              Name=New Window\n\
-             Exec={exec} window\n"
+             Exec={exec} terminal\n"
         )
     }
 
@@ -414,7 +414,7 @@ pub(crate) mod xdg {
             assert_eq!(value(&entry, "Name"), "Zellij");
             assert_eq!(value(&entry, "Terminal"), "false");
             assert_eq!(value(&entry, "Icon"), "dev.zellij.Zellij");
-            assert_eq!(value(&entry, "Exec"), "/opt/zellij/bin/zellij window");
+            assert_eq!(value(&entry, "Exec"), "/opt/zellij/bin/zellij terminal");
             assert_eq!(value(&entry, "TryExec"), "/opt/zellij/bin/zellij");
             assert_eq!(value(&entry, "Categories"), "System;TerminalEmulator;");
             assert_eq!(value(&entry, "X-TerminalArgExec"), "-e");
@@ -534,7 +534,7 @@ pub(crate) mod xdg {
             install_into(dir.path(), Path::new("/first/zellij")).unwrap();
             let installed = install_into(dir.path(), Path::new("/second/zellij")).unwrap();
             let entry = std::fs::read_to_string(&installed.entry).unwrap();
-            assert_eq!(value(&entry, "Exec"), "/second/zellij window");
+            assert_eq!(value(&entry, "Exec"), "/second/zellij terminal");
             assert_eq!(value(&entry, "TryExec"), "/second/zellij");
 
             assert_eq!(uninstall_from(dir.path()).unwrap().len(), 4);
@@ -572,14 +572,17 @@ pub(crate) mod xdg {
             };
             assert_eq!(
                 value(&section("inbox"), "Exec"),
-                "/opt/zellij window --inbox"
+                "/opt/zellij terminal --inbox"
             );
             assert_eq!(value(&section("inbox"), "Name"), "Show Inbox");
             assert_eq!(
                 value(&section("sessions"), "Exec"),
-                "/opt/zellij window --sessions"
+                "/opt/zellij terminal --sessions"
             );
-            assert_eq!(value(&section("new-window"), "Exec"), "/opt/zellij window");
+            assert_eq!(
+                value(&section("new-window"), "Exec"),
+                "/opt/zellij terminal"
+            );
         }
 
         #[test]
@@ -595,7 +598,7 @@ pub(crate) mod xdg {
         fn the_shipped_asset_is_the_packaged_entry_without_a_marker() {
             assert_eq!(SHIPPED_ASSET, render_packaged());
             assert!(!has_marker(SHIPPED_ASSET));
-            assert_eq!(value(SHIPPED_ASSET, "Exec"), "zellij window");
+            assert_eq!(value(SHIPPED_ASSET, "Exec"), "zellij terminal");
             assert_eq!(value(SHIPPED_ASSET, "TryExec"), "zellij");
         }
     }
@@ -613,7 +616,7 @@ pub(crate) mod start_menu {
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
     use crate::desktop_integration::com::set_string;
-    use crate::desktop_integration::window_command::WindowCommand;
+    use crate::desktop_integration::terminal_command::TerminalCommand;
 
     const DESCRIPTION: &str = "Manage Your Terminal Applications";
 
@@ -621,7 +624,7 @@ pub(crate) mod start_menu {
         dir.join(format!("{}.lnk", crate::distribution::display_name()))
     }
 
-    pub fn install_into(dir: &Path, command: &WindowCommand, start_in: &Path) -> Result<PathBuf> {
+    pub fn install_into(dir: &Path, command: &TerminalCommand, start_in: &Path) -> Result<PathBuf> {
         std::fs::create_dir_all(dir).with_context(|| format!("failed to create {:?}", dir))?;
         let path = shortcut_path(dir);
         unsafe {
@@ -694,9 +697,9 @@ pub(crate) mod start_menu {
             }
         }
 
-        fn launcher_in(dir: &Path) -> WindowCommand {
-            WindowCommand {
-                program: dir.join("zellij-window.exe"),
+        fn launcher_in(dir: &Path) -> TerminalCommand {
+            TerminalCommand {
+                program: dir.join("zellij-terminal.exe"),
                 arguments: "",
             }
         }
@@ -716,23 +719,23 @@ pub(crate) mod start_menu {
             assert_eq!(shortcut.arguments, "");
             assert_eq!(shortcut.start_in, home.to_string_lossy());
             assert_eq!(
-                shortcut.app_id, "zellij.window",
+                shortcut.app_id, "zellij.terminal",
                 "the shortcut and the window it opens must share one taskbar button"
             );
         }
 
         #[test]
-        fn without_a_launcher_the_shortcut_runs_the_window_verb() {
+        fn without_a_launcher_the_shortcut_runs_the_terminal_verb() {
             let _com = Com::initialize().unwrap();
             let dir = tempfile::TempDir::new().unwrap();
-            let command = WindowCommand {
+            let command = TerminalCommand {
                 program: dir.path().join("zellij.exe"),
-                arguments: "window",
+                arguments: "terminal",
             };
             let path = install_into(dir.path(), &command, dir.path()).unwrap();
             let shortcut = read(&path);
             assert_eq!(shortcut.target, command.program.to_string_lossy());
-            assert_eq!(shortcut.arguments, "window");
+            assert_eq!(shortcut.arguments, "terminal");
         }
 
         #[test]
@@ -747,7 +750,7 @@ pub(crate) mod start_menu {
             let path = install_into(dir.path(), &launcher_in(&second), dir.path()).unwrap();
             assert_eq!(
                 read(&path).target,
-                second.join("zellij-window.exe").to_string_lossy()
+                second.join("zellij-terminal.exe").to_string_lossy()
             );
 
             assert_eq!(uninstall_from(dir.path()).unwrap(), Some(path.clone()));

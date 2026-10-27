@@ -278,7 +278,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::HostTerminalThemeChanged { .. } => {
                 ClientInstruction::UnblockInputThread
             },
-            ServerToClientMsg::WindowSettingsChanged { .. } => {
+            ServerToClientMsg::TerminalSettingsChanged { .. } => {
                 ClientInstruction::UnblockInputThread
             },
             ServerToClientMsg::HostProgramStatus { status } => {
@@ -1177,8 +1177,8 @@ pub fn start_client(
     let reminders = zellij_utils::desktop_integration::ReminderContext {
         show_startup_tips: config_options.show_startup_tips.unwrap_or(true),
         show_release_notes: config_options.show_release_notes.unwrap_or(true),
-        inside_desktop_window: std::env::var_os(
-            zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY,
+        inside_desktop_terminal: std::env::var_os(
+            zellij_utils::input::cli_assets::DESKTOP_TERMINAL_ENV_KEY,
         )
         .is_some(),
         web_client: false,
@@ -1962,7 +1962,7 @@ fn exit_line_once(
 
 fn exit_line() -> String {
     let name = zellij_utils::distribution::name();
-    let mut line = format!("Zellij can also run as its own app: {} window\n", name);
+    let mut line = format!("Zellij can also run as its own app: {} terminal\n", name);
     if launcher_missing() {
         line.push_str(&format!(
             "Add it to your app menu with: {} setup --install-desktop-entry\n",

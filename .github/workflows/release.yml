@@ -171,7 +171,7 @@ jobs:
         id: make-artifact-windows
         run: |
           $asset_name = "zellij-${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-window.exe" -DestinationPath $asset_name
+          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-terminal.exe" -DestinationPath $asset_name
           echo "asset_name=$asset_name" >> $env:GITHUB_OUTPUT
 
       - name: Create checksum (Unix)
@@ -191,7 +191,7 @@ jobs:
         id: make-checksum-windows
         run: |
           $checksum_name = "zellij-${{ matrix.target }}.sha256sum"
-          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-window.exe") {
+          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-terminal.exe") {
             $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
             "$hash  $file"
           }
@@ -377,7 +377,7 @@ jobs:
         id: make-artifact-windows
         run: |
           $asset_name = "zellij-no-web-${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-window.exe" -DestinationPath $asset_name
+          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-terminal.exe" -DestinationPath $asset_name
           echo "asset_name=$asset_name" >> $env:GITHUB_OUTPUT
 
       - name: Create checksum (Unix)
@@ -397,7 +397,7 @@ jobs:
         id: make-checksum-windows
         run: |
           $checksum_name = "zellij-no-web-${{ matrix.target }}.sha256sum"
-          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-window.exe") {
+          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-terminal.exe") {
             $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
             "$hash  $file"
           }

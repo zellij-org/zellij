@@ -4,8 +4,8 @@ use zellij_tile::prelude::*;
 pub enum Category {
     Appearance,
     Themes,
-    TerminalWindow,
-    WindowColours,
+    Terminal,
+    TerminalColours,
     PaneFrames,
     Keys,
     ContextMenu,
@@ -28,8 +28,8 @@ pub const CATEGORIES: [Category; 16] = [
     Category::MouseBindings,
     Category::ContextMenu,
     Category::Themes,
-    Category::TerminalWindow,
-    Category::WindowColours,
+    Category::Terminal,
+    Category::TerminalColours,
     Category::PanesAndLayouts,
     Category::ScrollbackAndEditor,
     Category::Sessions,
@@ -44,8 +44,8 @@ impl Category {
         match self {
             Category::Appearance => "Appearance",
             Category::Themes => "Themes",
-            Category::TerminalWindow => "Terminal window",
-            Category::WindowColours => "Window colours",
+            Category::Terminal => "Terminal",
+            Category::TerminalColours => "Terminal colours",
             Category::PaneFrames => "Pane frames and borders",
             Category::Keys => "Keys",
             Category::ContextMenu => "Right-click menu",
@@ -668,7 +668,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionTrayIcon => info(
             "Tray icon",
-            TerminalWindow,
+            Terminal,
             "Show the desktop app's icon in the tray or menu bar (sessions and notifications continue when hidden)",
             Toggle,
             "true",
@@ -676,7 +676,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionDesktopNotifications => info(
             "Desktop notifications",
-            TerminalWindow,
+            Terminal,
             "Which inbox items the desktop app shows as desktop notifications",
             Choice(&[
                 "needs_you",
@@ -689,7 +689,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionNotificationDetails => info(
             "Notification details",
-            TerminalWindow,
+            Terminal,
             "Show program and command text in desktop notifications",
             Toggle,
             "true",
@@ -1135,17 +1135,17 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "/",
             Everyone,
         ),
-        SettingKey::WindowFont => info(
+        SettingKey::TerminalFont => info(
             "Font",
-            TerminalWindow,
+            Terminal,
             "Font family, chosen from the monospaced fonts installed on this computer",
             FontFamily,
             "bundled font",
             OnlyYou,
         ),
-        SettingKey::WindowFontSize => info(
+        SettingKey::TerminalFontSize => info(
             "Font size",
-            TerminalWindow,
+            Terminal,
             "Font size in points",
             Decimal {
                 min: 10,
@@ -1156,9 +1156,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "12",
             OnlyYou,
         ),
-        SettingKey::WindowFontWeight => info(
+        SettingKey::TerminalFontWeight => info(
             "Font weight",
-            TerminalWindow,
+            Terminal,
             "Weight of regular text, from 100 (thin) to 900 (black); the bundled font has only regular and bold, so it turns bold above 500",
             Number {
                 min: 100,
@@ -1168,73 +1168,73 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "400",
             OnlyYou,
         ),
-        SettingKey::WindowSystemFonts => info(
+        SettingKey::TerminalSystemFonts => info(
             "System fonts",
-            TerminalWindow,
+            Terminal,
             "Use fonts installed on this computer as fallbacks",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowLigatures => info(
+        SettingKey::TerminalLigatures => info(
             "Ligatures",
-            TerminalWindow,
+            Terminal,
             "Join character sequences into ligatures when the font has them",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowFontFeatures => info(
+        SettingKey::TerminalFontFeatures => info(
             "Font features",
-            TerminalWindow,
+            Terminal,
             "OpenType features separated by commas, eg. ss01, -calt",
             Text(TextCheck::WordList),
             "none",
             OnlyYou,
         ),
-        SettingKey::WindowCursorStyle => info(
+        SettingKey::TerminalCursorStyle => info(
             "Cursor style",
-            TerminalWindow,
+            Terminal,
             "Cursor shape; not set lets programs choose",
             OptionalChoice(&["block", "bar", "underline"]),
             "not set",
             OnlyYou,
         ),
-        SettingKey::WindowCursorBlink => info(
+        SettingKey::TerminalCursorBlink => info(
             "Cursor blink",
-            TerminalWindow,
+            Terminal,
             "Blink the cursor; not set lets programs choose",
             OptionalToggle,
             "not set",
             OnlyYou,
         ),
-        SettingKey::WindowCursorUnfocusedHollow => info(
+        SettingKey::TerminalCursorUnfocusedHollow => info(
             "Hollow cursor when unfocused",
-            TerminalWindow,
+            Terminal,
             "Draw the cursor as an outline while the window is not focused",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowTerminalRequests => info(
+        SettingKey::TerminalTerminalRequests => info(
             "Commands from other apps",
-            TerminalWindow,
-            "Where a command opens when another app uses Zellij as its terminal (zellij window -e)",
+            Terminal,
+            "Where a command opens when another app uses Zellij as its terminal (zellij terminal -e)",
             Choice(&["new_session", "existing_session"]),
             "new_session",
             OnlyYou,
         ),
-        SettingKey::WindowStartupMode => info(
+        SettingKey::TerminalStartupMode => info(
             "Startup mode",
-            TerminalWindow,
+            Terminal,
             "How the window opens",
             Choice(&["remember", "windowed", "maximized", "fullscreen"]),
             "remember",
             OnlyYou,
         ),
-        SettingKey::WindowInitialColumns => info(
+        SettingKey::TerminalInitialColumns => info(
             "Initial columns",
-            TerminalWindow,
+            Terminal,
             "Width of a new window in characters; 0 fits the screen",
             OptionalNumber {
                 min: 2,
@@ -1244,9 +1244,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0 (fit the screen)",
             OnlyYou,
         ),
-        SettingKey::WindowInitialRows => info(
+        SettingKey::TerminalInitialRows => info(
             "Initial rows",
-            TerminalWindow,
+            Terminal,
             "Height of a new window in lines; 0 fits the screen",
             OptionalNumber {
                 min: 2,
@@ -1256,9 +1256,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0 (fit the screen)",
             OnlyYou,
         ),
-        SettingKey::WindowOpacity => info(
+        SettingKey::TerminalOpacity => info(
             "Opacity",
-            TerminalWindow,
+            Terminal,
             "Window opacity from 0 (clear) to 1 (solid)",
             Decimal {
                 min: 0,
@@ -1269,25 +1269,25 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "1",
             OnlyYou,
         ),
-        SettingKey::WindowOpacityMode => info(
+        SettingKey::TerminalOpacityMode => info(
             "Opacity applies to",
-            TerminalWindow,
+            Terminal,
             "Make only the background see-through, or everything",
             Choice(&["background", "everything"]),
             "background",
             OnlyYou,
         ),
-        SettingKey::WindowBlur => info(
+        SettingKey::TerminalBlur => info(
             "Blur behind",
-            TerminalWindow,
+            Terminal,
             "Blur what shows through a see-through window",
             Toggle,
             "false",
             OnlyYou,
         ),
-        SettingKey::WindowPadding => info(
+        SettingKey::TerminalPadding => info(
             "Padding",
-            TerminalWindow,
+            Terminal,
             "Space around the text on all sides, in pixels",
             Decimal {
                 min: 0,
@@ -1298,9 +1298,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingTop => info(
+        SettingKey::TerminalPaddingTop => info(
             "Padding top",
-            TerminalWindow,
+            Terminal,
             "Space above the text, in pixels",
             Decimal {
                 min: 0,
@@ -1311,9 +1311,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "same as padding",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingRight => info(
+        SettingKey::TerminalPaddingRight => info(
             "Padding right",
-            TerminalWindow,
+            Terminal,
             "Space right of the text, in pixels",
             Decimal {
                 min: 0,
@@ -1324,9 +1324,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "same as padding",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingBottom => info(
+        SettingKey::TerminalPaddingBottom => info(
             "Padding bottom",
-            TerminalWindow,
+            Terminal,
             "Space below the text, in pixels",
             Decimal {
                 min: 0,
@@ -1337,9 +1337,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "same as padding",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingLeft => info(
+        SettingKey::TerminalPaddingLeft => info(
             "Padding left",
-            TerminalWindow,
+            Terminal,
             "Space left of the text, in pixels",
             Decimal {
                 min: 0,
@@ -1350,25 +1350,25 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "same as padding",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingBalance => info(
+        SettingKey::TerminalPaddingBalance => info(
             "Balance padding",
-            TerminalWindow,
+            Terminal,
             "Share leftover space evenly around the text",
             Toggle,
             "false",
             OnlyYou,
         ),
-        SettingKey::WindowPaddingColor => info(
+        SettingKey::TerminalPaddingColor => info(
             "Padding colour",
-            TerminalWindow,
+            Terminal,
             "Fill padding with the background, or extend the edge cells",
             Choice(&["background", "extend"]),
             "background",
             OnlyYou,
         ),
-        SettingKey::WindowLineHeight => info(
+        SettingKey::TerminalLineHeight => info(
             "Line height",
-            TerminalWindow,
+            Terminal,
             "Line height as a multiple of the font's",
             Decimal {
                 min: 50,
@@ -1379,9 +1379,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "1",
             OnlyYou,
         ),
-        SettingKey::WindowCellWidth => info(
+        SettingKey::TerminalCellWidth => info(
             "Cell width",
-            TerminalWindow,
+            Terminal,
             "Character width as a multiple of the font's",
             Decimal {
                 min: 50,
@@ -1392,9 +1392,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "1",
             OnlyYou,
         ),
-        SettingKey::WindowBaselineOffset => info(
+        SettingKey::TerminalBaselineOffset => info(
             "Baseline offset",
-            TerminalWindow,
+            Terminal,
             "Move text up or down, in pixels",
             Number {
                 min: -64,
@@ -1404,9 +1404,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0",
             OnlyYou,
         ),
-        SettingKey::WindowUnderlineOffset => info(
+        SettingKey::TerminalUnderlineOffset => info(
             "Underline offset",
-            TerminalWindow,
+            Terminal,
             "Move underlines up or down, in pixels",
             Number {
                 min: -64,
@@ -1416,9 +1416,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0",
             OnlyYou,
         ),
-        SettingKey::WindowUnderlineThickness => info(
+        SettingKey::TerminalUnderlineThickness => info(
             "Underline thickness",
-            TerminalWindow,
+            Terminal,
             "Make underlines thicker or thinner, in pixels",
             Number {
                 min: -64,
@@ -1428,9 +1428,9 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "0",
             OnlyYou,
         ),
-        SettingKey::WindowMinimumContrast => info(
+        SettingKey::TerminalMinimumContrast => info(
             "Minimum contrast",
-            TerminalWindow,
+            Terminal,
             "Lighten or darken text to reach this contrast, from 1 (off) to 21",
             Text(TextCheck::Decimal {
                 min_milli: 1_000,
@@ -1439,17 +1439,17 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "1",
             OnlyYou,
         ),
-        SettingKey::WindowSmoothScrolling => info(
+        SettingKey::TerminalSmoothScrolling => info(
             "Smooth scrolling",
-            TerminalWindow,
+            Terminal,
             "Animate scrolling",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowScrollAnimationDuration => info(
+        SettingKey::TerminalScrollAnimationDuration => info(
             "Scroll animation (ms)",
-            TerminalWindow,
+            Terminal,
             "Length of the scroll animation in milliseconds",
             Number {
                 min: 1,
@@ -1459,17 +1459,17 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "100",
             OnlyYou,
         ),
-        SettingKey::WindowScrollMomentum => info(
+        SettingKey::TerminalScrollMomentum => info(
             "Scroll momentum",
-            TerminalWindow,
+            Terminal,
             "Keep scrolling briefly after a touchpad flick",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowScrollMomentumFriction => info(
+        SettingKey::TerminalScrollMomentumFriction => info(
             "Momentum friction",
-            TerminalWindow,
+            Terminal,
             "How quickly momentum scrolling slows down, from 0.5 to 10",
             Text(TextCheck::Decimal {
                 min_milli: 500,
@@ -1478,265 +1478,265 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "2",
             OnlyYou,
         ),
-        SettingKey::WindowBell => info(
+        SettingKey::TerminalBell => info(
             "Bell",
-            TerminalWindow,
+            Terminal,
             "What the window does when a program rings the bell",
             Choice(&["visual", "audible", "both", "none"]),
             "visual",
             OnlyYou,
         ),
-        SettingKey::WindowOpenLinks => info(
+        SettingKey::TerminalOpenLinks => info(
             "Open links",
-            TerminalWindow,
+            Terminal,
             "Open links with a click (hold Shift when the pane's program uses the mouse)",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowOpenLinksWithShift => info(
+        SettingKey::TerminalOpenLinksWithShift => info(
             "Open links with Shift+click",
-            TerminalWindow,
+            Terminal,
             "Shift+click opens links in every pane",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowShiftDragSelects => info(
+        SettingKey::TerminalShiftDragSelects => info(
             "Shift+drag selects",
-            TerminalWindow,
+            Terminal,
             "Shift+drag marks any text in the window, including bars and frames, for the copy keys",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowReuseSessionWindows => info(
+        SettingKey::TerminalReuseSessionWindows => info(
             "One window per session",
-            TerminalWindow,
+            Terminal,
             "Switching to a session that already has a window brings that window forward and closes this one",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowMiddleClickPaste => info(
+        SettingKey::TerminalMiddleClickPaste => info(
             "Middle-click paste",
-            TerminalWindow,
+            Terminal,
             "Paste with the middle mouse button",
             Toggle,
             "true",
             OnlyYou,
         ),
-        SettingKey::WindowHidePointerWhileTyping => info(
+        SettingKey::TerminalHidePointerWhileTyping => info(
             "Hide pointer while typing",
-            TerminalWindow,
+            Terminal,
             "Hide the mouse pointer until it moves again",
             Toggle,
             "false",
             OnlyYou,
         ),
-        SettingKey::WindowMacosOptionAsAlt => info(
+        SettingKey::TerminalMacosOptionAsAlt => info(
             "Option as Alt (macOS)",
-            TerminalWindow,
+            Terminal,
             "Which Option keys act as Alt",
             Choice(&["left", "right", "both", "none"]),
             "left",
             OnlyYou,
         ),
-        SettingKey::WindowPasteKeys => info(
+        SettingKey::TerminalPasteKeys => info(
             "Paste keys",
-            TerminalWindow,
+            Terminal,
             "Keys that paste, separated by commas, eg. Ctrl Shift v, Shift Insert",
             Text(TextCheck::KeyList),
             "Ctrl Shift v, Shift Insert",
             OnlyYou,
         ),
-        SettingKey::WindowCopyKeys => info(
+        SettingKey::TerminalCopyKeys => info(
             "Copy keys",
-            TerminalWindow,
+            Terminal,
             "Keys that copy the Shift+drag selection, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl Shift c",
             OnlyYou,
         ),
-        SettingKey::WindowZoomInKeys => info(
+        SettingKey::TerminalZoomInKeys => info(
             "Zoom in keys",
-            TerminalWindow,
+            Terminal,
             "Keys that make text larger, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl =, Ctrl +",
             OnlyYou,
         ),
-        SettingKey::WindowZoomOutKeys => info(
+        SettingKey::TerminalZoomOutKeys => info(
             "Zoom out keys",
-            TerminalWindow,
+            Terminal,
             "Keys that make text smaller, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl -",
             OnlyYou,
         ),
-        SettingKey::WindowZoomResetKeys => info(
+        SettingKey::TerminalZoomResetKeys => info(
             "Zoom reset keys",
-            TerminalWindow,
+            Terminal,
             "Keys that reset the text size, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl 0",
             OnlyYou,
         ),
-        SettingKey::WindowFullscreenKeys => info(
+        SettingKey::TerminalFullscreenKeys => info(
             "Fullscreen keys",
-            TerminalWindow,
+            Terminal,
             "Keys that toggle fullscreen, separated by commas",
             Text(TextCheck::KeyList),
             "F11",
             OnlyYou,
         ),
-        SettingKey::WindowColorForeground => info(
+        SettingKey::TerminalColorForeground => info(
             "Foreground",
-            WindowColours,
+            TerminalColours,
             "Text colour; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBackground => info(
+        SettingKey::TerminalColorBackground => info(
             "Background",
-            WindowColours,
+            TerminalColours,
             "Background colour; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorCursor => info(
+        SettingKey::TerminalColorCursor => info(
             "Cursor",
-            WindowColours,
+            TerminalColours,
             "Cursor colour; not set uses the text colour",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBlack => info(
+        SettingKey::TerminalColorBlack => info(
             "Black",
-            WindowColours,
+            TerminalColours,
             "Terminal colour black; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorRed => info(
+        SettingKey::TerminalColorRed => info(
             "Red",
-            WindowColours,
+            TerminalColours,
             "Terminal colour red; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorGreen => info(
+        SettingKey::TerminalColorGreen => info(
             "Green",
-            WindowColours,
+            TerminalColours,
             "Terminal colour green; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorYellow => info(
+        SettingKey::TerminalColorYellow => info(
             "Yellow",
-            WindowColours,
+            TerminalColours,
             "Terminal colour yellow; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBlue => info(
+        SettingKey::TerminalColorBlue => info(
             "Blue",
-            WindowColours,
+            TerminalColours,
             "Terminal colour blue; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorMagenta => info(
+        SettingKey::TerminalColorMagenta => info(
             "Magenta",
-            WindowColours,
+            TerminalColours,
             "Terminal colour magenta; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorCyan => info(
+        SettingKey::TerminalColorCyan => info(
             "Cyan",
-            WindowColours,
+            TerminalColours,
             "Terminal colour cyan; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorWhite => info(
+        SettingKey::TerminalColorWhite => info(
             "White",
-            WindowColours,
+            TerminalColours,
             "Terminal colour white; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightBlack => info(
+        SettingKey::TerminalColorBrightBlack => info(
             "Bright black",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright black; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightRed => info(
+        SettingKey::TerminalColorBrightRed => info(
             "Bright red",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright red; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightGreen => info(
+        SettingKey::TerminalColorBrightGreen => info(
             "Bright green",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright green; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightYellow => info(
+        SettingKey::TerminalColorBrightYellow => info(
             "Bright yellow",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright yellow; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightBlue => info(
+        SettingKey::TerminalColorBrightBlue => info(
             "Bright blue",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright blue; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightMagenta => info(
+        SettingKey::TerminalColorBrightMagenta => info(
             "Bright magenta",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright magenta; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightCyan => info(
+        SettingKey::TerminalColorBrightCyan => info(
             "Bright cyan",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright cyan; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
-        SettingKey::WindowColorBrightWhite => info(
+        SettingKey::TerminalColorBrightWhite => info(
             "Bright white",
-            WindowColours,
+            TerminalColours,
             "Terminal colour bright white; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
@@ -1852,55 +1852,66 @@ pub fn section(key: SettingKey) -> &'static str {
         | WebClientCursorInactiveStyle
         | WebClientMacOptionIsMeta
         | WebClientBaseUrl => "Browser client",
-        WindowFont | WindowFontSize | WindowFontWeight | WindowSystemFonts | WindowLigatures
-        | WindowFontFeatures => "Font",
-        WindowCursorStyle | WindowCursorBlink | WindowCursorUnfocusedHollow => "Cursor",
-        WindowStartupMode
-        | WindowTerminalRequests
-        | WindowInitialColumns
-        | WindowInitialRows
-        | WindowOpacity
-        | WindowOpacityMode
-        | WindowBlur => "Window",
-        WindowPadding | WindowPaddingTop | WindowPaddingRight | WindowPaddingBottom
-        | WindowPaddingLeft | WindowPaddingBalance | WindowPaddingColor => "Padding",
-        WindowLineHeight
-        | WindowCellWidth
-        | WindowBaselineOffset
-        | WindowUnderlineOffset
-        | WindowUnderlineThickness
-        | WindowMinimumContrast => "Spacing",
-        WindowSmoothScrolling
-        | WindowScrollAnimationDuration
-        | WindowScrollMomentum
-        | WindowScrollMomentumFriction => "Scrolling",
-        WindowBell
-        | WindowOpenLinks
-        | WindowOpenLinksWithShift
-        | WindowShiftDragSelects
-        | WindowReuseSessionWindows
-        | WindowMiddleClickPaste
-        | WindowHidePointerWhileTyping
-        | WindowMacosOptionAsAlt => "Window behaviour",
-        WindowPasteKeys | WindowCopyKeys | WindowZoomInKeys | WindowZoomOutKeys
-        | WindowZoomResetKeys | WindowFullscreenKeys => "Shortcuts",
-        WindowColorForeground | WindowColorBackground | WindowColorCursor => "Text and cursor",
-        WindowColorBlack
-        | WindowColorRed
-        | WindowColorGreen
-        | WindowColorYellow
-        | WindowColorBlue
-        | WindowColorMagenta
-        | WindowColorCyan
-        | WindowColorWhite
-        | WindowColorBrightBlack
-        | WindowColorBrightRed
-        | WindowColorBrightGreen
-        | WindowColorBrightYellow
-        | WindowColorBrightBlue
-        | WindowColorBrightMagenta
-        | WindowColorBrightCyan
-        | WindowColorBrightWhite => "Terminal colours",
+        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
+        | TerminalLigatures | TerminalFontFeatures => "Font",
+        TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => "Cursor",
+        TerminalStartupMode
+        | TerminalTerminalRequests
+        | TerminalInitialColumns
+        | TerminalInitialRows
+        | TerminalOpacity
+        | TerminalOpacityMode
+        | TerminalBlur => "Window",
+        TerminalPadding
+        | TerminalPaddingTop
+        | TerminalPaddingRight
+        | TerminalPaddingBottom
+        | TerminalPaddingLeft
+        | TerminalPaddingBalance
+        | TerminalPaddingColor => "Padding",
+        TerminalLineHeight
+        | TerminalCellWidth
+        | TerminalBaselineOffset
+        | TerminalUnderlineOffset
+        | TerminalUnderlineThickness
+        | TerminalMinimumContrast => "Spacing",
+        TerminalSmoothScrolling
+        | TerminalScrollAnimationDuration
+        | TerminalScrollMomentum
+        | TerminalScrollMomentumFriction => "Scrolling",
+        TerminalBell
+        | TerminalOpenLinks
+        | TerminalOpenLinksWithShift
+        | TerminalShiftDragSelects
+        | TerminalReuseSessionWindows
+        | TerminalMiddleClickPaste
+        | TerminalHidePointerWhileTyping
+        | TerminalMacosOptionAsAlt => "Window behaviour",
+        TerminalPasteKeys
+        | TerminalCopyKeys
+        | TerminalZoomInKeys
+        | TerminalZoomOutKeys
+        | TerminalZoomResetKeys
+        | TerminalFullscreenKeys => "Shortcuts",
+        TerminalColorForeground | TerminalColorBackground | TerminalColorCursor => {
+            "Text and cursor"
+        },
+        TerminalColorBlack
+        | TerminalColorRed
+        | TerminalColorGreen
+        | TerminalColorYellow
+        | TerminalColorBlue
+        | TerminalColorMagenta
+        | TerminalColorCyan
+        | TerminalColorWhite
+        | TerminalColorBrightBlack
+        | TerminalColorBrightRed
+        | TerminalColorBrightGreen
+        | TerminalColorBrightYellow
+        | TerminalColorBrightBlue
+        | TerminalColorBrightMagenta
+        | TerminalColorBrightCyan
+        | TerminalColorBrightWhite => "Terminal colours",
         ScrollBufferSize
         | SupportKittyKeyboardProtocol
         | SupportKittyGraphicsProtocol
@@ -1957,10 +1968,10 @@ pub fn settings_in(category: Category) -> Vec<SettingKey> {
 
 pub fn inherits_from(key: SettingKey) -> Option<SettingKey> {
     match key {
-        SettingKey::WindowPaddingTop
-        | SettingKey::WindowPaddingRight
-        | SettingKey::WindowPaddingBottom
-        | SettingKey::WindowPaddingLeft => Some(SettingKey::WindowPadding),
+        SettingKey::TerminalPaddingTop
+        | SettingKey::TerminalPaddingRight
+        | SettingKey::TerminalPaddingBottom
+        | SettingKey::TerminalPaddingLeft => Some(SettingKey::TerminalPadding),
         _ => None,
     }
 }
@@ -2250,7 +2261,10 @@ mod tests {
 
     #[test]
     fn line_height_and_cell_width_step_by_five_hundredths() {
-        for key in [SettingKey::WindowLineHeight, SettingKey::WindowCellWidth] {
+        for key in [
+            SettingKey::TerminalLineHeight,
+            SettingKey::TerminalCellWidth,
+        ] {
             match describe(key).kind {
                 SettingKind::Decimal {
                     min,
@@ -2266,7 +2280,7 @@ mod tests {
             }
         }
         assert_eq!(
-            describe(SettingKey::WindowFont).kind,
+            describe(SettingKey::TerminalFont).kind,
             SettingKind::FontFamily
         );
     }
@@ -2274,14 +2288,14 @@ mod tests {
     #[test]
     fn whole_window_numbers_and_opacity_use_a_stepper() {
         assert!(matches!(
-            describe(SettingKey::WindowFontSize).kind,
+            describe(SettingKey::TerminalFontSize).kind,
             SettingKind::Decimal { .. }
         ));
         assert!(matches!(
-            describe(SettingKey::WindowInitialColumns).kind,
+            describe(SettingKey::TerminalInitialColumns).kind,
             SettingKind::OptionalNumber { .. }
         ));
-        match describe(SettingKey::WindowOpacity).kind {
+        match describe(SettingKey::TerminalOpacity).kind {
             SettingKind::Decimal { step, decimals, .. } => {
                 assert_eq!(format_scaled(step, decimals), "0.1")
             },
@@ -2290,18 +2304,18 @@ mod tests {
     }
 
     #[test]
-    fn window_values_are_written_inside_the_window_block() {
+    fn terminal_values_are_written_inside_the_terminal_block() {
         assert_eq!(
-            kdl_for(SettingKey::WindowOpacity, "0.85"),
-            "window {\n    opacity 0.85\n}"
+            kdl_for(SettingKey::TerminalOpacity, "0.85"),
+            "terminal {\n    opacity 0.85\n}"
         );
         assert_eq!(
-            kdl_for(SettingKey::WindowPasteKeys, "Ctrl Shift v, Shift Insert"),
-            "window {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}"
+            kdl_for(SettingKey::TerminalPasteKeys, "Ctrl Shift v, Shift Insert"),
+            "terminal {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}"
         );
         assert_eq!(
-            kdl_for(SettingKey::WindowColorRed, "#ff0000"),
-            "window {\n    theme {\n        red \"#ff0000\"\n    }\n}"
+            kdl_for(SettingKey::TerminalColorRed, "#ff0000"),
+            "terminal {\n    theme {\n        red \"#ff0000\"\n    }\n}"
         );
     }
 

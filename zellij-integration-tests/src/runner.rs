@@ -581,8 +581,10 @@ impl TestClient {
         self.fake_client_handle.received_server_messages()
     }
 
-    pub fn received_window_settings(&self) -> Vec<zellij_utils::input::window::WindowSettings> {
-        self.fake_client_handle.received_window_settings()
+    pub fn received_terminal_settings(
+        &self,
+    ) -> Vec<zellij_utils::input::terminal::TerminalSettings> {
+        self.fake_client_handle.received_terminal_settings()
     }
 
     pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
@@ -823,16 +825,16 @@ impl TestSession {
         self.main_client.received_server_messages()
     }
 
-    pub fn wait_for_window_settings(
+    pub fn wait_for_terminal_settings(
         &self,
         what: &str,
-        predicate: impl Fn(&zellij_utils::input::window::WindowSettings) -> bool,
-    ) -> zellij_utils::input::window::WindowSettings {
+        predicate: impl Fn(&zellij_utils::input::terminal::TerminalSettings) -> bool,
+    ) -> zellij_utils::input::terminal::TerminalSettings {
         let deadline = std::time::Instant::now() + crate::default_timeout();
         loop {
             if let Some(found) = self
                 .main_client
-                .received_window_settings()
+                .received_terminal_settings()
                 .into_iter()
                 .rev()
                 .find(|settings| predicate(settings))

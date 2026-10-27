@@ -26,7 +26,7 @@ message ServerToClientMsg {
     MobileStateMsg mobile_state = 19;
     RenderFrameMsg render_frame = 20;
     HostThemeModeMsg host_theme_mode = 21;
-    WindowSettingsMsg window_settings = 22;
+    TerminalSettingsMsg terminal_settings = 22;
     HostProgramStatusMsg host_program_status = 23;
     SessionAttentionMsg session_attention = 24;
     SessionPreviewMsg session_preview = 25;
@@ -112,7 +112,7 @@ message ConfigFileUpdatedMsg {
   // Empty message
 }
 
-message WindowSettingsMsg {
+message TerminalSettingsMsg {
   string settings_json = 1;
 }
 

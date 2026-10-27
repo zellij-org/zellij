@@ -121,7 +121,7 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
                 extra_artifacts: &[],
             },
             WorkspaceMember {
-                crate_name: "zellij-window",
+                crate_name: "zellij-terminal",
                 build: false,
                 extra_artifacts: &[],
             },

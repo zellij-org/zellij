@@ -409,7 +409,7 @@ pub mod plugin_command {
         #[prost(message, tag="215")]
         SendKeyToSessionPanePayload(super::SendKeyToSessionPanePayload),
         #[prost(message, tag="216")]
-        OpenSessionWindowPayload(super::OpenSessionWindowPayload),
+        OpenSessionTerminalPayload(super::OpenSessionTerminalPayload),
         #[prost(string, tag="217")]
         DesktopIntegrationPayload(::prost::alloc::string::String),
         #[prost(message, tag="222")]
@@ -464,7 +464,7 @@ pub struct MarkAllSeenPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct OpenSessionWindowPayload {
+pub struct OpenSessionTerminalPayload {
     #[prost(string, optional, tag="1")]
     pub session_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="2")]
@@ -2915,7 +2915,7 @@ pub enum CommandName {
     ToggleSessionPaneIgnoreOutput = 270,
     ToggleSessionPaneWatch = 271,
     FocusSessionPane = 272,
-    OpenSessionWindow = 273,
+    OpenSessionTerminal = 273,
     DesktopIntegration = 274,
     SetLiveView = 279,
     SetLiveViewInput = 280,
@@ -3177,7 +3177,7 @@ impl CommandName {
             CommandName::ToggleSessionPaneIgnoreOutput => "ToggleSessionPaneIgnoreOutput",
             CommandName::ToggleSessionPaneWatch => "ToggleSessionPaneWatch",
             CommandName::FocusSessionPane => "FocusSessionPane",
-            CommandName::OpenSessionWindow => "OpenSessionWindow",
+            CommandName::OpenSessionTerminal => "OpenSessionTerminal",
             CommandName::DesktopIntegration => "DesktopIntegration",
             CommandName::SetLiveView => "SetLiveView",
             CommandName::SetLiveViewInput => "SetLiveViewInput",
@@ -3436,7 +3436,7 @@ impl CommandName {
             "ToggleSessionPaneIgnoreOutput" => Some(Self::ToggleSessionPaneIgnoreOutput),
             "ToggleSessionPaneWatch" => Some(Self::ToggleSessionPaneWatch),
             "FocusSessionPane" => Some(Self::FocusSessionPane),
-            "OpenSessionWindow" => Some(Self::OpenSessionWindow),
+            "OpenSessionTerminal" => Some(Self::OpenSessionTerminal),
             "DesktopIntegration" => Some(Self::DesktopIntegration),
             "SetLiveView" => Some(Self::SetLiveView),
             "SetLiveViewInput" => Some(Self::SetLiveViewInput),

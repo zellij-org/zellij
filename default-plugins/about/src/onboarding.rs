@@ -20,7 +20,7 @@ pub const HOME_MANAGER_NOTE: &str =
 #[derive(Debug, Clone, Default)]
 pub struct DesktopFacts {
     pub launcher_installable: bool,
-    pub in_desktop_window: bool,
+    pub in_desktop_terminal: bool,
     pub platform: Platform,
     pub session_name: Option<String>,
 }
@@ -77,7 +77,7 @@ impl Page {
     pub fn new_desktop_app(facts: Rc<RefCell<DesktopFacts>>) -> Page {
         let facts = facts.borrow().clone();
         let mut keys = vec![];
-        if !facts.in_desktop_window {
+        if !facts.in_desktop_terminal {
             keys.push(key_line("<w>", "open this session in a window"));
         }
         if facts.launcher_installable {
@@ -88,7 +88,7 @@ impl Page {
             "Setup Zellij: launcher, default terminal and more",
         ));
         let mut help = String::from("Help:");
-        if !facts.in_desktop_window {
+        if !facts.in_desktop_terminal {
             help.push_str(" <w> - Open in a window,");
         }
         if facts.launcher_installable {
@@ -106,10 +106,10 @@ impl Page {
             .with_paragraph(vec![
                 styled(
                     Text::from(format!(
-                        "Start it with `zellij window`, from the app menu, or with {} in a window.",
+                        "Start it with `zellij terminal`, from the app menu, or with {} in a window.",
                         new_window_keys(facts.platform)
                     ))
-                    .color_substring(3, "zellij window")
+                    .color_substring(3, "zellij terminal")
                     .color_substring(3, new_window_keys(facts.platform)),
                 ),
                 line(platform_shortcuts(facts.platform)),
@@ -202,7 +202,7 @@ impl Page {
         let title = if only_missing {
             "Something is missing on this desktop"
         } else {
-            "Welcome to the Zellij window"
+            "Welcome to the Zellij terminal"
         };
         let mut lines = vec![];
         for text in window_welcome_points(only_missing) {
@@ -272,8 +272,8 @@ impl Page {
             DESKTOP_TIP_INDEX,
             vec![
                 styled(
-                    Text::from("Zellij can run as its own app: zellij window")
-                        .color_substring(3, "zellij window"),
+                    Text::from("Zellij can run as its own app: zellij terminal")
+                        .color_substring(3, "zellij terminal"),
                 ),
                 line("It has a tray icon and desktop notifications, and closing a window keeps"),
                 line("its session running. Its launcher's right-click menu has Show Inbox and"),

@@ -108,12 +108,12 @@
             KeyPath="yes" />
     </Component>
 
-    <!-- zellij-window.exe opens the window without a console; it starts zellij.exe next to it -->
+    <!-- zellij-terminal.exe opens the window without a console; it starts zellij.exe next to it -->
     <Component Id="launcher"
                Directory="APPLICATIONFOLDER"
                Guid="CE50A9CD-B208-4B0A-BFAD-9DC12A0399B5">
-      <File Id="zellij_window_exe"
-            Source="target\release\zellij-window.exe"
+      <File Id="zellij_terminal_exe"
+            Source="target\release\zellij-terminal.exe"
             KeyPath="yes" />
     </Component>
 
@@ -129,8 +129,8 @@
       <Shortcut Id="zellij_start_menu_shortcut"
                 Name="Zellij"
                 Description="Manage Your Terminal Applications"
-                Target="[APPLICATIONFOLDER]zellij-window.exe">
-        <ShortcutProperty Key="System.AppUserModel.ID" Value="zellij.window" />
+                Target="[APPLICATIONFOLDER]zellij-terminal.exe">
+        <ShortcutProperty Key="System.AppUserModel.ID" Value="zellij.terminal" />
       </Shortcut>
       <RegistryValue Root="HKMU"
                      Key="Software\Zellij"
@@ -141,7 +141,7 @@
     </Component>
 
     <!-- The window registers its toast identity at run time, per user
-         (HKCU\Software\Classes\AppUserModelId\zellij.window). Remove it on uninstall for the
+         (HKCU\Software\Classes\AppUserModelId\zellij.terminal). Remove it on uninstall for the
          user who uninstalls. The key path is a per-user marker, as per-user data needs. -->
     <Component Id="toast_identity_cleanup"
                Directory="APPLICATIONFOLDER"
@@ -153,7 +153,7 @@
                      Value="1"
                      KeyPath="yes" />
       <RemoveRegistryKey Root="HKCU"
-                         Key="Software\Classes\AppUserModelId\zellij.window"
+                         Key="Software\Classes\AppUserModelId\zellij.terminal"
                          Action="removeOnUninstall" />
     </Component>
 
@@ -162,18 +162,18 @@
                Guid="8D533AC5-90C5-4E43-B25D-8A1C424C16F8">
       <RegistryKey Root="HKMU" Key="Software\Classes\Directory\shell\Zellij">
         <RegistryValue Type="string" Value="Open Zellij here" />
-        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-window.exe" />
+        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-terminal.exe" />
         <RegistryKey Key="command">
           <RegistryValue Type="string"
-                         Value="&quot;[APPLICATIONFOLDER]zellij-window.exe&quot; --working-directory &quot;%V&quot;" />
+                         Value="&quot;[APPLICATIONFOLDER]zellij-terminal.exe&quot; --working-directory &quot;%V&quot;" />
         </RegistryKey>
       </RegistryKey>
       <RegistryKey Root="HKMU" Key="Software\Classes\Directory\Background\shell\Zellij">
         <RegistryValue Type="string" Value="Open Zellij here" />
-        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-window.exe" />
+        <RegistryValue Name="Icon" Type="string" Value="[APPLICATIONFOLDER]zellij-terminal.exe" />
         <RegistryKey Key="command">
           <RegistryValue Type="string"
-                         Value="&quot;[APPLICATIONFOLDER]zellij-window.exe&quot; --working-directory &quot;%V&quot;" />
+                         Value="&quot;[APPLICATIONFOLDER]zellij-terminal.exe&quot; --working-directory &quot;%V&quot;" />
         </RegistryKey>
       </RegistryKey>
       <RegistryValue Root="HKMU"

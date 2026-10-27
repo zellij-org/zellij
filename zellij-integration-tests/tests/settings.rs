@@ -220,7 +220,7 @@ fn the_unsaved_marker_in_the_side_menu_takes_the_hover_background() {
 }
 
 #[test]
-fn a_terminal_window_setting_is_saved_inside_the_window_block() {
+fn a_terminal_setting_is_saved_inside_the_terminal_block() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let config_file_path = zellij
@@ -241,7 +241,7 @@ fn a_terminal_window_setting_is_saved_inside_the_window_block() {
 
     let written = std::fs::read_to_string(&config_file_path).unwrap();
     assert!(
-        written.contains("window {\n    blur true\n}"),
+        written.contains("terminal {\n    blur true\n}"),
         "config file was not updated: {}",
         written
     );
@@ -264,7 +264,7 @@ theme \"first\"
 ";
 
 fn window_background(
-    settings: &zellij_utils::input::window::WindowSettings,
+    settings: &zellij_utils::input::terminal::TerminalSettings,
 ) -> Option<zellij_utils::data::PaletteColor> {
     settings
         .theme
@@ -281,7 +281,7 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
 
     focus_setting_by_search(&zellij, "blur behind", "Blur behind");
     zellij.send_stdin(&keys::SPACE);
-    let pushed = zellij.wait_for_window_settings("blur is turned on", |settings| {
+    let pushed = zellij.wait_for_terminal_settings("blur is turned on", |settings| {
         settings.section.blur == Some(true)
     });
     assert_eq!(
@@ -293,7 +293,7 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
 
     focus_setting_by_search(&zellij, "color theme", "Theme");
     zellij.send_stdin(ARROW_RIGHT);
-    let pushed = zellij.wait_for_window_settings("another theme is chosen", |settings| {
+    let pushed = zellij.wait_for_terminal_settings("another theme is chosen", |settings| {
         window_background(settings) != Some(zellij_utils::data::PaletteColor::Rgb((1, 1, 1)))
     });
     assert_eq!(

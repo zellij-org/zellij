@@ -348,14 +348,14 @@ mod tests {
     #[test]
     fn a_name_that_is_neither_live_nor_resurrectable_is_refused_without_creation() {
         let args = AttachArgs {
-            session_name: Some("zellij-window-no-such-session".to_owned()),
+            session_name: Some("zellij-terminal-no-such-session".to_owned()),
             ..AttachArgs::default()
         };
         let failure = resolve_attach(&args, Options::default(), false, None)
             .err()
             .expect("a session that does not exist must not resolve");
         assert!(
-            failure.message.contains("zellij-window-no-such-session"),
+            failure.message.contains("zellij-terminal-no-such-session"),
             "{}",
             failure.message
         );
@@ -364,21 +364,21 @@ mod tests {
     #[test]
     fn a_name_that_does_not_exist_yet_is_created_when_creation_is_asked_for() {
         let args = AttachArgs {
-            session_name: Some("zellij-window-no-such-session".to_owned()),
+            session_name: Some("zellij-terminal-no-such-session".to_owned()),
             create: true,
             ..AttachArgs::default()
         };
         let resolved = resolve_attach(&args, Options::default(), false, None).unwrap();
         assert!(matches!(
             resolved.client,
-            ClientInfo::New(ref name, ..) if name == "zellij-window-no-such-session"
+            ClientInfo::New(ref name, ..) if name == "zellij-terminal-no-such-session"
         ));
     }
 
     #[test]
     fn a_watcher_refuses_a_name_that_is_not_live() {
         assert!(resolve_watch(
-            Some("zellij-window-no-such-session".to_owned()),
+            Some("zellij-terminal-no-such-session".to_owned()),
             Options::default()
         )
         .is_err());

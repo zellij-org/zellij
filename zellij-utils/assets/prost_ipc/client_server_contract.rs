@@ -525,7 +525,7 @@ pub mod action {
         #[prost(message, tag="182")]
         ToggleTrayIcon(super::ToggleTrayIconAction),
         #[prost(message, tag="183")]
-        OpenSessionInWindow(super::OpenSessionInWindowAction),
+        OpenSessionInTerminal(super::OpenSessionInTerminalAction),
         #[prost(message, tag="184")]
         WaitForPaneExit(super::WaitForPaneExitAction),
         #[prost(message, tag="185")]
@@ -2623,7 +2623,7 @@ pub struct ToggleTrayIconAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct OpenSessionInWindowAction {
+pub struct OpenSessionInTerminalAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4789,7 +4789,7 @@ pub mod server_to_client_msg {
         #[prost(message, tag="21")]
         HostThemeMode(super::HostThemeModeMsg),
         #[prost(message, tag="22")]
-        WindowSettings(super::WindowSettingsMsg),
+        TerminalSettings(super::TerminalSettingsMsg),
         #[prost(message, tag="23")]
         HostProgramStatus(super::HostProgramStatusMsg),
         #[prost(message, tag="24")]
@@ -4917,7 +4917,7 @@ pub struct ConfigFileUpdatedMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WindowSettingsMsg {
+pub struct TerminalSettingsMsg {
     #[prost(string, tag="1")]
     pub settings_json: ::prost::alloc::string::String,
 }

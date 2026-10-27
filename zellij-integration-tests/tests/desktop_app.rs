@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use zellij_terminal::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 use zellij_utils::app_control::{
     describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, OpenWindowRequest,
     PanelState, PopupView,
@@ -16,7 +17,6 @@ use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
-use zellij_window::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 
 const REQUIRE_ENV: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 const BINARY_ENV: &str = "ZELLIJ_TEST_BINARY";
@@ -227,9 +227,9 @@ impl Desktop {
         command
     }
 
-    fn window_command(&self, extra: &[&str]) -> Command {
+    fn terminal_command(&self, extra: &[&str]) -> Command {
         let socket_dir = self.socket_dir();
-        let mut args = vec!["window", "--socket-dir", socket_dir.to_str().unwrap()];
+        let mut args = vec!["terminal", "--socket-dir", socket_dir.to_str().unwrap()];
         args.extend_from_slice(extra);
         self.command(&args)
     }
@@ -242,7 +242,7 @@ impl Desktop {
         let index = self.apps.len();
         let log = std::fs::File::create(self.log_path(index)).unwrap();
         let child = self
-            .window_command(extra)
+            .terminal_command(extra)
             .stdout(log.try_clone().unwrap())
             .stderr(log)
             .spawn()
@@ -1444,7 +1444,7 @@ impl Desktop {
     fn configure_windows(&self, window_section: &str) {
         std::fs::write(
             self.root.path().join("config/zellij/config.kdl"),
-            format!("{}window {{\n{}\n}}\n", CONFIG, window_section),
+            format!("{}terminal {{\n{}\n}}\n", CONFIG, window_section),
         )
         .unwrap();
     }

@@ -796,7 +796,7 @@ pub enum Action {
     GoToNextSession,
     GoToNextAttention,
     ToggleTrayIcon,
-    OpenSessionInWindow,
+    OpenSessionInTerminal,
     WaitForPaneExit {
         pane_id: PaneId,
     },

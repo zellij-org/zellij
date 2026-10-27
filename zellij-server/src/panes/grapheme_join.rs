@@ -25,7 +25,7 @@
 //   `prepare_unit` decides how to write each unit to a host terminal.
 // - selection (grid.rs): `unit_column_spans` widens a selection to whole units.
 // - search.rs: `is_boundary_at` keeps matches on cluster boundaries.
-// - zellij-window's reference.rs: `group_end` and `prepare_unit` to mirror the server output.
+// - zellij-terminal's reference.rs: `group_end` and `prepare_unit` to mirror the server output.
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::UnicodeWidthChar;
 

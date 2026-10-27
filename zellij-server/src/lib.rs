@@ -54,7 +54,7 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
-use zellij_utils::input::window::WindowSettings;
+use zellij_utils::input::terminal::TerminalSettings;
 
 use wasmi::Engine;
 
@@ -165,7 +165,7 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(Config),
-    WindowSettingsChanged(ClientId, Box<WindowSettings>),
+    TerminalSettingsChanged(ClientId, Box<TerminalSettings>),
     FontFamilies(ClientId, Vec<String>),
     AdoptSessionHistory(ClientId, zellij_utils::session_history::SessionHistory),
     HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
@@ -312,7 +312,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
-            ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
+            ServerInstruction::TerminalSettingsChanged(..) => {
+                ServerContext::TerminalSettingsChanged
+            },
             ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
             ServerInstruction::AdoptSessionHistory(..) => ServerContext::AdoptSessionHistory,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {
@@ -1093,28 +1095,28 @@ pub(crate) struct SessionMetaData {
     config_file_path: Option<PathBuf>,
     config_file: ConfigFileState,
     applied_env: AppliedEnv,
-    sent_window_settings: HashMap<ClientId, WindowSettings>,
+    sent_terminal_settings: HashMap<ClientId, TerminalSettings>,
     font_families: HashMap<ClientId, Vec<String>>,
     pub live_sessions: crate::attention::peers::LiveSessions,
 }
 
 impl SessionMetaData {
-    fn send_window_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
-        let settings = WindowSettings::from_config(config);
-        if self.sent_window_settings.get(&client_id) == Some(&settings) {
+    fn send_terminal_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
+        let settings = TerminalSettings::from_config(config);
+        if self.sent_terminal_settings.get(&client_id) == Some(&settings) {
             return;
         }
-        self.sent_window_settings
+        self.sent_terminal_settings
             .insert(client_id, settings.clone());
         let _ = self
             .senders
-            .send_to_server(ServerInstruction::WindowSettingsChanged(
+            .send_to_server(ServerInstruction::TerminalSettingsChanged(
                 client_id,
                 Box::new(settings),
             ));
     }
     fn forget_window_client(&mut self, client_id: ClientId) {
-        self.sent_window_settings.remove(&client_id);
+        self.sent_terminal_settings.remove(&client_id);
         self.font_families.remove(&client_id);
     }
     fn config_snapshot_for(&self, client_id: ClientId) -> ConfigSnapshot {
@@ -1247,7 +1249,7 @@ impl SessionMetaData {
         let mut new_plugin_config = None;
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
-            self.send_window_settings_if_changed(client_id, &new_config);
+            self.send_terminal_settings_if_changed(client_id, &new_config);
             self.follow_keybinds_dir(&new_config);
             self.sync_pane_env(new_config.env.inner());
             let pane_env = self.applied_env.pane_env();
@@ -2752,7 +2754,7 @@ mod session_state_tests {
                 ..Default::default()
             },
             applied_env: AppliedEnv::default(),
-            sent_window_settings: HashMap::new(),
+            sent_terminal_settings: HashMap::new(),
             font_families: HashMap::new(),
             live_sessions: Default::default(),
         };
@@ -2779,16 +2781,16 @@ mod session_state_tests {
         (session_data, server_receiver)
     }
 
-    fn pushed_window_settings(
+    fn pushed_terminal_settings(
         server_receiver: &zellij_utils::channels::Receiver<(
             ServerInstruction,
             zellij_utils::errors::ErrorContext,
         )>,
-    ) -> Vec<(ClientId, WindowSettings)> {
+    ) -> Vec<(ClientId, TerminalSettings)> {
         server_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
-                ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                ServerInstruction::TerminalSettingsChanged(client_id, settings) => {
                     Some((client_id, *settings))
                 },
                 _ => None,
@@ -2822,24 +2824,24 @@ theme \"first\"
 ";
 
     #[test]
-    fn window_settings_are_pushed_only_when_they_or_the_theme_change() {
+    fn terminal_settings_are_pushed_only_when_they_or_the_theme_change() {
         let session_configuration = session_configuration_with_one_client(TWO_THEMES);
         let (session_data, server_receiver) = test_session_with_server(session_configuration);
 
-        reconfigure_session(&session_data, 1, "window { blur true; }", false);
-        let pushed = pushed_window_settings(&server_receiver);
+        reconfigure_session(&session_data, 1, "terminal { blur true; }", false);
+        let pushed = pushed_terminal_settings(&server_receiver);
         assert_eq!(pushed.len(), 1);
         assert_eq!(pushed[0].0, 1);
         assert_eq!(pushed[0].1.section.blur, Some(true));
 
         reconfigure_session(&session_data, 1, "simplified_ui true", false);
         assert!(
-            pushed_window_settings(&server_receiver).is_empty(),
+            pushed_terminal_settings(&server_receiver).is_empty(),
             "a change the window does not read was pushed to it"
         );
 
         reconfigure_session(&session_data, 1, "theme \"second\"", false);
-        let pushed = pushed_window_settings(&server_receiver);
+        let pushed = pushed_terminal_settings(&server_receiver);
         assert_eq!(pushed.len(), 1, "a new theme did not reach the window");
         assert_eq!(
             pushed[0]
@@ -2857,8 +2859,8 @@ theme \"first\"
     fn a_disconnected_window_is_forgotten_so_a_reconnect_is_told_again() {
         let session_configuration = session_configuration_with_one_client(TWO_THEMES);
         let (session_data, server_receiver) = test_session_with_server(session_configuration);
-        reconfigure_session(&session_data, 1, "window { blur true; }", false);
-        assert_eq!(pushed_window_settings(&server_receiver).len(), 1);
+        reconfigure_session(&session_data, 1, "terminal { blur true; }", false);
+        assert_eq!(pushed_terminal_settings(&server_receiver).len(), 1);
         session_data
             .write()
             .unwrap()
@@ -2877,12 +2879,12 @@ theme \"first\"
         {
             let session = session_data.read().unwrap();
             let session = session.as_ref().unwrap();
-            assert!(session.sent_window_settings.is_empty());
+            assert!(session.sent_terminal_settings.is_empty());
             assert!(session.font_families.is_empty());
         }
         reconfigure_session(&session_data, 1, "simplified_ui true", false);
         assert_eq!(
-            pushed_window_settings(&server_receiver).len(),
+            pushed_terminal_settings(&server_receiver).len(),
             1,
             "a window that reconnected was not told its settings"
         );
@@ -3939,8 +3941,8 @@ pub fn start_server_impl(
                     _ => false,
                 };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
-                let in_desktop_window = host_terminal_env
-                    .contains_key(zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY);
+                let in_desktop_terminal = host_terminal_env
+                    .contains_key(zellij_utils::input::cli_assets::DESKTOP_TERMINAL_ENV_KEY);
                 let switch_context = cli_assets.switch_context.clone().unwrap_or_default();
                 let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, mut layout) = cli_assets.load_config_and_layout();
@@ -4102,7 +4104,7 @@ pub fn start_server_impl(
                 } else {
                     onboarding_floating_pane(&Onboarding {
                         setup_wizard: should_launch_setup_wizard,
-                        in_desktop_window,
+                        in_desktop_terminal,
                         is_web_client,
                         show_release_notes: runtime_config_options.show_release_notes,
                         show_startup_tips: runtime_config_options.show_startup_tips,
@@ -4927,11 +4929,11 @@ pub fn start_server_impl(
                     );
                 }
             },
-            ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+            ServerInstruction::TerminalSettingsChanged(client_id, settings) => {
                 send_to_client!(
                     client_id,
                     os_input,
-                    ServerToClientMsg::WindowSettingsChanged { settings },
+                    ServerToClientMsg::TerminalSettingsChanged { settings },
                     session_state,
                     session_data
                 );
@@ -5815,7 +5817,7 @@ fn init_session(
         live_view_captures,
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
-        sent_window_settings: HashMap::new(),
+        sent_terminal_settings: HashMap::new(),
         font_families: HashMap::new(),
         live_sessions,
         config_file: ConfigFileState {
@@ -5844,7 +5846,7 @@ fn session_may_show_setup(
 
 struct Onboarding {
     setup_wizard: bool,
-    in_desktop_window: bool,
+    in_desktop_terminal: bool,
     is_web_client: bool,
     show_release_notes: Option<bool>,
     show_startup_tips: Option<bool>,
@@ -5854,8 +5856,8 @@ struct Onboarding {
 fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayout> {
     use zellij_utils::desktop_integration::{Flag, ReminderContext};
     let window_flag = |mut configuration: BTreeMap<String, String>| {
-        if onboarding.in_desktop_window {
-            configuration.insert("in_desktop_window".to_owned(), "true".to_owned());
+        if onboarding.in_desktop_terminal {
+            configuration.insert("in_desktop_terminal".to_owned(), "true".to_owned());
         }
         configuration
     };
@@ -5891,7 +5893,7 @@ fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayou
             )])),
         ));
     }
-    if onboarding.in_desktop_window && state.needs_welcome_card() {
+    if onboarding.in_desktop_terminal && state.needs_welcome_card() {
         let missing = state.missing_services.clone();
         let first_time = !state.has(Flag::WelcomeCardShown);
         let _ = zellij_utils::desktop_integration::update(|state| {
@@ -5913,7 +5915,7 @@ fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayou
         let reminders = ReminderContext {
             show_startup_tips: onboarding.show_startup_tips.unwrap_or(true),
             show_release_notes: onboarding.show_release_notes.unwrap_or(true),
-            inside_desktop_window: onboarding.in_desktop_window,
+            inside_desktop_terminal: onboarding.in_desktop_terminal,
             web_client: onboarding.is_web_client,
         };
         let mut configuration = BTreeMap::from([("is_startup_tip".to_owned(), "true".to_owned())]);

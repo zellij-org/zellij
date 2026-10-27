@@ -865,7 +865,7 @@ fn merge_attach_command_options(
 ) -> Option<Options> {
     let attach_options = match cli_args.command.clone() {
         Some(Command::Sessions(Sessions::Attach { args, .. })) => args.options,
-        Some(Command::Window(window_args)) => window_args.attach.options,
+        Some(Command::Terminal(terminal_args)) => terminal_args.attach.options,
         _ => None,
     };
     match attach_options.as_deref() {
