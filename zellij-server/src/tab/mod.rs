@@ -8690,7 +8690,7 @@ impl Tab {
                 .tiled_panes
                 .resize_pane_with_id(strategy, pane_id, None)
             {
-                Ok(_) => {},
+                Ok(_) => self.swap_layouts.set_is_tiled_damaged(),
                 Err(err) => match err.downcast_ref::<ZellijError>() {
                     Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {
                         let mut pane_ids_to_error = vec![];
