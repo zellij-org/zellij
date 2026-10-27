@@ -2974,7 +2974,7 @@ impl FloatingPanesStack {
                 c_chunk.erase_first = true;
                 return Ok(None);
             } else if pane_left_edge >= c_chunk_left_side
-                && pane_left_edge >= c_chunk_left_side
+                && pane_left_edge < c_chunk_right_side
                 && pane_right_edge >= c_chunk_right_side
             {
                 // pane covers chunk partially to the right
