@@ -352,6 +352,28 @@ fn color_values_outside_0_to_255_are_rejected() {
     assert!(theme_with_fg("\"not a color\"").is_err());
 }
 
+#[test]
+fn hex_color_with_multibyte_utf8_does_not_panic() {
+    // KDL theme parsing (kdl/mod.rs)
+    // 3 bytes in UTF-8 ('é' = 2 bytes, 'A' = 1 byte)
+    assert!(theme_with_fg("\"#éA\"").is_err());
+    assert!(theme_with_fg("\"éA\"").is_err());
+    // 6 bytes in UTF-8 ('A' = 1, 'é' = 2, 'é' = 2, 'A' = 1)
+    assert!(theme_with_fg("\"#AééA\"").is_err());
+    assert!(theme_with_fg("\"AééA\"").is_err());
+    // 6 bytes in UTF-8 ('中' = 3 bytes, '文' = 3 bytes)
+    assert!(theme_with_fg("\"#中文\"").is_err());
+    assert!(theme_with_fg("\"中文\"").is_err());
+
+    // HexColor direct deserialization (theme.rs)
+    assert!(serde_json::from_str::<HexColor>("\"#éA\"").is_err());
+    assert!(serde_json::from_str::<HexColor>("\"éA\"").is_err());
+    assert!(serde_json::from_str::<HexColor>("\"#AééA\"").is_err());
+    assert!(serde_json::from_str::<HexColor>("\"AééA\"").is_err());
+    assert!(serde_json::from_str::<HexColor>("\"#中文\"").is_err());
+    assert!(serde_json::from_str::<HexColor>("\"中文\"").is_err());
+}
+
 fn lab(color: PaletteColor) -> (f64, f64, f64) {
     let (r, g, b) = match color {
         PaletteColor::Rgb(rgb) => rgb,

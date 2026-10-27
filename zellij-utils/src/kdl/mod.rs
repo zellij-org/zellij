@@ -1627,14 +1627,14 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
         let is_three_digit_hex = || {
             match kdl_first_entry_as_string!(color) {
                 // 4 including the '#' character
-                Some(s) => entry_count == 1 && s.starts_with('#') && s.len() == 4,
+                Some(s) => entry_count == 1 && s.starts_with('#') && s.is_ascii() && s.len() == 4,
                 None => false,
             }
         };
         let is_six_digit_hex = || {
             match kdl_first_entry_as_string!(color) {
                 // 7 including the '#' character
-                Some(s) => entry_count == 1 && s.starts_with('#') && s.len() == 7,
+                Some(s) => entry_count == 1 && s.starts_with('#') && s.is_ascii() && s.len() == 7,
                 None => false,
             }
         };
