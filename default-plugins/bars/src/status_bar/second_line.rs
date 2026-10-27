@@ -10,7 +10,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::status_bar::{
-    action_key, action_key_group, style_key_with_modifier,
+    action_key, action_key_group, bars_hint, style_key_with_modifier,
     tip::{data::TIPS, TipFn},
     LinePart, MORE_MSG, TO_NORMAL,
 };
@@ -131,6 +131,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Mute"), s("Mute"), action_key(&km, &[A::MutePane, TO_NORMAL])),
         (s("Ignore output"), s("Ignore"), action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
         (s("Watch"), s("Watch"), action_key(&km, &[A::WatchPane, TO_NORMAL])),
+        (s(bars_hint(mi).0), s(bars_hint(mi).1), action_key(&km, &[A::ToggleBars{bars: vec![]}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tab {
         let old_keymap = mi.get_mode_keybinds();

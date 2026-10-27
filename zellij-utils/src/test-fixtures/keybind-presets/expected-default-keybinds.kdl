@@ -36,6 +36,7 @@ keybinds {
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+        bind "Shift z" { ToggleBars; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}

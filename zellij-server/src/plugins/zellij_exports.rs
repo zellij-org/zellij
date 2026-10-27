@@ -619,10 +619,12 @@ fn desktop_integration(env: &PluginEnv, request: String) {
 }
 
 fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
-    env.pending_popup_size = Some((width, height));
+    if env.shared.is_none() {
+        env.pending_popup_size = Some((width, height));
+    }
     env.senders
         .send_to_screen(ScreenInstruction::SetPopupSize {
-            plugin_id: env.plugin_id,
+            plugin_id: self_pane_id(env),
             width,
             height,
         })
@@ -1004,6 +1006,13 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
                         set_pane_frame_style(env, pane_frame_style)
                     },
+                    PluginCommand::ToggleBars(bars) => {
+                        apply_bars_action(env, Action::ToggleBars { bars })
+                    },
+                    PluginCommand::HideBars(bars) => {
+                        apply_bars_action(env, Action::HideBars { bars })
+                    },
+                    PluginCommand::ShowBars => apply_bars_action(env, Action::ShowBars),
                     PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
                     PluginCommand::UndoRenamePane => undo_rename_pane(env),
                     PluginCommand::CloseFocus => close_focus(env),
@@ -4302,6 +4311,11 @@ fn set_pane_frame_style(env: &PluginEnv, pane_frame_style: PaneFrameStyle) {
     apply_action!(action, error_msg, env);
 }
 
+fn apply_bars_action(env: &PluginEnv, action: Action) {
+    let error_msg = || format!("failed to change hidden bars in plugin {}", env.name());
+    apply_action!(action, error_msg, env);
+}
+
 fn toggle_pane_embed_or_eject(env: &PluginEnv) {
     let error_msg = || {
         format!(
@@ -6761,6 +6775,9 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
         | PluginCommand::SetPaneFrameStyle(..)
+        | PluginCommand::ToggleBars(..)
+        | PluginCommand::HideBars(..)
+        | PluginCommand::ShowBars
         | PluginCommand::ToggleFloatingPanes { .. }
         | PluginCommand::NewPane
         | PluginCommand::TogglePaneEmbedOrEject

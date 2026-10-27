@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BorderStyle, BorderStyleOverride, Direction, KeyModifier, KeyWithModifier, NewPanePlacement,
-    PaneInfo, PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy,
-    Style, StyledText, WebSharing,
+    bar_role_label, bar_shows_mode, BorderStyle, BorderStyleOverride, Direction, HiddenBars,
+    KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -36,6 +36,7 @@ use zellij_utils::structured_render::{
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
+use crate::panes::CoveredPanes;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
@@ -285,6 +286,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     pane_frame_style: PaneFrameStyle,
+    hidden_bars: HiddenBars,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
@@ -1144,6 +1146,7 @@ impl Tab {
             mode_info,
             default_mode_info,
             pane_frame_style,
+            hidden_bars: HiddenBars::default(),
             auto_layout,
             pending_vte_events: HashMap::new(),
             connected_clients,
@@ -2219,7 +2222,7 @@ impl Tab {
     /// The layout offsets the viewport while the collapsed panes are still taking part, so a
     /// collapsed bar would go on holding its row out of the viewport. Offset it again once
     /// they are gone, the same as `resize_whole_tab` does.
-    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: HashSet<PaneId>) {
+    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: CoveredPanes) {
         if self.tiled_panes.restore_collapsed_panes(collapsed_panes) {
             let display_area = *self.display_area.borrow();
             self.tiled_panes.resize(display_area);
@@ -2411,6 +2414,7 @@ impl Tab {
                 mode_info.web_server_capability = Some(false);
             }
             mode_info.pane_frame_style = Some(self.pane_frame_style);
+            mode_info.hidden_bars = self.hidden_bars.clone();
             for plugin_id in self.popup_plugin_ids_for_client(*client_id) {
                 plugin_updates.push((
                     Some(plugin_id),
@@ -6457,6 +6461,100 @@ impl Tab {
     /// back at the size the layout asked for.
     ///
     /// Floating panes take no space from their neighbors, so there is nothing to give back.
+    pub fn bar_pane_ids(&self) -> Vec<PaneId> {
+        let display_area = *self.display_area.borrow();
+        self.tiled_panes
+            .get_panes()
+            .filter(|(pane_id, pane)| {
+                if !matches!(pane_id, PaneId::Plugin(_)) {
+                    return false;
+                }
+                if pane.selectable() && !pane.borderless() {
+                    return false;
+                }
+                let geom = pane.position_and_size();
+                let spans_full_width = geom.x == 0 && geom.cols.as_usize() == display_area.cols;
+                let is_at_top = geom.y == 0;
+                let is_at_bottom = geom.y + geom.rows.as_usize() == display_area.rows;
+                let is_strip = geom.rows.as_usize() < display_area.rows;
+                spans_full_width && is_strip && (is_at_top || is_at_bottom)
+            })
+            .map(|(pane_id, _)| *pane_id)
+            .collect()
+    }
+    pub fn bar_names_of_pane(&self, pane_id: PaneId) -> Option<Vec<String>> {
+        if !self.bar_pane_ids().contains(&pane_id) {
+            return None;
+        }
+        let names = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .and_then(|pane| pane.invoked_with().as_ref().map(|run| run.bar_names()))
+            .unwrap_or_default();
+        Some(names)
+    }
+    pub fn bar_label_of_pane(&self, pane_id: PaneId) -> Option<String> {
+        let names = self.bar_names_of_pane(pane_id)?;
+        if let Some(label) = names.iter().find_map(|name| bar_role_label(name)) {
+            return Some(label.to_owned());
+        }
+        let title = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .map(|pane| pane.current_title())
+            .filter(|title| !title.trim().is_empty() && title.len() <= 30);
+        Some(title.unwrap_or_else(|| "bar".to_owned()))
+    }
+    pub fn apply_hidden_bars(&mut self, hidden_bars: &HiddenBars) -> bool {
+        let hidden_bars_changed = &self.hidden_bars != hidden_bars;
+        self.hidden_bars = hidden_bars.clone();
+        let bar_pane_ids = self.bar_pane_ids();
+        let mut changed = false;
+        for pane_id in self.tiled_panes.hidden_bar_ids() {
+            if !bar_pane_ids.contains(&pane_id) {
+                changed |= self.tiled_panes.set_bar_hidden(pane_id, false);
+            }
+        }
+        for pane_id in bar_pane_ids {
+            let names = self.bar_names_of_pane(pane_id).unwrap_or_default();
+            let should_hide = hidden_bars.hides_any(&names);
+            changed |= self.tiled_panes.set_bar_hidden(pane_id, should_hide);
+        }
+        if changed {
+            let size = self.size;
+            self.resize_whole_tab(size).non_fatal();
+            self.set_force_render();
+        }
+        if changed || hidden_bars_changed {
+            let _ = self.update_input_modes();
+        }
+        changed
+    }
+    pub fn bar_count(&self) -> usize {
+        self.bar_pane_ids().len()
+    }
+    pub fn visible_bar_count(&self) -> usize {
+        self.bar_pane_ids()
+            .into_iter()
+            .filter(|pane_id| {
+                !self.tiled_panes.pane_is_hidden_bar(pane_id)
+                    && !self.tiled_panes.pane_is_collapsed(pane_id)
+            })
+            .count()
+    }
+    pub fn has_hidden_bar(&self) -> bool {
+        !self.tiled_panes.hidden_bar_ids().is_empty()
+    }
+    pub fn mode_is_shown_by_a_visible_bar(&self) -> bool {
+        self.bar_pane_ids().into_iter().any(|pane_id| {
+            !self.tiled_panes.pane_is_hidden_bar(&pane_id)
+                && !self.tiled_panes.pane_is_collapsed(&pane_id)
+                && self
+                    .bar_names_of_pane(pane_id)
+                    .map(|names| names.iter().any(|name| bar_shows_mode(name)))
+                    .unwrap_or(false)
+        })
+    }
     pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) {
         if !self.tiled_panes.panes_contain(&pane_id) {
             return;

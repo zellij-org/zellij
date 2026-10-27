@@ -816,6 +816,14 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
     common_modifiers.into_iter().collect()
 }
 
+pub fn bars_hint(mode_info: &ModeInfo) -> (&'static str, &'static str) {
+    if mode_info.hidden_bars.is_empty() {
+        ("Hide bars", "Bars")
+    } else {
+        ("Show bars", "Bars")
+    }
+}
+
 pub fn action_key(
     keymap: &[(KeyWithModifier, Vec<Action>)],
     action: &[Action],

@@ -8,6 +8,7 @@ pub use super::generated_api::api::{
         Action as ProtobufAction,
         ActionName as ProtobufActionName,
         AreFloatingPanesVisiblePayload,
+        BarNamesPayload,
         BareKey as ProtobufBareKey,
         // New layout-related types
         CommandOrPlugin as ProtobufCommandOrPlugin,
@@ -824,6 +825,35 @@ impl TryFrom<ProtobufAction> for Action {
                     })
                 },
                 _ => Err("Wrong payload for Action::WatchPaneByPaneId"),
+            },
+            Some(ProtobufActionName::ToggleBars) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::BarNamesPayload(payload)) => Ok(Action::ToggleBars {
+                    bars: payload.bar_names,
+                }),
+                None => Ok(Action::ToggleBars { bars: vec![] }),
+                _ => Err("Wrong payload for Action::ToggleBars"),
+            },
+            Some(ProtobufActionName::HideBars) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::BarNamesPayload(payload)) => Ok(Action::HideBars {
+                    bars: payload.bar_names,
+                }),
+                None => Ok(Action::HideBars { bars: vec![] }),
+                _ => Err("Wrong payload for Action::HideBars"),
+            },
+            Some(ProtobufActionName::ShowBars) => match protobuf_action.optional_payload {
+                Some(_) => Err("ShowBars should not have a payload"),
+                None => Ok(Action::ShowBars),
+            },
+            Some(ProtobufActionName::HideBarByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                    Ok(Action::HideBarByPaneId {
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for Action::HideBarByPaneId")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Wrong payload for Action::HideBarByPaneId"),
             },
             Some(ProtobufActionName::MuteTabByTabId) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::TargetTabIdPayload(payload)) => {
@@ -2160,6 +2190,28 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::WatchPaneByPaneId { pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::WatchPaneByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::ToggleBars { bars } => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleBars as i32,
+                optional_payload: Some(OptionalPayload::BarNamesPayload(BarNamesPayload {
+                    bar_names: bars,
+                })),
+            }),
+            Action::HideBars { bars } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideBars as i32,
+                optional_payload: Some(OptionalPayload::BarNamesPayload(BarNamesPayload {
+                    bar_names: bars,
+                })),
+            }),
+            Action::ShowBars => Ok(ProtobufAction {
+                name: ProtobufActionName::ShowBars as i32,
+                optional_payload: None,
+            }),
+            Action::HideBarByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideBarByPaneId as i32,
                 optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
@@ -3924,6 +3976,28 @@ mod tests {
         assert_eq!(protobuf.name, ProtobufActionName::RunInBackground as i32);
         let decoded: Action = protobuf.try_into().unwrap();
         assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn bar_actions_round_trip_over_protobuf() {
+        for original in [
+            Action::ToggleBars { bars: vec![] },
+            Action::ToggleBars {
+                bars: vec!["status-bar".to_owned(), "tab-bar".to_owned()],
+            },
+            Action::HideBars {
+                bars: vec!["compact-bar".to_owned()],
+            },
+            Action::HideBars { bars: vec![] },
+            Action::ShowBars,
+            Action::HideBarByPaneId {
+                pane_id: PaneId::Plugin(7),
+            },
+        ] {
+            let protobuf: ProtobufAction = original.clone().try_into().unwrap();
+            let decoded: Action = protobuf.try_into().unwrap();
+            assert_eq!(original, decoded);
+        }
     }
 
     #[test]

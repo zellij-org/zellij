@@ -77,4 +77,7 @@ Options {
     session_indicator: None,
     swap_layout_notification: None,
     on_quit: None,
+    bars_hidden_on_start: None,
+    hidden_bars_notification: None,
+    mode_hints_when_bars_hidden: None,
 }

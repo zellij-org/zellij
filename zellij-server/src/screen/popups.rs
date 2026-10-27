@@ -440,9 +440,13 @@ impl Screen {
                 Err(_) => return,
             },
         };
+        let pane_id = match kind {
+            ContextMenuKind::Bar => Some(PaneId::Plugin(plugin_id).into()),
+            _ => None,
+        };
         let context = ContextMenuContext {
             kind,
-            pane_id: None,
+            pane_id,
             pane_is_floating: false,
             tab_index,
             tab_id,
@@ -483,6 +487,7 @@ impl Screen {
         );
         let entries = self.resolve_toggled_context_menu_labels(entries, &context);
         let entries = self.resolve_session_history_context_menu_entries(entries, client_id);
+        let entries = self.resolve_hidden_bars_context_menu_entries(entries, &context);
         if entries.is_empty() {
             return;
         }
@@ -554,7 +559,7 @@ impl Screen {
             vec![],
         );
     }
-    fn request_popup(
+    pub(super) fn request_popup(
         &mut self,
         client_id: ClientId,
         run_plugin_or_alias: RunPluginOrAlias,
@@ -864,6 +869,13 @@ impl Screen {
         height: usize,
         anchor_pane: Option<PaneId>,
     ) -> Result<()> {
+        if !self.accept_mode_hints_popup(&run_plugin_or_alias, client_id) {
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::Unload(plugin_id));
+            return Ok(());
+        }
         let anchor_still_exists = anchor_pane
             .map(|pane_id| {
                 self.tabs
@@ -915,6 +927,7 @@ impl Screen {
         }
         self.schedule_popup_reveal(plugin_id, POPUP_REVEAL_FALLBACK_MS);
         self.report_popup_state(client_id);
+        self.report_client_visible_plugins();
         self.render(None)
     }
     pub fn set_popup_size(&mut self, plugin_id: u32, width: usize, height: usize) -> Result<()> {

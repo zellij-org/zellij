@@ -15,7 +15,9 @@ use crate::status_bar::second_line::{
     ascended_to_host_session_hint, descended_into_nested_session_hint, system_clipboard_error,
     text_copied_hint,
 };
-use crate::status_bar::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
+use crate::status_bar::{
+    action_key, action_key_group, bars_hint, color_elements, MORE_MSG, TO_NORMAL,
+};
 use crate::status_bar::{ColoredElements, LinePart};
 use zellij_tile::graphemes::display_width;
 
@@ -1567,6 +1569,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Mute"), s("Mute"), single_action_key(&km, &[A::MutePane, TO_NORMAL])),
         (s("Ignore output"), s("Ignore"), single_action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
         (s("Watch"), s("Watch"), single_action_key(&km, &[A::WatchPane, TO_NORMAL])),
+        (s(bars_hint(mi).0), s(bars_hint(mi).1), single_action_key(&km, &[A::ToggleBars{bars: vec![]}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tab {
         let old_keymap = mi.get_mode_keybinds();

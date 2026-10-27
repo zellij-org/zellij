@@ -88,6 +88,9 @@ fn every_option_set() -> Options {
         session_indicator: Some(false),
         swap_layout_notification: Some(false),
         on_quit: Some(crate::input::options::OnQuit::Detach),
+        bars_hidden_on_start: Some(crate::data::HiddenBars::from_names(&["tab-bar"])),
+        hidden_bars_notification: Some(false),
+        mode_hints_when_bars_hidden: Some(false),
     }
 }
 

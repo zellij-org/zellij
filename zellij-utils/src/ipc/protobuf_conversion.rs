@@ -1171,6 +1171,16 @@ impl From<crate::input::options::Options>
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
             on_quit: options.on_quit.map(|on_quit| on_quit.as_str().to_owned()),
+            bars_hidden_on_start: options.bars_hidden_on_start.as_ref().map(|hidden_bars| {
+                let names = hidden_bars.names();
+                if names.is_empty() {
+                    "none".to_owned()
+                } else {
+                    names.join(",")
+                }
+            }),
+            hidden_bars_notification: options.hidden_bars_notification,
+            mode_hints_when_bars_hidden: options.mode_hints_when_bars_hidden,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1330,6 +1340,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                         .map_err(|e| anyhow!(e))
                 })
                 .transpose()?,
+            bars_hidden_on_start: options
+                .bars_hidden_on_start
+                .map(|names| {
+                    names
+                        .parse::<crate::data::HiddenBars>()
+                        .map_err(|e| anyhow!(e))
+                })
+                .transpose()?,
+            hidden_bars_notification: options.hidden_bars_notification,
+            mode_hints_when_bars_hidden: options.mode_hints_when_bars_hidden,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1453,6 +1473,8 @@ impl From<crate::input::actions::Action>
             HalfPageScrollDownByPaneIdAction,
             HalfPageScrollUpAction,
             HalfPageScrollUpByPaneIdAction,
+            HideBarByPaneIdAction,
+            HideBarsAction,
             HideFloatingPanesAction,
             IgnorePaneOutputAction,
             IgnorePaneOutputByPaneIdAction,
@@ -1541,6 +1563,7 @@ impl From<crate::input::actions::Action>
             SetPaneBorderlessAction,
             SetPaneColorAction,
             SetPaneFrameStyleAction,
+            ShowBarsAction,
             ShowFloatingPanesAction,
             SkipConfirmAction,
             StackPanesAction,
@@ -1554,6 +1577,7 @@ impl From<crate::input::actions::Action>
             TabNameInputAction,
             ToggleActiveSyncTabAction,
             ToggleActiveSyncTabByTabIdAction,
+            ToggleBarsAction,
             ToggleFloatingPanesAction,
             ToggleFloatingPanesByTabIdAction,
             ToggleFocusFullscreenAction,
@@ -2086,6 +2110,18 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::MuteTabByTabId { id } => {
                 ActionType::MuteTabByTabId(MuteTabByTabIdAction { id })
+            },
+            crate::input::actions::Action::ToggleBars { bars } => {
+                ActionType::ToggleBars(ToggleBarsAction { bars })
+            },
+            crate::input::actions::Action::HideBars { bars } => {
+                ActionType::HideBars(HideBarsAction { bars })
+            },
+            crate::input::actions::Action::ShowBars => ActionType::ShowBars(ShowBarsAction {}),
+            crate::input::actions::Action::HideBarByPaneId { pane_id } => {
+                ActionType::HideBarByPaneId(HideBarByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
             },
             crate::input::actions::Action::ToggleSessionCard => {
                 ActionType::ToggleSessionCard(ToggleSessionCardAction {})
@@ -3156,6 +3192,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::MuteTabByTabId(a) => {
                 Ok(crate::input::actions::Action::MuteTabByTabId { id: a.id })
             },
+            ActionType::ToggleBars(a) => {
+                Ok(crate::input::actions::Action::ToggleBars { bars: a.bars })
+            },
+            ActionType::HideBars(a) => Ok(crate::input::actions::Action::HideBars { bars: a.bars }),
+            ActionType::ShowBars(_) => Ok(crate::input::actions::Action::ShowBars),
+            ActionType::HideBarByPaneId(a) => Ok(crate::input::actions::Action::HideBarByPaneId {
+                pane_id: a
+                    .pane_id
+                    .ok_or_else(|| anyhow!("HideBarByPaneId missing pane_id"))?
+                    .try_into()?,
+            }),
             ActionType::ToggleSessionCard(_) => {
                 Ok(crate::input::actions::Action::ToggleSessionCard)
             },

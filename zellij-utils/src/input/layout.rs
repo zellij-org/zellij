@@ -400,6 +400,32 @@ impl Run {
             _ => None,
         }
     }
+    pub fn bar_names(&self) -> Vec<String> {
+        let mut names = vec![];
+        let Run::Plugin(run_plugin_or_alias) = self else {
+            return names;
+        };
+        if let RunPluginOrAlias::Alias(alias) = run_plugin_or_alias {
+            names.push(alias.name.clone());
+        }
+        if let Some(run_plugin) = self.get_run_plugin() {
+            let canonical = canonical_run_plugin(&run_plugin);
+            if canonical.location
+                == RunPluginLocation::Zellij(PluginTag::new(super::plugins::BARS_PLUGIN_NAME))
+            {
+                let role = canonical
+                    .configuration
+                    .inner()
+                    .get("role")
+                    .cloned()
+                    .unwrap_or_else(|| crate::data::TAB_BAR.to_owned());
+                names.push(role);
+            }
+            names.push(run_plugin.location.display());
+        }
+        names.dedup();
+        names
+    }
     pub fn fills_same_layout_slot(this: &Option<Run>, other: &Option<Run>) -> bool {
         if this == other {
             return true;

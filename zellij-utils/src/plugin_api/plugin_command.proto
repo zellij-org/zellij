@@ -268,6 +268,9 @@ enum CommandName {
   DesktopIntegration = 274;
   SetLiveView = 279;
   SetLiveViewInput = 280;
+  ToggleBars = 281;
+  HideBars = 282;
+  ShowBars = 283;
 }
 
 message PluginCommand {
@@ -476,6 +479,8 @@ message PluginCommand {
     string desktop_integration_payload = 217;
     SetLiveViewPayload set_live_view_payload = 222;
     SetLiveViewInputPayload set_live_view_input_payload = 223;
+    BarNamesPayload toggle_bars_payload = 224;
+    BarNamesPayload hide_bars_payload = 225;
   }
 }
 
@@ -1800,4 +1805,8 @@ message SetLiveViewPayload {
 
 message SetLiveViewInputPayload {
   bool capture = 1;
+}
+
+message BarNamesPayload {
+  repeated string bar_names = 1;
 }

@@ -7,7 +7,8 @@ use crate::data::{
     StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
 use crate::data::{
-    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, TAB_POSITION_END,
+    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, HiddenBars,
+    TAB_POSITION_END,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -106,6 +107,9 @@ pub fn action_without_arguments(
         "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
         "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
         "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
+        "ToggleBars" => Ok(Action::ToggleBars { bars: vec![] }),
+        "HideBars" => Ok(Action::HideBars { bars: vec![] }),
+        "ShowBars" => Ok(Action::ShowBars),
         "CloseFocus" => Ok(Action::CloseFocus),
         "UndoRenamePane" => Ok(Action::UndoRenamePane),
         "NoOp" => Ok(Action::NoOp),
@@ -860,6 +864,18 @@ impl Action {
                 }
                 Some(node)
             },
+            Action::ToggleBars { bars } | Action::HideBars { bars } => {
+                let name = match self {
+                    Action::ToggleBars { .. } => "ToggleBars",
+                    _ => "HideBars",
+                };
+                let mut node = KdlNode::new(name);
+                for bar in bars {
+                    node.push(bar.clone());
+                }
+                Some(node)
+            },
+            Action::ShowBars => Some(KdlNode::new("ShowBars")),
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
             Action::PaneNameInput { input: bytes } => {
                 let mut node = KdlNode::new("PaneNameInput");
@@ -1510,6 +1526,7 @@ impl Action {
             | Action::MutePaneByPaneId { pane_id }
             | Action::IgnorePaneOutputByPaneId { pane_id }
             | Action::WatchPaneByPaneId { pane_id }
+            | Action::HideBarByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1522,6 +1539,7 @@ impl Action {
                     Action::MutePaneByPaneId { .. } => "MutePaneByPaneId",
                     Action::IgnorePaneOutputByPaneId { .. } => "IgnorePaneOutputByPaneId",
                     Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
+                    Action::HideBarByPaneId { .. } => "HideBarByPaneId",
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
@@ -1915,6 +1933,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .map(|n| n as usize);
                 Ok(Action::HideFloatingPanes { tab_id })
             },
+            "ToggleBars" | "HideBars" => {
+                let bars = kdl_arguments_that_are_strings(action_arguments.iter().copied())?;
+                if action_name == "ToggleBars" {
+                    Ok(Action::ToggleBars { bars })
+                } else {
+                    Ok(Action::HideBars { bars })
+                }
+            },
+            "ShowBars" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "CloseFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "UndoRenamePane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
@@ -2703,6 +2730,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "MutePaneByPaneId"
             | "IgnorePaneOutputByPaneId"
             | "WatchPaneByPaneId"
+            | "HideBarByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2736,6 +2764,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     "MutePaneByPaneId" => Action::MutePaneByPaneId { pane_id },
                     "IgnorePaneOutputByPaneId" => Action::IgnorePaneOutputByPaneId { pane_id },
                     "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
+                    "HideBarByPaneId" => Action::HideBarByPaneId { pane_id },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
@@ -3496,6 +3525,29 @@ impl Options {
             },
             None => None,
         };
+        let bars_hidden_on_start = match kdl_options.get("bars_hidden_on_start") {
+            Some(property) => {
+                let names = kdl_arguments_that_are_strings(property.entries().iter())?;
+                let joined = names.join(",");
+                match joined.parse::<HiddenBars>() {
+                    Ok(hidden_bars) => Some(hidden_bars),
+                    Err(e) => {
+                        return Err(ConfigError::new_kdl_error(
+                            e,
+                            property.span().offset(),
+                            property.span().len(),
+                        ))
+                    },
+                }
+            },
+            None => None,
+        };
+        let hidden_bars_notification =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "hidden_bars_notification")
+                .map(|(v, _)| v);
+        let mode_hints_when_bars_hidden =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mode_hints_when_bars_hidden")
+                .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -3570,6 +3622,9 @@ impl Options {
             session_indicator,
             swap_layout_notification,
             on_quit,
+            bars_hidden_on_start,
+            hidden_bars_notification,
+            mode_hints_when_bars_hidden,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -5561,6 +5616,66 @@ impl Options {
             None
         }
     }
+    fn bars_hidden_on_start_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = [
+            " ",
+            "// Which bars a new session starts with hidden",
+            "// Options:",
+            "//   - \"none\" (Default)",
+            "//   - \"all\"",
+            "//   - one or more bar names, eg. \"tab-bar\" \"status-bar\"",
+            "// ",
+        ]
+        .join("\n");
+        let create_node = |value: &HiddenBars| -> KdlNode {
+            let mut node = KdlNode::new("bars_hidden_on_start");
+            let names = value.names();
+            if names.is_empty() {
+                node.push(KdlValue::String("none".to_owned()));
+            }
+            for name in names {
+                node.push(KdlValue::String(name));
+            }
+            node
+        };
+        if let Some(value) = &self.bars_hidden_on_start {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(&HiddenBars::None);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn hidden_bars_notification_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "hidden_bars_notification",
+            self.hidden_bars_notification,
+            &[
+                "// Whether to briefly show what was hidden and how to show it again when bars are hidden",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn mode_hints_when_bars_hidden_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "mode_hints_when_bars_hidden",
+            self.mode_hints_when_bars_hidden,
+            &[
+                "// Whether to show the current mode's keys in a corner while the bar that would show them is hidden",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -5785,6 +5900,15 @@ impl Options {
         }
         if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
             nodes.push(on_quit);
+        }
+        if let Some(node) = self.bars_hidden_on_start_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.hidden_bars_notification_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.mode_hints_when_bars_hidden_to_kdl(add_comments) {
+            nodes.push(node);
         }
         nodes
     }
@@ -11232,4 +11356,119 @@ fn run_with_background_parses_and_is_written_back() {
     let written = action.to_kdl().unwrap();
     let reparsed = Action::try_from((&written, &Options::default())).unwrap();
     assert_eq!(reparsed, expected);
+}
+
+#[test]
+fn hidden_bars_options_round_trip_through_kdl() {
+    let fake_config = r##"
+        bars_hidden_on_start "tab-bar" "status-bar"
+        hidden_bars_notification false
+        mode_hints_when_bars_hidden false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let options = Options::from_kdl(&document).unwrap();
+    assert_eq!(
+        options.bars_hidden_on_start,
+        Some(HiddenBars::from_names(&["tab-bar", "status-bar"]))
+    );
+    assert_eq!(options.hidden_bars_notification, Some(false));
+    assert_eq!(options.mode_hints_when_bars_hidden, Some(false));
+    let mut serialized = Options::to_kdl(&options, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let reparsed =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(options, reparsed);
+}
+
+#[test]
+fn bars_hidden_on_start_accepts_all_and_none() {
+    for (value, expected) in [("\"all\"", HiddenBars::All), ("\"none\"", HiddenBars::None)] {
+        let document: KdlDocument = format!("bars_hidden_on_start {}", value).parse().unwrap();
+        let options = Options::from_kdl(&document).unwrap();
+        assert_eq!(options.bars_hidden_on_start, Some(expected));
+    }
+}
+
+#[test]
+fn bar_actions_round_trip_through_keybinds() {
+    let config = r#"
+        keybinds clear-defaults=true {
+            normal {
+                bind "Alt a" { ToggleBars; }
+                bind "Alt b" { ToggleBars "status-bar" "tab-bar"; }
+                bind "Alt c" { HideBars "compact-bar"; }
+                bind "Alt d" { ShowBars; }
+                bind "Alt e" { HideBarByPaneId "plugin_3"; }
+            }
+        }"#;
+    let config = Config::from_kdl(config, None).unwrap();
+    let action_for = |key: &str| {
+        config
+            .keybinds
+            .0
+            .get(&InputMode::Normal)
+            .and_then(|binds| binds.get(&KeyWithModifier::from_str(key).unwrap()))
+            .cloned()
+    };
+    assert_eq!(
+        action_for("Alt a"),
+        Some(vec![Action::ToggleBars { bars: vec![] }])
+    );
+    assert_eq!(
+        action_for("Alt b"),
+        Some(vec![Action::ToggleBars {
+            bars: vec!["status-bar".to_owned(), "tab-bar".to_owned()]
+        }])
+    );
+    assert_eq!(
+        action_for("Alt c"),
+        Some(vec![Action::HideBars {
+            bars: vec!["compact-bar".to_owned()]
+        }])
+    );
+    assert_eq!(action_for("Alt d"), Some(vec![Action::ShowBars]));
+    assert_eq!(
+        action_for("Alt e"),
+        Some(vec![Action::HideBarByPaneId {
+            pane_id: PaneId::Plugin(3)
+        }])
+    );
+    for action in [
+        Action::ToggleBars { bars: vec![] },
+        Action::ToggleBars {
+            bars: vec!["status-bar".to_owned()],
+        },
+        Action::HideBars {
+            bars: vec!["compact-bar".to_owned()],
+        },
+        Action::ShowBars,
+    ] {
+        let node = action.to_kdl().unwrap();
+        let reparsed = Action::try_from((&node, &Options::default())).unwrap();
+        assert_eq!(reparsed, action);
+    }
+}
+
+#[test]
+fn the_default_config_offers_to_hide_and_show_bars_in_the_right_click_menu() {
+    let config = Config::from_default_assets().unwrap();
+    let has_action = |entries: &[ContextMenuEntry], wanted: &ContextMenuAction| {
+        entries.iter().any(|entry| match entry {
+            ContextMenuEntry::Item { actions, .. } => actions.contains(wanted),
+            ContextMenuEntry::Separator => false,
+        })
+    };
+    assert!(has_action(
+        &config.context_menu.bar,
+        &ContextMenuAction::ClickedPane(ClickedPaneAction::HideBar)
+    ));
+    assert!(has_action(
+        &config.context_menu.bar,
+        &ContextMenuAction::Action(Action::HideBars { bars: vec![] })
+    ));
+    assert!(has_action(
+        &config.context_menu.common,
+        &ContextMenuAction::Action(Action::ShowBars)
+    ));
 }

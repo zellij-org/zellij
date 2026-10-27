@@ -352,6 +352,10 @@ message Action {
     UndoRenameSessionAction undo_rename_session = 186;
     ToggleMirrorResizeAction toggle_mirror_resize = 187;
     SetResurrectCommandAction set_resurrect_command = 188;
+    ToggleBarsAction toggle_bars = 189;
+    HideBarsAction hide_bars = 190;
+    ShowBarsAction show_bars = 191;
+    HideBarByPaneIdAction hide_bar_by_pane_id = 192;
   }
 }
 
@@ -839,6 +843,20 @@ message ResurrectCommand {
 message SetResurrectCommandAction {
   PaneId pane_id = 1;
   optional ResurrectCommand resurrect = 2;
+}
+
+message ToggleBarsAction {
+  repeated string bars = 1;
+}
+
+message HideBarsAction {
+  repeated string bars = 1;
+}
+
+message ShowBarsAction {}
+
+message HideBarByPaneIdAction {
+  PaneId pane_id = 1;
 }
 
 message SetPaneBorderStyleAction {
@@ -1352,6 +1370,9 @@ message Options {
   optional bool grapheme_clusters = 82;
   optional bool mirror_resizes_source_pane = 83;
   optional string live_view_release_key = 84;
+  optional string bars_hidden_on_start = 85;
+  optional bool hidden_bars_notification = 86;
+  optional bool mode_hints_when_bars_hidden = 87;
 }
 
 enum OnForceClose {

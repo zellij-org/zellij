@@ -35,6 +35,8 @@ pub enum ActionType {
     Detach,
     Quit,
     NewStackedPane,
+    ToggleBars,
+    ShowBars,
     Other(String),
 }
 
@@ -91,6 +93,8 @@ impl ActionType {
             ActionType::NewTab => "New tab".to_string(),
             ActionType::Detach => "Detach".to_string(),
             ActionType::Quit => "Quit".to_string(),
+            ActionType::ToggleBars => "Show/hide bars".to_string(),
+            ActionType::ShowBars => "Show bars".to_string(),
             ActionType::Other(_) => "Other action".to_string(),
         }
     }
@@ -137,6 +141,8 @@ impl ActionType {
             Action::EditScrollback { .. } => ActionType::EditScrollback,
             Action::Detach => ActionType::Detach,
             Action::Quit => ActionType::Quit,
+            Action::ToggleBars { .. } => ActionType::ToggleBars,
+            Action::ShowBars => ActionType::ShowBars,
             action if action.launches_plugin("session-manager") => ActionType::SessionManager,
             action if action.launches_plugin("configuration") => ActionType::Configuration,
             action if action.launches_plugin("plugin-manager") => ActionType::PluginManager,

@@ -1219,6 +1219,8 @@ pub struct ModeUpdatePayload {
     pub nested_descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(string, optional, tag="23")]
     pub remote_client: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="24")]
+    pub hidden_bars: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1892,6 +1894,7 @@ pub enum ClickedPaneAction {
     ToggleMute = 6,
     ToggleIgnoreOutput = 7,
     ToggleWatch = 8,
+    HideBar = 9,
 }
 impl ClickedPaneAction {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1909,6 +1912,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleMute => "ClickedPaneActionToggleMute",
             ClickedPaneAction::ToggleIgnoreOutput => "ClickedPaneActionToggleIgnoreOutput",
             ClickedPaneAction::ToggleWatch => "ClickedPaneActionToggleWatch",
+            ClickedPaneAction::HideBar => "ClickedPaneActionHideBar",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1923,6 +1927,7 @@ impl ClickedPaneAction {
             "ClickedPaneActionToggleMute" => Some(Self::ToggleMute),
             "ClickedPaneActionToggleIgnoreOutput" => Some(Self::ToggleIgnoreOutput),
             "ClickedPaneActionToggleWatch" => Some(Self::ToggleWatch),
+            "ClickedPaneActionHideBar" => Some(Self::HideBar),
             _ => None,
         }
     }

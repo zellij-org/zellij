@@ -849,6 +849,41 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleBars { bars } => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleBars(
+                    bars,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::HideBars { bars } => {
+            senders
+                .send_to_screen(ScreenInstruction::HideBars(
+                    bars,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ShowBars => {
+            senders
+                .send_to_screen(ScreenInstruction::ShowBars(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::HideBarByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::HideBarByPaneId(
+                    pane_id.into(),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::NewPane {
             direction,
             pane_name,

@@ -1393,6 +1393,26 @@ pub enum CliAction {
         #[clap(value_enum, value_parser)]
         style: PaneFrameStyle,
     },
+    #[clap(
+        about = "Show all bars if any are hidden, otherwise hide the named bars (all bars if none are named)"
+    )]
+    ToggleBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Hide the named bars (all bars if none are named) in every tab")]
+    HideBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Show all hidden bars")]
+    ShowBars,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab {
         /// Target a specific tab by ID

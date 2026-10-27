@@ -428,3 +428,19 @@ web_sharing "disabled"
 //   - "detach" (detach without asking)
 // 
 // on_quit "ask_quit"
+ 
+// Which bars a new session starts with hidden
+// Options:
+//   - "none" (Default)
+//   - "all"
+//   - one or more bar names, eg. "tab-bar" "status-bar"
+// 
+// bars_hidden_on_start "none"
+ 
+// Whether to briefly show what was hidden and how to show it again when bars are hidden
+// default is true
+// hidden_bars_notification false
+ 
+// Whether to show the current mode's keys in a corner while the bar that would show them is hidden
+// default is true
+// mode_hints_when_bars_hidden false

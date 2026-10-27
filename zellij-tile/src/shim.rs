@@ -1593,6 +1593,27 @@ pub fn toggle_pane_frames() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn toggle_bars(bar_names: Vec<String>) {
+    let plugin_command = PluginCommand::ToggleBars(bar_names);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn hide_bars(bar_names: Vec<String>) {
+    let plugin_command = PluginCommand::HideBars(bar_names);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn show_bars() {
+    let plugin_command = PluginCommand::ShowBars;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn set_pane_frame_style(pane_frame_style: PaneFrameStyle) {
     let plugin_command = PluginCommand::SetPaneFrameStyle(pane_frame_style);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

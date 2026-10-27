@@ -65,9 +65,9 @@ pub use super::generated_api::api::{
 use crate::data::{
     ClickedPaneAction, ClickedTabAction, ClientId, ClientInfo, ContextMenuAction,
     ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination, Direction, Event,
-    EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
-    KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec, LayoutInfo,
-    LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
+    EventType, FileMetadata, HiddenBars, HostTerminalThemeMode, InputMode, KeyModifier,
+    KeyWithModifier, KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
+    LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
     PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
     PluginInfo, SelectedText, SessionInfo, SettingKey, Style, StyledText, TabInfo, TabMetadata,
@@ -2754,6 +2754,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             session_ascended,
             nested_descend_keys,
             remote_client: protobuf_mode_update_payload.remote_client,
+            hidden_bars: HiddenBars::from_names(&protobuf_mode_update_payload.hidden_bars),
         };
         Ok(mode_info)
     }
@@ -2797,6 +2798,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             .map(|key| key.to_kdl())
             .collect();
         let remote_client = mode_info.remote_client;
+        let hidden_bars = mode_info.hidden_bars.names();
         let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds);
         Ok(ProtobufModeUpdatePayload {
             current_mode: current_mode as i32,
@@ -2822,6 +2824,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             session_ascended,
             nested_descend_keys,
             remote_client,
+            hidden_bars,
         })
     }
 }
@@ -3231,6 +3234,7 @@ fn serialize_mode_update_event_with_non_default_values() {
             KeyWithModifier::new(BareKey::Down),
         ],
         remote_client: Some("over SSH from 192.168.1.5".to_owned()),
+        hidden_bars: HiddenBars::from_names(&["tab-bar"]),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -4545,6 +4549,7 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                         ClickedPaneAction::ToggleIgnoreOutput
                     },
                     Ok(ProtobufClickedPaneAction::ToggleWatch) => ClickedPaneAction::ToggleWatch,
+                    Ok(ProtobufClickedPaneAction::HideBar) => ClickedPaneAction::HideBar,
                     Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedPane(action))
@@ -4596,6 +4601,7 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                         ProtobufClickedPaneAction::ToggleIgnoreOutput
                     },
                     ClickedPaneAction::ToggleWatch => ProtobufClickedPaneAction::ToggleWatch,
+                    ClickedPaneAction::HideBar => ProtobufClickedPaneAction::HideBar,
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
             },

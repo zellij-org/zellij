@@ -719,6 +719,30 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::BarsHiddenOnStart => info(
+            "Bars hidden on start",
+            PanesAndLayouts,
+            "Bars a new session starts with hidden: none, all, or names such as tab-bar,status-bar",
+            Text(TextCheck::AnyText),
+            "none",
+            Everyone,
+        ),
+        SettingKey::HiddenBarsNotification => info(
+            "Hidden bars notification",
+            PanesAndLayouts,
+            "Briefly show what was hidden and how to show it again",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::ModeHintsWhenBarsHidden => info(
+            "Mode hints when bars hidden",
+            PanesAndLayouts,
+            "Show the current mode's keys in a corner while the bar that shows them is hidden",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::DefaultMode => info(
             "Default mode",
             PanesAndLayouts,
@@ -1721,7 +1745,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 33] = [
+pub const SECTION_ORDER: [&str; 34] = [
     "Theme",
     "Display",
     "Attention",
@@ -1734,6 +1758,7 @@ pub const SECTION_ORDER: [&str; 33] = [
     "Clipboard",
     "New panes",
     "Layouts",
+    "Bars",
     "Mirrors",
     "Nested sessions",
     "Startup",
@@ -1799,6 +1824,7 @@ pub fn section(key: SettingKey) -> &'static str {
         },
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
+        BarsHiddenOnStart | HiddenBarsNotification | ModeHintsWhenBarsHidden => "Bars",
         MirrorResizesSourcePane | LiveViewReleaseKey => "Mirrors",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {

@@ -1510,6 +1510,21 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: Char(
+                    'z',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleBars {
+                    bars: [],
+                },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
                 bare_key: Esc,
                 key_modifiers: {},
             }: [
@@ -6776,6 +6791,9 @@ Config {
         session_indicator: None,
         swap_layout_notification: None,
         on_quit: None,
+        bars_hidden_on_start: None,
+        hidden_bars_notification: None,
+        mode_hints_when_bars_hidden: None,
     },
     themes: {
         "other-theme-from-config": Theme {
@@ -8803,6 +8821,17 @@ Config {
                 toggled_label: None,
             },
             Item {
+                label: "Hide bars",
+                actions: [
+                    Action(
+                        HideBars {
+                            bars: [],
+                        },
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Item {
                 label: "Float / Embed",
                 actions: [
                     ClickedPane(
@@ -9038,6 +9067,27 @@ Config {
                 ],
                 toggled_label: None,
             },
+            Separator,
+            Item {
+                label: "Hide {}",
+                actions: [
+                    ClickedPane(
+                        HideBar,
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Hide all bars",
+                actions: [
+                    Action(
+                        HideBars {
+                            bars: [],
+                        },
+                    ),
+                ],
+                toggled_label: None,
+            },
         ],
         common: [
             Item {
@@ -9092,6 +9142,15 @@ Config {
                             skip_cache: false,
                             tab_id: None,
                         },
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Show bars",
+                actions: [
+                    Action(
+                        ShowBars,
                     ),
                 ],
                 toggled_label: None,

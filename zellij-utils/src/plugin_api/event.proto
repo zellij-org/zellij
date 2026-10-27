@@ -397,6 +397,7 @@ enum ClickedPaneAction {
   ClickedPaneActionToggleMute = 6;
   ClickedPaneActionToggleIgnoreOutput = 7;
   ClickedPaneActionToggleWatch = 8;
+  ClickedPaneActionHideBar = 9;
 }
 
 enum ClickedTabAction {
@@ -861,6 +862,7 @@ message ModeUpdatePayload {
   optional bool session_ascended = 21;
   repeated string nested_descend_keys = 22;
   optional string remote_client = 23;
+  repeated string hidden_bars = 24;
 }
 
 enum WebSharing {
