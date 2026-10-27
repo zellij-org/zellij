@@ -19,22 +19,22 @@ themes {
         ribbon_selected {
             base 27 29 35
             background 152 195 121
-            emphasis_0 227 63 76
+            emphasis_0 149 0 32
             emphasis_1 216 133 76
             emphasis_2 198 120 221
-            emphasis_3 97 175 239
+            emphasis_3 0 75 122
         }
         ribbon_unselected {
             base 27 29 35
             background 220 223 228
-            emphasis_0 227 63 76
+            emphasis_0 195 23 50
             emphasis_1 233 225 254
             emphasis_2 97 175 239
-            emphasis_3 198 120 221
+            emphasis_3 142 66 164
         }
         table_title {
             base 152 195 121
-            background 0
+            background 27 29 35
             emphasis_0 216 133 76
             emphasis_1 86 182 194
             emphasis_2 152 195 121
@@ -78,7 +78,7 @@ themes {
             emphasis_0 216 133 76
             emphasis_1 86 182 194
             emphasis_2 198 120 221
-            emphasis_3 0
+            emphasis_3 198 120 221
         }
         frame_highlight {
             base 216 133 76
@@ -100,21 +100,21 @@ themes {
             base 227 63 76
             background 0
             emphasis_0 229 192 123
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 216 133 76
+            emphasis_2 198 120 221
+            emphasis_3 86 182 194
         }
         multiplayer_user_colors {
             player_1 198 120 221
             player_2 97 175 239
-            player_3 0
+            player_3 216 133 76
             player_4 229 192 123
             player_5 86 182 194
-            player_6 0
+            player_6 152 195 121
             player_7 227 63 76
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 224 108 117
+            player_9 158 154 241
+            player_10 196 161 59
         }
         // terminal_colors: https://github.com/sonph/onehalf/blob/master/kitty/onehalf-dark.conf
         terminal_colors {

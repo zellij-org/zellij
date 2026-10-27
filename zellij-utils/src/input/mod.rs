@@ -17,6 +17,7 @@ pub mod permission;
 pub mod plugins;
 pub mod session_suggestions;
 pub mod theme;
+pub mod theme_contrast;
 pub mod web_client;
 pub mod window;
 

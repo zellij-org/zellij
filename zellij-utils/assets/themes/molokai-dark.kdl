@@ -13,28 +13,28 @@ themes {
             background 27 29 30
             emphasis_0 253 151 31
             emphasis_1 0 255 255
-            emphasis_2 0 140 0
+            emphasis_2 30 153 27
             emphasis_3 174 129 255
         }
         ribbon_selected {
             base 0 0 0
             background 0 140 0
-            emphasis_0 255 0 0
+            emphasis_0 30 0 0
             emphasis_1 253 151 31
             emphasis_2 174 129 255
-            emphasis_3 102 217 239
+            emphasis_3 0 11 14
         }
         ribbon_unselected {
             base 0 0 0
             background 248 248 240
-            emphasis_0 255 0 0
+            emphasis_0 228 0 0
             emphasis_1 255 255 255
             emphasis_2 102 217 239
-            emphasis_3 174 129 255
+            emphasis_3 135 88 210
         }
         table_title {
             base 0 140 0
-            background 0
+            background 0 0 0
             emphasis_0 253 151 31
             emphasis_1 0 255 255
             emphasis_2 0 140 0
@@ -45,7 +45,7 @@ themes {
             background 27 29 30
             emphasis_0 253 151 31
             emphasis_1 0 255 255
-            emphasis_2 0 140 0
+            emphasis_2 30 153 27
             emphasis_3 174 129 255
         }
         table_cell_unselected {
@@ -61,7 +61,7 @@ themes {
             background 27 29 30
             emphasis_0 253 151 31
             emphasis_1 0 255 255
-            emphasis_2 0 140 0
+            emphasis_2 30 153 27
             emphasis_3 174 129 255
         }
         list_unselected {
@@ -78,7 +78,7 @@ themes {
             emphasis_0 253 151 31
             emphasis_1 0 255 255
             emphasis_2 174 129 255
-            emphasis_3 0
+            emphasis_3 174 129 255
         }
         frame_highlight {
             base 253 151 31
@@ -100,21 +100,21 @@ themes {
             base 255 0 0
             background 0
             emphasis_0 255 255 0
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 253 151 31
+            emphasis_2 174 129 255
+            emphasis_3 0 255 255
         }
         multiplayer_user_colors {
             player_1 174 129 255
             player_2 102 217 239
-            player_3 0
+            player_3 0 140 0
             player_4 255 255 0
             player_5 0 255 255
-            player_6 0
+            player_6 253 151 31
             player_7 255 0 0
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 135 0 255
+            player_9 16 128 208
+            player_10 152 225 35
         }
         // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Molokai.toml
         terminal_colors {

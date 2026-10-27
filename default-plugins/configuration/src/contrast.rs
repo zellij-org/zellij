@@ -1,148 +1,113 @@
 use zellij_tile::prelude::*;
-use zellij_utils::input::config_blocks::{
-    slot_colour, styling_from_colours, theme_slots, MULTIPLAYER_COLOURS,
-};
+use zellij_utils::input::config_blocks::{styling_from_colours, theme_slots};
+pub use zellij_utils::input::theme_contrast::{contrast, rgb};
+use zellij_utils::input::theme_contrast::{pair_contrasts, PairContrast};
 
 pub const LOW_CONTRAST: f64 = 3.0;
+#[cfg(test)]
 pub const GOOD_CONTRAST: f64 = 4.5;
-
-const SYSTEM_COLOURS: [(u8, u8, u8); 16] = [
-    (0, 0, 0),
-    (205, 0, 0),
-    (0, 205, 0),
-    (205, 205, 0),
-    (0, 0, 238),
-    (205, 0, 205),
-    (0, 205, 205),
-    (229, 229, 229),
-    (127, 127, 127),
-    (255, 0, 0),
-    (0, 255, 0),
-    (255, 255, 0),
-    (92, 92, 255),
-    (255, 0, 255),
-    (0, 255, 255),
-    (255, 255, 255),
-];
-
-const CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
-
-const PAGE_BACKGROUND_STYLES: [&str; 6] = [
-    "table_title",
-    "frame_unselected",
-    "frame_selected",
-    "frame_highlight",
-    "exit_code_success",
-    "exit_code_error",
-];
-
-pub fn rgb(colour: PaletteColor) -> (u8, u8, u8) {
-    match colour {
-        PaletteColor::Rgb(rgb) => rgb,
-        PaletteColor::EightBit(index) if index < 16 => SYSTEM_COLOURS[index as usize],
-        PaletteColor::EightBit(index) if index < 232 => {
-            let cube = index - 16;
-            (
-                CUBE_LEVELS[(cube / 36) as usize],
-                CUBE_LEVELS[((cube / 6) % 6) as usize],
-                CUBE_LEVELS[(cube % 6) as usize],
-            )
-        },
-        PaletteColor::EightBit(index) => {
-            let level = 8 + (index - 232) * 10;
-            (level, level, level)
-        },
-    }
-}
-
-fn channel(value: u8) -> f64 {
-    let value = value as f64 / 255.0;
-    if value <= 0.03928 {
-        value / 12.92
-    } else {
-        ((value + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-fn luminance((r, g, b): (u8, u8, u8)) -> f64 {
-    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
-}
-
-pub fn contrast(first: PaletteColor, second: PaletteColor) -> f64 {
-    let (a, b) = (luminance(rgb(first)), luminance(rgb(second)));
-    let (light, dark) = if a > b { (a, b) } else { (b, a) };
-    (light + 0.05) / (dark + 0.05)
-}
 
 fn blend(from: (u8, u8, u8), to: (u8, u8, u8), amount: f64) -> (u8, u8, u8) {
     let mix = |a: u8, b: u8| (a as f64 + (b as f64 - a as f64) * amount).round() as u8;
     (mix(from.0, to.0), mix(from.1, to.1), mix(from.2, to.2))
 }
 
+#[cfg(test)]
 pub fn suggest(foreground: PaletteColor, background: PaletteColor, target: f64) -> PaletteColor {
+    suggest_for_all(foreground, &[(background, target)])
+}
+
+fn worst_margin(candidate: (u8, u8, u8), backgrounds: &[(PaletteColor, f64)]) -> f64 {
+    backgrounds
+        .iter()
+        .map(|(background, target)| contrast(PaletteColor::Rgb(candidate), *background) / target)
+        .fold(f64::INFINITY, f64::min)
+}
+
+pub fn suggest_for_all(
+    foreground: PaletteColor,
+    backgrounds: &[(PaletteColor, f64)],
+) -> PaletteColor {
     let start = rgb(foreground);
-    let mut best: Option<(f64, (u8, u8, u8))> = None;
+    let mut closest_passing: Option<(usize, (u8, u8, u8))> = None;
+    let mut best_effort: Option<(f64, usize, (u8, u8, u8))> = None;
     for end in [(255, 255, 255), (0, 0, 0)] {
         for step in 0..=50 {
             let candidate = blend(start, end, step as f64 / 50.0);
-            let ratio = contrast(PaletteColor::Rgb(candidate), background);
-            if ratio >= target {
-                let distance = step as f64;
-                if best
-                    .map(|(previous, _)| distance < previous)
+            let margin = worst_margin(candidate, backgrounds);
+            if margin >= 1.0 {
+                if closest_passing
+                    .map(|(previous, _)| step < previous)
                     .unwrap_or(true)
                 {
-                    best = Some((distance, candidate));
+                    closest_passing = Some((step, candidate));
                 }
                 break;
             }
+            let better = best_effort
+                .map(|(previous, previous_step, _)| {
+                    margin > previous + f64::EPSILON
+                        || ((margin - previous).abs() <= f64::EPSILON && step < previous_step)
+                })
+                .unwrap_or(true);
+            if better {
+                best_effort = Some((margin, step, candidate));
+            }
         }
     }
-    let fallback = || {
-        let white = PaletteColor::Rgb((255, 255, 255));
-        let black = PaletteColor::Rgb((0, 0, 0));
-        if contrast(white, background) >= contrast(black, background) {
-            (255, 255, 255)
-        } else {
-            (0, 0, 0)
-        }
-    };
-    PaletteColor::Rgb(best.map(|(_, colour)| colour).unwrap_or_else(fallback))
+    let chosen = closest_passing
+        .map(|(_, colour)| colour)
+        .or(best_effort.map(|(_, _, colour)| colour))
+        .unwrap_or(start);
+    PaletteColor::Rgb(chosen)
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotContrast {
     pub ratio: f64,
+    pub target: f64,
     pub foreground: PaletteColor,
     pub background: PaletteColor,
     pub background_slot: String,
+    pub pairs: Vec<PairContrast>,
 }
 
-pub fn background_slot(style: &str) -> String {
-    if PAGE_BACKGROUND_STYLES.contains(&style) {
-        "text_unselected.background".to_owned()
-    } else {
-        format!("{}.background", style)
+impl SlotContrast {
+    pub fn backgrounds(&self) -> Vec<(PaletteColor, f64)> {
+        self.pairs
+            .iter()
+            .map(|found| (found.background, found.pair.target))
+            .collect()
+    }
+    pub fn fails_on(&self, slot: &str, below: f64) -> bool {
+        self.pairs
+            .iter()
+            .any(|found| found.pair.background.describe() == slot && found.ratio < below)
     }
 }
 
 pub fn slot_contrasts(colours: &[String]) -> Vec<Option<SlotContrast>> {
     let styling = styling_from_colours(colours);
+    let all_pairs = pair_contrasts(&styling);
     theme_slots()
         .iter()
-        .map(|(style, component)| {
-            if *style == MULTIPLAYER_COLOURS || *component == "background" {
-                return None;
-            }
-            let foreground = slot_colour(&styling, style, component)?;
-            let background_slot = background_slot(style);
-            let (background_style, background_component) = background_slot.split_once('.')?;
-            let background = slot_colour(&styling, background_style, background_component)?;
+        .map(|slot| {
+            let pairs: Vec<PairContrast> = all_pairs
+                .iter()
+                .filter(|found| found.pair.foreground == *slot)
+                .cloned()
+                .collect();
+            let worst = pairs
+                .iter()
+                .min_by(|a, b| a.margin().total_cmp(&b.margin()))?
+                .clone();
             Some(SlotContrast {
-                ratio: contrast(foreground, background),
-                foreground,
-                background,
-                background_slot,
+                ratio: worst.ratio,
+                target: worst.pair.target,
+                foreground: worst.foreground,
+                background: worst.background,
+                background_slot: worst.pair.background.describe(),
+                pairs,
             })
         })
         .collect()
@@ -187,29 +152,79 @@ mod tests {
     }
 
     #[test]
-    fn an_impossible_target_falls_back_to_black_or_white() {
+    fn an_impossible_target_gets_as_close_as_it_can() {
         let grey = PaletteColor::Rgb((128, 128, 128));
         assert_eq!(suggest(grey, grey, 30.0), BLACK);
     }
 
-    #[test]
-    fn page_level_styles_are_checked_against_the_text_background() {
-        assert_eq!(
-            background_slot("frame_selected"),
-            "text_unselected.background"
-        );
-        assert_eq!(background_slot("table_title"), "text_unselected.background");
-        assert_eq!(background_slot("list_selected"), "list_selected.background");
+    fn slot(colours: &[Option<SlotContrast>], style: &str, component: &str) -> Option<SlotContrast> {
+        let index = theme_slots()
+            .iter()
+            .position(|found| *found == (style, component))
+            .unwrap();
+        colours[index].clone()
     }
 
     #[test]
-    fn backgrounds_and_player_colors_are_not_checked() {
+    fn the_hover_fill_is_checked_as_a_background_and_not_as_text() {
         let contrasts = slot_contrasts(&[]);
-        for ((style, component), found) in theme_slots().iter().zip(contrasts.iter()) {
-            let skipped = *style == MULTIPLAYER_COLOURS
-                || *component == "background"
-                || *style == "frame_unselected";
-            assert_eq!(found.is_none(), skipped, "{}.{}", style, component);
+        assert!(slot(&contrasts, "ribbon_unselected", "emphasis_1").is_none());
+        let shortcut = slot(&contrasts, "ribbon_unselected", "emphasis_0").unwrap();
+        assert!(shortcut
+            .pairs
+            .iter()
+            .any(|found| found.pair.background.describe() == "ribbon_unselected.emphasis_1"));
+    }
+
+    #[test]
+    fn slots_that_are_never_drawn_get_no_check() {
+        let contrasts = slot_contrasts(&[]);
+        assert!(slot(&contrasts, "ribbon_selected", "emphasis_1").is_none());
+        assert!(slot(&contrasts, "ribbon_selected", "emphasis_2").is_none());
+        assert!(slot(&contrasts, "exit_code_success", "emphasis_1").is_none());
+        assert!(slot(&contrasts, "text_unselected", "background").is_none());
+    }
+
+    #[test]
+    fn text_with_two_backgrounds_reports_the_worse_one() {
+        let mut colours = zellij_utils::input::config_blocks::styling_colours(
+            &zellij_utils::data::DEFAULT_STYLES,
+        );
+        let index = |style: &str, component: &str| {
+            theme_slots()
+                .iter()
+                .position(|found| *found == (style, component))
+                .unwrap()
+        };
+        colours[index("text_unselected", "background")] = "#000000".to_owned();
+        colours[index("text_selected", "background")] = "#ffffff".to_owned();
+        colours[index("text_unselected", "base")] = "#f0f0f0".to_owned();
+        let found = slot(&slot_contrasts(&colours), "text_unselected", "base").unwrap();
+        assert_eq!(found.background_slot, "text_selected.background");
+        assert!(found.ratio < LOW_CONTRAST);
+    }
+
+    #[test]
+    fn a_suggestion_for_two_backgrounds_passes_on_both() {
+        let backgrounds = [
+            (PaletteColor::Rgb((0, 0, 0)), LOW_CONTRAST),
+            (PaletteColor::Rgb((255, 255, 255)), LOW_CONTRAST),
+        ];
+        let suggested = suggest_for_all(PaletteColor::Rgb((250, 250, 250)), &backgrounds);
+        for (background, target) in backgrounds {
+            assert!(contrast(suggested, background) >= target);
         }
+    }
+
+    #[test]
+    fn player_colors_are_checked_on_the_page_and_under_the_cursor() {
+        let found = slot(&slot_contrasts(&[]), "multiplayer_user_colors", "player_1").unwrap();
+        let backgrounds: Vec<String> = found
+            .pairs
+            .iter()
+            .map(|found| found.pair.background.describe())
+            .collect();
+        assert!(backgrounds.contains(&"text_unselected.background".to_owned()));
+        assert!(backgrounds.contains(&"the black cursor text".to_owned()));
     }
 }

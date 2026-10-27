@@ -1,87 +1,87 @@
 themes {
     catppuccin-latte {
         text_unselected {
-            base 76 79 105
+            base 63 66 91
             background 220 224 232
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 210 15 57
+            emphasis_0 173 64 0
+            emphasis_1 0 105 148
+            emphasis_2 28 115 0
+            emphasis_3 199 0 51
         }
         text_selected {
-            base 76 79 105
+            base 63 66 91
             background 172 176 190
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            emphasis_0 120 42 0
+            emphasis_1 0 73 104
+            emphasis_2 17 79 0
+            emphasis_3 128 8 105
         }
         ribbon_selected {
-            base 220 224 232
+            base 35 37 43
             background 64 160 43
-            emphasis_0 210 15 57
+            emphasis_0 85 0 16
             emphasis_1 254 100 11
             emphasis_2 234 118 203
-            emphasis_3 30 102 245
+            emphasis_3 0 31 100
         }
         ribbon_unselected {
             base 220 224 232
             background 92 95 119
-            emphasis_0 234 118 203
+            emphasis_0 255 204 239
             emphasis_1 76 79 105
             emphasis_2 30 102 245
-            emphasis_3 234 118 203
+            emphasis_3 255 204 239
         }
         table_title {
-            base 64 160 43
-            background 0
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            base 28 115 0
+            background 220 224 232
+            emphasis_0 173 64 0
+            emphasis_1 0 105 148
+            emphasis_2 28 115 0
+            emphasis_3 164 53 138
         }
         table_cell_selected {
-            base 76 79 105
+            base 63 66 91
             background 172 176 190
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            emphasis_0 120 42 0
+            emphasis_1 0 73 104
+            emphasis_2 17 79 0
+            emphasis_3 128 8 105
         }
         table_cell_unselected {
             base 76 79 105
             background 220 224 232
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            emphasis_0 173 64 0
+            emphasis_1 0 105 148
+            emphasis_2 28 115 0
+            emphasis_3 164 53 138
         }
         list_selected {
-            base 76 79 105
+            base 63 66 91
             background 172 176 190
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            emphasis_0 120 42 0
+            emphasis_1 0 73 104
+            emphasis_2 17 79 0
+            emphasis_3 128 8 105
         }
         list_unselected {
             base 76 79 105
             background 220 224 232
-            emphasis_0 254 100 11
-            emphasis_1 4 165 229
-            emphasis_2 64 160 43
-            emphasis_3 234 118 203
+            emphasis_0 173 64 0
+            emphasis_1 0 105 148
+            emphasis_2 28 115 0
+            emphasis_3 164 53 138
         }
         frame_selected {
-            base 64 160 43
+            base 26 108 0
             background 0
             emphasis_0 254 100 11
             emphasis_1 4 165 229
             emphasis_2 234 118 203
-            emphasis_3 0
+            emphasis_3 210 15 57
         }
         frame_highlight {
-            base 254 100 11
+            base 219 84 0
             background 0
             emphasis_0 210 15 57
             emphasis_1 136 57 239
@@ -89,9 +89,9 @@ themes {
             emphasis_3 254 100 11
         }
         exit_code_success {
-            base 64 160 43
+            base 48 146 24
             background 0
-            emphasis_0 4 165 229
+            emphasis_0 0 136 190
             emphasis_1 220 224 232
             emphasis_2 234 118 203
             emphasis_3 30 102 245
@@ -100,21 +100,21 @@ themes {
             base 210 15 57
             background 0
             emphasis_0 223 142 29
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 254 100 11
+            emphasis_2 210 15 57
+            emphasis_3 4 165 229
         }
         multiplayer_user_colors {
-            player_1 234 118 203
+            player_1 198 85 169
             player_2 30 102 245
-            player_3 0
-            player_4 223 142 29
-            player_5 4 165 229
-            player_6 0
+            player_3 48 146 24
+            player_4 180 111 0
+            player_5 0 136 190
+            player_6 11 141 148
             player_7 210 15 57
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 219 84 0
+            player_9 124 111 231
+            player_10 138 129 0
         }
         // terminal_colors: https://github.com/catppuccin/alacritty/blob/main/catppuccin-latte.toml
         terminal_colors {

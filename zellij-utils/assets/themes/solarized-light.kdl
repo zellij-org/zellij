@@ -1,84 +1,84 @@
 themes {
     solarized-light {
         text_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 96 91 75
+            background 253 246 227
+            emphasis_0 198 70 14
+            emphasis_1 0 127 120
+            emphasis_2 104 120 0
+            emphasis_3 204 46 124
         }
         text_selected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 96 91 75
+            background 220 213 195
+            emphasis_0 165 54 0
+            emphasis_1 0 103 97
+            emphasis_2 85 98 0
+            emphasis_3 179 7 103
         }
         ribbon_selected {
-            base 7 54 66
+            base 0 46 58
             background 133 153 0
-            emphasis_0 220 50 47
+            emphasis_0 91 0 4
             emphasis_1 203 75 22
             emphasis_2 211 54 130
-            emphasis_3 38 139 210
+            emphasis_3 0 43 73
         }
         ribbon_unselected {
-            base 7 54 66
+            base 0 9 13
             background 101 123 131
-            emphasis_0 220 50 47
+            emphasis_0 26 0 0
             emphasis_1 238 232 213
             emphasis_2 38 139 210
-            emphasis_3 211 54 130
+            emphasis_3 24 0 9
         }
         table_title {
-            base 133 153 0
-            background 0
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 104 120 0
+            background 253 246 227
+            emphasis_0 198 70 14
+            emphasis_1 0 127 120
+            emphasis_2 104 120 0
+            emphasis_3 204 46 124
         }
         table_cell_selected {
-            base 238 232 213
-            background 253 246 227
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 96 91 75
+            background 220 213 195
+            emphasis_0 165 54 0
+            emphasis_1 0 103 97
+            emphasis_2 85 98 0
+            emphasis_3 179 7 103
         }
         table_cell_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 118 112 95
+            background 253 246 227
+            emphasis_0 198 70 14
+            emphasis_1 0 127 120
+            emphasis_2 104 120 0
+            emphasis_3 204 46 124
         }
         list_selected {
-            base 238 232 213
-            background 253 246 227
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 96 91 75
+            background 220 213 195
+            emphasis_0 165 54 0
+            emphasis_1 0 103 97
+            emphasis_2 85 98 0
+            emphasis_3 179 7 103
         }
         list_unselected {
-            base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 118 112 95
+            background 253 246 227
+            emphasis_0 198 70 14
+            emphasis_1 0 127 120
+            emphasis_2 104 120 0
+            emphasis_3 204 46 124
         }
         frame_selected {
-            base 133 153 0
+            base 110 128 0
             background 0
             emphasis_0 203 75 22
             emphasis_1 42 161 152
             emphasis_2 211 54 130
-            emphasis_3 0
+            emphasis_3 211 54 130
         }
         frame_highlight {
             base 203 75 22
@@ -89,9 +89,9 @@ themes {
             emphasis_3 203 75 22
         }
         exit_code_success {
-            base 133 153 0
+            base 132 151 0
             background 0
-            emphasis_0 42 161 152
+            emphasis_0 37 158 149
             emphasis_1 7 54 66
             emphasis_2 211 54 130
             emphasis_3 38 139 210
@@ -100,21 +100,21 @@ themes {
             base 220 50 47
             background 0
             emphasis_0 181 137 0
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 203 75 22
+            emphasis_2 211 54 130
+            emphasis_3 42 161 152
         }
         multiplayer_user_colors {
             player_1 211 54 130
             player_2 38 139 210
-            player_3 0
-            player_4 181 137 0
-            player_5 42 161 152
-            player_6 0
+            player_3 108 113 196
+            player_4 179 136 0
+            player_5 37 158 149
+            player_6 132 151 0
             player_7 220 50 47
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 178 99 172
+            player_9 199 101 53
+            player_10 56 155 85
         }
         // terminal_colors: https://github.com/altercation/solarized/blob/master/README.md (the 16/8 TERMCOL column, shared by both variants)
         terminal_colors {
