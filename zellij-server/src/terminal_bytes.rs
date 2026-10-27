@@ -56,7 +56,10 @@ impl TerminalBytes {
             match self.async_reader.read_chunk(READ_BUFFER_SIZE).await {
                 Ok(bytes) if bytes.is_empty() => break,
                 Err(err) => {
-                    log::error!("{}", err);
+                    log::error!(
+                        "Error reading bytes from pane (was the pane closed?), {}",
+                        err
+                    );
                     break;
                 },
                 Ok(bytes) => {
