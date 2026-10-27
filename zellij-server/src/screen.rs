@@ -607,6 +607,9 @@ pub enum ScreenInstruction {
     NestedGuestPingTick {
         pane_id: PaneId,
     },
+    PromptReturnedInPane {
+        pane_id: PaneId,
+    },
     NestedSessionMessageFromHost {
         client_id: ClientId,
         message: NestedSessionMessage,
@@ -1380,6 +1383,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::RenderFrameAck { .. } => ScreenContext::RenderFrameAck,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
+            ScreenInstruction::PromptReturnedInPane { .. } => ScreenContext::PromptReturnedInPane,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
             },
@@ -4924,6 +4928,23 @@ impl Screen {
         self.report_key_passthrough_state(client_id, focused_pane_id, focused_pane_id);
         let _ = self.render(None);
         let _ = self.log_and_report_session_state();
+    }
+
+    pub fn handle_prompt_returned_in_pane(&mut self, pane_id: PaneId) {
+        if !self.nested_guest_tracker.is_known(pane_id) {
+            return;
+        }
+        log::info!(
+            "shell prompt returned in pane {:?} while a nested session guest was still registered, treating the guest as gone",
+            pane_id
+        );
+        self.clear_nested_guest(pane_id);
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                pane.reset_input_modes_left_by_lost_guest();
+                break;
+            }
+        }
     }
 
     pub fn clear_nested_guest(&mut self, pane_id: PaneId) {
@@ -12930,6 +12951,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NestedGuestPingTick { pane_id } => {
                 screen.handle_nested_guest_ping_tick(pane_id);
+            },
+            ScreenInstruction::PromptReturnedInPane { pane_id } => {
+                screen.handle_prompt_returned_in_pane(pane_id);
             },
             ScreenInstruction::NestedSessionMessageFromHost { client_id, message } => {
                 screen.handle_nested_session_message_from_host(client_id, message);

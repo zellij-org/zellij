@@ -10,31 +10,31 @@ themes {
         }
         text_selected {
             base 204 204 204
-            background 29 32 37
+            background 52 54 59
             emphasis_0 209 154 102
             emphasis_1 86 182 194
             emphasis_2 152 195 121
-            emphasis_3 198 120 221
+            emphasis_3 206 128 229
         }
         ribbon_selected {
             base 29 32 37
             background 152 195 121
-            emphasis_0 190 80 70
+            emphasis_0 138 30 26
             emphasis_1 209 154 102
             emphasis_2 198 120 221
-            emphasis_3 97 175 239
+            emphasis_3 0 75 122
         }
         ribbon_unselected {
             base 29 32 37
             background 171 178 191
-            emphasis_0 190 80 70
+            emphasis_0 134 26 23
             emphasis_1 204 204 204
             emphasis_2 97 175 239
-            emphasis_3 198 120 221
+            emphasis_3 109 31 129
         }
         table_title {
             base 152 195 121
-            background 0
+            background 29 32 37
             emphasis_0 209 154 102
             emphasis_1 86 182 194
             emphasis_2 152 195 121
@@ -42,11 +42,11 @@ themes {
         }
         table_cell_selected {
             base 204 204 204
-            background 40 44 52
+            background 52 54 59
             emphasis_0 209 154 102
             emphasis_1 86 182 194
             emphasis_2 152 195 121
-            emphasis_3 198 120 221
+            emphasis_3 206 128 229
         }
         table_cell_unselected {
             base 204 204 204
@@ -58,11 +58,11 @@ themes {
         }
         list_selected {
             base 204 204 204
-            background 40 44 52
+            background 52 54 59
             emphasis_0 209 154 102
             emphasis_1 86 182 194
             emphasis_2 152 195 121
-            emphasis_3 198 120 221
+            emphasis_3 206 128 229
         }
         list_unselected {
             base 204 204 204
@@ -78,7 +78,7 @@ themes {
             emphasis_0 209 154 102
             emphasis_1 86 182 194
             emphasis_2 198 120 221
-            emphasis_3 0
+            emphasis_3 198 120 221
         }
         frame_highlight {
             base 209 154 102
@@ -100,21 +100,21 @@ themes {
             base 190 80 70
             background 0
             emphasis_0 229 192 123
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 209 154 102
+            emphasis_2 198 120 221
+            emphasis_3 86 182 194
         }
         multiplayer_user_colors {
             player_1 198 120 221
             player_2 97 175 239
-            player_3 0
+            player_3 152 195 121
             player_4 229 192 123
             player_5 86 182 194
-            player_6 0
+            player_6 224 108 117
             player_7 190 80 70
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 209 154 102
+            player_9 221 135 184
+            player_10 159 155 240
         }
         // terminal_colors: https://github.com/joshdick/onedark.vim/blob/main/term/One%20Dark.Xresources
         terminal_colors {

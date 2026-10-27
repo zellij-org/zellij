@@ -113,10 +113,27 @@ pub fn apply_double_click_outcome(
             );
         },
         DoubleClickOutcome::NewTab => {
-            new_tab::<&str>(None, None);
+            open_new_tab();
         },
         DoubleClickOutcome::Nothing => {},
     }
+}
+
+pub fn open_new_tab() {
+    run_action(
+        Action::NewTab {
+            tiled_layout: None,
+            floating_layouts: vec![],
+            swap_tiled_layouts: None,
+            swap_floating_layouts: None,
+            tab_name: None,
+            should_change_focus_to_new_tab: true,
+            cwd: None,
+            initial_panes: None,
+            first_pane_unblock_condition: None,
+        },
+        BTreeMap::new(),
+    );
 }
 
 fn is_blank(text: &str) -> bool {

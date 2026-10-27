@@ -654,6 +654,7 @@ pub trait Pane {
     fn drain_prompt_return(&mut self) -> bool {
         false
     }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {}
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -2622,6 +2623,7 @@ impl Tab {
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
         self.pane_drawings.remove(&client_id);
+        self.mouse_click_tracker.remove(&client_id);
         if is_connected_to_this_tab || was_dimmed {
             self.set_client_dimmed(client_id, false);
             self.set_force_render();
@@ -2648,6 +2650,7 @@ impl Tab {
             .unwrap_or_else(|| self.default_mode_info.clone());
         self.connected_clients.borrow_mut().remove(&client_id);
         self.pane_drawings.remove(&client_id);
+        self.mouse_click_tracker.remove(&client_id);
         (client_id, client_mode_info)
     }
     pub fn has_no_connected_clients(&self) -> bool {
@@ -4862,6 +4865,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::PromptReturned(pid));
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::PromptReturnedInPane {
+                        pane_id: PaneId::Terminal(pid),
+                    });
             }
         }
         Ok(())

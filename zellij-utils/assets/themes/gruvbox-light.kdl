@@ -4,81 +4,81 @@ themes {
             base 60 56 54
             background 235 219 178
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 56 107 59
+            emphasis_2 103 98 0
+            emphasis_3 146 70 106
         }
         text_selected {
             base 60 56 54
             background 213 196 161
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 42 93 46
+            emphasis_2 88 84 0
+            emphasis_3 130 56 92
         }
         ribbon_selected {
-            base 235 219 178
+            base 255 246 223
             background 121 116 14
-            emphasis_0 214 93 14
+            emphasis_0 255 245 241
             emphasis_1 152 0 5
             emphasis_2 177 98 134
-            emphasis_3 69 133 136
+            emphasis_3 217 254 255
         }
         ribbon_unselected {
             base 235 219 178
             background 80 73 69
-            emphasis_0 214 93 14
+            emphasis_0 255 165 122
             emphasis_1 60 56 54
             emphasis_2 69 133 136
-            emphasis_3 177 98 134
+            emphasis_3 246 160 198
         }
         table_title {
-            base 121 116 14
-            background 0
+            base 103 98 0
+            background 235 219 178
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 56 107 59
+            emphasis_2 103 98 0
+            emphasis_3 146 70 106
         }
         table_cell_selected {
             base 60 56 54
             background 213 196 161
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 42 93 46
+            emphasis_2 88 84 0
+            emphasis_3 130 56 92
         }
         table_cell_unselected {
             base 60 56 54
             background 235 219 178
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 56 107 59
+            emphasis_2 103 98 0
+            emphasis_3 146 70 106
         }
         list_selected {
             base 60 56 54
             background 213 196 161
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 42 93 46
+            emphasis_2 88 84 0
+            emphasis_3 130 56 92
         }
         list_unselected {
             base 60 56 54
             background 235 219 178
             emphasis_0 152 0 5
-            emphasis_1 104 157 106
-            emphasis_2 121 116 14
-            emphasis_3 177 98 134
+            emphasis_1 56 107 59
+            emphasis_2 103 98 0
+            emphasis_3 146 70 106
         }
         frame_selected {
-            base 121 116 14
+            base 117 112 4
             background 0
             emphasis_0 152 0 5
             emphasis_1 104 157 106
             emphasis_2 177 98 134
-            emphasis_3 0
+            emphasis_3 177 98 134
         }
         frame_highlight {
             base 152 0 5
@@ -91,30 +91,30 @@ themes {
         exit_code_success {
             base 121 116 14
             background 0
-            emphasis_0 104 157 106
+            emphasis_0 85 137 87
             emphasis_1 235 219 178
             emphasis_2 177 98 134
             emphasis_3 69 133 136
         }
         exit_code_error {
-            base 214 93 14
+            base 207 87 0
             background 0
             emphasis_0 215 153 33
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 152 0 5
+            emphasis_2 177 98 134
+            emphasis_3 104 157 106
         }
         multiplayer_user_colors {
             player_1 177 98 134
             player_2 69 133 136
-            player_3 0
-            player_4 215 153 33
-            player_5 104 157 106
-            player_6 0
-            player_7 214 93 14
-            player_8 0
-            player_9 0
-            player_10 0
+            player_3 173 35 29
+            player_4 165 114 0
+            player_5 85 137 87
+            player_6 121 116 14
+            player_7 207 87 0
+            player_8 143 63 113
+            player_9 7 102 120
+            player_10 204 36 29
         }
         // terminal_colors: https://github.com/morhetz/gruvbox-contrib/blob/master/xresources/gruvbox-light.xresources
         terminal_colors {

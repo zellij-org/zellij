@@ -889,6 +889,100 @@ impl MouseHandler {
         })
     }
 
+    fn corner_edge_directions(edge: PaneEdge) -> Option<(Direction, Direction)> {
+        match edge {
+            PaneEdge::TopLeft => Some((Direction::Up, Direction::Left)),
+            PaneEdge::TopRight => Some((Direction::Up, Direction::Right)),
+            PaneEdge::BottomLeft => Some((Direction::Down, Direction::Left)),
+            PaneEdge::BottomRight => Some((Direction::Down, Direction::Right)),
+            _ => None,
+        }
+    }
+
+    fn tiled_corner_moves_both_ways(tab: &mut Tab, pane_id: PaneId, edge: PaneEdge) -> bool {
+        match Self::corner_edge_directions(edge) {
+            Some((vertical, horizontal)) => {
+                tab.tiled_panes.pane_edge_can_move(pane_id, vertical)
+                    && tab.tiled_panes.pane_edge_can_move(pane_id, horizontal)
+            },
+            None => false,
+        }
+    }
+
+    fn corner_position(geom: &PaneGeom, edge: PaneEdge) -> Option<(isize, isize)> {
+        let left = geom.x as isize;
+        let top = geom.y as isize;
+        let right = (geom.x + geom.cols.as_usize()) as isize - 1;
+        let bottom = (geom.y + geom.rows.as_usize()) as isize - 1;
+        match edge {
+            PaneEdge::TopLeft => Some((top, left)),
+            PaneEdge::TopRight => Some((top, right)),
+            PaneEdge::BottomLeft => Some((bottom, left)),
+            PaneEdge::BottomRight => Some((bottom, right)),
+            _ => None,
+        }
+    }
+
+    fn resolve_tiled_junction(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        edge: PaneEdge,
+        position: &Position,
+    ) -> (PaneId, PaneEdge) {
+        if Self::corner_edge_directions(edge).is_none()
+            || Self::tiled_corner_moves_both_ways(tab, pane_id, edge)
+        {
+            return (pane_id, edge);
+        }
+        let offsets: [(isize, isize); 8] = [
+            (0, 1),
+            (0, -1),
+            (1, 0),
+            (-1, 0),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+        for (line_offset, column_offset) in offsets {
+            let line = position.line() + line_offset;
+            let column = position.column() as isize + column_offset;
+            if line < 0 || column < 0 {
+                continue;
+            }
+            let neighbor_position = Position::new(line as i32, column as u16);
+            let Ok(Some(candidate_id)) = tab.get_pane_id_at(&neighbor_position, false) else {
+                continue;
+            };
+            if candidate_id == pane_id || !tab.tiled_panes.panes_contain(&candidate_id) {
+                continue;
+            }
+            let Some((candidate_edge, candidate_geom)) =
+                tab.tiled_panes.get_pane(candidate_id).and_then(|pane| {
+                    if !pane.position_is_on_frame(&neighbor_position) {
+                        return None;
+                    }
+                    pane.get_edge_at_position(&neighbor_position)
+                        .map(|edge| (edge, pane.position_and_size()))
+                })
+            else {
+                continue;
+            };
+            let Some((corner_line, corner_column)) =
+                Self::corner_position(&candidate_geom, candidate_edge)
+            else {
+                continue;
+            };
+            let near_corner = (corner_line - position.line()).abs() <= 1
+                && (corner_column - position.column() as isize).abs() <= 1;
+            if near_corner && Self::tiled_corner_moves_both_ways(tab, candidate_id, candidate_edge)
+            {
+                return (candidate_id, candidate_edge);
+            }
+        }
+        (pane_id, edge)
+    }
+
     fn start_pane_resize_with_mouse(
         tab: &mut Tab,
         pane_id: PaneId,
@@ -896,9 +990,13 @@ impl MouseHandler {
         position: Position,
         _client_id: ClientId,
     ) -> Result<()> {
-        let err_context = || format!("failed to start pane resize for pane {pane_id:?}");
-
         let is_floating = tab.floating_panes.panes_contain(&pane_id);
+        let (pane_id, edge) = if is_floating {
+            (pane_id, edge)
+        } else {
+            Self::resolve_tiled_junction(tab, pane_id, edge, &position)
+        };
+        let err_context = || format!("failed to start pane resize for pane {pane_id:?}");
 
         let start_geom = if is_floating {
             tab.floating_panes

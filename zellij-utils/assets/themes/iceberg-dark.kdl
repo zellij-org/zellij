@@ -10,31 +10,31 @@ themes {
         }
         text_selected {
             base 198 200 209
-            background 22 24 33
+            background 52 55 71
             emphasis_0 226 165 120
             emphasis_1 137 184 194
-            emphasis_2 132 160 198
-            emphasis_3 160 147 199
+            emphasis_2 135 163 201
+            emphasis_3 166 153 206
         }
         ribbon_selected {
             base 30 33 50
             background 132 160 198
-            emphasis_0 226 120 120
+            emphasis_0 111 9 25
             emphasis_1 226 165 120
             emphasis_2 160 147 199
-            emphasis_3 180 190 130
+            emphasis_3 51 57 0
         }
         ribbon_unselected {
             base 30 33 50
             background 198 200 209
-            emphasis_0 226 120 120
+            emphasis_0 148 50 55
             emphasis_1 198 200 209
             emphasis_2 180 190 130
-            emphasis_3 160 147 199
+            emphasis_3 90 77 124
         }
         table_title {
             base 132 160 198
-            background 0
+            background 30 33 50
             emphasis_0 226 165 120
             emphasis_1 137 184 194
             emphasis_2 132 160 198
@@ -42,11 +42,11 @@ themes {
         }
         table_cell_selected {
             base 198 200 209
-            background 22 24 33
+            background 52 55 71
             emphasis_0 226 165 120
             emphasis_1 137 184 194
-            emphasis_2 132 160 198
-            emphasis_3 160 147 199
+            emphasis_2 135 163 201
+            emphasis_3 166 153 206
         }
         table_cell_unselected {
             base 198 200 209
@@ -58,11 +58,11 @@ themes {
         }
         list_selected {
             base 198 200 209
-            background 22 24 33
+            background 52 55 71
             emphasis_0 226 165 120
             emphasis_1 137 184 194
-            emphasis_2 132 160 198
-            emphasis_3 160 147 199
+            emphasis_2 135 163 201
+            emphasis_3 166 153 206
         }
         list_unselected {
             base 198 200 209
@@ -78,7 +78,7 @@ themes {
             emphasis_0 226 165 120
             emphasis_1 137 184 194
             emphasis_2 160 147 199
-            emphasis_3 0
+            emphasis_3 160 147 199
         }
         frame_highlight {
             base 226 165 120
@@ -100,21 +100,21 @@ themes {
             base 226 120 120
             background 0
             emphasis_0 226 164 120
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 226 165 120
+            emphasis_2 160 147 199
+            emphasis_3 137 184 194
         }
         multiplayer_user_colors {
             player_1 160 147 199
             player_2 180 190 130
-            player_3 0
+            player_3 213 154 187
             player_4 226 164 120
             player_5 137 184 194
-            player_6 0
+            player_6 154 173 228
             player_7 226 120 120
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 123 192 162
+            player_9 195 173 113
+            player_10 222 155 144
         }
         // terminal_colors: https://github.com/cocopon/iceberg.vim/blob/master/colors/iceberg.vim (terminal_ansi_colors, dark)
         terminal_colors {

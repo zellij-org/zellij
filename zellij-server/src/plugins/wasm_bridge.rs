@@ -2785,6 +2785,11 @@ impl WasmBridge {
                     .unwrap()
                     .shared_running_plugin(instance_id)
                     .is_some();
+                let instance_is_in_blocking_call = self
+                    .plugin_map
+                    .lock()
+                    .unwrap()
+                    .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
                 self.plugin_executor.execute_for_plugin(
                     instance_id,
@@ -2799,7 +2804,7 @@ impl WasmBridge {
                         );
                     },
                 );
-                if instance_is_running {
+                if instance_is_running && !instance_is_in_blocking_call {
                     let _ = slot_added_receiver
                         .recv_timeout(std::time::Duration::from_millis(SLOT_ADDED_WAIT_MS));
                 }

@@ -19635,3 +19635,113 @@ fn closing_a_pane_keeps_resurrected_bars_in_place_with_pre_bars_plugin_aliases()
     );
     assert_bars_in_place(tab_bar, status_bar);
 }
+
+fn three_pane_tab_for_junction_drag() -> (
+    Tab,
+    zellij_utils::pane_size::PaneGeom,
+    zellij_utils::pane_size::PaneGeom,
+) {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.horizontal_split(PaneId::Terminal(3), None, client_id, None, None)
+        .unwrap();
+    let left = tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    let right_top = tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    (tab, left, right_top)
+}
+
+fn drag_from(tab: &mut Tab, start: Position, end: Position) {
+    let client_id = 1;
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(start), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(end), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(end), client_id)
+        .unwrap();
+}
+
+fn assert_both_dividers_moved(
+    tab: &Tab,
+    left_before: zellij_utils::pane_size::PaneGeom,
+    right_top_before: zellij_utils::pane_size::PaneGeom,
+) {
+    let left_after = tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    let right_top_after = tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert!(
+        left_after.cols.as_usize() > left_before.cols.as_usize(),
+        "the vertical divider should follow the drag: before {:?}, after {:?}",
+        left_before,
+        left_after
+    );
+    assert!(
+        right_top_after.rows.as_usize() > right_top_before.rows.as_usize(),
+        "the horizontal divider should follow the drag: before {:?}, after {:?}",
+        right_top_before,
+        right_top_after
+    );
+}
+
+#[test]
+fn dragging_the_junction_of_two_dividers_moves_both() {
+    let (mut tab, left, right_top) = three_pane_tab_for_junction_drag();
+    let junction_line = (right_top.y + right_top.rows.as_usize() - 1) as i32;
+    let junction_column = (left.x + left.cols.as_usize() - 1) as u16;
+    drag_from(
+        &mut tab,
+        Position::new(junction_line, junction_column),
+        Position::new(junction_line + 2, junction_column + 3),
+    );
+    assert_both_dividers_moved(&tab, left, right_top);
+}
+
+#[test]
+fn dragging_next_to_the_junction_of_two_dividers_moves_both() {
+    let (mut tab, left, right_top) = three_pane_tab_for_junction_drag();
+    let junction_line = (right_top.y + right_top.rows.as_usize() - 1) as i32;
+    let next_to_junction_column = right_top.x as u16;
+    drag_from(
+        &mut tab,
+        Position::new(junction_line, next_to_junction_column),
+        Position::new(junction_line + 2, next_to_junction_column + 3),
+    );
+    assert_both_dividers_moved(&tab, left, right_top);
+}
+
+#[test]
+fn leaving_a_tab_forgets_the_last_click_so_returning_cannot_double_click() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(5, 10);
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    assert!(tab.mouse_click_tracker.contains_key(&client_id));
+
+    let drained = tab.drain_connected_clients(Some(vec![client_id]));
+    assert!(!tab.mouse_click_tracker.contains_key(&client_id));
+    tab.add_multiple_clients(drained).unwrap();
+    assert!(!tab.mouse_click_tracker.contains_key(&client_id));
+}

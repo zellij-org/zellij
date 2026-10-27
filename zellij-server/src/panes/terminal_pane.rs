@@ -647,6 +647,10 @@ impl Pane for TerminalPane {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
+                    if frame.omits_title() && !last_frame.omits_title() {
+                        self.grid.update_line_for_rendering(0);
+                        self.set_should_render(true);
+                    }
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
@@ -972,6 +976,9 @@ impl Pane for TerminalPane {
 
     fn drain_prompt_return(&mut self) -> bool {
         std::mem::take(&mut self.grid.pending_prompt_return)
+    }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {
+        self.grid.reset_input_modes_left_by_lost_guest();
     }
 
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
