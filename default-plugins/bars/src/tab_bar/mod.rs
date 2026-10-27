@@ -392,7 +392,7 @@ impl TabBar {
                             focus_host_session();
                         },
                         Some(TabBarRegion::NewTabButton) => {
-                            new_tab::<&str>(None, None);
+                            crate::double_click::open_new_tab();
                         },
                         Some(TabBarRegion::Marker { position, .. }) => {
                             switch_tab_to(position as u32 + 1);

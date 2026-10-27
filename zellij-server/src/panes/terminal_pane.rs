@@ -647,6 +647,10 @@ impl Pane for TerminalPane {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
+                    if frame.omits_title() && !last_frame.omits_title() {
+                        self.grid.update_line_for_rendering(0);
+                        self.set_should_render(true);
+                    }
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);

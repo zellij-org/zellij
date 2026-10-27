@@ -130,18 +130,21 @@ use zellij_utils::plugin_api::plugin_command::{
 
 macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {
-        match route_action(
-            $action,
-            acting_client(&$env),
-            None,
-            source_pane(&$env),
-            $env.senders.clone(),
-            $env.default_shell.clone(),
-            None,
-            $env.default_mode.clone(),
-            None,
-            false,
-        ) {
+        match {
+            let _blocking_call_guard = BlockingCallGuard::new(&$env);
+            route_action(
+                $action,
+                acting_client(&$env),
+                None,
+                source_pane(&$env),
+                $env.senders.clone(),
+                $env.default_shell.clone(),
+                None,
+                $env.default_mode.clone(),
+                None,
+                false,
+            )
+        } {
             Ok((_, result)) => result,
             Err(e) => {
                 log::error!("{}: {:?}", $error_message(), e);
@@ -149,6 +152,31 @@ macro_rules! apply_action {
             },
         }
     };
+}
+
+struct BlockingCallGuard {
+    in_blocking_call: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+impl BlockingCallGuard {
+    fn new(env: &PluginEnv) -> Self {
+        let in_blocking_call = env
+            .shared
+            .as_ref()
+            .map(|shared| shared.in_blocking_call.clone());
+        if let Some(in_blocking_call) = &in_blocking_call {
+            in_blocking_call.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        BlockingCallGuard { in_blocking_call }
+    }
+}
+
+impl Drop for BlockingCallGuard {
+    fn drop(&mut self) {
+        if let Some(in_blocking_call) = &self.in_blocking_call {
+            in_blocking_call.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
 }
 
 fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
