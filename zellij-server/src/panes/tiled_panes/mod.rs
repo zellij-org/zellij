@@ -2129,6 +2129,16 @@ impl TiledPanes {
         Ok(pane_size_changed)
     }
 
+    pub fn pane_edge_can_move(&mut self, pane_id: PaneId, direction: Direction) -> bool {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid.edge_can_move(&pane_id, direction)
+    }
+
     pub fn resize_pane_with_strategies(
         &mut self,
         pane_id: PaneId,

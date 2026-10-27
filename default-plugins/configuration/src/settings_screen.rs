@@ -1735,12 +1735,23 @@ impl SettingsScreen {
             Mouse::LeftClick(line, column) => {
                 if !self.elements.has_open_overlay() {
                     if self.menu.hit_test(line, column) {
+                        let menu_was_focused = self.focus == Focus::Menu && !self.search_active;
+                        let category_before = self.category();
+                        self.menu.handle_mouse(mouse);
+                        if menu_was_focused && self.category() == category_before {
+                            if self.showing_keys_screen()
+                                || self.showing_page()
+                                || !self.rows.is_empty()
+                            {
+                                self.set_focus(Focus::Content);
+                            }
+                            return true;
+                        }
                         self.restore_theme_preview();
                         if self.search_active {
                             self.search_active = false;
                             self.search.clear();
                         }
-                        self.menu.handle_mouse(mouse);
                         self.set_focus(Focus::Menu);
                         self.select_category();
                         return true;
@@ -1752,14 +1763,29 @@ impl SettingsScreen {
                     }
                 }
                 let dropdown_was_open = self.focused_dropdown_open();
+                let text_input_before = if self.focus == Focus::Content {
+                    self.focused_text_input()
+                } else {
+                    None
+                };
                 let event = self.elements.handle_mouse(mouse);
                 if event.is_handled() {
+                    let clicked_focused_text_input = match (&event, text_input_before) {
+                        (FocusEvent::Element { key, .. }, Some(before)) => *key == before,
+                        _ => false,
+                    };
                     if self.focus != Focus::Content {
                         self.focus = Focus::Content;
                         self.menu.set_focused(false);
                         self.search.set_focused(false);
                     }
                     self.handle_focus_event(event, dropdown_was_open);
+                    if clicked_focused_text_input && self.editing.is_none() {
+                        if let Some(key) = self.focused_text_input() {
+                            self.editing = Some(key);
+                            self.clear_row_hover();
+                        }
+                    }
                     return true;
                 }
                 return self.scroll.handle_mouse(mouse).is_handled();

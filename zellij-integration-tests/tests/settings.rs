@@ -342,3 +342,45 @@ fn the_attention_settings_are_listed_and_saved() {
     });
     zellij.quit();
 }
+
+fn sgr_left_click(zellij: &TestSession, column: usize, line: usize) {
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}M", column, line).as_bytes());
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}m", column, line).as_bytes());
+}
+
+fn click_on_text(zellij: &TestSession, grid_snapshot: &GridSnapshot, needle: &str) {
+    for (row, line) in grid_snapshot.lines().iter().enumerate() {
+        if let Some(byte_index) = line.find(needle) {
+            let column = line[..byte_index].chars().count();
+            sgr_left_click(zellij, column + 2, row + 1);
+            return;
+        }
+    }
+    panic!("{} is not on screen", needle);
+}
+
+#[test]
+fn clicking_a_focused_text_setting_starts_editing_it() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true")
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    focus_setting_by_search(&zellij, "word sep", "Word separators");
+    let grid_snapshot = zellij.wait_until("the text setting is focused", |grid_snapshot| {
+        grid_snapshot.contains("[]{}<>()") && grid_snapshot.contains("<Enter> - edit")
+    });
+
+    click_on_text(&zellij, &grid_snapshot, "[]{}<>()");
+    zellij.wait_until("the text setting is being edited", |grid_snapshot| {
+        grid_snapshot.contains("<Enter> - apply")
+    });
+    zellij.send_stdin(b"Q");
+    zellij.wait_until("typed text reached the field", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains("Word separators") && line.contains("[ Q "))
+    });
+    zellij.quit();
+}
