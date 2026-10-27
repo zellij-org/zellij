@@ -239,12 +239,11 @@ impl<'a> PluginLoader<'a> {
             self.size.cols,
         )));
         if shared {
-            self.plugin_map
-                .insert_shared(
-                    self.plugin_id,
-                    (plugin.clone(), subscriptions, workers),
-                    in_blocking_call,
-                );
+            self.plugin_map.insert_shared(
+                self.plugin_id,
+                (plugin.clone(), subscriptions, workers),
+                in_blocking_call,
+            );
         } else {
             self.plugin_map.insert(
                 self.plugin_id,

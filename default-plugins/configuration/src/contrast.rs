@@ -157,7 +157,11 @@ mod tests {
         assert_eq!(suggest(grey, grey, 30.0), BLACK);
     }
 
-    fn slot(colours: &[Option<SlotContrast>], style: &str, component: &str) -> Option<SlotContrast> {
+    fn slot(
+        colours: &[Option<SlotContrast>],
+        style: &str,
+        component: &str,
+    ) -> Option<SlotContrast> {
         let index = theme_slots()
             .iter()
             .position(|found| *found == (style, component))

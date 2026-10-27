@@ -14,7 +14,9 @@ const EXIT_ALTERNATE_SCREEN: &[u8] = b"\x1b[?1049l";
 const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?62;22c";
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn start_zellij_with_a_silent_host() -> TestSession {

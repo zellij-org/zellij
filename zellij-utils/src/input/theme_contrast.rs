@@ -87,7 +87,13 @@ pub struct DrawnPair {
     pub target: f64,
 }
 
-const TEXT_PARTS: [&str; 5] = ["base", "emphasis_0", "emphasis_1", "emphasis_2", "emphasis_3"];
+const TEXT_PARTS: [&str; 5] = [
+    "base",
+    "emphasis_0",
+    "emphasis_1",
+    "emphasis_2",
+    "emphasis_3",
+];
 
 const STYLES_ON_THEIR_OWN_BACKGROUND: [&str; 7] = [
     "text_unselected",
@@ -99,7 +105,8 @@ const STYLES_ON_THEIR_OWN_BACKGROUND: [&str; 7] = [
     "list_selected",
 ];
 
-const STYLES_ALSO_ON_THE_PAGE: [&str; 3] = ["table_title", "table_cell_unselected", "list_unselected"];
+const STYLES_ALSO_ON_THE_PAGE: [&str; 3] =
+    ["table_title", "table_cell_unselected", "list_unselected"];
 
 const LINES_ON_THE_PAGE: [(&str, &str); 8] = [
     ("frame_unselected", "base"),
@@ -234,7 +241,12 @@ mod tests {
         for pair in drawn_pairs() {
             assert!(slots.contains(&pair.foreground), "{:?}", pair.foreground);
             if let DrawnOn::Slot(style, component) = pair.background {
-                assert!(slots.contains(&(style, component)), "{}.{}", style, component);
+                assert!(
+                    slots.contains(&(style, component)),
+                    "{}.{}",
+                    style,
+                    component
+                );
             }
         }
     }

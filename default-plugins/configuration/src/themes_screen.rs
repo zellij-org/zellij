@@ -1984,7 +1984,10 @@ mod tests {
         let mut screen = low_contrast_screen();
         screen.handle_key(&ctrl('f'));
         let fixed = parse_colour(&input_text(&screen, 0)).unwrap();
-        assert!(crate::contrast::contrast(fixed, PaletteColor::Rgb((0, 0, 0))) >= crate::contrast::GOOD_CONTRAST);
+        assert!(
+            crate::contrast::contrast(fixed, PaletteColor::Rgb((0, 0, 0)))
+                >= crate::contrast::GOOD_CONTRAST
+        );
         assert_eq!(
             input_text(&screen, slot_index("text_unselected", "emphasis_0")),
             "#050505"
