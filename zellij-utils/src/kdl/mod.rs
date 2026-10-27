@@ -11,6 +11,7 @@ use crate::data::{
     TAB_POSITION_END,
 };
 use crate::envs::EnvironmentVariables;
+use crate::errors::FatalError;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::context_menu::{
@@ -36,6 +37,7 @@ use crate::input::theme::{
     FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
 };
 use crate::input::web_client::WebClientConfig;
+use anyhow::Context;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -7984,7 +7986,14 @@ impl Themes {
             let path = entry.path();
             if let Some(extension) = path.extension() {
                 if extension == "kdl" {
-                    themes = themes.merge(Themes::from_path(path)?);
+                    match Themes::from_path(path.clone()) {
+                        Ok(themes_from_file) => themes = themes.merge(themes_from_file),
+                        Err(error) => Err::<(), anyhow::Error>(anyhow::anyhow!("{error}"))
+                            .with_context(|| {
+                                format!("Failed to load theme file {}", path.display())
+                            })
+                            .non_fatal(),
+                    }
                 }
             }
         }
@@ -9720,6 +9729,42 @@ fn themes_to_string() {
         "Deserialized serialized config equals original config",
     );
     insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn invalid_theme_file_does_not_prevent_loading_valid_themes() {
+    let theme_dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        theme_dir.path().join("valid.kdl"),
+        r##"
+        themes {
+            valid {
+                fg "#D8DEE9"
+                bg "#2E3440"
+                black "#3B4252"
+                red "#BF616A"
+                green "#A3BE8C"
+                yellow "#EBCB8B"
+                blue "#81A1C1"
+                magenta "#B48EAD"
+                cyan "#88C0D0"
+                white "#E5E9F0"
+                orange "#D08770"
+            }
+        }
+        "##,
+    )
+    .unwrap();
+    std::fs::write(
+        theme_dir.path().join("invalid.kdl"),
+        "themes { invalid { fg }",
+    )
+    .unwrap();
+
+    let themes = Themes::from_dir(theme_dir.path().to_path_buf()).unwrap();
+
+    assert!(themes.get_theme("valid").is_some());
+    assert!(themes.get_theme("invalid").is_none());
 }
 
 #[test]
