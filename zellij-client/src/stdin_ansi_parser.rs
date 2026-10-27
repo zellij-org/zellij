@@ -205,6 +205,7 @@ pub struct ForwardSlot {
 enum BatchOwner {
     Zellij,
     Pane(ForwardSlot),
+    ExitSentinel(std::sync::mpsc::Sender<()>),
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +354,8 @@ pub struct StdinAnsiParser {
     startup_kitty_zlib_probe: StartupKittyProbe,
     startup_grapheme_cluster_probe: StartupKittyProbe,
     partial_apc: Vec<u8>,
+    primary_da_answered: bool,
+    exit_draining: bool,
 }
 
 impl std::fmt::Debug for StdinAnsiParser {
@@ -380,6 +383,8 @@ impl StdinAnsiParser {
             startup_kitty_zlib_probe: StartupKittyProbe::NotSent,
             startup_grapheme_cluster_probe: StartupKittyProbe::NotSent,
             partial_apc: Vec::new(),
+            primary_da_answered: false,
+            exit_draining: false,
         }
     }
 
@@ -439,6 +444,30 @@ impl StdinAnsiParser {
             owner: BatchOwner::Zellij,
             sent_at: Instant::now(),
         });
+    }
+
+    pub fn begin_exit_drain(
+        &mut self,
+        expect_sentinel_reply: bool,
+    ) -> Option<std::sync::mpsc::Receiver<()>> {
+        self.exit_draining = true;
+        if !expect_sentinel_reply {
+            return None;
+        }
+        let (answered, sentinel_reply) = std::sync::mpsc::channel();
+        self.batches.push_back(QueryBatch {
+            owner: BatchOwner::ExitSentinel(answered),
+            sent_at: Instant::now(),
+        });
+        Some(sentinel_reply)
+    }
+
+    pub fn is_exit_draining(&self) -> bool {
+        self.exit_draining
+    }
+
+    pub fn host_answers_queries(&self) -> bool {
+        self.primary_da_answered || self.awaiting_replies()
     }
 
     pub fn awaiting_replies(&self) -> bool {
@@ -624,14 +653,18 @@ impl StdinAnsiParser {
                             }
                             // Primary-DA — the barrier. Close the slot and
                             // emit the completed forwarded reply if active.
-                            if let Some(QueryBatch {
-                                owner: BatchOwner::Pane(slot),
-                                ..
-                            }) = self.batches.pop_front()
-                            {
-                                if !slot.abandoned {
-                                    out.completed_forward = Some((slot.token, slot.reply_bytes));
-                                }
+                            self.primary_da_answered = true;
+                            match self.batches.pop_front().map(|batch| batch.owner) {
+                                Some(BatchOwner::Pane(slot)) => {
+                                    if !slot.abandoned {
+                                        out.completed_forward =
+                                            Some((slot.token, slot.reply_bytes));
+                                    }
+                                },
+                                Some(BatchOwner::ExitSentinel(answered)) => {
+                                    let _ = answered.send(());
+                                },
+                                _ => {},
                             }
                             // Primary-DA is NOT double-dispatched — it has
                             // no cached-state counterpart.

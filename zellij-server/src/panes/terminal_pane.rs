@@ -977,6 +977,9 @@ impl Pane for TerminalPane {
     fn drain_prompt_return(&mut self) -> bool {
         std::mem::take(&mut self.grid.pending_prompt_return)
     }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {
+        self.grid.reset_input_modes_left_by_lost_guest();
+    }
 
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
         self.grid

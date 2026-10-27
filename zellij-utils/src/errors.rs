@@ -328,6 +328,7 @@ pub enum ScreenContext {
     RenderFrameAck,
     ForwardHostQuery,
     NestedSessionMessageFromPane,
+    PromptReturnedInPane,
     NestedGuestPingTick,
     NestedSessionMessageFromHost,
     GetNestedSessionKeybinds,

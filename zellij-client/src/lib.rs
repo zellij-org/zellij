@@ -58,6 +58,9 @@ use std::sync::OnceLock;
 const ENTER_ALTERNATE_SCREEN: &str = "\u{1b}[?1049h";
 const EXIT_ALTERNATE_SCREEN: &str = "\u{1b}[?1049l";
 const ENABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004h";
+const DISABLE_BRACKETED_PASTE: &str = "\u{1b}[?2004l";
+const EXIT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
+const NESTED_EXIT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
 const ENABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004h";
 const DISABLE_FOCUS_REPORTING: &str = "\u{1b}[?1004l";
 const RESET_STYLE: &str = "\u{1b}[m";
@@ -454,8 +457,9 @@ fn exit_after_startup_error(teardown: Option<TerminalTeardown>, message: String)
                 ""
             };
             let rendered = format!(
-                "{}{}{}{}{}{}\r\n{}\n",
+                "{}{}{}{}{}{}{}\r\n{}\n",
                 kitty_exit,
+                DISABLE_BRACKETED_PASTE,
                 DISABLE_HOST_THEME_NOTIFY,
                 DISABLE_FOCUS_REPORTING,
                 EXIT_ALTERNATE_SCREEN,
@@ -975,9 +979,15 @@ pub fn start_remote_client(
 
     let reset_controlling_terminal_state = |e: String, exit_status: i32| {
         os_input.disable_mouse().non_fatal();
+        {
+            let mut stdout = os_input.get_stdout_writer();
+            let _ = stdout.write_all(input_reporting_off_sequence(true).as_bytes());
+            let _ = stdout.flush();
+        }
+        os_input.discard_pending_input();
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
-        let error = terminal_teardown_message(&e, full_screen_ws.rows, true, false);
+        let error = terminal_teardown_message(&e, full_screen_ws.rows, false, false);
         let mut stdout = os_input.get_stdout_writer();
         stdout.write_all(error.as_bytes()).unwrap();
         stdout.flush().unwrap();
@@ -1486,13 +1496,18 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String, include_grapheme_cluster_exit: bool| {
-        os_input.disable_mouse().non_fatal();
+        quiet_host_input(
+            &*os_input,
+            &stdin_ansi_parser,
+            !explicitly_disable_kitty_keyboard_protocol,
+            EXIT_DRAIN_TIMEOUT,
+        );
         let _ = os_input.unset_raw_mode();
         os_input.restore_console_mode();
         let error = terminal_teardown_message(
             &backtrace,
             full_screen_ws.rows,
-            !explicitly_disable_kitty_keyboard_protocol,
+            false,
             include_grapheme_cluster_exit,
         );
         let mut stdout = os_input.get_stdout_writer();
@@ -1745,11 +1760,21 @@ pub fn start_client(
         let goodbye_message = terminal_teardown_message(
             &exit_msg,
             full_screen_ws.rows,
-            !explicitly_disable_kitty_keyboard_protocol,
+            false,
             outer_grapheme_cluster_mode.is_enabled(),
         );
 
-        os_input.disable_mouse().non_fatal();
+        let exit_drain_timeout = if nested_reannounce.host_contacted() {
+            NESTED_EXIT_DRAIN_TIMEOUT
+        } else {
+            EXIT_DRAIN_TIMEOUT
+        };
+        quiet_host_input(
+            &*os_input,
+            &stdin_ansi_parser,
+            !explicitly_disable_kitty_keyboard_protocol,
+            exit_drain_timeout,
+        );
         info!("{}", exit_msg);
         let _ = os_input.unset_raw_mode();
         os_input.restore_console_mode();
@@ -1961,6 +1986,45 @@ fn launcher_missing() -> bool {
     false
 }
 
+fn input_reporting_off_sequence(include_kitty_exit: bool) -> String {
+    let kitty_exit = if include_kitty_exit {
+        EXIT_KITTY_KEYBOARD_MODE
+    } else {
+        ""
+    };
+    format!(
+        "{}{}{}{}",
+        kitty_exit, DISABLE_BRACKETED_PASTE, DISABLE_HOST_THEME_NOTIFY, DISABLE_FOCUS_REPORTING
+    )
+}
+
+fn quiet_host_input(
+    os_input: &dyn ClientOsApi,
+    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    include_kitty_exit: bool,
+    timeout: std::time::Duration,
+) {
+    os_input.disable_mouse().non_fatal();
+    let sentinel_reply = {
+        let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+        let expect_sentinel_reply = stdin_ansi_parser.host_answers_queries();
+        let sentinel_reply = stdin_ansi_parser.begin_exit_drain(expect_sentinel_reply);
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write_all(input_reporting_off_sequence(include_kitty_exit).as_bytes());
+        if sentinel_reply.is_some() {
+            let _ = stdout.write_all(stdin_ansi_parser::PRIMARY_DA_QUERY);
+        }
+        let _ = stdout.flush();
+        sentinel_reply
+    };
+    if let Some(sentinel_reply) = sentinel_reply {
+        if sentinel_reply.recv_timeout(timeout).is_err() {
+            log::warn!("host terminal did not answer the exit query in time");
+        }
+    }
+    os_input.discard_pending_input();
+}
+
 fn terminal_teardown_message(
     message: &str,
     rows: usize,
@@ -1979,8 +2043,9 @@ fn terminal_teardown_message(
         ""
     };
     format!(
-        "{}{}{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}{}{}\n",
         kitty_exit,
+        DISABLE_BRACKETED_PASTE,
         DISABLE_HOST_THEME_NOTIFY,
         DISABLE_FOCUS_REPORTING,
         grapheme_cluster_exit,

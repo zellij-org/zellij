@@ -654,6 +654,7 @@ pub trait Pane {
     fn drain_prompt_return(&mut self) -> bool {
         false
     }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {}
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -4862,6 +4863,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::PromptReturned(pid));
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::PromptReturnedInPane {
+                        pane_id: PaneId::Terminal(pid),
+                    });
             }
         }
         Ok(())
