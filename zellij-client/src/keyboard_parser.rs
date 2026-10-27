@@ -7,6 +7,11 @@ enum KittyKeysParsingState {
     ReceivedEscapeCharacter,
     ParsingNumber,
     ParsingModifiers,
+    /// Third CSI-u parameter (after the second `;`), present when the
+    /// terminal has `REPORT_ASSOCIATED_TEXT` enabled. Holds the produced
+    /// character codepoint(s) as decimal digits, optionally separated by
+    /// `:` for multi-codepoint text.
+    ParsingAssociatedText,
     DoneParsingWithU,
     DoneParsingWithTilde,
 }
@@ -32,6 +37,7 @@ pub struct KittyKeyboardParser {
     state: KittyKeysParsingState,
     number_bytes: Vec<u8>,
     modifier_bytes: Vec<u8>,
+    associated_text_bytes: Vec<u8>,
 }
 
 /// CSI final-byte range (0x40..=0x7E), minus `u` and `~` which trigger
@@ -49,6 +55,7 @@ impl KittyKeyboardParser {
             state: KittyKeysParsingState::Ground,
             number_bytes: vec![],
             modifier_bytes: vec![],
+            associated_text_bytes: vec![],
         }
     }
 
@@ -56,6 +63,7 @@ impl KittyKeyboardParser {
         self.state = KittyKeysParsingState::Ground;
         self.number_bytes.clear();
         self.modifier_bytes.clear();
+        self.associated_text_bytes.clear();
     }
 
     /// Stateful, cross-chunk-aware entry point. Drives the same
@@ -76,8 +84,11 @@ impl KittyKeyboardParser {
         }
         match self.state {
             KittyKeysParsingState::DoneParsingWithU => {
-                let result =
-                    KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes);
+                let result = KeyWithModifier::from_bytes_with_u(
+                    &self.number_bytes,
+                    &self.modifier_bytes,
+                    &self.associated_text_bytes,
+                );
                 self.reset();
                 match result {
                     Some(k) => KittyParseOutcome::Complete(k),
@@ -88,6 +99,7 @@ impl KittyKeyboardParser {
                 let result = KeyWithModifier::from_bytes_with_tilde(
                     &self.number_bytes,
                     &self.modifier_bytes,
+                    &self.associated_text_bytes,
                 );
                 self.reset();
                 match result {
@@ -135,6 +147,10 @@ impl KittyKeyboardParser {
                     _ => KittyParseOutcome::Incomplete,
                 }
             },
+            // Associated text never appears in letter-terminated sequences
+            // (those are pure functional keys with no produced character),
+            // so we only wait for a `u` or `~` terminator here.
+            KittyKeysParsingState::ParsingAssociatedText => KittyParseOutcome::Incomplete,
             KittyKeysParsingState::ReceivedEscapeCharacter => KittyParseOutcome::Incomplete,
             KittyKeysParsingState::Ground => KittyParseOutcome::NoMatch,
         }
@@ -156,15 +172,23 @@ impl KittyKeyboardParser {
                 }
                 self.state = KittyKeysParsingState::ParsingModifiers;
             },
+            (KittyKeysParsingState::ParsingModifiers, 59) => {
+                // second semicolon: transition to the associated-text param.
+                self.state = KittyKeysParsingState::ParsingAssociatedText;
+            },
             (
-                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingModifiers,
+                KittyKeysParsingState::ParsingNumber
+                | KittyKeysParsingState::ParsingModifiers
+                | KittyKeysParsingState::ParsingAssociatedText,
                 117,
             ) => {
                 // u
                 self.state = KittyKeysParsingState::DoneParsingWithU;
             },
             (
-                KittyKeysParsingState::ParsingNumber | KittyKeysParsingState::ParsingModifiers,
+                KittyKeysParsingState::ParsingNumber
+                | KittyKeysParsingState::ParsingModifiers
+                | KittyKeysParsingState::ParsingAssociatedText,
                 126,
             ) => {
                 // ~
@@ -175,6 +199,9 @@ impl KittyKeyboardParser {
             },
             (KittyKeysParsingState::ParsingModifiers, _) => {
                 self.modifier_bytes.push(byte);
+            },
+            (KittyKeysParsingState::ParsingAssociatedText, _) => {
+                self.associated_text_bytes.push(byte);
             },
             (_, _) => {
                 return false;
@@ -2054,4 +2081,124 @@ fn non_kitty_bytes_yield_nomatch_and_reset() {
     // immediately rather than buffering forever.
     let mut p = KittyKeyboardParser::new();
     assert!(matches!(p.feed(b"hello"), KittyParseOutcome::NoMatch));
+}
+
+// ---------------------------------------------------------------------------
+// REPORT_ASSOCIATED_TEXT (3-parameter CSI-u) coverage.
+//
+// When the terminal has flag 16 enabled, modifier + key combinations come
+// across as `\x1b[<keycode>;<modifier>;<text-codepoints>u`. The parser must
+// (a) accept the third parameter without contaminating modifier_bytes, and
+// (b) when the associated text differs from the keycode char, use the
+// produced character as the bare key with no modifiers — this is how AltGr
+// glyphs (Windows Terminal 1.25) and similar OS-keymap-resolved keystrokes
+// reach zellij correctly.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn three_param_alt_f_preserves_alt_when_text_equals_keycode() {
+    // WT 1.25, WezTerm, Alacritty all send real Alt+f as `\x1b[102;3;102u`.
+    // Text == keycode → keep Alt so the Alt+f binding still fires.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[102;3;102u").expect("parse failed");
+    assert_eq!(
+        result,
+        KeyWithModifier::new(BareKey::Char('f')).with_alt_modifier(),
+    );
+}
+
+#[test]
+fn three_param_altgr_glyph_emits_produced_char_no_modifiers() {
+    // WT 1.25 on Belgian/Hungarian AZERTY sends AltGr+6 (= '|') as
+    // `\x1b[45;3;124u`: keycode 45 ('-'), modifier 3 (Alt), text 124 ('|').
+    // Text != keycode → emit the produced char with no modifiers so the
+    // Alt+'-' binding doesn't false-fire and bash receives '|'.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[45;3;124u").expect("parse failed");
+    assert_eq!(result, KeyWithModifier::new(BareKey::Char('|')));
+}
+
+#[test]
+fn three_param_altgr_backslash_emits_backslash() {
+    // AltGr+8 → '\' on AZERTY: `\x1b[95;3;92u`.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[95;3;92u").expect("parse failed");
+    assert_eq!(result, KeyWithModifier::new(BareKey::Char('\\')));
+}
+
+#[test]
+fn three_param_with_numlock_bit_preserves_alt() {
+    // WezTerm with NumLock on: `\x1b[102;131;102u`. Modifier byte 131 has
+    // bit 128 (NumLock) set, but the existing modifier-from-bytes path
+    // already silently drops lock bits, so Alt is preserved.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[102;131;102u").expect("parse failed");
+    assert_eq!(
+        result,
+        KeyWithModifier::new(BareKey::Char('f')).with_alt_modifier(),
+    );
+}
+
+#[test]
+fn three_param_shift_f_emits_uppercase() {
+    // Shift+F: `\x1b[102;2;70u`. Text 'F' != keycode 'f' → emit 'F' with
+    // no modifiers. (zellij has no Shift+letter bindings; behaviour at the
+    // action layer is identical to legacy.)
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[102;2;70u").expect("parse failed");
+    assert_eq!(result, KeyWithModifier::new(BareKey::Char('F')));
+}
+
+#[test]
+fn three_param_with_multi_codepoint_text_uses_first() {
+    // Multi-codepoint associated text (rare: combining marks, some IME
+    // outputs) is colon-separated per spec. We act on the first codepoint
+    // only — enough for binding lookup, and the rest is acceptable to drop.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[97;3;65:768u").expect("parse failed");
+    assert_eq!(result, KeyWithModifier::new(BareKey::Char('A')));
+}
+
+#[test]
+fn three_param_with_control_codepoint_falls_through() {
+    // If the associated text decodes to a control character, fall through
+    // to the modifier-preserving path so existing legacy bindings still work.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[102;5;3u").expect("parse failed");
+    assert_eq!(
+        result,
+        KeyWithModifier::new(BareKey::Char('f')).with_ctrl_modifier(),
+    );
+}
+
+#[test]
+fn two_param_form_still_parses_when_text_param_absent() {
+    // WT 1.25 sends Ctrl+f without associated text: `\x1b[102;5u`. Our
+    // changes must not break the 2-param path.
+    use zellij_utils::data::BareKey;
+    let result = parse_for_test(b"\x1b[102;5u").expect("parse failed");
+    assert_eq!(
+        result,
+        KeyWithModifier::new(BareKey::Char('f')).with_ctrl_modifier(),
+    );
+}
+
+#[test]
+fn three_param_fragmented_across_chunks() {
+    // Same handshake as `fragmented_kitty_csi_u_emits_one_event` but with
+    // a 3-param sequence split across feed() calls.
+    use zellij_utils::data::BareKey;
+    let mut p = KittyKeyboardParser::new();
+    assert!(matches!(
+        p.feed(b"\x1b[45;3"),
+        KittyParseOutcome::Incomplete
+    ));
+    assert!(matches!(p.feed(b";124"), KittyParseOutcome::Incomplete));
+    let outcome = p.feed(b"u");
+    match outcome {
+        KittyParseOutcome::Complete(k) => {
+            assert_eq!(k, KeyWithModifier::new(BareKey::Char('|')));
+        },
+        other => panic!("expected Complete, got {:?}", other),
+    }
 }
