@@ -895,6 +895,7 @@ impl PromptSpec {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PromptRequest {
     pub element: PromptElement,
     pub title: Option<String>,
