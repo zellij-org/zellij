@@ -19724,3 +19724,24 @@ fn dragging_next_to_the_junction_of_two_dividers_moves_both() {
     );
     assert_both_dividers_moved(&tab, left, right_top);
 }
+
+#[test]
+fn leaving_a_tab_forgets_the_last_click_so_returning_cannot_double_click() {
+    let size = Size {
+        cols: 120,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let position = Position::new(5, 10);
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    assert!(tab.mouse_click_tracker.contains_key(&client_id));
+
+    let drained = tab.drain_connected_clients(Some(vec![client_id]));
+    assert!(!tab.mouse_click_tracker.contains_key(&client_id));
+    tab.add_multiple_clients(drained).unwrap();
+    assert!(!tab.mouse_click_tracker.contains_key(&client_id));
+}
