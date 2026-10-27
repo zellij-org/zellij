@@ -38,7 +38,7 @@ pub fn status() -> Status {
     if environment.tiling_wm && environment.platform == Platform::Linux {
         notes.push(
             "Bind these commands to keys in your window manager (for sway or i3: \
-             bindsym $mod+i exec zellij window --inbox):"
+             bindsym $mod+i exec zellij terminal --inbox):"
                 .to_owned(),
         );
         for (command, what) in crate::desktop_integration::tiling_wm_commands() {
@@ -758,7 +758,7 @@ mod linux {
     fn manual_default_terminal_instructions(environment: &Environment) -> Vec<String> {
         let mut lines = vec![];
         if environment.tiling_wm {
-            lines.push("Bind `zellij window` to the key you use to open a terminal.".to_owned());
+            lines.push("Bind `zellij terminal` to the key you use to open a terminal.".to_owned());
         }
         lines.push(
             "On Debian and Ubuntu, `sudo update-alternatives --config x-terminal-emulator` \
@@ -1013,7 +1013,7 @@ mod linux {
         }
 
         pub fn wanted(&self, binary: &Path) -> BTreeMap<String, String> {
-            let command = format!("{} window", binary.display());
+            let command = format!("{} terminal", binary.display());
             match self {
                 Method::XdgTerminalsList => {
                     BTreeMap::from([("first".to_owned(), location::launcher_file_name())])
@@ -1036,9 +1036,9 @@ mod linux {
                 Method::Kde => get("TerminalService") == location::launcher_file_name(),
                 Method::Cinnamon | Method::Mate => {
                     let exec = get("exec");
-                    exec.ends_with(" window")
+                    exec.ends_with(" terminal")
                         && exec
-                            .trim_end_matches(" window")
+                            .trim_end_matches(" terminal")
                             .ends_with(crate::distribution::name())
                 },
             }
@@ -1268,11 +1268,11 @@ mod linux {
                 text,
                 "General",
                 "TerminalApplication",
-                Some("/bin/zellij window"),
+                Some("/bin/zellij terminal"),
             );
             assert_eq!(
                 ini_get(&set, "General", "TerminalApplication").as_deref(),
-                Some("/bin/zellij window")
+                Some("/bin/zellij terminal")
             );
             assert_eq!(ini_get(&set, "General", "font").as_deref(), Some("Noto"));
             assert_eq!(
@@ -1335,7 +1335,7 @@ mod windows_desktop {
     use super::{copy_binary, outcome, owned_status};
     use crate::desktop_integration::com::{known_folder, Com};
     use crate::desktop_integration::desktop_entry::start_menu;
-    use crate::desktop_integration::window_command::window_command;
+    use crate::desktop_integration::terminal_command::terminal_command;
 
     const EXPLORER_KEYS: [&str; 2] = [
         r"Software\Classes\Directory\shell\Zellij",
@@ -1560,7 +1560,7 @@ mod windows_desktop {
                 super::CopyState::Update(_)
             );
         let existed = destination.exists();
-        let launcher = window_command(&source);
+        let launcher = terminal_command(&source);
         let mut lines = vec![];
         if launcher.uses_launcher() {
             let launcher_name = launcher
@@ -1594,7 +1594,7 @@ mod windows_desktop {
         let message = super::remove_recorded_copy(&state)?;
         if let Some(record) = &state.binary_copy {
             if let Some(folder) = record.destination.parent() {
-                let launcher = folder.join(format!("{}-window.exe", crate::distribution::name()));
+                let launcher = folder.join(format!("{}-terminal.exe", crate::distribution::name()));
                 if !record.destination.exists() && launcher.exists() {
                     let _ = std::fs::remove_file(&launcher);
                 }
@@ -1609,7 +1609,7 @@ mod windows_desktop {
         }
         let _com = Com::initialize()?;
         let exe = current_binary()?;
-        let command = window_command(&exe);
+        let command = terminal_command(&exe);
         let start_in = known_folder(&windows::Win32::UI::Shell::FOLDERID_Profile)?;
         let path =
             start_menu::install_into(&known_folder(&FOLDERID_Programs)?, &command, &start_in)?;
@@ -1639,10 +1639,10 @@ mod windows_desktop {
             return Ok("The installer already added \"Open Zellij here\"".to_owned());
         }
         let exe = current_binary()?;
-        let launcher = window_command(&exe);
+        let launcher = terminal_command(&exe);
         if !launcher.uses_launcher() {
             bail!(
-                "zellij-window.exe was not found next to {}, so Explorer would open a console \
+                "zellij-terminal.exe was not found next to {}, so Explorer would open a console \
                  window alongside Zellij",
                 exe.display()
             );

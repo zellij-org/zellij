@@ -22,7 +22,7 @@ Notes for packagers:
 
 - The launcher **replaces** the old `zellij.desktop`. Do not ship both, or the app
   menu shows two "Zellij" entries.
-- `Exec=zellij window` and `TryExec=zellij` find the binary through `PATH`, so
+- `Exec=zellij terminal` and `TryExec=zellij` find the binary through `PATH`, so
   `zellij` must be on `PATH` (for example `/usr/bin/zellij`).
 - The app ID is `dev.zellij.Zellij`. The window's Wayland app ID and X11 class,
   the icon name and the notification sender all use it, so keep the file names.

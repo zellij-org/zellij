@@ -11,7 +11,7 @@ use super::options::{
 };
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
-use super::window::WindowConfig;
+use super::terminal::TerminalConfig;
 use crate::data::{
     join_setting_list, BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode,
     LineStyle, SettingKey, SettingValueShape, ThemeHue, WebSharing,
@@ -480,10 +480,10 @@ fn web_client_values(
     values.insert(SettingKey::WebClientBaseUrl, base_url.clone());
 }
 
-fn window_document(window: &WindowConfig) -> KdlDocument {
+fn terminal_document(window: &TerminalConfig) -> KdlDocument {
     let mut document = KdlDocument::new();
     let node = window.to_kdl().unwrap_or_else(|| {
-        let mut node = KdlNode::new("window");
+        let mut node = KdlNode::new("terminal");
         node.set_children(KdlDocument::new());
         node
     });
@@ -504,7 +504,7 @@ fn kdl_value_text(value: &KdlValue) -> Option<String> {
     }
 }
 
-fn window_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
+fn terminal_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
     let arguments: Vec<&KdlValue> = node
         .entries()
         .iter()
@@ -531,18 +531,18 @@ fn window_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
     }
 }
 
-fn window_values(window: &WindowConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
-    let document = window_document(window);
-    for key in SettingKey::all().into_iter().filter(|key| key.is_window()) {
+fn terminal_values(window: &TerminalConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
+    let document = terminal_document(window);
+    for key in SettingKey::all().into_iter().filter(|key| key.is_terminal()) {
         let text =
-            setting_node_in_document(&document, key).and_then(|node| window_node_text(key, node));
+            setting_node_in_document(&document, key).and_then(|node| terminal_node_text(key, node));
         values.insert(key, text);
     }
 }
 
-fn copy_window_setting(target: &mut WindowConfig, source: &WindowConfig, key: SettingKey) {
-    let source_document = window_document(source);
-    let mut document = window_document(target);
+fn copy_terminal_setting(target: &mut TerminalConfig, source: &TerminalConfig, key: SettingKey) {
+    let source_document = terminal_document(source);
+    let mut document = terminal_document(target);
     let (parents, name) = setting_node_path(key);
     let mut block = &mut document;
     for parent in parents {
@@ -573,8 +573,8 @@ fn copy_window_setting(target: &mut WindowConfig, source: &WindowConfig, key: Se
         block.nodes_mut().push(node.clone());
     }
     match document
-        .get("window")
-        .map(WindowConfig::from_kdl)
+        .get("terminal")
+        .map(TerminalConfig::from_kdl)
         .transpose()
     {
         Ok(Some(window)) => *target = window,
@@ -596,13 +596,13 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
         mousebinds: _mousebinds_are_compared_directly,
-        window,
+        terminal,
         session_suggestions: _session_suggestions_are_read_by_the_server,
         attention,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
-    window_values(window, &mut values);
+    terminal_values(terminal, &mut values);
     let injected_default_mode = config.keybinds_layers.injected_default_mode;
     if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
         values.insert(
@@ -1008,9 +1008,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::Env => target.env = source.env.clone(),
         SettingKey::Themes => copy_config_file_themes(&mut target.themes, &source.themes),
         SettingKey::ContextMenu => target.context_menu = source.context_menu.clone(),
-        window_key => {
-            debug_assert!(window_key.is_window());
-            copy_window_setting(&mut target.window, &source.window, window_key)
+        terminal_key => {
+            debug_assert!(terminal_key.is_terminal());
+            copy_terminal_setting(&mut target.terminal, &source.terminal, terminal_key)
         },
     }
 }

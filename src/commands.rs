@@ -166,21 +166,21 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
     start_server_impl(Box::new(os_input), path);
 }
 
-#[cfg(feature = "window")]
+#[cfg(feature = "terminal")]
 fn register_app_starter() {
-    zellij_server::set_app_starter(Box::new(start_window_app));
+    zellij_server::set_app_starter(Box::new(start_terminal_app));
 }
 
-#[cfg(not(feature = "window"))]
+#[cfg(not(feature = "terminal"))]
 fn register_app_starter() {}
 
-#[cfg(feature = "window")]
-fn start_window_app(request: &zellij_utils::app_control::OpenWindowRequest) -> Result<(), String> {
+#[cfg(feature = "terminal")]
+fn start_terminal_app(request: &zellij_utils::app_control::OpenWindowRequest) -> Result<(), String> {
     use std::process::{Command, Stdio};
     let program = std::env::current_exe()
         .map_err(|e| format!("Zellij could not find its own program file: {}", e))?;
     let mut command = Command::new(program);
-    command.arg("window");
+    command.arg("terminal");
     if let Some(session) = &request.session {
         command.arg(session);
         if request.create {
@@ -208,16 +208,16 @@ fn start_window_app(request: &zellij_utils::app_control::OpenWindowRequest) -> R
     Ok(())
 }
 
-#[cfg(feature = "window")]
-pub(crate) fn start_window(args: zellij_utils::cli::WindowArgs, opts: CliArgs) {
-    if let Err(e) = zellij_window::run(args, opts) {
+#[cfg(feature = "terminal")]
+pub(crate) fn start_terminal(args: zellij_utils::cli::TerminalArgs, opts: CliArgs) {
+    if let Err(e) = zellij_terminal::run(args, opts) {
         eprintln!("{:?}", e);
         process::exit(1);
     }
 }
 
-#[cfg(not(feature = "window"))]
-pub(crate) fn start_window(_args: zellij_utils::cli::WindowArgs, _opts: CliArgs) {
+#[cfg(not(feature = "terminal"))]
+pub(crate) fn start_terminal(_args: zellij_utils::cli::TerminalArgs, _opts: CliArgs) {
     eprintln!("This Zellij was built without the window feature.");
     process::exit(1);
 }
@@ -266,9 +266,9 @@ pub(crate) fn run_setup_actions(setup: &zellij_utils::setup::Setup, opts: &CliAr
                     eprintln!("  Run again with --replace-existing to replace it.");
                 }
             }
-            #[cfg(all(feature = "window", windows))]
+            #[cfg(all(feature = "terminal", windows))]
             if !plan.remove.is_empty() {
-                match zellij_window::unregister_app() {
+                match zellij_terminal::unregister_app() {
                     Ok(removed) => {
                         for removed in removed {
                             println!("  Removed {}", removed);

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use zellij_integration_tests::{TestRunner, TERMINAL_SIZE};
 use zellij_utils::data::PaneId;
 use zellij_utils::input::actions::Action;
-use zellij_window::{NotificationProbe, ProbeEvent};
+use zellij_terminal::{NotificationProbe, ProbeEvent};
 
 const LIMIT: Duration = Duration::from_secs(10);
 const SETTLE: Duration = Duration::from_millis(2500);

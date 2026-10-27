@@ -52,14 +52,14 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     if flags.no_web {
         excluded.push(metadata::WEB_FEATURE);
     }
-    if flags.no_window {
-        excluded.push(metadata::WINDOW_FEATURE);
+    if flags.no_terminal {
+        excluded.push(metadata::TERMINAL_FEATURE);
     }
 
     for WorkspaceMember { crate_name, .. } in crate::workspace_members()
         .iter()
         .filter(|m| !m.crate_name.contains("plugins"))
-        .filter(|m| !(flags.no_window && m.crate_name == "zellij-window"))
+        .filter(|m| !(flags.no_terminal && m.crate_name == "zellij-terminal"))
     {
         let _pd = sh.push_dir(Path::new(crate_name));
         println!();
@@ -93,8 +93,8 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to run tests for '{}'", crate_name))?;
     }
 
-    if !flags.no_window {
-        check_feature_is_optional(sh, &cargo, &excluded, metadata::WINDOW_FEATURE)
+    if !flags.no_terminal {
+        check_feature_is_optional(sh, &cargo, &excluded, metadata::TERMINAL_FEATURE)
             .context(err_context)?;
     }
     if !flags.no_web {

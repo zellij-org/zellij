@@ -1,5 +1,5 @@
 use crate::client_server_contract::client_server_contract as proto;
-use crate::input::window::StartupMode;
+use crate::input::terminal::StartupMode;
 use prost::Message;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};

@@ -26,7 +26,7 @@ pub fn host_terminal_env() -> BTreeMap<String, String> {
     host_terminal_env_from(|name| std::env::var(name).ok())
 }
 
-pub const DESKTOP_WINDOW_ENV_KEY: &str = "ZELLIJ_DESKTOP_WINDOW";
+pub const DESKTOP_TERMINAL_ENV_KEY: &str = "ZELLIJ_DESKTOP_TERMINAL";
 
 pub fn client_location(
     host_terminal_env: &BTreeMap<String, String>,
@@ -35,7 +35,7 @@ pub fn client_location(
     if is_web_client {
         return Some("through the web server".to_owned());
     }
-    if host_terminal_env.contains_key(DESKTOP_WINDOW_ENV_KEY) {
+    if host_terminal_env.contains_key(DESKTOP_TERMINAL_ENV_KEY) {
         return None;
     }
     if let Some(connection) = host_terminal_env.get("SSH_CONNECTION") {
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn only_a_local_desktop_window_is_known_to_share_the_desktop() {
         let window: BTreeMap<String, String> =
-            [(DESKTOP_WINDOW_ENV_KEY.to_owned(), "1".to_owned())]
+            [(DESKTOP_TERMINAL_ENV_KEY.to_owned(), "1".to_owned())]
                 .into_iter()
                 .collect();
         assert_eq!(client_location(&window, false), None);
@@ -212,7 +212,7 @@ mod tests {
             Some("from a terminal, over SSH")
         );
         let spoofed = host_terminal_env_from(|name| match name {
-            DESKTOP_WINDOW_ENV_KEY => Some("1".to_owned()),
+            DESKTOP_TERMINAL_ENV_KEY => Some("1".to_owned()),
             _ => None,
         });
         assert_eq!(

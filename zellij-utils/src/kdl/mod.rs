@@ -35,7 +35,7 @@ use crate::input::theme::{
     FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
 };
 use crate::input::web_client::WebClientConfig;
-use crate::input::window::WindowConfig;
+use crate::input::terminal::TerminalConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -136,7 +136,7 @@ pub fn action_without_arguments(
         "GoToNextSession" => Ok(Action::GoToNextSession),
         "GoToNextAttention" => Ok(Action::GoToNextAttention),
         "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
-        "OpenSessionInWindow" => Ok(Action::OpenSessionInWindow),
+        "OpenSessionInTerminal" => Ok(Action::OpenSessionInTerminal),
         "ToggleMirrorResize" => Ok(Action::ToggleMirrorResize),
         "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
             session: None,
@@ -1499,7 +1499,7 @@ impl Action {
             Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
             Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
             Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
-            Action::OpenSessionInWindow => Some(KdlNode::new("OpenSessionInWindow")),
+            Action::OpenSessionInTerminal => Some(KdlNode::new("OpenSessionInTerminal")),
             Action::ToggleMirrorResize => Some(KdlNode::new("ToggleMirrorResize")),
             Action::MarkPaneSeen {
                 session: None,
@@ -1989,7 +1989,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "GoToNextSession"
             | "GoToNextAttention"
             | "ToggleTrayIcon"
-            | "OpenSessionInWindow"
+            | "OpenSessionInTerminal"
             | "ToggleMirrorResize"
             | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
@@ -7017,9 +7017,9 @@ impl Config {
         if should_resolve_keybinds {
             config.resolve_keybinds();
         }
-        if let Some(window_config) = kdl_config.get("window") {
-            let config_window = WindowConfig::from_kdl(&window_config)?;
-            config.window = config.window.merge(config_window);
+        if let Some(window_config) = kdl_config.get("terminal") {
+            let config_window = TerminalConfig::from_kdl(&window_config)?;
+            config.terminal = config.terminal.merge(config_window);
         }
         if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
             let session_suggestions =
@@ -7071,7 +7071,7 @@ impl Config {
             document.nodes_mut().push(context_menu);
         }
 
-        if let Some(window) = self.window.to_kdl() {
+        if let Some(window) = self.terminal.to_kdl() {
             document.nodes_mut().push(window);
         }
 

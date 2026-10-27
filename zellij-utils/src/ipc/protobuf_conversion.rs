@@ -26,11 +26,11 @@ use crate::{
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg, WindowSettingsMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg, TerminalSettingsMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
-    input::window::WindowSettings,
+    input::terminal::TerminalSettings,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
         MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
@@ -536,8 +536,8 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::ConfigFileUpdated => {
                 server_to_client_msg::Message::ConfigFileUpdated(ConfigFileUpdatedMsg {})
             },
-            ServerToClientMsg::WindowSettingsChanged { settings } => {
-                server_to_client_msg::Message::WindowSettings(WindowSettingsMsg {
+            ServerToClientMsg::TerminalSettingsChanged { settings } => {
+                server_to_client_msg::Message::TerminalSettings(TerminalSettingsMsg {
                     settings_json: settings.to_json().unwrap_or_default(),
                 })
             },
@@ -821,10 +821,10 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::ConfigFileUpdated(_)) => {
                 Ok(ServerToClientMsg::ConfigFileUpdated)
             },
-            Some(server_to_client_msg::Message::WindowSettings(msg)) => {
-                let settings = WindowSettings::from_json(&msg.settings_json)
+            Some(server_to_client_msg::Message::TerminalSettings(msg)) => {
+                let settings = TerminalSettings::from_json(&msg.settings_json)
                     .map_err(|e| anyhow!("Unreadable window settings: {}", e))?;
-                Ok(ServerToClientMsg::WindowSettingsChanged {
+                Ok(ServerToClientMsg::TerminalSettingsChanged {
                     settings: Box::new(settings),
                 })
             },
@@ -1515,7 +1515,7 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutByTabIdAction,
             NoOpAction,
             OpenContextMenuAction,
-            OpenSessionInWindowAction,
+            OpenSessionInTerminalAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -2062,8 +2062,8 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleTrayIcon => {
                 ActionType::ToggleTrayIcon(ToggleTrayIconAction {})
             },
-            crate::input::actions::Action::OpenSessionInWindow => {
-                ActionType::OpenSessionInWindow(OpenSessionInWindowAction {})
+            crate::input::actions::Action::OpenSessionInTerminal => {
+                ActionType::OpenSessionInTerminal(OpenSessionInTerminalAction {})
             },
             crate::input::actions::Action::WaitForPaneExit { pane_id } => {
                 ActionType::WaitForPaneExit(WaitForPaneExitAction {
@@ -3136,8 +3136,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::GoToNextAttention)
             },
             ActionType::ToggleTrayIcon(_) => Ok(crate::input::actions::Action::ToggleTrayIcon),
-            ActionType::OpenSessionInWindow(_) => {
-                Ok(crate::input::actions::Action::OpenSessionInWindow)
+            ActionType::OpenSessionInTerminal(_) => {
+                Ok(crate::input::actions::Action::OpenSessionInTerminal)
             },
             ActionType::WaitForPaneExit(a) => Ok(crate::input::actions::Action::WaitForPaneExit {
                 pane_id: a

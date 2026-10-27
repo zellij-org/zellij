@@ -2527,9 +2527,9 @@ mod tests {
     }
 
     fn font_choice(screen: &SettingsScreen) -> (Vec<String>, String) {
-        let info = describe(SettingKey::WindowFont);
-        let options = screen.choice_options(SettingKey::WindowFont, &info);
-        let selected = screen.selected_choice_index(SettingKey::WindowFont, &options);
+        let info = describe(SettingKey::TerminalFont);
+        let options = screen.choice_options(SettingKey::TerminalFont, &info);
+        let selected = screen.selected_choice_index(SettingKey::TerminalFont, &options);
         let shown = options[selected].clone();
         (options, shown)
     }
@@ -2552,7 +2552,7 @@ mod tests {
     #[test]
     fn a_font_set_in_any_case_selects_the_installed_entry() {
         let screen = screen_with(
-            &[(SettingKey::WindowFont, "iosevka term")],
+            &[(SettingKey::TerminalFont, "iosevka term")],
             &["Iosevka Term", "JetBrains Mono"],
         );
         let (options, shown) = font_choice(&screen);
@@ -2562,7 +2562,7 @@ mod tests {
 
     #[test]
     fn a_font_that_is_not_installed_is_shown_as_missing() {
-        let screen = screen_with(&[(SettingKey::WindowFont, "Gone Mono")], &["Iosevka Term"]);
+        let screen = screen_with(&[(SettingKey::TerminalFont, "Gone Mono")], &["Iosevka Term"]);
         let (options, shown) = font_choice(&screen);
         assert_eq!(
             options,
@@ -2580,11 +2580,11 @@ mod tests {
     fn the_font_is_a_dropdown_only_when_installed_fonts_are_known() {
         let listed = screen_with(&[], &["Iosevka Term"]);
         assert!(matches!(
-            listed.build_element(SettingKey::WindowFont),
+            listed.build_element(SettingKey::TerminalFont),
             Some(Element::Dropdown(_))
         ));
-        let unlisted = screen_with(&[(SettingKey::WindowFont, "Iosevka Term")], &[]);
-        match unlisted.build_element(SettingKey::WindowFont) {
+        let unlisted = screen_with(&[(SettingKey::TerminalFont, "Iosevka Term")], &[]);
+        match unlisted.build_element(SettingKey::TerminalFont) {
             Some(Element::TextInput(input)) => assert_eq!(input.get_text(), "Iosevka Term"),
             other => panic!("the font was shown as {:?}", other),
         }
@@ -2592,42 +2592,42 @@ mod tests {
 
     #[test]
     fn a_zero_initial_size_unsets_it_and_a_tiny_one_is_raised_to_the_minimum() {
-        let kind = describe(SettingKey::WindowInitialColumns).kind;
+        let kind = describe(SettingKey::TerminalInitialColumns).kind;
         assert_eq!(stepper_text(kind, 0), None);
         assert_eq!(stepper_text(kind, 1), Some("2".to_owned()));
         assert_eq!(stepper_text(kind, 120), Some("120".to_owned()));
         let screen = screen_with(&[], &[]);
-        assert_eq!(screen.stepper_value(SettingKey::WindowInitialRows), 0);
-        let screen = screen_with(&[(SettingKey::WindowInitialRows, "40")], &[]);
-        assert_eq!(screen.stepper_value(SettingKey::WindowInitialRows), 40);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalInitialRows), 0);
+        let screen = screen_with(&[(SettingKey::TerminalInitialRows, "40")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalInitialRows), 40);
     }
 
     #[test]
     fn decimal_steppers_write_plain_numbers() {
-        let opacity = describe(SettingKey::WindowOpacity).kind;
+        let opacity = describe(SettingKey::TerminalOpacity).kind;
         assert_eq!(stepper_text(opacity, 90), Some("0.9".to_owned()));
         assert_eq!(stepper_text(opacity, 100), Some("1".to_owned()));
-        let font_size = describe(SettingKey::WindowFontSize).kind;
+        let font_size = describe(SettingKey::TerminalFontSize).kind;
         assert_eq!(stepper_text(font_size, 135), Some("13.5".to_owned()));
-        let screen = screen_with(&[(SettingKey::WindowFontSize, "13.5")], &[]);
-        assert_eq!(screen.stepper_value(SettingKey::WindowFontSize), 135);
+        let screen = screen_with(&[(SettingKey::TerminalFontSize, "13.5")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalFontSize), 135);
     }
 
     #[test]
     fn an_unset_padding_side_shows_the_general_padding() {
-        let screen = screen_with(&[(SettingKey::WindowPadding, "4")], &[]);
-        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 40);
+        let screen = screen_with(&[(SettingKey::TerminalPadding, "4")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalPaddingTop), 40);
         let screen = screen_with(
             &[
-                (SettingKey::WindowPadding, "4"),
-                (SettingKey::WindowPaddingTop, "7.5"),
+                (SettingKey::TerminalPadding, "4"),
+                (SettingKey::TerminalPaddingTop, "7.5"),
             ],
             &[],
         );
-        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 75);
-        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingLeft), 40);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalPaddingTop), 75);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalPaddingLeft), 40);
         let screen = screen_with(&[], &[]);
-        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 0);
+        assert_eq!(screen.stepper_value(SettingKey::TerminalPaddingTop), 0);
     }
 
     #[test]

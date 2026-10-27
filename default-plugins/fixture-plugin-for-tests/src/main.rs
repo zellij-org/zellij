@@ -46,7 +46,7 @@ fn run_session_pane_command(command: &str, session: &str, pane: PaneId) {
     match command {
         "mark_seen" => mark_session_pane_seen(session, pane),
         "mark_all_seen" => mark_all_seen(Some(session)),
-        "open_window" => open_session_window(session, true),
+        "open_window" => open_session_terminal(session, true),
         "write" => write_to_session_pane(session, pane, b"typed by the fixture".to_vec()),
         "send_key" => send_key_to_session_pane(session, pane, KeyWithModifier::new(BareKey::Enter)),
         "mute" => toggle_session_pane_mute(session, pane),

@@ -656,10 +656,10 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Open in a window",
+                label: "Open in a Zellij terminal",
                 actions: [
                     Action(
-                        OpenSessionInWindow,
+                        OpenSessionInTerminal,
                     ),
                 ],
                 toggled_label: None,
@@ -5518,7 +5518,7 @@ Config {
             },
         },
     },
-    window: WindowConfig {
+    terminal: TerminalConfig {
         font: None,
         font_size: None,
         system_fonts: None,

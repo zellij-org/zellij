@@ -107,7 +107,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenPluginPopupPayload, OpenSessionWindowPayload, OpenTerminalFloatingNearPluginPayload,
+        OpenPluginPopupPayload, OpenSessionTerminalPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -2809,9 +2809,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }),
                 _ => Err("Mismatched payload for MarkAllSeen"),
             },
-            Some(CommandName::OpenSessionWindow) => match protobuf_plugin_command.payload {
-                Some(Payload::OpenSessionWindowPayload(payload)) => Ok(
-                    PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest {
+            Some(CommandName::OpenSessionTerminal) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenSessionTerminalPayload(payload)) => Ok(
+                    PluginCommand::OpenSessionTerminal(crate::data::SessionTerminalRequest {
                         session_name: payload.session_name.filter(|n| !n.is_empty()),
                         new_window: payload.new_window,
                         pane_id: payload.pane_id.map(|id| {
@@ -2825,7 +2825,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         cwd: payload.cwd.map(PathBuf::from),
                     }),
                 ),
-                _ => Err("Mismatched payload for OpenSessionWindow"),
+                _ => Err("Mismatched payload for OpenSessionTerminal"),
             },
             Some(CommandName::WriteToSessionPane) => match protobuf_plugin_command.payload {
                 Some(Payload::WriteToSessionPanePayload(payload)) => {
@@ -5049,10 +5049,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     session_name,
                 })),
             }),
-            PluginCommand::OpenSessionWindow(request) => Ok(ProtobufPluginCommand {
-                name: CommandName::OpenSessionWindow as i32,
-                payload: Some(Payload::OpenSessionWindowPayload(
-                    OpenSessionWindowPayload {
+            PluginCommand::OpenSessionTerminal(request) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenSessionTerminal as i32,
+                payload: Some(Payload::OpenSessionTerminalPayload(
+                    OpenSessionTerminalPayload {
                         session_name: request.session_name,
                         new_window: request.new_window,
                         pane_id: request.pane_id.map(|p| match p {
@@ -6172,25 +6172,25 @@ mod tests {
     use crate::data::PluginCommand;
 
     #[test]
-    fn a_config_snapshot_keeps_its_fonts_and_window_settings_through_protobuf() {
+    fn a_config_snapshot_keeps_its_fonts_and_terminal_settings_through_protobuf() {
         use crate::data::{ConfigSettingState, ConfigSnapshot, SettingKey};
         use prost::Message;
         let original = ConfigSnapshot {
             settings: vec![
                 ConfigSettingState {
-                    key: SettingKey::WindowOpacity,
+                    key: SettingKey::TerminalOpacity,
                     saved_value: Some("1".to_owned()),
                     current_value: Some("0.9".to_owned()),
                     set_in_file: true,
                 },
                 ConfigSettingState {
-                    key: SettingKey::WindowColorRed,
+                    key: SettingKey::TerminalColorRed,
                     saved_value: None,
                     current_value: Some("#ff0000".to_owned()),
                     set_in_file: false,
                 },
             ],
-            pending_restart_settings: vec![SettingKey::WindowStartupMode],
+            pending_restart_settings: vec![SettingKey::TerminalStartupMode],
             font_families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
             ..Default::default()
         };
@@ -6472,15 +6472,15 @@ mod tests {
                 pane_id: PaneId::Terminal(3),
             },
             PluginCommand::MarkAllSeen { session_name: None },
-            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+            PluginCommand::OpenSessionTerminal(crate::data::SessionTerminalRequest::existing(
                 "api", None, true,
             )),
-            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+            PluginCommand::OpenSessionTerminal(crate::data::SessionTerminalRequest::existing(
                 "api",
                 Some(PaneId::Plugin(4)),
                 false,
             )),
-            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::new_session(
+            PluginCommand::OpenSessionTerminal(crate::data::SessionTerminalRequest::new_session(
                 None,
                 Some(crate::data::LayoutInfo::BuiltIn("compact".to_owned())),
                 Some(PathBuf::from("/tmp")),

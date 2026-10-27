@@ -718,7 +718,7 @@ pub enum ServerContext {
     ChangeModeForAllClients,
     Reconfigure,
     ConfigWrittenToDisk,
-    WindowSettingsChanged,
+    TerminalSettingsChanged,
     FontFamilies,
     AdoptSessionHistory,
     FailedToWriteConfigToDisk,

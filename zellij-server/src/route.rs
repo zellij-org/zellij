@@ -1631,11 +1631,11 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
-        Action::OpenSessionInWindow => {
+        Action::OpenSessionInTerminal => {
             drop(NotificationEnd::new(completion_tx));
             let session_name = zellij_utils::envs::get_session_name().ok();
             let _ = std::thread::Builder::new()
-                .name("open_session_in_window".to_owned())
+                .name("open_session_in_terminal".to_owned())
                 .spawn(move || {
                     let request = zellij_utils::app_control::OpenWindowRequest {
                         session: session_name,

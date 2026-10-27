@@ -6,7 +6,7 @@ use super::super::options::{
 };
 use super::super::theme::{FrameConfig, UiConfig};
 use super::super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
-use super::super::window::WindowConfig;
+use super::super::terminal::TerminalConfig;
 use crate::data::{
     BorderStyleOverride, InputMode, LineStyle, SettingKey, SettingSection, ThemeHue, WebSharing,
 };
@@ -144,7 +144,7 @@ context_menu {
 }
 ";
 
-const EVERY_WINDOW_SETTING_SET: &str = "window {
+const EVERY_WINDOW_SETTING_SET: &str = "terminal {
     font \"Iosevka Term\"
     font_size 13.5
     font_weight 500
@@ -216,9 +216,9 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
 }
 ";
 
-pub(crate) fn every_window_setting_set() -> WindowConfig {
+pub(crate) fn every_window_setting_set() -> TerminalConfig {
     let document: KdlDocument = EVERY_WINDOW_SETTING_SET.parse().unwrap();
-    WindowConfig::from_kdl(document.get("window").unwrap()).unwrap()
+    TerminalConfig::from_kdl(document.get("terminal").unwrap()).unwrap()
 }
 
 pub(crate) fn every_setting_set() -> Config {
@@ -255,7 +255,7 @@ pub(crate) fn every_setting_set() -> Config {
             base_url: Some("/zellij".to_owned()),
             font_size: Some(14),
         },
-        window: every_window_setting_set(),
+        terminal: every_window_setting_set(),
         attention: crate::input::attention::AttentionConfig {
             frame_markers: Some(false),
             host_status: Some(false),
@@ -287,7 +287,7 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         "env",
         "web_client",
         "context_menu",
-        "window",
+        "terminal",
         "attention",
     ];
     let mut names = BTreeSet::new();
@@ -300,7 +300,7 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
             "mousebinds",
             "ui",
             "web_client",
-            "window",
+            "terminal",
             "attention",
         ]
         .contains(&name)
@@ -334,7 +334,7 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         names.insert((SettingSection::Attention, node.name().value().to_owned()));
     }
     let window = document
-        .get("window")
+        .get("terminal")
         .and_then(|window| window.children())
         .unwrap();
     for node in window.nodes() {
@@ -342,12 +342,12 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         if name == "theme" {
             for colour in node.children().unwrap().nodes() {
                 names.insert((
-                    SettingSection::WindowTheme,
+                    SettingSection::TerminalTheme,
                     colour.name().value().to_owned(),
                 ));
             }
         } else {
-            names.insert((SettingSection::Window, name.to_owned()));
+            names.insert((SettingSection::Terminal, name.to_owned()));
         }
     }
     names
@@ -483,31 +483,31 @@ fn a_partial_ui_or_web_client_block_keeps_the_other_values() {
 fn window_values_are_shown_as_plain_text() {
     let config = every_setting_set();
     assert_eq!(
-        setting_value(&config, SettingKey::WindowFontSize).as_deref(),
+        setting_value(&config, SettingKey::TerminalFontSize).as_deref(),
         Some("13.5")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowOpacity).as_deref(),
+        setting_value(&config, SettingKey::TerminalOpacity).as_deref(),
         Some("0.9")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowPadding).as_deref(),
+        setting_value(&config, SettingKey::TerminalPadding).as_deref(),
         Some("4")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowPasteKeys).as_deref(),
+        setting_value(&config, SettingKey::TerminalPasteKeys).as_deref(),
         Some("Ctrl Shift v, Shift insert")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowColorForeground).as_deref(),
+        setting_value(&config, SettingKey::TerminalColorForeground).as_deref(),
         Some("#c8c9ca")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowColorRed).as_deref(),
+        setting_value(&config, SettingKey::TerminalColorRed).as_deref(),
         Some("#ff0000")
     );
     assert_eq!(
-        setting_value(&config, SettingKey::WindowColorCursor).as_deref(),
+        setting_value(&config, SettingKey::TerminalColorCursor).as_deref(),
         Some("7")
     );
 }
@@ -516,10 +516,10 @@ fn window_values_are_shown_as_plain_text() {
 fn a_window_setting_applied_live_changes_only_that_setting() {
     let base = every_setting_set();
     for (key, value) in [
-        (SettingKey::WindowOpacity, "0.5"),
-        (SettingKey::WindowFontFeatures, "liga, zero"),
-        (SettingKey::WindowColorBlue, "#123456"),
-        (SettingKey::WindowCursorStyle, "underline"),
+        (SettingKey::TerminalOpacity, "0.5"),
+        (SettingKey::TerminalFontFeatures, "liga, zero"),
+        (SettingKey::TerminalColorBlue, "#123456"),
+        (SettingKey::TerminalCursorStyle, "underline"),
     ] {
         let changed = Config::from_kdl(&key.kdl_snippet(value), Some(base.clone())).unwrap();
         assert_eq!(differing_settings(&base, &changed), vec![key]);

@@ -1059,29 +1059,29 @@ pub fn mark_all_seen(session_name: Option<&str>) {
     });
 }
 
-pub fn open_session_window(session_name: &str, new_window: bool) {
-    run_plugin_command(PluginCommand::OpenSessionWindow(
-        SessionWindowRequest::existing(session_name, None, new_window),
+pub fn open_session_terminal(session_name: &str, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionTerminal(
+        SessionTerminalRequest::existing(session_name, None, new_window),
     ));
 }
 
-pub fn open_session_pane_window(session_name: &str, pane_id: PaneId, new_window: bool) {
-    run_plugin_command(PluginCommand::OpenSessionWindow(
-        SessionWindowRequest::existing(session_name, Some(pane_id), new_window),
+pub fn open_session_pane_terminal(session_name: &str, pane_id: PaneId, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionTerminal(
+        SessionTerminalRequest::existing(session_name, Some(pane_id), new_window),
     ));
 }
 
-pub fn request_session_window(request: SessionWindowRequest) {
-    run_plugin_command(PluginCommand::OpenSessionWindow(request));
+pub fn request_session_terminal(request: SessionTerminalRequest) {
+    run_plugin_command(PluginCommand::OpenSessionTerminal(request));
 }
 
-pub fn open_new_session_window(
+pub fn open_new_session_terminal(
     session_name: Option<&str>,
     layout: Option<LayoutInfo>,
     cwd: Option<PathBuf>,
 ) {
-    run_plugin_command(PluginCommand::OpenSessionWindow(
-        SessionWindowRequest::new_session(session_name, layout, cwd),
+    run_plugin_command(PluginCommand::OpenSessionTerminal(
+        SessionTerminalRequest::new_session(session_name, layout, cwd),
     ));
 }
 

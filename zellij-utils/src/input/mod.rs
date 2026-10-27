@@ -19,7 +19,7 @@ pub mod session_suggestions;
 pub mod theme;
 pub mod theme_contrast;
 pub mod web_client;
-pub mod window;
+pub mod terminal;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;

@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use clap::{CommandFactory, Parser, Subcommand};
-use zellij_utils::cli::{AttachArgs, CliArgs, Command, Sessions, WindowArgs};
+use zellij_utils::cli::{AttachArgs, CliArgs, Command, Sessions, TerminalArgs};
 
 const CLI_PARSE_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
 
@@ -151,11 +151,11 @@ fn attach_args(argv: &[&str]) -> AttachArgs {
     }
 }
 
-fn window_args(argv: &[&str]) -> WindowArgs {
-    let mut args = vec!["zellij", "window"];
+fn terminal_args(argv: &[&str]) -> TerminalArgs {
+    let mut args = vec!["zellij", "terminal"];
     args.extend_from_slice(argv);
     match try_parse(&args).map(|parsed| parsed.command) {
-        Ok(Some(Command::Window(args))) => args,
+        Ok(Some(Command::Terminal(args))) => args,
         other => panic!("expected a window command, got {:?}", other),
     }
 }
@@ -184,11 +184,11 @@ fn the_window_parses_attachs_flags_exactly_as_attach_does() {
         vec!["my-session", "options", "--simplified-ui", "true"],
     ] {
         let attach = attach_args(&argv);
-        let window = window_args(&argv).attach;
+        let window = terminal_args(&argv).attach;
         assert_eq!(
             format!("{:?}", attach),
             format!("{:?}", window),
-            "`zellij attach {}` and `zellij window {}` disagree",
+            "`zellij attach {}` and `zellij terminal {}` disagree",
             argv.join(" "),
             argv.join(" ")
         );
@@ -198,13 +198,13 @@ fn the_window_parses_attachs_flags_exactly_as_attach_does() {
 #[test]
 fn a_backgrounded_session_is_a_usage_error_on_the_window() {
     assert!(try_parse(&["zellij", "attach", "-b", "my-session"]).is_ok());
-    assert!(try_parse(&["zellij", "window", "-b", "my-session"]).is_err());
-    assert!(try_parse(&["zellij", "window", "--create-background", "my-session"]).is_err());
+    assert!(try_parse(&["zellij", "terminal", "-b", "my-session"]).is_err());
+    assert!(try_parse(&["zellij", "terminal", "--create-background", "my-session"]).is_err());
 }
 
 #[test]
 fn the_window_takes_a_command_the_way_terminal_emulators_do() {
-    let args = window_args(&["-e", "vim", "-u", "NONE", "--clean", "file.txt"]);
+    let args = terminal_args(&["-e", "vim", "-u", "NONE", "--clean", "file.txt"]);
     assert_eq!(
         args.execute,
         vec!["vim", "-u", "NONE", "--clean", "file.txt"]
@@ -217,7 +217,7 @@ fn the_window_takes_a_command_the_way_terminal_emulators_do() {
     assert!(args.closes_command_on_exit());
     assert!(args.attach.session_name.is_none());
 
-    let held = window_args(&["--hold", "--working-directory=/tmp", "-e", "ls", "-la"]);
+    let held = terminal_args(&["--hold", "--working-directory=/tmp", "-e", "ls", "-la"]);
     assert!(held.hold);
     assert!(!held.closes_command_on_exit());
     assert_eq!(
@@ -226,13 +226,13 @@ fn the_window_takes_a_command_the_way_terminal_emulators_do() {
     );
     assert_eq!(held.execute, vec!["ls", "-la"]);
 
-    let spaced = window_args(&["--working-directory", "/srv", "-e", "htop"]);
+    let spaced = terminal_args(&["--working-directory", "/srv", "-e", "htop"]);
     assert_eq!(
         spaced.working_directory,
         Some(std::path::PathBuf::from("/srv"))
     );
 
-    let plain = window_args(&["--", "htop"]);
+    let plain = terminal_args(&["--", "htop"]);
     assert!(!plain.waits_for_command());
     assert!(!plain.closes_command_on_exit());
     assert_eq!(plain.command(), &["htop"]);
@@ -246,22 +246,22 @@ fn a_waited_command_refuses_the_flags_that_open_something_else() {
         vec!["--sessions", "-e", "htop"],
         vec!["--headless", "-e", "htop"],
     ] {
-        let mut args = vec!["zellij", "window"];
+        let mut args = vec!["zellij", "terminal"];
         args.extend_from_slice(&argv);
         assert!(
             try_parse(&args).is_err(),
-            "`zellij window {}` was accepted",
+            "`zellij terminal {}` was accepted",
             argv.join(" ")
         );
     }
-    assert!(window_args(&["--hold"]).validate().is_err());
-    assert!(window_args(&["--hold", "-e", "ls"]).validate().is_ok());
+    assert!(terminal_args(&["--hold"]).validate().is_err());
+    assert!(terminal_args(&["--hold", "-e", "ls"]).validate().is_ok());
 }
 
 #[test]
 fn the_window_watches_where_attach_cannot() {
-    assert!(window_args(&["my-session", "--watch"]).watch);
-    assert!(window_args(&["--watch"]).watch);
+    assert!(terminal_args(&["my-session", "--watch"]).watch);
+    assert!(terminal_args(&["--watch"]).watch);
     assert!(try_parse(&["zellij", "attach", "--watch", "my-session"]).is_err());
 }
 
@@ -273,11 +273,11 @@ fn watching_refuses_the_flags_that_would_change_the_session_it_follows() {
         vec!["--watch", "--index", "1"],
         vec!["--watch", "my-session", "--", "htop"],
     ] {
-        let mut args = vec!["zellij", "window"];
+        let mut args = vec!["zellij", "terminal"];
         args.extend_from_slice(&argv);
         assert!(
             try_parse(&args).is_err(),
-            "`zellij window {}` was accepted",
+            "`zellij terminal {}` was accepted",
             argv.join(" ")
         );
     }
@@ -285,7 +285,7 @@ fn watching_refuses_the_flags_that_would_change_the_session_it_follows() {
 
 #[test]
 fn the_fixture_flags_are_on_the_verb_and_hidden_from_it() {
-    let args = window_args(&[
+    let args = terminal_args(&[
         "--headless",
         "--record",
         "/tmp/fixture.jsonl",
@@ -309,7 +309,7 @@ fn the_fixture_flags_are_on_the_verb_and_hidden_from_it() {
 
     let help = on_large_stack(|| {
         Command::augment_subcommands(clap::Command::new("zellij"))
-            .find_subcommand_mut("window")
+            .find_subcommand_mut("terminal")
             .expect("the window verb is missing")
             .render_long_help()
             .to_string()
@@ -342,7 +342,7 @@ fn the_window_is_described_by_what_it_is_for() {
             .to_string()
     });
     assert!(
-        help.contains("Open a session in zellij's own window, without a terminal emulator"),
+        help.contains("Open a session in the Zellij terminal, without another terminal emulator"),
         "{}",
         help
     );
@@ -350,18 +350,18 @@ fn the_window_is_described_by_what_it_is_for() {
 
 #[test]
 fn the_window_can_toggle_one_panel_of_the_desktop_app() {
-    assert!(window_args(&["--inbox"]).inbox);
-    assert!(window_args(&["--sessions"]).sessions);
+    assert!(terminal_args(&["--inbox"]).inbox);
+    assert!(terminal_args(&["--sessions"]).sessions);
     for argv in [
         vec!["--inbox", "--sessions"],
         vec!["--inbox", "--standalone"],
         vec!["--sessions", "--watch"],
     ] {
-        let mut args = vec!["zellij", "window"];
+        let mut args = vec!["zellij", "terminal"];
         args.extend_from_slice(&argv);
         assert!(
             try_parse(&args).is_err(),
-            "`zellij window {}` was accepted",
+            "`zellij terminal {}` was accepted",
             argv.join(" ")
         );
     }
@@ -369,24 +369,24 @@ fn the_window_can_toggle_one_panel_of_the_desktop_app() {
 
 #[test]
 fn the_window_can_run_on_its_own_in_a_separate_socket_folder() {
-    let args = window_args(&["--standalone", "--socket-dir", "/tmp/elsewhere"]);
+    let args = terminal_args(&["--standalone", "--socket-dir", "/tmp/elsewhere"]);
     assert!(args.standalone);
     assert_eq!(
         args.socket_dir.as_deref(),
         Some(std::path::Path::new("/tmp/elsewhere"))
     );
-    assert!(!window_args(&[]).standalone);
-    assert_eq!(window_args(&[]).socket_dir, None);
+    assert!(!terminal_args(&[]).standalone);
+    assert_eq!(terminal_args(&[]).socket_dir, None);
 }
 
 #[test]
 fn only_the_window_command_moves_the_socket_folder() {
-    let window = try_parse(&["zellij", "window", "--socket-dir", "/tmp/elsewhere"]).unwrap();
+    let window = try_parse(&["zellij", "terminal", "--socket-dir", "/tmp/elsewhere"]).unwrap();
     assert_eq!(
         crate::socket_dir_override(&window),
         Some(std::path::Path::new("/tmp/elsewhere"))
     );
-    let plain = try_parse(&["zellij", "window"]).unwrap();
+    let plain = try_parse(&["zellij", "terminal"]).unwrap();
     assert_eq!(crate::socket_dir_override(&plain), None);
     let other = try_parse(&["zellij", "list-sessions"]).unwrap();
     assert_eq!(crate::socket_dir_override(&other), None);

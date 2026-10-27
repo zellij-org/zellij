@@ -588,7 +588,7 @@ enum ActionName {
     MarkPaneSeen = 143;
     MarkAllSeen = 144;
     ToggleTrayIcon = 145;
-    OpenSessionInWindow = 146;
+    OpenSessionInTerminal = 146;
     SessionNameInput = 147;
     UndoRenameSession = 148;
     ToggleMirrorResize = 149;

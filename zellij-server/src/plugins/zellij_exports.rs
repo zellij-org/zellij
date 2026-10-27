@@ -558,7 +558,7 @@ fn session_pane_command(
         });
 }
 
-fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWindowRequest) {
+fn open_session_terminal(env: &PluginEnv, request: zellij_utils::data::SessionTerminalRequest) {
     let creates_a_session = request.creates_a_session();
     let mut layout_holder = ConnectToSession {
         layout: request.layout.clone(),
@@ -573,7 +573,7 @@ fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWind
         .map(|c| translate_plugin_path(env, c))
         .or_else(|| creates_a_session.then(|| env.plugin_cwd.clone()));
     let _ = std::thread::Builder::new()
-        .name("open_session_window".to_owned())
+        .name("open_session_terminal".to_owned())
         .spawn(move || {
             let request = zellij_utils::app_control::OpenWindowRequest {
                 create: request.new_window || request.session_name.is_none(),
@@ -751,8 +751,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::MarkAllSeen { session_name } => {
                         mark_all_seen(env, session_name)
                     },
-                    PluginCommand::OpenSessionWindow(request) => {
-                        open_session_window(env, request)
+                    PluginCommand::OpenSessionTerminal(request) => {
+                        open_session_terminal(env, request)
                     },
                     PluginCommand::WriteToSessionPane {
                         session_name,
@@ -6755,7 +6755,7 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         },
         PluginCommand::MarkSessionPaneSeen { .. }
         | PluginCommand::MarkAllSeen { .. }
-        | PluginCommand::OpenSessionWindow(..)
+        | PluginCommand::OpenSessionTerminal(..)
         | PluginCommand::DesktopIntegration(..)
         | PluginCommand::ToggleSessionPaneMute { .. }
         | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }

@@ -1045,38 +1045,38 @@ fn a_comment_inside_a_one_line_empty_block_is_kept_when_the_first_child_is_added
 }
 
 #[test]
-fn window_settings_go_inside_window_creating_it_when_missing() {
+fn terminal_settings_go_inside_terminal_creating_it_when_missing() {
     let text = saved_text_after("mouse_mode true\n", |saved| {
         reconfigure(
             saved,
-            "window { opacity 0.85; paste_keys \"Ctrl Shift v\" \"Shift Insert\"; theme { red \"#ff0000\"; }; }",
+            "terminal { opacity 0.85; paste_keys \"Ctrl Shift v\" \"Shift Insert\"; theme { red \"#ff0000\"; }; }",
         )
     });
     assert_eq!(
         text,
-        "mouse_mode true\nwindow {\n    opacity 0.85\n    paste_keys \"Ctrl Shift v\" \"Shift insert\"\n    theme {\n        red \"#ff0000\"\n    }\n}\n"
+        "mouse_mode true\nterminal {\n    opacity 0.85\n    paste_keys \"Ctrl Shift v\" \"Shift insert\"\n    theme {\n        red \"#ff0000\"\n    }\n}\n"
     );
 }
 
 #[test]
 fn a_window_colour_given_as_three_numbers_is_replaced_whole() {
-    let file = "window {\n    theme {\n        red 1 2 3\n    }\n}\n";
+    let file = "terminal {\n    theme {\n        red 1 2 3\n    }\n}\n";
     let text = saved_text_after(file, |saved| {
-        reconfigure(saved, "window { theme { red \"#0a0b0c\"; }; }")
+        reconfigure(saved, "terminal { theme { red \"#0a0b0c\"; }; }")
     });
     assert_eq!(
         text,
-        "window {\n    theme {\n        red \"#0a0b0c\"\n    }\n}\n"
+        "terminal {\n    theme {\n        red \"#0a0b0c\"\n    }\n}\n"
     );
 }
 
 #[test]
 fn a_shorter_window_key_list_drops_the_extra_keys() {
-    let file = "window {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}\n";
+    let file = "terminal {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}\n";
     let text = saved_text_after(file, |saved| {
-        reconfigure(saved, "window { paste_keys \"Super v\"; }")
+        reconfigure(saved, "terminal { paste_keys \"Super v\"; }")
     });
-    assert_eq!(text, "window {\n    paste_keys \"Super v\"\n}\n");
+    assert_eq!(text, "terminal {\n    paste_keys \"Super v\"\n}\n");
 }
 
 const ALIAS_FILE: &str = "plugins {

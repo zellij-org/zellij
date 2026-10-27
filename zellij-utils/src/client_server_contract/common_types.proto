@@ -346,7 +346,7 @@ message Action {
     MarkAllSeenAction mark_all_seen = 180;
     WriteKeyToPaneIdAction write_key_to_pane_id = 181;
     ToggleTrayIconAction toggle_tray_icon = 182;
-    OpenSessionInWindowAction open_session_in_window = 183;
+    OpenSessionInTerminalAction open_session_in_terminal = 183;
     WaitForPaneExitAction wait_for_pane_exit = 184;
     SessionNameInputAction session_name_input = 185;
     UndoRenameSessionAction undo_rename_session = 186;
@@ -1471,7 +1471,7 @@ message GoToPreviousSessionAction {}
 message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
-message OpenSessionInWindowAction {}
+message OpenSessionInTerminalAction {}
 message WaitForPaneExitAction { PaneId pane_id = 1; }
 message ToggleMirrorResizeAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }

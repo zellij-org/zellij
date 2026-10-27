@@ -173,9 +173,9 @@ pub enum Command {
     )]
     #[clap(arg_required_else_help = true)]
     Prompt(PromptCli),
-    /// Open a session in zellij's own window, without a terminal emulator
-    #[clap(name = "window")]
-    Window(WindowArgs),
+    /// Open a session in the Zellij terminal, without another terminal emulator
+    #[clap(name = "terminal")]
+    Terminal(TerminalArgs),
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -566,7 +566,7 @@ impl AttachArgs {
 }
 
 #[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
-pub struct WindowArgs {
+pub struct TerminalArgs {
     #[clap(flatten)]
     pub attach: AttachArgs,
 
@@ -606,9 +606,9 @@ pub struct WindowArgs {
         long,
         value_enum,
         value_name = "MODE",
-        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the window section of the configuration"
+        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the terminal section of the configuration"
     )]
-    pub startup_mode: Option<crate::input::window::StartupMode>,
+    pub startup_mode: Option<crate::input::terminal::StartupMode>,
 
     #[clap(
         long,
@@ -669,7 +669,7 @@ pub struct WindowArgs {
     pub background: bool,
 }
 
-impl WindowArgs {
+impl TerminalArgs {
     pub const DEFAULT_ROWS: usize = 40;
     pub const DEFAULT_COLS: usize = 120;
 
