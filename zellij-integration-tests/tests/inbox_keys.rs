@@ -273,8 +273,10 @@ fn clicking_the_line_shows_the_hidden_items() {
 #[test]
 fn f_lists_only_this_session() {
     let (mut zellij, terminal) = main_session();
-    let (other, _) = session_needing_you("Elsewhere?");
     terminal.output(&needs_you("Right here?"));
+    wait_for_indicator(&zellij, "the item here is counted", "● 1");
+    std::thread::sleep(Duration::from_millis(50));
+    let (other, _) = session_needing_you("Elsewhere?");
     wait_for_indicator(&zellij, "both items are counted", "● 2");
     let other_row = row_of("●", other.session_name());
     let here_row = row_of("●", "here");

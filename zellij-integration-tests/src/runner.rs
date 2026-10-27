@@ -129,7 +129,7 @@ impl TestRunner {
     }
 
     pub fn start_in_background(self) -> BackgroundTestSession {
-        let (session_context, fake_client_os_api, _fake_client_handle, client_info) = self.boot();
+        let (session_context, fake_client_os_api, fake_client_handle, client_info) = self.boot();
         let cli_args = session_context.cli_args.clone();
         let config = session_context.config.clone();
         let config_options = session_context.config_options.clone();
@@ -156,6 +156,10 @@ impl TestRunner {
             "the background session to start its first terminal",
             |fake_pty_registry| (!fake_pty_registry.fake_pty_states.is_empty()).then_some(()),
         );
+        drop(fake_client_handle);
+        crate::wait_for("the server to release the detaching client", || {
+            session_context.fake_server_os_api.connected_client_count() == 0
+        });
         BackgroundTestSession { session_context }
     }
 
