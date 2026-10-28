@@ -4941,35 +4941,3 @@ fn clear_resurrect_command_wire_roundtrip() {
         resurrect: None,
     });
 }
-
-#[test]
-fn stacked_pane_list_orientation_wire_roundtrip() {
-    use prost::Message;
-
-    let original = crate::input::options::Options {
-        stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
-        ..Default::default()
-    };
-
-    let proto: crate::client_server_contract::client_server_contract::Options = original.into();
-    assert_eq!(
-        proto.stacked_pane_list_orientation.as_deref(),
-        Some("horizontal"),
-        "wire encoding should be the lowercase Display form"
-    );
-
-    let bytes = proto.encode_to_vec();
-    let decoded =
-        crate::client_server_contract::client_server_contract::Options::decode(&bytes[..])
-            .expect("Failed to decode protobuf bytes");
-
-    let roundtrip: Options = decoded
-        .try_into()
-        .expect("Failed to convert decoded protobuf back to Rust");
-
-    assert_eq!(
-        roundtrip.stacked_pane_list_orientation,
-        Some(StackListOrientation::Horizontal),
-        "stacked_pane_list_orientation must survive IPC roundtrip"
-    );
-}

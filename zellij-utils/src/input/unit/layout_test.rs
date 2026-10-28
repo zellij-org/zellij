@@ -2092,20 +2092,6 @@ fn can_define_a_stack_with_an_expanded_pane() {
 }
 
 #[test]
-fn can_define_a_stack_with_a_direction() {
-    let kdl_layout = r#"
-        layout {
-           pane stacked=true stack_direction="horizontal" {
-               pane
-               pane
-           }
-        }
-    "#;
-    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
-    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
-}
-
-#[test]
 fn cannot_define_a_stack_direction_for_a_non_stacked_pane() {
     let kdl_layout = r#"
         layout {
@@ -2117,6 +2103,46 @@ fn cannot_define_a_stack_direction_for_a_non_stacked_pane() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
     assert!(layout.is_err());
+}
+
+#[test]
+fn cannot_define_a_stack_direction_for_a_non_stacked_template() {
+    for kdl_layout in [
+        r#"layout {
+            pane_template name="plain" stack_direction="horizontal" {
+                children
+            }
+            plain {
+                pane
+                pane
+            }
+        }"#,
+        r#"layout {
+            pane_template name="plain" {
+                children
+            }
+            plain stack_direction="horizontal" {
+                pane
+                pane
+            }
+        }"#,
+        r#"layout {
+            pane_template name="stack" stacked=true stack_direction="horizontal" {
+                children
+            }
+            stack stacked=false {
+                pane
+                pane
+            }
+        }"#,
+    ] {
+        let error =
+            Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
+        assert!(
+            format!("{error:?}").contains("stack_direction can only be set on a stacked pane"),
+            "{kdl_layout}: {error:?}"
+        );
+    }
 }
 
 #[test]

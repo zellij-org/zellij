@@ -753,6 +753,13 @@ impl<'a> KdlLayoutParser<'a> {
         let stack_direction = self
             .parse_stack_direction(kdl_node)?
             .or(pane_template.stack_direction);
+        if stack_direction.is_some() && !children_are_stacked {
+            return Err(ConfigError::new_layout_kdl_error(
+                "stack_direction can only be set on a stacked pane".into(),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
+        }
         let is_expanded_in_stack =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded")
                 .unwrap_or(pane_template.children_are_stacked);
@@ -1269,6 +1276,13 @@ impl<'a> KdlLayoutParser<'a> {
             let children_are_stacked =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                     .unwrap_or(false);
+            if stack_direction.is_some() && !children_are_stacked {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "stack_direction can only be set on a stacked pane".into(),
+                    kdl_node.span().offset(),
+                    kdl_node.span().len(),
+                ));
+            }
             let is_expanded_in_stack =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded")
                     .unwrap_or(false);
