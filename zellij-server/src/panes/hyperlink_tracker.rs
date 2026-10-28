@@ -223,7 +223,9 @@ impl HyperlinkTracker {
             };
             let cells: Vec<HyperlinkPosition> =
                 self.cursor_positions.iter().take(kept).copied().collect();
-            if cells.is_empty() {
+            // If the running application already emitted a hyperlink for this URL,
+            // do not override it and pass it through.
+            if cells.is_empty() || has_osc8_link(&cells, viewport, lines_above) {
                 self.clear();
                 return;
             }
@@ -352,6 +354,24 @@ fn row_at<'a>(
             .and_then(|index| lines_above.get_mut(index));
     }
     viewport.get_mut(y as usize)
+}
+
+fn has_osc8_link(
+    cells: &[HyperlinkPosition],
+    viewport: &mut VecDeque<Row>,
+    lines_above: &mut VecDeque<Row>,
+) -> bool {
+    cells.iter().any(|cell| {
+        row_at(viewport, lines_above, cell.y).is_some_and(|row| {
+            let index = row.absolute_character_index(cell.x.max(0) as usize);
+            matches!(
+                row.columns
+                    .get(index)
+                    .and_then(|character| character.styles.link_anchor),
+                Some(LinkAnchor::Start(_))
+            )
+        })
+    })
 }
 
 fn continues_the_line_above(viewport: &VecDeque<Row>, y: isize) -> bool {
@@ -1018,6 +1038,56 @@ mod tests {
             anchors(&viewport[0], 40)[url.len()],
             Some(neighbour),
             "the cell after the detected url already belonged to another link"
+        );
+    }
+
+    #[test]
+    fn a_detected_url_does_not_replace_the_osc8_link_of_its_cells() {
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(10, 40);
+        let mut lines_above = VecDeque::new();
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+
+        // An application wraps a long OSC 8 link itself: the first row shows only
+        // the start of the url, then the cursor jumps to the next row of its window
+        let shown = "https://example.com/a/very/long/";
+        let link = link_handler
+            .borrow_mut()
+            .dispatch_osc8(&[b"8", b"", b"https://example.com/a/very/long/path"])
+            .expect("an osc 8 anchor");
+        for column in 0..shown.len() {
+            let index = viewport[0].absolute_character_index(column);
+            viewport[0].columns[index]
+                .styles
+                .update(|styles| styles.link_anchor = Some(link));
+        }
+
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            shown,
+            0,
+            0,
+        );
+        feed(
+            &mut tracker,
+            &mut viewport,
+            &mut lines_above,
+            &link_handler,
+            "path",
+            10,
+            1,
+        );
+
+        let row = anchors(&viewport[0], 40);
+        assert!(
+            row[..shown.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(link)),
+            "the detected url replaced the link the application set: {:?}",
+            &row[..shown.len()]
         );
     }
 
