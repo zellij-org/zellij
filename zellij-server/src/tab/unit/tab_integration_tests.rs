@@ -3,7 +3,7 @@ use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::Arc;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, StackListOrientation};
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
@@ -250,6 +250,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -349,6 +350,7 @@ fn create_new_tab_with_stacked_pane_list(
         character_cell_info,
         stacked_resize,
         stacked_pane_list,
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -444,6 +446,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -552,6 +555,7 @@ fn create_new_tab_with_swap_layouts(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -665,6 +669,7 @@ fn create_new_tab_with_os_api(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -760,6 +765,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -869,6 +875,7 @@ fn create_new_tab_with_mock_pty_writer(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -969,6 +976,7 @@ fn create_new_tab_with_sixel_support(
         character_cell_size,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -14450,6 +14458,459 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 }
 
 #[test]
+fn stack_direction_from_layout_is_applied_to_new_stack_list() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 3);
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(orientations, vec![StackListOrientation::Horizontal]);
+}
+
+#[test]
+fn adding_pane_to_one_member_layout_stack_keeps_horizontal_orientation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, vec![(1, None)])),
+    );
+    let client_id = 1;
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 2);
+    assert_eq!(tab.stack_lists.len(), 1);
+    assert_eq!(
+        tab.stack_lists.values().next().unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+}
+
+#[test]
+fn two_singleton_stacks_render_and_resize_like_plain_panes() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let stacked = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+            }
+        }
+    "#;
+    let plain = stacked
+        .replace(
+            "pane stacked=true stack_direction=\"horizontal\" size=\"30%\" { pane; }",
+            "pane size=\"30%\"",
+        )
+        .replace(
+            "pane stacked=true stack_direction=\"vertical\" size=\"40%\" { pane; }",
+            "pane size=\"40%\"",
+        );
+    let mut outputs = Vec::new();
+    for layout in [stacked, &plain] {
+        let (layout, _) = Layout::from_kdl(layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+        let mut tab = create_new_tab_with_stacked_pane_list(
+            size,
+            ModeInfo::default(),
+            false,
+            Some((layout, vec![(1, None), (2, None), (3, None)])),
+        );
+        tab.set_pane_frames(PaneFrameStyle::Titles);
+        tab.resize_whole_tab(size).unwrap();
+        for (id, x, y) in [(1, 0, 0), (2, 72, 0), (3, 0, 27)] {
+            let geom = tab
+                .tiled_panes
+                .get_pane(PaneId::Terminal(id))
+                .unwrap()
+                .position_and_size();
+            assert_eq!((geom.x, geom.y), (x, y), "pane {id} after resize");
+        }
+        let mut output = Output::default();
+        tab.render(&mut output, None).unwrap();
+        outputs.push(take_snapshot(
+            output.serialize().unwrap().get(&1).unwrap().ansi(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        ));
+    }
+    assert_eq!(
+        outputs[0], outputs[1],
+        "singleton stack titles and boundaries must render like plain panes"
+    );
+}
+
+#[test]
+fn two_singleton_stacks_keep_independent_orientations_when_extended() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let (layout, _) = Layout::from_kdl(
+        r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+            }
+        }
+    "#,
+        Some("file_name.kdl".into()),
+        None,
+        None,
+    )
+    .unwrap()
+    .template
+    .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((layout, vec![(1, None), (2, None), (3, None)])),
+    );
+    for (root, added, orientation) in [
+        (3, 4, StackListOrientation::Horizontal),
+        (2, 5, StackListOrientation::Vertical),
+    ] {
+        tab.focus_pane_with_id(PaneId::Terminal(root), false, false, 1)
+            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(added),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+                border_style: None,
+            },
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let list = tab
+            .stack_lists
+            .values()
+            .find(|list| list.members.contains(&PaneId::Terminal(root)))
+            .unwrap();
+        assert_eq!(list.orientation, orientation);
+        assert!(list.members.contains(&PaneId::Terminal(added)));
+    }
+    assert_eq!(tab.stack_lists.len(), 2);
+}
+
+#[test]
+fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let client_id = 1;
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let (stack_list_id, list) = tab.stack_lists.iter().next().unwrap();
+    let stack_list_id = *stack_list_id;
+    let visible = list.visible;
+    let member_count = list.members.len();
+    assert_eq!(list.orientation, StackListOrientation::Horizontal);
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&1),
+        "horizontal tab bar reserves a single row"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Vertical
+    );
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&(member_count + 1)),
+        "vertical list reserves one row per member plus a padding row"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+    assert_eq!(tab.reserved_top_rows.borrow().get(&visible), Some(&1));
+}
+
+#[test]
+fn stack_list_orientation_survives_degroupify_groupify_cycle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    assert_eq!(stack_member_pane_count(&tab), 3);
+
+    tab.degroupify_all();
+    assert!(
+        tab.stack_lists.is_empty(),
+        "degroupify dissolves the stack list into a classic in-grid stack"
+    );
+
+    tab.groupify_all();
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(
+        orientations,
+        vec![StackListOrientation::Horizontal],
+        "groupify restores the remembered orientation instead of defaulting"
+    );
+}
+
+#[test]
+fn horizontal_stack_list_member_at_point_follows_tab_widths() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane name="foo" focus=true
+                pane name="terminal"
+                pane name="界"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let list = tab.stack_lists.values().next().unwrap();
+    let visible = list.visible;
+    let pane = tab.tiled_panes.get_pane(visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let entry_x = geom.x + offset.left;
+    let entry_cols = geom
+        .cols
+        .as_usize()
+        .saturating_sub(offset.left + offset.right);
+    let entry_layout = tab.stack_list_horizontal_entry_layout(list, entry_cols);
+    let tab_widths: Vec<usize> = entry_layout.iter().map(|entry| entry.width).collect();
+    assert_eq!(tab_widths, vec![9, 14, 8]);
+    let members = list.members.clone();
+
+    let second_tab_start = entry_x + 9;
+    let second_member = list.members[1];
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32, second_tab_start as u16)
+        ),
+        second_member
+    );
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32 + 1, second_tab_start as u16)
+        ),
+        visible
+    );
+
+    let mut instructions = output
+        .serialize()
+        .unwrap()
+        .get(&1)
+        .unwrap()
+        .ansi()
+        .to_owned();
+    let mut redraw = Output::default();
+    tab.render(&mut redraw, None).unwrap();
+    if let Some(payload) = redraw.serialize().unwrap().get(&1) {
+        instructions.push_str(payload.ansi());
+    }
+    let rendered = take_snapshot(&instructions, size.rows, size.cols, Palette::default());
+    for label in ["foo", "terminal", "界"] {
+        assert!(rendered.contains(label), "{}", rendered);
+    }
+
+    for member in &members[1..] {
+        assert!(tab.move_focus_right(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+    for member in members[..members.len() - 1].iter().rev() {
+        assert!(tab.move_focus_left(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+    for member in members {
+        tab.focus_pane_with_id(member, false, false, 1).unwrap();
+        let list = tab.stack_lists.values().next().unwrap();
+        for cols in [0, 1, 20] {
+            let entries = tab.stack_list_horizontal_entry_layout(list, cols);
+            assert_eq!(entries.iter().any(|entry| entry.member == member), cols > 0);
+        }
+    }
+
+    tab.resize_whole_tab(Size { cols: 20, rows: 20 }).unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(3), false, false, 1)
+        .unwrap();
+    let mut resized = Output::default();
+    tab.render(&mut resized, None).unwrap();
+    let rendered = take_snapshot(
+        resized.serialize().unwrap().get(&1).unwrap().ansi(),
+        20,
+        20,
+        Palette::default(),
+    );
+    assert!(rendered.contains('‹'), "{}", rendered);
+    assert!(rendered.contains('界'), "{}", rendered);
+    let list = tab.stack_lists.values().next().unwrap();
+    let pane = tab.tiled_panes.get_pane(list.visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let cols = geom.cols.as_usize() - offset.left - offset.right;
+    for entry in tab.stack_list_horizontal_entry_layout(list, cols) {
+        for x in entry.x..entry.x + entry.width {
+            assert_eq!(
+                tab.stack_list_member_at_point(
+                    list.visible,
+                    &Position::new(geom.y as i32, (geom.x + offset.left + x) as u16)
+                ),
+                entry.member
+            );
+        }
+    }
+}
+
+#[test]
 fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
     let size = Size {
         cols: 150,
@@ -14916,6 +15377,7 @@ fn create_new_tab_with_plugin_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -16707,6 +17169,7 @@ fn create_new_tab_with_server_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,

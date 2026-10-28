@@ -202,6 +202,7 @@ impl SwapLayouts {
                         Some(pane_count),
                         false,
                         focus_layout_if_not_focused,
+                        &mut Default::default(),
                     )
                     .is_ok()
                 {

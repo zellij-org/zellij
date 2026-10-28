@@ -342,6 +342,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
             },
+            Some(ProtobufActionName::ToggleStackListOrientation) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleStackListOrientation should not have a payload"),
+                    None => Ok(Action::ToggleStackListOrientation),
+                }
+            },
             Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
                     match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
@@ -1776,6 +1782,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleStackListOrientation => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleStackListOrientation as i32,
                 optional_payload: None,
             }),
             Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {
@@ -3708,6 +3718,10 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            stack_direction: protobuf
+                .stack_direction
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
             default_fg: None,
             default_bg: None,
             border_style: protobuf.border_style.map(BorderStyleOverride::from),
@@ -3745,6 +3759,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             hide_floating_panes: internal.hide_floating_panes,
             pane_initial_contents: internal.pane_initial_contents,
             border_style: internal.border_style.map(|b| b.into()),
+            stack_direction: internal.stack_direction.map(|d| d.to_string()),
         })
     }
 }

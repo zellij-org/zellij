@@ -110,6 +110,7 @@ message TiledPaneLayout {
   bool hide_floating_panes = 12;
   optional string pane_initial_contents = 13;
   optional style.BorderStyleOverride border_style = 14;
+  optional string stack_direction = 15;
 }
 
 message FloatingPaneLayout {
@@ -596,6 +597,7 @@ enum ActionName {
     HideBars = 151;
     ShowBars = 152;
     HideBarByPaneId = 153;
+    ToggleStackListOrientation = 154;
 }
 
 message Position {

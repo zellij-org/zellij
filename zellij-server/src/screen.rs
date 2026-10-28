@@ -67,7 +67,7 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::mousebinds::Mousebinds;
 use zellij_utils::input::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle,
-    DEFAULT_WORD_SEPARATORS,
+    StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::{
     ExitReason, MobileActivePanePayload, MobilePanePayload, MobileSessionPayload,
@@ -493,6 +493,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
+    ToggleStackListOrientation(ClientId, Option<NotificationEnd>),
     SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
@@ -1340,6 +1341,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ToggleActiveTerminalNoUiFullscreen
             },
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
+            ScreenInstruction::ToggleStackListOrientation(..) => {
+                ScreenContext::ToggleStackListOrientation
+            },
             ScreenInstruction::SetPaneFrameStyle(..) => ScreenContext::SetPaneFrameStyle,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
@@ -2022,6 +2026,7 @@ pub(crate) struct Screen {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     stacked_pane_list: Rc<RefCell<bool>>,
+    stacked_pane_list_orientation: StackListOrientation,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
@@ -2362,6 +2367,7 @@ impl Screen {
         support_kitty_graphics_protocol: bool,
         stacked_resize: bool,
         stacked_pane_list: bool,
+        stacked_pane_list_orientation: StackListOrientation,
         default_editor: Option<PathBuf>,
         web_clients_allowed: bool,
         web_sharing: WebSharing,
@@ -2393,6 +2399,7 @@ impl Screen {
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
+            stacked_pane_list_orientation,
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
             kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
@@ -6418,6 +6425,7 @@ impl Screen {
             self.character_cell_size.clone(),
             self.stacked_resize.clone(),
             self.stacked_pane_list.clone(),
+            self.stacked_pane_list_orientation,
             self.sixel_image_store.clone(),
             self.kitty_image_store.clone(),
             self.bus
@@ -10023,6 +10031,7 @@ impl Screen {
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
                     let geom_override = serialization_geoms.get(pane_id).copied();
+                    let stack_direction = tab.stack_list_orientation_for_serialization(pane_id);
                     let (pane_id, p) = match suppressed_panes.remove(pane_id) {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
@@ -10033,10 +10042,11 @@ impl Screen {
                         pane_id,
                         p,
                         geom_override.unwrap_or_else(|| p.position_and_size()),
+                        stack_direction,
                     )
                 })
                 .chain(tab.hidden_stack_list_members_for_serialization())
-                .map(|(pane_id, p, geom)| {
+                .map(|(pane_id, p, geom, stack_direction)| {
                     let focused_clients: Vec<ClientId> = active_pane_ids
                         .iter()
                         .filter_map(|(c_id, p_id)| {
@@ -10061,6 +10071,7 @@ impl Screen {
                         default_bg,
                         p.border_style_override(),
                     )
+                    .with_stack_direction(stack_direction)
                     .with_attention_flags(
                         self.attention.pane_is_muted(&pane_id.into()),
                         self.attention.pane_ignores_output(&pane_id.into()),
@@ -10725,6 +10736,9 @@ pub(crate) fn screen_thread_main(
         .unwrap_or(true);
     let stacked_resize = config_options.stacked_resize.unwrap_or(true);
     let stacked_pane_list = config_options.stacked_pane_list.unwrap_or(true);
+    let stacked_pane_list_orientation = config_options
+        .stacked_pane_list_orientation
+        .unwrap_or_default();
     let web_clients_allowed = config_options
         .web_sharing
         .map(|s| s.web_clients_allowed())
@@ -10782,6 +10796,7 @@ pub(crate) fn screen_thread_main(
         support_kitty_graphics_protocol,
         stacked_resize,
         stacked_pane_list,
+        stacked_pane_list_orientation,
         default_editor,
         web_clients_allowed,
         web_sharing,
@@ -12541,6 +12556,17 @@ pub(crate) fn screen_thread_main(
                     tab.set_pane_frames(screen.pane_frame_style);
                     tab.update_input_modes()?;
                 }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ToggleStackListOrientation(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| {
+                        tab.toggle_stack_list_orientation(client_id);
+                    }
+                );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },

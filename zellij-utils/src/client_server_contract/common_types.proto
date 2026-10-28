@@ -356,6 +356,7 @@ message Action {
     HideBarsAction hide_bars = 190;
     ShowBarsAction show_bars = 191;
     HideBarByPaneIdAction hide_bar_by_pane_id = 192;
+    ToggleStackListOrientationAction toggle_stack_list_orientation = 193;
   }
 }
 
@@ -392,6 +393,7 @@ message HalfPageScrollDownAction {}
 message ToggleFocusFullscreenAction {}
 message ToggleFocusNoUiFullscreenAction {}
 message TogglePaneFramesAction {}
+message ToggleStackListOrientationAction {}
 message SetPaneFrameStyleAction {
   string style = 1;
 }
@@ -1087,6 +1089,7 @@ message TiledPaneLayout {
   optional BorderStyleOverride border_style = 16;
   optional bool attention_muted = 17;
   optional bool ignore_output = 18;
+  optional string stack_direction = 19;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -1352,6 +1355,7 @@ message Options {
   optional string word_separators = 57;
   optional bool dangerously_enable_paste_buffer_read = 58;
   optional bool mouse_hover_tips = 59;
+  optional string stacked_pane_list_orientation = 60;
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
