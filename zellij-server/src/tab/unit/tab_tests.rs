@@ -18290,6 +18290,7 @@ fn create_tab_with_receivers_without_layout(
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(true)),
         Rc::new(RefCell::new(stacked_pane_list)),
+        Default::default(),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),
         Box::new(FakeInputOutput {}),

@@ -1325,7 +1325,7 @@ impl Tab {
         } else {
             self.suppressed_panes.get(member).map(|(_, p)| &**p)
         };
-        pane.map(|p| p.stack_list_entry_label().width())
+        pane.map(|p| zellij_utils::graphemes::display_width(&p.stack_list_entry_label()))
             .unwrap_or(0)
     }
     fn stack_list_horizontal_entry_layout(

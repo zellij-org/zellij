@@ -280,7 +280,8 @@ impl<'a> LayoutApplier<'a> {
         retain_existing_plugin_panes: bool,
         client_id: ClientId,
     ) -> Result<HashMap<usize, StackListOrientation>> {
-        let (positions_in_layout, stack_directions) = self.flatten_layout(tiled_panes_layout, false)?;
+        let (positions_in_layout, stack_directions) =
+            self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
 
