@@ -8166,7 +8166,7 @@ fn test_terminals_of_a_tiled_layout_that_fails_are_closed() {
         }
     "#,
     );
-    let mut result = Ok(false);
+    let mut result = Ok((false, HashMap::new()));
     let (tiled_panes, _floating_panes, pty_receiver) =
         run_with_layout_applier(Size { cols: 20, rows: 20 }, |applier| {
             result = applier.apply_layout(

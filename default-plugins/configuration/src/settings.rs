@@ -948,6 +948,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::StackedPaneListOrientation => info(
+            "Stacked pane list orientation",
+            "Default title-list direction for new stacks",
+            Choice(&["vertical", "horizontal"]),
+            "vertical",
+            Everyone,
+        ),
         SettingKey::MirrorResizesSourcePane => info(
             "Mirrors resize their source pane",
             "Let a focused mirror resize the mirrored pane's program to fit it",
@@ -1874,7 +1881,11 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         Mousebinds => (C::MouseBindings, ""),
         CopyCommand | CopyClipboard | CopyOnSelect => (C::Clipboard, "Clipboard"),
         Osc133CommandSelection | WordSeparators => (C::Clipboard, "Selection"),
-        AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => {
+        AutoLayout
+        | StackedResize
+        | StackedPaneList
+        | StackedPaneListOrientation
+        | SwapLayoutNotification => {
             (C::PanesAndLayouts, "Layouts")
         },
         ScrollBufferSize | ScrollbackEditor => (C::PanesAndLayouts, "Scrollback"),
