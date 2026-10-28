@@ -590,6 +590,7 @@ impl MouseHandler {
             return Ok(effect);
         }
         Self::forget_unfinished_pane_drawing(tab, event, client_id);
+        Self::forget_selection_without_release(tab, event);
         let click_count = Self::count_click(tab, event, client_id);
         let mut context =
             Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
@@ -615,6 +616,15 @@ impl MouseHandler {
             && (event.left || event.right || event.middle);
         if is_button_press && tab.pane_drawings.remove(&client_id).is_some() {
             tab.set_force_render();
+        }
+    }
+
+    /// The left button cannot be pressed again while it is held, so a left press during a
+    /// selection means its release went elsewhere (eg. a plugin switched the client to another
+    /// session on the press); left in place, the selection would swallow the next drag.
+    fn forget_selection_without_release(tab: &mut Tab, event: &MouseEvent) {
+        if event.event_type == MouseEventType::Press && event.left {
+            tab.selecting_with_mouse_in_pane = None;
         }
     }
 

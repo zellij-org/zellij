@@ -19745,3 +19745,72 @@ fn leaving_a_tab_forgets_the_last_click_so_returning_cannot_double_click() {
     tab.add_multiple_clients(drained).unwrap();
     assert!(!tab.mouse_click_tracker.contains_key(&client_id));
 }
+
+/// A click on a session-switcher plugin switches the client to another session on the press,
+/// so the release lands there and never reaches this tab.
+fn press_on_plugin_pane_without_release(
+    plugin_selectable: bool,
+) -> (Tab, ClientId, Receiver<(PluginInstruction, ErrorContext)>) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    if plugin_selectable {
+        tab.set_pane_selectable(PaneId::Plugin(7), true);
+    }
+    tab.handle_pty_bytes(1, Vec::from("Selectable text content here".as_bytes()))
+        .unwrap();
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id)
+        .unwrap();
+    (tab, client_id, plugin_receiver)
+}
+
+fn drag_select_in_terminal(tab: &mut Tab, client_id: ClientId) -> bool {
+    let terminal = tab.get_pane_with_id(PaneId::Terminal(1)).unwrap();
+    let (x, line) = (
+        terminal.get_content_x() as u16,
+        terminal.get_content_y() as i32,
+    );
+    for event in [
+        MouseEvent::new_left_press_event(Position::new(line, x)),
+        MouseEvent::new_left_motion_event(Position::new(line, x + 10)),
+    ] {
+        tab.handle_mouse_event(&event, client_id).unwrap();
+    }
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(Position::new(line, x + 10)),
+        client_id,
+    )
+    .unwrap()
+    .leave_clipboard_message
+}
+
+#[test]
+fn drag_select_copies_after_a_press_on_a_selectable_plugin_pane_lost_its_release() {
+    let (mut tab, client_id, _plugin_receiver) = press_on_plugin_pane_without_release(true);
+    assert!(
+        drag_select_in_terminal(&mut tab, client_id),
+        "the drag in the terminal pane did not copy"
+    );
+}
+
+#[test]
+fn drag_select_copies_after_a_press_on_an_unselectable_plugin_pane_lost_its_release() {
+    let (mut tab, client_id, _plugin_receiver) = press_on_plugin_pane_without_release(false);
+    assert!(
+        drag_select_in_terminal(&mut tab, client_id),
+        "the drag in the terminal pane did not copy"
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(1))
+            .unwrap()
+            .get_selected_text(client_id)
+            .as_deref(),
+        Some("Selectable")
+    );
+}
