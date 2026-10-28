@@ -1891,6 +1891,10 @@ impl Tab {
                     .push((geom.y, *id, is_expanded));
             }
         }
+        let single_member_stacks: HashSet<_> = stacks
+            .iter()
+            .filter_map(|(id, members)| (members.len() == 1).then_some(*id))
+            .collect();
         let mut converted_any = false;
         for (stack_id, mut members) in stacks {
             if members.len() < 2 {
@@ -1954,7 +1958,8 @@ impl Tab {
             self.refresh_or_dissolve_stack_list(stack_list_id);
             converted_any = true;
         }
-        self.stack_list_orientation_memory.clear();
+        self.stack_list_orientation_memory
+            .retain(|id, _| single_member_stacks.contains(id));
         if converted_any {
             self.set_force_render();
             self.set_should_clear_display_before_rendering();

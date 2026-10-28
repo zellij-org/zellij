@@ -14495,6 +14495,58 @@ fn stack_direction_from_layout_is_applied_to_new_stack_list() {
 }
 
 #[test]
+fn adding_pane_to_one_member_layout_stack_keeps_horizontal_orientation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, vec![(1, None)])),
+    );
+    let client_id = 1;
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 2);
+    assert_eq!(tab.stack_lists.len(), 1);
+    assert_eq!(
+        tab.stack_lists.values().next().unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+}
+
+#[test]
 fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
     let size = Size {
         cols: 121,
