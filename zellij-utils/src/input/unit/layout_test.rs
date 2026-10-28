@@ -48,6 +48,58 @@ fn layout_with_one_pane() {
 }
 
 #[test]
+fn singleton_stacks_keep_command_slots_when_repositioned() {
+    use crate::pane_size::{Dimension, PaneGeom};
+
+    let kdl = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane command="editor"
+                    pane stacked=true stack_direction="horizontal" size="30%" {
+                        pane
+                    }
+                }
+                pane stacked=true stack_direction="vertical" size="40%" {
+                    pane command="agent"
+                }
+            }
+        }
+    "#;
+    let (layout, _) = Layout::from_kdl(kdl, Some("layout_file_name".into()), None, None)
+        .unwrap()
+        .template
+        .unwrap();
+    let mut space = PaneGeom {
+        cols: Dimension::percent(100.0),
+        rows: Dimension::percent(100.0),
+        ..Default::default()
+    };
+    space.cols.set_inner(120);
+    space.rows.set_inner(38);
+    for max_panes in [None, Some(3)] {
+        let mut directions = HashMap::new();
+        let positioned = layout
+            .position_panes_in_space(&space, max_panes, false, false, &mut directions)
+            .unwrap();
+        assert_eq!(positioned.len(), 3);
+        assert_eq!(
+            positioned.iter().map(|(p, _)| &p.run).collect::<Vec<_>>(),
+            layout.extract_run_instructions().iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            positioned
+                .iter()
+                .map(|(_, g)| (g.x, g.y))
+                .collect::<Vec<_>>(),
+            vec![(0, 0), (72, 0), (0, 26)]
+        );
+        assert_eq!(directions.get(&0), Some(&StackListOrientation::Horizontal));
+        assert_eq!(directions.get(&1), Some(&StackListOrientation::Vertical));
+    }
+}
+
+#[test]
 fn layout_with_border_styles() {
     use crate::data::{BorderStyleOverride, LineStyle};
     let kdl_layout = r#"
