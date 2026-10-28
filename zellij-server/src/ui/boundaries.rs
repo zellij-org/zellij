@@ -522,8 +522,8 @@ impl Boundaries {
         pane_is_on_top_of_stack: bool,
         pane_is_on_bottom_of_stack: bool,
         pane_is_stacked_under: bool,
+        pane_is_stacked: bool,
     ) {
-        let pane_is_stacked = rect.current_geom().is_stacked();
         let should_skip_top_boundary = pane_is_stacked && !pane_is_on_top_of_stack;
         let should_skip_bottom_boundary = pane_is_stacked && !pane_is_on_bottom_of_stack;
         let content_offset = rect.get_content_offset();
@@ -533,8 +533,12 @@ impl Boundaries {
         if rect.x() > self.viewport.x {
             // left boundary
             let boundary_x_coords = rect.x() - 1;
-            let first_row_coordinates =
-                self.rect_right_boundary_row_start(rect, pane_is_stacked_under, content_offset);
+            let first_row_coordinates = self.rect_right_boundary_row_start(
+                rect,
+                pane_is_stacked_under,
+                pane_is_stacked,
+                content_offset,
+            );
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
@@ -603,8 +607,12 @@ impl Boundaries {
         if self.rect_right_boundary_is_before_screen_edge(rect) {
             // right boundary
             let boundary_x_coords = rect.right_boundary_x_coords() - 1;
-            let first_row_coordinates =
-                self.rect_right_boundary_row_start(rect, pane_is_stacked_under, content_offset);
+            let first_row_coordinates = self.rect_right_boundary_row_start(
+                rect,
+                pane_is_stacked_under,
+                pane_is_stacked,
+                content_offset,
+            );
             let last_row_coordinates = self.rect_right_boundary_row_end(rect);
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
@@ -713,9 +721,9 @@ impl Boundaries {
         &self,
         rect: &dyn Pane,
         pane_is_stacked_under: bool,
+        pane_is_stacked: bool,
         content_offset: Offset,
     ) -> usize {
-        let pane_is_stacked = rect.current_geom().is_stacked();
         let horizontal_frame_offset = if pane_is_stacked_under {
             // these panes - panes that are in a stack below the flexible pane - need to have their
             // content offset taken into account when rendering them (i.e. they are rendered

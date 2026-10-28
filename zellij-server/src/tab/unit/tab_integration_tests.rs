@@ -14547,6 +14547,132 @@ fn adding_pane_to_one_member_layout_stack_keeps_horizontal_orientation() {
 }
 
 #[test]
+fn two_singleton_stacks_render_and_resize_like_plain_panes() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let stacked = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+            }
+        }
+    "#;
+    let plain = stacked
+        .replace(
+            "pane stacked=true stack_direction=\"horizontal\" size=\"30%\" { pane; }",
+            "pane size=\"30%\"",
+        )
+        .replace(
+            "pane stacked=true stack_direction=\"vertical\" size=\"40%\" { pane; }",
+            "pane size=\"40%\"",
+        );
+    let mut outputs = Vec::new();
+    for layout in [stacked, &plain] {
+        let (layout, _) = Layout::from_kdl(layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+        let mut tab = create_new_tab_with_stacked_pane_list(
+            size,
+            ModeInfo::default(),
+            false,
+            Some((layout, vec![(1, None), (2, None), (3, None)])),
+        );
+        tab.set_pane_frames(PaneFrameStyle::Titles);
+        tab.resize_whole_tab(size).unwrap();
+        for (id, x, y) in [(1, 0, 0), (2, 72, 0), (3, 0, 27)] {
+            let geom = tab
+                .tiled_panes
+                .get_pane(PaneId::Terminal(id))
+                .unwrap()
+                .position_and_size();
+            assert_eq!((geom.x, geom.y), (x, y), "pane {id} after resize");
+        }
+        let mut output = Output::default();
+        tab.render(&mut output, None).unwrap();
+        outputs.push(take_snapshot(
+            output.serialize().unwrap().get(&1).unwrap().ansi(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        ));
+    }
+    assert_eq!(
+        outputs[0], outputs[1],
+        "singleton stack titles and boundaries must render like plain panes"
+    );
+}
+
+#[test]
+fn two_singleton_stacks_keep_independent_orientations_when_extended() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let (layout, _) = Layout::from_kdl(
+        r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+            }
+        }
+    "#,
+        Some("file_name.kdl".into()),
+        None,
+        None,
+    )
+    .unwrap()
+    .template
+    .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((layout, vec![(1, None), (2, None), (3, None)])),
+    );
+    for (root, added, orientation) in [
+        (3, 4, StackListOrientation::Horizontal),
+        (2, 5, StackListOrientation::Vertical),
+    ] {
+        tab.focus_pane_with_id(PaneId::Terminal(root), false, false, 1)
+            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(added),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+                border_style: None,
+            },
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let list = tab
+            .stack_lists
+            .values()
+            .find(|list| list.members.contains(&PaneId::Terminal(root)))
+            .unwrap();
+        assert_eq!(list.orientation, orientation);
+        assert!(list.members.contains(&PaneId::Terminal(added)));
+    }
+    assert_eq!(tab.stack_lists.len(), 2);
+}
+
+#[test]
 fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
     let size = Size {
         cols: 121,

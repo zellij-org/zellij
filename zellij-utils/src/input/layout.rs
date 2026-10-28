@@ -1226,7 +1226,9 @@ impl TiledPaneLayout {
         }
     }
     pub fn truncate(&mut self, max_panes: usize) -> usize {
-        // returns remaining children length
+        if max_panes >= self.pane_count() {
+            return self.pane_count();
+        }
         // if max_panes is 1, it means there's only enough panes for this node,
         // if max_panes is 0, this is probably the root layout being called with 0 max panes
         if max_panes <= 1 {
@@ -1257,11 +1259,7 @@ impl TiledPaneLayout {
                 }
             }
         }
-        if self.children.len() > 0 {
-            self.children.len()
-        } else {
-            1 // just me
-        }
+        self.pane_count()
     }
     pub fn has_focused_node(&self) -> bool {
         if self.focus.map(|f| f).unwrap_or(false) {

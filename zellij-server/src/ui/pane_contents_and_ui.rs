@@ -30,6 +30,7 @@ pub struct PaneContentsAndUi<'a> {
     z_index: Option<usize>,
     pane_is_stacked_under: bool,
     pane_is_stacked_over: bool,
+    stacked_render_override: Option<bool>,
     should_draw_pane_frames: bool,
     mouse_is_hovering_over_pane_for_clients: HashSet<ClientId>,
     current_pane_group: HashMap<ClientId, Vec<PaneId>>,
@@ -93,6 +94,7 @@ impl<'a> PaneContentsAndUi<'a> {
             z_index,
             pane_is_stacked_under,
             pane_is_stacked_over,
+            stacked_render_override: None,
             should_draw_pane_frames,
             mouse_is_hovering_over_pane_for_clients,
             current_pane_group,
@@ -108,6 +110,9 @@ impl<'a> PaneContentsAndUi<'a> {
             dimmed_for_clients,
             live_views: None,
         }
+    }
+    pub fn set_stacked_render_override(&mut self, stacked: bool) {
+        self.stacked_render_override = Some(stacked);
     }
     pub fn set_live_views(&mut self, live_views: crate::pane_mirror::SharedLiveViews) {
         self.live_views = Some(live_views);
@@ -386,7 +391,9 @@ impl<'a> PaneContentsAndUi<'a> {
         } else {
             None
         };
-        let pane_is_stacked = self.pane.current_geom().is_stacked();
+        let pane_is_stacked = self
+            .stacked_render_override
+            .unwrap_or_else(|| self.pane.current_geom().is_stacked());
         let pane_is_in_group = self
             .current_pane_group
             .get(&client_id)
@@ -518,6 +525,8 @@ impl<'a> PaneContentsAndUi<'a> {
             pane_is_on_top_of_stack,
             pane_is_on_bottom_of_stack,
             self.pane_is_stacked_under,
+            self.stacked_render_override
+                .unwrap_or_else(|| self.pane.current_geom().is_stacked()),
         );
     }
     fn frame_color(
