@@ -246,12 +246,20 @@ fn without_other_running_sessions_there_is_no_card_but_the_indicator_opens_the_b
 #[test]
 fn card_is_shown_on_reattach_with_the_time_away() {
     let other = start_running_session_in_background();
-    other.expect_pty_spawn().output(PROMPT);
+    let other_terminal = other.expect_pty_spawn();
+    other_terminal.output(PROMPT);
     wait_for_needs_you(other.session_name(), 0);
     let target = TestRunner::new(TERMINAL_SIZE)
         .with_config(SESSION_FEATURES_ON)
         .start_in_background();
     target.expect_pty_spawn().output(PROMPT);
+    other_terminal.output(&blocked("Which branch?"));
+    wait_for_needs_you(other.session_name(), 1);
+    std::thread::sleep(
+        (zellij_server::attention::peers::PEER_PUSH_DEBOUNCE
+            + zellij_server::attention::peers::GLOBAL_PUBLISH_DEBOUNCE)
+            * 5,
+    );
     let mut zellij = target.attach(TERMINAL_SIZE);
     zellij.wait_until("the reattach card is shown", |grid_snapshot| {
         grid_snapshot.contains("While you were away")

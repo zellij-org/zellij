@@ -940,10 +940,18 @@ pub(crate) fn plugin_thread_main(
                     wasm_bridge.send_host_terminal_theme_mode_to_plugin(plugin_id, client_id);
                 }
                 if events.contains(&EventType::GlobalAttentionUpdate) {
-                    wasm_bridge.send_global_attention_to_plugin(plugin_id, client_id);
+                    wasm_bridge.send_global_attention_to_plugin(
+                        plugin_id,
+                        client_id,
+                        shutdown_send.clone(),
+                    )?;
                 }
                 if events.contains(&EventType::SessionHistoryUpdate) {
-                    wasm_bridge.send_session_history_to_plugin(plugin_id, client_id);
+                    wasm_bridge.send_session_history_to_plugin(
+                        plugin_id,
+                        client_id,
+                        shutdown_send.clone(),
+                    )?;
                 }
                 if events.contains(&EventType::HintText) {
                     let _ = bus

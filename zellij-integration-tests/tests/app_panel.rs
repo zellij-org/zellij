@@ -609,7 +609,7 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
     terminal.output(b"$ ");
     terminal.output(&needs_you("Which branch to use?"));
     let mut panel = start_panel();
-    let title = format!("┌ ● {} › ", background.session_name());
+    let row = format!("● {}", background.session_name());
     panel.wait_until(
         "the panel shows the item in full beside its live view",
         |grid_snapshot| {
@@ -617,7 +617,7 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
                 && grid_snapshot.contains("Which branch to use?")
                 && grid_snapshot.contains("<Alt ENTER> type")
                 && grid_snapshot.contains("<ENTER> go")
-                && grid_snapshot.contains(&title)
+                && grid_snapshot.contains(&row)
         },
     );
     panel.send_stdin(&keys::ESC);
@@ -835,7 +835,7 @@ fn a_narrow_panel_lists_the_items_without_a_live_view_and_enter_goes_there() {
     let terminal = background.expect_pty_spawn();
     terminal.output(b"$ shown only when wide\r\n");
     terminal.output(&needs_you("Below or beside?"));
-    let narrow = zellij_integration_tests::Size { cols: 64, rows: 40 };
+    let narrow = zellij_integration_tests::Size { cols: 50, rows: 40 };
     let mut panel = start_panel_sized("auto", narrow);
     let grid_snapshot = panel.wait_until("the panel shows the item", |grid_snapshot| {
         grid_snapshot.contains("Below or beside?") && grid_snapshot.contains("<ENTER> go there")

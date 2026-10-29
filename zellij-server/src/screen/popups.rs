@@ -31,6 +31,46 @@ pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
 pub const SESSION_MANAGER_PLUGIN_ALIAS: &str = "session-manager";
 pub const SESSION_CARD_COLS: usize = 72;
 pub const SESSION_CARD_ROWS: usize = 13;
+
+pub const SESSION_MANAGER_ROLE: &str = "manager_focused";
+
+pub fn session_manager_coordinates(
+    tab: &Tab,
+) -> (zellij_utils::data::FloatingPaneCoordinates, Size) {
+    let display_area = tab.get_display_area();
+    let viewport = tab.get_viewport();
+    let (x, y, width, height) =
+        session_manager_geometry(display_area.cols, viewport.rows.max(display_area.rows));
+    let coordinates = zellij_utils::data::FloatingPaneCoordinates::default()
+        .with_x_fixed(x)
+        .with_y_fixed(y)
+        .with_width_fixed(width)
+        .with_height_fixed(height);
+    let content = Size {
+        rows: height.saturating_sub(2),
+        cols: width.saturating_sub(2),
+    };
+    (coordinates, content)
+}
+
+pub fn is_session_manager(run_plugin_or_alias: &RunPluginOrAlias) -> bool {
+    run_plugin_or_alias
+        .location_string()
+        .contains(SESSION_MANAGER_PLUGIN_ALIAS)
+}
+
+pub fn session_manager_geometry(
+    display_cols: usize,
+    display_rows: usize,
+) -> (usize, usize, usize, usize) {
+    let columns = display_cols.max(20);
+    let rows = display_rows.max(10);
+    let width = (columns * 3 / 4).max(40).min(columns);
+    let height = (rows * 3 / 4).max(10).min(rows);
+    let x = columns.saturating_sub(width) / 2;
+    let y = rows.saturating_sub(height) / 2;
+    (x, y, width, height)
+}
 pub const SWAP_LAYOUT_NOTIFICATION_MS: u64 = 2000;
 pub const SESSION_RENAME_ERROR_REQUEST_ID: u64 = 1;
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
@@ -993,6 +1033,7 @@ impl Screen {
             return;
         };
         let open_browser = tab.floating_plugin_for_location(SESSION_MANAGER_PLUGIN_ALIAS);
+        let browser_hidden = !tab.are_floating_panes_visible();
         match tab.popup_for_location(client_id, SESSION_MANAGER_PLUGIN_ALIAS) {
             Some((plugin_id, true)) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
             Some((plugin_id, false)) => {
@@ -1000,10 +1041,23 @@ impl Screen {
                 self.pipe_to_popup_plugin(plugin_id, client_id, "focus_card");
             },
             None => match open_browser {
+                Some(plugin_id) if browser_hidden => {
+                    self.reveal_session_manager(plugin_id, client_id)
+                },
                 Some(plugin_id) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
                 None => self.request_session_card(client_id, true),
             },
         }
+    }
+    fn reveal_session_manager(&mut self, plugin_id: u32, client_id: ClientId) {
+        let Ok(tab) = self.get_active_tab_mut(client_id) else {
+            return;
+        };
+        if let Err(e) = tab.focus_pane_with_id(PaneId::Plugin(plugin_id), true, false, client_id) {
+            log::error!("Failed to show the session manager: {}", e);
+            return;
+        }
+        self.render(None).non_fatal();
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
         let _ = self
@@ -1034,16 +1088,13 @@ impl Screen {
         self.request_session_card(client_id, false);
     }
     fn request_session_card(&mut self, client_id: ClientId, focused: bool) {
-        let role = if focused {
-            "card_focused"
-        } else {
-            "card_startup"
-        };
-        let mut configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
-        if !focused {
-            if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
-                configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
-            }
+        if focused {
+            self.open_session_manager(client_id);
+            return;
+        }
+        let mut configuration = BTreeMap::from([("role".to_owned(), "card_startup".to_owned())]);
+        if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
+            configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
         }
         let run_plugin_or_alias = match RunPluginOrAlias::from_url(
             SESSION_MANAGER_PLUGIN_ALIAS,
@@ -1061,16 +1112,49 @@ impl Screen {
             client_id,
             run_plugin_or_alias,
             PopupPlacement::Corner(PopupCorner::TopRight),
-            if focused {
-                PopupKind::Prompt
-            } else {
-                PopupKind::Info
-            },
+            PopupKind::Info,
             None,
             SESSION_CARD_COLS,
             SESSION_CARD_ROWS,
             vec![],
         );
+    }
+    fn open_session_manager(&mut self, client_id: ClientId) {
+        let Ok(tab) = self.get_active_tab(client_id) else {
+            return;
+        };
+        let (coordinates, content) = session_manager_coordinates(tab);
+        let tab_index = tab.position;
+        let configuration = BTreeMap::from([("role".to_owned(), SESSION_MANAGER_ROLE.to_owned())]);
+        let run_plugin_or_alias = match RunPluginOrAlias::from_url(
+            SESSION_MANAGER_PLUGIN_ALIAS,
+            &Some(configuration),
+            None,
+            None,
+        ) {
+            Ok(run_plugin_or_alias) => run_plugin_or_alias,
+            Err(e) => {
+                log::error!("Failed to open the session manager: {}", e);
+                return;
+            },
+        };
+        let _ = self.bus.senders.send_to_plugin(PluginInstruction::Load(
+            Some(true),
+            false,
+            false,
+            None,
+            run_plugin_or_alias,
+            Some(tab_index),
+            None,
+            client_id,
+            content,
+            None,
+            None,
+            false,
+            Some(true),
+            Some(coordinates),
+            None,
+        ));
     }
     pub fn terminal_input_submitted(&mut self, client_id: ClientId) {
         if self.terminal_command_submitted {

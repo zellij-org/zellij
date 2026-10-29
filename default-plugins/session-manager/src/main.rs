@@ -221,11 +221,11 @@ impl ZellijPlugin for State {
                         .get("away_since_ms")
                         .and_then(|v| v.parse::<u64>().ok());
                 },
-                Some("card") | Some("card_focused") => {
+                Some("manager_focused") => {
                     self.panel.popup_focused = true;
-                    self.panel.is_popup = true;
+                    self.panel.is_popup = false;
                     self.panel.size = Some(PanelSize::Manager);
-                    self.panel.needs_initial_layout = true;
+                    self.panel.needs_initial_layout = false;
                     self.inbox.tab = BrowserTab::Sessions;
                     self.inbox.tab_chosen = true;
                     self.inbox.select_newest_on_arrival = true;
@@ -4263,7 +4263,7 @@ mod live_view_state_tests {
     #[test]
     fn a_narrow_browser_lists_the_items_without_a_live_view() {
         let mut state = browser();
-        state.render_plugin(16, 60);
+        state.render_plugin(16, 50);
         assert_eq!(state.inbox.live_view_sent, None);
         assert!(!state.inbox.shows_live_view());
     }
@@ -4289,7 +4289,7 @@ mod live_view_state_tests {
         assert_eq!(go.inbox.capture_target, None);
         assert_eq!(go.panel.size, None);
         let mut narrow = browser();
-        narrow.render_plugin(16, 60);
+        narrow.render_plugin(16, 50);
         narrow.handle_inbox_key(alt_enter());
         assert_eq!(narrow.inbox.capture_target, None);
         assert_eq!(narrow.panel.size, Some(PanelSize::Manager));

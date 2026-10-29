@@ -1764,26 +1764,55 @@ impl WasmBridge {
         )]));
     }
 
-    pub fn send_global_attention_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+    pub fn send_global_attention_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let Some(global) = self.last_global_attention.clone() else {
-            return;
+            return Ok(());
         };
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            Some(client_id),
+        self.send_initial_state_to_plugin(
+            plugin_id,
+            client_id,
             Event::GlobalAttentionUpdate(global),
-        )]));
+            shutdown_sender,
+        )
     }
 
-    pub fn send_session_history_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+    pub fn send_session_history_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let Some(info) = self.session_history_infos.get(&client_id).cloned() else {
-            return;
+            return Ok(());
         };
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            Some(client_id),
+        self.send_initial_state_to_plugin(
+            plugin_id,
+            client_id,
             Event::SessionHistoryUpdate(info),
-        )]));
+            shutdown_sender,
+        )
+    }
+
+    fn send_initial_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        event: Event,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        if let Some(cached_events) = self.cached_events_for_pending_plugins.get_mut(&plugin_id) {
+            cached_events.insert(0, EventOrPipeMessage::Event(event, Some(client_id)));
+            return Ok(());
+        }
+        self.update_plugins(
+            vec![(Some(plugin_id), Some(client_id), event)],
+            shutdown_sender,
+        )
     }
 
     fn send_keybinds_payload_to_plugin(

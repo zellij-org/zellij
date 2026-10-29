@@ -423,7 +423,7 @@ fn plain_output_from_an_unwatched_pane_never_needs_you_while_the_window_is_unfoc
     );
     open_inbox(&zellij);
     let inbox = zellij.wait_until("the new output waits behind the line", |grid_snapshot| {
-        grid_snapshot.contains("1 more item with only")
+        grid_snapshot.contains("1 more item with")
     });
     assert!(inbox.contains("Inbox (0)"), "{}", inbox.text);
     zellij.quit();

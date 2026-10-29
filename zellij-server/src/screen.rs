@@ -14087,6 +14087,16 @@ pub(crate) fn screen_thread_main(
                                 screen.render(None)?;
                                 screen.log_and_report_session_state()?;
                             } else {
+                                let floating_session_manager = (should_float
+                                    && !should_open_in_place
+                                    && popups::is_session_manager(&run_plugin))
+                                .then(|| screen.get_active_tab(client_id).ok())
+                                .flatten()
+                                .map(popups::session_manager_coordinates);
+                                let (size, coordinates) = match floating_session_manager {
+                                    Some((coordinates, content)) => (content, Some(coordinates)),
+                                    None => (Size::default(), None),
+                                };
                                 screen
                                     .bus
                                     .senders
@@ -14099,11 +14109,11 @@ pub(crate) fn screen_thread_main(
                                         tab_index,
                                         None,
                                         client_id,
-                                        Size::default(),
+                                        size,
                                         skip_cache,
                                         None,
                                         None,
-                                        None,
+                                        coordinates,
                                         completion_tx,
                                     ))?;
                             }
