@@ -586,9 +586,28 @@ impl MouseHandler {
         passthrough_pane_id: Option<PaneId>,
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
+        let guest_modal_hover_changed = Self::update_guest_modal_hover(tab, event, client_id)?;
         if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
             return Ok(effect);
         }
+        let mut effect = Self::handle_mouse_event_outside_guest_modal(
+            tab,
+            event,
+            client_id,
+            passthrough_pane_id,
+            mousebinds,
+        )?;
+        effect.state_changed |= guest_modal_hover_changed;
+        Ok(effect)
+    }
+
+    fn handle_mouse_event_outside_guest_modal(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+        passthrough_pane_id: Option<PaneId>,
+        mousebinds: Arc<Mousebinds>,
+    ) -> Result<MouseEffect> {
         Self::forget_unfinished_pane_drawing(tab, event, client_id);
         let click_count = Self::count_click(tab, event, client_id);
         let mut context =
@@ -728,40 +747,24 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<Option<MouseEffect>> {
-        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
-        let pane_id = match pane_id_at_position {
+        let pane_id = match Self::guest_modal_pane_at(tab, event, client_id)? {
             Some(pane_id) => pane_id,
             None => return Ok(None),
         };
-        if !tab.pane_has_guest_modal_for_client(pane_id, client_id) {
-            return Ok(None);
-        }
-        let hit_option = if event.event_type == MouseEventType::Release && event.left {
-            let style = tab.style;
-            if let Some(pane) = tab.get_pane_with_id(pane_id) {
-                let relative_position = pane.relative_position(&event.position);
-                let rows = pane.get_content_rows();
-                let columns = pane.get_content_columns();
-                let row = relative_position.line();
-                if row < 0 {
-                    None
-                } else {
-                    let session_name = pane.guest_session_name().unwrap_or_default();
-                    let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
-                    let shortcuts = pane.guest_modal_shortcuts();
-                    crate::panes::nested_session_modal::guest_modal_option_at_content_row(
-                        rows,
-                        columns,
-                        row as usize,
-                        &style,
-                        &session_name,
-                        selection,
-                        &shortcuts,
-                    )
-                }
-            } else {
-                None
+        let is_left_press = event.event_type == MouseEventType::Press && event.left;
+        let is_left_release = event.event_type == MouseEventType::Release && event.left;
+        if is_left_press {
+            if tab.get_active_pane_id(client_id) != Some(pane_id) {
+                tab.mouse_press_owner
+                    .insert(client_id, MousePressOwner::Swallow);
+                return Self::execute_focus_pane(tab, event.position, true, client_id).map(Some);
             }
+            tab.mouse_press_owner.remove(&client_id);
+        }
+        let press_started_elsewhere =
+            is_left_release && tab.mouse_press_owner.remove(&client_id).is_some();
+        let hit_option = if is_left_release && !press_started_elsewhere {
+            Self::guest_modal_option_at(tab, pane_id, event, client_id)
         } else {
             None
         };
@@ -779,6 +782,54 @@ impl MouseHandler {
                 });
         }
         Ok(Some(MouseEffect::state_changed()))
+    }
+
+    fn guest_modal_pane_at(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<Option<PaneId>> {
+        let pane_id = Self::get_pane_at(tab, &event.position, false)?.map(|pane| pane.pid());
+        Ok(pane_id.filter(|pane_id| tab.pane_has_guest_modal_for_client(*pane_id, client_id)))
+    }
+
+    fn update_guest_modal_hover(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        if event.event_type != MouseEventType::Motion {
+            return Ok(false);
+        }
+        let hovered = Self::guest_modal_pane_at(tab, event, client_id)?.and_then(|pane_id| {
+            Self::guest_modal_option_at(tab, pane_id, event, client_id)
+                .map(|option| (pane_id, option))
+        });
+        Ok(tab.set_guest_modal_hover_for_client(client_id, hovered))
+    }
+
+    fn guest_modal_option_at(
+        tab: &Tab,
+        pane_id: PaneId,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Option<usize> {
+        let pane = tab.get_pane_with_id(pane_id)?;
+        if pane.position_is_on_frame(&event.position) {
+            return None;
+        }
+        let relative_position = pane.relative_position(&event.position);
+        let row = usize::try_from(relative_position.line()).ok()?;
+        crate::panes::nested_session_modal::guest_modal_option_at_content_position(
+            pane.get_content_rows(),
+            pane.get_content_columns(),
+            row,
+            relative_position.column(),
+            &tab.style,
+            &pane.guest_session_name().unwrap_or_default(),
+            pane.guest_modal_selection(client_id).unwrap_or(0),
+            &pane.guest_modal_shortcuts(),
+        )
     }
 
     fn gather_mouse_event_context(
@@ -2059,7 +2110,7 @@ impl MouseHandler {
             });
         }
 
-        if event.alt {
+        if event.alt || event.event_type == MouseEventType::Press {
             if let Some(action) = Self::passthrough_pane_action(event, ctx) {
                 return Ok(action);
             }

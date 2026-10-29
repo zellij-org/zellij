@@ -267,6 +267,7 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_guest_modal_for_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to render guest modal for client {client_id}");
         let selection = self.pane.guest_modal_selection(client_id).unwrap_or(0);
+        let hovered = self.pane.guest_modal_hover(client_id);
         let session_name = self
             .pane
             .guest_session_name()
@@ -284,6 +285,7 @@ impl<'a> PaneContentsAndUi<'a> {
             &self.style,
             &session_name,
             selection,
+            hovered,
             &shortcuts,
         );
         self.output

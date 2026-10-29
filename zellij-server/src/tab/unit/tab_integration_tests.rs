@@ -12589,6 +12589,154 @@ fn alt_click_is_forwarded_to_a_pane_the_client_is_descended_into() {
 }
 
 #[test]
+fn ctrl_drag_is_forwarded_to_a_pane_the_client_is_descended_into() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let mousebinds = zellij_utils::input::config_settings::default_config()
+        .mousebinds
+        .clone();
+    for event in [
+        MouseEvent::new_left_press_with_ctrl_event(Position::new(5, 71)),
+        MouseEvent::new_left_motion_with_ctrl_event(Position::new(12, 100)),
+        MouseEvent::new_left_release_with_ctrl_event(Position::new(12, 100)),
+    ] {
+        tab.handle_mouse_event_with_passthrough(
+            &event,
+            client_id,
+            Some(PaneId::Terminal(1)),
+            mousebinds.clone(),
+        )
+        .unwrap();
+    }
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}[<16;71;5M".to_string(),
+            "\u{1b}[<48;100;12M".to_string(),
+            "\u{1b}[<16;100;12m".to_string(),
+        ],
+        "a ctrl drag inside a descended pane must reach the guest session"
+    );
+    assert!(
+        tab.pane_drawings.get(&client_id).is_none(),
+        "a ctrl drag inside a descended pane must not draw a host floating pane"
+    );
+    assert_eq!(
+        tab.get_floating_panes().count(),
+        0,
+        "a ctrl drag inside a descended pane must not open a host floating pane"
+    );
+}
+
+#[test]
+fn clicking_an_unfocused_pane_showing_the_nested_session_modal_focuses_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    tab.set_guest_modal_on_pane(PaneId::Terminal(1), &[client_id]);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(5, 10)),
+            client_id,
+        )
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(Position::new(5, 10)),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(effect.state_changed);
+    assert_eq!(
+        tab.get_active_pane_id(client_id),
+        Some(PaneId::Terminal(1)),
+        "clicking a pane that shows the nested session modal must focus it"
+    );
+    assert!(
+        tab.pane_has_guest_modal_for_client(PaneId::Terminal(1), client_id),
+        "the modal stays up after the focusing click"
+    );
+}
+
+#[test]
+fn hovering_the_nested_session_modal_options_marks_them_as_hovered() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.set_guest_modal_on_pane(PaneId::Terminal(1), &[client_id]);
+    let hover_of = |tab: &Tab| {
+        tab.get_pane_with_id(PaneId::Terminal(1))
+            .and_then(|pane| pane.guest_modal_hover(client_id))
+    };
+
+    let mut hovered_options = vec![];
+    let mut last_hovered_line = None;
+    for line in 0..size.rows as i32 {
+        let previous = hover_of(&tab);
+        let effect = tab
+            .handle_mouse_event(
+                &MouseEvent::new_buttonless_motion(Position::new(line, 60)),
+                client_id,
+            )
+            .unwrap();
+        let current = hover_of(&tab);
+        if current != previous {
+            assert!(effect.state_changed, "a hover change re-renders");
+        }
+        if let Some(option) = current {
+            last_hovered_line = Some(line);
+            if hovered_options.last() != Some(&option) {
+                hovered_options.push(option);
+            }
+        }
+    }
+    assert_eq!(hovered_options, vec![0, 1]);
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_buttonless_motion(Position::new(last_hovered_line.unwrap(), 60)),
+        client_id,
+    )
+    .unwrap();
+    assert_eq!(hover_of(&tab), Some(1));
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_buttonless_motion(Position::new(1, 1)),
+            client_id,
+        )
+        .unwrap();
+    assert!(effect.state_changed);
+    assert_eq!(hover_of(&tab), None, "leaving the options clears the hover");
+}
+
+#[test]
 fn alt_click_still_groups_a_mouse_tracking_pane_the_client_is_not_descended_into() {
     let size = Size {
         cols: 121,

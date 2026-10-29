@@ -1414,12 +1414,15 @@ pub fn start_client(
                             #[cfg(not(windows))]
                             {
                                 let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-                                stdin_ansi_parser.open_own_query_batch();
-                                let mut stdout = os_api.get_stdout_writer();
-                                let _ = stdout
-                                    .write_all(crate::stdin_handler::PIXEL_SIZE_QUERY.as_bytes());
-                                let _ = stdout.write_all(stdin_ansi_parser::PRIMARY_DA_QUERY);
-                                let _ = stdout.flush();
+                                if !stdin_ansi_parser.is_exit_draining() {
+                                    stdin_ansi_parser.open_own_query_batch();
+                                    let mut stdout = os_api.get_stdout_writer();
+                                    let _ = stdout.write_all(
+                                        crate::stdin_handler::PIXEL_SIZE_QUERY.as_bytes(),
+                                    );
+                                    let _ = stdout.write_all(stdin_ansi_parser::PRIMARY_DA_QUERY);
+                                    let _ = stdout.flush();
+                                }
                             }
                             #[cfg(windows)]
                             let _ = &stdin_ansi_parser;
