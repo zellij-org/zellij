@@ -41,6 +41,12 @@ pub fn get_default_themes() -> Themes {
     Themes::default()
 }
 
+// Built-in themes are only a fallback: user-defined themes from the config
+// file and layouts win when the names collide.
+fn themes_with_built_in_fallback(built_in: Themes, user_themes: Themes) -> Themes {
+    built_in.merge(user_themes)
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -449,7 +455,8 @@ impl Setup {
                 None => config.options.clone(),
             };
 
-            config.themes = config.themes.merge(get_default_themes());
+            let config_themes = std::mem::take(&mut config.themes);
+            config.themes = themes_with_built_in_fallback(get_default_themes(), config_themes);
 
             let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
                 get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
@@ -885,6 +892,8 @@ mod setup_test {
     use crate::cli::{CliArgs, Command};
     use crate::data::LayoutInfo;
     use crate::input::options::Options;
+    use crate::input::theme::Themes;
+    use crate::setup::themes_with_built_in_fallback;
     use insta::assert_snapshot;
     use std::path::PathBuf;
 
@@ -992,6 +1001,38 @@ mod setup_test {
         let (config, _layout_info, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
+    #[test]
+    fn user_themes_win_over_built_in_themes_on_name_collision() {
+        let kdl = r#"
+            themes {
+                dracula {
+                    bg 9 9 9
+                    red 9 9 9
+                    green 9 9 9
+                    yellow 9 9 9
+                    blue 9 9 9
+                    magenta 9 9 9
+                    orange 9 9 9
+                    fg 9 9 9
+                    cyan 9 9 9
+                    black 9 9 9
+                    white 9 9 9
+                }
+            }
+        "#;
+        let built_in = Themes::from_string(&kdl.to_string(), true).unwrap();
+        let user = Themes::from_string(&kdl.to_string(), false).unwrap();
+
+        let merged = themes_with_built_in_fallback(built_in, user);
+        // the user-defined theme survives the collision with the built-in one
+        assert!(
+            !merged
+                .get_theme("dracula")
+                .unwrap()
+                .sourced_from_external_file
+        );
+    }
+
     #[test]
     fn layout_keybinds_override_config_keybinds() {
         let mut cli_args = CliArgs::default();
