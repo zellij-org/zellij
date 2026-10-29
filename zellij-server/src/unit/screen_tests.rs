@@ -2391,6 +2391,53 @@ fn mouse_focus_clears_bell_on_focused_pane() {
 }
 
 #[test]
+fn focus_pane_with_id_clears_bell_on_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    let new_pane_id = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        active_tab
+            .horizontal_split(new_pane_id, None, client_id, None, None)
+            .unwrap();
+        active_tab.move_focus_up(client_id).unwrap();
+        active_tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+        active_tab.check_and_handle_bell_notifications(false);
+        assert!(
+            active_tab.panes_with_pending_bell.contains(&new_pane_id),
+            "Pane 2 should have a pending bell before it is focused"
+        );
+    }
+
+    // what a plugin's focus_terminal_pane (or `zellij action focus-pane-id`) runs
+    screen
+        .focus_pane_with_id(new_pane_id, false, false, client_id)
+        .unwrap();
+
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        active_tab.get_active_pane_id(client_id),
+        Some(new_pane_id),
+        "focus_pane_with_id should have focused pane 2"
+    );
+    assert!(
+        !active_tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Bell on pane 2 should be cleared after focusing it by id"
+    );
+    assert!(
+        !active_tab.tab_has_pending_bell,
+        "Tab bell should be cleared after the last pane bell is cleared"
+    );
+}
+
+#[test]
 fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
     let size = Size {
         cols: 121,
