@@ -1642,7 +1642,9 @@ impl Layout {
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
-                if layout_path.with_extension("kdl").exists() {
+                // A layout given by path keeps whatever extension it was given (eg. a
+                // `.zellij` file); bare layout names are looked up with a `.kdl` extension.
+                if layout_path.is_file() || layout_path.with_extension("kdl").is_file() {
                     Self::stringified_from_path(layout_path)
                 } else {
                     Layout::stringified_from_default_assets(layout)
