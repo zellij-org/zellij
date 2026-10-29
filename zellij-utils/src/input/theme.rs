@@ -167,21 +167,26 @@ impl<'de> Visitor<'de> for HexColorVisitor {
             return self.visit_str(stripped);
         }
 
+        // The parsing below slices by byte indices, so anything that is not
+        // pure ASCII (or has the wrong length) is rejected up front rather
+        // than panicking on a multibyte character's byte boundary.
+        if !s.is_ascii() || (s.len() != 3 && s.len() != 6) {
+            return Err(Error::custom(
+                "Hex color must be of form \"#RGB\" or \"#RRGGBB\"",
+            ));
+        }
+
         if s.len() == 3 {
             Ok(HexColor(
                 u8::from_str_radix(&s[0..1], 16).map_err(E::custom)? * 0x11,
                 u8::from_str_radix(&s[1..2], 16).map_err(E::custom)? * 0x11,
                 u8::from_str_radix(&s[2..3], 16).map_err(E::custom)? * 0x11,
             ))
-        } else if s.len() == 6 {
+        } else {
             Ok(HexColor(
                 u8::from_str_radix(&s[0..2], 16).map_err(E::custom)?,
                 u8::from_str_radix(&s[2..4], 16).map_err(E::custom)?,
                 u8::from_str_radix(&s[4..6], 16).map_err(E::custom)?,
-            ))
-        } else {
-            Err(Error::custom(
-                "Hex color must be of form \"#RGB\" or \"#RRGGBB\"",
             ))
         }
     }

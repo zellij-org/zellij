@@ -1626,17 +1626,20 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             ))?;
         let entry_count = entry_count!(color);
         let is_rgb = || entry_count == 3;
+        // The hex branches slice by byte indices, so they only accept pure
+        // ASCII; a multibyte character would otherwise pass the byte-length
+        // check and panic when sliced.
         let is_three_digit_hex = || {
             match kdl_first_entry_as_string!(color) {
                 // 4 including the '#' character
-                Some(s) => entry_count == 1 && s.starts_with('#') && s.len() == 4,
+                Some(s) => entry_count == 1 && s.starts_with('#') && s.is_ascii() && s.len() == 4,
                 None => false,
             }
         };
         let is_six_digit_hex = || {
             match kdl_first_entry_as_string!(color) {
                 // 7 including the '#' character
-                Some(s) => entry_count == 1 && s.starts_with('#') && s.len() == 7,
+                Some(s) => entry_count == 1 && s.starts_with('#') && s.is_ascii() && s.len() == 7,
                 None => false,
             }
         };
