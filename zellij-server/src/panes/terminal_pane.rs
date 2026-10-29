@@ -170,6 +170,7 @@ pub struct TerminalPane {
     forward_paused: bool,
     nested_guest: bool,
     guest_modal: HashMap<ClientId, usize>,
+    guest_modal_hover: HashMap<ClientId, usize>,
     guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
     guest_session_name: Option<String>,
     guest_modal_shortcuts: GuestModalShortcuts,
@@ -871,6 +872,7 @@ impl Pane for TerminalPane {
     }
 
     fn clear_guest_modal(&mut self, client_id: ClientId) {
+        self.guest_modal_hover.remove(&client_id);
         if self.guest_modal.remove(&client_id).is_some() {
             self.render_full_viewport();
             self.set_should_render(true);
@@ -878,6 +880,7 @@ impl Pane for TerminalPane {
     }
 
     fn clear_all_guest_modals(&mut self) {
+        self.guest_modal_hover.clear();
         if !self.guest_modal.is_empty() {
             self.guest_modal.clear();
             self.render_full_viewport();
@@ -887,6 +890,27 @@ impl Pane for TerminalPane {
 
     fn guest_modal_selection(&self, client_id: ClientId) -> Option<usize> {
         self.guest_modal.get(&client_id).copied()
+    }
+
+    fn guest_modal_hover(&self, client_id: ClientId) -> Option<usize> {
+        self.guest_modal_hover.get(&client_id).copied()
+    }
+
+    fn set_guest_modal_hover(&mut self, client_id: ClientId, option: Option<usize>) -> bool {
+        let option = option.filter(|_| self.guest_modal.contains_key(&client_id));
+        if self.guest_modal_hover.get(&client_id).copied() == option {
+            return false;
+        }
+        match option {
+            Some(option) => {
+                self.guest_modal_hover.insert(client_id, option);
+            },
+            None => {
+                self.guest_modal_hover.remove(&client_id);
+            },
+        }
+        self.set_should_render(true);
+        true
     }
 
     fn has_guest_modal_for_any_client(&self) -> bool {
@@ -1651,6 +1675,7 @@ impl TerminalPane {
             forward_paused: false,
             nested_guest: false,
             guest_modal: HashMap::new(),
+            guest_modal_hover: HashMap::new(),
             guest_choice_indicators: HashMap::new(),
             guest_session_name: None,
             guest_modal_shortcuts: GuestModalShortcuts::default(),

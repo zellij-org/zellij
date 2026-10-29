@@ -594,6 +594,12 @@ pub trait Pane {
     fn guest_modal_selection(&self, _client_id: ClientId) -> Option<usize> {
         None
     }
+    fn guest_modal_hover(&self, _client_id: ClientId) -> Option<usize> {
+        None
+    }
+    fn set_guest_modal_hover(&mut self, _client_id: ClientId, _option: Option<usize>) -> bool {
+        false
+    }
     fn has_guest_modal_for_any_client(&self) -> bool {
         false
     }
@@ -4611,6 +4617,34 @@ impl Tab {
         } else {
             false
         }
+    }
+    pub fn set_guest_modal_hover_for_client(
+        &mut self,
+        client_id: ClientId,
+        hovered: Option<(PaneId, usize)>,
+    ) -> bool {
+        let mut changed = false;
+        for pane_id in self.get_all_pane_ids() {
+            let option = hovered
+                .filter(|(hovered_pane_id, _)| *hovered_pane_id == pane_id)
+                .map(|(_, option)| option);
+            if let Some(pane) = self
+                .tiled_panes
+                .get_pane_mut(pane_id)
+                .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+                .or_else(|| {
+                    self.suppressed_panes
+                        .values_mut()
+                        .find(|s_p| s_p.1.pid() == pane_id)
+                        .map(|s_p| &mut s_p.1)
+                })
+            {
+                if pane.set_guest_modal_hover(client_id, option) {
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
     pub fn clear_guest_modal_for_client_on_all_panes(&mut self, client_id: ClientId) {
         for pane_id in self.get_all_pane_ids() {

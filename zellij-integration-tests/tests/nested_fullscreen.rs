@@ -1145,3 +1145,52 @@ fn fullscreen_breadcrumb_has_no_nested_marker_and_an_emphasized_own_name() {
         "the descended guest breadcrumb own name is not dimmed"
     );
 }
+
+const GUEST_EXIT_QUERY: &[u8] = b"\x1b[?1004l\x1b[c";
+const PIXEL_SIZE_QUERY: &[u8] = b"\x1b[14t";
+
+fn last_index_of(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .rposition(|window| window == needle)
+}
+
+#[test]
+fn a_zoomed_guest_that_exits_sends_no_queries_after_its_exit_query() {
+    let mut nested = NestedHarness::start(TERMINAL_SIZE);
+    nested.wait_for_guest_to_announce();
+    nested.wait_for_host_to_acknowledge_guest();
+    let size_before_zoom = nested
+        .host_pane
+        .size()
+        .expect("the guest pane has a size before zooming");
+    nested.zoom_into_guest_via_modal();
+    nested.guest.wait_for_app_load();
+    nested
+        .host_pane
+        .wait_for_size("the zoomed guest pane grew", |cols, rows| {
+            (cols, rows) != size_before_zoom
+        });
+    let guest_terminal = nested.guest.expect_pty_spawn();
+
+    guest_terminal.exit(Some(0));
+    nested.guest.wait_for_main_client_to_exit();
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
+    nested.host_pane.wait_for_size(
+        "the guest pane went back to its size before the zoom",
+        |cols, rows| (cols, rows) == size_before_zoom,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let guest_output = nested.guest.raw_bytes();
+    let exit_query = last_index_of(&guest_output, GUEST_EXIT_QUERY)
+        .expect("the guest asked its host to confirm before exiting");
+    let after_exit_query = &guest_output[exit_query + GUEST_EXIT_QUERY.len()..];
+    assert!(
+        last_index_of(after_exit_query, PIXEL_SIZE_QUERY).is_none(),
+        "the guest queried its host after its exit query, so the replies reach the shell: {:?}",
+        String::from_utf8_lossy(after_exit_query)
+    );
+
+    nested.host.quit();
+}
