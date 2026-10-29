@@ -10,8 +10,9 @@ use std::collections::BTreeMap;
 const PREVIEW_SCROLLBACK_LINES: usize = 300;
 use std::time::Instant;
 use zellij_utils::data::{
-    ClickedPaneAction, ContextMenuAction, ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
-    KeybindsVec, PipePopupPlacement, PopupCorner, PopupOptions,
+    ClickedPaneAction, ContextMenuAction, ContextMenuContext, ContextMenuEntry, ContextMenuKind,
+    ContextMenuTarget, Event, InputMode, KeybindsVec, PipePopupPlacement, PopupCorner,
+    PopupOptions,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -64,9 +65,9 @@ pub fn entries_available_to_plugins(entries: Vec<ContextMenuEntry>) -> Vec<Conte
         .filter(|entry| match entry {
             ContextMenuEntry::Separator => true,
             ContextMenuEntry::Item { label, actions, .. } => {
-                let failure = actions.iter().find_map(|action| {
-                    ProtobufContextMenuAction::try_from(action.clone()).err()
-                });
+                let failure = actions
+                    .iter()
+                    .find_map(|action| ProtobufContextMenuAction::try_from(action.clone()).err());
                 if let Some(reason) = failure {
                     log::warn!(
                         "Right-click menu item \"{}\" was left out: {}",
@@ -1410,7 +1411,10 @@ mod tests {
                     ClickedPaneAction::PasteFromClipboard,
                 )],
             ),
-            ContextMenuEntry::item("Open in a Zellij terminal", vec![Action::OpenSessionInTerminal.into()]),
+            ContextMenuEntry::item(
+                "Open in a Zellij terminal",
+                vec![Action::OpenSessionInTerminal.into()],
+            ),
             ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
         ];
         let labels = |entries: Vec<ContextMenuEntry>| -> Vec<String> {

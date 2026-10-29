@@ -163,7 +163,10 @@ pub fn run_with_sink(
     if can_paste {
         paste_shortcut = Some(paste_shortcut_of(&settings));
         if let Err(e) = send(&sender, paste_support(&settings)) {
-            report!("the session could not be told that this window can paste: {}", e);
+            report!(
+                "the session could not be told that this window can paste: {}",
+                e
+            );
         }
     }
     if let Some(families) = options.font_families.clone() {

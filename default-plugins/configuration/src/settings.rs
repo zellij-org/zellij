@@ -1736,8 +1736,9 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         PaneFrames | PaneFrameStyle | FrameRoundedCorners | FrameHideSessionName => {
             (C::Appearance, "Pane frames")
         },
-        BarsHiddenOnStart | HiddenBarsNotification | ModeHintsWhenBarsHidden
-        | SessionIndicator => (C::Appearance, "Bars"),
+        BarsHiddenOnStart | HiddenBarsNotification | ModeHintsWhenBarsHidden | SessionIndicator => {
+            (C::Appearance, "Bars")
+        },
         StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => (C::Appearance, "Text"),
         FrameBorderStyle
         | FrameBorderTop
@@ -1786,8 +1787,8 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | SerializationInterval
         | PostCommandDiscoveryHook => (C::Sessions, "Resurrection"),
         MirrorSession | DisableSessionMetadata => (C::Sessions, "Behaviour"),
-        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts | TerminalLigatures
-        | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
+        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
+        | TerminalLigatures | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
         TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => {
             (C::ZellijTerminal, "Cursor")
         },
@@ -1798,10 +1799,13 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalOpacity
         | TerminalOpacityMode
         | TerminalBlur => (C::ZellijTerminal, "Window"),
-        TerminalPadding | TerminalPaddingTop | TerminalPaddingRight | TerminalPaddingBottom
-        | TerminalPaddingLeft | TerminalPaddingBalance | TerminalPaddingColor => {
-            (C::ZellijTerminal, "Padding")
-        },
+        TerminalPadding
+        | TerminalPaddingTop
+        | TerminalPaddingRight
+        | TerminalPaddingBottom
+        | TerminalPaddingLeft
+        | TerminalPaddingBalance
+        | TerminalPaddingColor => (C::ZellijTerminal, "Padding"),
         TerminalLineHeight
         | TerminalCellWidth
         | TerminalBaselineOffset
@@ -1821,8 +1825,12 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalAllowRemoteClipboardRead
         | TerminalHidePointerWhileTyping
         | TerminalMacosOptionAsAlt => (C::ZellijTerminal, "Window behaviour"),
-        TerminalPasteKeys | TerminalCopyKeys | TerminalZoomInKeys | TerminalZoomOutKeys
-        | TerminalZoomResetKeys | TerminalFullscreenKeys => (C::ZellijTerminal, "Shortcuts"),
+        TerminalPasteKeys
+        | TerminalCopyKeys
+        | TerminalZoomInKeys
+        | TerminalZoomOutKeys
+        | TerminalZoomResetKeys
+        | TerminalFullscreenKeys => (C::ZellijTerminal, "Shortcuts"),
         TerminalColorForeground | TerminalColorBackground | TerminalColorCursor => {
             (C::ZellijTerminal, "Text and cursor")
         },
@@ -1842,8 +1850,14 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalColorBrightMagenta
         | TerminalColorBrightCyan
         | TerminalColorBrightWhite => (C::ZellijTerminal, "Terminal colors"),
-        WebServer | WebSharing | WebServerIp | WebServerPort | WebServerCert | WebServerKey
-        | EnforceHttpsForLocalhost | ClientAsyncWorkerTasks => (C::Web, "Server"),
+        WebServer
+        | WebSharing
+        | WebServerIp
+        | WebServerPort
+        | WebServerCert
+        | WebServerKey
+        | EnforceHttpsForLocalhost
+        | ClientAsyncWorkerTasks => (C::Web, "Server"),
         WebClientFont
         | WebClientFontSize
         | WebClientCursorBlink
@@ -2024,9 +2038,7 @@ pub fn choice_label(key: SettingKey, value: &str) -> String {
         (SettingKey::BarsHiddenOnStart, "tab-bar") => Some("Tab bar"),
         (SettingKey::BarsHiddenOnStart, "status-bar") => Some("Status bar"),
         (SettingKey::BarsHiddenOnStart, "compact-bar") => Some("Compact bar"),
-        (SettingKey::BarsHiddenOnStart, "tab-bar,status-bar") => {
-            Some("Tab bar and status bar")
-        },
+        (SettingKey::BarsHiddenOnStart, "tab-bar,status-bar") => Some("Tab bar and status bar"),
         _ => None,
     };
     if let Some(label) = special {

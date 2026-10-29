@@ -3,18 +3,18 @@ use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 use crate::blocks_screen::BlockPage;
+use crate::help::{setting_help, wrap};
 use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
 use crate::mousebindings_screen::MousebindingsScreen;
-use crate::help::{setting_help, wrap};
 use crate::page::{
     changed_by, note_group, note_overlay, outside_overlays, run_effects, Page, PageResponse,
 };
 use crate::settings::{
-    check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value, page_matches,
-    parse_hex_colour, placement, release_key_placeholder, search_settings, section, settings_in,
-    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
-    CATEGORIES, ZELLIJ_TERMINAL_NOTE, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE,
+    check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value,
+    page_matches, parse_hex_colour, placement, release_key_placeholder, search_settings, section,
+    settings_in, value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck,
+    BUNDLED_FONT, CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -617,7 +617,9 @@ impl SettingsScreen {
                 )));
             }
             match self.category() {
-                Category::ZellijTerminal => self.rows.push(Row::Line(ZELLIJ_TERMINAL_NOTE.to_owned())),
+                Category::ZellijTerminal => {
+                    self.rows.push(Row::Line(ZELLIJ_TERMINAL_NOTE.to_owned()))
+                },
                 Category::Advanced => {
                     let folder = self
                         .snapshot
@@ -1355,12 +1357,12 @@ impl SettingsScreen {
         {
             return None;
         }
-        self.row_offsets.iter().find_map(|(key, (start, _))| {
-            match self.scroll.screen_row(*start) {
+        self.row_offsets
+            .iter()
+            .find_map(|(key, (start, _))| match self.scroll.screen_row(*start) {
                 Some(screen_y) if screen_y as isize == line => Some(*key),
                 _ => None,
-            }
-        })
+            })
     }
     fn track_hover_help(&mut self, line: isize, column: usize) -> bool {
         let hovered = self.label_key_at(line, column);
@@ -1424,7 +1426,10 @@ impl SettingsScreen {
             lines.push(HelpLine::Warning(warning.to_owned()));
         }
         lines.push(HelpLine::Blank);
-        lines.push(HelpLine::Fact("Default".to_owned(), info.default.to_owned()));
+        lines.push(HelpLine::Fact(
+            "Default".to_owned(),
+            info.default.to_owned(),
+        ));
         lines.push(HelpLine::Fact(
             "Applies to".to_owned(),
             match info.scope {

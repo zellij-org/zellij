@@ -59,7 +59,11 @@ fn starts_own_line(line: &str, previous: Option<&str>) -> bool {
     match line.split_once(':') {
         Some((head, _)) => {
             head.split_whitespace().count() <= 3
-                && head.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                && head
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
                 && head.chars().all(|c| c.is_alphabetic() || c == ' ')
         },
         None => false,
@@ -76,7 +80,11 @@ fn shown_elsewhere(line: &str) -> bool {
 }
 
 fn is_flag_value(line: &str) -> bool {
-    let value = line.trim().trim_start_matches(['-', '*']).trim().to_lowercase();
+    let value = line
+        .trim()
+        .trim_start_matches(['-', '*'])
+        .trim()
+        .to_lowercase();
     value.starts_with("true") || value.starts_with("false")
 }
 
@@ -125,7 +133,11 @@ fn reflow(lines: &[String]) -> String {
         };
         match out.last_mut() {
             Some(last) if !starts_own_line(line, previous) => {
-                let new_sentence = line.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                let new_sentence = line
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
                 if new_sentence && !ends_a_sentence(last) {
                     last.push('.');
                 }
@@ -387,9 +399,8 @@ mod tests {
 
     #[test]
     fn options_without_a_comment_get_the_comment_of_their_block() {
-        let parsed = parse_help(
-            "// About the web client\nweb_client {\n    font \"monospace\"\n}\n",
-        );
+        let parsed =
+            parse_help("// About the web client\nweb_client {\n    font \"monospace\"\n}\n");
         assert_eq!(
             parsed.get(&SettingKey::WebClientFont).map(|s| s.as_str()),
             Some("About the web client")
@@ -415,7 +426,11 @@ mod tests {
             help
         );
         let help = setting_help(SettingKey::OnForceClose).unwrap();
-        assert!(help.contains("\nOptions:\n  - detach (Default)\n  - quit"), "{}", help);
+        assert!(
+            help.contains("\nOptions:\n  - detach (Default)\n  - quit"),
+            "{}",
+            help
+        );
         assert!(help.contains("is closed\nOptions:"), "{}", help);
     }
 

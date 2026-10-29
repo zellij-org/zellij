@@ -75,9 +75,10 @@ fn save_and_wait(zellij: &TestSession) {
 
 fn close_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
-    zellij.wait_until("back on the category that links the page", |grid_snapshot| {
-        grid_snapshot.contains("Opens the")
-    });
+    zellij.wait_until(
+        "back on the category that links the page",
+        |grid_snapshot| grid_snapshot.contains("Opens the"),
+    );
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings closed", |grid_snapshot| {
         !grid_snapshot.contains("unsaved change") && grid_snapshot.status_bar_appears()
@@ -713,9 +714,10 @@ fn a_new_theme_opens_its_color_editor_once_named() {
     });
     type_text(&zellij, "fresh");
     zellij.send_stdin(&keys::ENTER);
-    zellij.wait_until("the color editor of the new theme is shown", |grid_snapshot| {
-        grid_snapshot.contains("Colors of fresh")
-    });
+    zellij.wait_until(
+        "the color editor of the new theme is shown",
+        |grid_snapshot| grid_snapshot.contains("Colors of fresh"),
+    );
     zellij.quit();
 }
 
@@ -790,12 +792,13 @@ fn menu_items_move_with_shift_arrows_and_the_menu_search_finds_them() {
     let new_pane_row = grid_snapshot.row_of_line("New pane ").unwrap();
     assert!(paste_row < new_pane_row);
     zellij.send_stdin(SHIFT_DOWN);
-    zellij.wait_until("the first item moved down", |grid_snapshot| {
-        match grid_snapshot.row_of_line("Paste") {
+    zellij.wait_until(
+        "the first item moved down",
+        |grid_snapshot| match grid_snapshot.row_of_line("Paste") {
             Some(row) => row > paste_row && grid_snapshot.contains("1 unsaved change "),
             None => false,
-        }
-    });
+        },
+    );
     zellij.send_stdin(&keys::key('/'));
     type_text(&zellij, "settings");
     zellij.wait_until("the search lists the matching item", |grid_snapshot| {
