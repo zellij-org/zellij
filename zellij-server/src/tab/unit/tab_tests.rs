@@ -17939,6 +17939,48 @@ pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
 }
 
 #[test]
+pub fn resume_after_forward_defers_output_of_scrolled_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, true);
+    let lines: Vec<String> = (1..=40).map(|i| format!("line {i}")).collect();
+    tab.handle_pty_bytes(1, lines.join("\r\n").into_bytes())
+        .unwrap();
+    // The background color query pauses output until the host replies.
+    // Buffered output includes a second query for the foreground color.
+    tab.handle_pty_bytes(1, b"\x1b]11;?\x07 before\x1b]10;?\x07 mid".to_vec())
+        .unwrap();
+    tab.handle_pty_bytes(1, b" more".to_vec()).unwrap();
+    tab.scroll_active_terminal_up(client_id);
+    tab.handle_pty_bytes(1, b" after".to_vec()).unwrap();
+
+    tab.resume_pane_after_forward(1, vec![]).unwrap();
+    let pane = tab.get_pane_with_id(PaneId::Terminal(1)).unwrap();
+    assert!(pane.is_scrolled());
+    assert!(
+        !pane.dump_screen(true, None).contains("before"),
+        "resuming must defer output until the pane reaches the bottom"
+    );
+
+    // the replay stops at the second query and pauses the pane again
+    tab.scroll_active_terminal_to_bottom(client_id).unwrap();
+    let pane = tab.get_pane_with_id(PaneId::Terminal(1)).unwrap();
+    assert!(!pane.is_scrolled());
+    assert!(pane.is_forward_paused());
+    let screen = pane.dump_screen(true, None);
+    assert!(screen.contains("line 40 before") && !screen.contains("mid"));
+
+    tab.resume_pane_after_forward(1, vec![]).unwrap();
+    let pane = tab.get_pane_with_id(PaneId::Terminal(1)).unwrap();
+    assert!(pane
+        .dump_screen(true, None)
+        .contains("line 40 before mid more after"));
+}
+
+#[test]
 pub fn scroll_terminal_up_walks_scrollback_in_regular_mode_no_pty_write() {
     let size = Size {
         cols: 121,

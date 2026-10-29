@@ -2754,6 +2754,63 @@ pub fn scroll_up_increase_width_and_scroll_down() {
 }
 
 #[test]
+pub fn scroll_up_increase_height_and_reset_viewport() {
+    // Growing beyond available scrollback leaves the viewport shorter than the pane.
+    // Resetting must still reach the bottom.
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let osc8_hyperlinks = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let mut grid = Grid::new(
+        10,
+        50,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+    let content: Vec<String> = (1..=11).map(|i| format!("line {i}")).collect();
+    vte_parser.advance(&mut grid, content.join("\r\n").as_bytes());
+    // save the cursor at the end of "line 11", then park it at the start of "line 6"
+    vte_parser.advance(&mut grid, b"\x1b7\x1b[5;1H");
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+    grid.change_size(15, 50);
+    grid.reset_viewport();
+    assert!(!grid.is_scrolled);
+    vte_parser.advance(&mut grid, b"L\x1b8 end");
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_up_line_feed_below_scroll_region_and_reset_viewport() {
+    // A line feed on the last row below the scroll region appends a viewport row.
+    // While scrolled, this makes the viewport taller than the pane; resetting must recover.
+    let content: Vec<String> = (1..=21).map(|i| format!("line {i}")).collect();
+    let mut grid = create_grid_with_content(&content.join("\r\n"));
+    let mut vte_parser = vte::Parser::new();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+    vte_parser.advance(&mut grid, b"\x1b[1;5r\x1b[20;1H\n");
+    assert!(grid.viewport.len() > grid.height);
+    grid.reset_viewport();
+    assert!(!grid.is_scrolled);
+    assert!(grid.viewport.len() <= grid.height);
+}
+
+#[test]
 fn saved_cursor_across_resize() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));

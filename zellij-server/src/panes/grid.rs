@@ -1772,7 +1772,9 @@ impl Grid {
     }
     pub fn scroll_down_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_below.is_empty()
+        if !self.lines_below.is_empty() && self.viewport.len() != self.height {
+            self.fit_scrolled_viewport_to_height();
+        } else if !self.lines_below.is_empty()
             && self.viewport.len() == self.height
             && !self.viewport.is_empty()
         {
@@ -1822,6 +1824,39 @@ impl Grid {
             self.lines_below.shrink_to_fit();
         }
         found_something
+    }
+    /// Move the viewport toward `height` rows so scrolling down can reach the bottom.
+    /// Growing beyond available scrollback can leave it too short; a line feed below
+    /// the scroll region can leave it too tall. Cursor positions are relative to the
+    /// unscrolled viewport and must shift with rows added below or removed above.
+    fn fit_scrolled_viewport_to_height(&mut self) {
+        let rows_before = self.viewport.len();
+        if rows_before < self.height {
+            transfer_rows_from_lines_below_to_viewport(
+                &mut self.lines_below,
+                &mut self.viewport,
+                1,
+                self.width,
+            );
+        } else {
+            let display_row_delta = transfer_rows_from_viewport_to_lines_above(
+                &mut self.viewport,
+                &mut self.lines_above,
+                &mut self.sixel_grid,
+                &mut self.kitty_grid,
+                rows_before - self.height,
+                self.width,
+            );
+            self.apply_scrollback_display_row_delta(display_row_delta);
+        }
+        // not necessarily +/-1: moving rows from below can rewrap the line at the bottom
+        let row_delta = self.viewport.len() as isize - rows_before as isize;
+        self.cursor.y = self.cursor.y.saturating_add_signed(row_delta);
+        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+            saved_cursor_position.y = saved_cursor_position.y.saturating_add_signed(row_delta);
+        }
+        self.kitty_reanchor_all_from_pixels();
+        self.output_buffer.update_all_lines();
     }
     pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, true);

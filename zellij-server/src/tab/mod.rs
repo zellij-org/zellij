@@ -4787,7 +4787,7 @@ impl Tab {
         }
         // Clear the pause and pull out any bytes that were buffered
         // while it waited for the host reply.
-        let buffered = if let Some(terminal_output) = self
+        let (buffered, is_scrolled) = if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
             .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
@@ -4798,12 +4798,25 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             }) {
             terminal_output.clear_forward_pause();
-            terminal_output.drain_pending_pty_input()
+            (
+                terminal_output.drain_pending_pty_input(),
+                terminal_output.is_scrolled(),
+            )
         } else {
             // Pane closed between forward dispatch and reply arrival.
             return Ok(());
         };
-        if !buffered.is_empty() {
+        if buffered.is_empty() {
+            return Ok(());
+        }
+        if is_scrolled {
+            // Defer replay until the pane reaches the bottom. These bytes predate output
+            // queued by handle_pty_bytes while scrolled, so prepend them to preserve order.
+            self.pending_vte_events
+                .entry(pid)
+                .or_default()
+                .insert(0, buffered);
+        } else {
             self.process_pty_bytes(pid, buffered)
                 .with_context(err_context)?;
         }
