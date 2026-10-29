@@ -287,6 +287,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SessionAttention { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SessionPreview { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::PaneMirror { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::PasteFromClipboard { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }

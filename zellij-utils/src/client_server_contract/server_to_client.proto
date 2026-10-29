@@ -31,6 +31,7 @@ message ServerToClientMsg {
     SessionAttentionMsg session_attention = 24;
     SessionPreviewMsg session_preview = 25;
     ServerPaneMirrorMsg pane_mirror = 26;
+    PasteFromClipboardMsg paste_from_clipboard = 27;
   }
 }
 
@@ -136,6 +137,10 @@ message ForwardQueryToHostMsg {
   uint32 token = 1;
   bytes query_bytes = 2;
   bool resolve_async = 3;
+}
+
+message PasteFromClipboardMsg {
+  optional PaneId pane_id = 1;
 }
 
 message SetSoftKeyboardMsg {

@@ -8,8 +8,8 @@ use zellij_utils::data::HostTerminalThemeMode;
 
 use zellij_utils::data::ConnectToSession;
 
-use crate::clipboard::ClipboardHandle;
-use crate::connection::{request_detach, send, Connection, Detacher};
+use crate::clipboard::{self, ClipboardHandle};
+use crate::connection::{request_detach, send, Connection, Detacher, Role};
 use crate::host_reply;
 use crate::recorder::Recorder;
 use crate::settings::{self, Settings};
@@ -98,6 +98,20 @@ impl RenderSink for DiscardingSink {
     }
 }
 
+fn paste_shortcut_of(settings: &Settings) -> Option<String> {
+    crate::options::resolve(settings, None)
+        .paste_keys
+        .first()
+        .map(|key| key.to_string())
+}
+
+fn paste_support(settings: &Settings) -> ClientToServerMsg {
+    ClientToServerMsg::ClipboardPasteSupport {
+        supported: true,
+        shortcut: paste_shortcut_of(settings),
+    }
+}
+
 pub fn run(connection: Connection, options: LoopOptions) -> Result<LoopOutcome> {
     run_with_sink(connection, options, &mut DiscardingSink)
 }
@@ -144,6 +158,17 @@ pub fn run_with_sink(
     let mut theme_mode: Option<HostTerminalThemeMode> = None;
     let mut paints = crate::options::resolve(&settings, theme_mode).paints;
     let attached_at = Instant::now();
+    let can_paste = options.clipboard.is_some() && role != Role::Watcher;
+    let mut paste_shortcut = None;
+    if can_paste {
+        paste_shortcut = Some(paste_shortcut_of(&settings));
+        if let Err(e) = send(&sender, paste_support(&settings)) {
+            report!(
+                "the session could not be told that this window can paste: {}",
+                e
+            );
+        }
+    }
     if let Some(families) = options.font_families.clone() {
         if let Err(e) = send(&sender, ClientToServerMsg::FontFamilies { families }) {
             report!(
@@ -267,6 +292,10 @@ pub fn run_with_sink(
                         settings = reloaded;
                         paints = crate::options::resolve(&settings, theme_mode).paints;
                         sink.reconfigured(settings.clone());
+                        if can_paste && paste_shortcut != Some(paste_shortcut_of(&settings)) {
+                            paste_shortcut = Some(paste_shortcut_of(&settings));
+                            let _ = send(&sender, paste_support(&settings));
+                        }
                     },
                     Err(e) => report!(
                         "keeping the options in force; \
@@ -281,6 +310,10 @@ pub fn run_with_sink(
                     settings = *pushed;
                     paints = crate::options::resolve(&settings, theme_mode).paints;
                     sink.settings_pushed(settings.clone());
+                    if can_paste && paste_shortcut != Some(paste_shortcut_of(&settings)) {
+                        paste_shortcut = Some(paste_shortcut_of(&settings));
+                        let _ = send(&sender, paste_support(&settings));
+                    }
                 }
             },
             ServerToClientMsg::HostTerminalThemeChanged { mode } => {
@@ -296,6 +329,19 @@ pub fn run_with_sink(
             ServerToClientMsg::LogError { lines } => {
                 for line in lines {
                     log::error!("{}", line);
+                }
+            },
+            ServerToClientMsg::PasteFromClipboard { pane_id } => {
+                let text = options
+                    .clipboard
+                    .as_ref()
+                    .and_then(|clipboard| clipboard.lock().ok().and_then(|mut c| c.get()))
+                    .filter(|text| !text.is_empty());
+                if let Some(chars) = text {
+                    if let Err(e) = send(&sender, clipboard::paste_message_into(chars, pane_id)) {
+                        failure = Some(e);
+                        break;
+                    }
                 }
             },
             _ => {},
@@ -946,7 +992,7 @@ mod tests {
             side.send(ServerToClientMsg::Exit {
                 exit_reason: ExitReason::NormalDetached,
             });
-            side.expect(3);
+            side.expect(4);
         });
 
         let mut clipboard = crate::clipboard::Clipboard::in_memory();
@@ -967,6 +1013,7 @@ mod tests {
         assert_eq!(
             replies,
             &[
+                paste_support(&LoopOptions::default().settings),
                 ClientToServerMsg::ForwardedReplyFromHost {
                     token: 7,
                     reply_bytes: b"\x1b]52;c;Y29waWVk\x1b\\".to_vec()
@@ -991,7 +1038,7 @@ mod tests {
             side.send(ServerToClientMsg::Exit {
                 exit_reason: ExitReason::NormalDetached,
             });
-            side.expect(2);
+            side.expect(3);
         });
 
         let mut clipboard = crate::clipboard::Clipboard::in_memory();
@@ -1010,13 +1057,54 @@ mod tests {
         connection.remote = remote;
         run(connection, options).unwrap();
 
-        match &server.finish()[HANDSHAKE_MESSAGES] {
+        match &server.finish()[HANDSHAKE_MESSAGES + 1] {
             ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes } => {
                 assert_eq!(*token, 7);
                 reply_bytes.clone()
             },
             other => panic!("expected a forwarded reply, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn a_paste_request_pastes_the_clipboard_into_the_requested_pane() {
+        let server = FakeServer::spawn(|side| {
+            side.expect(HANDSHAKE_MESSAGES + 1);
+            side.send(ServerToClientMsg::PasteFromClipboard {
+                pane_id: Some(zellij_utils::data::PaneId::Terminal(4)),
+            });
+            side.send(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::NormalDetached,
+            });
+            side.expect(2);
+        });
+
+        let mut clipboard = crate::clipboard::Clipboard::in_memory();
+        clipboard.set("copied");
+        let mut options = options();
+        options.clipboard = Some(std::sync::Arc::new(std::sync::Mutex::new(clipboard)));
+
+        let connection = attach_at(
+            &server.path,
+            "window-test",
+            geometry(),
+            Capabilities::default(),
+        )
+        .unwrap();
+        run(connection, options).unwrap();
+
+        let replies = &server.finish()[HANDSHAKE_MESSAGES..];
+        assert_eq!(
+            replies,
+            &[
+                paste_support(&LoopOptions::default().settings),
+                crate::clipboard::paste_message_into(
+                    "copied".to_owned(),
+                    Some(zellij_utils::data::PaneId::Terminal(4))
+                ),
+                ClientToServerMsg::ClientExited,
+            ]
+        );
     }
 
     #[test]

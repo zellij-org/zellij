@@ -1,63 +1,129 @@
 use zellij_tile::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Category {
+    General,
     Appearance,
-    Themes,
-    Terminal,
-    TerminalColours,
-    PaneFrames,
-    Keys,
-    ContextMenu,
-    MouseAndClipboard,
-    MouseBindings,
+    Keyboard,
+    Mouse,
+    Clipboard,
     PanesAndLayouts,
-    ScrollbackAndEditor,
+    Notifications,
     Sessions,
-    TerminalSupport,
+    ZellijTerminal,
     Web,
+    Advanced,
+    Themes,
+    Borders,
+    Keys,
+    MouseBindings,
+    ContextMenu,
     PluginsAndEnvironment,
-    FoldersAndFiles,
 }
 
-pub const CATEGORIES: [Category; 16] = [
+pub const CATEGORIES: [Category; 11] = [
+    Category::General,
     Category::Appearance,
-    Category::PaneFrames,
+    Category::Keyboard,
+    Category::Mouse,
+    Category::Clipboard,
+    Category::PanesAndLayouts,
+    Category::Notifications,
+    Category::Sessions,
+    Category::ZellijTerminal,
+    Category::Web,
+    Category::Advanced,
+];
+
+pub const SUB_PAGES: [Category; 6] = [
+    Category::Themes,
+    Category::Borders,
     Category::Keys,
-    Category::MouseAndClipboard,
     Category::MouseBindings,
     Category::ContextMenu,
-    Category::Themes,
-    Category::Terminal,
-    Category::TerminalColours,
-    Category::PanesAndLayouts,
-    Category::ScrollbackAndEditor,
-    Category::Sessions,
-    Category::TerminalSupport,
-    Category::Web,
     Category::PluginsAndEnvironment,
-    Category::FoldersAndFiles,
 ];
+
+pub const ZELLIJ_TERMINAL_NOTE: &str =
+    "These settings only apply when Zellij runs in its own terminal app (zellij terminal).";
 
 impl Category {
     pub fn title(&self) -> &'static str {
         match self {
+            Category::General => "General",
             Category::Appearance => "Appearance",
-            Category::Themes => "Themes",
-            Category::Terminal => "Terminal",
-            Category::TerminalColours => "Terminal colours",
-            Category::PaneFrames => "Pane frames and borders",
-            Category::Keys => "Keys",
-            Category::ContextMenu => "Right-click menu",
-            Category::MouseAndClipboard => "Mouse and clipboard",
-            Category::MouseBindings => "Mouse bindings",
+            Category::Keyboard => "Keyboard",
+            Category::Mouse => "Mouse",
+            Category::Clipboard => "Clipboard and selection",
             Category::PanesAndLayouts => "Panes and layouts",
-            Category::ScrollbackAndEditor => "Scrollback and editor",
+            Category::Notifications => "Notifications",
             Category::Sessions => "Sessions",
-            Category::TerminalSupport => "Terminal support",
+            Category::ZellijTerminal => "Zellij terminal",
             Category::Web => "Web",
+            Category::Advanced => "Advanced",
+            Category::Themes => "Themes",
+            Category::Borders => "Pane borders",
+            Category::Keys => "Key bindings",
+            Category::MouseBindings => "Mouse bindings",
+            Category::ContextMenu => "Right-click menu",
             Category::PluginsAndEnvironment => "Plugins and environment",
-            Category::FoldersAndFiles => "Files and folders",
+        }
+    }
+    pub fn link_label(&self) -> &'static str {
+        match self {
+            Category::Themes => "Edit themes…",
+            Category::Borders => "Pane borders…",
+            Category::Keys => "Key bindings and preset…",
+            Category::MouseBindings => "Mouse bindings…",
+            Category::ContextMenu => "Edit right-click menu…",
+            Category::PluginsAndEnvironment => "Plugins and environment…",
+            other => other.title(),
+        }
+    }
+    pub fn search_words(&self) -> &'static str {
+        match self {
+            Category::Themes => "themes colors palette edit theme",
+            Category::Borders => "borders border style rounded corners tiled floating",
+            Category::Keys => {
+                "key bindings keybindings keys shortcuts preset primary secondary unlock leader modifier"
+            },
+            Category::MouseBindings => "mouse bindings clicks wheel scroll",
+            Category::ContextMenu => "right-click menu context menu items",
+            Category::PluginsAndEnvironment => {
+                "plugins aliases load plugins at start environment variables env"
+            },
+            _ => "",
+        }
+    }
+    pub fn parent(&self) -> Option<Category> {
+        match self {
+            Category::Themes | Category::Borders => Some(Category::Appearance),
+            Category::Keys => Some(Category::Keyboard),
+            Category::MouseBindings | Category::ContextMenu => Some(Category::Mouse),
+            Category::PluginsAndEnvironment => Some(Category::Advanced),
+            _ => None,
+        }
+    }
+    pub fn link_key(&self) -> Option<SettingKey> {
+        match self {
+            Category::Themes => Some(SettingKey::Themes),
+            Category::Borders => Some(SettingKey::FrameBorderStyle),
+            Category::Keys => Some(SettingKey::Keybinds),
+            Category::MouseBindings => Some(SettingKey::Mousebinds),
+            Category::ContextMenu => Some(SettingKey::ContextMenu),
+            Category::PluginsAndEnvironment => Some(SettingKey::PluginAliases),
+            _ => None,
+        }
+    }
+    pub fn link_section(&self) -> &'static str {
+        match self {
+            Category::Themes => "Theme",
+            Category::Borders => "Pane frames",
+            Category::Keys => "Key bindings",
+            Category::MouseBindings => "Mouse bindings",
+            Category::ContextMenu => "Right-click menu",
+            Category::PluginsAndEnvironment => "Plugins",
+            _ => "",
         }
     }
     pub fn is_keys_screen(&self) -> bool {
@@ -75,6 +141,13 @@ impl Category {
     pub fn has_rows(&self) -> bool {
         !self.is_keys_screen() && !self.is_page()
     }
+    pub fn links(&self) -> Vec<Category> {
+        SUB_PAGES
+            .iter()
+            .copied()
+            .filter(|page| page.parent() == Some(*self))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +161,6 @@ pub enum TextCheck {
     AnyText,
     Path,
     IpAddress,
-    Decimal { min_milli: i64, max_milli: i64 },
     KeyList,
     Key,
     WordList,
@@ -191,7 +263,6 @@ pub fn release_key_placeholder(entries: &[KeybindingEntry], mode: InputMode) -> 
 
 fn info(
     name: &'static str,
-    category: Category,
     description: &'static str,
     kind: SettingKind,
     default: &'static str,
@@ -199,7 +270,7 @@ fn info(
 ) -> SettingInfo {
     SettingInfo {
         name,
-        category,
+        category: Category::Advanced,
         description,
         kind,
         default,
@@ -208,13 +279,33 @@ fn info(
 }
 
 pub fn describe(key: SettingKey) -> SettingInfo {
-    use Category::*;
+    let mut info = describe_entry(key);
+    info.category = placement(key).0;
+    info
+}
+
+pub fn danger_warning(key: SettingKey) -> Option<&'static str> {
+    match key {
+        SettingKey::DangerouslyEnablePasteBufferRead => Some(
+            "DANGEROUS: any program in a pane can now read everything you copy, including passwords",
+        ),
+        SettingKey::DangerouslyAllowWebServingWithoutACertificate => Some(
+            "DANGEROUS: sessions are served without encryption, so anyone on the network can watch and type into them",
+        ),
+        _ => None,
+    }
+}
+
+pub fn is_hidden(key: SettingKey) -> bool {
+    matches!(key, SettingKey::ClientAsyncWorkerTasks)
+}
+
+fn describe_entry(key: SettingKey) -> SettingInfo {
     use Scope::*;
     use SettingKind::*;
     match key {
         SettingKey::Theme => info(
             "Theme",
-            Appearance,
             "Color theme, previewed live while browsing",
             Theme {
                 can_be_unset: false,
@@ -224,7 +315,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ThemeDark => info(
             "Theme (dark terminal)",
-            Appearance,
             "Theme used when the terminal reports a dark palette",
             Theme { can_be_unset: true },
             "not set",
@@ -232,7 +322,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ThemeLight => info(
             "Theme (light terminal)",
-            Appearance,
             "Theme used when the terminal reports a light palette",
             Theme { can_be_unset: true },
             "not set",
@@ -240,7 +329,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ExplicitThemeHue => info(
             "Theme hue",
-            Appearance,
             "Pin dark or light instead of following the terminal",
             OptionalChoice(&["dark", "light"]),
             "not set",
@@ -248,7 +336,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SimplifiedUi => info(
             "Simplified UI",
-            Appearance,
             "Avoid arrow glyphs for fonts that lack them",
             Toggle,
             "false",
@@ -256,7 +343,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::PaneFrames => info(
             "Pane frames",
-            Appearance,
             "Draw frames around panes",
             Toggle,
             "true",
@@ -264,7 +350,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::PaneFrameStyle => info(
             "Pane frame style",
-            Appearance,
             "How much of each pane frame to draw",
             Choice(&["full", "titles", "none"]),
             "titles",
@@ -272,7 +357,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::VisualBell => info(
             "Visual bell",
-            Appearance,
             "Flash pane and tab frames on a terminal bell",
             Toggle,
             "true",
@@ -280,7 +364,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionFrameMarkers => info(
             "Status on pane frames",
-            Appearance,
             "Show what a pane needs (approval, failure, done) in its frame title",
             Toggle,
             "true",
@@ -288,7 +371,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionTabMarkers => info(
             "Status on tabs",
-            Appearance,
             "Show what a tab's panes need (approval, failure, done) as a symbol in the tab bar",
             Toggle,
             "true",
@@ -296,7 +378,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionHostStatus => info(
             "Status to outer terminal",
-            Sessions,
             "Tell the terminal Zellij runs in what the session needs (when it supports it)",
             Toggle,
             "true",
@@ -304,15 +385,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionIdleRule => info(
             "Quiet detection",
-            Sessions,
             "Notice when busy output goes quiet in all panes or only in watched panes",
             Choice(&["all", "watched"]),
             "all",
             Everyone,
         ),
         SettingKey::AttentionDoneThresholdSecs => info(
-            "Report finished commands after",
-            Sessions,
+            "Report finished commands after (seconds)",
             "Seconds a successful command must run before it is reported as done",
             Number {
                 min: 0,
@@ -323,8 +402,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             Everyone,
         ),
         SettingKey::AttentionIdleActivitySecs => info(
-            "Busy output for",
-            Sessions,
+            "Busy output for (seconds)",
             "Seconds of steady output before quiet detection applies",
             Number {
                 min: 1,
@@ -335,8 +413,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             Everyone,
         ),
         SettingKey::AttentionIdleSilenceSecs => info(
-            "Quiet after",
-            Sessions,
+            "Quiet after (seconds)",
             "Seconds without output after which busy output counts as quiet",
             Number {
                 min: 1,
@@ -348,7 +425,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::StyledUnderlines => info(
             "Styled underlines",
-            Appearance,
             "Pass curly and colored underlines to the terminal",
             Toggle,
             "true",
@@ -356,7 +432,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::GraphemeClusters => info(
             "Grapheme clusters",
-            Appearance,
             "Count emoji and accented letters as one character",
             Toggle,
             "true",
@@ -364,7 +439,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Osc8Hyperlinks => info(
             "OSC 8 hyperlinks",
-            Appearance,
             "Pass clickable hyperlinks to the terminal",
             Toggle,
             "true",
@@ -372,15 +446,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ThemeDir => info(
             "Theme folder",
-            FoldersAndFiles,
             "Folder searched for extra theme files",
             Text(TextCheck::Path),
             "themes in the config folder",
             Everyone,
         ),
         SettingKey::FrameRoundedCorners => info(
-            "Rounded corners",
-            PaneFrames,
+            "Frame rounded corners",
             "Round the corners of pane frames",
             Toggle,
             "false",
@@ -388,7 +460,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameHideSessionName => info(
             "Hide session name",
-            PaneFrames,
             "Hide the session name in pane frames",
             Toggle,
             "false",
@@ -396,7 +467,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameBorderStyle => info(
             "Border style",
-            PaneFrames,
             "Line style for every side of tiled pane borders",
             OptionalChoice(LINE_STYLES),
             "single",
@@ -404,7 +474,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameBorderTop => info(
             "Border top",
-            PaneFrames,
             "Line style for the top border of tiled panes",
             OptionalChoice(LINE_STYLES),
             "border style",
@@ -412,7 +481,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameBorderRight => info(
             "Border right",
-            PaneFrames,
             "Line style for the right border of tiled panes",
             OptionalChoice(LINE_STYLES),
             "border style",
@@ -420,7 +488,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameBorderBottom => info(
             "Border bottom",
-            PaneFrames,
             "Line style for the bottom border of tiled panes",
             OptionalChoice(LINE_STYLES),
             "border style",
@@ -428,15 +495,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameBorderLeft => info(
             "Border left",
-            PaneFrames,
             "Line style for the left border of tiled panes",
             OptionalChoice(LINE_STYLES),
             "border style",
             Everyone,
         ),
         SettingKey::FrameBorderRoundedCorners => info(
-            "Border rounded corners",
-            PaneFrames,
+            "Tiled rounded corners",
             "Rounded corners for tiled panes only",
             OptionalToggle,
             "rounded corners",
@@ -444,7 +509,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderStyle => info(
             "Floating border style",
-            PaneFrames,
             "Line style for every side of floating pane borders",
             OptionalChoice(LINE_STYLES),
             "border style",
@@ -452,7 +516,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderTop => info(
             "Floating border top",
-            PaneFrames,
             "Line style for the top border of floating panes",
             OptionalChoice(LINE_STYLES),
             "floating border style",
@@ -460,7 +523,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderRight => info(
             "Floating border right",
-            PaneFrames,
             "Line style for the right border of floating panes",
             OptionalChoice(LINE_STYLES),
             "floating border style",
@@ -468,7 +530,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderBottom => info(
             "Floating border bottom",
-            PaneFrames,
             "Line style for the bottom border of floating panes",
             OptionalChoice(LINE_STYLES),
             "floating border style",
@@ -476,7 +537,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderLeft => info(
             "Floating border left",
-            PaneFrames,
             "Line style for the left border of floating panes",
             OptionalChoice(LINE_STYLES),
             "floating border style",
@@ -484,15 +544,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::FrameFloatingBorderRoundedCorners => info(
             "Floating rounded corners",
-            PaneFrames,
             "Rounded corners for floating panes only",
             OptionalToggle,
             "border rounded corners",
             Everyone,
         ),
         SettingKey::Keybinds => info(
-            "Keybindings",
-            Keys,
+            "Key bindings",
             "Keybinding preset, leader keys and your own keybindings",
             SettingKind::Keybindings,
             "default preset",
@@ -500,7 +558,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Mousebinds => info(
             "Mouse bindings",
-            MouseBindings,
             "What clicks, the wheel and drags do in each mode",
             SettingKind::Mousebindings,
             "the preset's mouse bindings",
@@ -508,7 +565,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::PluginAliases => info(
             "Plugin aliases",
-            PluginsAndEnvironment,
             "Names for plugins, used by layouts, keybindings and other plugins",
             Block,
             "built-in aliases",
@@ -516,7 +572,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::LoadPlugins => info(
             "Plugins loaded at start",
-            PluginsAndEnvironment,
             "Plugins loaded in the background when a session starts",
             Block,
             "built-in list",
@@ -524,7 +579,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Env => info(
             "Environment variables",
-            PluginsAndEnvironment,
             "Variables for new panes, shared by everyone in this session",
             Block,
             "none",
@@ -532,7 +586,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ContextMenu => info(
             "Right-click menu items",
-            ContextMenu,
             "Items of the right-click menus",
             Block,
             "built-in items",
@@ -540,7 +593,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Themes => info(
             "Themes",
-            Themes,
             "Themes defined in the config file",
             Block,
             "none",
@@ -548,7 +600,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MouseMode => info(
             "Mouse mode",
-            MouseAndClipboard,
             "Handle mouse events (Shift bypasses it)",
             Toggle,
             "true",
@@ -556,7 +607,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AdvancedMouseActions => info(
             "Advanced mouse actions",
-            MouseAndClipboard,
             "Hover effects and pane grouping with the mouse",
             Toggle,
             "true",
@@ -564,7 +614,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MouseScrollResize => info(
             "Ctrl+wheel resizes",
-            MouseAndClipboard,
             "Ctrl and the mouse wheel resize panes",
             Toggle,
             "true",
@@ -572,7 +621,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ScrollModeSync => info(
             "Scrolling enters scroll mode",
-            MouseAndClipboard,
             "Scrolling a pane enters and leaves scroll mode",
             Toggle,
             "true",
@@ -580,7 +628,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MouseHoverEffects => info(
             "Hover effects",
-            MouseAndClipboard,
             "Highlight frames and show help text on hover",
             Toggle,
             "true",
@@ -588,15 +635,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MouseHoverTips => info(
             "Hover tips",
-            MouseAndClipboard,
-            "Show resize and grouping tips on hover",
+            "Show tips on hover, such as resize and grouping hints and the help of a setting here",
             Toggle,
             "true",
             Everyone,
         ),
         SettingKey::FocusFollowsMouse => info(
             "Focus follows mouse",
-            MouseAndClipboard,
             "Focus the pane under the mouse",
             Toggle,
             "false",
@@ -604,7 +649,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MouseClickThrough => info(
             "Click through",
-            MouseAndClipboard,
             "A focusing click is also sent to the pane",
             Toggle,
             "false",
@@ -612,7 +656,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ContextMenuEnabled => info(
             "Right-click menu",
-            MouseAndClipboard,
             "A right click opens the menu; when off it goes to the focused pane",
             Toggle,
             "true",
@@ -620,7 +663,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Osc133CommandSelection => info(
             "Select command output",
-            MouseAndClipboard,
             "Triple-click selects a marked command and its output",
             Toggle,
             "true",
@@ -628,7 +670,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::WordSeparators => info(
             "Word separators",
-            MouseAndClipboard,
             "Characters that end a word on double-click",
             Text(TextCheck::AnyText),
             "[]{}<>()",
@@ -636,7 +677,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::CopyCommand => info(
             "Copy command",
-            MouseAndClipboard,
             "Command that receives copied text instead of OSC 52",
             Text(TextCheck::AnyText),
             "not set",
@@ -644,7 +684,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::CopyClipboard => info(
             "Copy clipboard",
-            MouseAndClipboard,
             "Clipboard that copied text goes to",
             Choice(&["system", "primary"]),
             "system",
@@ -652,23 +691,20 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::CopyOnSelect => info(
             "Copy on select",
-            MouseAndClipboard,
             "Copy text as soon as it is selected",
             Toggle,
             "true",
             Everyone,
         ),
         SettingKey::DangerouslyEnablePasteBufferRead => info(
-            "Allow clipboard reads",
-            MouseAndClipboard,
-            "Let programs read the clipboard (risky)",
+            "Allow programs to read the clipboard",
+            "Let programs running in panes read the clipboard",
             Toggle,
             "false",
             Everyone,
         ),
         SettingKey::AttentionTrayIcon => info(
             "Tray icon",
-            Terminal,
             "Show the desktop app's icon in the tray or menu bar (sessions and notifications continue when hidden)",
             Toggle,
             "true",
@@ -676,7 +712,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionDesktopNotifications => info(
             "Desktop notifications",
-            Terminal,
             "Which inbox items the desktop app shows as desktop notifications",
             Choice(&[
                 "needs_you",
@@ -689,7 +724,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionNotificationDetails => info(
             "Notification details",
-            Terminal,
             "Show program and command text in desktop notifications",
             Toggle,
             "true",
@@ -697,7 +731,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AttentionStartupCard => info(
             "Inbox card at startup",
-            Sessions,
             "When to show the inbox card as a session starts or you reattach: when something needs you, always when other sessions run, or never",
             Choice(&["attention", "always", "never"]),
             "attention",
@@ -705,7 +738,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SessionIndicator => info(
             "Session indicator",
-            Sessions,
             "Show other sessions in the tab bar",
             Toggle,
             "true",
@@ -713,7 +745,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SwapLayoutNotification => info(
             "Layout notification",
-            PanesAndLayouts,
             "Briefly show the layout name when it changes",
             Toggle,
             "true",
@@ -721,15 +752,20 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::BarsHiddenOnStart => info(
             "Bars hidden on start",
-            PanesAndLayouts,
-            "Bars a new session starts with hidden: none, all, or names such as tab-bar,status-bar",
-            Text(TextCheck::AnyText),
+            "Bars a new session starts with hidden",
+            Choice(&[
+                "none",
+                "all",
+                "tab-bar",
+                "status-bar",
+                "compact-bar",
+                "tab-bar,status-bar",
+            ]),
             "none",
             Everyone,
         ),
         SettingKey::HiddenBarsNotification => info(
             "Hidden bars notification",
-            PanesAndLayouts,
             "Briefly show what was hidden and how to show it again",
             Toggle,
             "true",
@@ -737,7 +773,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ModeHintsWhenBarsHidden => info(
             "Mode hints when bars hidden",
-            PanesAndLayouts,
             "Show the current mode's keys in a corner while the bar that shows them is hidden",
             Toggle,
             "true",
@@ -745,7 +780,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultMode => info(
             "Default mode",
-            PanesAndLayouts,
             "Input mode to return to after each action",
             Choice(INPUT_MODES),
             "normal",
@@ -753,7 +787,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultShell => info(
             "Default shell",
-            FoldersAndFiles,
             "Program started in new terminal panes",
             Text(TextCheck::Path),
             "$SHELL",
@@ -761,7 +794,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultCwd => info(
             "Default folder",
-            FoldersAndFiles,
             "Starting folder for new panes",
             Text(TextCheck::Path),
             "current folder",
@@ -769,7 +801,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultLayout => info(
             "Default layout",
-            FoldersAndFiles,
             "Layout name or path used for new sessions",
             Text(TextCheck::Path),
             "default",
@@ -777,15 +808,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::KeybindsDir => info(
             "Keybinding preset folder",
-            FoldersAndFiles,
             "Folder searched for keybinding presets",
             Text(TextCheck::Path),
-            "keybinds in the config folder",
+            "a \"keybinds\" folder in the config directory",
             Everyone,
         ),
         SettingKey::LayoutDir => info(
             "Layout folder",
-            FoldersAndFiles,
             "Folder searched for layouts",
             Text(TextCheck::Path),
             "layouts in the config folder",
@@ -793,7 +822,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::AutoLayout => info(
             "Auto layout",
-            PanesAndLayouts,
             "Arrange panes with swap layouts when possible",
             Toggle,
             "true",
@@ -801,7 +829,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::StackedResize => info(
             "Stacked resize",
-            PanesAndLayouts,
             "Stack panes when resizing beyond their size",
             Toggle,
             "true",
@@ -809,7 +836,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::StackedPaneList => info(
             "Stacked pane list",
-            PanesAndLayouts,
             "Show stacked panes as a list of titles",
             Toggle,
             "true",
@@ -817,7 +843,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MirrorResizesSourcePane => info(
             "Mirrors resize their source pane",
-            PanesAndLayouts,
             "Let a focused mirror resize the mirrored pane's program to fit it",
             Toggle,
             "true",
@@ -825,15 +850,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::LiveViewReleaseKey => info(
             "Live view release key",
-            PanesAndLayouts,
             "Key that stops typing into a live pane view and gives the keys back to its plugin",
             Text(TextCheck::Key),
-            "F9",
+            "the key that opens the inbox, F9 if there is none",
             Everyone,
         ),
         SettingKey::NestedSessionHandling => info(
             "Nested sessions",
-            PanesAndLayouts,
             "What to do with a Zellij session inside a pane",
             Choice(&["ask", "fullscreen", "descend", "never"]),
             "ask",
@@ -841,7 +864,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ScrollBufferSize => info(
             "Scrollback lines",
-            ScrollbackAndEditor,
             "Lines kept in each pane's scrollback",
             Number {
                 min: 0,
@@ -853,7 +875,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ScrollbackEditor => info(
             "Scrollback editor",
-            FoldersAndFiles,
             "Editor that opens a pane's scrollback",
             Text(TextCheck::Path),
             "$EDITOR or $VISUAL",
@@ -861,15 +882,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SessionName => info(
             "Session name",
-            Sessions,
             "Name of the session created when Zellij starts",
             Text(TextCheck::AnyText),
-            "random name",
+            "a random name",
             Everyone,
         ),
         SettingKey::AttachToSession => info(
             "Attach to named session",
-            Sessions,
             "Attach to the named session if it already exists",
             Toggle,
             "false",
@@ -877,7 +896,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SessionSerialization => info(
             "Save sessions",
-            Sessions,
             "Save sessions so they can be resurrected",
             Toggle,
             "true",
@@ -885,7 +903,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SerializePaneViewport => info(
             "Save pane contents",
-            Sessions,
             "Save visible pane contents with the session",
             Toggle,
             "false",
@@ -893,7 +910,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ScrollbackLinesToSerialize => info(
             "Saved scrollback lines",
-            Sessions,
             "Scrollback lines saved with pane contents (0 = all)",
             Number {
                 min: 0,
@@ -905,7 +921,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SerializationInterval => info(
             "Save interval (seconds)",
-            Sessions,
             "How often sessions are saved",
             Number {
                 min: 1,
@@ -917,7 +932,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::MirrorSession => info(
             "Mirror session",
-            Sessions,
             "All users see and control the same view",
             Toggle,
             "false",
@@ -925,7 +939,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::OnQuit => info(
             "On quit",
-            Sessions,
             "Ask (with quit or detach preselected), or quit or detach without asking",
             Choice(&["ask_quit", "ask_detach", "quit", "detach"]),
             "ask_quit",
@@ -933,7 +946,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::OnForceClose => info(
             "On force close",
-            Sessions,
             "Detach or quit when the terminal closes",
             Choice(&["detach", "quit"]),
             "detach",
@@ -941,7 +953,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DisableSessionMetadata => info(
             "Disable session metadata",
-            Sessions,
             "Do not write session details to disk",
             Toggle,
             "false",
@@ -949,7 +960,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::PostCommandDiscoveryHook => info(
             "Command discovery hook",
-            Sessions,
             "Command that edits discovered commands before saving",
             Text(TextCheck::AnyText),
             "not set",
@@ -957,7 +967,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ShowStartupTips => info(
             "Startup tips",
-            Sessions,
             "Show a tip when a session starts",
             Toggle,
             "true",
@@ -965,7 +974,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ShowReleaseNotes => info(
             "Release notes",
-            Sessions,
             "Show release notes after an upgrade",
             Toggle,
             "true",
@@ -973,7 +981,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SupportKittyKeyboardProtocol => info(
             "Kitty keyboard protocol",
-            TerminalSupport,
             "Use the kitty keyboard protocol when available",
             Toggle,
             "true",
@@ -981,7 +988,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::SupportKittyGraphicsProtocol => info(
             "Kitty graphics protocol",
-            TerminalSupport,
             "Pass images through when the terminal supports it",
             Toggle,
             "true",
@@ -989,7 +995,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::HostNotificationProtocol => info(
             "Notification protocol",
-            TerminalSupport,
             "How notifications reach the outer terminal",
             Choice(&["auto", "osc9", "osc99", "bell", "off"]),
             "auto",
@@ -997,7 +1002,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::WebServer => info(
             "Web server",
-            Web,
             "Start the web server with new sessions",
             Toggle,
             "false",
@@ -1005,23 +1009,20 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::WebSharing => info(
             "Web sharing",
-            Web,
             "Whether new sessions can be shared in a browser",
             Choice(&["on", "off", "disabled"]),
             "off",
             Everyone,
         ),
         SettingKey::WebServerIp => info(
-            "Web server address",
-            Web,
+            "Address",
             "IP address the web server listens on",
             Text(TextCheck::IpAddress),
             "127.0.0.1",
             Everyone,
         ),
         SettingKey::WebServerPort => info(
-            "Web server port",
-            Web,
+            "Port",
             "Port the web server listens on",
             Number {
                 min: 1,
@@ -1032,16 +1033,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             Everyone,
         ),
         SettingKey::WebServerCert => info(
-            "Web server certificate",
-            Web,
+            "Certificate",
             "TLS certificate file for the web server",
             Text(TextCheck::Path),
             "not set",
             Everyone,
         ),
         SettingKey::WebServerKey => info(
-            "Web server key",
-            Web,
+            "Private key",
             "TLS key file for the web server",
             Text(TextCheck::Path),
             "not set",
@@ -1049,7 +1048,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::EnforceHttpsForLocalhost => info(
             "HTTPS on localhost",
-            Web,
             "Require HTTPS even on localhost",
             Toggle,
             "false",
@@ -1057,16 +1055,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DangerouslyAllowWebServingWithoutACertificate => info(
             "Allow HTTP without certificate",
-            Web,
-            "DANGEROUS: serve unencrypted HTTP on non-localhost addresses",
+            "Serve the web client over plain HTTP on addresses other than localhost",
             Toggle,
             "false",
             Everyone,
         ),
         SettingKey::ClientAsyncWorkerTasks => info(
             "Web worker tasks",
-            Web,
-            "Worker tasks per web client (0 = one per core)",
+            "Background threads of a zellij attach to a remote session URL; 0 uses one per CPU core",
             Number {
                 min: 0,
                 max: 256,
@@ -1076,16 +1072,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             Everyone,
         ),
         SettingKey::WebClientFont => info(
-            "Web client font",
-            Web,
+            "Font",
             "Font used by the browser terminal",
             Text(TextCheck::AnyText),
             "monospace",
             Everyone,
         ),
         SettingKey::WebClientFontSize => info(
-            "Web client font size",
-            Web,
+            "Font size",
             "Font size used by the browser terminal",
             Number {
                 min: 1,
@@ -1096,40 +1090,35 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             Everyone,
         ),
         SettingKey::WebClientCursorBlink => info(
-            "Web client cursor blink",
-            Web,
+            "Cursor blink",
             "Blink the cursor in the browser terminal",
             Toggle,
             "false",
             Everyone,
         ),
         SettingKey::WebClientCursorStyle => info(
-            "Web client cursor style",
-            Web,
+            "Cursor style",
             "Cursor shape in the browser terminal",
             OptionalChoice(&["block", "bar", "underline"]),
             "block",
             Everyone,
         ),
         SettingKey::WebClientCursorInactiveStyle => info(
-            "Web client inactive cursor",
-            Web,
+            "Inactive cursor",
             "Cursor shape when the browser tab is not focused",
             OptionalChoice(&["outline", "block", "bar", "underline", "no_style"]),
             "outline",
             Everyone,
         ),
         SettingKey::WebClientMacOptionIsMeta => info(
-            "Web client Option is Meta",
-            Web,
+            "Option is Meta (macOS)",
             "Treat the macOS Option key as Meta",
             Toggle,
             "true",
             Everyone,
         ),
         SettingKey::WebClientBaseUrl => info(
-            "Web client base URL",
-            Web,
+            "Base URL",
             "Path prefix the web client is served under",
             Text(TextCheck::AnyText),
             "/",
@@ -1137,7 +1126,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalFont => info(
             "Font",
-            Terminal,
             "Font family, chosen from the monospaced fonts installed on this computer",
             FontFamily,
             "bundled font",
@@ -1145,7 +1133,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalFontSize => info(
             "Font size",
-            Terminal,
             "Font size in points",
             Decimal {
                 min: 10,
@@ -1158,7 +1145,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalFontWeight => info(
             "Font weight",
-            Terminal,
             "Weight of regular text, from 100 (thin) to 900 (black); the bundled font has only regular and bold, so it turns bold above 500",
             Number {
                 min: 100,
@@ -1170,7 +1156,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalSystemFonts => info(
             "System fonts",
-            Terminal,
             "Use fonts installed on this computer as fallbacks",
             Toggle,
             "true",
@@ -1178,7 +1163,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalLigatures => info(
             "Ligatures",
-            Terminal,
             "Join character sequences into ligatures when the font has them",
             Toggle,
             "true",
@@ -1186,7 +1170,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalFontFeatures => info(
             "Font features",
-            Terminal,
             "OpenType features separated by commas, eg. ss01, -calt",
             Text(TextCheck::WordList),
             "none",
@@ -1194,7 +1177,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalCursorStyle => info(
             "Cursor style",
-            Terminal,
             "Cursor shape; not set lets programs choose",
             OptionalChoice(&["block", "bar", "underline"]),
             "not set",
@@ -1202,7 +1184,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalCursorBlink => info(
             "Cursor blink",
-            Terminal,
             "Blink the cursor; not set lets programs choose",
             OptionalToggle,
             "not set",
@@ -1210,7 +1191,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalCursorUnfocusedHollow => info(
             "Hollow cursor when unfocused",
-            Terminal,
             "Draw the cursor as an outline while the window is not focused",
             Toggle,
             "true",
@@ -1218,7 +1198,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalTerminalRequests => info(
             "Commands from other apps",
-            Terminal,
             "Where a command opens when another app uses Zellij as its terminal (zellij terminal -e)",
             Choice(&["new_session", "existing_session"]),
             "new_session",
@@ -1226,7 +1205,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalStartupMode => info(
             "Startup mode",
-            Terminal,
             "How the window opens",
             Choice(&["remember", "windowed", "maximized", "fullscreen"]),
             "remember",
@@ -1234,7 +1212,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalInitialColumns => info(
             "Initial columns",
-            Terminal,
             "Width of a new window in characters; 0 fits the screen",
             OptionalNumber {
                 min: 2,
@@ -1246,7 +1223,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalInitialRows => info(
             "Initial rows",
-            Terminal,
             "Height of a new window in lines; 0 fits the screen",
             OptionalNumber {
                 min: 2,
@@ -1258,7 +1234,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalOpacity => info(
             "Opacity",
-            Terminal,
             "Window opacity from 0 (clear) to 1 (solid)",
             Decimal {
                 min: 0,
@@ -1271,7 +1246,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalOpacityMode => info(
             "Opacity applies to",
-            Terminal,
             "Make only the background see-through, or everything",
             Choice(&["background", "everything"]),
             "background",
@@ -1279,7 +1253,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalBlur => info(
             "Blur behind",
-            Terminal,
             "Blur what shows through a see-through window",
             Toggle,
             "false",
@@ -1287,7 +1260,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPadding => info(
             "Padding",
-            Terminal,
             "Space around the text on all sides, in pixels",
             Decimal {
                 min: 0,
@@ -1300,7 +1272,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPaddingTop => info(
             "Padding top",
-            Terminal,
             "Space above the text, in pixels",
             Decimal {
                 min: 0,
@@ -1313,7 +1284,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPaddingRight => info(
             "Padding right",
-            Terminal,
             "Space right of the text, in pixels",
             Decimal {
                 min: 0,
@@ -1326,7 +1296,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPaddingBottom => info(
             "Padding bottom",
-            Terminal,
             "Space below the text, in pixels",
             Decimal {
                 min: 0,
@@ -1339,7 +1308,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPaddingLeft => info(
             "Padding left",
-            Terminal,
             "Space left of the text, in pixels",
             Decimal {
                 min: 0,
@@ -1352,15 +1320,13 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPaddingBalance => info(
             "Balance padding",
-            Terminal,
             "Share leftover space evenly around the text",
             Toggle,
             "false",
             OnlyYou,
         ),
         SettingKey::TerminalPaddingColor => info(
-            "Padding colour",
-            Terminal,
+            "Padding color",
             "Fill padding with the background, or extend the edge cells",
             Choice(&["background", "extend"]),
             "background",
@@ -1368,7 +1334,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalLineHeight => info(
             "Line height",
-            Terminal,
             "Line height as a multiple of the font's",
             Decimal {
                 min: 50,
@@ -1381,7 +1346,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalCellWidth => info(
             "Cell width",
-            Terminal,
             "Character width as a multiple of the font's",
             Decimal {
                 min: 50,
@@ -1394,7 +1358,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalBaselineOffset => info(
             "Baseline offset",
-            Terminal,
             "Move text up or down, in pixels",
             Number {
                 min: -64,
@@ -1406,7 +1369,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalUnderlineOffset => info(
             "Underline offset",
-            Terminal,
             "Move underlines up or down, in pixels",
             Number {
                 min: -64,
@@ -1418,7 +1380,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalUnderlineThickness => info(
             "Underline thickness",
-            Terminal,
             "Make underlines thicker or thinner, in pixels",
             Number {
                 min: -64,
@@ -1430,18 +1391,18 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalMinimumContrast => info(
             "Minimum contrast",
-            Terminal,
             "Lighten or darken text to reach this contrast, from 1 (off) to 21",
-            Text(TextCheck::Decimal {
-                min_milli: 1_000,
-                max_milli: 21_000,
-            }),
+            Decimal {
+                min: 10,
+                max: 210,
+                step: 5,
+                decimals: 1,
+            },
             "1",
             OnlyYou,
         ),
         SettingKey::TerminalSmoothScrolling => info(
             "Smooth scrolling",
-            Terminal,
             "Animate scrolling",
             Toggle,
             "true",
@@ -1449,7 +1410,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalScrollAnimationDuration => info(
             "Scroll animation (ms)",
-            Terminal,
             "Length of the scroll animation in milliseconds",
             Number {
                 min: 1,
@@ -1461,7 +1421,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalScrollMomentum => info(
             "Scroll momentum",
-            Terminal,
             "Keep scrolling briefly after a touchpad flick",
             Toggle,
             "true",
@@ -1469,18 +1428,18 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalScrollMomentumFriction => info(
             "Momentum friction",
-            Terminal,
             "How quickly momentum scrolling slows down, from 0.5 to 10",
-            Text(TextCheck::Decimal {
-                min_milli: 500,
-                max_milli: 10_000,
-            }),
+            Decimal {
+                min: 5,
+                max: 100,
+                step: 5,
+                decimals: 1,
+            },
             "2",
             OnlyYou,
         ),
         SettingKey::TerminalBell => info(
             "Bell",
-            Terminal,
             "What the window does when a program rings the bell",
             Choice(&["visual", "audible", "both", "none"]),
             "visual",
@@ -1488,7 +1447,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalOpenLinks => info(
             "Open links",
-            Terminal,
             "Open links with a click (hold Shift when the pane's program uses the mouse)",
             Toggle,
             "true",
@@ -1496,7 +1454,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalOpenLinksWithShift => info(
             "Open links with Shift+click",
-            Terminal,
             "Shift+click opens links in every pane",
             Toggle,
             "true",
@@ -1504,7 +1461,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalShiftDragSelects => info(
             "Shift+drag selects",
-            Terminal,
             "Shift+drag marks any text in the window, including bars and frames, for the copy keys",
             Toggle,
             "true",
@@ -1512,7 +1468,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalReuseSessionWindows => info(
             "One window per session",
-            Terminal,
             "Switching to a session that already has a window brings that window forward and closes this one",
             Toggle,
             "true",
@@ -1520,15 +1475,20 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalMiddleClickPaste => info(
             "Middle-click paste",
-            Terminal,
             "Paste with the middle mouse button",
             Toggle,
             "true",
             OnlyYou,
         ),
+        SettingKey::TerminalAllowRemoteClipboardRead => info(
+            "Remote sessions can read the clipboard",
+            "Let programs in a session on another machine read this computer's clipboard",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
         SettingKey::TerminalHidePointerWhileTyping => info(
             "Hide pointer while typing",
-            Terminal,
             "Hide the mouse pointer until it moves again",
             Toggle,
             "false",
@@ -1536,7 +1496,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalMacosOptionAsAlt => info(
             "Option as Alt (macOS)",
-            Terminal,
             "Which Option keys act as Alt",
             Choice(&["left", "right", "both", "none"]),
             "left",
@@ -1544,7 +1503,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalPasteKeys => info(
             "Paste keys",
-            Terminal,
             "Keys that paste, separated by commas, eg. Ctrl Shift v, Shift Insert",
             Text(TextCheck::KeyList),
             "Ctrl Shift v, Shift Insert",
@@ -1552,7 +1510,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalCopyKeys => info(
             "Copy keys",
-            Terminal,
             "Keys that copy the Shift+drag selection, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl Shift c",
@@ -1560,7 +1517,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalZoomInKeys => info(
             "Zoom in keys",
-            Terminal,
             "Keys that make text larger, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl =, Ctrl +",
@@ -1568,7 +1524,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalZoomOutKeys => info(
             "Zoom out keys",
-            Terminal,
             "Keys that make text smaller, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl -",
@@ -1576,7 +1531,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalZoomResetKeys => info(
             "Zoom reset keys",
-            Terminal,
             "Keys that reset the text size, separated by commas",
             Text(TextCheck::KeyList),
             "Ctrl 0",
@@ -1584,7 +1538,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalFullscreenKeys => info(
             "Fullscreen keys",
-            Terminal,
             "Keys that toggle fullscreen, separated by commas",
             Text(TextCheck::KeyList),
             "F11",
@@ -1592,152 +1545,133 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalColorForeground => info(
             "Foreground",
-            TerminalColours,
-            "Text colour; not set uses the theme",
+            "Text color; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBackground => info(
             "Background",
-            TerminalColours,
-            "Background colour; not set uses the theme",
+            "Background color; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorCursor => info(
             "Cursor",
-            TerminalColours,
-            "Cursor colour; not set uses the text colour",
+            "Cursor color; not set uses the text color",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBlack => info(
             "Black",
-            TerminalColours,
-            "Terminal colour black; not set uses the theme",
+            "Terminal color black; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorRed => info(
             "Red",
-            TerminalColours,
-            "Terminal colour red; not set uses the theme",
+            "Terminal color red; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorGreen => info(
             "Green",
-            TerminalColours,
-            "Terminal colour green; not set uses the theme",
+            "Terminal color green; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorYellow => info(
             "Yellow",
-            TerminalColours,
-            "Terminal colour yellow; not set uses the theme",
+            "Terminal color yellow; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBlue => info(
             "Blue",
-            TerminalColours,
-            "Terminal colour blue; not set uses the theme",
+            "Terminal color blue; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorMagenta => info(
             "Magenta",
-            TerminalColours,
-            "Terminal colour magenta; not set uses the theme",
+            "Terminal color magenta; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorCyan => info(
             "Cyan",
-            TerminalColours,
-            "Terminal colour cyan; not set uses the theme",
+            "Terminal color cyan; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorWhite => info(
             "White",
-            TerminalColours,
-            "Terminal colour white; not set uses the theme",
+            "Terminal color white; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightBlack => info(
             "Bright black",
-            TerminalColours,
-            "Terminal colour bright black; not set uses the theme",
+            "Terminal color bright black; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightRed => info(
             "Bright red",
-            TerminalColours,
-            "Terminal colour bright red; not set uses the theme",
+            "Terminal color bright red; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightGreen => info(
             "Bright green",
-            TerminalColours,
-            "Terminal colour bright green; not set uses the theme",
+            "Terminal color bright green; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightYellow => info(
             "Bright yellow",
-            TerminalColours,
-            "Terminal colour bright yellow; not set uses the theme",
+            "Terminal color bright yellow; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightBlue => info(
             "Bright blue",
-            TerminalColours,
-            "Terminal colour bright blue; not set uses the theme",
+            "Terminal color bright blue; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightMagenta => info(
             "Bright magenta",
-            TerminalColours,
-            "Terminal colour bright magenta; not set uses the theme",
+            "Terminal color bright magenta; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightCyan => info(
             "Bright cyan",
-            TerminalColours,
-            "Terminal colour bright cyan; not set uses the theme",
+            "Terminal color bright cyan; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
         ),
         SettingKey::TerminalColorBrightWhite => info(
             "Bright white",
-            TerminalColours,
-            "Terminal colour bright white; not set uses the theme",
+            "Terminal color bright white; not set uses the theme",
             Text(TextCheck::Colour),
             "from theme",
             OnlyYou,
@@ -1745,30 +1679,34 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 34] = [
+pub const SECTION_ORDER: [&str; 39] = [
+    "Startup",
+    "Quitting",
+    "Starting points",
+    "Nested sessions",
     "Theme",
-    "Display",
-    "Attention",
+    "Interface",
+    "Pane frames",
+    "Bars",
     "Text",
-    "Frames",
     "Tiled pane borders",
     "Floating pane borders",
+    "Key bindings",
+    "Input",
     "Mouse",
-    "Selection",
+    "Right-click menu",
+    "Mouse bindings",
     "Clipboard",
-    "New panes",
+    "Selection",
     "Layouts",
-    "Bars",
+    "Scrollback",
     "Mirrors",
-    "Nested sessions",
-    "Startup",
+    "Inside Zellij",
+    "Outside Zellij",
+    "Timing",
+    "Session name",
     "Resurrection",
     "Behaviour",
-    "Server",
-    "Browser client",
-    "Folders",
-    "Starting points",
-    "Programs",
     "Font",
     "Cursor",
     "Window",
@@ -1778,123 +1716,123 @@ pub const SECTION_ORDER: [&str; 34] = [
     "Window behaviour",
     "Shortcuts",
     "Text and cursor",
-    "Terminal colours",
-    "",
+    "Terminal colors",
+    "Server",
+    "Browser client",
 ];
 
-pub fn section(key: SettingKey) -> &'static str {
+const ADVANCED_SECTIONS: [&str; 4] = ["Plugins", "Folders", "Terminal support", "Security"];
+
+pub fn placement(key: SettingKey) -> (Category, &'static str) {
+    use Category as C;
     use SettingKey::*;
     match key {
-        Theme | ThemeDark | ThemeLight | ExplicitThemeHue => "Theme",
-        ThemeDir | LayoutDir | KeybindsDir => "Folders",
-        DefaultLayout | DefaultCwd => "Starting points",
-        DefaultShell | ScrollbackEditor => "Programs",
-        SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
-        AttentionFrameMarkers
-        | AttentionTabMarkers
-        | AttentionHostStatus
-        | AttentionIdleRule
-        | AttentionDoneThresholdSecs
-        | AttentionIdleActivitySecs
-        | AttentionIdleSilenceSecs
-        | AttentionStartupCard
-        | AttentionTrayIcon
-        | AttentionDesktopNotifications
-        | AttentionNotificationDetails => "Attention",
-        StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
-        FrameRoundedCorners | FrameHideSessionName => "Frames",
+        ShowStartupTips | ShowReleaseNotes => (C::General, "Startup"),
+        OnQuit | OnForceClose => (C::General, "Quitting"),
+        DefaultShell | DefaultCwd | DefaultLayout => (C::General, "Starting points"),
+        NestedSessionHandling => (C::General, "Nested sessions"),
+        Theme | ThemeDark | ThemeLight | ExplicitThemeHue => (C::Appearance, "Theme"),
+        SimplifiedUi | VisualBell => (C::Appearance, "Interface"),
+        PaneFrames | PaneFrameStyle | FrameRoundedCorners | FrameHideSessionName => {
+            (C::Appearance, "Pane frames")
+        },
+        BarsHiddenOnStart | HiddenBarsNotification | ModeHintsWhenBarsHidden | SessionIndicator => {
+            (C::Appearance, "Bars")
+        },
+        StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => (C::Appearance, "Text"),
         FrameBorderStyle
         | FrameBorderTop
         | FrameBorderRight
         | FrameBorderBottom
         | FrameBorderLeft
-        | FrameBorderRoundedCorners => "Tiled pane borders",
+        | FrameBorderRoundedCorners => (C::Borders, "Tiled pane borders"),
         FrameFloatingBorderStyle
         | FrameFloatingBorderTop
         | FrameFloatingBorderRight
         | FrameFloatingBorderBottom
         | FrameFloatingBorderLeft
-        | FrameFloatingBorderRoundedCorners => "Floating pane borders",
+        | FrameFloatingBorderRoundedCorners => (C::Borders, "Floating pane borders"),
+        Keybinds => (C::Keys, ""),
+        DefaultMode | SupportKittyKeyboardProtocol => (C::Keyboard, "Input"),
         MouseMode | AdvancedMouseActions | MouseScrollResize | ScrollModeSync
-        | MouseHoverEffects | MouseHoverTips | FocusFollowsMouse | MouseClickThrough
-        | ContextMenuEnabled => "Mouse",
-        Osc133CommandSelection | WordSeparators => "Selection",
-        CopyCommand | CopyClipboard | CopyOnSelect | DangerouslyEnablePasteBufferRead => {
-            "Clipboard"
+        | MouseHoverEffects | MouseHoverTips | FocusFollowsMouse | MouseClickThrough => {
+            (C::Mouse, "Mouse")
         },
-        DefaultMode => "New panes",
-        AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
-        BarsHiddenOnStart | HiddenBarsNotification | ModeHintsWhenBarsHidden => "Bars",
-        MirrorResizesSourcePane | LiveViewReleaseKey => "Mirrors",
-        NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
-            "Startup"
+        ContextMenuEnabled => (C::Mouse, "Right-click menu"),
+        ContextMenu => (C::ContextMenu, ""),
+        Mousebinds => (C::MouseBindings, ""),
+        CopyCommand | CopyClipboard | CopyOnSelect => (C::Clipboard, "Clipboard"),
+        Osc133CommandSelection | WordSeparators => (C::Clipboard, "Selection"),
+        AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => {
+            (C::PanesAndLayouts, "Layouts")
         },
+        ScrollBufferSize | ScrollbackEditor => (C::PanesAndLayouts, "Scrollback"),
+        MirrorResizesSourcePane | LiveViewReleaseKey => (C::PanesAndLayouts, "Mirrors"),
+        AttentionFrameMarkers | AttentionTabMarkers | AttentionStartupCard => {
+            (C::Notifications, "Inside Zellij")
+        },
+        AttentionHostStatus
+        | HostNotificationProtocol
+        | AttentionDesktopNotifications
+        | AttentionTrayIcon
+        | AttentionNotificationDetails => (C::Notifications, "Outside Zellij"),
+        AttentionIdleRule
+        | AttentionDoneThresholdSecs
+        | AttentionIdleActivitySecs
+        | AttentionIdleSilenceSecs => (C::Notifications, "Timing"),
+        SessionName | AttachToSession => (C::Sessions, "Session name"),
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize
         | SerializationInterval
-        | PostCommandDiscoveryHook => "Resurrection",
-        MirrorSession | OnForceClose | OnQuit | DisableSessionMetadata => "Behaviour",
-        WebServer
-        | WebSharing
-        | WebServerIp
-        | WebServerPort
-        | WebServerCert
-        | WebServerKey
-        | EnforceHttpsForLocalhost
-        | DangerouslyAllowWebServingWithoutACertificate
-        | ClientAsyncWorkerTasks => "Server",
-        WebClientFont
-        | WebClientFontSize
-        | WebClientCursorBlink
-        | WebClientCursorStyle
-        | WebClientCursorInactiveStyle
-        | WebClientMacOptionIsMeta
-        | WebClientBaseUrl => "Browser client",
+        | PostCommandDiscoveryHook => (C::Sessions, "Resurrection"),
+        MirrorSession | DisableSessionMetadata => (C::Sessions, "Behaviour"),
         TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
-        | TerminalLigatures | TerminalFontFeatures => "Font",
-        TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => "Cursor",
+        | TerminalLigatures | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
+        TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => {
+            (C::ZellijTerminal, "Cursor")
+        },
         TerminalStartupMode
         | TerminalTerminalRequests
         | TerminalInitialColumns
         | TerminalInitialRows
         | TerminalOpacity
         | TerminalOpacityMode
-        | TerminalBlur => "Window",
+        | TerminalBlur => (C::ZellijTerminal, "Window"),
         TerminalPadding
         | TerminalPaddingTop
         | TerminalPaddingRight
         | TerminalPaddingBottom
         | TerminalPaddingLeft
         | TerminalPaddingBalance
-        | TerminalPaddingColor => "Padding",
+        | TerminalPaddingColor => (C::ZellijTerminal, "Padding"),
         TerminalLineHeight
         | TerminalCellWidth
         | TerminalBaselineOffset
         | TerminalUnderlineOffset
         | TerminalUnderlineThickness
-        | TerminalMinimumContrast => "Spacing",
+        | TerminalMinimumContrast => (C::ZellijTerminal, "Spacing"),
         TerminalSmoothScrolling
         | TerminalScrollAnimationDuration
         | TerminalScrollMomentum
-        | TerminalScrollMomentumFriction => "Scrolling",
+        | TerminalScrollMomentumFriction => (C::ZellijTerminal, "Scrolling"),
         TerminalBell
         | TerminalOpenLinks
         | TerminalOpenLinksWithShift
         | TerminalShiftDragSelects
         | TerminalReuseSessionWindows
         | TerminalMiddleClickPaste
+        | TerminalAllowRemoteClipboardRead
         | TerminalHidePointerWhileTyping
-        | TerminalMacosOptionAsAlt => "Window behaviour",
+        | TerminalMacosOptionAsAlt => (C::ZellijTerminal, "Window behaviour"),
         TerminalPasteKeys
         | TerminalCopyKeys
         | TerminalZoomInKeys
         | TerminalZoomOutKeys
         | TerminalZoomResetKeys
-        | TerminalFullscreenKeys => "Shortcuts",
+        | TerminalFullscreenKeys => (C::ZellijTerminal, "Shortcuts"),
         TerminalColorForeground | TerminalColorBackground | TerminalColorCursor => {
-            "Text and cursor"
+            (C::ZellijTerminal, "Text and cursor")
         },
         TerminalColorBlack
         | TerminalColorRed
@@ -1911,37 +1849,68 @@ pub fn section(key: SettingKey) -> &'static str {
         | TerminalColorBrightBlue
         | TerminalColorBrightMagenta
         | TerminalColorBrightCyan
-        | TerminalColorBrightWhite => "Terminal colours",
-        ScrollBufferSize
-        | SupportKittyKeyboardProtocol
-        | SupportKittyGraphicsProtocol
-        | HostNotificationProtocol
-        | Keybinds
-        | Mousebinds
-        | PluginAliases
-        | LoadPlugins
-        | Env
-        | Themes
-        | ContextMenu => "",
+        | TerminalColorBrightWhite => (C::ZellijTerminal, "Terminal colors"),
+        WebServer
+        | WebSharing
+        | WebServerIp
+        | WebServerPort
+        | WebServerCert
+        | WebServerKey
+        | EnforceHttpsForLocalhost
+        | ClientAsyncWorkerTasks => (C::Web, "Server"),
+        WebClientFont
+        | WebClientFontSize
+        | WebClientCursorBlink
+        | WebClientCursorStyle
+        | WebClientCursorInactiveStyle
+        | WebClientMacOptionIsMeta
+        | WebClientBaseUrl => (C::Web, "Browser client"),
+        PluginAliases | LoadPlugins | Env => (C::PluginsAndEnvironment, ""),
+        Themes => (C::Themes, ""),
+        LayoutDir | ThemeDir | KeybindsDir => (C::Advanced, "Folders"),
+        SupportKittyGraphicsProtocol => (C::Advanced, "Terminal support"),
+        DangerouslyEnablePasteBufferRead | DangerouslyAllowWebServingWithoutACertificate => {
+            (C::Advanced, "Security")
+        },
     }
 }
 
-fn section_index(key: SettingKey) -> usize {
+pub fn section(key: SettingKey) -> &'static str {
+    placement(key).1
+}
+
+pub fn section_index(name: &str) -> usize {
     SECTION_ORDER
         .iter()
-        .position(|name| *name == section(key))
-        .unwrap_or(SECTION_ORDER.len())
+        .chain(ADVANCED_SECTIONS.iter())
+        .position(|section| *section == name)
+        .unwrap_or(SECTION_ORDER.len() + ADVANCED_SECTIONS.len())
 }
 
 pub fn category_index(category: Category) -> usize {
     CATEGORIES
         .iter()
+        .chain(SUB_PAGES.iter())
         .position(|c| *c == category)
-        .unwrap_or(CATEGORIES.len())
+        .unwrap_or(CATEGORIES.len() + SUB_PAGES.len())
+}
+
+pub fn display_category(category: Category) -> Category {
+    match category {
+        Category::Borders => Category::Appearance,
+        other => other,
+    }
 }
 
 pub fn sort_for_display(keys: &mut Vec<SettingKey>) {
-    keys.sort_by_key(|key| (category_index(describe(*key).category), section_index(*key)));
+    keys.sort_by_key(|key| {
+        let (category, section) = placement(*key);
+        (
+            category_index(display_category(category)),
+            category_index(category),
+            section_index(section),
+        )
+    });
 }
 
 pub fn is_row_kind(kind: SettingKind) -> bool {
@@ -1951,19 +1920,146 @@ pub fn is_row_kind(kind: SettingKind) -> bool {
     )
 }
 
+pub fn is_row_setting(key: SettingKey) -> bool {
+    !is_hidden(key) && is_row_kind(describe(key).kind)
+}
+
 pub fn settings_in(category: Category) -> Vec<SettingKey> {
     if !category.has_rows() {
         return vec![];
     }
-    let mut keys = SettingKey::all()
-        .into_iter()
-        .filter(|key| {
-            let info = describe(*key);
-            info.category == category && is_row_kind(info.kind)
+    all_row_settings()
+        .iter()
+        .copied()
+        .filter(|key| placement(*key).0 == category)
+        .collect()
+}
+
+pub fn all_row_settings() -> &'static [SettingKey] {
+    static KEYS: std::sync::OnceLock<Vec<SettingKey>> = std::sync::OnceLock::new();
+    KEYS.get_or_init(|| {
+        let mut keys: Vec<SettingKey> = SettingKey::all()
+            .into_iter()
+            .filter(|key| is_row_setting(*key))
+            .collect();
+        sort_for_display(&mut keys);
+        keys
+    })
+}
+
+pub struct SearchEntry {
+    pub key: SettingKey,
+    pub name: String,
+    pub description: String,
+    pub id: String,
+}
+
+pub fn search_index() -> &'static [SearchEntry] {
+    static INDEX: std::sync::OnceLock<Vec<SearchEntry>> = std::sync::OnceLock::new();
+    INDEX.get_or_init(|| {
+        all_row_settings()
+            .iter()
+            .map(|key| {
+                let info = describe(*key);
+                SearchEntry {
+                    key: *key,
+                    name: info.name.to_lowercase(),
+                    description: info.description.to_lowercase(),
+                    id: key.id(),
+                }
+            })
+            .collect()
+    })
+}
+
+pub fn search_settings(query: &str) -> Vec<SettingKey> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return all_row_settings().to_vec();
+    }
+    let single_character = query.chars().count() == 1;
+    search_index()
+        .iter()
+        .filter(|entry| {
+            if single_character {
+                return entry.name.contains(&query);
+            }
+            fuzzy_match_indices(&query, &entry.name).is_some()
+                || entry.id.contains(&query)
+                || entry
+                    .description
+                    .split(|c: char| !c.is_alphanumeric())
+                    .any(|word| word.starts_with(&query))
+                || entry.description.contains(&query)
         })
-        .collect::<Vec<_>>();
-    sort_for_display(&mut keys);
-    keys
+        .map(|entry| entry.key)
+        .collect()
+}
+
+pub fn page_matches(page: Category, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    if query.chars().count() < 2 {
+        return false;
+    }
+    let words = format!("{} {}", page.title(), page.search_words()).to_lowercase();
+    words.contains(&query) || fuzzy_match_indices(&query, &page.title().to_lowercase()).is_some()
+}
+
+fn readable(value: &str) -> String {
+    let spaced = value.replace('_', " ");
+    let mut characters = spaced.chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => String::new(),
+    }
+}
+
+pub fn choice_label(key: SettingKey, value: &str) -> String {
+    let special = match (key, value) {
+        (SettingKey::OnQuit, "ask_quit") => Some("Ask, suggest quitting"),
+        (SettingKey::OnQuit, "ask_detach") => Some("Ask, suggest detaching"),
+        (SettingKey::AttentionDesktopNotifications, "needs_you") => Some("When a pane needs you"),
+        (SettingKey::AttentionDesktopNotifications, "needs_you_failed") => {
+            Some("Needs you or failed")
+        },
+        (SettingKey::AttentionDesktopNotifications, "needs_you_failed_done") => {
+            Some("Needs you, failed or done")
+        },
+        (SettingKey::TerminalTerminalRequests, "new_session") => Some("Open a new session"),
+        (SettingKey::TerminalTerminalRequests, "existing_session") => {
+            Some("Use the current session")
+        },
+        (SettingKey::HostNotificationProtocol, "osc9") => Some("OSC 9"),
+        (SettingKey::HostNotificationProtocol, "osc99") => Some("OSC 99"),
+        (SettingKey::AttentionIdleRule, "all") => Some("All panes"),
+        (SettingKey::AttentionIdleRule, "watched") => Some("Watched panes only"),
+        (SettingKey::BarsHiddenOnStart, "none") => Some("No bars"),
+        (SettingKey::BarsHiddenOnStart, "all") => Some("All bars"),
+        (SettingKey::BarsHiddenOnStart, "tab-bar") => Some("Tab bar"),
+        (SettingKey::BarsHiddenOnStart, "status-bar") => Some("Status bar"),
+        (SettingKey::BarsHiddenOnStart, "compact-bar") => Some("Compact bar"),
+        (SettingKey::BarsHiddenOnStart, "tab-bar,status-bar") => Some("Tab bar and status bar"),
+        _ => None,
+    };
+    if let Some(label) = special {
+        return label.to_owned();
+    }
+    if describe_entry(key).kind == SettingKind::Choice(INPUT_MODES) {
+        return mode_choice_label(value);
+    }
+    readable(value)
+}
+
+pub fn value_for_label(key: SettingKey, label: &str) -> String {
+    let choices: &[&str] = match describe(key).kind {
+        SettingKind::Choice(choices) | SettingKind::OptionalChoice(choices) => choices,
+        _ => &[],
+    };
+    choices
+        .iter()
+        .find(|value| choice_label(key, value) == label)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| option_value(label).to_owned())
 }
 
 pub fn inherits_from(key: SettingKey) -> Option<SettingKey> {
@@ -1990,17 +2086,6 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
             .parse::<std::net::IpAddr>()
             .map(|_| ())
             .map_err(|_| "Not an IP address".to_owned()),
-        TextCheck::Decimal {
-            min_milli,
-            max_milli,
-        } => {
-            let min = min_milli as f64 / 1000.0;
-            let max = max_milli as f64 / 1000.0;
-            match text.trim().parse::<f64>() {
-                Ok(number) if number.is_finite() && number >= min && number <= max => Ok(()),
-                _ => Err(format!("Use a number from {} to {}", min, max)),
-            }
-        },
         TextCheck::KeyList => {
             let keys = split_setting_list(text);
             if keys.is_empty() {
@@ -2033,7 +2118,7 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
         },
         TextCheck::Colour => match parse_hex_colour(text.trim()) {
             Some(_) => Ok(()),
-            None => Err("Use a hex colour, eg. #1e1e2e".to_owned()),
+            None => Err("Use a hex color, eg. #1e1e2e".to_owned()),
         },
     }
 }
@@ -2125,7 +2210,7 @@ mod tests {
             assert!(!info.name.is_empty(), "{} has no name", key);
             assert!(!info.description.is_empty(), "{} has no description", key);
             assert!(
-                CATEGORIES.contains(&info.category),
+                CATEGORIES.contains(&info.category) || SUB_PAGES.contains(&info.category),
                 "{} has no category",
                 key
             );
@@ -2156,9 +2241,6 @@ mod tests {
                     key.value_shape() == SettingValueShape::Number
                 },
                 SettingKind::Decimal { .. } => key.value_shape() == SettingValueShape::Decimal,
-                SettingKind::Text(TextCheck::Decimal { .. }) => {
-                    key.value_shape() == SettingValueShape::Decimal
-                },
                 SettingKind::Text(TextCheck::KeyList) | SettingKind::Text(TextCheck::WordList) => {
                     key.value_shape() == SettingValueShape::List
                 },
@@ -2177,7 +2259,7 @@ mod tests {
 
     #[test]
     fn every_category_with_rows_has_settings() {
-        for category in CATEGORIES {
+        for category in CATEGORIES.into_iter().chain(SUB_PAGES) {
             let has_rows = !settings_in(category).is_empty();
             assert_eq!(has_rows, category.has_rows(), "{}", category.title());
         }
@@ -2212,8 +2294,72 @@ mod tests {
     #[test]
     fn every_named_section_is_in_the_display_order() {
         for key in SettingKey::all() {
-            assert!(SECTION_ORDER.contains(&section(key)), "{}", key);
+            let name = section(key);
+            assert!(
+                name.is_empty() || section_index(name) < SECTION_ORDER.len() + 4,
+                "{}",
+                key
+            );
         }
+        for page in SUB_PAGES {
+            assert!(section_index(page.link_section()) < SECTION_ORDER.len() + 4);
+            assert!(page.parent().is_some());
+            assert!(page.link_key().is_some());
+        }
+    }
+
+    #[test]
+    fn every_sub_page_is_linked_from_a_top_level_category() {
+        for page in SUB_PAGES {
+            let parent = page.parent().unwrap();
+            assert!(CATEGORIES.contains(&parent), "{}", page.title());
+            assert!(parent.links().contains(&page), "{}", page.title());
+        }
+    }
+
+    #[test]
+    fn choices_are_shown_in_plain_words_and_saved_as_config_values() {
+        assert_eq!(
+            choice_label(SettingKey::OnQuit, "ask_quit"),
+            "Ask, suggest quitting"
+        );
+        assert_eq!(
+            value_for_label(SettingKey::OnQuit, "Ask, suggest quitting"),
+            "ask_quit"
+        );
+        assert_eq!(
+            choice_label(SettingKey::FrameBorderStyle, "heavy_dashed"),
+            "Heavy dashed"
+        );
+        assert_eq!(
+            value_for_label(SettingKey::FrameBorderStyle, "Heavy dashed"),
+            "heavy_dashed"
+        );
+        assert_eq!(
+            value_for_label(SettingKey::BarsHiddenOnStart, "Tab bar and status bar"),
+            "tab-bar,status-bar"
+        );
+        assert_eq!(value_for_label(SettingKey::DefaultMode, "Normal"), "normal");
+        assert_eq!(value_for_label(SettingKey::Theme, "nord"), "nord");
+    }
+
+    #[test]
+    fn a_single_character_search_matches_names_only() {
+        let found = search_settings("z");
+        for key in &found {
+            assert!(describe(*key).name.to_lowercase().contains('z'), "{}", key);
+        }
+        assert!(search_settings("mouse").contains(&SettingKey::MouseMode));
+        assert!(search_settings("clipboard").contains(&SettingKey::CopyClipboard));
+        assert!(!search_settings("").contains(&SettingKey::ClientAsyncWorkerTasks));
+    }
+
+    #[test]
+    fn pages_are_found_by_their_name_and_content_words() {
+        assert!(page_matches(Category::Keys, "preset"));
+        assert!(page_matches(Category::Themes, "theme"));
+        assert!(page_matches(Category::ContextMenu, "right-click"));
+        assert!(!page_matches(Category::Keys, "k"));
     }
 
     #[test]
@@ -2243,13 +2389,6 @@ mod tests {
 
     #[test]
     fn window_values_are_checked_before_they_are_applied() {
-        let opacity = TextCheck::Decimal {
-            min_milli: 0,
-            max_milli: 1_000,
-        };
-        assert!(check_text(opacity, "0.85").is_ok());
-        assert!(check_text(opacity, "1.5").is_err());
-        assert!(check_text(opacity, "half").is_err());
         assert!(check_text(TextCheck::KeyList, "Ctrl Shift v, Shift Insert").is_ok());
         assert!(check_text(TextCheck::KeyList, "Ctrl Shift v, Nope Nope").is_err());
         assert!(check_text(TextCheck::KeyList, "").is_err());

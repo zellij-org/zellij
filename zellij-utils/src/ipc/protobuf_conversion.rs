@@ -7,9 +7,9 @@ use crate::{
         client_to_server_msg, server_to_client_msg, ActionMsg, AdoptSessionHistoryMsg,
         AttachClientMsg, AttachWatcherClientMsg, BackgroundColorMsg, CliPipeOutputMsg,
         ClientExitedMsg, ClientPaneMirrorMsg, ClientToServerMsg as ProtoClientToServerMsg,
-        ColorRegistersMsg, ConfigFileUpdatedMsg, ConnStatusMsg, ConnectedMsg,
-        DesktopNotificationResponseMsg, DetachSessionMsg, EmitNestedSessionFrameMsg, ExitMsg,
-        ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
+        ClipboardPasteSupportMsg, ColorRegistersMsg, ConfigFileUpdatedMsg, ConnStatusMsg,
+        ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg, EmitNestedSessionFrameMsg,
+        ExitMsg, ExitReason as ProtoExitReason, FailedToStartWebServerMsg, FirstClientConnectedMsg,
         FontFamiliesMsg, ForegroundColorMsg, ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
         HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
         HostTerminalFocusChangedMsg, HostTerminalThemeChangedMsg,
@@ -18,15 +18,16 @@ use crate::{
         KittyZlibSupportMsg, LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
         MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
         MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, PeerAttentionChangedMsg,
-        QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg,
-        RequestSessionAttentionMsg, RequestSessionListMsg, RequestSessionPreviewMsg,
-        ServerPaneMirrorMsg, ServerToClientMsg as ProtoServerToClientMsg, SessionAttentionMsg,
-        SessionPreviewMsg, SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
-        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
-        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
-        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        TerminalSettingsMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, PasteFromClipboardMsg,
+        PeerAttentionChangedMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg,
+        RenderFrameMsg, RenderMsg, RequestSessionAttentionMsg, RequestSessionListMsg,
+        RequestSessionPreviewMsg, ServerPaneMirrorMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SessionAttentionMsg, SessionPreviewMsg, SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg,
+        SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        StructuredRenderSupportMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg,
+        SwitchSessionMsg, TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg,
+        TerminalResizeMsg, TerminalSettingsMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg,
+        WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -225,6 +226,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     supported,
                 })
             },
+            ClientToServerMsg::ClipboardPasteSupport {
+                supported,
+                shortcut,
+            } => client_to_server_msg::Message::ClipboardPasteSupport(ClipboardPasteSupportMsg {
+                supported,
+                shortcut,
+            }),
             ClientToServerMsg::RenderFrameAck { seq } => {
                 client_to_server_msg::Message::RenderFrameAck(RenderFrameAckMsg { seq })
             },
@@ -451,6 +459,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     supported: msg.supported,
                 })
             },
+            Some(client_to_server_msg::Message::ClipboardPasteSupport(msg)) => {
+                Ok(ClientToServerMsg::ClipboardPasteSupport {
+                    supported: msg.supported,
+                    shortcut: msg.shortcut,
+                })
+            },
             Some(client_to_server_msg::Message::RenderFrameAck(msg)) => {
                 Ok(ClientToServerMsg::RenderFrameAck { seq: msg.seq })
             },
@@ -575,6 +589,11 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             }),
             ServerToClientMsg::SetSoftKeyboard { on } => {
                 server_to_client_msg::Message::SetSoftKeyboard(SetSoftKeyboardMsg { on })
+            },
+            ServerToClientMsg::PasteFromClipboard { pane_id } => {
+                server_to_client_msg::Message::PasteFromClipboard(PasteFromClipboardMsg {
+                    pane_id: pane_id.map(Into::into),
+                })
             },
             ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => {
                 server_to_client_msg::Message::EmitNestedSessionFrame(EmitNestedSessionFrameMsg {
@@ -861,6 +880,11 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::SetSoftKeyboard(msg)) => {
                 Ok(ServerToClientMsg::SetSoftKeyboard { on: msg.on })
+            },
+            Some(server_to_client_msg::Message::PasteFromClipboard(msg)) => {
+                Ok(ServerToClientMsg::PasteFromClipboard {
+                    pane_id: msg.pane_id.map(TryInto::try_into).transpose()?,
+                })
             },
             Some(server_to_client_msg::Message::EmitNestedSessionFrame(msg)) => {
                 Ok(ServerToClientMsg::EmitNestedSessionFrame {
@@ -1524,6 +1548,7 @@ impl From<crate::input::actions::Action>
             PaneIdWithPlugin,
             PaneNameInputAction,
             PasteAction,
+            PasteFromClipboardByPaneIdAction,
             PreviousSwapLayoutAction,
             PreviousSwapLayoutByTabIdAction,
             QueryTabNamesAction,
@@ -2120,6 +2145,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ShowBars => ActionType::ShowBars(ShowBarsAction {}),
             crate::input::actions::Action::HideBarByPaneId { pane_id } => {
                 ActionType::HideBarByPaneId(HideBarByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::PasteFromClipboardByPaneId { pane_id } => {
+                ActionType::PasteFromClipboardByPaneId(PasteFromClipboardByPaneIdAction {
                     pane_id: Some(pane_id.into()),
                 })
             },
@@ -3203,6 +3233,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                     .ok_or_else(|| anyhow!("HideBarByPaneId missing pane_id"))?
                     .try_into()?,
             }),
+            ActionType::PasteFromClipboardByPaneId(a) => {
+                Ok(crate::input::actions::Action::PasteFromClipboardByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("PasteFromClipboardByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
             ActionType::ToggleSessionCard(_) => {
                 Ok(crate::input::actions::Action::ToggleSessionCard)
             },

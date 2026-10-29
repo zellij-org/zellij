@@ -937,6 +937,7 @@ impl TryFrom<ProtobufEvent> for Event {
                             line: payload.line as usize,
                             column: payload.column as usize,
                             client_id: payload.client_id as ClientId,
+                            paste_shortcut: payload.paste_shortcut,
                         },
                         entries,
                     ))
@@ -1845,6 +1846,7 @@ impl TryFrom<Event> for ProtobufEvent {
                             column: context.column as u32,
                             client_id: context.client_id as u32,
                             entries: protobuf_entries,
+                            paste_shortcut: context.paste_shortcut,
                         },
                     )),
                 })
@@ -4550,6 +4552,9 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                     },
                     Ok(ProtobufClickedPaneAction::ToggleWatch) => ClickedPaneAction::ToggleWatch,
                     Ok(ProtobufClickedPaneAction::HideBar) => ClickedPaneAction::HideBar,
+                    Ok(ProtobufClickedPaneAction::PasteFromClipboard) => {
+                        ClickedPaneAction::PasteFromClipboard
+                    },
                     Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedPane(action))
@@ -4602,6 +4607,9 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     },
                     ClickedPaneAction::ToggleWatch => ProtobufClickedPaneAction::ToggleWatch,
                     ClickedPaneAction::HideBar => ProtobufClickedPaneAction::HideBar,
+                    ClickedPaneAction::PasteFromClipboard => {
+                        ProtobufClickedPaneAction::PasteFromClipboard
+                    },
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
             },
@@ -4732,6 +4740,7 @@ mod context_menu_tests {
             line: 2,
             column: 7,
             client_id: 1,
+            paste_shortcut: Some("Ctrl Shift v".to_owned()),
         };
         let entries = vec![
             ContextMenuEntry::item(
@@ -4759,6 +4768,7 @@ mod context_menu_tests {
             line: 3,
             column: 4,
             client_id: 1,
+            paste_shortcut: None,
         };
         let entries = vec![ContextMenuEntry::Item {
             label: "Watch this pane".to_owned(),

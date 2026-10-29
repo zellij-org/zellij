@@ -11,7 +11,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
     GridSnapshot, LayoutInfo, Size, TestClient, TestRunner, TestSession, TERMINAL_SIZE,
 };
-use zellij_utils::attention::{AttentionStatus, PEER_SCAN_INTERVAL_ENV_VAR};
+use zellij_utils::attention::PEER_SCAN_INTERVAL_ENV_VAR;
 use zellij_utils::consts::APP_PANEL_SESSION;
 use zellij_utils::input::actions::Action;
 
@@ -1000,43 +1000,23 @@ fn typing_into_a_shown_pane_in_its_own_session_gives_its_size_back_until_typing_
 }
 
 #[test]
-fn new_output_of_a_watched_pane_is_new_output_and_a_watch_alert_clears_once_shown_in_the_view() {
+fn a_watch_alert_of_another_session_clears_once_shown_in_the_view() {
     let (mut zellij, _) = main_session();
     let (watched, terminal) = background_session_with(ATTENTION_CONFIG);
     watch_and_leave(&watched);
-    let watched_row = row_of("•", watched.session_name());
-    zellij_integration_tests::wait_for(
-        "output past the startup grace counts as new output",
-        || {
-            terminal.output(b"unseen output\r\n");
-            zellij_utils::session_link::request_session_attention(
-                watched.session_name(),
-                Duration::from_secs(2),
-            )
-            .map(|attention| {
-                attention
-                    .items
-                    .iter()
-                    .any(|item| item.attention.effective_status() == AttentionStatus::NewOutput)
-            })
-            .unwrap_or(false)
-        },
-    );
+    zellij_integration_tests::wait_for("the watched session reports its watch", || {
+        zellij_utils::session_link::request_session_attention(
+            watched.session_name(),
+            Duration::from_secs(2),
+        )
+        .map(|attention| attention.items.iter().any(|item| item.attention.watched))
+        .unwrap_or(false)
+    });
+    let watched_row = row_of("◉", watched.session_name());
     open_inbox(&zellij);
-    let grid_snapshot = zellij.wait_until("the watched pane shows new output", |grid_snapshot| {
+    zellij.wait_until("the inbox lists the watched pane", |grid_snapshot| {
         grid_snapshot.contains(&watched_row)
     });
-    let bar = grid_snapshot.lines()[0].clone();
-    assert!(
-        !bar.contains("need you") && !bar.contains("watch alert"),
-        "new output of a watched pane needs you: {}",
-        bar
-    );
-    assert!(
-        !grid_snapshot.contains("Needs You"),
-        "{}",
-        grid_snapshot.text
-    );
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the browser is closed", |grid_snapshot| {
         !shows_inbox(grid_snapshot)

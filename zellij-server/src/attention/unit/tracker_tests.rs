@@ -443,25 +443,20 @@ fn a_watch_stays_armed_and_fires_on_every_command_until_turned_off() {
 }
 
 #[test]
-fn new_output_in_a_watched_pane_is_new_output_and_not_a_watch_alert() {
+fn new_output_in_a_watched_pane_is_not_reported() {
     let mut tracker = tracker();
     tracker.set_pane_watched(PANE, true, 1_000);
     hidden(&mut tracker, 4_500);
     tracker.on_output(PANE, 5_000);
     tracker.on_output(OTHER, 5_000);
     let watched = tracker.attention(&PANE).unwrap();
-    assert_eq!(watched.status, AttentionStatus::NewOutput);
-    assert!(!watched.from_watch);
+    assert_eq!(watched.status, AttentionStatus::Idle);
     assert!(watched.watched);
-    assert_eq!(watched.text, "new output");
-    assert!(frame(&tracker).is_some());
+    assert!(frame(&tracker).is_none());
     assert_eq!(
         tracker.attention(&OTHER).unwrap().status,
         AttentionStatus::NewOutput
     );
-    visible(&mut tracker, 6_000);
-    focused(&mut tracker, 6_100);
-    assert_eq!(status(&tracker), AttentionStatus::Idle);
     assert!(tracker.pane_is_watched(&PANE));
 }
 
@@ -673,8 +668,7 @@ fn output_from_a_program_reporting_under_an_id_or_as_idle_is_not_new_output() {
     );
     tracker.set_pane_watched(PANE, true, 10_000);
     tracker.on_output(PANE, 11_000);
-    assert_eq!(status(&tracker), AttentionStatus::NewOutput);
-    assert!(!tracker.attention(&PANE).unwrap().from_watch);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
 }
 
 #[test]

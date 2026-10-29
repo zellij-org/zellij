@@ -2,6 +2,7 @@ mod action_picker;
 mod bindings_list;
 mod blocks_screen;
 mod contrast;
+mod help;
 mod keybindings_screen;
 mod keys_screen;
 mod list_editor;
@@ -90,7 +91,7 @@ impl ZellijPlugin for State {
             ]);
             set_close_directly(false);
             self.screen = Screen::Settings(SettingsScreen::new());
-            rename_plugin_pane(own_plugin_id, "Configuration");
+            rename_plugin_pane(own_plugin_id, "Settings");
             if let Some(coordinates) = FloatingPaneCoordinates::new(
                 Some("10%".to_owned()),
                 Some("10%".to_owned()),

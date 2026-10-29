@@ -691,7 +691,7 @@ fn context_menu_items_are_edited_one_by_one_inside_their_section() {
 }
 
 const BAR_FILE: &str =
-    "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
 
 fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
     crate::data::ContextMenuEntry::item(label, new_tab().into_iter().map(Into::into).collect())
@@ -701,12 +701,12 @@ fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
 fn a_default_item_removed_from_a_merged_section_is_written_as_remove() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.remove(0);
+        runtime.context_menu.tab.remove(0);
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        remove \"New pane\"\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        remove \"New tab\"\n    }\n}\n"
     );
 }
 
@@ -714,20 +714,20 @@ fn a_default_item_removed_from_a_merged_section_is_written_as_remove() {
 fn an_item_added_to_a_merged_section_is_written_without_clear_defaults() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.push(menu_item("Extra"));
+        runtime.context_menu.tab.push(menu_item("Extra"));
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Extra\" { NewTab; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Extra\" { NewTab; }\n    }\n}\n"
     );
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.insert(1, menu_item("Middle"));
+        runtime.context_menu.tab.insert(1, menu_item("Middle"));
         runtime
     });
     assert!(
-        text.contains("item \"Middle\" after=\"New pane\" { NewTab; }"),
+        text.contains("item \"Middle\" after=\"New tab\" { NewTab; }"),
         "{}",
         text
     );
@@ -738,13 +738,13 @@ fn an_item_added_to_a_merged_section_is_written_without_clear_defaults() {
 fn a_changed_default_item_is_written_as_an_item_with_its_label() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar[1] =
-            crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
+        runtime.context_menu.tab[1] =
+            crate::data::ContextMenuEntry::item("Rename tab…", vec![Action::Detach.into()]);
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"New tab\" { Detach; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Rename tab…\" { Detach; }\n    }\n}\n"
     );
 }
 
@@ -752,11 +752,11 @@ fn a_changed_default_item_is_written_as_an_item_with_its_label() {
 fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items() {
     let moved = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.swap(0, 1);
+        runtime.context_menu.tab.swap(0, 1);
         runtime
     });
     assert!(
-        moved.contains("item \"New pane\" after=\"New tab\" {"),
+        moved.contains("item \"New tab\" after=\"Rename tab…\" {"),
         "{}",
         moved
     );
@@ -770,12 +770,12 @@ fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items()
         let mut runtime = saved.clone();
         runtime
             .context_menu
-            .bar
+            .tab
             .insert(1, crate::data::ContextMenuEntry::Separator);
         runtime
     });
     assert!(
-        separated.contains("separator after=\"New pane\""),
+        separated.contains("separator after=\"New tab\""),
         "{}",
         separated
     );
@@ -784,16 +784,16 @@ fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items()
 
 #[test]
 fn a_changed_own_item_in_a_merged_section_keeps_its_comment_and_other_statements() {
-    let file = "context_menu {\n    bar {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    let file = "context_menu {\n    tab {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
     let text = saved_text_after(file, |saved| {
         let mut runtime = saved.clone();
-        let last = runtime.context_menu.bar.len() - 1;
-        runtime.context_menu.bar[last] = menu_item("Mine");
+        let last = runtime.context_menu.tab.len() - 1;
+        runtime.context_menu.tab[last] = menu_item("Mine");
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { NewTab; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { NewTab; }\n    }\n}\n"
     );
 }
 
@@ -801,7 +801,7 @@ fn a_changed_own_item_in_a_merged_section_keeps_its_comment_and_other_statements
 fn a_merged_section_back_at_the_defaults_is_removed() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar = defaults().context_menu.bar.clone();
+        runtime.context_menu.tab = defaults().context_menu.tab.clone();
         runtime
     });
     assert_eq!(text, "context_menu {\n}\n");
@@ -809,16 +809,16 @@ fn a_merged_section_back_at_the_defaults_is_removed() {
 
 #[test]
 fn a_file_without_merge_statements_reads_as_before() {
-    let file = "context_menu {\n    bar {\n        item \"New tab\" { Detach; }\n        separator\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    let file = "context_menu {\n    tab {\n        item \"Rename tab…\" { Detach; }\n        separator\n        item \"Mine\" { Detach; }\n    }\n}\n";
     let config = load(file);
-    let mut expected = defaults().context_menu.bar.clone();
-    expected[1] = crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
+    let mut expected = defaults().context_menu.tab.clone();
+    expected[1] = crate::data::ContextMenuEntry::item("Rename tab…", vec![Action::Detach.into()]);
     expected.push(crate::data::ContextMenuEntry::Separator);
     expected.push(crate::data::ContextMenuEntry::item(
         "Mine",
         vec![Action::Detach.into()],
     ));
-    assert_eq!(config.context_menu.bar, expected);
+    assert_eq!(config.context_menu.tab, expected);
 }
 
 const THEME_FILE: &str = "themes {\n    // my theme\n    mine {\n        text_unselected {\n            base 1 2 3 // fg\n            emphasis_0 4\n            emphasis_1 5\n            emphasis_2 6\n            emphasis_3 7\n        }\n    }\n}\n";
@@ -934,7 +934,7 @@ fn an_overwrite_save_of_a_merged_section_keeps_an_item_added_outside() {
     let (_dir, path) = temp_config(Some(BAR_FILE));
     let saved = load(BAR_FILE);
     let mut runtime = saved.clone();
-    runtime.context_menu.bar.remove(0);
+    runtime.context_menu.tab.remove(0);
     let outside = BAR_FILE.replace(
         "        item \"Mine\" { Detach; }\n",
         "        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n",
@@ -951,7 +951,7 @@ fn an_overwrite_save_of_a_merged_section_keeps_an_item_added_outside() {
     assert!(changed_outside);
     assert_eq!(
         std::fs::read_to_string(&path).unwrap(),
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n        remove \"New pane\"\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n        remove \"New tab\"\n    }\n}\n"
     );
 }
 

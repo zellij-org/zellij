@@ -755,6 +755,7 @@ impl ThemesScreen {
         }
         self.name_form = None;
         let mut config_themes = self.config_themes();
+        let is_new = purpose == NamePurpose::New;
         match purpose {
             NamePurpose::New => {
                 let colours = self
@@ -786,6 +787,14 @@ impl ThemesScreen {
         }
         self.apply_config_themes(config_themes);
         self.select_named(&name);
+        if is_new
+            && self
+                .selected_theme()
+                .map(|theme| theme.name == name)
+                .unwrap_or(false)
+        {
+            self.open_colours();
+        }
         Ok(())
     }
     fn request_delete(&mut self) {
@@ -1576,10 +1585,17 @@ impl Page for ThemesScreen {
         self.colour_form.is_some()
     }
     fn header_hints(&self) -> Option<Vec<(&'static str, &'static str)>> {
-        self.colour_form.as_ref().map(|_| {
+        self.colour_form.as_ref().map(|form| {
             vec![
-                ("<Ctrl a>", "apply colors"),
-                ("<Esc>", "back to configuration"),
+                (
+                    "<Ctrl a>",
+                    if form.file.is_some() {
+                        "save colors"
+                    } else {
+                        "apply colors"
+                    },
+                ),
+                ("<Esc>", "back to settings"),
             ]
         })
     }
@@ -1600,7 +1616,7 @@ impl Page for ThemesScreen {
     fn hints(&self) -> Vec<(&'static str, &'static str)> {
         if self.colour_form.is_some() {
             return vec![
-                ("<Esc>", "back to configuration"),
+                ("<Esc>", "back to settings"),
                 ("<Enter/↓↑>", "next / previous color"),
                 ("<Ctrl a>", "apply"),
                 ("<Ctrl f>", "fix contrast"),

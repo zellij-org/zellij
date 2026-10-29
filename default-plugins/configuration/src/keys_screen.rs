@@ -72,7 +72,7 @@ enum SetupAction {
 }
 
 const SETUP_ACTIONS: [(&str, &str, SetupAction); 2] = [
-    ("<Ctrl a>", "Finish", SetupAction::Finish),
+    ("<Ctrl a>", "Save and finish", SetupAction::Finish),
     ("<Esc>", "Go back", SetupAction::Back),
 ];
 

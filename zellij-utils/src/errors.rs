@@ -325,6 +325,8 @@ pub enum ScreenContext {
     SetKittyZlibSupport,
     SetSixelSupport,
     SetStructuredRenderSupport,
+    SetClipboardPasteSupport,
+    PasteFromClipboard,
     RenderFrameAck,
     ForwardHostQuery,
     NestedSessionMessageFromPane,

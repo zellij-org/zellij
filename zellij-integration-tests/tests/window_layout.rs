@@ -22,7 +22,7 @@ use zellij_utils::structured_render::{
 };
 
 const DEADLINE: Duration = Duration::from_secs(20);
-const COMMON_MENU_MARKER: &str = "Session manager";
+const COMMON_MENU_MARKER: &str = "Settings…";
 
 struct WindowClient {
     sender: IpcSenderWithContext<ClientToServerMsg>,

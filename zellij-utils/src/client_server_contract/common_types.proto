@@ -356,6 +356,7 @@ message Action {
     HideBarsAction hide_bars = 190;
     ShowBarsAction show_bars = 191;
     HideBarByPaneIdAction hide_bar_by_pane_id = 192;
+    PasteFromClipboardByPaneIdAction paste_from_clipboard_by_pane_id = 193;
   }
 }
 
@@ -1472,6 +1473,7 @@ message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
 message OpenSessionInTerminalAction {}
+message PasteFromClipboardByPaneIdAction { PaneId pane_id = 1; }
 message WaitForPaneExitAction { PaneId pane_id = 1; }
 message ToggleMirrorResizeAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }

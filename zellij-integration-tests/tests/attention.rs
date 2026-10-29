@@ -315,9 +315,9 @@ fn a_watched_busy_pane_reports_going_quiet_but_a_pane_at_a_prompt_does_not() {
     let_the_startup_grace_pass();
     unfocus_the_host_window(&zellij);
     produce_steady_output(&[&busy, &at_prompt], Duration::from_millis(3000));
-    wait_for_markers(&zellij, "●•");
+    wait_for_markers(&zellij, "●");
     std::thread::sleep(Duration::from_millis(1500));
-    assert_eq!(markers_on_screen(&zellij.snapshot().text), "●•");
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "●");
     zellij.quit();
 }
 
@@ -479,28 +479,27 @@ fn output_from_programs_that_report_their_own_status_is_never_new_output() {
 }
 
 #[test]
-fn output_from_a_watched_pane_is_new_output_and_not_a_watch_alert_until_refocused() {
+fn output_from_a_watched_pane_is_not_reported_as_new_output() {
     let (mut zellij, left, _right) =
         start_with_two_panes(runner().with_config(SESSION_INDICATOR_ON));
     watch(&zellij, &left);
     let_the_startup_grace_pass();
     unfocus_the_host_window(&zellij);
     print_lines(&left, "watched output");
-    wait_for_markers(&zellij, "•");
     left.output(b"barrier after the watched output\r\n");
-    let grid_snapshot = zellij.wait_until(
+    zellij.wait_until(
         "the output after the watched lines is drawn",
         |grid_snapshot| grid_snapshot.contains("barrier after the watched output"),
     );
-    assert_eq!(markers_on_screen(&grid_snapshot.text), "•");
+    std::thread::sleep(Duration::from_millis(1500));
+    let grid_snapshot = zellij.snapshot();
+    assert_eq!(markers_on_screen(&grid_snapshot.text), "");
     let bar = grid_snapshot.lines()[0].clone();
     assert!(
         !bar.contains("watch alert") && !bar.contains("need you"),
         "new output of a watched pane raised an alert: {}",
         bar
     );
-    refocus_the_host_window(&zellij);
-    wait_for_markers(&zellij, "");
     zellij.quit();
 }
 

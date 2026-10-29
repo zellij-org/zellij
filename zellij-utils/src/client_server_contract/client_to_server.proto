@@ -41,6 +41,7 @@ message ClientToServerMsg {
     PeerAttentionChangedMsg peer_attention_changed = 34;
     ClientPaneMirrorMsg pane_mirror = 35;
     AdoptSessionHistoryMsg adopt_session_history = 36;
+    ClipboardPasteSupportMsg clipboard_paste_support = 37;
   }
 }
 
@@ -190,6 +191,11 @@ message SetMobileRenderPreferencesMsg {
 
 message StructuredRenderSupportMsg {
   bool supported = 1;
+}
+
+message ClipboardPasteSupportMsg {
+  bool supported = 1;
+  optional string shortcut = 2;
 }
 
 message FontFamiliesMsg {

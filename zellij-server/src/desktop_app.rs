@@ -11,6 +11,10 @@ pub fn set_app_starter(starter: AppStarter) {
     let _ = APP_STARTER.set(starter);
 }
 
+pub fn can_open_window() -> bool {
+    APP_STARTER.get().is_some()
+}
+
 pub fn open_window(request: OpenWindowRequest) -> Result<(), String> {
     match send_app_request(&AppRequest::OpenWindow(request.clone())) {
         Ok(AppReply::Refused(reason)) => Err(reason),

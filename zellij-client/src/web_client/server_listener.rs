@@ -289,6 +289,7 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::SessionAttention { .. }) => {},
                             Some(ServerToClientMsg::SessionPreview { .. }) => {},
                             Some(ServerToClientMsg::PaneMirror { .. }) => {},
+                            Some(ServerToClientMsg::PasteFromClipboard { .. }) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost {
                                 token,
                                 query_bytes,

@@ -8782,6 +8782,16 @@ Config {
     context_menu: ContextMenuConfig {
         pane: [
             Item {
+                label: "Paste",
+                actions: [
+                    ClickedPane(
+                        PasteFromClipboard,
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Separator,
+            Item {
                 label: "New pane",
                 actions: [
                     Action(
@@ -8812,36 +8822,7 @@ Config {
             },
             Separator,
             Item {
-                label: "Fullscreen",
-                actions: [
-                    ClickedPane(
-                        ToggleFocusFullscreen,
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Hide bars",
-                actions: [
-                    Action(
-                        HideBars {
-                            bars: [],
-                        },
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Float / Embed",
-                actions: [
-                    ClickedPane(
-                        ToggleEmbedOrFloating,
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Rename pane",
+                label: "Rename pane…",
                 actions: [
                     ClickedPane(
                         StartRename,
@@ -8850,17 +8831,30 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Add to group",
+                label: "Fullscreen",
                 actions: [
                     ClickedPane(
-                        ToggleInGroup,
+                        ToggleFocusFullscreen,
                     ),
                 ],
-                toggled_label: None,
+                toggled_label: Some(
+                    "Exit fullscreen",
+                ),
+            },
+            Item {
+                label: "Make floating",
+                actions: [
+                    ClickedPane(
+                        ToggleEmbedOrFloating,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Make tiled",
+                ),
             },
             Separator,
             Item {
-                label: "Watch this pane",
+                label: "Watch pane",
                 actions: [
                     ClickedPane(
                         ToggleWatch,
@@ -8868,17 +8862,6 @@ Config {
                 ],
                 toggled_label: Some(
                     "Stop watching",
-                ),
-            },
-            Item {
-                label: "Ignore output",
-                actions: [
-                    ClickedPane(
-                        ToggleIgnoreOutput,
-                    ),
-                ],
-                toggled_label: Some(
-                    "Report output",
                 ),
             },
             Item {
@@ -8924,7 +8907,7 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Rename tab",
+                label: "Rename tab…",
                 actions: [
                     ClickedTab(
                         StartRename,
@@ -8933,7 +8916,7 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Move tab left",
+                label: "Move left",
                 actions: [
                     ClickedTab(
                         Move(
@@ -8944,7 +8927,7 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Move tab right",
+                label: "Move right",
                 actions: [
                     ClickedTab(
                         Move(
@@ -8955,7 +8938,7 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Move tab to start",
+                label: "Move to start",
                 actions: [
                     ClickedTab(
                         MoveToPosition(
@@ -8966,7 +8949,7 @@ Config {
                 toggled_label: None,
             },
             Item {
-                label: "Move tab to end",
+                label: "Move to end",
                 actions: [
                     ClickedTab(
                         MoveToPosition(
@@ -9000,19 +8983,6 @@ Config {
         ],
         bar: [
             Item {
-                label: "New pane",
-                actions: [
-                    Action(
-                        NewPane {
-                            direction: None,
-                            pane_name: None,
-                            start_suppressed: false,
-                        },
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
                 label: "New tab",
                 actions: [
                     Action(
@@ -9031,8 +9001,9 @@ Config {
                 ],
                 toggled_label: None,
             },
+            Separator,
             Item {
-                label: "Rename session",
+                label: "Rename session…",
                 actions: [
                     Action(
                         SwitchToMode {
@@ -9054,6 +9025,34 @@ Config {
                 actions: [
                     Action(
                         ToggleSession,
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Session manager…",
+                actions: [
+                    Action(
+                        LaunchOrFocusPlugin {
+                            plugin: Alias(
+                                PluginAlias {
+                                    name: "session-manager",
+                                    configuration: Some(
+                                        PluginUserConfiguration(
+                                            {},
+                                        ),
+                                    ),
+                                    initial_cwd: None,
+                                    run_plugin: None,
+                                },
+                            ),
+                            should_float: true,
+                            move_to_focused_tab: true,
+                            should_open_in_place: false,
+                            close_replaced_pane: false,
+                            skip_cache: false,
+                            tab_id: None,
+                        },
                     ),
                 ],
                 toggled_label: None,
@@ -9088,8 +9087,27 @@ Config {
                 ],
                 toggled_label: None,
             },
+            Separator,
+            Item {
+                label: "Detach",
+                actions: [
+                    Action(
+                        Detach,
+                    ),
+                ],
+                toggled_label: None,
+            },
         ],
         common: [
+            Item {
+                label: "Show bars",
+                actions: [
+                    Action(
+                        ShowBars,
+                    ),
+                ],
+                toggled_label: None,
+            },
             Item {
                 label: "Settings…",
                 actions: [
@@ -9114,52 +9132,6 @@ Config {
                             skip_cache: false,
                             tab_id: None,
                         },
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Session manager",
-                actions: [
-                    Action(
-                        LaunchOrFocusPlugin {
-                            plugin: Alias(
-                                PluginAlias {
-                                    name: "session-manager",
-                                    configuration: Some(
-                                        PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    ),
-                                    initial_cwd: None,
-                                    run_plugin: None,
-                                },
-                            ),
-                            should_float: true,
-                            move_to_focused_tab: true,
-                            should_open_in_place: false,
-                            close_replaced_pane: false,
-                            skip_cache: false,
-                            tab_id: None,
-                        },
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Show bars",
-                actions: [
-                    Action(
-                        ShowBars,
-                    ),
-                ],
-                toggled_label: None,
-            },
-            Item {
-                label: "Detach",
-                actions: [
-                    Action(
-                        Detach,
                     ),
                 ],
                 toggled_label: None,

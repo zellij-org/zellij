@@ -1574,6 +1574,8 @@ pub struct ContextMenuContext {
     pub line: usize,
     pub column: usize,
     pub client_id: ClientId,
+    #[serde(default)]
+    pub paste_shortcut: Option<String>,
 }
 
 impl ContextMenuContext {
@@ -1602,10 +1604,11 @@ pub enum ClickedPaneAction {
     ToggleIgnoreOutput,
     ToggleWatch,
     HideBar,
+    PasteFromClipboard,
 }
 
 impl ClickedPaneAction {
-    pub const ALL: [ClickedPaneAction; 10] = [
+    pub const ALL: [ClickedPaneAction; 11] = [
         ClickedPaneAction::CloseFocus,
         ClickedPaneAction::ToggleFocusFullscreen,
         ClickedPaneAction::ToggleEmbedOrFloating,
@@ -1616,6 +1619,7 @@ impl ClickedPaneAction {
         ClickedPaneAction::ToggleIgnoreOutput,
         ClickedPaneAction::ToggleWatch,
         ClickedPaneAction::HideBar,
+        ClickedPaneAction::PasteFromClipboard,
     ];
     pub fn kdl_name(&self) -> &'static str {
         match self {
@@ -1629,6 +1633,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleIgnoreOutput => "IgnorePaneOutputByPaneId",
             ClickedPaneAction::ToggleWatch => "WatchPaneByPaneId",
             ClickedPaneAction::HideBar => "HideBarByPaneId",
+            ClickedPaneAction::PasteFromClipboard => "PasteFromClipboardByPaneId",
         }
     }
     pub fn from_kdl_name(name: &str) -> Option<Self> {
@@ -1652,6 +1657,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleIgnoreOutput => Action::IgnorePaneOutputByPaneId { pane_id },
             ClickedPaneAction::ToggleWatch => Action::WatchPaneByPaneId { pane_id },
             ClickedPaneAction::HideBar => Action::HideBarByPaneId { pane_id },
+            ClickedPaneAction::PasteFromClipboard => Action::PasteFromClipboardByPaneId { pane_id },
         }
     }
 }
@@ -5568,6 +5574,7 @@ setting_keys! {
     TerminalShiftDragSelects => (Terminal, "shift_drag_selects", false, Flag),
     TerminalReuseSessionWindows => (Terminal, "reuse_session_windows", false, Flag),
     TerminalMiddleClickPaste => (Terminal, "middle_click_paste", false, Flag),
+    TerminalAllowRemoteClipboardRead => (Terminal, "allow_remote_clipboard_read", false, Flag),
     TerminalHidePointerWhileTyping => (Terminal, "hide_pointer_while_typing", false, Flag),
     TerminalMacosOptionAsAlt => (Terminal, "macos_option_as_alt", false, Text),
     TerminalPasteKeys => (Terminal, "paste_keys", false, List),
@@ -5599,7 +5606,7 @@ setting_keys! {
     Mousebinds => (Keybinds, "mousebinds", false, Text),
     PluginAliases => (Blocks, "plugins", false, Text),
     LoadPlugins => (Blocks, "load_plugins", true, Text),
-    Env => (Blocks, "env", true, Text),
+    Env => (Blocks, "env", false, Text),
     Themes => (Blocks, "themes", false, Text),
     ContextMenu => (Blocks, "context_menu", false, Text),
     AttentionFrameMarkers => (Attention, "frame_markers", false, Flag),
