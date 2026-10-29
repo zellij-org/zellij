@@ -8629,6 +8629,8 @@ impl Screen {
                     })
                     .with_context(err_context)
                     .non_fatal();
+                // go_to_tab cleared the bell of the pane focused before; this one is seen now
+                self.clear_bell_for_focused_pane(client_id);
             },
             None => {
                 log::error!("Could not find pane with id: {:?}", pane_id);
