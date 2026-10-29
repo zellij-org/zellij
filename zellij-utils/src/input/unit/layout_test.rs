@@ -2642,3 +2642,23 @@ fn plugin_aliases_with_different_names_are_not_equivalent() {
     );
     assert!(!requested.is_equivalent_to_run(&running));
 }
+
+#[test]
+fn a_layout_file_with_a_non_kdl_extension_is_loaded_by_path() {
+    // This is the path session startup takes for `zellij --layout <path>`: layout_dir is the
+    // (possibly nonexistent) `layouts` folder next to the config, and the layout is a file
+    // the user named with whatever extension they like.
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    let temp = tempfile::tempdir().unwrap();
+    let layout_dir = temp.path().join("layouts");
+    let layout_path = temp.path().join("my-layout.zellij");
+    std::fs::write(&layout_path, "layout {\n    pane\n}\n").unwrap();
+    let layout_info =
+        LayoutInfo::File(layout_path.display().to_string(), LayoutMetadata::default());
+    let layout = Layout::from_layout_info_with_config(&Some(layout_dir), &layout_info, None);
+    assert!(
+        layout.is_ok(),
+        "a layout file given by path with a non-kdl extension failed to load: {:?}",
+        layout.err()
+    );
+}
