@@ -6239,11 +6239,8 @@ impl Perform for Grid {
                         // subtraction wrapped usize when the cursor was above the
                         // region (reporting 0 or usize::MAX) and mis-anchored TUIs
                         // that pin a top strip with DECSTBM (see #5797).
-                        let position_report = format!(
-                            "\u{1b}[{};{}R",
-                            self.cursor.y + 1,
-                            self.cursor.x + 1
-                        );
+                        let position_report =
+                            format!("\u{1b}[{};{}R", self.cursor.y + 1, self.cursor.x + 1);
                         self.pending_messages_to_pty
                             .push(position_report.as_bytes().to_vec());
                     },

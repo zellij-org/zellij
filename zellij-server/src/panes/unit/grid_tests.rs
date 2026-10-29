@@ -11020,7 +11020,13 @@ fn cpr_reports_absolute_row_with_scroll_region_and_no_decom() {
 
     // DECSTBM top=3 bottom=20, no DECOM: absolute rows stay absolute
     vte_parser.advance(&mut grid, b"\x1b[3;20r");
-    for (row, expected) in [(1usize, "\u{1b}[1;1R"), (2, "\u{1b}[2;1R"), (3, "\u{1b}[3;1R"), (4, "\u{1b}[4;1R"), (10, "\u{1b}[10;1R")] {
+    for (row, expected) in [
+        (1usize, "\u{1b}[1;1R"),
+        (2, "\u{1b}[2;1R"),
+        (3, "\u{1b}[3;1R"),
+        (4, "\u{1b}[4;1R"),
+        (10, "\u{1b}[10;1R"),
+    ] {
         grid.pending_messages_to_pty.clear();
         let seq = format!("\u{1b}[{};1H\u{1b}[6n", row);
         vte_parser.advance(&mut grid, seq.as_bytes());
