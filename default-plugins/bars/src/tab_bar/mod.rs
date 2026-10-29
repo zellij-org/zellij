@@ -102,6 +102,7 @@ struct ClientState {
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
     mode_info: ModeInfo,
+    has_mode_info: bool,
     active_pane_scroll: Option<(usize, usize)>,
     hovered: Option<TabBarRegion>,
     hover_at: Option<(SlotId, usize)>,
@@ -138,12 +139,17 @@ pub struct TabBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     hint_timeout_queue: VecDeque<ClientId>,
+    timer_requests: Vec<f64>,
     pub session_indicator: SessionIndicator,
 }
 
 impl TabBar {
     pub fn has_slots(&self) -> bool {
         !self.slots.is_empty()
+    }
+
+    pub fn take_timer_requests(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.timer_requests)
     }
 
     pub fn slot_added(&mut self, slot: &Slot) {
@@ -163,8 +169,8 @@ impl TabBar {
             EventType::Timer,
             EventType::InputReceived,
             EventType::ActionComplete,
+            EventType::GlobalAttentionUpdate,
             EventType::SessionCountsUpdate,
-            EventType::FolderSessionsUpdate,
         ]);
     }
 
@@ -218,6 +224,7 @@ impl TabBar {
         for (client_id, seed) in seeds {
             let client = self.clients.entry(*client_id).or_default();
             client.mode_info = seed.mode_info.clone();
+            client.has_mode_info |= seed.mode_info != ModeInfo::default();
             if let Some(active_tab_index) = seed.tabs.iter().position(|t| t.active) {
                 client.active_tab_idx = active_tab_index + 1;
                 client.tabs = seed.tabs.clone();
@@ -267,7 +274,7 @@ impl TabBar {
         }
         if matches!(
             event,
-            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_)
+            Event::GlobalAttentionUpdate(_) | Event::SessionCountsUpdate(_)
         ) {
             return if self.session_indicator.update(event) {
                 RenderResponse::Slots(self.slots.keys().copied().collect())
@@ -305,10 +312,11 @@ impl TabBar {
                 should_render = true;
             },
             Event::ModeUpdate(mode_info) => {
-                if &client.mode_info != mode_info {
+                if &client.mode_info != mode_info || !client.has_mode_info {
                     should_render = true;
                 }
                 client.mode_info = mode_info.clone();
+                client.has_mode_info = true;
             },
             Event::TabUpdate(tabs) => {
                 if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
@@ -345,7 +353,7 @@ impl TabBar {
                     client.hint_text = Some(hint_variants.clone());
                     client.outstanding_hint_timeouts += 1;
                     self.hint_timeout_queue.push_back(client_id);
-                    set_timeout(5.0);
+                    self.timer_requests.push(5.0);
                     should_render = true;
                 }
             },
@@ -384,7 +392,7 @@ impl TabBar {
                             focus_host_session();
                         },
                         Some(TabBarRegion::NewTabButton) => {
-                            new_tab::<&str>(None, None);
+                            crate::double_click::open_new_tab();
                         },
                         Some(TabBarRegion::Marker { position, .. }) => {
                             switch_tab_to(position as u32 + 1);
@@ -519,7 +527,7 @@ impl TabBar {
         hovered: Option<TabBarRegion>,
     ) -> Option<ComposedLine> {
         let client = self.clients.get(&client_id)?;
-        if client.tabs.is_empty() {
+        if client.tabs.is_empty() || !client.has_mode_info {
             return None;
         }
         let dimmed = client.mode_info.session_ascended == Some(true)
@@ -575,14 +583,15 @@ impl TabBar {
         } else {
             vec![]
         };
+        let session_name = crate::displayed_session_name(&client.mode_info);
         let (line, new_tab_button_range, breadcrumb_range, session_indicator_range) = tab_line(
-            client.mode_info.session_name.as_deref(),
+            session_name.as_deref(),
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),
             client.mode_info.style.colors,
             client.mode_info.capabilities,
-            client.mode_info.style.hide_session_name,
+            crate::session_name_hidden(&client.mode_info),
             &self.session_indicator,
             &background,
             client.active_pane_scroll,
@@ -758,6 +767,7 @@ mod tests {
         ClientState {
             active_tab_idx: active + 1,
             tabs,
+            has_mode_info: true,
             ..Default::default()
         }
     }
@@ -906,6 +916,7 @@ mod tests {
                 .map(|(position, name)| named_tab(position, name, position == active))
                 .collect(),
             active_tab_idx: active + 1,
+            has_mode_info: true,
             ..Default::default()
         }
     }

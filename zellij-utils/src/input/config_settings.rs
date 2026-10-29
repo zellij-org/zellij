@@ -9,9 +9,9 @@ use super::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
     PaneFrameStyle,
 };
+use super::terminal::TerminalConfig;
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
-use super::window::WindowConfig;
 use crate::data::{
     join_setting_list, BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode,
     LineStyle, SettingKey, SettingValueShape, ThemeHue, WebSharing,
@@ -142,6 +142,8 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         support_kitty_keyboard_protocol,
         support_kitty_graphics_protocol,
         grapheme_clusters,
+        mirror_resizes_source_pane,
+        live_view_release_key,
         web_server,
         web_sharing,
         stacked_resize,
@@ -170,10 +172,12 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         client_async_worker_tasks,
         nested_session_handling,
         dangerously_enable_paste_buffer_read,
-        session_card,
         session_indicator,
         swap_layout_notification,
         on_quit,
+        bars_hidden_on_start,
+        hidden_bars_notification,
+        mode_hints_when_bars_hidden,
     } = options;
     let entries = [
         (SettingKey::SimplifiedUi, display_text(simplified_ui)),
@@ -256,6 +260,14 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::GraphemeClusters,
             display_text(grapheme_clusters),
         ),
+        (
+            SettingKey::MirrorResizesSourcePane,
+            display_text(mirror_resizes_source_pane),
+        ),
+        (
+            SettingKey::LiveViewReleaseKey,
+            live_view_release_key.clone(),
+        ),
         (SettingKey::WebServer, display_text(web_server)),
         (
             SettingKey::WebSharing,
@@ -336,7 +348,6 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::DangerouslyEnablePasteBufferRead,
             display_text(dangerously_enable_paste_buffer_read),
         ),
-        (SettingKey::SessionCard, display_text(session_card)),
         (
             SettingKey::SessionIndicator,
             display_text(session_indicator),
@@ -348,6 +359,25 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::OnQuit,
             on_quit.map(|on_quit| on_quit.as_str().to_owned()),
+        ),
+        (
+            SettingKey::BarsHiddenOnStart,
+            bars_hidden_on_start.as_ref().map(|hidden_bars| {
+                let names = hidden_bars.names();
+                if names.is_empty() {
+                    "none".to_owned()
+                } else {
+                    names.join(",")
+                }
+            }),
+        ),
+        (
+            SettingKey::HiddenBarsNotification,
+            display_text(hidden_bars_notification),
+        ),
+        (
+            SettingKey::ModeHintsWhenBarsHidden,
+            display_text(mode_hints_when_bars_hidden),
         ),
     ];
     values.extend(entries);
@@ -450,10 +480,10 @@ fn web_client_values(
     values.insert(SettingKey::WebClientBaseUrl, base_url.clone());
 }
 
-fn window_document(window: &WindowConfig) -> KdlDocument {
+fn terminal_document(window: &TerminalConfig) -> KdlDocument {
     let mut document = KdlDocument::new();
     let node = window.to_kdl().unwrap_or_else(|| {
-        let mut node = KdlNode::new("window");
+        let mut node = KdlNode::new("terminal");
         node.set_children(KdlDocument::new());
         node
     });
@@ -474,7 +504,7 @@ fn kdl_value_text(value: &KdlValue) -> Option<String> {
     }
 }
 
-fn window_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
+fn terminal_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
     let arguments: Vec<&KdlValue> = node
         .entries()
         .iter()
@@ -501,18 +531,21 @@ fn window_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
     }
 }
 
-fn window_values(window: &WindowConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
-    let document = window_document(window);
-    for key in SettingKey::all().into_iter().filter(|key| key.is_window()) {
+fn terminal_values(window: &TerminalConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
+    let document = terminal_document(window);
+    for key in SettingKey::all()
+        .into_iter()
+        .filter(|key| key.is_terminal())
+    {
         let text =
-            setting_node_in_document(&document, key).and_then(|node| window_node_text(key, node));
+            setting_node_in_document(&document, key).and_then(|node| terminal_node_text(key, node));
         values.insert(key, text);
     }
 }
 
-fn copy_window_setting(target: &mut WindowConfig, source: &WindowConfig, key: SettingKey) {
-    let source_document = window_document(source);
-    let mut document = window_document(target);
+fn copy_terminal_setting(target: &mut TerminalConfig, source: &TerminalConfig, key: SettingKey) {
+    let source_document = terminal_document(source);
+    let mut document = terminal_document(target);
     let (parents, name) = setting_node_path(key);
     let mut block = &mut document;
     for parent in parents {
@@ -543,8 +576,8 @@ fn copy_window_setting(target: &mut WindowConfig, source: &WindowConfig, key: Se
         block.nodes_mut().push(node.clone());
     }
     match document
-        .get("window")
-        .map(WindowConfig::from_kdl)
+        .get("terminal")
+        .map(TerminalConfig::from_kdl)
         .transpose()
     {
         Ok(Some(window)) => *target = window,
@@ -566,12 +599,13 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
         mousebinds: _mousebinds_are_compared_directly,
-        window,
+        terminal,
         session_suggestions: _session_suggestions_are_read_by_the_server,
+        attention,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
-    window_values(window, &mut values);
+    terminal_values(terminal, &mut values);
     let injected_default_mode = config.keybinds_layers.injected_default_mode;
     if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
         values.insert(
@@ -585,6 +619,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     }
     ui_values(ui, &mut values);
     web_client_values(web_client, &mut values);
+    attention_values(attention, &mut values);
     values.insert(SettingKey::Keybinds, None);
     values.insert(SettingKey::Mousebinds, None);
     values.insert(
@@ -672,6 +707,58 @@ fn copy_border_override(
     }
 }
 
+fn attention_values(
+    attention: &crate::input::attention::AttentionConfig,
+    values: &mut BTreeMap<SettingKey, Option<String>>,
+) {
+    values.insert(
+        SettingKey::AttentionFrameMarkers,
+        attention.frame_markers.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionHostStatus,
+        attention.host_status.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionTabMarkers,
+        attention.tab_markers.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleRule,
+        attention.idle_rule.map(|v| v.as_str().to_owned()),
+    );
+    values.insert(
+        SettingKey::AttentionDoneThresholdSecs,
+        attention.done_threshold_secs.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleActivitySecs,
+        attention.idle_activity_secs.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleSilenceSecs,
+        attention.idle_silence_secs.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionStartupCard,
+        attention.startup_card.map(|v| v.as_str().to_owned()),
+    );
+    values.insert(
+        SettingKey::AttentionTrayIcon,
+        attention.tray_icon.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionDesktopNotifications,
+        attention
+            .desktop_notifications
+            .map(|v| v.as_str().to_owned()),
+    );
+    values.insert(
+        SettingKey::AttentionNotificationDetails,
+        attention.notification_details.map(|v| v.to_string()),
+    );
+}
+
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
     let options = &mut target.options;
     let from = &source.options;
@@ -679,6 +766,53 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
     let from_frames = &source.ui.pane_frames;
     let web = &mut target.web_client;
     let from_web = &source.web_client;
+    match key {
+        SettingKey::AttentionFrameMarkers => {
+            target.attention.frame_markers = source.attention.frame_markers;
+            return;
+        },
+        SettingKey::AttentionHostStatus => {
+            target.attention.host_status = source.attention.host_status;
+            return;
+        },
+        SettingKey::AttentionTabMarkers => {
+            target.attention.tab_markers = source.attention.tab_markers;
+            return;
+        },
+        SettingKey::AttentionIdleRule => {
+            target.attention.idle_rule = source.attention.idle_rule;
+            return;
+        },
+        SettingKey::AttentionDoneThresholdSecs => {
+            target.attention.done_threshold_secs = source.attention.done_threshold_secs;
+            return;
+        },
+        SettingKey::AttentionIdleActivitySecs => {
+            target.attention.idle_activity_secs = source.attention.idle_activity_secs;
+            return;
+        },
+        SettingKey::AttentionIdleSilenceSecs => {
+            target.attention.idle_silence_secs = source.attention.idle_silence_secs;
+            return;
+        },
+        SettingKey::AttentionStartupCard => {
+            target.attention.startup_card = source.attention.startup_card;
+            return;
+        },
+        SettingKey::AttentionTrayIcon => {
+            target.attention.tray_icon = source.attention.tray_icon;
+            return;
+        },
+        SettingKey::AttentionDesktopNotifications => {
+            target.attention.desktop_notifications = source.attention.desktop_notifications;
+            return;
+        },
+        SettingKey::AttentionNotificationDetails => {
+            target.attention.notification_details = source.attention.notification_details;
+            return;
+        },
+        _ => {},
+    }
     match key {
         SettingKey::SimplifiedUi => options.simplified_ui = from.simplified_ui,
         SettingKey::Theme => options.theme = from.theme.clone(),
@@ -734,6 +868,12 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             options.support_kitty_graphics_protocol = from.support_kitty_graphics_protocol
         },
         SettingKey::GraphemeClusters => options.grapheme_clusters = from.grapheme_clusters,
+        SettingKey::MirrorResizesSourcePane => {
+            options.mirror_resizes_source_pane = from.mirror_resizes_source_pane
+        },
+        SettingKey::LiveViewReleaseKey => {
+            options.live_view_release_key = from.live_view_release_key.clone()
+        },
         SettingKey::WebServer => options.web_server = from.web_server,
         SettingKey::WebSharing => options.web_sharing = from.web_sharing,
         SettingKey::StackedResize => options.stacked_resize = from.stacked_resize,
@@ -781,12 +921,20 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::DangerouslyEnablePasteBufferRead => {
             options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read
         },
-        SettingKey::SessionCard => options.session_card = from.session_card,
         SettingKey::SessionIndicator => options.session_indicator = from.session_indicator,
         SettingKey::SwapLayoutNotification => {
             options.swap_layout_notification = from.swap_layout_notification
         },
         SettingKey::OnQuit => options.on_quit = from.on_quit,
+        SettingKey::BarsHiddenOnStart => {
+            options.bars_hidden_on_start = from.bars_hidden_on_start.clone()
+        },
+        SettingKey::HiddenBarsNotification => {
+            options.hidden_bars_notification = from.hidden_bars_notification
+        },
+        SettingKey::ModeHintsWhenBarsHidden => {
+            options.mode_hints_when_bars_hidden = from.mode_hints_when_bars_hidden
+        },
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {
             frames.hide_session_name = from_frames.hide_session_name
@@ -863,9 +1011,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::Env => target.env = source.env.clone(),
         SettingKey::Themes => copy_config_file_themes(&mut target.themes, &source.themes),
         SettingKey::ContextMenu => target.context_menu = source.context_menu.clone(),
-        window_key => {
-            debug_assert!(window_key.is_window());
-            copy_window_setting(&mut target.window, &source.window, window_key)
+        terminal_key => {
+            debug_assert!(terminal_key.is_terminal());
+            copy_terminal_setting(&mut target.terminal, &source.terminal, terminal_key)
         },
     }
 }

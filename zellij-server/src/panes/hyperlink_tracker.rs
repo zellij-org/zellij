@@ -1,6 +1,6 @@
 use crate::panes::grid::Row;
 use crate::panes::link_handler::LinkHandler;
-use crate::panes::terminal_character::{Cursor, LinkAnchor};
+use crate::panes::terminal_character::{Cursor, LinkAnchor, RcCharacterStyles};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -32,6 +32,16 @@ pub struct HyperlinkTracker {
     cursor_positions: Vec<HyperlinkPosition>,
     start_position: Option<HyperlinkPosition>,
     last_cursor: Option<HyperlinkPosition>,
+    cannot_be_a_url: bool,
+}
+
+const URL_SCHEMES: [&str; 4] = ["http://", "https://", "ftp://", "mailto:"];
+const RETAINED_BUFFER_CAPACITY: usize = 1024;
+
+fn may_become_a_url(text: &str) -> bool {
+    URL_SCHEMES
+        .iter()
+        .any(|scheme| scheme.starts_with(text) || text.starts_with(scheme))
 }
 
 impl HyperlinkTracker {
@@ -41,6 +51,7 @@ impl HyperlinkTracker {
             cursor_positions: Vec::new(),
             start_position: None,
             last_cursor: None,
+            cannot_be_a_url: false,
         }
     }
 
@@ -92,9 +103,14 @@ impl HyperlinkTracker {
         if self.is_currently_tracking() {
             if self.is_url_terminator(ch) {
                 self.finalize_and_apply(viewport, lines_above, &mut link_handler.borrow_mut());
-            } else {
+            } else if !self.cannot_be_a_url {
                 self.buffer.push(ch);
                 self.cursor_positions.push(current_pos.clone());
+                if !may_become_a_url(&self.buffer) {
+                    self.cannot_be_a_url = true;
+                    self.buffer.clear();
+                    self.cursor_positions.clear();
+                }
             }
         } else {
             if Self::can_begin_a_url(ch) {
@@ -235,15 +251,25 @@ impl HyperlinkTracker {
             return;
         };
 
+        let mut last_update: Option<(RcCharacterStyles, RcCharacterStyles)> = None;
         for cell in &link.cells {
             let Some(row) = row_at(viewport, lines_above, cell.y) else {
                 continue;
             };
             let index = row.absolute_character_index(cell.x.max(0) as usize);
             if let Some(character) = row.columns.get_mut(index) {
-                character
-                    .styles
-                    .update(|styles| styles.link_anchor = Some(link_anchor_start.clone()));
+                match &last_update {
+                    Some((before, after)) if character.styles.ptr_eq(before) => {
+                        character.styles = after.clone();
+                    },
+                    _ => {
+                        let before = character.styles.clone();
+                        character
+                            .styles
+                            .update(|styles| styles.link_anchor = Some(link_anchor_start.clone()));
+                        last_update = Some((before, character.styles.clone()));
+                    },
+                }
             }
         }
 
@@ -302,6 +328,13 @@ impl HyperlinkTracker {
     fn clear(&mut self) {
         self.buffer.clear();
         self.cursor_positions.clear();
+        if self.buffer.capacity() > RETAINED_BUFFER_CAPACITY {
+            self.buffer = String::new();
+        }
+        if self.cursor_positions.capacity() > RETAINED_BUFFER_CAPACITY {
+            self.cursor_positions = Vec::new();
+        }
+        self.cannot_be_a_url = false;
         self.start_position = None;
         // Don't clear last_cursor here - we need it for jump detection
     }
@@ -1239,6 +1272,39 @@ mod tests {
             "Each URL should have a unique link ID"
         );
         assert_eq!(links.len(), 2, "Should have exactly 2 links stored");
+    }
+
+    #[test]
+    fn url_ending_before_stored_scrollback_blanks_gets_its_end_marker() {
+        use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+        let mut tracker = HyperlinkTracker::new();
+        let mut viewport = create_test_viewport(5, 80);
+        let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+        let url = "http://example.com";
+        let mut columns: Vec<TerminalCharacter> = url.chars().map(TerminalCharacter::new).collect();
+        columns.resize(80, EMPTY_TERMINAL_CHARACTER);
+        let mut scrollback_row = Row::from_columns(columns).canonical();
+        scrollback_row.compress_trailing_blanks();
+        assert_eq!(scrollback_row.columns.len(), url.len());
+        let mut lines_above = VecDeque::from(vec![scrollback_row]);
+
+        for (i, ch) in url.chars().enumerate() {
+            let cursor = create_test_cursor(i, 0);
+            tracker.update(ch, &cursor, &mut viewport, &mut lines_above, &link_handler);
+        }
+        tracker.offset_cursor_lines(1);
+        let cursor = create_test_cursor(url.len(), 0);
+        tracker.update(' ', &cursor, &mut viewport, &mut lines_above, &link_handler);
+
+        let row = lines_above[0].with_trailing_blanks();
+        assert_eq!(row.columns.len(), 80);
+        assert!(row.columns[..url.len()]
+            .iter()
+            .all(|character| matches!(character.styles.link_anchor, Some(LinkAnchor::Start(_)))));
+        assert_eq!(
+            row.columns[url.len()].styles.link_anchor,
+            Some(LinkAnchor::End)
+        );
     }
 
     #[test]

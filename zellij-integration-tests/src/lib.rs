@@ -1,11 +1,13 @@
 #![cfg(unix)]
 
+pub mod attention;
 pub mod client_screen;
 mod deadline;
 pub mod fake_client_os_api;
 pub mod fake_pty;
 pub mod fake_server_os_api;
 pub mod harness;
+pub mod inbox;
 pub mod keys;
 pub mod nested;
 pub mod runner;
@@ -42,11 +44,21 @@ pub fn default_timeout() -> Duration {
         .unwrap_or(Duration::from_secs(10))
 }
 
+pub fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + default_timeout();
+    while !check() {
+        if std::time::Instant::now() >= deadline {
+            panic!("timed out waiting for {}", what);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 pub fn hard_cap_timeout() -> Duration {
     std::env::var("ZELLIJ_TEST_HARD_TIMEOUT_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .map(Duration::from_millis)
-        .unwrap_or(Duration::from_secs(60))
+        .unwrap_or(Duration::from_secs(45))
         .max(default_timeout())
 }

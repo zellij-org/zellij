@@ -36,6 +36,30 @@ fn item_state(actions: &[ContextMenuAction], context: &ContextMenuContext) -> It
             {
                 return ItemState::Hidden;
             },
+            ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleMute
+                | ClickedPaneAction::ToggleWatch
+                | ClickedPaneAction::ToggleIgnoreOutput
+                | ClickedPaneAction::PasteFromClipboard,
+            ) if !matches!(context.target_pane_id(), Some(PaneId::Terminal(_))) => {
+                return ItemState::Hidden;
+            },
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(0))
+                if context.tab_index == Some(0) =>
+            {
+                state = ItemState::Disabled;
+            },
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(position))
+                if context
+                    .tab_index
+                    .map(|tab_index| {
+                        (*position == TAB_POSITION_END && tab_index + 1 >= context.tab_count)
+                            || *position == tab_index as u64
+                    })
+                    .unwrap_or(false) =>
+            {
+                state = ItemState::Disabled;
+            },
             ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Left))
                 if context.tab_index == Some(0) =>
             {
@@ -82,17 +106,26 @@ impl ContextMenuPlugin {
                         item_entry_indices.push(None);
                     }
                 },
-                ContextMenuEntry::Item { label, actions } => {
+                ContextMenuEntry::Item { label, actions, .. } => {
                     let state = item_state(actions, context);
                     if state == ItemState::Hidden {
                         continue;
                     }
                     let mut item = MenuItem::new(label.clone());
-                    if let Some(shortcut) = self
-                        .mode_info
-                        .as_ref()
-                        .and_then(|mode_info| shortcut_for(mode_info, actions))
-                    {
+                    let pastes = actions.iter().any(|action| {
+                        matches!(
+                            action,
+                            ContextMenuAction::ClickedPane(ClickedPaneAction::PasteFromClipboard)
+                        )
+                    });
+                    let shortcut = if pastes {
+                        context.paste_shortcut.clone()
+                    } else {
+                        self.mode_info
+                            .as_ref()
+                            .and_then(|mode_info| shortcut_for(mode_info, actions))
+                    };
+                    if let Some(shortcut) = shortcut {
                         item = item.shortcut(shortcut);
                     }
                     if state == ItemState::Disabled {
@@ -246,6 +279,7 @@ mod tests {
             line: 0,
             column: 0,
             client_id: 1,
+            paste_shortcut: None,
         };
         let pinned = [pane(ClickedPaneAction::TogglePinned)];
         let close_pane = [pane(ClickedPaneAction::CloseFocus)];

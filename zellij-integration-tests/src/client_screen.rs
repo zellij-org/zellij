@@ -30,6 +30,7 @@ pub enum HostTerminal {
     Basic,
     Kitty,
     KittyZlib,
+    ProgramStatus,
     Manual,
     GraphemeClusterAware(u8),
 }
@@ -43,6 +44,8 @@ const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
 const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
 const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
 const GRAPHEME_CLUSTER_MODE_QUERY: &[u8] = b"\x1b[?2027$p";
+const PROGRAM_STATUS_QUERY: &[u8] = b"\x1b]7501;?\x1b\\";
+const PROGRAM_STATUS_REPLY: &[u8] = b"\x1b]7501;?\x1b\\";
 
 struct HostResponder {
     host_terminal: HostTerminal,
@@ -66,6 +69,10 @@ impl HostResponder {
                 (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
                 (KITTY_ZLIB_PROBE_PREFIX, KITTY_ZLIB_PROBE_REPLY),
                 (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::ProgramStatus => &[
+                (PROGRAM_STATUS_QUERY, PROGRAM_STATUS_REPLY),
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
             ],
             HostTerminal::Manual => &[],
         };
@@ -168,13 +175,16 @@ impl ClientScreen {
             if let Some(tier) = deadline.expired(now) {
                 let size = *self.size.lock().unwrap();
                 let grid_snapshot = render_bytes(&received_bytes.bytes, size);
+                let (byte_count, generation) =
+                    (received_bytes.bytes.len(), received_bytes.generation);
+                drop(received_bytes);
                 panic!(
                     "timed out waiting for: {}\n{}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
                     deadline.explain(tier, now),
                     grid_snapshot.text,
-                    received_bytes.bytes.len(),
-                    received_bytes.generation,
+                    byte_count,
+                    generation,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
@@ -207,6 +217,9 @@ impl ClientScreen {
             }
             let now = Instant::now();
             if let Some(tier) = deadline.expired(now) {
+                let (byte_count, generation) =
+                    (received_bytes.bytes.len(), received_bytes.generation);
+                drop(received_bytes);
                 panic!(
                     "timed out waiting for: {}{}\n{}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
@@ -218,8 +231,8 @@ impl ClientScreen {
                     deadline.explain(tier, now),
                     grid_snapshot.cursor,
                     grid_snapshot.text,
-                    received_bytes.bytes.len(),
-                    received_bytes.generation,
+                    byte_count,
+                    generation,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
@@ -244,15 +257,31 @@ struct ClientScreenWriter {
 
 impl std::io::Write for ClientScreenWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut received_bytes = self.inner.received_bytes.lock().unwrap();
+        let mut received_bytes = self
+            .inner
+            .received_bytes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         received_bytes.bytes.extend_from_slice(buf);
         received_bytes.generation += 1;
-        if let Some(stdout_tap) = self.inner.stdout_tap.lock().unwrap().as_ref() {
+        if let Some(stdout_tap) = self
+            .inner
+            .stdout_tap
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+        {
             let _ = stdout_tap.send(buf.to_vec());
         }
         self.inner.change_signal.notify_all();
         drop(received_bytes);
-        if let Some(host_responder) = self.inner.host_responder.lock().unwrap().as_mut() {
+        if let Some(host_responder) = self
+            .inner
+            .host_responder
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_mut()
+        {
             host_responder.observe(buf);
         }
         Ok(buf.len())
@@ -342,6 +371,12 @@ impl GridSnapshot {
     }
     pub fn row_of_line(&self, needle: &str) -> Option<usize> {
         self.text.lines().position(|line| line.contains(needle))
+    }
+    pub fn position_of(&self, needle: &str) -> Option<(usize, usize)> {
+        self.text.lines().enumerate().find_map(|(row, line)| {
+            line.find(needle)
+                .map(|byte_index| (line[..byte_index].chars().count(), row))
+        })
     }
     pub fn region_has_dim(
         &self,

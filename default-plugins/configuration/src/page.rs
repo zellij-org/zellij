@@ -230,7 +230,7 @@ pub fn short_action_text(text: &str) -> String {
 }
 
 pub fn mode_label(value: &str) -> Option<&'static str> {
-    const LABELS: [&str; 13] = [
+    const LABELS: [&str; 14] = [
         "Normal",
         "Locked",
         "Pane",
@@ -242,6 +242,7 @@ pub fn mode_label(value: &str) -> Option<&'static str> {
         "EnterSearch",
         "RenameTab",
         "RenamePane",
+        "RenameSession",
         "Session",
         "Tmux",
     ];

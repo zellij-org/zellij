@@ -159,9 +159,6 @@ impl EntryKind for AliasKind {
     fn title(&self) -> String {
         "Plugin aliases".to_owned()
     }
-    fn heading_note(&self) -> Option<String> {
-        Some("⟳ applies after a restart".to_owned())
-    }
     fn noun(&self) -> &'static str {
         "plugin alias"
     }
@@ -678,6 +675,35 @@ mod tests {
         let alias = &config.plugins.aliases["mine"];
         assert_eq!(alias.location.display(), "file:/tmp/mine.wasm");
         assert_eq!(alias.configuration.inner()["size"], "3");
+    }
+
+    #[test]
+    fn an_alias_form_keeps_spaces_in_config_values() {
+        let entry = AliasKind
+            .from_values(&[
+                FieldValue::Text("mine".to_owned()),
+                FieldValue::Text("/tmp/mine.wasm".to_owned()),
+                FieldValue::Text(String::new()),
+                FieldValue::Pairs(vec![
+                    (" spacer ".to_owned(), " ".to_owned()),
+                    ("label".to_owned(), "tab ".to_owned()),
+                    (" ".to_owned(), "  ".to_owned()),
+                ]),
+            ])
+            .unwrap();
+        assert_eq!(
+            entry.plugin.configuration,
+            vec![
+                ("label".to_owned(), "tab ".to_owned()),
+                ("spacer".to_owned(), " ".to_owned()),
+            ]
+        );
+        let kdl = AliasKind.block_kdl(&[entry]).unwrap();
+        let mut config = zellij_utils::input::config::Config::default();
+        zellij_utils::input::config_blocks::replace_config_blocks(&mut config, &kdl).unwrap();
+        let configuration = config.plugins.aliases["mine"].configuration.inner();
+        assert_eq!(configuration["spacer"], " ");
+        assert_eq!(configuration["label"], "tab ");
     }
 
     #[test]

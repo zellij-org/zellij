@@ -258,6 +258,65 @@ fn two_clients_answer_their_own_modals_independently() {
     nested.host.quit();
 }
 
+fn position_of(grid_snapshot: &GridSnapshot, needle: &str) -> (usize, usize) {
+    grid_snapshot
+        .lines()
+        .iter()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find(needle)
+                .map(|byte_index| (line[..byte_index].chars().count(), row))
+        })
+        .unwrap_or_else(|| panic!("{:?} not found in:\n{}", needle, grid_snapshot.text))
+}
+
+#[test]
+fn clicking_a_modal_option_chooses_it() {
+    let mut nested = NestedHarness::start_with_host_config(TERMINAL_SIZE, "mouse_mode true");
+
+    wait_for_modal(&nested);
+    let host_with_options = nested
+        .host
+        .wait_until("the modal options are shown", |host_grid| {
+            host_grid.contains("Control this session on focus")
+        });
+    let (column, row) = position_of(&host_with_options, "Control this session on focus");
+    let descended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::sgr_click(column + 2, row));
+    nested.wait_for_host_to_descend_into_guest_after(descended);
+    nested
+        .host
+        .wait_until("modal dismissed after the click", |host_grid| {
+            !modal_visible(host_grid)
+        });
+
+    nested.guest.wait_for_app_load();
+    nested.guest.quit();
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
+    nested.host.quit();
+}
+
+#[test]
+fn clicking_a_modal_option_explanation_chooses_it() {
+    let mut nested = NestedHarness::start_with_host_config(TERMINAL_SIZE, "mouse_mode true");
+
+    wait_for_modal(&nested);
+    let host_with_options = nested
+        .host
+        .wait_until("the modal options are shown", |host_grid| {
+            host_grid.contains("When this pane gains focus")
+        });
+    let (column, row) = position_of(&host_with_options, "When this pane gains focus");
+    let descended = nested.mark_host_to_guest();
+    nested.host.send_stdin(&keys::sgr_click(column + 2, row));
+    nested.wait_for_host_to_descend_into_guest_after(descended);
+
+    nested.guest.wait_for_app_load();
+    nested.guest.quit();
+    nested.wait_for_host_to_reclaim_focus_after_guest_exit();
+    nested.host.quit();
+}
+
 #[test]
 fn host_stops_pinging_a_frozen_guest_after_answering_the_modal() {
     let mut nested = NestedHarness::start(TERMINAL_SIZE);

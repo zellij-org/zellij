@@ -6,7 +6,7 @@ themes {
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 80 250 123
-            emphasis_3 255 121 198
+            emphasis_3 255 135 202
         }
         text_selected {
             base 255 255 255
@@ -19,26 +19,26 @@ themes {
         ribbon_selected {
             base 4 57 157
             background 80 250 123
-            emphasis_0 247 76 23
+            emphasis_0 180 47 0
             emphasis_1 255 184 108
             emphasis_2 255 121 198
-            emphasis_3 98 114 164
+            emphasis_3 80 95 144
         }
         ribbon_unselected {
             base 4 57 157
             background 227 165 85
-            emphasis_0 247 76 23
+            emphasis_0 131 32 0
             emphasis_1 255 255 255
             emphasis_2 98 114 164
-            emphasis_3 255 121 198
+            emphasis_3 133 0 92
         }
         table_title {
             base 80 250 123
-            background 0
+            background 4 57 157
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 80 250 123
-            emphasis_3 255 121 198
+            emphasis_3 255 135 202
         }
         table_cell_selected {
             base 255 255 255
@@ -54,7 +54,7 @@ themes {
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 80 250 123
-            emphasis_3 255 121 198
+            emphasis_3 255 135 202
         }
         list_selected {
             base 255 255 255
@@ -70,7 +70,7 @@ themes {
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 80 250 123
-            emphasis_3 255 121 198
+            emphasis_3 255 135 202
         }
         frame_selected {
             base 80 250 123
@@ -78,7 +78,7 @@ themes {
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 255 121 198
-            emphasis_3 0
+            emphasis_3 255 121 198
         }
         frame_highlight {
             base 255 184 108
@@ -97,24 +97,24 @@ themes {
             emphasis_3 98 114 164
         }
         exit_code_error {
-            base 247 76 23
+            base 251 80 28
             background 0
             emphasis_0 241 250 140
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 184 108
+            emphasis_2 255 121 198
+            emphasis_3 139 233 253
         }
         multiplayer_user_colors {
             player_1 255 121 198
-            player_2 98 114 164
-            player_3 0
+            player_2 122 139 191
+            player_3 80 250 123
             player_4 241 250 140
             player_5 139 233 253
-            player_6 0
-            player_7 247 76 23
-            player_8 0
-            player_9 0
-            player_10 0
+            player_6 255 184 108
+            player_7 251 80 28
+            player_8 210 187 255
+            player_9 190 214 108
+            player_10 101 228 179
         }
     }
 }

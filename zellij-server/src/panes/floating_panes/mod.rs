@@ -39,6 +39,7 @@ const RESIZE_INCREMENT_HEIGHT: usize = 2;
 
 pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    live_views: crate::pane_mirror::SharedLiveViews,
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -69,6 +70,9 @@ pub struct FloatingPanes {
 #[allow(clippy::borrowed_box)]
 #[allow(clippy::too_many_arguments)]
 impl FloatingPanes {
+    pub fn set_live_views(&mut self, live_views: crate::pane_mirror::SharedLiveViews) {
+        self.live_views = live_views;
+    }
     pub fn new(
         display_area: Rc<RefCell<Size>>,
         viewport: Rc<RefCell<Viewport>>,
@@ -87,6 +91,7 @@ impl FloatingPanes {
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
+            live_views: Default::default(),
             display_area,
             viewport,
             connected_clients,
@@ -174,6 +179,17 @@ impl FloatingPanes {
         self.panes.keys()
     }
     pub fn rendered_pane_ids(&self) -> Vec<PaneId> {
+        if let Some(fullscreen_pane_id) = self.fullscreen_pane_id {
+            return self
+                .panes
+                .contains_key(&fullscreen_pane_id)
+                .then_some(fullscreen_pane_id)
+                .into_iter()
+                .collect();
+        }
+        if *self.fullscreen_covers_ui.borrow() {
+            return vec![];
+        }
         if self.panes_are_visible() {
             self.panes.keys().copied().collect()
         } else {
@@ -703,6 +719,9 @@ impl FloatingPanes {
                 self.dimmed_clients.clone(),
                 &self.client_display_slots.borrow(),
             );
+            if client_id_override.is_none() {
+                pane_contents_and_ui.set_live_views(self.live_views.clone());
+            }
             for client_id in &connected_clients {
                 let client_mode = self
                     .mode_info
@@ -1882,7 +1901,7 @@ impl FloatingPanes {
         match self
             .panes
             .iter_mut()
-            .find(|(_, p)| p.invoked_with() == &run)
+            .find(|(_, p)| Run::fills_same_layout_slot(p.invoked_with(), &run))
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);

@@ -8,26 +8,27 @@ use zellij_integration_tests::{
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 const ARROW_RIGHT: &[u8] = b"\x1b[C";
 const ARROW_DOWN: &[u8] = b"\x1b[B";
+const HIDE_SESSION_NAME_INDEX: usize = 10;
 
 fn open_settings(zellij: &TestSession) -> GridSnapshot {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     })
 }
 
 fn close_search(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("search closed and categories shown", |grid_snapshot| {
-        grid_snapshot.contains("Mouse and clipboard") && !grid_snapshot.contains(" match")
+        grid_snapshot.contains("Clipboard and selection") && !grid_snapshot.contains(" match")
     });
 }
 
 fn close_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings screen closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
+        !grid_snapshot.contains("unsaved change")
     });
 }
 
@@ -103,6 +104,9 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
     open_settings(&zellij);
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(&keys::TAB);
+    for _ in 0..HIDE_SESSION_NAME_INDEX {
+        zellij.send_stdin(ARROW_DOWN);
+    }
     zellij.wait_until(
         "unsaved marker shown again after reopening",
         |grid_snapshot| {
@@ -196,13 +200,11 @@ fn the_unsaved_marker_in_the_side_menu_takes_the_hover_background() {
     });
     close_search(&zellij);
     let grid_snapshot = zellij.wait_until("menu marker shown", |grid_snapshot| {
-        grid_snapshot.contains("Pane frames and borders ●")
+        grid_snapshot.contains("Appearance ●")
     });
-    let row = grid_snapshot
-        .row_of_line("Pane frames and borders ●")
-        .unwrap();
+    let row = grid_snapshot.row_of_line("Appearance ●").unwrap();
     let line = grid_snapshot.lines()[row].clone();
-    let title_column = line[..line.find("Pane frames").unwrap()].chars().count();
+    let title_column = line[..line.find("Appearance").unwrap()].chars().count();
     let marker_column = line[..line.find('●').unwrap()].chars().count();
 
     let background_before_hover = grid_snapshot.cell_style(title_column, row).background;
@@ -220,7 +222,7 @@ fn the_unsaved_marker_in_the_side_menu_takes_the_hover_background() {
 }
 
 #[test]
-fn a_terminal_window_setting_is_saved_inside_the_window_block() {
+fn a_terminal_setting_is_saved_inside_the_terminal_block() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let config_file_path = zellij
@@ -241,7 +243,7 @@ fn a_terminal_window_setting_is_saved_inside_the_window_block() {
 
     let written = std::fs::read_to_string(&config_file_path).unwrap();
     assert!(
-        written.contains("window {\n    blur true\n}"),
+        written.contains("terminal {\n    blur true\n}"),
         "config file was not updated: {}",
         written
     );
@@ -264,7 +266,7 @@ theme \"first\"
 ";
 
 fn window_background(
-    settings: &zellij_utils::input::window::WindowSettings,
+    settings: &zellij_utils::input::terminal::TerminalSettings,
 ) -> Option<zellij_utils::data::PaletteColor> {
     settings
         .theme
@@ -281,7 +283,7 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
 
     focus_setting_by_search(&zellij, "blur behind", "Blur behind");
     zellij.send_stdin(&keys::SPACE);
-    let pushed = zellij.wait_for_window_settings("blur is turned on", |settings| {
+    let pushed = zellij.wait_for_terminal_settings("blur is turned on", |settings| {
         settings.section.blur == Some(true)
     });
     assert_eq!(
@@ -293,7 +295,7 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
 
     focus_setting_by_search(&zellij, "color theme", "Theme");
     zellij.send_stdin(ARROW_RIGHT);
-    let pushed = zellij.wait_for_window_settings("another theme is chosen", |settings| {
+    let pushed = zellij.wait_for_terminal_settings("another theme is chosen", |settings| {
         window_background(settings) != Some(zellij_utils::data::PaletteColor::Rgb((1, 1, 1)))
     });
     assert_eq!(
@@ -301,5 +303,86 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
         Some(true),
         "choosing a theme lost the window setting changed before it"
     );
+    zellij.quit();
+}
+
+#[test]
+fn the_attention_settings_are_listed_and_saved() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
+    terminal.output(b"\x1b]7501;state=blocked:kind=question\x1b\\");
+    zellij.wait_until("the pane frame shows the status", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
+    });
+    let config_file_path = zellij
+        .config_file_path()
+        .expect("the test session has a config file");
+    open_settings(&zellij);
+    focus_setting_by_search(&zellij, "status on pane", "Status on pane frames");
+    zellij.send_stdin(&keys::SPACE);
+    zellij.wait_until("the setting changed", |grid_snapshot| {
+        grid_snapshot.contains("1 unsaved change ")
+    });
+    zellij.send_stdin(&keys::ctrl('a'));
+    zellij_integration_tests::wait_for("the setting to be written", || {
+        let written = std::fs::read_to_string(&config_file_path).unwrap_or_default();
+        written.contains("attention {") && written.contains("frame_markers false")
+    });
+    close_search(&zellij);
+    close_settings(&zellij);
+    zellij.wait_until("the frame marker is gone", |grid_snapshot| {
+        !grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
+    });
+    zellij.quit();
+}
+
+fn sgr_left_click(zellij: &TestSession, column: usize, line: usize) {
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}M", column, line).as_bytes());
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}m", column, line).as_bytes());
+}
+
+fn click_on_text(zellij: &TestSession, grid_snapshot: &GridSnapshot, needle: &str) {
+    for (row, line) in grid_snapshot.lines().iter().enumerate() {
+        if let Some(byte_index) = line.find(needle) {
+            let column = line[..byte_index].chars().count();
+            sgr_left_click(zellij, column + 2, row + 1);
+            return;
+        }
+    }
+    panic!("{} is not on screen", needle);
+}
+
+#[test]
+fn clicking_a_focused_text_setting_starts_editing_it() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true")
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    focus_setting_by_search(&zellij, "word sep", "Word separators");
+    let grid_snapshot = zellij.wait_until("the text setting is focused", |grid_snapshot| {
+        grid_snapshot.contains("[]{}<>()") && grid_snapshot.contains("<Enter> - edit")
+    });
+
+    click_on_text(&zellij, &grid_snapshot, "[]{}<>()");
+    zellij.wait_until("the text setting is being edited", |grid_snapshot| {
+        grid_snapshot.contains("<Enter> - apply")
+    });
+    zellij.send_stdin(b"Q");
+    zellij.wait_until("typed text reached the field", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains("Word separators") && line.contains("[ Q "))
+    });
     zellij.quit();
 }

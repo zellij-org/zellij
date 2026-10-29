@@ -723,6 +723,14 @@ impl<'a> LayoutApplier<'a> {
                 floating_pane_layout.default_bg.clone(),
             );
         }
+        if floating_pane_layout.attention_muted.is_some()
+            || floating_pane_layout.ignore_output.is_some()
+        {
+            new_pane.set_initial_attention_flags(
+                floating_pane_layout.attention_muted.unwrap_or(false),
+                floating_pane_layout.ignore_output.unwrap_or(false),
+            );
+        }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
         }
@@ -798,6 +806,12 @@ impl<'a> LayoutApplier<'a> {
         }
         if layout.default_fg.is_some() || layout.default_bg.is_some() {
             new_pane.set_pane_default_colors(layout.default_fg.clone(), layout.default_bg.clone());
+        }
+        if layout.attention_muted.is_some() || layout.ignore_output.is_some() {
+            new_pane.set_initial_attention_flags(
+                layout.attention_muted.unwrap_or(false),
+                layout.ignore_output.unwrap_or(false),
+            );
         }
         if let Some(held_command) = hold_for_command {
             new_pane.hold(None, true, held_command.clone());
@@ -1304,7 +1318,7 @@ impl ExistingTabState {
     ) -> Option<Box<dyn Pane>> {
         let candidates = self.pane_candidates();
         let pane_id = candidates.iter().find_map(|(_pid, p)| {
-            if p.invoked_with() == run {
+            if Run::fills_same_layout_slot(p.invoked_with(), run) {
                 Some(p.pid())
             } else {
                 None
@@ -1375,7 +1389,7 @@ impl ExistingTabState {
         }
         let panes_with_same_contents = candidates
             .iter()
-            .filter(|(_pid, p)| p.invoked_with() == run)
+            .filter(|(_pid, p)| Run::fills_same_layout_slot(p.invoked_with(), run))
             .collect::<Vec<_>>();
         if panes_with_same_contents.len() > 1 {
             panes_with_same_contents

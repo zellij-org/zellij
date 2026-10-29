@@ -88,6 +88,7 @@ impl Keybinds {
             },
             InputMode::RenameTab => Action::TabNameInput { input: raw_bytes },
             InputMode::RenamePane => Action::PaneNameInput { input: raw_bytes },
+            InputMode::RenameSession => Action::SessionNameInput { input: raw_bytes },
             InputMode::EnterSearch => Action::SearchInput { input: raw_bytes },
             _ => Action::NoOp,
         }

@@ -2,7 +2,7 @@
 use crate::{
     data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
-    input::{actions::Action, cli_assets::CliAssets, window::WindowSettings},
+    input::{actions::Action, cli_assets::CliAssets, terminal::TerminalSettings},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -21,6 +21,7 @@ use crate::client_server_contract::client_server_contract::{
 };
 use prost::Message;
 
+mod attention_conversion;
 mod enum_conversions;
 mod protobuf_conversion;
 
@@ -250,6 +251,14 @@ pub enum ClientToServerMsg {
     RequestSessionPreview {
         tab_index: Option<u32>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<crate::data::PreviewAnchor>,
+    },
+    RequestSessionAttention {
+        include_command_text: bool,
+    },
+    PeerAttentionChanged {
+        session_name: String,
+        attention: Option<crate::attention::SessionAttention>,
     },
     SetMobileRenderPreferences {
         single_pane: bool,
@@ -261,11 +270,21 @@ pub enum ClientToServerMsg {
     StructuredRenderSupport {
         supported: bool,
     },
+    ClipboardPasteSupport {
+        supported: bool,
+        shortcut: Option<String>,
+    },
     RenderFrameAck {
         seq: u64,
     },
     FontFamilies {
         families: Vec<String>,
+    },
+    PaneMirror {
+        payload: Vec<u8>,
+    },
+    AdoptSessionHistory {
+        history: crate::session_history::SessionHistory,
     },
 }
 
@@ -304,13 +323,16 @@ pub enum ServerToClientMsg {
     SetSoftKeyboard {
         on: bool,
     },
+    PasteFromClipboard {
+        pane_id: Option<PaneId>,
+    },
     StartWebServer,
     RenamedSession {
         name: String,
     },
     ConfigFileUpdated,
-    WindowSettingsChanged {
-        settings: Box<WindowSettings>,
+    TerminalSettingsChanged {
+        settings: Box<TerminalSettings>,
     },
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
@@ -334,6 +356,18 @@ pub enum ServerToClientMsg {
     },
     MobileState {
         payload: MobileStatePayload,
+    },
+    HostProgramStatus {
+        status: Option<crate::attention::HostProgramStatus>,
+    },
+    SessionAttention {
+        attention: crate::attention::SessionAttention,
+    },
+    SessionPreview {
+        preview: Option<crate::data::SessionPreview>,
+    },
+    PaneMirror {
+        payload: Vec<u8>,
     },
 }
 

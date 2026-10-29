@@ -323,15 +323,66 @@ pub struct Setup {
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
 
-    /// Install a launcher entry so the zellij window appears in application launchers: a
-    /// desktop entry and icon on Linux, a Start menu shortcut on Windows. The entry runs this
-    /// binary by absolute path, so re-run this after moving the binary
-    #[clap(long, value_parser, exclusive = true)]
+    /// Install the desktop entry, as the setup screen does: a launcher and icons on Linux, a
+    /// Start menu shortcut and an "Open Zellij here" Explorer item on Windows
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
     pub install_desktop_entry: bool,
 
-    /// Remove the launcher entry written by --install-desktop-entry
-    #[clap(long, value_parser, exclusive = true)]
+    /// Remove the desktop entry Zellij installed, as the setup screen's Uninstall button does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
     pub uninstall_desktop_entry: bool,
+
+    /// Copy this Zellij to a permanent folder, or update an older Zellij that is already
+    /// installed, as the setup screen does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub copy_to_permanent_folder: bool,
+
+    /// Replace a different file that is in the way of --copy-to-permanent-folder
+    #[clap(long, value_parser, requires = "copy_to_permanent_folder")]
+    #[serde(default)]
+    pub replace_existing: bool,
+
+    /// Make Zellij the default terminal, installing the desktop entry if it is missing, as the
+    /// setup screen does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub make_default_terminal: bool,
+
+    /// Choose the keybinding preset (for example "unlock-first") and save it to the config file
+    #[clap(long, value_name = "PRESET", value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub keybinding_preset: Option<String>,
+}
+
+const SETUP_ONLY_FLAGS: [&str; 9] = [
+    "dump_config",
+    "clean",
+    "check",
+    "dump_layout",
+    "dump_swap_layout",
+    "dump_keybinds",
+    "dump_plugins",
+    "generate_completion",
+    "generate_auto_start",
+];
+
+impl Setup {
+    pub fn desktop_actions(&self) -> crate::desktop_integration::SetupActions {
+        crate::desktop_integration::SetupActions {
+            copy_to_permanent_folder: self.copy_to_permanent_folder,
+            install_desktop_entry: self.install_desktop_entry,
+            uninstall_desktop_entry: self.uninstall_desktop_entry,
+            make_default_terminal: self.make_default_terminal,
+        }
+    }
+    pub fn runs_setup_actions(&self) -> bool {
+        let actions = self.desktop_actions();
+        actions != crate::desktop_integration::SetupActions::default()
+            || self.keybinding_preset.is_some()
+    }
 }
 
 impl Setup {
@@ -815,7 +866,7 @@ fn merge_attach_command_options(
 ) -> Option<Options> {
     let attach_options = match cli_args.command.clone() {
         Some(Command::Sessions(Sessions::Attach { args, .. })) => args.options,
-        Some(Command::Window(window_args)) => window_args.attach.options,
+        Some(Command::Terminal(terminal_args)) => terminal_args.attach.options,
         _ => None,
     };
     match attach_options.as_deref() {

@@ -6,10 +6,13 @@ use crate::route::PopupScroll;
 use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement, Tab};
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
+
+const PREVIEW_SCROLLBACK_LINES: usize = 300;
 use std::time::Instant;
 use zellij_utils::data::{
-    ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
-    KeybindsVec, PipePopupPlacement, PopupCorner, PopupOptions,
+    ClickedPaneAction, ContextMenuAction, ContextMenuContext, ContextMenuEntry, ContextMenuKind,
+    ContextMenuTarget, Event, InputMode, KeybindsVec, PipePopupPlacement, PopupCorner,
+    PopupOptions,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -29,6 +32,7 @@ pub const SESSION_MANAGER_PLUGIN_ALIAS: &str = "session-manager";
 pub const SESSION_CARD_COLS: usize = 72;
 pub const SESSION_CARD_ROWS: usize = 13;
 pub const SWAP_LAYOUT_NOTIFICATION_MS: u64 = 2000;
+pub const SESSION_RENAME_ERROR_REQUEST_ID: u64 = 1;
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
 pub const PIPE_POPUP_INITIAL_ROWS: usize = 8;
 
@@ -40,7 +44,7 @@ pub fn estimated_context_menu_size(
     let widest_item = entries
         .iter()
         .filter_map(|entry| match entry {
-            ContextMenuEntry::Item { label, actions } => {
+            ContextMenuEntry::Item { label, actions, .. } => {
                 let shortcut = context_menu_shortcut(keybinds, base_mode, actions)
                     .map(|shortcut| zellij_utils::graphemes::display_width(&shortcut) + 1)
                     .unwrap_or(0);
@@ -60,9 +64,38 @@ pub fn entries_available_to_plugins(entries: Vec<ContextMenuEntry>) -> Vec<Conte
         .into_iter()
         .filter(|entry| match entry {
             ContextMenuEntry::Separator => true,
-            ContextMenuEntry::Item { actions, .. } => actions
-                .iter()
-                .all(|action| ProtobufContextMenuAction::try_from(action.clone()).is_ok()),
+            ContextMenuEntry::Item { label, actions, .. } => {
+                let failure = actions
+                    .iter()
+                    .find_map(|action| ProtobufContextMenuAction::try_from(action.clone()).err());
+                if let Some(reason) = failure {
+                    log::warn!(
+                        "Right-click menu item \"{}\" was left out: {}",
+                        label,
+                        reason
+                    );
+                }
+                failure.is_none()
+            },
+        })
+        .collect()
+}
+
+pub fn entries_available_here(
+    entries: Vec<ContextMenuEntry>,
+    can_paste: bool,
+    can_open_window: bool,
+) -> Vec<ContextMenuEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| match entry {
+            ContextMenuEntry::Separator => true,
+            ContextMenuEntry::Item { actions, .. } => actions.iter().all(|action| match action {
+                ContextMenuAction::ClickedPane(ClickedPaneAction::PasteFromClipboard)
+                | ContextMenuAction::Action(Action::PasteFromClipboardByPaneId { .. }) => can_paste,
+                ContextMenuAction::Action(Action::OpenSessionInTerminal) => can_open_window,
+                _ => true,
+            }),
         })
         .collect()
 }
@@ -390,6 +423,7 @@ impl Screen {
             line: request.position.line.0.max(0) as usize,
             column: request.position.column.0,
             client_id,
+            paste_shortcut: None,
         };
         self.open_context_menu(context);
     }
@@ -410,7 +444,7 @@ impl Screen {
         let request = ContextMenuRequest {
             kind: ContextMenuKind::Pane,
             pane_id: pane.pid(),
-            is_floating: tab.are_floating_panes_visible(),
+            is_floating: tab.pane_id_is_floating(&pane.pid()),
             position: Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16),
         };
         self.open_context_menu_for_pane(request, client_id);
@@ -437,9 +471,13 @@ impl Screen {
                 Err(_) => return,
             },
         };
+        let pane_id = match kind {
+            ContextMenuKind::Bar => Some(PaneId::Plugin(plugin_id).into()),
+            _ => None,
+        };
         let context = ContextMenuContext {
             kind,
-            pane_id: None,
+            pane_id,
             pane_is_floating: false,
             tab_index,
             tab_id,
@@ -447,6 +485,7 @@ impl Screen {
             line,
             column,
             client_id,
+            paste_shortcut: None,
         };
         self.open_context_menu(context);
     }
@@ -472,12 +511,22 @@ impl Screen {
             None => (line, column),
         }
     }
-    fn open_context_menu(&mut self, context: ContextMenuContext) {
+    fn open_context_menu(&mut self, mut context: ContextMenuContext) {
         let client_id = context.client_id;
+        context.paste_shortcut = self.client_paste_shortcut(client_id);
         let entries = entries_available_to_plugins(
             self.context_menu_config_for_client(client_id)
                 .entries_for(context.kind),
         );
+        let entries = self.resolve_toggled_context_menu_labels(entries, &context);
+        let entries = self.resolve_session_history_context_menu_entries(entries, client_id);
+        let entries = self.resolve_hidden_bars_context_menu_entries(entries, &context);
+        let entries = entries_available_here(
+            entries,
+            self.client_can_paste_from_clipboard(client_id),
+            crate::desktop_app::can_open_window(),
+        );
+        let entries = zellij_utils::input::context_menu::normalize_separators(entries);
         if entries.is_empty() {
             return;
         }
@@ -549,7 +598,7 @@ impl Screen {
             vec![],
         );
     }
-    fn request_popup(
+    pub(super) fn request_popup(
         &mut self,
         client_id: ClientId,
         run_plugin_or_alias: RunPluginOrAlias,
@@ -657,6 +706,7 @@ impl Screen {
             placement,
             focused,
             false,
+            false,
         );
     }
     pub fn open_prompt_popup(
@@ -668,6 +718,7 @@ impl Screen {
         placement: Option<PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
+        closes_on_outside_click: bool,
     ) {
         let tab_id = match self.active_tab_ids.get(&owner_client_id) {
             Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
@@ -721,6 +772,7 @@ impl Screen {
             pipe_placement,
             focused,
             capture_all_keys,
+            closes_on_outside_click,
         );
     }
     fn load_answer_popup(
@@ -734,6 +786,7 @@ impl Screen {
         placement: PipePopupPlacement,
         focused: bool,
         capture_all_keys: bool,
+        closes_on_outside_click: bool,
     ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
@@ -801,6 +854,7 @@ impl Screen {
             },
         };
         let kind = match (focused, capture_all_keys) {
+            (true, _) if closes_on_outside_click => PopupKind::Explanation,
             (true, true) => PopupKind::Modal,
             (true, false) => PopupKind::Prompt,
             (false, _) => PopupKind::Info,
@@ -854,6 +908,13 @@ impl Screen {
         height: usize,
         anchor_pane: Option<PaneId>,
     ) -> Result<()> {
+        if !self.accept_mode_hints_popup(&run_plugin_or_alias, client_id) {
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::Unload(plugin_id));
+            return Ok(());
+        }
         let anchor_still_exists = anchor_pane
             .map(|pane_id| {
                 self.tabs
@@ -905,6 +966,7 @@ impl Screen {
         }
         self.schedule_popup_reveal(plugin_id, POPUP_REVEAL_FALLBACK_MS);
         self.report_popup_state(client_id);
+        self.report_client_visible_plugins();
         self.render(None)
     }
     pub fn set_popup_size(&mut self, plugin_id: u32, width: usize, height: usize) -> Result<()> {
@@ -930,13 +992,17 @@ impl Screen {
         let Ok(tab) = self.get_active_tab(client_id) else {
             return;
         };
+        let open_browser = tab.floating_plugin_for_location(SESSION_MANAGER_PLUGIN_ALIAS);
         match tab.popup_for_location(client_id, SESSION_MANAGER_PLUGIN_ALIAS) {
             Some((plugin_id, true)) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
             Some((plugin_id, false)) => {
                 self.set_popup_focused(plugin_id, true);
                 self.pipe_to_popup_plugin(plugin_id, client_id, "focus_card");
             },
-            None => self.request_session_card(client_id, true),
+            None => match open_browser {
+                Some(plugin_id) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
+                None => self.request_session_card(client_id, true),
+            },
         }
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
@@ -973,7 +1039,12 @@ impl Screen {
         } else {
             "card_startup"
         };
-        let configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
+        let mut configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
+        if !focused {
+            if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
+                configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
+            }
+        }
         let run_plugin_or_alias = match RunPluginOrAlias::from_url(
             SESSION_MANAGER_PLUGIN_ALIAS,
             &Some(configuration),
@@ -1151,10 +1222,28 @@ impl Screen {
                 request,
             });
     }
+    pub fn show_session_rename_error(&mut self, client_id: ClientId, error_text: String) {
+        let request =
+            zellij_utils::prompt::PromptRequest::info("Could not rename session", error_text);
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::PromptRequest {
+                caller: PromptCaller {
+                    plugin_id: SERVER_NOTICE_CALLER_ID,
+                    client_id,
+                    request_id: SESSION_RENAME_ERROR_REQUEST_ID,
+                },
+                owner_client_id: client_id,
+                caller_pane_id: None,
+                request,
+            });
+    }
     pub fn session_preview(
         &mut self,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
     ) -> zellij_utils::data::SessionPreview {
         let wanted_pane = pane_id.map(|(id, is_plugin)| {
             if is_plugin {
@@ -1175,7 +1264,18 @@ impl Screen {
             .and_then(|client_id| self.active_tab_ids.get(&client_id))
             .and_then(|tab_id| self.tabs.get(tab_id))
             .map(|tab| tab.position);
-        let wanted_index = tab_index.or(active_tab_index).unwrap_or(0);
+        let tab_of_wanted_pane = match (tab_index, wanted_pane) {
+            (None, Some(pane_id)) => self
+                .tabs
+                .values()
+                .find(|tab| tab.get_pane_with_id(pane_id).is_some())
+                .map(|tab| tab.position),
+            _ => None,
+        };
+        let wanted_index = tab_index
+            .or(tab_of_wanted_pane)
+            .or(active_tab_index)
+            .unwrap_or(0);
         let connected_clients = self.active_tab_ids.keys().len();
         let pane_client = client_id.unwrap_or(1);
         let mut ordered_tabs: Vec<&Tab> = self.tabs.values().collect();
@@ -1207,7 +1307,7 @@ impl Screen {
                 }
             })
             .collect();
-        let (contents, pane_count) = match self
+        let (contents, pane_count, shown_pane, anchor_line) = match self
             .tabs
             .values_mut()
             .find(|tab| tab.position == wanted_index)
@@ -1215,14 +1315,24 @@ impl Screen {
             Some(tab) => {
                 let pane_count = tab.get_selectable_tiled_panes_count()
                     + tab.get_selectable_floating_panes_count();
-                let contents = wanted_pane
+                let shown_pane = wanted_pane
                     .filter(|pane_id| tab.get_pane_with_id(*pane_id).is_some())
-                    .or_else(|| tab.get_active_pane_id_or_first_selectable(pane_client))
-                    .and_then(|pane_id| tab.get_dump_with_ansi_terminal_screen(pane_id, false))
-                    .unwrap_or_default();
-                (contents, pane_count)
+                    .or_else(|| tab.get_active_pane_id_or_first_selectable(pane_client));
+                let (contents, anchor_line) = match (shown_pane, anchor) {
+                    (Some(pane_id), Some(anchor)) => tab
+                        .get_pane_with_id(pane_id)
+                        .map(|pane| pane.preview_with_anchor(anchor, PREVIEW_SCROLLBACK_LINES))
+                        .unwrap_or_default(),
+                    (Some(pane_id), None) => (
+                        tab.get_dump_with_ansi_terminal_screen(pane_id, false)
+                            .unwrap_or_default(),
+                        None,
+                    ),
+                    (None, _) => (String::new(), None),
+                };
+                (contents, pane_count, shown_pane, anchor_line)
             },
-            None => (String::new(), 0),
+            None => (String::new(), 0, None, None),
         };
         zellij_utils::data::SessionPreview {
             session_name: self.session_name.clone(),
@@ -1234,6 +1344,11 @@ impl Screen {
             connected_clients,
             error: None,
             tabs: preview_tabs,
+            pane_id: shown_pane.map(|pane_id| match pane_id {
+                PaneId::Terminal(id) => (id, false),
+                PaneId::Plugin(id) => (id, true),
+            }),
+            anchor_line,
         }
     }
     fn schedule_popup_reveal(&self, plugin_id: u32, delay_ms: u64) {
@@ -1250,7 +1365,7 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zellij_utils::data::{BareKey, ClickedPaneAction, ContextMenuAction, KeyWithModifier};
+    use zellij_utils::data::{BareKey, KeyWithModifier};
 
     #[test]
     fn items_for_the_clicked_pane_or_tab_and_with_explicit_ids_reach_the_plugin() {
@@ -1288,6 +1403,41 @@ mod tests {
     }
 
     #[test]
+    fn paste_and_open_in_a_window_are_only_offered_where_they_work() {
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Paste",
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::PasteFromClipboard,
+                )],
+            ),
+            ContextMenuEntry::item(
+                "Open in a Zellij terminal",
+                vec![Action::OpenSessionInTerminal.into()],
+            ),
+            ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
+        ];
+        let labels = |entries: Vec<ContextMenuEntry>| -> Vec<String> {
+            entries
+                .iter()
+                .filter_map(|entry| entry.label().map(|label| label.to_owned()))
+                .collect()
+        };
+        assert_eq!(
+            labels(entries_available_here(entries.clone(), false, false)),
+            vec!["Detach".to_owned()]
+        );
+        assert_eq!(
+            labels(entries_available_here(entries, true, true)),
+            vec![
+                "Paste".to_owned(),
+                "Open in a Zellij terminal".to_owned(),
+                "Detach".to_owned()
+            ]
+        );
+    }
+
+    #[test]
     fn items_that_cannot_reach_the_plugin_are_left_out() {
         use zellij_utils::data::{ClickedTabAction, Direction};
         let entries = vec![
@@ -1316,11 +1466,13 @@ mod tests {
                 actions: vec![ContextMenuAction::ClickedPane(
                     ClickedPaneAction::CloseFocus,
                 )],
+                toggled_label: None,
             },
             ContextMenuEntry::Separator,
             ContextMenuEntry::Item {
                 label: "Detach".to_owned(),
                 actions: vec![Action::Detach.into()],
+                toggled_label: None,
             },
         ];
         let keybinds: KeybindsVec = vec![

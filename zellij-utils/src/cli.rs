@@ -173,9 +173,9 @@ pub enum Command {
     )]
     #[clap(arg_required_else_help = true)]
     Prompt(PromptCli),
-    /// Open a session in zellij's own window, without a terminal emulator
-    #[clap(name = "window")]
-    Window(WindowArgs),
+    /// Open a session in the Zellij terminal, without another terminal emulator
+    #[clap(name = "terminal")]
+    Terminal(TerminalArgs),
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -566,7 +566,7 @@ impl AttachArgs {
 }
 
 #[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
-pub struct WindowArgs {
+pub struct TerminalArgs {
     #[clap(flatten)]
     pub attach: AttachArgs,
 
@@ -606,14 +606,99 @@ pub struct WindowArgs {
         long,
         value_enum,
         value_name = "MODE",
-        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the window section of the configuration"
+        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the terminal section of the configuration"
     )]
-    pub startup_mode: Option<crate::input::window::StartupMode>,
+    pub startup_mode: Option<crate::input::terminal::StartupMode>,
+
+    #[clap(
+        long,
+        help = "Open this window on its own instead of handing it to the running desktop app (no tray, no notifications from this process)"
+    )]
+    pub standalone: bool,
+
+    #[clap(
+        long,
+        value_name = "PATH",
+        help = "Use this folder for session sockets instead of the default, so this window, its desktop app and its sessions are separate from every other Zellij (same as setting ZELLIJ_SOCKET_DIR)"
+    )]
+    pub socket_dir: Option<PathBuf>,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["sessions", "standalone", "watch", "headless"],
+        help = "Show or hide the inbox panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub inbox: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["standalone", "watch", "headless"],
+        help = "Show or hide the sessions panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub sessions: bool,
+
+    #[clap(
+        short = 'e',
+        value_name = "COMMAND",
+        num_args = 1..,
+        allow_hyphen_values = true,
+        conflicts_with_all = &["watch", "inbox", "sessions", "headless", "initial_command", "background"],
+        help = "Run this command (and every argument after it) as the first pane, close the pane when it exits, and wait for it, exiting with its exit code (as terminal emulators do)"
+    )]
+    pub execute: Vec<String>,
+
+    #[clap(
+        long,
+        value_name = "DIR",
+        help = "Start in this folder instead of the current one"
+    )]
+    pub working_directory: Option<PathBuf>,
+
+    #[clap(
+        long,
+        help = "Keep the command's pane open after the command exits, showing its output (requires a command)"
+    )]
+    pub hold: bool,
+
+    #[clap(
+        long,
+        hide = true,
+        conflicts_with_all = &["inbox", "sessions", "standalone", "watch", "headless"],
+        help = "Start the desktop app without opening a window"
+    )]
+    pub background: bool,
 }
 
-impl WindowArgs {
+impl TerminalArgs {
     pub const DEFAULT_ROWS: usize = 40;
     pub const DEFAULT_COLS: usize = 120;
+
+    pub fn command(&self) -> &[String] {
+        if self.execute.is_empty() {
+            &self.attach.initial_command
+        } else {
+            &self.execute
+        }
+    }
+
+    pub fn waits_for_command(&self) -> bool {
+        !self.execute.is_empty()
+    }
+
+    pub fn closes_command_on_exit(&self) -> bool {
+        if self.hold {
+            false
+        } else {
+            self.waits_for_command() || self.attach.close_on_exit
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.hold && self.command().is_empty() {
+            return Err("--hold needs a command to keep open: give one with -e".to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -879,6 +964,12 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long)]
         start_suspended: bool,
+
+        #[clap(
+            long,
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
 
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
@@ -1302,6 +1393,26 @@ pub enum CliAction {
         #[clap(value_enum, value_parser)]
         style: PaneFrameStyle,
     },
+    #[clap(
+        about = "Show all bars if any are hidden, otherwise hide the named bars (all bars if none are named)"
+    )]
+    ToggleBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Hide the named bars (all bars if none are named) in every tab")]
+    HideBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Show all hidden bars")]
+    ShowBars,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab {
         /// Target a specific tab by ID
@@ -1358,6 +1469,12 @@ pub enum CliAction {
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(short, long, requires("command"))]
         start_suspended: bool,
+        #[clap(
+            long,
+            requires("command"),
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(long, value_parser)]
@@ -1747,7 +1864,7 @@ pub enum CliAction {
         #[clap(long)]
         retain_existing_terminal_panes: bool,
 
-        /// Retain existing plugin panes that do not fit with the layout default: false)
+        /// Retain existing plugin panes that do not fit with the layout (default: false)
         #[clap(long)]
         retain_existing_plugin_panes: bool,
 
@@ -1956,6 +2073,82 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(
+        about = "Toggle whether the live view in the focused plugin pane resizes the program of the pane it shows"
+    )]
+    ToggleMirrorResize,
+    #[clap(about = "Mute or unmute the attention status of a pane (the focused pane by default)")]
+    MutePane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Stop or start reporting new output of a pane (the focused pane by default)")]
+    IgnorePaneOutput {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Watch a pane: notify each time its command finishes or its output goes quiet, until turned off again (toggles; the focused pane by default)"
+    )]
+    WatchPane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)"
+    )]
+    MuteTab {
+        #[clap(short, long, value_parser, help = "Target a specific tab by its ID")]
+        tab_id: Option<u64>,
+    },
+    #[clap(about = "Mute or unmute the attention status of the whole session")]
+    MuteSession,
+    #[clap(
+        about = "Switch to the session this client was in before (run again to return), or to the next running session if there is none"
+    )]
+    ToggleSession,
+    #[clap(about = "Go back to the previous session in this client's history")]
+    GoToPreviousSession,
+    #[clap(about = "Go forward in this client's session history")]
+    GoToNextSession,
+    #[clap(
+        about = "Jump to the next pane that needs attention in any session, switching session if needed"
+    )]
+    GoToNextAttention,
+    #[clap(
+        about = "Show or hide the desktop app's tray / menu-bar icon until the app restarts (sessions and notifications continue)"
+    )]
+    ToggleTrayIcon,
+    #[clap(about = "Mark a pane as seen, clearing past events (the focused pane by default)")]
+    MarkPaneSeen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Mark every pane of every running session as seen")]
+    MarkAllSeen {
+        #[clap(long, help = "Only mark the panes of the current session")]
+        this_session: bool,
+    },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.
@@ -2073,6 +2266,23 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
         reset: bool,
     },
+    /// Set the command a terminal pane will be resurrected with, instead of the detected one.
+    /// The command stays in effect until cleared with --clear or until the pane is closed.
+    SetResurrectCommand {
+        /// The pane_id of the terminal pane, eg. terminal_1 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Working directory to resurrect the pane in
+        #[clap(long, value_parser, conflicts_with("clear"))]
+        cwd: Option<PathBuf>,
+        /// Remove a previously set resurrect command
+        #[clap(long, value_parser, conflicts_with("command"))]
+        clear: bool,
+        /// The command and its arguments
+        #[clap(last(true), required_unless_present("clear"))]
+        command: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -2166,5 +2376,68 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
+    }
+
+    fn parse_set_resurrect_command(args: &[&str]) -> Result<CliAction, clap::Error> {
+        let mut full_args = vec!["action", "set-resurrect-command"];
+        full_args.extend_from_slice(args);
+        let cli = try_parse(&full_args)?;
+        match cli.command {
+            Some(Command::Action(action)) => Ok(*action),
+            other => panic!("Expected Action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_command() {
+        let action = parse_set_resurrect_command(&[
+            "--pane-id",
+            "terminal_1",
+            "--cwd",
+            "/tmp",
+            "--",
+            "opencode",
+            "-s",
+            "ses_abc",
+        ])
+        .unwrap();
+        match action {
+            CliAction::SetResurrectCommand {
+                pane_id,
+                cwd,
+                clear,
+                command,
+            } => {
+                assert_eq!(pane_id, Some("terminal_1".to_string()));
+                assert_eq!(cwd, Some(PathBuf::from("/tmp")));
+                assert!(!clear);
+                assert_eq!(command, vec!["opencode", "-s", "ses_abc"]);
+            },
+            other => panic!("Expected SetResurrectCommand, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_clear() {
+        let action = parse_set_resurrect_command(&["--clear"]).unwrap();
+        assert!(matches!(
+            action,
+            CliAction::SetResurrectCommand { clear: true, ref command, .. } if command.is_empty()
+        ));
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_command() {
+        assert!(parse_set_resurrect_command(&["--clear", "--", "opencode"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_cwd() {
+        assert!(parse_set_resurrect_command(&["--clear", "--cwd", "/tmp"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_requires_command_or_clear() {
+        assert!(parse_set_resurrect_command(&[]).is_err());
     }
 }

@@ -3,74 +3,74 @@ themes {
         text_unselected {
             base 229 233 240
             background 59 66 82
-            emphasis_0 208 135 112
+            emphasis_0 232 157 133
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 201 162 194
         }
         text_selected {
             base 229 233 240
-            background 59 66 82
-            emphasis_0 208 135 112
-            emphasis_1 136 192 208
-            emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            background 79 86 101
+            emphasis_0 255 189 168
+            emphasis_1 155 211 228
+            emphasis_2 183 211 160
+            emphasis_3 232 192 224
         }
         ribbon_selected {
             base 59 66 82
             background 163 190 140
-            emphasis_0 191 97 106
+            emphasis_0 128 41 54
             emphasis_1 208 135 112
             emphasis_2 180 142 173
-            emphasis_3 129 161 193
+            emphasis_3 44 73 101
         }
         ribbon_unselected {
             base 59 66 82
             background 216 222 233
-            emphasis_0 191 97 106
+            emphasis_0 159 69 79
             emphasis_1 229 233 240
             emphasis_2 129 161 193
-            emphasis_3 180 142 173
+            emphasis_3 121 87 115
         }
         table_title {
             base 163 190 140
-            background 0
-            emphasis_0 208 135 112
+            background 59 66 82
+            emphasis_0 232 157 133
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 201 162 194
         }
         table_cell_selected {
             base 229 233 240
             background 46 52 64
-            emphasis_0 208 135 112
+            emphasis_0 211 138 115
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 182 144 175
         }
         table_cell_unselected {
             base 229 233 240
             background 59 66 82
-            emphasis_0 208 135 112
+            emphasis_0 232 157 133
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 201 162 194
         }
         list_selected {
             base 229 233 240
             background 46 52 64
-            emphasis_0 208 135 112
+            emphasis_0 211 138 115
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 182 144 175
         }
         list_unselected {
             base 229 233 240
             background 59 66 82
-            emphasis_0 208 135 112
+            emphasis_0 232 157 133
             emphasis_1 136 192 208
             emphasis_2 163 190 140
-            emphasis_3 180 142 173
+            emphasis_3 201 162 194
         }
         frame_selected {
             base 163 190 140
@@ -78,7 +78,7 @@ themes {
             emphasis_0 208 135 112
             emphasis_1 136 192 208
             emphasis_2 180 142 173
-            emphasis_3 0
+            emphasis_3 180 142 173
         }
         frame_highlight {
             base 208 135 112
@@ -97,24 +97,24 @@ themes {
             emphasis_3 129 161 193
         }
         exit_code_error {
-            base 191 97 106
+            base 208 112 121
             background 0
             emphasis_0 235 203 139
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 208 135 112
+            emphasis_2 180 142 173
+            emphasis_3 136 192 208
         }
         multiplayer_user_colors {
             player_1 180 142 173
             player_2 129 161 193
-            player_3 0
+            player_3 163 190 140
             player_4 235 203 139
             player_5 136 192 208
-            player_6 0
-            player_7 191 97 106
-            player_8 0
-            player_9 0
-            player_10 0
+            player_6 208 135 112
+            player_7 208 112 121
+            player_8 111 172 146
+            player_9 175 156 102
+            player_10 98 170 183
         }
         // terminal_colors: https://github.com/nordtheme/alacritty/blob/main/src/nord.yaml
         terminal_colors {

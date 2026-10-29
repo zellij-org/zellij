@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BorderStyle, BorderStyleOverride, Direction, KeyModifier, KeyWithModifier, NewPanePlacement,
-    PaneInfo, PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy,
-    Style, StyledText, WebSharing,
+    bar_role_label, bar_shows_mode, BorderStyle, BorderStyleOverride, Direction, HiddenBars,
+    KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
+    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -36,11 +36,10 @@ use zellij_utils::structured_render::{
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
+use crate::panes::CoveredPanes;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
-use crate::ui::hint_text::{
-    held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
-};
+use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
     loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams,
     pane_contents_and_ui::PaneContentsAndUi,
@@ -96,8 +95,8 @@ macro_rules! resize_pty {
                 $senders
                     .send_to_pty_writer(PtyWriteInstruction::ResizePty(
                         *pid,
-                        $pane.get_content_columns() as u16,
-                        $pane.get_content_rows() as u16,
+                        $pane.program_columns() as u16,
+                        $pane.program_rows() as u16,
                         None,
                         None,
                     ))
@@ -120,10 +119,8 @@ macro_rules! resize_pty {
             let character_cell_size = $character_cell_size.borrow();
             match *character_cell_size {
                 Some(size_in_pixels) => {
-                    let width_in_pixels =
-                        (size_in_pixels.width * $pane.get_content_columns()) as u16;
-                    let height_in_pixels =
-                        (size_in_pixels.height * $pane.get_content_rows()) as u16;
+                    let width_in_pixels = (size_in_pixels.width * $pane.program_columns()) as u16;
+                    let height_in_pixels = (size_in_pixels.height * $pane.program_rows()) as u16;
                     (Some(width_in_pixels), Some(height_in_pixels))
                 },
                 None => (None, None),
@@ -136,8 +133,8 @@ macro_rules! resize_pty {
                 $senders
                     .send_to_pty_writer(PtyWriteInstruction::ResizePty(
                         *pid,
-                        $pane.get_content_columns() as u16,
-                        $pane.get_content_rows() as u16,
+                        $pane.program_columns() as u16,
+                        $pane.program_rows() as u16,
                         width_in_pixels,
                         height_in_pixels,
                     ))
@@ -289,6 +286,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     pane_frame_style: PaneFrameStyle,
+    hidden_bars: HiddenBars,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
@@ -323,6 +321,7 @@ pub(crate) struct Tab {
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_press_owner: HashMap<ClientId, mouse_handler::MousePressOwner>,
+    pane_drawings: HashMap<ClientId, mouse_handler::PaneDrawing>,
     mouse_click_tracker: HashMap<ClientId, mouse_handler::MouseClickRecord>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
@@ -331,6 +330,7 @@ pub(crate) struct Tab {
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     typed_input: TypedInput,
+    local_input: HashSet<PaneId>,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -352,11 +352,14 @@ pub(crate) struct Tab {
     web_server_ip: IpAddr,
     web_server_port: u16,
     pub panes_with_pending_bell: HashSet<PaneId>,
+    pub pending_pane_signals: Vec<(PaneId, Vec<crate::attention::PaneSignal>)>,
+    initial_attention_muted: Option<bool>,
     pub tab_has_pending_bell: bool,
     pub tab_bell_flash: bool, // currently in mid-notification-flash
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
     tab_visible: bool,
     popups: HashMap<ClientId, Vec<popup::Popup>>,
+    live_views: crate::pane_mirror::SharedLiveViews,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -440,6 +443,17 @@ pub trait Pane {
     }
     fn dump_screen_with_ansi(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
+    }
+    fn preview_with_anchor(
+        &self,
+        _anchor: zellij_utils::data::PreviewAnchor,
+        _max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        (self.dump_screen_with_ansi(false, None), None)
+    }
+    fn mark_unseen_output_start(&mut self) {}
+    fn program_resized_at(&self) -> Option<Instant> {
+        None
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
@@ -580,6 +594,12 @@ pub trait Pane {
     fn guest_modal_selection(&self, _client_id: ClientId) -> Option<usize> {
         None
     }
+    fn guest_modal_hover(&self, _client_id: ClientId) -> Option<usize> {
+        None
+    }
+    fn set_guest_modal_hover(&mut self, _client_id: ClientId, _option: Option<usize>) -> bool {
+        false
+    }
     fn has_guest_modal_for_any_client(&self) -> bool {
         false
     }
@@ -640,6 +660,7 @@ pub trait Pane {
     fn drain_prompt_return(&mut self) -> bool {
         false
     }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {}
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -806,6 +827,19 @@ pub trait Pane {
     fn get_bell_notification(&self) -> bool {
         false
     }
+    fn set_attention_marker(
+        &mut self,
+        _marker: Option<crate::attention::FrameMarker>,
+        _enabled: bool,
+    ) {
+    }
+    fn drain_pane_signals(&mut self) -> Vec<crate::attention::PaneSignal> {
+        vec![]
+    }
+    fn set_initial_attention_flags(&mut self, _muted: bool, _ignore_output: bool) {}
+    fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
+        None
+    }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn add_highlight_pane_frame_color_override(
         &mut self,
@@ -858,6 +892,9 @@ pub trait Pane {
     fn take_notification_end(&mut self) -> Option<NotificationEnd> {
         None
     }
+    fn attach_exit_waiter(&mut self, waiter: NotificationEnd) -> Option<NotificationEnd> {
+        Some(waiter)
+    }
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn invalidate_frame_cache(&mut self) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
@@ -908,6 +945,27 @@ pub trait Pane {
     }
     fn terminal_emulator_wants_mouse(&self) -> bool {
         false
+    }
+    fn mirror_screen(&mut self) -> Option<zellij_utils::pane_mirror::MirrorScreen> {
+        None
+    }
+    fn mouse_event_for_program(&self, _event: &MouseEvent) -> Option<String> {
+        None
+    }
+    fn program_columns(&self) -> usize {
+        self.get_content_columns()
+    }
+    fn program_rows(&self) -> usize {
+        self.get_content_rows()
+    }
+    fn mirror_pinned_size(&self) -> Option<Size> {
+        None
+    }
+    fn set_mirror_pinned_size(&mut self, _size: Option<Size>) -> bool {
+        false
+    }
+    fn mirror_change_counter(&self) -> u64 {
+        0
     }
 }
 
@@ -1095,6 +1153,7 @@ impl Tab {
             mode_info,
             default_mode_info,
             pane_frame_style,
+            hidden_bars: HiddenBars::default(),
             auto_layout,
             pending_vte_events: HashMap::new(),
             connected_clients,
@@ -1125,6 +1184,7 @@ impl Tab {
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
             mouse_press_owner: HashMap::new(),
+            pane_drawings: HashMap::new(),
             mouse_click_tracker: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
             popup_hover_plugin_id: HashMap::new(),
@@ -1132,6 +1192,7 @@ impl Tab {
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
             typed_input: TypedInput::default(),
+            local_input: HashSet::new(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -1151,12 +1212,15 @@ impl Tab {
             web_server_ip,
             web_server_port,
             panes_with_pending_bell: HashSet::new(),
+            pending_pane_signals: Vec::new(),
+            initial_attention_muted: None,
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
             dimmed_clients: HashSet::new(),
             tab_visible: true,
             popups: HashMap::new(),
+            live_views: Default::default(),
         }
     }
 
@@ -1908,6 +1972,9 @@ impl Tab {
         client_id: ClientId,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
+        if layout.attention_muted.is_some() {
+            self.initial_attention_muted = layout.attention_muted;
+        }
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
         match LayoutApplier::new(
@@ -2162,7 +2229,7 @@ impl Tab {
     /// The layout offsets the viewport while the collapsed panes are still taking part, so a
     /// collapsed bar would go on holding its row out of the viewport. Offset it again once
     /// they are gone, the same as `resize_whole_tab` does.
-    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: HashSet<PaneId>) {
+    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: CoveredPanes) {
         if self.tiled_panes.restore_collapsed_panes(collapsed_panes) {
             let display_area = *self.display_area.borrow();
             self.tiled_panes.resize(display_area);
@@ -2354,6 +2421,7 @@ impl Tab {
                 mode_info.web_server_capability = Some(false);
             }
             mode_info.pane_frame_style = Some(self.pane_frame_style);
+            mode_info.hidden_bars = self.hidden_bars.clone();
             for plugin_id in self.popup_plugin_ids_for_client(*client_id) {
                 plugin_updates.push((
                     Some(plugin_id),
@@ -2377,15 +2445,6 @@ impl Tab {
         Ok(())
     }
     fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
-        let focused_pane_id = self.get_active_pane_id(client_id);
-        let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
-        if self.mouse_hover_tips {
-            if let Some(hovered_pane_id) = hovered_pane_id {
-                if Some(hovered_pane_id) != focused_pane_id {
-                    return hover_hint_variants();
-                }
-            }
-        }
         if let Some(focused_pane) = self.get_active_pane(client_id) {
             if focused_pane.is_held() {
                 let exited = focused_pane.exited();
@@ -2399,19 +2458,6 @@ impl Tab {
                     None
                 };
                 return held_hint_variants(is_first_run, exit_status);
-            }
-        }
-        let resize_help_visible = self
-            .mouse_help_text_visible
-            .get(&client_id)
-            .copied()
-            .unwrap_or(false);
-        if resize_help_visible && self.mouse_hover_tips {
-            let selectable_pane_count = self.get_selectable_tiled_panes().count()
-                + self.get_selectable_floating_panes().count();
-            if selectable_pane_count > 1 && !self.is_fullscreen_active() {
-                let focused_pane_is_floating = self.floating_panes.panes_are_visible();
-                return resize_hint_variants(focused_pane_is_floating, self.mouse_scroll_resize);
             }
         }
         BTreeMap::new()
@@ -2582,6 +2628,8 @@ impl Tab {
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
+        self.pane_drawings.remove(&client_id);
+        self.mouse_click_tracker.remove(&client_id);
         if is_connected_to_this_tab || was_dimmed {
             self.set_client_dimmed(client_id, false);
             self.set_force_render();
@@ -2607,6 +2655,8 @@ impl Tab {
             .remove(&client_id)
             .unwrap_or_else(|| self.default_mode_info.clone());
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.pane_drawings.remove(&client_id);
+        self.mouse_click_tracker.remove(&client_id);
         (client_id, client_mode_info)
     }
     pub fn has_no_connected_clients(&self) -> bool {
@@ -4336,6 +4386,9 @@ impl Tab {
         }
         had_bell
     }
+    pub fn take_initial_attention_muted(&mut self) -> Option<bool> {
+        self.initial_attention_muted.take()
+    }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
@@ -4565,6 +4618,34 @@ impl Tab {
             false
         }
     }
+    pub fn set_guest_modal_hover_for_client(
+        &mut self,
+        client_id: ClientId,
+        hovered: Option<(PaneId, usize)>,
+    ) -> bool {
+        let mut changed = false;
+        for pane_id in self.get_all_pane_ids() {
+            let option = hovered
+                .filter(|(hovered_pane_id, _)| *hovered_pane_id == pane_id)
+                .map(|(_, option)| option);
+            if let Some(pane) = self
+                .tiled_panes
+                .get_pane_mut(pane_id)
+                .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+                .or_else(|| {
+                    self.suppressed_panes
+                        .values_mut()
+                        .find(|s_p| s_p.1.pid() == pane_id)
+                        .map(|s_p| &mut s_p.1)
+                })
+            {
+                if pane.set_guest_modal_hover(client_id, option) {
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
     pub fn clear_guest_modal_for_client_on_all_panes(&mut self, client_id: ClientId) {
         for pane_id in self.get_all_pane_ids() {
             self.clear_guest_modal_on_pane(pane_id, client_id);
@@ -4772,6 +4853,11 @@ impl Tab {
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             let prompt_returned = terminal_output.drain_prompt_return();
+            let pane_signals = terminal_output.drain_pane_signals();
+            if !pane_signals.is_empty() {
+                self.pending_pane_signals
+                    .push((PaneId::Terminal(pid), pane_signals));
+            }
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
@@ -4813,6 +4899,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::PromptReturned(pid));
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::PromptReturnedInPane {
+                        pane_id: PaneId::Terminal(pid),
+                    });
             }
         }
         Ok(())
@@ -4936,11 +5027,62 @@ impl Tab {
     ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+        let bytes = without_paste_markers(bytes);
 
         self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
         self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
         self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
         Ok(())
+    }
+
+    pub fn send_mouse_event_to_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        event: &MouseEvent,
+    ) -> Result<()> {
+        let Some(pane) = self.get_pane_with_id(pane_id) else {
+            return Ok(());
+        };
+        let inside = event.position.line() >= 0
+            && (event.position.line() as usize) < pane.get_content_rows()
+            && event.position.column() < pane.get_content_columns();
+        if !inside {
+            return Ok(());
+        }
+        if let Some(report) = pane.mouse_event_for_program(event) {
+            self.write_to_pane_id(&None, report.into_bytes(), false, pane_id, None, None)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_mirror_pinned_size(&mut self, pane_id: PaneId, size: Option<Size>) -> bool {
+        let pane = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .get_mut(&pane_id)
+                    .map(|(_, pane)| pane)
+            });
+        let Some(pane) = pane else {
+            return false;
+        };
+        if !pane.set_mirror_pinned_size(size) {
+            return false;
+        }
+        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
+        true
+    }
+
+    pub fn take_local_input(&mut self) -> HashSet<PaneId> {
+        std::mem::take(&mut self.local_input)
+    }
+
+    pub fn note_typed_input(&mut self, pane_id: PaneId) {
+        if let PaneId::Terminal(terminal_id) = pane_id {
+            self.typed_input.record(terminal_id, Instant::now());
+        }
     }
 
     pub fn paste_to_active_terminal(
@@ -4950,10 +5092,18 @@ impl Tab {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to paste to active terminal for client {client_id}");
+        if let Some(PaneId::Plugin(plugin_id)) = self.live_view_focus(client_id) {
+            if self.live_views.borrow().is_captured(plugin_id, client_id) {
+                self.live_views.borrow_mut().send_paste(client_id, bytes);
+                drop(completion);
+                return Ok(());
+            }
+        }
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
             .with_context(err_context)?;
+        self.local_input.insert(active_pane_id);
         self.paste_to_pane_id(bytes, active_pane_id, completion)
     }
 
@@ -4971,6 +5121,7 @@ impl Tab {
 
         let mut should_update_ui = false;
         let is_sync_panes_active = self.is_sync_panes_active();
+        let live_view_focus = client_id.and_then(|client_id| self.live_view_focus(client_id));
 
         let active_pane = self
             .floating_panes
@@ -4990,6 +5141,21 @@ impl Tab {
             return Ok(should_update_ui);
         }
 
+        if let (PaneId::Plugin(plugin_id), Some(client_id)) = (pane_id, client_id) {
+            if self.live_views.borrow().is_captured(plugin_id, client_id)
+                && live_view_focus == Some(pane_id)
+            {
+                self.live_views.borrow_mut().send_key(
+                    client_id,
+                    key_with_modifier,
+                    &raw_input_bytes,
+                    raw_input_bytes_are_kitty,
+                );
+                drop(completion_tx);
+                return Ok(false);
+            }
+        }
+
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 match active_pane.adjust_input_to_terminal(
@@ -5001,6 +5167,7 @@ impl Tab {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                         if client_id.is_some() {
                             self.typed_input.record(active_terminal_id, Instant::now());
+                            self.local_input.insert(pane_id);
                         }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
@@ -5435,10 +5602,18 @@ impl Tab {
                 .with_context(err_context)
                 .non_fatal();
         }
-        self.render_popups(output, display_will_be_cleared)
-            .with_context(err_context)?;
+        self.render_popups(
+            output,
+            display_will_be_cleared,
+            client_id_override.is_none(),
+        )
+        .with_context(err_context)?;
+        if client_id_override.is_none() {
+            self.render_pane_drawings(output)
+                .with_context(err_context)?;
+        }
 
-        self.render_cursor(output);
+        self.render_cursor(output, client_id_override.is_none());
         if output.has_rendered_assets() {
             self.hide_cursor_and_clear_display_as_needed(output);
         }
@@ -5447,6 +5622,26 @@ impl Tab {
         self.emit_active_pane_scroll_if_changed()
             .with_context(err_context)?;
 
+        Ok(())
+    }
+
+    fn render_pane_drawings(&self, output: &mut Output) -> Result<()> {
+        let viewport = *self.viewport.borrow();
+        let color = self.style.colors.frame_selected.base;
+        let connected_clients = self.connected_clients.borrow();
+        for (client_id, drawing) in &self.pane_drawings {
+            if !connected_clients.contains(client_id) {
+                continue;
+            }
+            let Some(area) = drawing.area(&viewport) else {
+                continue;
+            };
+            output.add_character_chunks_to_client(
+                *client_id,
+                mouse_handler::pane_drawing_outline(&area, color),
+                Some(mouse_handler::PANE_DRAWING_Z_INDEX),
+            )?;
+        }
         Ok(())
     }
 
@@ -5468,25 +5663,54 @@ impl Tab {
             self.should_clear_display_before_rendering = false;
         }
     }
-    fn render_cursor(&mut self, output: &mut Output) {
+    fn render_cursor(&mut self, output: &mut Output, use_live_view_cursor: bool) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            if self.has_focused_popup_for_client(client_id) {
+            let live_view_cursor = if use_live_view_cursor {
+                self.live_view_cursor(client_id)
+            } else {
+                None
+            };
+            if self.has_focused_popup_for_client(client_id) && live_view_cursor.is_none() {
                 output.set_client_cursor(client_id, 0, 0, false, "");
                 output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
                 continue;
             }
-            match self.get_active_terminal_cursor_position(client_id) {
+            let cursor_position = match live_view_cursor.as_ref() {
+                Some((x, y, visible, _)) => Some((*x, *y, *visible)),
+                None => self.get_active_terminal_cursor_position(client_id),
+            };
+            match cursor_position {
                 Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
                         .get_active_pane_id(client_id)
                         .and_then(|pane_id| self.floating_panes.get_pane_z_index(pane_id));
-                    let not_occluded = output.cursor_is_visible(
+                    let not_covered_by_floating_panes = output.cursor_is_visible(
                         cursor_position_x,
                         cursor_position_y,
                         active_pane_z_index,
                     );
+                    let not_occluded = match live_view_cursor.as_ref() {
+                        Some(_) => match self.live_view_popup_z_index(client_id) {
+                            Some(popup_z_index) => !output.cursor_is_covered_by_popups(
+                                client_id,
+                                cursor_position_x,
+                                cursor_position_y,
+                                Some(popup_z_index),
+                            ),
+                            None => {
+                                not_covered_by_floating_panes
+                                    && !output.cursor_is_covered_by_popups(
+                                        client_id,
+                                        cursor_position_x,
+                                        cursor_position_y,
+                                        None,
+                                    )
+                            },
+                        },
+                        None => not_covered_by_floating_panes,
+                    };
                     let active_terminal_is_mid_frame = self
                         .active_terminal_is_mid_frame(client_id)
                         .unwrap_or(false);
@@ -5496,10 +5720,13 @@ impl Tab {
                         // which means the cursor can be jumping around and we definitely do not
                         // want to render it
                     } else if not_occluded && is_cursor_visible {
-                        let desired_cursor_shape = self
-                            .get_active_pane(client_id)
-                            .map(|ap| ap.cursor_shape_csi())
-                            .unwrap_or_default();
+                        let desired_cursor_shape = match live_view_cursor.as_ref() {
+                            Some((_, _, _, shape)) => shape.clone(),
+                            None => self
+                                .get_active_pane(client_id)
+                                .map(|ap| ap.cursor_shape_csi())
+                                .unwrap_or_default(),
+                        };
                         let cursor_changed_position_or_shape = self
                             .cursor_positions_and_shape
                             .get(&client_id)
@@ -6276,6 +6503,100 @@ impl Tab {
     /// back at the size the layout asked for.
     ///
     /// Floating panes take no space from their neighbors, so there is nothing to give back.
+    pub fn bar_pane_ids(&self) -> Vec<PaneId> {
+        let display_area = *self.display_area.borrow();
+        self.tiled_panes
+            .get_panes()
+            .filter(|(pane_id, pane)| {
+                if !matches!(pane_id, PaneId::Plugin(_)) {
+                    return false;
+                }
+                if pane.selectable() && !pane.borderless() {
+                    return false;
+                }
+                let geom = pane.position_and_size();
+                let spans_full_width = geom.x == 0 && geom.cols.as_usize() == display_area.cols;
+                let is_at_top = geom.y == 0;
+                let is_at_bottom = geom.y + geom.rows.as_usize() == display_area.rows;
+                let is_strip = geom.rows.as_usize() < display_area.rows;
+                spans_full_width && is_strip && (is_at_top || is_at_bottom)
+            })
+            .map(|(pane_id, _)| *pane_id)
+            .collect()
+    }
+    pub fn bar_names_of_pane(&self, pane_id: PaneId) -> Option<Vec<String>> {
+        if !self.bar_pane_ids().contains(&pane_id) {
+            return None;
+        }
+        let names = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .and_then(|pane| pane.invoked_with().as_ref().map(|run| run.bar_names()))
+            .unwrap_or_default();
+        Some(names)
+    }
+    pub fn bar_label_of_pane(&self, pane_id: PaneId) -> Option<String> {
+        let names = self.bar_names_of_pane(pane_id)?;
+        if let Some(label) = names.iter().find_map(|name| bar_role_label(name)) {
+            return Some(label.to_owned());
+        }
+        let title = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .map(|pane| pane.current_title())
+            .filter(|title| !title.trim().is_empty() && title.len() <= 30);
+        Some(title.unwrap_or_else(|| "bar".to_owned()))
+    }
+    pub fn apply_hidden_bars(&mut self, hidden_bars: &HiddenBars) -> bool {
+        let hidden_bars_changed = &self.hidden_bars != hidden_bars;
+        self.hidden_bars = hidden_bars.clone();
+        let bar_pane_ids = self.bar_pane_ids();
+        let mut changed = false;
+        for pane_id in self.tiled_panes.hidden_bar_ids() {
+            if !bar_pane_ids.contains(&pane_id) {
+                changed |= self.tiled_panes.set_bar_hidden(pane_id, false);
+            }
+        }
+        for pane_id in bar_pane_ids {
+            let names = self.bar_names_of_pane(pane_id).unwrap_or_default();
+            let should_hide = hidden_bars.hides_any(&names);
+            changed |= self.tiled_panes.set_bar_hidden(pane_id, should_hide);
+        }
+        if changed {
+            let size = self.size;
+            self.resize_whole_tab(size).non_fatal();
+            self.set_force_render();
+        }
+        if changed || hidden_bars_changed {
+            let _ = self.update_input_modes();
+        }
+        changed
+    }
+    pub fn bar_count(&self) -> usize {
+        self.bar_pane_ids().len()
+    }
+    pub fn visible_bar_count(&self) -> usize {
+        self.bar_pane_ids()
+            .into_iter()
+            .filter(|pane_id| {
+                !self.tiled_panes.pane_is_hidden_bar(pane_id)
+                    && !self.tiled_panes.pane_is_collapsed(pane_id)
+            })
+            .count()
+    }
+    pub fn has_hidden_bar(&self) -> bool {
+        !self.tiled_panes.hidden_bar_ids().is_empty()
+    }
+    pub fn mode_is_shown_by_a_visible_bar(&self) -> bool {
+        self.bar_pane_ids().into_iter().any(|pane_id| {
+            !self.tiled_panes.pane_is_hidden_bar(&pane_id)
+                && !self.tiled_panes.pane_is_collapsed(&pane_id)
+                && self
+                    .bar_names_of_pane(pane_id)
+                    .map(|names| names.iter().any(|name| bar_shows_mode(name)))
+                    .unwrap_or(false)
+        })
+    }
     pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) {
         if !self.tiled_panes.panes_contain(&pane_id) {
             return;
@@ -7189,7 +7510,22 @@ impl Tab {
         passthrough_pane_id: Option<PaneId>,
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
+        self.note_local_click(event);
         MouseHandler::handle_mouse_event(self, event, client_id, passthrough_pane_id, mousebinds)
+    }
+
+    fn note_local_click(&mut self, event: &MouseEvent) {
+        let is_click = event.event_type == zellij_utils::input::mouse::MouseEventType::Press
+            && (event.left || event.right || event.middle);
+        if !is_click {
+            return;
+        }
+        if let Ok(Some(pane)) = MouseHandler::get_pane_at(self, &event.position, false) {
+            let pane_id = pane.pid();
+            if let PaneId::Terminal(_) = pane_id {
+                self.local_input.insert(pane_id);
+            }
+        }
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
@@ -7264,27 +7600,7 @@ impl Tab {
         Ok(())
     }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
-        // Floating panes must be included here as well: a plugin in a floating pane is just as
-        // hidden as a tiled one when its tab goes away, and plugins that idle on a timer (eg. the
-        // session-manager, which polls the session list once a second) keep that timer armed until
-        // they are told otherwise.
         self.tab_visible = visible;
-        let floating_panes_are_shown = self.floating_panes.panes_are_shown();
-        let tiled_pids = self.tiled_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) => Some(*pid),
-            _ => None,
-        });
-        let floating_pids = self.floating_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) if !visible || floating_panes_are_shown => Some(*pid),
-            _ => None,
-        });
-        let mut plugin_updates = vec![];
-        for pid in tiled_pids.chain(floating_pids) {
-            plugin_updates.push((Some(pid), None, Event::Visible(visible)));
-        }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         if !visible {
             self.mouse_hover_pane_id.clear();
             self.plugin_hover_pane_id.clear();
@@ -7597,49 +7913,53 @@ impl Tab {
     }
     pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
-        let were_shown = self.floating_panes.panes_are_shown();
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
         self.set_force_render();
-        if !were_shown {
-            self.notify_floating_plugins_of_visibility(true);
-        }
     }
 
     pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
-        let were_shown = self.floating_panes.panes_are_shown();
         if self.floating_panes.fullscreen_is_active() {
             self.floating_panes.unset_fullscreen();
         }
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
-        if were_shown {
-            self.notify_floating_plugins_of_visibility(false);
-        }
     }
 
-    fn notify_floating_plugins_of_visibility(&self, visible: bool) {
-        if !self.tab_visible {
-            return;
+    pub fn all_plugin_ids(&self) -> Vec<PluginId> {
+        let mut plugin_ids = self.get_plugin_ids_including_suppressed();
+        for plugin_id in self.all_popup_plugin_ids() {
+            if !plugin_ids.contains(&plugin_id) {
+                plugin_ids.push(plugin_id);
+            }
         }
-        let plugin_updates: Vec<_> = self
-            .floating_panes
-            .pane_ids()
-            .filter_map(|p| match p {
-                PaneId::Plugin(pid) => Some((Some(*pid), None, Event::Visible(visible))),
-                _ => None,
+        plugin_ids
+    }
+
+    pub fn shown_plugin_ids(&self) -> HashSet<PluginId> {
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
+        if !self.tab_visible || connected_clients.is_empty() {
+            return HashSet::new();
+        }
+        let mut pane_ids: Vec<PaneId> = self.floating_panes.rendered_pane_ids();
+        if !self.floating_panes.fullscreen_is_active() {
+            pane_ids.extend(self.tiled_panes.rendered_pane_ids());
+        }
+        let mut plugin_ids: HashSet<PluginId> = pane_ids
+            .into_iter()
+            .filter_map(|pane_id| match pane_id {
+                PaneId::Plugin(plugin_id) => Some(plugin_id),
+                PaneId::Terminal(_) => None,
             })
             .collect();
-        if plugin_updates.is_empty() {
-            return;
+        for client_id in connected_clients {
+            plugin_ids.extend(self.popup_plugin_ids_for_client(client_id));
         }
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .with_context(|| format!("failed to set visibility of floating panes to {visible}"))
-            .non_fatal();
+        plugin_ids
     }
 
     pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
@@ -7680,6 +8000,19 @@ impl Tab {
             }
         }
         drop(completion);
+    }
+
+    pub fn floating_plugin_for_location(&self, location: &str) -> Option<u32> {
+        self.floating_panes.get_panes().find_map(|(pane_id, pane)| {
+            match (pane_id, pane.invoked_with()) {
+                (PaneId::Plugin(plugin_id), Some(Run::Plugin(run_plugin_or_alias)))
+                    if run_plugin_or_alias.location_string().contains(location) =>
+                {
+                    Some(*plugin_id)
+                },
+                _ => None,
+            }
+        })
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
@@ -8533,6 +8866,98 @@ impl Tab {
     pub fn update_grapheme_clusters(&mut self, grapheme_clusters: bool) {
         self.grapheme_clusters = grapheme_clusters;
     }
+    pub fn set_live_views(&mut self, live_views: crate::pane_mirror::SharedLiveViews) {
+        self.tiled_panes.set_live_views(live_views.clone());
+        self.floating_panes.set_live_views(live_views.clone());
+        self.live_views = live_views;
+    }
+    pub fn live_view_focus(&self, client_id: ClientId) -> Option<PaneId> {
+        if let Some(plugin_id) = self.popup_plugin_id(client_id) {
+            return Some(PaneId::Plugin(plugin_id));
+        }
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_active_pane_id(client_id)
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))
+        } else {
+            self.tiled_panes.get_active_pane_id(client_id)
+        }
+    }
+    pub fn live_view_content_area(
+        &self,
+        plugin_id: u32,
+    ) -> Option<crate::pane_mirror::LiveViewRect> {
+        let pane_id = PaneId::Plugin(plugin_id);
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .or_else(|| self.popup_pane(plugin_id))?;
+        Some(crate::pane_mirror::LiveViewRect::new(
+            pane.get_content_x(),
+            pane.get_content_y(),
+            pane.get_content_columns(),
+            pane.get_content_rows(),
+        ))
+    }
+    pub fn mark_plugin_pane_for_full_render(&mut self, plugin_id: u32) {
+        let pane_id = PaneId::Plugin(plugin_id);
+        let pane = match self.get_pane_with_id_mut(pane_id) {
+            Some(pane) => Some(pane),
+            None => self.popup_pane_mut(plugin_id),
+        };
+        if let Some(pane) = pane {
+            pane.set_should_render(true);
+            pane.render_full_viewport();
+        }
+    }
+    pub fn live_view_point_is_covered(
+        &self,
+        client_id: ClientId,
+        plugin_id: u32,
+        position: &Position,
+    ) -> bool {
+        let popups = self.popup_geoms(client_id);
+        if let Some(layer) = self.popup_layer_of(client_id, plugin_id) {
+            return popups
+                .iter()
+                .skip(layer + 1)
+                .any(|geom| geom.contains(position));
+        }
+        if popups.iter().any(|geom| geom.contains(position)) {
+            return true;
+        }
+        let Some(stack) = self.floating_panes.stack() else {
+            return false;
+        };
+        let pane_id = PaneId::Plugin(plugin_id);
+        let first_layer_above = if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_pane_z_index(pane_id)
+                .map(|z_index| z_index + 1)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        stack
+            .layers
+            .iter()
+            .skip(first_layer_above)
+            .any(|geom| geom.contains(position))
+    }
+    fn live_view_popup_z_index(&self, client_id: ClientId) -> Option<usize> {
+        match self.live_view_focus(client_id)? {
+            PaneId::Plugin(plugin_id) => self.popup_z_index_of(client_id, plugin_id),
+            PaneId::Terminal(_) => None,
+        }
+    }
+    fn live_view_cursor(&self, client_id: ClientId) -> Option<(usize, usize, bool, String)> {
+        let PaneId::Plugin(plugin_id) = self.live_view_focus(client_id)? else {
+            return None;
+        };
+        let content = self.live_view_content_area(plugin_id)?;
+        self.live_views
+            .borrow()
+            .cursor(client_id, plugin_id, &content)
+    }
     pub fn update_selection_options(
         &mut self,
         osc133_command_selection: bool,
@@ -9036,6 +9461,24 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.toggle_pinned();
             self.set_force_render();
+        }
+    }
+}
+
+fn without_paste_markers(mut bytes: Vec<u8>) -> Vec<u8> {
+    const MARKERS: [&[u8]; 2] = [b"\x1b[200~", b"\x1b[201~"];
+    loop {
+        let found = MARKERS.iter().find_map(|marker| {
+            bytes
+                .windows(marker.len())
+                .position(|window| window == *marker)
+                .map(|start| (start, marker.len()))
+        });
+        match found {
+            Some((start, len)) => {
+                bytes.drain(start..start + len);
+            },
+            None => return bytes,
         }
     }
 }

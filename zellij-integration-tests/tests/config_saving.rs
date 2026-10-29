@@ -14,7 +14,7 @@ fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     });
 }
 
@@ -69,10 +69,14 @@ fn saving_writes_only_the_changed_lines_and_keeps_comments() {
     });
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("keyboard settings shown", |grid_snapshot| {
+        grid_snapshot.contains("Key bindings and preset…")
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("keys page shown", |grid_snapshot| {
         grid_snapshot.contains("Save as a preset")
     });
-    zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("preset list opened", |grid_snapshot| {
         grid_snapshot.contains("unlock-first")
@@ -179,6 +183,10 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     open_settings(&zellij);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("appearance settings shown", |grid_snapshot| {
+        grid_snapshot.contains("Theme (dark terminal)")
+    });
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("theme list opened", |grid_snapshot| {
@@ -192,7 +200,7 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('x'));
     zellij.wait_until("settings pane closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
+        !grid_snapshot.contains("unsaved change")
     });
 
     open_settings(&zellij);
@@ -203,22 +211,85 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     zellij.quit();
 }
 
-#[test]
-fn the_first_run_wizard_saves_the_chosen_preset_into_the_new_config_file() {
-    let mut zellij = TestRunner::new(TERMINAL_SIZE).without_config_file().start();
+const COPY_TICKED: &str = "[x] Copy Zellij to a Permanent Folder";
+
+fn start_setup_screen() -> TestSession {
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .without_config_file()
+        .with_setup_wizard()
+        .start();
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
-    zellij.wait_until("the setup wizard opened", |grid_snapshot| {
-        grid_snapshot.contains("How would you like your keybindings to work?")
+    zellij.wait_until("the setup screen opened", |grid_snapshot| {
+        grid_snapshot.contains("Welcome to Zellij!") && grid_snapshot.contains("Approve and Finish")
     });
+    zellij
+}
+
+fn untick_the_copy_if_offered(zellij: &TestSession) -> bool {
+    let offered = zellij
+        .wait_until("the desktop items are known", |grid_snapshot| {
+            !grid_snapshot.contains("Checking this computer")
+        })
+        .contains(COPY_TICKED);
+    if offered {
+        zellij.send_stdin(&keys::SPACE);
+        zellij.wait_until("the copy is unticked", |grid_snapshot| {
+            grid_snapshot.contains("[ ] Copy Zellij to a Permanent Folder")
+        });
+    }
+    offered
+}
+
+fn wait_for_state(needle: &str) -> String {
+    let path = zellij_utils::desktop_integration::state_path();
+    wait_for_file_containing(&path, needle)
+}
+
+#[test]
+fn the_setup_screen_offers_the_desktop_items_and_the_keybindings_checkbox() {
+    let mut zellij = start_setup_screen();
+    zellij.wait_until("every part of the screen is shown", |grid_snapshot| {
+        grid_snapshot.contains("You can always change this later.")
+            && grid_snapshot.contains("[ ] Set up keybindings to avoid collisions with editors.")
+            && grid_snapshot.contains("<Esc> Dismiss")
+            && grid_snapshot.contains("<Ctrl c> Don't Show Again")
+            && !grid_snapshot.contains("Checking this computer")
+    });
+    let screen = zellij.wait_until(
+        "without a desktop there is no desktop entry",
+        |grid_snapshot| {
+            !grid_snapshot.contains("Install Desktop Entry")
+                && !grid_snapshot.contains("Make Zellij your Default Terminal")
+        },
+    );
+    assert!(!screen.contains("Please Choose a Keybinding Preset"));
+    zellij.kill_session();
+}
+
+#[test]
+fn ticking_the_keybindings_box_continues_to_the_keybindings_and_saves_the_preset() {
+    let mut zellij = start_setup_screen();
     let config_file_path = zellij.config_file_path().unwrap();
     let first_run_file = std::fs::read_to_string(&config_file_path).unwrap();
     assert!(first_run_file.contains("//"), "{}", first_run_file);
     assert!(!first_run_file.contains("keybinds preset="));
 
+    untick_the_copy_if_offered(&zellij);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(&keys::SPACE);
+    zellij.wait_until("the approve button now continues", |grid_snapshot| {
+        grid_snapshot.contains("[x] Set up keybindings to avoid collisions with editors.")
+            && grid_snapshot.contains("Approve and Continue")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the keybindings screen follows", |grid_snapshot| {
+        grid_snapshot.contains("Please Choose a Keybinding Preset")
+    });
+
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("preset list opened", |grid_snapshot| {
-        grid_snapshot.contains("unlock-first")
+        grid_snapshot.contains("Unlock First (Avoids Collisions)")
     });
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(&keys::ENTER);
@@ -234,8 +305,122 @@ fn the_first_run_wizard_saves_the_chosen_preset_into_the_new_config_file() {
         written
     );
     assert!(!written.contains("AUTOGENERATED"), "{}", written);
-    zellij.wait_until("the wizard closed", |grid_snapshot| {
-        !grid_snapshot.contains("How would you like your keybindings to work?")
+    wait_for_state("SetupApproved");
+    zellij.wait_until("the screen closed", |grid_snapshot| {
+        !grid_snapshot.contains("Welcome to Zellij")
+            && !grid_snapshot.contains("Please Choose a Keybinding Preset")
+    });
+    zellij.kill_session();
+}
+
+#[test]
+fn dont_show_again_closes_the_screen_and_is_remembered() {
+    let mut zellij = start_setup_screen();
+    zellij.send_stdin(&keys::ctrl('c'));
+    let state = wait_for_state("SetupNeverShow");
+    assert!(!state.contains("SetupApproved"), "{}", state);
+    zellij.wait_until("the screen closed", |grid_snapshot| {
+        !grid_snapshot.contains("Welcome to Zellij!")
+    });
+    zellij.kill_session();
+}
+
+#[test]
+fn dismiss_closes_the_screen_without_resolving_it() {
+    let mut zellij = start_setup_screen();
+    zellij.send_stdin(&keys::ESC);
+    let state = wait_for_state("WizardDismissed");
+    assert!(!state.contains("SetupNeverShow"), "{}", state);
+    assert!(!state.contains("SetupApproved"), "{}", state);
+    zellij.wait_until("the screen closed", |grid_snapshot| {
+        !grid_snapshot.contains("Welcome to Zellij!")
+    });
+    zellij.kill_session();
+}
+
+const KEYS_LINE: &str = "Set up keybindings to avoid collisions with editors.";
+const KEYS_INFO: &str = "Ticking this lets you";
+
+fn click_on(zellij: &TestSession, needle: &str, offset: usize) {
+    let grid_snapshot = zellij.wait_until("the text to click is shown", |grid_snapshot| {
+        grid_snapshot.contains(needle)
+    });
+    let (column, row) = grid_snapshot.position_of(needle).unwrap();
+    zellij.send_stdin(&keys::sgr_click(column + offset, row));
+}
+
+fn open_the_keybindings_info(zellij: &TestSession) {
+    zellij.wait_until("the desktop items are known", |grid_snapshot| {
+        !grid_snapshot.contains("Checking this computer") && grid_snapshot.contains(KEYS_LINE)
+    });
+    click_on(
+        zellij,
+        &format!("{} [?]", KEYS_LINE),
+        KEYS_LINE.chars().count() + 2,
+    );
+    zellij.wait_until("the info popup opened", |grid_snapshot| {
+        grid_snapshot.contains(KEYS_INFO) && grid_snapshot.contains("<Esc> - Go back")
+    });
+}
+
+#[test]
+fn esc_closes_the_info_popup_and_the_next_click_reaches_the_setup_screen() {
+    let mut zellij = start_setup_screen();
+    open_the_keybindings_info(&zellij);
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the info popup closed", |grid_snapshot| {
+        !grid_snapshot.contains(KEYS_INFO) && grid_snapshot.contains("Welcome to Zellij!")
+    });
+    click_on(&zellij, KEYS_LINE, 0);
+    zellij.wait_until(
+        "the first click ticks the keybindings box",
+        |grid_snapshot| {
+            grid_snapshot.contains(&format!("[x] {}", KEYS_LINE))
+                && grid_snapshot.contains("Approve and Continue")
+        },
+    );
+    zellij.kill_session();
+}
+
+#[test]
+fn a_click_outside_the_info_popup_closes_it() {
+    let mut zellij = start_setup_screen();
+    open_the_keybindings_info(&zellij);
+    click_on(&zellij, "You can always change this later.", 0);
+    zellij.wait_until("the info popup closed", |grid_snapshot| {
+        !grid_snapshot.contains(KEYS_INFO) && grid_snapshot.contains("Welcome to Zellij!")
+    });
+    let state = zellij_utils::desktop_integration::state_path();
+    assert!(
+        !std::fs::read_to_string(&state)
+            .unwrap_or_default()
+            .contains("WizardDismissed"),
+        "closing the popup must not dismiss the setup screen"
+    );
+    zellij.kill_session();
+}
+
+#[test]
+fn go_back_on_the_keybindings_screen_returns_to_the_setup_screen() {
+    let mut zellij = start_setup_screen();
+    zellij.wait_until("the desktop items are known", |grid_snapshot| {
+        !grid_snapshot.contains("Checking this computer") && grid_snapshot.contains(KEYS_LINE)
+    });
+    click_on(&zellij, KEYS_LINE, 0);
+    zellij.wait_until("the approve button now continues", |grid_snapshot| {
+        grid_snapshot.contains("Approve and Continue")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the keybindings screen follows", |grid_snapshot| {
+        grid_snapshot.contains("Please Choose a Keybinding Preset")
+            && grid_snapshot.contains("You can always change this later.")
+            && grid_snapshot.contains("<Ctrl a> Save and finish")
+    });
+    click_on(&zellij, "Go back", 0);
+    zellij.wait_until("the setup screen is back", |grid_snapshot| {
+        grid_snapshot.contains("Welcome to Zellij!")
+            && grid_snapshot.contains("Approve and Continue")
+            && !grid_snapshot.contains("Please Choose a Keybinding Preset")
     });
     zellij.kill_session();
 }

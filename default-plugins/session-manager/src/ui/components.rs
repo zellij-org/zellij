@@ -67,17 +67,6 @@ impl UnifiedResultsRenderCache {
         self.abbr_details_width = 0;
 
         for (orig_i, result) in results.iter().enumerate() {
-            let is_current = matches!(
-                result,
-                UnifiedSearchResult::ActiveSession {
-                    is_current_session: true,
-                    ..
-                }
-            );
-            if is_current {
-                continue;
-            }
-
             let row = match result {
                 UnifiedSearchResult::ActiveSession {
                     indices,
@@ -760,19 +749,43 @@ pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
 pub fn render_single_screen_prompt(
     search_term: &str,
     enter_action: Option<&str>,
+    extra_hints: &[(&str, &str)],
+    max_width: usize,
     colors: Colors,
     x: usize,
     y: usize,
 ) {
     let prompt = colors.session_name_prompt("Session:");
     let search_term_display = colors.bold(&format!("{}_", search_term));
-    let enter_hint = match enter_action {
+    let mut used = "Session: ".chars().count() + search_term.chars().count() + 1;
+    let mut enter_hint = match enter_action {
         Some(action) => {
             let enter_key = colors.shortcuts("<ENTER>");
-            format!(" {} - {}", enter_key, action)
+            let room = max_width.saturating_sub(used + " <ENTER> - ".chars().count() + 1);
+            if room < 4 {
+                String::new()
+            } else {
+                let action = if action.chars().count() > room {
+                    let mut short: String = action.chars().take(room - 1).collect();
+                    short.push('…');
+                    short
+                } else {
+                    action.to_owned()
+                };
+                used += format!(" <ENTER> - {}", action).chars().count();
+                format!(" {} - {}", enter_key, action)
+            }
         },
         None => String::new(),
     };
+    for (key, label) in extra_hints {
+        let width = format!(", {} - {}", key, label).chars().count();
+        if used + width >= max_width {
+            break;
+        }
+        used += width;
+        enter_hint.push_str(&format!(", {} - {}", colors.shortcuts(key), label));
+    }
     println!(
         "\u{1b}[m\u{1b}[{};{}H\u{1b}[0m{} {}{}\n",
         y + 2,
@@ -1206,7 +1219,7 @@ pub fn render_controls_line(
         ActiveScreen::AttachToSession => {
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_text = colors.bold("Disconnect others");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill");
@@ -1247,12 +1260,33 @@ pub fn render_controls_line(
                 false
             }
         },
+        ActiveScreen::SingleScreen if show_navigate && crate::app_panel::is_enabled() => {
+            let arrows = colors.shortcuts("<←↓↑→>");
+            let navigate = colors.bold("Navigate");
+            let rename = colors.shortcuts("<Ctrl r>");
+            let rename_text = colors.bold("Rename");
+            let kill = colors.shortcuts("<Del>");
+            let kill_text = colors.bold("Stop/Delete");
+            let layout = colors.shortcuts("<Ctrl l>");
+            let layout_text = colors.bold("New with layout");
+            if max_cols > 92 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {layout} - {layout_text}, {rename} - {rename_text}, {kill} - {kill_text}"
+                );
+                true
+            } else if max_cols >= 34 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{layout}/{rename}/{kill}");
+                false
+            } else {
+                false
+            }
+        },
         ActiveScreen::SingleScreen if show_navigate => {
             let arrows = colors.shortcuts("<←↓↑→>");
             let navigate = colors.bold("Navigate");
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
@@ -1285,25 +1319,22 @@ pub fn render_controls_line(
         ActiveScreen::SingleScreen => {
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill/Delete");
 
-            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete" = 76 chars
             if max_cols > 76 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
                 );
                 true
-            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete" = 69 chars
             } else if max_cols > 69 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
                 );
                 true
-            // Compact: "<Ctrl r>/<Ctrl x>/<Del>" = 23 chars
             } else if max_cols >= 23 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}");
                 false
@@ -1343,6 +1374,13 @@ fn format_elapsed_time(elapsed_millis: u64) -> String {
     }
 }
 
+pub fn saved_text(last_saved_timestamp: Option<u64>) -> String {
+    match last_saved_timestamp {
+        Some(timestamp) => format!("(saved {})", format_elapsed_time(timestamp)),
+        None => "(not saved)".to_string(),
+    }
+}
+
 pub fn render_unsaved_changes_line(
     max_cols: usize,
     x: usize,
@@ -1357,13 +1395,7 @@ pub fn render_unsaved_changes_line(
     let separator = " - ";
     let space = " ";
 
-    let time_text = match last_saved_timestamp {
-        Some(timestamp) => {
-            let elapsed = format_elapsed_time(timestamp);
-            format!("(saved {})", elapsed)
-        },
-        None => "(not saved)".to_string(),
-    };
+    let time_text = saved_text(last_saved_timestamp);
 
     // Calculate component widths
     let shortcut_width = graphemes::display_width(&shortcut_text);

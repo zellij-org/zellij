@@ -43,7 +43,7 @@ fn rendered_text(chunks: &[CharacterChunk]) -> String {
 fn renders_all_expected_content() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
-    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "my-session", 1, &shortcuts);
+    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "my-session", 1, None, &shortcuts);
     assert_eq!(chunks.len(), 30);
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("Nested Zellij session detected: my-session"));
@@ -59,7 +59,7 @@ fn renders_all_expected_content() {
 fn renders_resolved_keybindings_as_joined_tokens() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
-    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, None, &shortcuts);
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("<Ctrl g> + <o> + <f>"));
     assert!(rendered.contains("<Ctrl o>"));
@@ -69,7 +69,7 @@ fn renders_resolved_keybindings_as_joined_tokens() {
 fn renders_unbound_when_no_keys() {
     let style = Style::default();
     let shortcuts = GuestModalShortcuts::default();
-    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, None, &shortcuts);
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("<unbound>"));
 }
@@ -80,7 +80,7 @@ fn selection_marker_moves_with_selected_index() {
     let shortcuts = sample_shortcuts();
 
     let first = render_lines(&guest_modal_chunks(
-        80, 30, 0, 0, &style, "s", 0, &shortcuts,
+        80, 30, 0, 0, &style, "s", 0, None, &shortcuts,
     ));
     assert!(first
         .iter()
@@ -91,7 +91,7 @@ fn selection_marker_moves_with_selected_index() {
         .any(|line| line.trim_start().starts_with("> 2.")));
 
     let second = render_lines(&guest_modal_chunks(
-        80, 30, 0, 0, &style, "s", 1, &shortcuts,
+        80, 30, 0, 0, &style, "s", 1, None, &shortcuts,
     ));
     assert!(second
         .iter()
@@ -109,7 +109,7 @@ fn number_column(line: &str, number: &str) -> usize {
 fn options_are_left_justified_within_the_centered_block() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
-    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(80, 30, 0, 0, &style, "s", 0, None, &shortcuts);
     let lines = render_lines(&chunks);
     let selected_line = lines
         .iter()
@@ -138,7 +138,7 @@ fn options_are_left_justified_within_the_centered_block() {
 fn small_columns_render_the_fallback() {
     let style = Style::default();
     let shortcuts = GuestModalShortcuts::default();
-    let chunks = guest_modal_chunks(18, 20, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(18, 20, 0, 0, &style, "s", 0, None, &shortcuts);
     assert_eq!(chunks.len(), 20);
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("Nested"));
@@ -149,7 +149,7 @@ fn small_columns_render_the_fallback() {
 fn small_rows_render_the_fallback() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
-    let chunks = guest_modal_chunks(80, 5, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(80, 5, 0, 0, &style, "s", 0, None, &shortcuts);
     assert_eq!(chunks.len(), 5);
     let rendered = rendered_text(&chunks);
     assert!(rendered.contains("Nested Zellij session"));
@@ -160,9 +160,9 @@ fn small_rows_render_the_fallback() {
 fn tiny_geometry_does_not_panic() {
     let style = Style::default();
     let shortcuts = GuestModalShortcuts::default();
-    let chunks = guest_modal_chunks(3, 2, 0, 0, &style, "session", 0, &shortcuts);
+    let chunks = guest_modal_chunks(3, 2, 0, 0, &style, "session", 0, None, &shortcuts);
     assert_eq!(chunks.len(), 2);
-    let empty = guest_modal_chunks(0, 0, 0, 0, &style, "session", 0, &shortcuts);
+    let empty = guest_modal_chunks(0, 0, 0, 0, &style, "session", 0, None, &shortcuts);
     assert!(empty.is_empty());
 }
 
@@ -171,68 +171,170 @@ fn every_rendered_row_spans_the_full_width() {
     let style = Style::default();
     let shortcuts = sample_shortcuts();
     let columns = 80;
-    let chunks = guest_modal_chunks(columns, 30, 0, 0, &style, "s", 0, &shortcuts);
+    let chunks = guest_modal_chunks(columns, 30, 0, 0, &style, "s", 0, None, &shortcuts);
     for chunk in &chunks {
         let width: usize = chunk.terminal_characters.iter().map(|c| c.width()).sum();
         assert_eq!(width, columns);
     }
 }
 
+fn hit_at(
+    rows: usize,
+    columns: usize,
+    row: usize,
+    column: usize,
+    selected: usize,
+) -> Option<usize> {
+    guest_modal_option_at_content_position(
+        rows,
+        columns,
+        row,
+        column,
+        &Style::default(),
+        "session",
+        selected,
+        &sample_shortcuts(),
+    )
+}
+
+fn column_inside_block(columns: usize, rows: usize, selected: usize) -> usize {
+    let styles = guest_modal_styles(&Style::default());
+    let layout = guest_modal_layout(
+        columns,
+        rows,
+        &styles,
+        "session",
+        selected,
+        None,
+        &sample_shortcuts(),
+    );
+    layout.left_pad + layout.block_width / 2
+}
+
 #[test]
 fn hit_test_round_trips_the_options() {
-    let style = Style::default();
-    let shortcuts = sample_shortcuts();
     let rows = 40;
     let columns = 80;
-    let mut hit_rows: Vec<usize> = Vec::new();
+    let column = column_inside_block(columns, rows, 0);
+    let mut hits: Vec<usize> = Vec::new();
     for row in 0..rows {
-        if let Some(option) =
-            guest_modal_option_at_content_row(rows, columns, row, &style, "session", 0, &shortcuts)
-        {
-            assert_eq!(hit_rows.len(), option);
-            hit_rows.push(row);
+        if let Some(option) = hit_at(rows, columns, row, column, 0) {
+            if hits.last() != Some(&option) {
+                hits.push(option);
+            }
         }
     }
-    assert_eq!(hit_rows.len(), 2);
+    assert_eq!(hits, vec![0, 1]);
 }
 
 #[test]
 fn hit_test_returns_none_off_option_rows_and_in_fallback() {
-    let style = Style::default();
-    let shortcuts = sample_shortcuts();
+    assert_eq!(hit_at(40, 10, 0, 5, 0), None);
+    assert_eq!(hit_at(4, 10, 2, 5, 0), None);
+    assert_eq!(hit_at(40, 80, 0, 40, 0), None);
+}
+
+#[test]
+fn hit_test_ignores_columns_outside_the_block() {
+    let rows = 40;
+    let columns = 80;
+    let styles = guest_modal_styles(&Style::default());
+    let layout = guest_modal_layout(
+        columns,
+        rows,
+        &styles,
+        "session",
+        0,
+        None,
+        &sample_shortcuts(),
+    );
+    let option_row = layout.start_row + layout.option_rows[0];
     assert_eq!(
-        guest_modal_option_at_content_row(40, 10, 0, &style, "session", 0, &shortcuts),
+        hit_at(rows, columns, option_row, layout.left_pad, 0),
+        Some(0)
+    );
+    assert_eq!(
+        hit_at(rows, columns, option_row, layout.left_pad - 1, 0),
         None
     );
     assert_eq!(
-        guest_modal_option_at_content_row(4, 10, 2, &style, "session", 0, &shortcuts),
-        None
-    );
-    assert_eq!(
-        guest_modal_option_at_content_row(40, 80, 0, &style, "session", 0, &shortcuts),
+        hit_at(
+            rows,
+            columns,
+            option_row,
+            layout.left_pad + layout.block_width,
+            0
+        ),
         None
     );
 }
 
 #[test]
-fn hit_test_matches_rendered_marker_rows() {
-    let style = Style::default();
-    let shortcuts = sample_shortcuts();
+fn hit_test_covers_each_option_title_and_its_explanation() {
     let rows = 40;
     let columns = 80;
     let selected = 1;
+    let column = column_inside_block(columns, rows, selected);
     let lines = render_lines(&guest_modal_chunks(
-        columns, rows, 0, 0, &style, "session", selected, &shortcuts,
+        columns,
+        rows,
+        0,
+        0,
+        &Style::default(),
+        "session",
+        selected,
+        None,
+        &sample_shortcuts(),
     ));
+    let mut current_option: Option<usize> = None;
     for (row, line) in lines.iter().enumerate() {
-        let hit = guest_modal_option_at_content_row(
-            rows, columns, row, &style, "session", selected, &shortcuts,
-        );
         let trimmed = line.trim_start();
-        let is_option_line =
-            trimmed.starts_with("> ") || trimmed.starts_with("1.") || trimmed.starts_with("2.");
-        assert_eq!(hit.is_some(), is_option_line, "row {} mismatch", row);
+        let trimmed = trimmed.strip_prefix("> ").unwrap_or(trimmed);
+        if trimmed.starts_with("1.") {
+            current_option = Some(0);
+        } else if trimmed.starts_with("2.") {
+            current_option = Some(1);
+        } else if trimmed.is_empty() || trimmed.starts_with("<↓↑>") {
+            current_option = None;
+        }
+        assert_eq!(
+            hit_at(rows, columns, row, column, selected),
+            current_option,
+            "row {} ({:?})",
+            row,
+            line
+        );
     }
+}
+
+#[test]
+fn hovered_option_title_is_italic() {
+    let style = Style::default();
+    let shortcuts = sample_shortcuts();
+    let columns = 80;
+    let rows = 40;
+    let styles = guest_modal_styles(&style);
+    let layout = guest_modal_layout(columns, rows, &styles, "session", 0, None, &shortcuts);
+    let title_is_italic = |hovered: Option<usize>, option: usize| {
+        let chunks = guest_modal_chunks(
+            columns, rows, 0, 0, &style, "session", 0, hovered, &shortcuts,
+        );
+        let row = &chunks[layout.start_row + layout.option_rows[option]];
+        let text: String = row
+            .terminal_characters
+            .iter()
+            .map(|c| c.character)
+            .collect();
+        let title = ["Zoom in", "Control this"][option];
+        let title_start = text.find(title).expect("option title rendered");
+        row.terminal_characters[title_start].styles.italic == Some(AnsiCode::On)
+    };
+    assert!(!title_is_italic(None, 0));
+    assert!(!title_is_italic(None, 1));
+    assert!(title_is_italic(Some(0), 0));
+    assert!(!title_is_italic(Some(0), 1));
+    assert!(title_is_italic(Some(1), 1));
+    assert!(!title_is_italic(Some(1), 0));
 }
 
 #[test]
@@ -243,10 +345,14 @@ fn selected_rows_carry_the_selected_background_rectangle() {
     let columns = 80;
     let rows = 40;
     let styles = guest_modal_styles(&style);
-    let layout = guest_modal_layout(columns, rows, &styles, "session", selected, &shortcuts);
+    let layout = guest_modal_layout(
+        columns, rows, &styles, "session", selected, None, &shortcuts,
+    );
     let selected_option_offset = layout.option_rows[selected];
 
-    let chunks = guest_modal_chunks(columns, rows, 0, 0, &style, "session", selected, &shortcuts);
+    let chunks = guest_modal_chunks(
+        columns, rows, 0, 0, &style, "session", selected, None, &shortcuts,
+    );
     let selected_row_index = layout.start_row + selected_option_offset;
     let selected_chunk = &chunks[selected_row_index];
 
@@ -290,11 +396,15 @@ fn unselected_rows_do_not_use_the_selected_background() {
     let columns = 80;
     let rows = 40;
     let styles = guest_modal_styles(&style);
-    let layout = guest_modal_layout(columns, rows, &styles, "session", selected, &shortcuts);
+    let layout = guest_modal_layout(
+        columns, rows, &styles, "session", selected, None, &shortcuts,
+    );
     let other_option_offset = layout.option_rows[1];
 
     let selected_background = styles.selected_fill.background;
-    let chunks = guest_modal_chunks(columns, rows, 0, 0, &style, "session", selected, &shortcuts);
+    let chunks = guest_modal_chunks(
+        columns, rows, 0, 0, &style, "session", selected, None, &shortcuts,
+    );
     let other_row = &chunks[layout.start_row + other_option_offset];
     for character in &other_row.terminal_characters {
         assert_ne!(

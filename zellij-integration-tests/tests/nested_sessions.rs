@@ -367,6 +367,7 @@ fn focus_host_session_binding_returns_control_to_host() {
                 && host_grid.contains("Pane #2")
                 && prompt_count(host_grid) == 1
                 && host_own_tab_bar_settled(host_grid, &guest_session_name)
+                && host_grid.cursor_is_at(col(0).row(3))
         },
     );
     assert_snapshot!(

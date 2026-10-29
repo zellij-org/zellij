@@ -19,10 +19,62 @@ struct State {
     message_to_plugin_payload: Option<String>,
     explicit_string_to_render: Option<String>,
     prompt_result: Option<String>,
+    live_view: Option<LiveView>,
+    live_view_status: Option<String>,
+    live_view_connects: usize,
+    live_view_last_state: Option<MirrorState>,
+    live_view_input: Option<String>,
+}
+
+#[cfg(target_family = "wasm")]
+fn session_pane_command_for_key(character: char) -> &'static str {
+    match character {
+        'j' => "mark_seen",
+        'k' => "mark_all_seen",
+        'l' => "open_window",
+        'm' => "write",
+        'n' => "send_key",
+        'o' => "mute",
+        'p' => "ignore_output",
+        'q' => "watch",
+        _ => "focus",
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn run_session_pane_command(command: &str, session: &str, pane: PaneId) {
+    match command {
+        "mark_seen" => mark_session_pane_seen(session, pane),
+        "mark_all_seen" => mark_all_seen(Some(session)),
+        "open_window" => open_session_terminal(session, true),
+        "write" => write_to_session_pane(session, pane, b"typed by the fixture".to_vec()),
+        "send_key" => send_key_to_session_pane(session, pane, KeyWithModifier::new(BareKey::Enter)),
+        "mute" => toggle_session_pane_mute(session, pane),
+        "ignore_output" => toggle_session_pane_ignore_output(session, pane),
+        "watch" => toggle_session_pane_watch(session, pane),
+        "focus" => focus_session_pane(session, pane),
+        _ => {},
+    }
 }
 
 #[cfg(target_family = "wasm")]
 impl State {
+    fn target_session(&self) -> String {
+        self.configuration
+            .get("target_session")
+            .cloned()
+            .unwrap_or_else(|| "other-session".to_owned())
+    }
+
+    fn target_pane(&self) -> PaneId {
+        PaneId::Terminal(
+            self.configuration
+                .get("target_pane")
+                .and_then(|pane| pane.parse().ok())
+                .unwrap_or(1),
+        )
+    }
+
     fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
         let request = match name {
             "prompt_confirm" => {
@@ -55,6 +107,189 @@ impl State {
         };
         let request_id = prompt(request);
         self.prompt_result = Some(format!("Prompt {} sent", request_id));
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn live_view_target_from_args(args: &BTreeMap<String, String>) -> PaneAddress {
+    let session = args.get("session").cloned().unwrap_or_default();
+    let pane = args
+        .get("pane")
+        .and_then(|pane| pane.parse::<u32>().ok())
+        .unwrap_or(0);
+    let pane_id = if args.get("plugin").map(|p| p == "true").unwrap_or(false) {
+        PaneId::Plugin(pane)
+    } else {
+        PaneId::Terminal(pane)
+    };
+    PaneAddress {
+        host: args.get("host").cloned().map(HostId),
+        session,
+        pane_id,
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn number_arg(args: &BTreeMap<String, String>, name: &str, default: usize) -> usize {
+    args.get(name)
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(default)
+}
+
+#[cfg(target_family = "wasm")]
+impl State {
+    fn live_view_fixture(&self) -> bool {
+        self.configuration
+            .get("live_view_fixture")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    }
+
+    fn handle_live_view_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
+        match name {
+            "live_view_set" => {
+                let view = LiveView {
+                    target: live_view_target_from_args(args),
+                    x: number_arg(args, "x", 2),
+                    y: number_arg(args, "y", 3),
+                    cols: number_arg(args, "cols", 40),
+                    rows: number_arg(args, "rows", 10),
+                    resize_allowed: args.get("resize").map(|resize| resize == "true"),
+                    view_only: args.get("view_only").map(|v| v == "true").unwrap_or(false),
+                };
+                set_live_view(Some(view.clone()));
+                self.live_view = Some(view);
+                if args.get("capture").map(|c| c == "true").unwrap_or(false) {
+                    set_live_view_input(true);
+                }
+            },
+            "live_view_clear" => {
+                set_live_view(None);
+                self.live_view = None;
+            },
+            "live_view_input" => {
+                let capture = args.get("capture").map(|c| c == "true").unwrap_or(true);
+                set_live_view_input(capture);
+            },
+            _ => {},
+        }
+    }
+
+    fn handle_live_view_event(&mut self, event: &Event) -> bool {
+        match event {
+            Event::LiveViewStateChanged {
+                target,
+                state,
+                input_captured,
+                input_released_by,
+                resize_allowed,
+                view_only,
+                pinned,
+                source_size,
+                ..
+            } => {
+                if *state == MirrorState::Connecting
+                    && self.live_view_last_state != Some(MirrorState::Connecting)
+                {
+                    self.live_view_connects += 1;
+                }
+                self.live_view_last_state = Some(*state);
+                let source = source_size
+                    .map(|size| format!("{}x{}", size.cols, size.rows))
+                    .unwrap_or_else(|| "none".to_owned());
+                let target = target
+                    .as_ref()
+                    .map(|target| format!("{}/{:?}", target.session, target.pane_id))
+                    .unwrap_or_else(|| "none".to_owned());
+                self.live_view_status = Some(format!(
+                    "LV {:?} captured={} released={:?}\nresize={} view_only={} pinned={} source={} connects={} target={}",
+                    state,
+                    input_captured,
+                    input_released_by,
+                    resize_allowed,
+                    view_only,
+                    pinned,
+                    source,
+                    self.live_view_connects,
+                    target
+                ));
+                true
+            },
+            Event::Key(key) => {
+                if key.bare_key == BareKey::Char('C') {
+                    set_live_view_input(true);
+                }
+                self.live_view_input = Some(format!("key={}", key));
+                true
+            },
+            Event::Mouse(mouse) => {
+                self.live_view_input = Some(format!("mouse={:?}", mouse));
+                true
+            },
+            Event::PastedText(text) => {
+                self.live_view_input = Some(format!("paste={}", text));
+                true
+            },
+            _ => false,
+        }
+    }
+
+    fn render_live_view_fixture(&self, rows: usize, cols: usize) {
+        let mut grid = vec![vec![' '; cols]; rows];
+        let put = |grid: &mut Vec<Vec<char>>, x: usize, y: usize, text: &str| {
+            if y >= rows {
+                return;
+            }
+            for (offset, character) in text.chars().enumerate() {
+                if x + offset >= cols {
+                    break;
+                }
+                grid[y][x + offset] = character;
+            }
+        };
+        let status = self
+            .live_view_status
+            .clone()
+            .unwrap_or_else(|| "LV none".to_owned());
+        for (index, line) in status.lines().enumerate() {
+            put(&mut grid, 0, index, line);
+        }
+        if let Some(view) = self.live_view.as_ref() {
+            let left = view.x.saturating_sub(1);
+            let top = view.y.saturating_sub(1);
+            let right = view.x + view.cols;
+            let bottom = view.y + view.rows;
+            for y in top..=bottom {
+                for x in left..=right {
+                    if y >= rows || x >= cols {
+                        continue;
+                    }
+                    let on_edge_row = y == top || y == bottom;
+                    let on_edge_column = x == left || x == right;
+                    grid[y][x] = match (on_edge_row, on_edge_column) {
+                        (true, true) => '+',
+                        (true, false) => '-',
+                        (false, true) => '|',
+                        (false, false) => '.',
+                    };
+                }
+            }
+        }
+        let input = self
+            .live_view_input
+            .clone()
+            .unwrap_or_else(|| "none".to_owned());
+        put(
+            &mut grid,
+            0,
+            rows.saturating_sub(1),
+            &format!("client={} input {}", get_plugin_ids().client_id, input),
+        );
+        let lines: Vec<String> = grid
+            .into_iter()
+            .map(|row| row.into_iter().collect())
+            .collect();
+        print!("{}", lines.join("\n"));
     }
 }
 
@@ -93,7 +328,11 @@ fn main() {
 #[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        request_permission(&[
+        let attention_fixture = configuration
+            .get("attention_fixture")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let mut permissions = vec![
             PermissionType::ChangeApplicationState,
             PermissionType::ReadApplicationState,
             PermissionType::ReadApplicationState,
@@ -109,7 +348,15 @@ impl ZellijPlugin for State {
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
             PermissionType::ReadSessionEnvironmentVariables,
-        ]);
+        ];
+        let live_view_fixture = configuration
+            .get("live_view_fixture")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if attention_fixture || live_view_fixture {
+            permissions.push(PermissionType::ReadPaneContents);
+        }
+        request_permission(&permissions);
         let should_subscribe_initial_keybinds = configuration
             .get("subscribe_initial_keybinds")
             .map(|v| v == "true")
@@ -142,6 +389,25 @@ impl ZellijPlugin for State {
         if should_subscribe_mode_update {
             subscribe(&[EventType::ModeUpdate]);
         }
+        if attention_fixture {
+            subscribe(&[
+                EventType::PaneAttentionChanged,
+                EventType::PromptShown,
+                EventType::CommandStarted,
+                EventType::CommandFinished,
+                EventType::GlobalAttentionUpdate,
+                EventType::SessionHistoryUpdate,
+                EventType::SessionUpdate,
+                EventType::SessionPreview,
+            ]);
+        }
+        if live_view_fixture {
+            subscribe(&[
+                EventType::LiveViewStateChanged,
+                EventType::Mouse,
+                EventType::PastedText,
+            ]);
+        }
         if should_subscribe_nested_session_events {
             subscribe(&[
                 EventType::NestedSessionModeUpdate,
@@ -154,6 +420,9 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         if let Event::PromptResult(request_id, result) = &event {
             self.prompt_result = Some(format!("Prompt result {}: {:?}", request_id, result));
+            return true;
+        }
+        if self.live_view_fixture() && self.handle_live_view_event(&event) {
             return true;
         }
         match &event {
@@ -689,6 +958,31 @@ impl ZellijPlugin for State {
                 BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     toggle_floating_panes(Some(2));
                 },
+                BareKey::Char(character @ 'j'..='r')
+                    if key.has_only_modifiers(&[KeyModifier::Super]) =>
+                {
+                    let session = self.target_session();
+                    let pane = self.target_pane();
+                    run_session_pane_command(
+                        session_pane_command_for_key(character),
+                        &session,
+                        pane,
+                    );
+                },
+                BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    self.explicit_string_to_render = Some(format!(
+                        "Pane info: {:?}",
+                        get_pane_info(self.target_pane())
+                    ));
+                },
+                BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    let session = self.target_session();
+                    get_session_pane_preview(
+                        &session,
+                        self.target_pane(),
+                        PreviewAnchor::LastCommandOutput,
+                    );
+                },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
                 {
@@ -1085,6 +1379,20 @@ impl ZellijPlugin for State {
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;
+        if name.starts_with("live_view_") {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                unblock_cli_pipe_input(pipe_id);
+            }
+            let is_for_this_user = pipe_message
+                .args
+                .get("only_client")
+                .map(|client_id| *client_id == get_plugin_ids().client_id.to_string())
+                .unwrap_or(true);
+            if is_for_this_user {
+                self.handle_live_view_message(&name, &pipe_message.args);
+            }
+            return true;
+        }
         if name.starts_with("prompt_") || name == "close_self" {
             if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                 unblock_cli_pipe_input(pipe_id);
@@ -1111,6 +1419,21 @@ impl ZellijPlugin for State {
             );
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
+        } else if name == "session_pane_command" {
+            let args = &pipe_message.args;
+            let session = args
+                .get("session")
+                .cloned()
+                .unwrap_or_else(|| self.target_session());
+            let pane = args
+                .get("pane")
+                .and_then(|pane| pane.parse::<u32>().ok())
+                .map(PaneId::Terminal)
+                .unwrap_or_else(|| self.target_pane());
+            if let Some(command) = args.get("command") {
+                run_session_pane_command(command, &session, pane);
+            }
+            unblock_cli_pipe_input(&input_pipe_id);
         } else if name == "panic_while_handling_pipe" {
             panic!("intentional panic for the pipe-release-on-crash test");
         }
@@ -1119,7 +1442,9 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if let Some(prompt_result) = self.prompt_result.as_ref() {
+        if self.live_view_fixture() {
+            self.render_live_view_fixture(rows, cols);
+        } else if let Some(prompt_result) = self.prompt_result.as_ref() {
             println!("{}", prompt_result);
         } else if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);

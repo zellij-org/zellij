@@ -2,6 +2,7 @@ mod first_line;
 mod hover;
 mod one_line_ui;
 mod second_line;
+mod session_hints;
 mod tip;
 
 use ansi_term::{
@@ -57,6 +58,39 @@ struct ClientState {
     base_mode_is_locked: bool,
     hovered: Option<Vec<Action>>,
     hover_at: Option<(SlotId, usize)>,
+    history: Option<SessionHistoryInfo>,
+    global: Option<GlobalAttention>,
+    focused_pane: Option<PaneInfo>,
+    panes: Option<PaneManifest>,
+}
+
+impl ClientState {
+    fn session_hints(&self) -> session_hints::SessionHints {
+        let back_keys = session_hints::back_keys_text(&self.mode_info);
+        session_hints::compute_session_hints(
+            self.history.as_ref(),
+            self.global.as_ref(),
+            self.focused_pane.as_ref(),
+            back_keys.as_deref(),
+            session_hints::now_ms(),
+        )
+    }
+    fn refresh_focused_pane(&mut self) {
+        let active_tab = self.tabs.iter().find(|t| t.active).map(|t| t.position);
+        self.focused_pane = match (active_tab, self.panes.as_ref()) {
+            (Some(position), Some(panes)) => panes
+                .panes
+                .get(&position)
+                .and_then(|panes| {
+                    panes
+                        .iter()
+                        .find(|p| p.is_focused && !p.is_plugin && !p.is_floating)
+                        .or_else(|| panes.iter().find(|p| p.is_focused && !p.is_plugin))
+                })
+                .cloned(),
+            _ => None,
+        };
+    }
 }
 
 #[derive(Default)]
@@ -71,6 +105,62 @@ pub struct StatusBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     runner: ActionRunner,
+    timer_requests: Vec<f64>,
+    desktop_offer: DesktopOffer,
+}
+
+const DESKTOP_OFFER_TEXT: &str =
+    "Get desktop notifications for this: run `zellij terminal` (it opens on this computer)";
+
+#[derive(Default)]
+struct DesktopOffer {
+    state: Option<desktop_integration::IntegrationState>,
+    requested: bool,
+    decided: bool,
+    until_ms: Option<u64>,
+}
+
+impl DesktopOffer {
+    fn active(&self, now_ms: u64) -> bool {
+        self.until_ms.map(|until| now_ms < until).unwrap_or(false)
+    }
+}
+
+fn pane_is_out_of_view(client: &ClientState, pane_id: &PaneId) -> bool {
+    let PaneId::Terminal(id) = pane_id else {
+        return false;
+    };
+    let active_tab = client.tabs.iter().find(|t| t.active).map(|t| t.position);
+    let Some(panes) = client.panes.as_ref() else {
+        return false;
+    };
+    let in_active_tab = active_tab
+        .and_then(|position| panes.panes.get(&position))
+        .map(|panes| {
+            panes
+                .iter()
+                .any(|p| !p.is_plugin && p.id == *id && !p.is_suppressed)
+        })
+        .unwrap_or(false);
+    !in_active_tab
+}
+
+fn reminder_context(client: &ClientState) -> desktop_integration::ReminderContext {
+    let snapshot = read_config();
+    let enabled = |key: SettingKey| {
+        snapshot
+            .setting(key)
+            .and_then(|setting| setting.current_value.clone())
+            .map(|value| value != "false")
+            .unwrap_or(true)
+    };
+    let web_client = client.mode_info.is_web_client.unwrap_or(false);
+    desktop_integration::ReminderContext {
+        show_startup_tips: enabled(SettingKey::ShowStartupTips),
+        show_release_notes: enabled(SettingKey::ShowReleaseNotes),
+        inside_desktop_terminal: client.mode_info.remote_client.is_none() && !web_client,
+        web_client,
+    }
 }
 
 #[derive(Default)]
@@ -256,6 +346,10 @@ impl StatusBar {
         !self.slots.is_empty()
     }
 
+    pub fn take_timer_requests(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.timer_requests)
+    }
+
     pub fn slot_added(&mut self, slot: &Slot) {
         let tip_name = get_cached_tip_name();
         let classic_ui = slot
@@ -280,7 +374,60 @@ impl StatusBar {
             EventType::InitialKeybinds,
             EventType::Mouse,
             EventType::ActionComplete,
+            EventType::GlobalAttentionUpdate,
+            EventType::SessionHistoryUpdate,
+            EventType::Timer,
+            EventType::CommandFinished,
+            EventType::DesktopIntegration,
         ]);
+        if !self.desktop_offer.requested {
+            self.desktop_offer.requested = true;
+            request_desktop_integration(&desktop_integration::Request::GetState);
+        }
+    }
+
+    fn desktop_offer_event(&mut self, event: &Event) -> bool {
+        match event {
+            Event::DesktopIntegration(payload) => {
+                if let desktop_integration::Response::Done(state) =
+                    desktop_integration::Response::from_json(payload)
+                {
+                    self.desktop_offer.state = Some(state);
+                }
+                false
+            },
+            Event::CommandFinished(pane_id, outcome) => {
+                if self.desktop_offer.decided {
+                    return false;
+                }
+                let Some(state) = self.desktop_offer.state.as_ref() else {
+                    return false;
+                };
+                if outcome.result == CommandResult::Unknown {
+                    return false;
+                }
+                let Some(client) = self.clients.values().next() else {
+                    return false;
+                };
+                if !pane_is_out_of_view(client, pane_id) {
+                    return false;
+                }
+                self.desktop_offer.decided = true;
+                if !state.reminders_allowed(&reminder_context(client)) {
+                    return false;
+                }
+                self.desktop_offer.until_ms =
+                    Some(session_hints::now_ms() + session_hints::SWITCH_HINT_MS);
+                self.timer_requests
+                    .push(session_hints::SWITCH_HINT_MS as f64 / 1000.0 + 0.2);
+                request_desktop_integration(&desktop_integration::Request::SetFlag(
+                    desktop_integration::Flag::DesktopAppIntroduced,
+                ));
+                true
+            },
+            Event::Timer(_) => self.desktop_offer.until_ms.is_some(),
+            _ => false,
+        }
     }
 
     pub fn slot_removed(&mut self, slot_id: SlotId) {
@@ -331,6 +478,9 @@ impl StatusBar {
     }
 
     pub fn update(&mut self, event: &Event, context: EventContext) -> RenderResponse {
+        if self.desktop_offer_event(event) {
+            return RenderResponse::Slots(self.slots.keys().copied().collect());
+        }
         let target_clients: Vec<ClientId> = match context.client_id {
             Some(client_id) => vec![client_id],
             None => self.clients.keys().copied().collect(),
@@ -378,6 +528,33 @@ impl StatusBar {
                     should_render = true;
                 }
                 client.tabs = tabs.clone();
+                client.refresh_focused_pane();
+            },
+            Event::PaneUpdate(panes) => {
+                client.panes = Some(panes.clone());
+                let before = client.focused_pane.clone();
+                client.refresh_focused_pane();
+                if before != client.focused_pane {
+                    should_render = true;
+                }
+            },
+            Event::GlobalAttentionUpdate(global) => {
+                let before = client.session_hints();
+                client.global = Some(global.clone());
+                should_render = client.session_hints() != before;
+            },
+            Event::SessionHistoryUpdate(history) => {
+                if client.history.as_ref() != Some(history) {
+                    should_render = true;
+                    if history.arrived_from.is_some() {
+                        self.timer_requests
+                            .push(session_hints::SWITCH_HINT_MS as f64 / 1000.0 + 0.2);
+                    }
+                }
+                client.history = Some(history.clone());
+            },
+            Event::Timer(_) => {
+                should_render = client.history.is_some();
             },
             Event::CopyToClipboard(copy_destination) => {
                 let copy_destination = *copy_destination;
@@ -473,6 +650,7 @@ impl StatusBar {
     }
 
     fn render_client(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+        let offer_active = self.desktop_offer.active(session_hints::now_ms());
         let Some(client) = self.clients.get(&client_id) else {
             return;
         };
@@ -494,17 +672,23 @@ impl StatusBar {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = client.tabs.iter().find(|t| t.active);
+            let mut hints = client.session_hints();
+            if offer_active {
+                hints.transient = Some(DESKTOP_OFFER_TEXT.to_owned());
+            }
             let render_line = |hovered: Option<Vec<Action>>| {
                 with_hovered(hovered, || {
-                    one_line_ui(
-                        &client.mode_info,
-                        active_tab,
-                        cols,
-                        separator,
-                        client.base_mode_is_locked,
-                        client.text_copy_destination,
-                        client.display_system_clipboard_failure,
-                    )
+                    session_hints::with_session_hints(hints.clone(), || {
+                        one_line_ui(
+                            &client.mode_info,
+                            active_tab,
+                            cols,
+                            separator,
+                            client.base_mode_is_locked,
+                            client.text_copy_destination,
+                            client.display_system_clipboard_failure,
+                        )
+                    })
                 })
             };
             let hover_col = client
@@ -630,6 +814,14 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
             .collect();
     }
     common_modifiers.into_iter().collect()
+}
+
+pub fn bars_hint(mode_info: &ModeInfo) -> (&'static str, &'static str) {
+    if mode_info.hidden_bars.is_empty() {
+        ("Hide bars", "Bars")
+    } else {
+        ("Show bars", "Bars")
+    }
 }
 
 pub fn action_key(

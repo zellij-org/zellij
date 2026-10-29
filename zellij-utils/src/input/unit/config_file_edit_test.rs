@@ -4,6 +4,7 @@ use super::super::config_file_edit::*;
 use super::super::config_settings::config_settings_test::every_setting_set;
 use super::super::config_settings::{settings_set_in_file, unset_setting};
 use super::super::keybind_presets::KeybindChanges;
+use super::super::layout::{PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias};
 use crate::data::{InputMode, KeyWithModifier, SettingKey};
 use std::str::FromStr;
 
@@ -690,7 +691,7 @@ fn context_menu_items_are_edited_one_by_one_inside_their_section() {
 }
 
 const BAR_FILE: &str =
-    "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
 
 fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
     crate::data::ContextMenuEntry::item(label, new_tab().into_iter().map(Into::into).collect())
@@ -700,12 +701,12 @@ fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
 fn a_default_item_removed_from_a_merged_section_is_written_as_remove() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.remove(0);
+        runtime.context_menu.tab.remove(0);
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        remove \"New pane\"\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        remove \"New tab\"\n    }\n}\n"
     );
 }
 
@@ -713,20 +714,20 @@ fn a_default_item_removed_from_a_merged_section_is_written_as_remove() {
 fn an_item_added_to_a_merged_section_is_written_without_clear_defaults() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.push(menu_item("Extra"));
+        runtime.context_menu.tab.push(menu_item("Extra"));
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Extra\" { NewTab; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Extra\" { NewTab; }\n    }\n}\n"
     );
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.insert(1, menu_item("Middle"));
+        runtime.context_menu.tab.insert(1, menu_item("Middle"));
         runtime
     });
     assert!(
-        text.contains("item \"Middle\" after=\"New pane\" { NewTab; }"),
+        text.contains("item \"Middle\" after=\"New tab\" { NewTab; }"),
         "{}",
         text
     );
@@ -737,13 +738,13 @@ fn an_item_added_to_a_merged_section_is_written_without_clear_defaults() {
 fn a_changed_default_item_is_written_as_an_item_with_its_label() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar[1] =
-            crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
+        runtime.context_menu.tab[1] =
+            crate::data::ContextMenuEntry::item("Rename tab…", vec![Action::Detach.into()]);
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"New tab\" { Detach; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Rename tab…\" { Detach; }\n    }\n}\n"
     );
 }
 
@@ -751,11 +752,11 @@ fn a_changed_default_item_is_written_as_an_item_with_its_label() {
 fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items() {
     let moved = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar.swap(0, 1);
+        runtime.context_menu.tab.swap(0, 1);
         runtime
     });
     assert!(
-        moved.contains("item \"New pane\" after=\"New tab\" {"),
+        moved.contains("item \"New tab\" after=\"Rename tab…\" {"),
         "{}",
         moved
     );
@@ -769,12 +770,12 @@ fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items()
         let mut runtime = saved.clone();
         runtime
             .context_menu
-            .bar
+            .tab
             .insert(1, crate::data::ContextMenuEntry::Separator);
         runtime
     });
     assert!(
-        separated.contains("separator after=\"New pane\""),
+        separated.contains("separator after=\"New tab\""),
         "{}",
         separated
     );
@@ -783,16 +784,16 @@ fn a_moved_default_item_and_a_new_separator_are_placed_relative_to_other_items()
 
 #[test]
 fn a_changed_own_item_in_a_merged_section_keeps_its_comment_and_other_statements() {
-    let file = "context_menu {\n    bar {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    let file = "context_menu {\n    tab {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
     let text = saved_text_after(file, |saved| {
         let mut runtime = saved.clone();
-        let last = runtime.context_menu.bar.len() - 1;
-        runtime.context_menu.bar[last] = menu_item("Mine");
+        let last = runtime.context_menu.tab.len() - 1;
+        runtime.context_menu.tab[last] = menu_item("Mine");
         runtime
     });
     assert_eq!(
         text,
-        "context_menu {\n    bar {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { NewTab; }\n    }\n}\n"
+        "context_menu {\n    tab {\n        remove \"Gone\"\n        // mine\n        item \"Mine\" { NewTab; }\n    }\n}\n"
     );
 }
 
@@ -800,7 +801,7 @@ fn a_changed_own_item_in_a_merged_section_keeps_its_comment_and_other_statements
 fn a_merged_section_back_at_the_defaults_is_removed() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
-        runtime.context_menu.bar = defaults().context_menu.bar.clone();
+        runtime.context_menu.tab = defaults().context_menu.tab.clone();
         runtime
     });
     assert_eq!(text, "context_menu {\n}\n");
@@ -808,16 +809,16 @@ fn a_merged_section_back_at_the_defaults_is_removed() {
 
 #[test]
 fn a_file_without_merge_statements_reads_as_before() {
-    let file = "context_menu {\n    bar {\n        item \"New tab\" { Detach; }\n        separator\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    let file = "context_menu {\n    tab {\n        item \"Rename tab…\" { Detach; }\n        separator\n        item \"Mine\" { Detach; }\n    }\n}\n";
     let config = load(file);
-    let mut expected = defaults().context_menu.bar.clone();
-    expected[1] = crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
+    let mut expected = defaults().context_menu.tab.clone();
+    expected[1] = crate::data::ContextMenuEntry::item("Rename tab…", vec![Action::Detach.into()]);
     expected.push(crate::data::ContextMenuEntry::Separator);
     expected.push(crate::data::ContextMenuEntry::item(
         "Mine",
         vec![Action::Detach.into()],
     ));
-    assert_eq!(config.context_menu.bar, expected);
+    assert_eq!(config.context_menu.tab, expected);
 }
 
 const THEME_FILE: &str = "themes {\n    // my theme\n    mine {\n        text_unselected {\n            base 1 2 3 // fg\n            emphasis_0 4\n            emphasis_1 5\n            emphasis_2 6\n            emphasis_3 7\n        }\n    }\n}\n";
@@ -933,7 +934,7 @@ fn an_overwrite_save_of_a_merged_section_keeps_an_item_added_outside() {
     let (_dir, path) = temp_config(Some(BAR_FILE));
     let saved = load(BAR_FILE);
     let mut runtime = saved.clone();
-    runtime.context_menu.bar.remove(0);
+    runtime.context_menu.tab.remove(0);
     let outside = BAR_FILE.replace(
         "        item \"Mine\" { Detach; }\n",
         "        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n",
@@ -950,7 +951,7 @@ fn an_overwrite_save_of_a_merged_section_keeps_an_item_added_outside() {
     assert!(changed_outside);
     assert_eq!(
         std::fs::read_to_string(&path).unwrap(),
-        "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n        remove \"New pane\"\n    }\n}\n"
+        "context_menu {\n    tab {\n        // mine\n        item \"Mine\" { Detach; }\n        item \"Other\" { NewTab; }\n        remove \"New tab\"\n    }\n}\n"
     );
 }
 
@@ -1044,36 +1045,300 @@ fn a_comment_inside_a_one_line_empty_block_is_kept_when_the_first_child_is_added
 }
 
 #[test]
-fn window_settings_go_inside_window_creating_it_when_missing() {
+fn terminal_settings_go_inside_terminal_creating_it_when_missing() {
     let text = saved_text_after("mouse_mode true\n", |saved| {
         reconfigure(
             saved,
-            "window { opacity 0.85; paste_keys \"Ctrl Shift v\" \"Shift Insert\"; theme { red \"#ff0000\"; }; }",
+            "terminal { opacity 0.85; paste_keys \"Ctrl Shift v\" \"Shift Insert\"; theme { red \"#ff0000\"; }; }",
         )
     });
     assert_eq!(
         text,
-        "mouse_mode true\nwindow {\n    opacity 0.85\n    paste_keys \"Ctrl Shift v\" \"Shift insert\"\n    theme {\n        red \"#ff0000\"\n    }\n}\n"
+        "mouse_mode true\nterminal {\n    opacity 0.85\n    paste_keys \"Ctrl Shift v\" \"Shift insert\"\n    theme {\n        red \"#ff0000\"\n    }\n}\n"
     );
 }
 
 #[test]
 fn a_window_colour_given_as_three_numbers_is_replaced_whole() {
-    let file = "window {\n    theme {\n        red 1 2 3\n    }\n}\n";
+    let file = "terminal {\n    theme {\n        red 1 2 3\n    }\n}\n";
     let text = saved_text_after(file, |saved| {
-        reconfigure(saved, "window { theme { red \"#0a0b0c\"; }; }")
+        reconfigure(saved, "terminal { theme { red \"#0a0b0c\"; }; }")
     });
     assert_eq!(
         text,
-        "window {\n    theme {\n        red \"#0a0b0c\"\n    }\n}\n"
+        "terminal {\n    theme {\n        red \"#0a0b0c\"\n    }\n}\n"
     );
 }
 
 #[test]
 fn a_shorter_window_key_list_drops_the_extra_keys() {
-    let file = "window {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}\n";
+    let file = "terminal {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}\n";
     let text = saved_text_after(file, |saved| {
-        reconfigure(saved, "window { paste_keys \"Super v\"; }")
+        reconfigure(saved, "terminal { paste_keys \"Super v\"; }")
     });
-    assert_eq!(text, "window {\n    paste_keys \"Super v\"\n}\n");
+    assert_eq!(text, "terminal {\n    paste_keys \"Super v\"\n}\n");
+}
+
+const ALIAS_FILE: &str = "plugins {
+    // status bar hints
+    zjhints location=\"file:~/.local/share/zellij/plugins/zjhints.wasm\" {
+        // Hard cap on the width of the hint line, in columns
+        max_length 0 // 0 = unlimited
+
+        // Name of the pipe for zjstatus integration
+        //pipe_name \"zjstatus_hints\" // default
+        hide_in_base_mode false // default
+        overflow_str \"...\"
+    }
+    other location=\"zellij:strider\" {
+        b \"2\"
+        a \"1\"
+    }
+}
+";
+
+fn with_alias_option(config: &Config, alias: &str, key: &str, value: Option<&str>) -> Config {
+    let mut runtime = config.clone();
+    let plugin = runtime.plugins.aliases.get_mut(alias).unwrap();
+    let mut configuration = plugin.configuration.inner().clone();
+    match value {
+        Some(value) => configuration.insert(key.to_owned(), value.to_owned()),
+        None => configuration.remove(key),
+    };
+    plugin.configuration = PluginUserConfiguration::new(configuration);
+    runtime
+}
+
+#[test]
+fn a_changed_alias_option_keeps_the_comments_blank_lines_and_order_of_the_alias() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "overflow_str", Some("~"))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace("overflow_str \"...\"", "overflow_str \"~\"")
+    );
+}
+
+#[test]
+fn an_alias_option_set_to_a_space_keeps_the_space() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "overflow_str", Some(" "))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace("overflow_str \"...\"", "overflow_str \" \"")
+    );
+}
+
+#[test]
+fn a_changed_alias_option_keeps_its_trailing_comment_and_integer_literal() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        let runtime = with_alias_option(saved, "zjhints", "max_length", Some("40"));
+        with_alias_option(&runtime, "zjhints", "hide_in_base_mode", Some("true"))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE
+            .replace("max_length 0 //", "max_length 40 //")
+            .replace("hide_in_base_mode false //", "hide_in_base_mode true //")
+    );
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "max_length", Some("wide"))
+    });
+    assert!(
+        text.contains("        max_length \"wide\" // 0 = unlimited\n"),
+        "{}",
+        text
+    );
+}
+
+#[test]
+fn an_added_alias_option_is_appended_and_a_removed_one_loses_only_its_line() {
+    let added = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "pipe_name", Some("hints"))
+    });
+    assert_eq!(
+        added,
+        ALIAS_FILE.replace(
+            "        overflow_str \"...\"\n",
+            "        overflow_str \"...\"\n        pipe_name \"hints\"\n"
+        )
+    );
+    let removed = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "max_length", None)
+    });
+    assert_eq!(
+        removed,
+        ALIAS_FILE.replace("        max_length 0 // 0 = unlimited\n", "")
+    );
+}
+
+#[test]
+fn a_changed_alias_location_keeps_the_children_untouched() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        let mut runtime = saved.clone();
+        runtime.plugins.aliases.get_mut("other").unwrap().location =
+            RunPluginLocation::parse("zellij:about", None).unwrap();
+        runtime
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace(
+            "other location=\"zellij:strider\"",
+            "other location=\"zellij:about\""
+        )
+    );
+}
+
+fn with_alias_cwd(config: &Config, cwd: Option<&str>) -> Config {
+    let mut runtime = config.clone();
+    runtime
+        .plugins
+        .aliases
+        .get_mut("my-plugin")
+        .unwrap()
+        .initial_cwd = cwd.map(std::path::PathBuf::from);
+    runtime
+}
+
+#[test]
+fn an_alias_cwd_is_changed_added_and_removed_in_place() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        cwd \"/a\" // start here\n        cwd \"/ignored\"\n        b \"2\"\n    }\n}\n";
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, Some("/b"))),
+        file.replace("cwd \"/a\"", "cwd \"/b\"")
+    );
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, None)),
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        b \"2\"\n    }\n}\n"
+    );
+    let file =
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        b \"2\"\n    }\n}\n";
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, Some("/b"))),
+        file.replace("b \"2\"\n", "b \"2\"\n        cwd \"/b\"\n")
+    );
+}
+
+#[test]
+fn a_duplicated_alias_option_edits_the_occurrence_the_parser_uses() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        a \"1\" // shadowed\n        a \"2\" // wins\n        title \"ignored by the parser\"\n    }\n}\n";
+    let changed = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("3"))
+    });
+    assert_eq!(changed, file.replace("a \"2\"", "a \"3\""));
+    let removed = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", None)
+    });
+    assert_eq!(
+        removed,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        title \"ignored by the parser\"\n    }\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_without_children_gets_a_block_for_its_first_option_and_keeps_it_when_emptied() {
+    let added = saved_text_after(COMMENTED_FILE, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("1"))
+    });
+    assert_eq!(
+        added,
+        COMMENTED_FILE.replace(
+            "    my-plugin location=\"file:/tmp/plugin.wasm\"\n",
+            "    my-plugin location=\"file:/tmp/plugin.wasm\" {\n        a \"1\"\n    }\n"
+        )
+    );
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // nothing yet\n        a \"1\"\n    }\n}\n";
+    let emptied = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", None)
+    });
+    assert_eq!(
+        emptied,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // nothing yet\n    }\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_the_writer_cannot_edit_per_option_is_replaced_and_still_reads_back() {
+    for (file, key) in [
+        ("plugins {\n    my-plugin location=\"zellij:strider\" {\n        // gone\n        list \"a\" \"b\"\n        b \"2\"\n    }\n}\n", "list"),
+        ("plugins {\n    my-plugin location=\"zellij:strider\" {\n        // gone\n        nested { x 1; }\n        b \"2\"\n    }\n}\n", "nested"),
+        ("plugins {\n    my-plugin location=\"zellij:strider\" b=\"2\" {\n        // gone\n    }\n}\n", "c"),
+    ] {
+        let text = saved_text_after(file, |saved| {
+            with_alias_option(saved, "my-plugin", key, Some("3"))
+        });
+        assert!(!text.contains("// gone"), "{}", text);
+        assert!(text.contains(&format!("{} \"3\"", key)), "{}", text);
+    }
+}
+
+#[test]
+fn an_alias_option_with_several_arguments_is_kept_when_another_option_changes() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // kept\n        list \"a\" \"b\"\n        nested { x 1; }\n        b \"2\"\n    }\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "b", Some("3"))
+    });
+    assert_eq!(text, file.replace("b \"2\"", "b \"3\""));
+}
+
+#[test]
+fn an_alias_in_two_plugins_blocks_is_edited_at_its_first_occurrence() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // mine\n        a \"1\"\n    }\n}\nplugins {\n    my-plugin location=\"zellij:about\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("2"))
+    });
+    assert_eq!(
+        text,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // mine\n        a \"2\"\n    }\n}\nplugins {\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_edited_per_option_parses_back_to_the_runtime_alias() {
+    let saved = load(ALIAS_FILE);
+    let runtime = with_alias_option(&saved, "zjhints", "max_length", Some("7"));
+    let runtime = with_alias_option(&runtime, "zjhints", "hide_in_base_mode", None);
+    let runtime = with_alias_option(&runtime, "other", "c", Some("true"));
+    let edits = edits_between(&saved, &runtime);
+    let text = apply_edits(Some(ALIAS_FILE), &edits, &runtime).unwrap();
+    assert_eq!(load(&text).plugins.aliases, runtime.plugins.aliases);
+    assert!(text.contains("        //pipe_name \"zjstatus_hints\" // default\n"));
+}
+
+#[test]
+fn a_load_plugins_entry_with_a_changed_option_is_edited_in_place() {
+    let file = "load_plugins {\n    // first\n    \"zellij:strider\" {\n        // mine\n        a \"1\" // keep\n        b \"2\"\n    }\n    \"zellij:about\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        if let RunPluginOrAlias::RunPlugin(plugin) = &mut runtime.background_plugins[0] {
+            plugin.configuration.insert("a", "9");
+        }
+        runtime
+    });
+    assert_eq!(text, file.replace("a \"1\"", "a \"9\""));
+}
+
+#[test]
+fn a_swapped_load_plugins_entry_keeps_the_block_indentation() {
+    let file = "load_plugins {\n  \"zellij:strider\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.background_plugins = load("load_plugins { \"zellij:about\"; }").background_plugins;
+        runtime
+    });
+    assert_eq!(text, "load_plugins {\n  \"zellij:about\"\n}\n");
+}
+
+#[test]
+fn an_option_added_to_a_one_line_alias_block_replaces_the_alias() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" { a \"1\"; }\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "b", Some("2"))
+    });
+    assert_eq!(
+        text,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        a \"1\"\n        b \"2\"\n    }\n}\n"
+    );
 }

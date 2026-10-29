@@ -37,4 +37,5 @@ enum InputMode {
     Prompt = 12;
     /// `Tmux` mode allows for basic tmux keybindings functionality
     Tmux = 13;
+    RenameSession = 14;
 }

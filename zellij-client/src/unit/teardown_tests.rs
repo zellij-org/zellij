@@ -89,3 +89,12 @@ fn a_late_supported_reply_after_an_unsupported_one_still_turns_the_mode_on_once(
     assert_eq!(stdout, b"\x1b[?2027h".to_vec());
     assert_eq!(teardown.matches("\u{1b}[?2027l").count(), 1);
 }
+
+#[test]
+fn a_session_switch_does_not_tell_the_outer_zellij_that_the_guest_left() {
+    use crate::says_goodbye_to_host;
+    assert!(says_goodbye_to_host(true, false));
+    assert!(!says_goodbye_to_host(true, true));
+    assert!(!says_goodbye_to_host(false, false));
+    assert!(!says_goodbye_to_host(false, true));
+}

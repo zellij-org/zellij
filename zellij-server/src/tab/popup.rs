@@ -25,6 +25,7 @@ pub enum PopupKind {
     Prompt,
     Modal,
     Info,
+    Explanation,
 }
 
 impl PopupKind {
@@ -257,6 +258,12 @@ impl Tab {
             .get(&client_id)
             .map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()).collect())
             .unwrap_or_default()
+    }
+    pub fn all_popup_plugin_ids(&self) -> Vec<u32> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()))
+            .collect()
     }
     fn popup_with_plugin_id_mut(&mut self, plugin_id: u32) -> Option<&mut Popup> {
         self.popups
@@ -560,6 +567,19 @@ impl Tab {
             })
             .unwrap_or_default()
     }
+    pub fn popup_layer_of(&self, client_id: ClientId, plugin_id: u32) -> Option<usize> {
+        let stack = self.popups.get(&client_id)?;
+        let mut drawing_order: Vec<&Popup> =
+            stack.iter().filter(|popup| !popup.held_back).collect();
+        drawing_order.sort_by_key(|popup| popup.takes_focus());
+        drawing_order
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))
+    }
+    pub fn popup_z_index_of(&self, client_id: ClientId, plugin_id: u32) -> Option<usize> {
+        self.popup_layer_of(client_id, plugin_id)
+            .map(|layer| POPUP_Z_INDEX + layer)
+    }
     pub fn send_key_to_popup(
         &mut self,
         client_id: ClientId,
@@ -570,6 +590,15 @@ impl Tab {
         let Some(plugin_id) = self.popup_plugin_id(client_id) else {
             return false;
         };
+        if self.live_views.borrow().is_captured(plugin_id, client_id) {
+            self.live_views.borrow_mut().send_key(
+                client_id,
+                &Some(key_with_modifier),
+                &raw_bytes,
+                is_kitty_keyboard_protocol,
+            );
+            return true;
+        }
         let adjusted_input = match self.popup_pane_mut(plugin_id) {
             Some(pane) => pane.adjust_input_to_terminal(
                 &Some(key_with_modifier),
@@ -682,6 +711,13 @@ impl Tab {
     pub fn has_popup_plugin(&self, plugin_id: u32) -> bool {
         self.popup_client_for_plugin(plugin_id).is_some()
     }
+    pub fn popup_pane(&self, plugin_id: u32) -> Option<&dyn Pane> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
+            .map(|popup| popup.pane.as_ref())
+    }
     pub fn popup_pane_mut(&mut self, plugin_id: u32) -> Option<&mut Box<dyn Pane>> {
         self.popups
             .values_mut()
@@ -768,6 +804,12 @@ impl Tab {
             })
             .unwrap_or_default()
     }
+    pub fn mouse_gesture_is_held(&self) -> bool {
+        self.selecting_with_mouse_in_pane.is_some()
+            || self.pane_being_resized_with_mouse.is_some()
+            || self.floating_panes.pane_is_being_moved_with_mouse()
+            || !self.pane_drawings.is_empty()
+    }
     pub fn clear_hover_under_popups(&mut self, client_id: ClientId) -> bool {
         super::mouse_handler::clear_hover_for_client(self, client_id)
     }
@@ -787,7 +829,7 @@ impl Tab {
             && (event.left || event.right || event.middle);
         if !inside && is_press {
             return match popup.kind {
-                PopupKind::Menu => Some(PopupMouseOutcome::CloseRequested),
+                PopupKind::Menu | PopupKind::Explanation => Some(PopupMouseOutcome::CloseRequested),
                 PopupKind::Prompt | PopupKind::Modal | PopupKind::Info => {
                     Some(PopupMouseOutcome::Consumed)
                 },
@@ -859,10 +901,16 @@ impl Tab {
         self.send_mouse_to_popup_plugin(plugin_id, client_id, mouse);
         true
     }
-    pub(crate) fn render_popups(&mut self, output: &mut Output, force: bool) -> Result<()> {
+    pub(crate) fn render_popups(
+        &mut self,
+        output: &mut Output,
+        force: bool,
+        draw_live_views: bool,
+    ) -> Result<()> {
         let err_context = || "failed to render popups".to_string();
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+        let live_views = self.live_views.clone();
         for (client_id, stack) in self.popups.iter_mut() {
             if !connected_clients.contains(client_id) {
                 continue;
@@ -888,11 +936,13 @@ impl Tab {
                     popup.pane.set_should_render(true);
                     popup.pane.render_full_viewport();
                 }
+                let rendered = popup
+                    .pane
+                    .render(Some(*client_id))
+                    .with_context(err_context)?;
+                let plugin_redrew = rendered.is_some();
                 if let Some((character_chunks, raw_vte_output, _sixel_chunks, _kitty_chunks)) =
-                    popup
-                        .pane
-                        .render(Some(*client_id))
-                        .with_context(err_context)?
+                    rendered
                 {
                     output
                         .add_character_chunks_to_client(
@@ -911,6 +961,30 @@ impl Tab {
                                 raw_vte_output
                             ),
                         );
+                    }
+                }
+                if let (PaneId::Plugin(plugin_id), true) = (popup.pane.pid(), draw_live_views) {
+                    let content = crate::pane_mirror::LiveViewRect::new(
+                        popup.pane.get_content_x(),
+                        popup.pane.get_content_y(),
+                        popup.pane.get_content_columns(),
+                        popup.pane.get_content_rows(),
+                    );
+                    let link_handler = output.link_handler();
+                    let chunks = live_views.borrow_mut().draw(
+                        &(plugin_id, *client_id),
+                        &content,
+                        plugin_redrew,
+                        link_handler.as_ref(),
+                    );
+                    if !chunks.is_empty() {
+                        output
+                            .add_character_chunks_to_client(
+                                *client_id,
+                                chunks,
+                                Some(POPUP_Z_INDEX + layer),
+                            )
+                            .with_context(err_context)?;
                     }
                 }
             }

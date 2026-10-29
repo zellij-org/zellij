@@ -45,6 +45,7 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+        bind "Shift z" { ToggleBars; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
@@ -606,6 +607,11 @@ load_plugins {
 //
 // grapheme_clusters false
 
+// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default
+// Default: true
+//
+// mirror_resizes_source_pane false
+
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -759,12 +765,15 @@ load_plugins {
 //
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 // (Requires restart)
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// NOTE: This only applies to web clients at the moment.
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores.
 // client_async_worker_tasks 4
 
 // How often (in seconds) sessions are saved to disk so they can be resurrected
@@ -793,11 +802,6 @@ load_plugins {
 // Default: false
 //
 // mouse_click_through true
-
-// Whether to show a card listing other relevant sessions when a new session starts
-// Default: true
-//
-// session_card false
 
 // Whether to show the other sessions indicator in the tab bar and compact bar
 // Default: true

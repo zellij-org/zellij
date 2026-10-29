@@ -37,8 +37,8 @@ pub fn tab_line(
     };
     let nested_hint = NestedSessionHint::from_mode_info(mode_info);
     let config = TabLineConfig {
-        session_name: mode_info.session_name.to_owned(),
-        hide_session_name: mode_info.style.hide_session_name,
+        session_name: crate::displayed_session_name(mode_info),
+        hide_session_name: crate::session_name_hidden(mode_info),
         mode: mode_info.mode,
         session_indicator: session_indicator.clone(),
         toggle_tooltip_key,
@@ -550,11 +550,16 @@ impl<'a> TabLinePrefixBuilder<'a> {
 struct RightSideElementsBuilder {
     palette: Styling,
     dimmed: bool,
+    simplified_ui: bool,
 }
 
 impl RightSideElementsBuilder {
-    fn new(palette: Styling, dimmed: bool) -> Self {
-        Self { palette, dimmed }
+    fn new(palette: Styling, dimmed: bool, simplified_ui: bool) -> Self {
+        Self {
+            palette,
+            dimmed,
+            simplified_ui,
+        }
     }
 
     fn build(
@@ -579,7 +584,7 @@ impl RightSideElementsBuilder {
         let mut indicator_text = None;
         if let Some(text) = config
             .session_indicator
-            .fitting_variant(available_space.saturating_sub(used))
+            .fitting_variant(available_space.saturating_sub(used), self.simplified_ui)
         {
             elements.push(LinePart {
                 part: String::new(),
@@ -784,7 +789,11 @@ impl TabLineBuilder {
         let mut session_indicator_range = None;
 
         if current_len < self.cols {
-            let right_builder = RightSideElementsBuilder::new(self.palette, self.config.dimmed);
+            let right_builder = RightSideElementsBuilder::new(
+                self.palette,
+                self.config.dimmed,
+                self.capabilities.arrow_fonts,
+            );
             let available_space = self.cols.saturating_sub(current_len);
             let (mut right_elements, indicator_text) =
                 right_builder.build(&self.config, available_space);

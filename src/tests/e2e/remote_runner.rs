@@ -63,6 +63,11 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(b"rm -rf ~/.cache/zellij/permissions.kdl\n")
         .unwrap();
+    channel
+        .write_all(
+            b"mkdir -p ~/.local/share/zellij && echo '{\"flags\":[\"SetupNeverShow\"]}' > ~/.local/share/zellij/desktop_integration.json\n",
+        )
+        .unwrap();
     // create an arch-independent symlink so the binary path in snapshots is stable across
     // x86_64 (CI) and aarch64 (Apple Silicon local dev)
     channel
@@ -303,7 +308,7 @@ impl RemoteTerminal {
         self.last_snapshot
             .lock()
             .unwrap()
-            .contains("No Other Sessions")
+            .contains("[ 1 running ▾ ]")
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)

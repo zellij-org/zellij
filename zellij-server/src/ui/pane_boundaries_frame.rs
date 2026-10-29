@@ -145,6 +145,14 @@ pub struct PaneFrame {
     mouse_hover_tips: bool,
     dimmed: bool,
     guest_choice_indicator: Option<GuestChoiceIndicator>,
+    attention_marker: Option<FrameAttentionMarker>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrameAttentionMarker {
+    pub text: String,
+    pub color: Option<PaletteColor>,
+    pub dim: bool,
 }
 
 impl PaneFrame {
@@ -186,7 +194,14 @@ impl PaneFrame {
             mouse_hover_tips: frame_params.mouse_hover_tips,
             dimmed: frame_params.dimmed,
             guest_choice_indicator: frame_params.guest_choice_indicator,
+            attention_marker: None,
         }
+    }
+    pub fn omits_title(&self) -> bool {
+        self.omit_title
+    }
+    pub fn set_attention_marker(&mut self, marker: Option<FrameAttentionMarker>) {
+        self.attention_marker = marker;
     }
     pub fn is_pinned(mut self, is_pinned: bool) -> Self {
         self.is_pinned = is_pinned;
@@ -520,10 +535,33 @@ impl PaneFrame {
         }
     }
     fn render_title_left_side(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let Some(marker) = self.attention_marker.as_ref() else {
+            return self.render_text_left_side(&self.title, max_length);
+        };
+        if max_length <= 6 || self.title.is_empty() {
+            return self.render_text_left_side(&self.title, max_length);
+        }
+        let marker_text = format!("{} ", marker.text);
+        let marker_width = marker_text.width();
+        let (mut title_chars, title_width) =
+            self.render_text_left_side(&self.title, max_length.saturating_sub(marker_width))?;
+        let marker_chars = if marker.dim {
+            dimmed_foreground_color(&marker_text, marker.color)
+        } else {
+            foreground_color(&marker_text, marker.color)
+        };
+        title_chars.extend(marker_chars);
+        Some((title_chars, title_width + marker_width))
+    }
+    fn render_text_left_side(
+        &self,
+        title: &str,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let middle_truncated_sign = "[..]";
         let middle_truncated_sign_long = "[...]";
-        let full_text = format!(" {} ", &self.title);
-        if max_length <= 6 || self.title.is_empty() {
+        let full_text = format!(" {} ", title);
+        if max_length <= 6 || title.is_empty() {
             None
         } else if graphemes::display_width(&full_text) <= max_length {
             Some((
@@ -922,8 +960,28 @@ impl PaneFrame {
             .then(|| self.first_exited_held_title_part_full());
         let exit_length = exit_part.as_ref().map(|(_, length)| *length).unwrap_or(0);
         let content_max_length = max_length.saturating_sub(title_padding + exit_length);
+        let marker_part = self.attention_marker.as_ref().and_then(|marker| {
+            if content_max_length < graphemes::display_width(&marker.text) + 4 {
+                return None;
+            }
+            let text = marker.text.clone();
+            let mut characters = if marker.dim {
+                dimmed_foreground_color(&text, marker.color)
+            } else {
+                foreground_color(&text, marker.color)
+            };
+            characters.append(&mut foreground_color(" ", self.color));
+            let width = graphemes::display_width(&text) + 1;
+            Some((characters, width))
+        });
+        let marker_length = marker_part.as_ref().map(|(_, length)| *length).unwrap_or(0);
+        let content_max_length = content_max_length.saturating_sub(marker_length);
         let content = graphemes::truncate_end(&self.title, content_max_length, "…").into_owned();
         let (mut part, mut length) = self.plain_title_part(&content);
+        if let Some((mut marker, marker_length)) = marker_part {
+            part.append(&mut marker);
+            length += marker_length;
+        }
         if let Some((mut exit, exit_length)) = exit_part {
             part.append(&mut exit);
             length += exit_length;

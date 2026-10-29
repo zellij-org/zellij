@@ -1,5 +1,6 @@
 [package]
 name = "zellij"
+default-run = "zellij"
 build = "src/build.rs"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 description = "A terminal workspace with batteries included"
@@ -15,13 +16,13 @@ rust-version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [[bin]]
-name = "zellij-window"
-path = "src/bin/zellij-window.rs"
-required-features = ["window"]
+name = "zellij-terminal"
+path = "src/bin/zellij-terminal.rs"
+required-features = ["terminal"]
 
 [dependencies]
 zellij-client = { path = "zellij-client/", version = "0.46.0" }
-zellij-window = { path = "zellij-window/", version = "0.46.0", optional = true }
+zellij-terminal = { path = "zellij-terminal/", version = "0.46.0", optional = true }
 zellij-server = { path = "zellij-server/", version = "0.46.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
@@ -66,7 +67,7 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
-    "zellij-window",
+    "zellij-terminal",
     "xtask",
     ".",
 ]
@@ -184,15 +185,15 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
-default = ["plugins_from_target", "vendored_curl", "web_server_capability", "window"]
-window = ["dep:zellij-window"]
+default = ["plugins_from_target", "vendored_curl", "web_server_capability", "terminal"]
+terminal = ["dep:zellij-terminal"]
 plugins_from_target = ["zellij-utils/plugins_from_target"]
 disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
 vendored_curl = ["zellij-utils/vendored_curl"]
 unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
-web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability", "zellij-window?/web_server_capability"]
+web_server_capability = ["zellij-client/web_server_capability", "zellij-server/web_server_capability", "zellij-utils/web_server_capability", "zellij-terminal?/web_server_capability"]
 
-[profile.dev.package.zellij-window]
+[profile.dev.package.zellij-terminal]
 opt-level = 2
 
 [profile.dev.package.png]

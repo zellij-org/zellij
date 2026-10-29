@@ -3,88 +3,88 @@ themes {
         text_unselected {
             base 238 232 213
             background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            emphasis_0 245 114 67
+            emphasis_1 53 169 160
+            emphasis_2 142 162 25
+            emphasis_3 252 94 165
         }
         text_selected {
             base 238 232 213
-            background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            background 35 75 84
+            emphasis_0 255 153 118
+            emphasis_1 85 196 186
+            emphasis_2 168 189 63
+            emphasis_3 255 146 189
         }
         ribbon_selected {
-            base 7 54 66
+            base 0 46 58
             background 133 153 0
-            emphasis_0 220 50 47
+            emphasis_0 91 0 4
             emphasis_1 203 75 22
             emphasis_2 211 54 130
-            emphasis_3 38 139 210
+            emphasis_3 0 43 73
         }
         ribbon_unselected {
             base 7 54 66
             background 253 246 227
-            emphasis_0 220 50 47
+            emphasis_0 204 29 32
             emphasis_1 238 232 213
             emphasis_2 38 139 210
-            emphasis_3 211 54 130
+            emphasis_3 204 46 124
         }
         table_title {
-            base 133 153 0
-            background 0
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            base 142 162 25
+            background 7 54 66
+            emphasis_0 245 114 67
+            emphasis_1 53 169 160
+            emphasis_2 142 162 25
+            emphasis_3 252 94 165
         }
         table_cell_selected {
             base 238 232 213
-            background 0 43 54
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            background 35 75 84
+            emphasis_0 255 153 118
+            emphasis_1 85 196 186
+            emphasis_2 168 189 63
+            emphasis_3 255 146 189
         }
         table_cell_unselected {
             base 238 232 213
             background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            emphasis_0 245 114 67
+            emphasis_1 53 169 160
+            emphasis_2 142 162 25
+            emphasis_3 252 94 165
         }
         list_selected {
             base 238 232 213
-            background 0 43 54
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            background 35 75 84
+            emphasis_0 255 153 118
+            emphasis_1 85 196 186
+            emphasis_2 168 189 63
+            emphasis_3 255 146 189
         }
         list_unselected {
             base 238 232 213
             background 7 54 66
-            emphasis_0 203 75 22
-            emphasis_1 42 161 152
-            emphasis_2 133 153 0
-            emphasis_3 211 54 130
+            emphasis_0 245 114 67
+            emphasis_1 53 169 160
+            emphasis_2 142 162 25
+            emphasis_3 252 94 165
         }
         frame_selected {
-            base 133 153 0
+            base 134 155 5
             background 0
             emphasis_0 203 75 22
             emphasis_1 42 161 152
             emphasis_2 211 54 130
-            emphasis_3 0
+            emphasis_3 211 54 130
         }
         frame_highlight {
-            base 203 75 22
+            base 208 80 29
             background 0
-            emphasis_0 211 54 130
-            emphasis_1 203 75 22
+            emphasis_0 216 60 134
+            emphasis_1 208 80 29
             emphasis_2 203 75 22
             emphasis_3 203 75 22
         }
@@ -97,24 +97,24 @@ themes {
             emphasis_3 38 139 210
         }
         exit_code_error {
-            base 220 50 47
+            base 227 58 53
             background 0
             emphasis_0 181 137 0
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 203 75 22
+            emphasis_2 211 54 130
+            emphasis_3 42 161 152
         }
         multiplayer_user_colors {
-            player_1 211 54 130
+            player_1 216 60 134
             player_2 38 139 210
-            player_3 0
+            player_3 109 115 198
             player_4 181 137 0
             player_5 42 161 152
-            player_6 0
-            player_7 220 50 47
-            player_8 0
-            player_9 0
-            player_10 0
+            player_6 133 153 0
+            player_7 227 58 53
+            player_8 178 99 172
+            player_9 199 101 53
+            player_10 56 155 85
         }
         // terminal_colors: https://github.com/altercation/solarized/blob/master/README.md (the 16/8 TERMCOL column)
         terminal_colors {

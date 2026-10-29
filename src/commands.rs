@@ -161,50 +161,153 @@ fn get_os_input<OsInputOutput>(
 pub(crate) fn start_server(path: PathBuf, debug: bool) {
     // Set instance-wide debug mode
     zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
+    register_app_starter();
     let os_input = get_os_input(get_server_os_input);
     start_server_impl(Box::new(os_input), path);
 }
 
-#[cfg(feature = "window")]
-pub(crate) fn start_window(args: zellij_utils::cli::WindowArgs, opts: CliArgs) {
-    if let Err(e) = zellij_window::run(args, opts) {
+#[cfg(feature = "terminal")]
+fn register_app_starter() {
+    zellij_server::set_app_starter(Box::new(start_terminal_app));
+}
+
+#[cfg(not(feature = "terminal"))]
+fn register_app_starter() {}
+
+#[cfg(feature = "terminal")]
+fn start_terminal_app(
+    request: &zellij_utils::app_control::OpenWindowRequest,
+) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    let program = std::env::current_exe()
+        .map_err(|e| format!("Zellij could not find its own program file: {}", e))?;
+    let mut command = Command::new(program);
+    command.arg("terminal");
+    if let Some(session) = &request.session {
+        command.arg(session);
+        if request.create {
+            command.arg("--create");
+        }
+    }
+    if let Some(cwd) = &request.cwd {
+        command.arg("--working-directory").arg(cwd);
+    }
+    command
+        .env_remove(zellij_utils::envs::ZELLIJ_ENV_KEY)
+        .env_remove(zellij_utils::envs::SESSION_NAME_ENV_KEY)
+        .env_remove("ZELLIJ_PANE_ID")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("The desktop app could not be started: {}", e))?;
+    let _ = std::thread::Builder::new()
+        .name("desktop_app_child".to_owned())
+        .spawn(move || {
+            let _ = child.wait();
+        });
+    Ok(())
+}
+
+#[cfg(feature = "terminal")]
+pub(crate) fn start_terminal(args: zellij_utils::cli::TerminalArgs, opts: CliArgs) {
+    if let Err(e) = zellij_terminal::run(args, opts) {
         eprintln!("{:?}", e);
         process::exit(1);
     }
 }
 
-#[cfg(not(feature = "window"))]
-pub(crate) fn start_window(_args: zellij_utils::cli::WindowArgs, _opts: CliArgs) {
+#[cfg(not(feature = "terminal"))]
+pub(crate) fn start_terminal(_args: zellij_utils::cli::TerminalArgs, _opts: CliArgs) {
     eprintln!("This Zellij was built without the window feature.");
     process::exit(1);
 }
 
-#[cfg(feature = "window")]
-pub(crate) fn install_desktop_entry() {
-    if let Err(e) = zellij_window::install_desktop_entry() {
-        eprintln!("{:?}", e);
+pub(crate) fn run_setup_actions(setup: &zellij_utils::setup::Setup, opts: &CliArgs) {
+    use zellij_utils::desktop_integration::{plan_setup, platform};
+    let mut failed = false;
+    if let Some(preset) = &setup.keybinding_preset {
+        match set_keybinding_preset(opts, preset) {
+            Ok(message) => println!("✓ {}", message),
+            Err(e) => {
+                eprintln!("✗ {}", e);
+                failed = true;
+            },
+        }
+    }
+    let actions = setup.desktop_actions();
+    if actions != zellij_utils::desktop_integration::SetupActions::default() {
+        let plan = plan_setup(&platform::status(), actions);
+        for note in &plan.notes {
+            println!("- {}", note);
+        }
+        for refused in &plan.refused {
+            eprintln!("✗ {}", refused);
+            failed = true;
+        }
+        if !plan.install.is_empty() || !plan.remove.is_empty() {
+            for outcome in platform::apply(&plan.install, &plan.remove, setup.replace_existing) {
+                let verb = if outcome.install { "" } else { "Removed: " };
+                let mark = if outcome.succeeded { "✓" } else { "✗" };
+                let line = format!("{} {}{}", mark, verb, outcome.item.label());
+                if outcome.succeeded {
+                    println!("{}", line);
+                } else {
+                    eprintln!("{}", line);
+                    failed = true;
+                }
+                for message_line in outcome.message.lines() {
+                    if outcome.succeeded {
+                        println!("  {}", message_line);
+                    } else {
+                        eprintln!("  {}", message_line);
+                    }
+                }
+                if !outcome.succeeded && outcome.message.contains("Confirm to replace it.") {
+                    eprintln!("  Run again with --replace-existing to replace it.");
+                }
+            }
+            #[cfg(all(feature = "terminal", windows))]
+            if !plan.remove.is_empty() {
+                match zellij_terminal::unregister_app() {
+                    Ok(removed) => {
+                        for removed in removed {
+                            println!("  Removed {}", removed);
+                        }
+                    },
+                    Err(e) => eprintln!("  {:?}", e),
+                }
+            }
+        }
+    }
+    if failed {
         process::exit(1);
     }
 }
 
-#[cfg(not(feature = "window"))]
-pub(crate) fn install_desktop_entry() {
-    eprintln!("This Zellij was built without the window feature, so there is no window for a desktop entry to start.");
-    process::exit(1);
-}
-
-#[cfg(feature = "window")]
-pub(crate) fn uninstall_desktop_entry() {
-    if let Err(e) = zellij_window::uninstall_desktop_entry() {
-        eprintln!("{:?}", e);
-        process::exit(1);
+fn set_keybinding_preset(opts: &CliArgs, preset: &str) -> Result<String, String> {
+    let config_file = Config::config_file_path(opts)
+        .ok_or_else(|| "There is no config folder to save the keybinding preset in".to_owned())?;
+    let keybinds_dir = config_file.parent().map(|dir| dir.join("keybinds"));
+    zellij_utils::input::keybind_presets::find_keybind_preset(
+        preset,
+        keybinds_dir.as_deref(),
+        config_file.parent(),
+    )?;
+    if !config_file.exists() {
+        let defaults = Config::try_from(opts).map_err(|e| e.to_string())?;
+        Config::write_config_to_disk_if_it_does_not_exist(
+            defaults.to_string(true),
+            &Some(config_file.clone()),
+        );
     }
-}
-
-#[cfg(not(feature = "window"))]
-pub(crate) fn uninstall_desktop_entry() {
-    eprintln!("This Zellij was built without the window feature, so there is no desktop entry it could have written.");
-    process::exit(1);
+    zellij_utils::input::config_file_edit::set_keybinding_preset_in(&config_file, preset)?;
+    Ok(format!(
+        "Keybinding preset \"{}\" saved to {}",
+        preset,
+        config_file.display()
+    ))
 }
 
 #[cfg(feature = "web_server_capability")]
@@ -409,6 +512,17 @@ pub(crate) fn web_server_status(
     std::process::exit(2);
 }
 
+pub(crate) fn toggle_tray_icon_at(socket: &std::path::Path) -> Result<(), String> {
+    match zellij_utils::app_control::send_app_request_to(
+        socket,
+        &zellij_utils::app_control::AppRequest::ToggleTrayIcon,
+    ) {
+        Ok(zellij_utils::app_control::AppReply::Refused(reason)) => Err(reason),
+        Ok(_) => Ok(()),
+        Err(_) => Err("The Zellij desktop app is not running.".to_owned()),
+    }
+}
+
 /// Client entrypoint for all [`zellij_utils::cli::CliAction`]
 ///
 /// Checks session to send the action to and attaches with client
@@ -417,6 +531,15 @@ pub(crate) fn send_action_to_session(
     requested_session_name: Option<String>,
     config: Option<Config>,
 ) {
+    if matches!(cli_action, zellij_utils::cli::CliAction::ToggleTrayIcon) {
+        match toggle_tray_icon_at(&zellij_utils::consts::app_control_socket()) {
+            Ok(()) => std::process::exit(0),
+            Err(reason) => {
+                eprintln!("{}", reason);
+                std::process::exit(1);
+            },
+        }
+    }
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
@@ -651,8 +774,10 @@ pub(crate) fn start_client(opts: CliArgs) {
             config = config_without_layout.clone();
             config_options = config_options_without_layout.clone();
             is_a_reconnect = true;
-            reconnect_to_session.apply_to_options(&mut config_options);
         }
+        let switch_context = reconnect_to_session
+            .as_ref()
+            .and_then(|r| r.switch_context.clone());
 
         let start_client_plan = |session_name: std::string::String| {
             assert_session_ne(&session_name);
@@ -754,6 +879,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     pane_id_to_focus,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             }
         } else {
@@ -769,6 +895,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -805,6 +932,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                switch_context.clone(),
                             );
                         },
                         _ => {
@@ -824,6 +952,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                switch_context.clone(),
                             );
                         },
                     }
@@ -847,6 +976,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             }
         }
@@ -920,6 +1050,7 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         None,  // pane_id_to_focus
         false, // is_a_reconnect
         false, // should_create_detached
+        None,
     );
 }
 

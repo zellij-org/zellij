@@ -1194,3 +1194,229 @@ pub fn guest_modal_no_modal_passes_input_through() {
         Some(crate::tab::AdjustedInput::WriteBytesToTerminal(_))
     ));
 }
+
+fn mirror_source_pane(cols: usize, rows: usize) -> TerminalPane {
+    let mut geom = PaneGeom::default();
+    geom.cols.set_inner(cols);
+    geom.rows.set_inner(rows);
+    TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+#[test]
+pub fn a_mirror_snapshot_carries_styles_wide_characters_links_and_the_cursor() {
+    use zellij_utils::structured_render::ATTR_BOLD;
+    let mut pane = mirror_source_pane(20, 4);
+    pane.handle_pty_bytes(
+        "\u{1b}[1mbold\u{1b}[0m 中 \u{1b}]8;;https://zellij.dev\u{1b}\\link\u{1b}]8;;\u{1b}\\\r\nnext"
+            .as_bytes()
+            .to_vec(),
+    );
+    let screen = pane
+        .mirror_screen()
+        .expect("a terminal pane can be mirrored");
+    assert_eq!((screen.cols, screen.rows), (20, 4));
+    let bold = screen.cell(0, 0).unwrap();
+    assert_eq!(bold.cell.ch, 'b' as u32);
+    assert!(bold.cell.has(ATTR_BOLD));
+    assert!(!screen.cell(5, 0).unwrap().cell.has(ATTR_BOLD));
+    let wide = screen.cell(5, 0).unwrap();
+    assert_eq!(wide.cell.ch, '中' as u32);
+    assert_eq!(wide.cell.width, 2);
+    let link = screen.cell(8, 0).unwrap();
+    assert_eq!(link.cell.ch, 'l' as u32);
+    assert_eq!(link.link.as_deref(), Some("https://zellij.dev"));
+    assert_eq!(screen.cell(0, 1).unwrap().cell.ch, 'n' as u32);
+    assert_eq!((screen.cursor.x, screen.cursor.y), (4, 1));
+    assert!(screen.cursor.visible);
+    assert!(!screen.wants_mouse);
+}
+
+#[test]
+pub fn a_mirror_snapshot_reports_mouse_tracking_and_survives_encoding() {
+    use zellij_utils::pane_mirror::{MirrorFrameEncoder, MirrorScreen};
+    let mut pane = mirror_source_pane(10, 3);
+    pane.handle_pty_bytes(b"\x1b[?1000hone\r\ntwo".to_vec());
+    let first = pane.mirror_screen().unwrap();
+    assert!(first.wants_mouse);
+    let mut encoder = MirrorFrameEncoder::new();
+    let full = encoder.encode(&first).unwrap();
+    assert!(full.full);
+    let mut viewer = MirrorScreen::from_frame(&full.bytes).unwrap();
+    assert_eq!(viewer, first);
+    pane.handle_pty_bytes(b"\r\nthree".to_vec());
+    let second = pane.mirror_screen().unwrap();
+    let delta = encoder.encode(&second).unwrap();
+    assert!(!delta.full);
+    let applied = viewer.apply_frame(&delta.bytes).unwrap();
+    assert_eq!(
+        applied.changed_rows.into_iter().collect::<Vec<_>>(),
+        vec![2]
+    );
+    assert_eq!(viewer, second);
+    assert_eq!(encoder.encode(&pane.mirror_screen().unwrap()), None);
+}
+
+fn rendered_chunks(pane: &mut TerminalPane) -> Vec<crate::output::CharacterChunk> {
+    pane.set_should_render(true);
+    pane.render(None)
+        .unwrap()
+        .map(|(chunks, _, _, _)| chunks)
+        .unwrap_or_default()
+}
+
+fn chunk_text(chunk: &crate::output::CharacterChunk) -> String {
+    chunk
+        .terminal_characters
+        .iter()
+        .map(|character| character.character)
+        .collect()
+}
+
+fn chunk_width(chunk: &crate::output::CharacterChunk) -> usize {
+    chunk
+        .terminal_characters
+        .iter()
+        .map(|character| character.width())
+        .sum()
+}
+
+fn pinned(cols: usize, rows: usize) -> Option<zellij_utils::pane_size::Size> {
+    Some(zellij_utils::pane_size::Size { cols, rows })
+}
+
+#[test]
+pub fn a_pinned_pane_gives_its_program_the_pinned_size_until_released() {
+    let mut pane = mirror_source_pane(20, 4);
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 4));
+    assert!(pane.set_mirror_pinned_size(pinned(10, 2)));
+    assert!(!pane.set_mirror_pinned_size(pinned(10, 2)));
+    assert_eq!((pane.program_columns(), pane.program_rows()), (10, 2));
+    assert_eq!(
+        (pane.get_content_columns(), pane.get_content_rows()),
+        (20, 4)
+    );
+    let screen = pane.mirror_screen().unwrap();
+    assert_eq!((screen.cols, screen.rows), (10, 2));
+    let mut geom = pane.position_and_size();
+    geom.rows.set_inner(1);
+    pane.set_geom(geom);
+    assert_eq!(
+        (pane.program_columns(), pane.program_rows()),
+        (10, 2),
+        "a layout change does not undo the pin, even when the pane collapses"
+    );
+    assert_eq!(pane.mirror_screen().unwrap().rows, 2);
+    assert!(pane.set_mirror_pinned_size(None));
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 1));
+    assert_eq!(pane.mirror_screen().unwrap().cols, 20);
+}
+
+#[test]
+pub fn a_pinned_program_larger_than_its_pane_is_cropped() {
+    let mut pane = mirror_source_pane(10, 3);
+    pane.set_mirror_pinned_size(pinned(20, 5));
+    pane.handle_pty_bytes(b"abcdefghijklmnopqrst\r\nline two\r\n\r\n\r\nfifth".to_vec());
+    let chunks = rendered_chunks(&mut pane);
+    assert!(!chunks.is_empty());
+    for chunk in &chunks {
+        assert!(chunk.y < 3, "a row below the pane was drawn: {}", chunk.y);
+        assert!(chunk.x + chunk_width(chunk) <= 10, "a chunk is too wide");
+    }
+    let first_row = chunks.iter().find(|chunk| chunk.y == 0).unwrap();
+    assert_eq!(chunk_text(first_row), "abcdefghij");
+    assert!(!chunks
+        .iter()
+        .any(|chunk| chunk_text(chunk).contains("fifth")));
+}
+
+#[test]
+pub fn a_wide_character_on_the_crop_edge_becomes_a_blank() {
+    let mut pane = mirror_source_pane(5, 2);
+    pane.set_mirror_pinned_size(pinned(10, 2));
+    pane.handle_pty_bytes("abcd中ef".as_bytes().to_vec());
+    let chunks = rendered_chunks(&mut pane);
+    let first_row = chunks.iter().find(|chunk| chunk.y == 0).unwrap();
+    assert_eq!(chunk_text(first_row), "abcd ");
+    assert_eq!(chunk_width(first_row), 5);
+}
+
+#[test]
+pub fn a_pinned_program_smaller_than_its_pane_is_padded_on_full_redraws() {
+    let mut pane = mirror_source_pane(10, 4);
+    pane.set_mirror_pinned_size(pinned(6, 2));
+    pane.handle_pty_bytes(b"left".to_vec());
+    let chunks = rendered_chunks(&mut pane);
+    for y in 0..2 {
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk.y == y && chunk.x == 6 && chunk_width(chunk) == 4),
+            "the right side of row {} is not padded",
+            y
+        );
+    }
+    for y in 2..4 {
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk.y == y && chunk.x == 0 && chunk_width(chunk) == 10),
+            "row {} below the program is not padded",
+            y
+        );
+    }
+    pane.handle_pty_bytes(b"!".to_vec());
+    let partial = rendered_chunks(&mut pane);
+    assert!(partial.iter().all(|chunk| chunk.y < 2 && chunk.x < 6));
+}
+
+#[test]
+pub fn the_cursor_of_a_cropped_pane_is_hidden_outside_the_visible_area() {
+    let mut pane = mirror_source_pane(10, 3);
+    pane.set_mirror_pinned_size(pinned(20, 5));
+    pane.handle_pty_bytes(b"\x1b[1;16H".to_vec());
+    assert_eq!(Pane::cursor_coordinates(&pane, None), None);
+    pane.handle_pty_bytes(b"\x1b[5;2H".to_vec());
+    assert_eq!(Pane::cursor_coordinates(&pane, None), None);
+    pane.handle_pty_bytes(b"\x1b[2;3H".to_vec());
+    assert_eq!(Pane::cursor_coordinates(&pane, None), Some((2, 1, true)));
+    pane.set_mirror_pinned_size(None);
+    pane.handle_pty_bytes(b"\x1b[3;8H".to_vec());
+    assert_eq!(Pane::cursor_coordinates(&pane, None), Some((7, 2, true)));
+}
+
+#[test]
+pub fn the_change_counter_moves_only_when_the_pane_changes() {
+    let mut pane = mirror_source_pane(10, 3);
+    let before = pane.mirror_change_counter();
+    assert_eq!(pane.mirror_change_counter(), before);
+    let _ = pane.mirror_screen();
+    let _ = rendered_chunks(&mut pane);
+    let after_render = pane.mirror_change_counter();
+    let _ = pane.render(None);
+    assert_eq!(pane.mirror_change_counter(), after_render);
+    pane.handle_pty_bytes(b"x".to_vec());
+    let after_output = pane.mirror_change_counter();
+    assert_ne!(after_output, after_render);
+    pane.set_mirror_pinned_size(pinned(5, 2));
+    assert_ne!(pane.mirror_change_counter(), after_output);
+}

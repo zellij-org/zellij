@@ -1,0 +1,89 @@
+syntax = "proto3";
+package client_server_contract;
+
+import "common_types.proto";
+
+message AppControlRequest {
+  oneof request {
+    AppOpenWindowRequest open_window = 1;
+    AppToggleTrayIconRequest toggle_tray_icon = 2;
+    AppShowPopupRequest show_popup = 3;
+    AppTogglePanelRequest toggle_panel = 4;
+    AppPingRequest ping = 5;
+    AppDescribeRequest describe = 6;
+  }
+}
+
+message AppControlReply {
+  oneof reply {
+    AppDoneReply done = 1;
+    AppRefusedReply refused = 2;
+    AppStateReply state = 3;
+  }
+}
+
+enum AppPopupView {
+  APP_POPUP_VIEW_UNSPECIFIED = 0;
+  APP_POPUP_VIEW_INBOX = 1;
+  APP_POPUP_VIEW_SESSIONS = 2;
+  APP_POPUP_VIEW_QUIT = 3;
+}
+
+enum AppStartupMode {
+  APP_STARTUP_MODE_UNSPECIFIED = 0;
+  APP_STARTUP_MODE_WINDOWED = 1;
+  APP_STARTUP_MODE_MAXIMIZED = 2;
+  APP_STARTUP_MODE_FULLSCREEN = 3;
+  APP_STARTUP_MODE_REMEMBER = 4;
+}
+
+message AppOpenWindowRequest {
+  optional string session = 1;
+  bool create = 2;
+  optional PaneIdWithPlugin pane_id = 3;
+  repeated string command = 4;
+  optional string cwd = 5;
+  bool close_on_exit = 6;
+  bool start_suspended = 7;
+  bool force_run_commands = 8;
+  AppStartupMode startup_mode = 9;
+  optional LayoutInfo layout = 10;
+}
+
+message AppToggleTrayIconRequest {}
+
+message AppShowPopupRequest {
+  AppPopupView view = 1;
+}
+
+message AppTogglePanelRequest {
+  AppPopupView view = 1;
+  optional string token = 2;
+}
+
+message AppPingRequest {}
+
+message AppDescribeRequest {}
+
+message AppDoneReply {}
+
+message AppRefusedReply {
+  string reason = 1;
+}
+
+message AppStateReply {
+  repeated AppWindowState windows = 1;
+  optional AppPanelState panel = 2;
+  repeated string live_sessions = 3;
+  bool tray_icon = 4;
+  optional string focused_session = 5;
+}
+
+message AppWindowState {
+  optional string session = 1;
+}
+
+message AppPanelState {
+  AppPopupView view = 1;
+  bool shown = 2;
+}

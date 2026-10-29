@@ -1,7 +1,7 @@
 themes {
     catppuccin-macchiato {
         text_unselected {
-            base 202 211 245
+            base 210 219 253
             background 30 32 48
             emphasis_0 245 169 127
             emphasis_1 145 215 227
@@ -9,44 +9,44 @@ themes {
             emphasis_3 245 189 230
         }
         text_selected {
-            base 202 211 245
+            base 210 219 253
             background 91 96 120
-            emphasis_0 245 169 127
-            emphasis_1 145 215 227
-            emphasis_2 166 218 149
-            emphasis_3 245 189 230
+            emphasis_0 255 211 188
+            emphasis_1 161 231 244
+            emphasis_2 182 235 165
+            emphasis_3 255 207 242
         }
         ribbon_selected {
             base 30 32 48
             background 166 218 149
-            emphasis_0 237 135 150
+            emphasis_0 148 55 73
             emphasis_1 245 169 127
             emphasis_2 245 189 230
-            emphasis_3 138 173 244
+            emphasis_3 55 85 149
         }
         ribbon_unselected {
             base 30 32 48
             background 202 211 245
-            emphasis_0 237 135 150
+            emphasis_0 153 60 78
             emphasis_1 202 211 245
             emphasis_2 138 173 244
-            emphasis_3 245 189 230
+            emphasis_3 123 75 112
         }
         table_title {
             base 166 218 149
-            background 0
+            background 30 32 48
             emphasis_0 245 169 127
             emphasis_1 145 215 227
             emphasis_2 166 218 149
             emphasis_3 245 189 230
         }
         table_cell_selected {
-            base 202 211 245
+            base 210 219 253
             background 91 96 120
-            emphasis_0 245 169 127
-            emphasis_1 145 215 227
-            emphasis_2 166 218 149
-            emphasis_3 245 189 230
+            emphasis_0 255 211 188
+            emphasis_1 161 231 244
+            emphasis_2 182 235 165
+            emphasis_3 255 207 242
         }
         table_cell_unselected {
             base 202 211 245
@@ -57,12 +57,12 @@ themes {
             emphasis_3 245 189 230
         }
         list_selected {
-            base 202 211 245
+            base 210 219 253
             background 91 96 120
-            emphasis_0 245 169 127
-            emphasis_1 145 215 227
-            emphasis_2 166 218 149
-            emphasis_3 245 189 230
+            emphasis_0 255 211 188
+            emphasis_1 161 231 244
+            emphasis_2 182 235 165
+            emphasis_3 255 207 242
         }
         list_unselected {
             base 202 211 245
@@ -78,7 +78,7 @@ themes {
             emphasis_0 245 169 127
             emphasis_1 145 215 227
             emphasis_2 245 189 230
-            emphasis_3 0
+            emphasis_3 245 189 230
         }
         frame_highlight {
             base 245 169 127
@@ -100,21 +100,21 @@ themes {
             base 237 135 150
             background 0
             emphasis_0 238 212 159
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 245 169 127
+            emphasis_2 245 189 230
+            emphasis_3 145 215 227
         }
         multiplayer_user_colors {
             player_1 245 189 230
             player_2 138 173 244
-            player_3 0
+            player_3 245 169 127
             player_4 238 212 159
             player_5 145 215 227
-            player_6 0
+            player_6 166 218 149
             player_7 237 135 150
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 180 199 255
+            player_9 255 177 182
+            player_10 209 205 134
         }
         // terminal_colors: https://github.com/catppuccin/alacritty/blob/main/catppuccin-macchiato.toml
         terminal_colors {

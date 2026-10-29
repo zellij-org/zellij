@@ -37,6 +37,11 @@ message ClientToServerMsg {
     RenderFrameAckMsg render_frame_ack = 30;
     RequestSessionPreviewMsg request_session_preview = 31;
     FontFamiliesMsg font_families = 32;
+    RequestSessionAttentionMsg request_session_attention = 33;
+    PeerAttentionChangedMsg peer_attention_changed = 34;
+    ClientPaneMirrorMsg pane_mirror = 35;
+    AdoptSessionHistoryMsg adopt_session_history = 36;
+    ClipboardPasteSupportMsg clipboard_paste_support = 37;
   }
 }
 
@@ -163,6 +168,16 @@ message RequestSessionPreviewMsg {
   optional uint32 tab_index = 1;
   optional uint32 pane_id = 2;
   bool pane_is_plugin = 3;
+  optional PreviewAnchor anchor = 4;
+}
+
+message RequestSessionAttentionMsg {
+  bool include_command_text = 1;
+}
+
+message PeerAttentionChangedMsg {
+  string session_name = 1;
+  optional SessionAttention attention = 2;
 }
 
 message RequestSessionListMsg {
@@ -178,10 +193,23 @@ message StructuredRenderSupportMsg {
   bool supported = 1;
 }
 
+message ClipboardPasteSupportMsg {
+  bool supported = 1;
+  optional string shortcut = 2;
+}
+
 message FontFamiliesMsg {
   repeated string families = 1;
 }
 
 message RenderFrameAckMsg {
   uint64 seq = 1;
+}
+
+message ClientPaneMirrorMsg {
+  bytes payload = 1;
+}
+
+message AdoptSessionHistoryMsg {
+  SessionHistory history = 1;
 }

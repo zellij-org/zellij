@@ -310,6 +310,8 @@ pub struct WasmBridge {
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
     last_host_terminal_theme_mode: Option<HostTerminalThemeMode>,
+    pub last_global_attention: Option<zellij_utils::attention::GlobalAttention>,
+    pub session_history_infos: HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
     pub last_session_save_time: Arc<Mutex<Option<u64>>>, // milliseconds since UNIX epoch
     shared_instances: HashMap<PluginId, SharedInstanceInfo>,
     shared_keys: HashMap<SharedKey, PluginId>,
@@ -383,6 +385,8 @@ impl WasmBridge {
             previous_pane_render_report: None,
             latest_hovers: Arc::new(Mutex::new(HoverGenerations::default())),
             last_host_terminal_theme_mode: None,
+            last_global_attention: None,
+            session_history_infos: HashMap::new(),
             last_session_save_time: Arc::new(Mutex::new(None)),
             shared_instances: HashMap::new(),
             shared_keys: HashMap::new(),
@@ -647,6 +651,9 @@ impl WasmBridge {
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(pid));
         if self.shared_slot_owner.contains_key(&pid) {
             self.unload_shared_slot(pid);
             return Ok(());
@@ -752,6 +759,9 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
         let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
         self.apply_prompt_actions(prompt_actions);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
@@ -1754,6 +1764,28 @@ impl WasmBridge {
         )]));
     }
 
+    pub fn send_global_attention_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+        let Some(global) = self.last_global_attention.clone() else {
+            return;
+        };
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::GlobalAttentionUpdate(global),
+        )]));
+    }
+
+    pub fn send_session_history_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+        let Some(info) = self.session_history_infos.get(&client_id).cloned() else {
+            return;
+        };
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::SessionHistoryUpdate(info),
+        )]));
+    }
+
     fn send_keybinds_payload_to_plugin(
         &self,
         plugin_id: PluginId,
@@ -2753,6 +2785,11 @@ impl WasmBridge {
                     .unwrap()
                     .shared_running_plugin(instance_id)
                     .is_some();
+                let instance_is_in_blocking_call = self
+                    .plugin_map
+                    .lock()
+                    .unwrap()
+                    .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
                 self.plugin_executor.execute_for_plugin(
                     instance_id,
@@ -2767,7 +2804,7 @@ impl WasmBridge {
                         );
                     },
                 );
-                if instance_is_running {
+                if instance_is_running && !instance_is_in_blocking_call {
                     let _ = slot_added_receiver
                         .recv_timeout(std::time::Duration::from_millis(SLOT_ADDED_WAIT_MS));
                 }
@@ -2917,6 +2954,11 @@ impl WasmBridge {
         };
         let slot_ids: Vec<PluginId> = info.slots.iter().copied().collect();
         let mut loading_context = info.loading_context.clone();
+        for slot_id in &slot_ids {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(*slot_id));
+        }
         if let Some(first_client_id) = self.get_first_client_id() {
             loading_context.client_id = first_client_id;
         }
@@ -3379,6 +3421,13 @@ pub fn check_event_permission(
         | Event::FolderSessionsUpdate(..)
         | Event::TerminalCommandSubmitted
         | Event::SavedSessionPreview(..)
+        | Event::PaneAttentionChanged(..)
+        | Event::PromptShown(..)
+        | Event::CommandStarted(..)
+        | Event::CommandFinished(..)
+        | Event::GlobalAttentionUpdate(..)
+        | Event::SessionHistoryUpdate(..)
+        | Event::DesktopIntegration(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3386,6 +3435,7 @@ pub fn check_event_permission(
         },
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
+        Event::LiveViewStateChanged { .. } => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
@@ -3397,6 +3447,68 @@ pub fn check_event_permission(
     }
 
     (PermissionStatus::Denied, Some(permission))
+}
+
+fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
+    if plugin_env.plugin.is_builtin() {
+        return true;
+    }
+    plugin_env
+        .permissions
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|permissions| permissions.contains(&PermissionType::ReadPaneContents))
+        .unwrap_or(false)
+}
+
+fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
+    pane_info.attention = std::mem::take(&mut pane_info.attention).without_command_text();
+    pane_info.command_state = std::mem::take(&mut pane_info.command_state).without_command_text();
+}
+
+pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
+    if can_read_command_text(plugin_env) {
+        return;
+    }
+    match event {
+        Event::PaneUpdate(manifest) => {
+            for pane_infos in manifest.panes.values_mut() {
+                for pane_info in pane_infos.iter_mut() {
+                    redact_pane_info(pane_info);
+                }
+            }
+        },
+        Event::PaneAttentionChanged(_, attention) => {
+            *attention = std::mem::take(attention).without_command_text();
+        },
+        Event::CommandStarted(_, command) => {
+            *command = None;
+        },
+        Event::CommandFinished(_, outcome) => {
+            outcome.command = None;
+        },
+        Event::GlobalAttentionUpdate(global) => {
+            *global = std::mem::take(global).without_command_text();
+        },
+        Event::SessionUpdate(sessions, _) => {
+            for session in sessions.iter_mut() {
+                for pane_infos in session.panes.panes.values_mut() {
+                    for pane_info in pane_infos.iter_mut() {
+                        redact_pane_info(pane_info);
+                    }
+                }
+            }
+        },
+        Event::SavedSessionPreview(preview) => {
+            for tab in preview.tabs.iter_mut() {
+                for pane in tab.panes.iter_mut() {
+                    pane.contents = None;
+                }
+            }
+        },
+        _ => {},
+    }
 }
 
 pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bool {
@@ -3424,6 +3536,7 @@ pub fn apply_event_to_plugin(
     match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
             let mut event = event.clone();
+            redact_event_for_plugin(running_plugin.store.data(), &mut event);
             let mut keybinds = None;
             if let Event::ModeUpdate(mode_info) = &mut event {
                 mode_info.keybinds = vec![];

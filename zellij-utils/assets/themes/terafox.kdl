@@ -3,42 +3,42 @@ themes {
         text_unselected {
             base 203 217 216
             background 37 65 71
-            emphasis_0 255 131 73
+            emphasis_0 255 134 78
             emphasis_1 161 205 216
-            emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_2 133 175 172
+            emphasis_3 228 142 174
         }
         text_selected {
             base 203 217 216
-            background 37 65 71
-            emphasis_0 255 131 73
+            background 59 85 90
+            emphasis_0 255 176 142
             emphasis_1 161 205 216
-            emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_2 160 204 200
+            emphasis_3 255 173 203
         }
         ribbon_selected {
-            base 37 65 71
+            base 28 56 62
             background 122 164 161
-            emphasis_0 232 92 81
+            emphasis_0 112 0 5
             emphasis_1 255 131 73
             emphasis_2 173 92 124
-            emphasis_3 90 147 170
+            emphasis_3 0 56 74
         }
         ribbon_unselected {
             base 37 65 71
             background 230 234 234
-            emphasis_0 232 92 81
+            emphasis_0 177 38 35
             emphasis_1 203 217 216
             emphasis_2 90 147 170
-            emphasis_3 173 92 124
+            emphasis_3 158 79 111
         }
         table_title {
-            base 122 164 161
-            background 0
-            emphasis_0 255 131 73
+            base 133 175 172
+            background 37 65 71
+            emphasis_0 255 134 78
             emphasis_1 161 205 216
-            emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_2 133 175 172
+            emphasis_3 228 142 174
         }
         table_cell_selected {
             base 203 217 216
@@ -46,15 +46,15 @@ themes {
             emphasis_0 255 131 73
             emphasis_1 161 205 216
             emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_3 196 113 145
         }
         table_cell_unselected {
             base 203 217 216
             background 37 65 71
-            emphasis_0 255 131 73
+            emphasis_0 255 134 78
             emphasis_1 161 205 216
-            emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_2 133 175 172
+            emphasis_3 228 142 174
         }
         list_selected {
             base 203 217 216
@@ -62,28 +62,28 @@ themes {
             emphasis_0 255 131 73
             emphasis_1 161 205 216
             emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_3 196 113 145
         }
         list_unselected {
             base 203 217 216
             background 37 65 71
-            emphasis_0 255 131 73
+            emphasis_0 255 134 78
             emphasis_1 161 205 216
-            emphasis_2 122 164 161
-            emphasis_3 173 92 124
+            emphasis_2 133 175 172
+            emphasis_3 228 142 174
         }
         frame_selected {
-            base 122 164 161
+            base 125 167 164
             background 0
             emphasis_0 255 131 73
             emphasis_1 161 205 216
             emphasis_2 173 92 124
-            emphasis_3 0
+            emphasis_3 173 92 124
         }
         frame_highlight {
             base 255 131 73
             background 0
-            emphasis_0 173 92 124
+            emphasis_0 193 110 142
             emphasis_1 255 131 73
             emphasis_2 255 131 73
             emphasis_3 255 131 73
@@ -100,21 +100,21 @@ themes {
             base 232 92 81
             background 0
             emphasis_0 253 164 127
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 131 73
+            emphasis_2 173 92 124
+            emphasis_3 161 205 216
         }
         multiplayer_user_colors {
-            player_1 173 92 124
+            player_1 193 110 142
             player_2 90 147 170
-            player_3 0
+            player_3 155 148 50
             player_4 253 164 127
             player_5 161 205 216
-            player_6 0
+            player_6 156 127 205
             player_7 232 92 81
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 56 167 126
+            player_9 196 126 63
+            player_10 195 114 161
         }
         // terminal_colors: https://github.com/EdenEast/nightfox.nvim/blob/main/extra/terafox/alacritty.toml
         terminal_colors {

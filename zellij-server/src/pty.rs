@@ -25,6 +25,7 @@ use zellij_utils::{
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
+        actions::ResurrectCommand,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{
             FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
@@ -182,6 +183,11 @@ pub enum PtyInstruction {
         origin_pane_id: Option<PaneId>,
         completion_tx: Option<NotificationEnd>,
     },
+    SetResurrectCommand {
+        terminal_id: u32,
+        resurrect: Option<ResurrectCommand>,
+        completion_tx: Option<NotificationEnd>,
+    },
     Exit,
 }
 
@@ -219,6 +225,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::NotifyCwdFromOsc7(..) => PtyContext::NotifyCwdFromOsc7,
             PtyInstruction::RunInBackground { .. } => PtyContext::RunInBackground,
+            PtyInstruction::SetResurrectCommand { .. } => PtyContext::SetResurrectCommand,
             PtyInstruction::PromptReturned(..) => PtyContext::PromptReturned,
             PtyInstruction::Exit => PtyContext::Exit,
         }
@@ -243,6 +250,8 @@ pub(crate) struct Pty {
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
     session_context_pane: Option<PaneId>,
     terminals_with_prompt_markers: HashSet<u32>,
+    terminals_with_shell_cwd: HashSet<u32>,
+    resurrect_commands: HashMap<u32, ResurrectCommand>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
@@ -967,6 +976,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     .non_fatal();
                 drop(completion_tx);
             },
+            PtyInstruction::SetResurrectCommand {
+                terminal_id,
+                resurrect,
+                completion_tx,
+            } => {
+                if let Err(message) = pty.set_resurrect_command(terminal_id, resurrect) {
+                    if let Some(mut completion_tx) = completion_tx {
+                        completion_tx.set_error_message(message);
+                    }
+                }
+            },
             PtyInstruction::PromptReturned(terminal_id) => {
                 pty.terminals_with_prompt_markers.insert(terminal_id);
                 if pty.session_context_pane == Some(PaneId::Terminal(terminal_id)) {
@@ -1005,6 +1025,8 @@ impl Pty {
             terminal_foreground_cmds: HashMap::new(),
             session_context_pane: None,
             terminals_with_prompt_markers: HashSet::new(),
+            terminals_with_shell_cwd: HashSet::new(),
+            resurrect_commands: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -1983,6 +2005,8 @@ impl Pty {
                 self.terminal_cwds.remove(&id);
                 self.terminal_cmds.remove(&id);
                 self.terminal_foreground_cmds.remove(&id);
+                self.terminals_with_shell_cwd.remove(&id);
+                self.resurrect_commands.remove(&id);
                 self.origin_pane_ids.remove(&id);
                 self.bus
                     .os_input
@@ -2054,6 +2078,7 @@ impl Pty {
                 let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
 
                 let hold_on_close = run_command.hold_on_close;
+                let command_text = run_command.to_string();
                 let originating_plugin = Arc::new(run_command.originating_plugin.clone());
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
@@ -2121,6 +2146,12 @@ impl Pty {
                     self.id_to_child_pid.insert(id, child_pid);
                     self.capture_initial_cwd(id, child_pid);
                 }
+                let _ = self.bus.senders.send_to_screen(
+                    ScreenInstruction::AttentionCommandPaneStarted(
+                        PaneId::Terminal(id),
+                        Some(command_text),
+                    ),
+                );
                 if let Some(originating_plugin) = self.originating_plugins.get(&id) {
                     self.bus
                         .senders
@@ -2135,6 +2166,24 @@ impl Pty {
             },
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
+    }
+    pub fn set_resurrect_command(
+        &mut self,
+        terminal_id: u32,
+        resurrect: Option<ResurrectCommand>,
+    ) -> std::result::Result<(), String> {
+        if !self.id_to_child_pid.contains_key(&terminal_id) {
+            return Err(format!("Terminal pane terminal_{} not found", terminal_id));
+        }
+        match resurrect {
+            Some(resurrect) => {
+                self.resurrect_commands.insert(terminal_id, resurrect);
+            },
+            None => {
+                self.resurrect_commands.remove(&terminal_id);
+            },
+        }
+        Ok(())
     }
     pub fn populate_session_layout_metadata(
         &mut self,
@@ -2178,6 +2227,14 @@ impl Pty {
             }
             if let Some(cwd) = cwd {
                 terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
+            }
+            if let Some(resurrect) = self.resurrect_commands.get(&terminal_id) {
+                let mut command_line = vec![resurrect.command.to_string_lossy().into_owned()];
+                command_line.extend(resurrect.args.iter().cloned());
+                terminal_ids_to_commands.insert(terminal_id, command_line);
+                if let Some(cwd) = &resurrect.cwd {
+                    terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
+                }
             }
         }
         session_layout_metadata.update_default_shell(default_shell_from(&self.pane_env));
@@ -2299,6 +2356,7 @@ impl Pty {
             let process_id = self.id_to_child_pid.get(terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
 
+            let cwd = cwd.filter(|_| !self.terminals_with_shell_cwd.contains(terminal_id));
             if let Some(cwd) = cwd {
                 if self.terminal_cwds.get(terminal_id) != Some(cwd) {
                     let pane_id = PaneId::Terminal(*terminal_id);
@@ -2371,6 +2429,17 @@ impl Pty {
                 } else {
                     (foreground_cmd.clone(), true)
                 };
+                let _ =
+                    self.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::AttentionForegroundChanged(
+                            pane_id,
+                            if foreground_cmd.is_empty() {
+                                None
+                            } else {
+                                Some(foreground_cmd.join(" "))
+                            },
+                        ));
                 let _ = self
                     .bus
                     .senders
@@ -2403,6 +2472,8 @@ impl Pty {
 
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
         use std::sync::atomic::Ordering;
+
+        self.terminals_with_shell_cwd.insert(terminal_id);
 
         if self.terminal_cwds.get(&terminal_id) != Some(&path) {
             let pane_id = PaneId::Terminal(terminal_id);

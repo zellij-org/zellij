@@ -245,6 +245,8 @@ pub enum PluginInstruction {
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
     KeybindPresetListUpdate(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
+    GlobalAttentionUpdate(zellij_utils::attention::GlobalAttention),
+    SessionHistoryUpdate(ClientId, zellij_utils::session_history::SessionHistoryInfo),
     RequestStateUpdateForPlugin(PluginId),
     UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
     GetLastSessionSaveTime {
@@ -345,6 +347,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
+            PluginInstruction::GlobalAttentionUpdate(..) => PluginContext::GlobalAttentionUpdate,
+            PluginInstruction::SessionHistoryUpdate(..) => PluginContext::SessionHistoryUpdate,
             PluginInstruction::KeybindPresetListUpdate(..) => {
                 PluginContext::KeybindPresetListUpdate
             },
@@ -671,6 +675,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.add_client(client_id)?;
             },
             PluginInstruction::RemoveClient(client_id) => {
+                wasm_bridge.session_history_infos.remove(&client_id);
                 wasm_bridge.remove_client(client_id);
             },
             PluginInstruction::UpdatePluginTabIndices(tab_indices) => {
@@ -933,6 +938,12 @@ pub(crate) fn plugin_thread_main(
                 }
                 if events.contains(&EventType::HostTerminalThemeChanged) {
                     wasm_bridge.send_host_terminal_theme_mode_to_plugin(plugin_id, client_id);
+                }
+                if events.contains(&EventType::GlobalAttentionUpdate) {
+                    wasm_bridge.send_global_attention_to_plugin(plugin_id, client_id);
+                }
+                if events.contains(&EventType::SessionHistoryUpdate) {
+                    wasm_bridge.send_session_history_to_plugin(plugin_id, client_id);
                 }
                 if events.contains(&EventType::HintText) {
                     let _ = bus
@@ -1272,6 +1283,8 @@ pub(crate) fn plugin_thread_main(
                                     placement: request.placement,
                                     focused: request.focused,
                                     capture_all_keys: request.capture_all_keys,
+                                    closes_on_outside_click: request.element
+                                        == zellij_utils::prompt::PromptElement::Info,
                                 }),
                         );
                     },
@@ -1580,6 +1593,22 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::KeybindPresetListUpdate(presets, errors) => {
                 wasm_bridge.update_available_keybind_presets(presets, errors);
+            },
+            PluginInstruction::GlobalAttentionUpdate(global) => {
+                wasm_bridge.last_global_attention = Some(global.clone());
+                wasm_bridge.update_plugins(
+                    vec![(None, None, Event::GlobalAttentionUpdate(global))],
+                    shutdown_send.clone(),
+                )?;
+            },
+            PluginInstruction::SessionHistoryUpdate(client_id, info) => {
+                wasm_bridge
+                    .session_history_infos
+                    .insert(client_id, info.clone());
+                wasm_bridge.update_plugins(
+                    vec![(None, Some(client_id), Event::SessionHistoryUpdate(info))],
+                    shutdown_send.clone(),
+                )?;
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);

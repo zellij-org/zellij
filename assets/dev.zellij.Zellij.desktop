@@ -1,0 +1,31 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Zellij
+GenericName=Terminal Workspace
+Comment=Manage Your Terminal Applications
+Exec=zellij terminal
+TryExec=zellij
+Icon=dev.zellij.Zellij
+Terminal=false
+StartupNotify=true
+StartupWMClass=dev.zellij.Zellij
+Categories=System;TerminalEmulator;
+Keywords=terminal;multiplexer;shell;workspace;
+X-TerminalArgExec=-e
+X-TerminalArgDir=--working-directory=
+X-TerminalArgHold=--hold
+X-ExecArg=-e
+Actions=inbox;sessions;new-window;
+
+[Desktop Action inbox]
+Name=Show Inbox
+Exec=zellij terminal --inbox
+
+[Desktop Action sessions]
+Name=Show Sessions
+Exec=zellij terminal --sessions
+
+[Desktop Action new-window]
+Name=New Window
+Exec=zellij terminal

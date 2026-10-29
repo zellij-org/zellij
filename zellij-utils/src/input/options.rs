@@ -1,6 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
-use crate::data::{InputMode, ThemeHue, WebSharing};
+use crate::data::{HiddenBars, InputMode, ThemeHue, WebSharing};
 use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -375,6 +375,26 @@ pub struct Options {
     #[serde(default)]
     pub grapheme_clusters: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether a focused mirror of a pane may resize that pane's program to the \
+                mirror's size, and whether new mirrors resize their source pane by default \
+                (true or false, default true)"
+    )]
+    #[serde(default)]
+    pub mirror_resizes_source_pane: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "The key that gives typing back to a plugin while a live pane view inside it is \
+                taking the keyboard (default: the key bound to ToggleSessionCard, F9 if none; a key \
+                written twice means pressing it twice)"
+    )]
+    #[serde(default)]
+    pub live_view_release_key: Option<String>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -516,11 +536,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
 
-    /// Number of async worker tasks to spawn per active client.
+    /// Number of background threads used by `zellij attach <url>` when it connects to a session
+    /// on another machine. One set is made for that program, not one per client; the web server,
+    /// browser clients and local sessions are not affected.
     ///
-    /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
-    /// should typically work best. Set to 0 to use the number of (physical) CPU cores.
-    /// NOTE: This only applies to web clients at the moment.
+    /// Most of the work runs on the main thread, so these threads are usually idle. Set to 0 to
+    /// use the number of (physical) CPU cores.
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
 
@@ -533,14 +554,6 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub dangerously_enable_paste_buffer_read: Option<bool>,
-
-    #[clap(
-        long,
-        value_parser,
-        help = "Whether to show a card listing other relevant sessions when a new session starts (true or false), default is true"
-    )]
-    #[serde(default)]
-    pub session_card: Option<bool>,
 
     #[clap(
         long,
@@ -565,6 +578,30 @@ pub struct Options {
     )]
     #[serde(default)]
     pub on_quit: Option<OnQuit>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Which bars a new session starts with hidden: bar names separated by commas (eg. tab-bar,status-bar), all or none. Default is none"
+    )]
+    #[serde(default)]
+    pub bars_hidden_on_start: Option<HiddenBars>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to briefly show what was hidden and how to show it again when bars are hidden (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub hidden_bars_notification: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to show the current mode's keys in a corner while a bar that would show them is hidden (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub mode_hints_when_bars_hidden: Option<bool>,
 }
 
 #[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -711,6 +748,12 @@ impl Options {
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
         let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
+        let mirror_resizes_source_pane = other
+            .mirror_resizes_source_pane
+            .or(self.mirror_resizes_source_pane);
+        let live_view_release_key = other
+            .live_view_release_key
+            .or_else(|| self.live_view_release_key.clone());
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -759,12 +802,20 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
-        let session_card = other.session_card.or(self.session_card);
         let session_indicator = other.session_indicator.or(self.session_indicator);
         let swap_layout_notification = other
             .swap_layout_notification
             .or(self.swap_layout_notification);
         let on_quit = other.on_quit.or(self.on_quit);
+        let bars_hidden_on_start = other
+            .bars_hidden_on_start
+            .or(self.bars_hidden_on_start.clone());
+        let hidden_bars_notification = other
+            .hidden_bars_notification
+            .or(self.hidden_bars_notification);
+        let mode_hints_when_bars_hidden = other
+            .mode_hints_when_bars_hidden
+            .or(self.mode_hints_when_bars_hidden);
 
         Options {
             simplified_ui,
@@ -806,6 +857,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,
@@ -834,10 +887,12 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,
+            bars_hidden_on_start,
+            hidden_bars_notification,
+            mode_hints_when_bars_hidden,
         }
     }
 
@@ -918,6 +973,12 @@ impl Options {
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
         let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
+        let mirror_resizes_source_pane = other
+            .mirror_resizes_source_pane
+            .or(self.mirror_resizes_source_pane);
+        let live_view_release_key = other
+            .live_view_release_key
+            .or_else(|| self.live_view_release_key.clone());
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -966,13 +1027,23 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
-        let session_card = merge_bool(other.session_card, self.session_card);
         let session_indicator = merge_bool(other.session_indicator, self.session_indicator);
         let swap_layout_notification = merge_bool(
             other.swap_layout_notification,
             self.swap_layout_notification,
         );
         let on_quit = other.on_quit.or(self.on_quit);
+        let bars_hidden_on_start = other
+            .bars_hidden_on_start
+            .or(self.bars_hidden_on_start.clone());
+        let hidden_bars_notification = merge_bool(
+            other.hidden_bars_notification,
+            self.hidden_bars_notification,
+        );
+        let mode_hints_when_bars_hidden = merge_bool(
+            other.mode_hints_when_bars_hidden,
+            self.mode_hints_when_bars_hidden,
+        );
 
         Options {
             simplified_ui,
@@ -1014,6 +1085,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,
@@ -1042,10 +1115,12 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,
+            bars_hidden_on_start,
+            hidden_bars_notification,
+            mode_hints_when_bars_hidden,
         }
     }
 

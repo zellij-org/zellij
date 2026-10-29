@@ -36,10 +36,14 @@ keybinds {
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+        bind "Shift z" { ToggleBars; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
         bind "i" { TogglePanePinned; SwitchToMode "Normal"; }
+        bind "u" { MutePane; SwitchToMode "Normal"; }
+        bind "g" { IgnorePaneOutput; SwitchToMode "Normal"; }
+        bind "v" { WatchPane; SwitchToMode "Normal"; }
     }
     move {
         bind "Ctrl h" { SwitchToMode "Normal"; }
@@ -73,6 +77,7 @@ keybinds {
         bind "Tab" { ToggleTab; }
         bind "Space" { NextSwapLayout; }
         bind "Shift Space" { PreviousSwapLayout; }
+        bind "u" { MuteTab; SwitchToMode "Normal"; }
     }
     scroll {
         bind "Ctrl s" { SwitchToMode "Normal"; }
@@ -122,13 +127,23 @@ keybinds {
         bind "Ctrl c" { SwitchToMode "Normal"; }
         bind "Esc" { UndoRenamePane; SwitchToMode "Pane"; }
     }
+    renamesession {
+        bind "Ctrl c" { SwitchToMode "Normal"; }
+        bind "Esc" { UndoRenameSession; SwitchToMode "Session"; }
+    }
     session {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         bind "]" { FocusHostSession; SwitchToMode "Normal"; }
         bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
+        bind "u" { MuteSession; SwitchToMode "Normal"; }
+        bind "Tab" { ToggleSession; SwitchToMode "Normal"; }
+        bind "Left" { GoToPreviousSession; SwitchToMode "Normal"; }
+        bind "Right" { GoToNextSession; SwitchToMode "Normal"; }
+        bind "n" { GoToNextAttention; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

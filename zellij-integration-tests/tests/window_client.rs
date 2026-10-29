@@ -30,18 +30,23 @@ struct WindowClient {
 
 impl WindowClient {
     fn attach(zellij: &TestSession, size: Size) -> Self {
-        let path = zellij.socket_path();
+        Self::attach_to(zellij.session_name(), size, None)
+    }
+
+    fn attach_to(session_name: &str, size: Size, pane_id: Option<(u32, bool)>) -> Self {
+        let path = zellij_utils::consts::session_socket_path(session_name);
         let stream = ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);
         let mut receiver = sender.get_receiver::<ServerToClientMsg>();
         let handshake = first_message(
-            &ClientInfo::Attach(zellij.session_name().to_owned(), Options::default()),
+            &ClientInfo::Attach(session_name.to_owned(), Options::default()),
             &CliArgs::default(),
             &Options::default(),
             size,
             BTreeMap::new(),
             None,
+            pane_id,
             None,
         );
         sender
@@ -413,4 +418,152 @@ fn a_window_receives_emoji_sequences_as_single_clusters_by_default() {
     );
 
     leave(window, zellij);
+}
+
+fn key(bare_key: BareKey) -> ClientToServerMsg {
+    let key = KeyWithModifier::new(bare_key);
+    let raw_bytes = key
+        .serialize_non_kitty()
+        .map(String::into_bytes)
+        .unwrap_or_default();
+    ClientToServerMsg::Key {
+        key,
+        raw_bytes,
+        is_kitty_keyboard_protocol: false,
+    }
+}
+
+#[test]
+fn keys_a_window_sends_to_the_inbox_stay_out_of_the_pane_below() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config("session_indicator true\nmouse_mode true")
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    terminal.output(b"$ ");
+    for i in 0..3 {
+        terminal.output(
+            format!(
+                "\u{1b}]7501;state=blocked:kind=question:msg={}\u{1b}\\",
+                ["cTA=", "cTE=", "cTI="][i]
+            )
+            .as_bytes(),
+        );
+    }
+    let pane = terminal.terminal_id();
+    let mut window = WindowClient::attach_to(
+        background.session_name(),
+        smaller_than_the_terminal(),
+        Some((pane, false)),
+    );
+    window.frame_showing("need you");
+    let before = terminal.stdin_bytes().len();
+    let top_row = window.text().lines().next().unwrap_or_default().to_owned();
+    let column = top_row[..top_row.rfind('●').unwrap()].chars().count();
+    let at = zellij_utils::position::Position::new(0, column as u16);
+    let mut press = zellij_utils::input::mouse::MouseEvent::new_left_press_event(at);
+    window.act(Action::MouseEvent { event: press });
+    press.event_type = zellij_utils::input::mouse::MouseEventType::Release;
+    press.left = false;
+    window.act(Action::MouseEvent { event: press });
+    window.frame_showing("Inbox (1)");
+    for _ in 0..4 {
+        window.send(key(BareKey::Down));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let leaked = terminal.stdin_bytes()[before..].to_vec();
+    assert!(
+        leaked.is_empty(),
+        "keys reached the pane under the inbox: {:?}",
+        String::from_utf8_lossy(&leaked)
+    );
+    let size = smaller_than_the_terminal();
+    for (line, col) in [
+        (size.rows / 2, size.cols / 2),
+        (size.rows / 3, size.cols / 4),
+        (size.rows / 2, size.cols - 20),
+    ] {
+        for _ in 0..3 {
+            let mut wheel = zellij_utils::input::mouse::MouseEvent::new();
+            wheel.event_type = zellij_utils::input::mouse::MouseEventType::Press;
+            wheel.position = zellij_utils::position::Position::new(line as i32, col as u16);
+            wheel.wheel_down = true;
+            wheel.wheel_lines = 3;
+            window.act(Action::MouseEvent { event: wheel });
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    let leaked = terminal.stdin_bytes()[before..].to_vec();
+    assert!(
+        leaked.is_empty(),
+        "the wheel reached the pane under the inbox: {:?}\n{}",
+        String::from_utf8_lossy(&leaked),
+        window.text()
+    );
+}
+
+#[test]
+fn text_and_pastes_a_window_sends_while_the_inbox_is_open_go_to_the_inbox_not_the_pane() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config("session_indicator true\nmouse_mode true")
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    terminal.output(b"$ ");
+    terminal.output(b"\x1b]7501;state=blocked:kind=question:msg=cTA=\x1b\\");
+    let pane = terminal.terminal_id();
+    let mut window = WindowClient::attach_to(
+        background.session_name(),
+        smaller_than_the_terminal(),
+        Some((pane, false)),
+    );
+    window.frame_showing("need you");
+    let before = terminal.stdin_bytes().len();
+    let top_row = window.text().lines().next().unwrap_or_default().to_owned();
+    let column = top_row[..top_row.rfind('●').unwrap()].chars().count();
+    let at = zellij_utils::position::Position::new(0, column as u16);
+    let mut press = zellij_utils::input::mouse::MouseEvent::new_left_press_event(at);
+    window.act(Action::MouseEvent { event: press });
+    press.event_type = zellij_utils::input::mouse::MouseEventType::Release;
+    press.left = false;
+    window.act(Action::MouseEvent { event: press });
+    window.frame_showing("Inbox (1)");
+    window.act(Action::WriteChars {
+        chars: "c".to_owned(),
+    });
+    window.frame_showing("Nothing in the inbox");
+    window.act(Action::Paste {
+        chars: "pasted".to_owned(),
+        pane_id: None,
+    });
+    window.act(Action::WriteChars {
+        chars: "xy".to_owned(),
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    let leaked = terminal.stdin_bytes()[before..].to_vec();
+    assert!(
+        leaked.is_empty(),
+        "text meant for the inbox reached the pane: {:?}",
+        String::from_utf8_lossy(&leaked)
+    );
+}
+
+#[test]
+fn detaching_every_client_of_a_session_closes_its_windows_quietly() {
+    let zellij = TestRunner::new(TERMINAL_SIZE).start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let mut first = WindowClient::attach(&zellij, smaller_than_the_terminal());
+    let mut second = WindowClient::attach(&zellij, smaller_than_the_terminal());
+    terminal.output(b"both windows attached\r\n");
+    first.frame_showing("both windows attached");
+    second.frame_showing("both windows attached");
+
+    zellij_utils::session_link::detach_all_clients(zellij.session_name())
+        .expect("the session takes the request");
+    assert_eq!(first.exit_reason(), ExitReason::NormalDetached);
+    assert_eq!(second.exit_reason(), ExitReason::NormalDetached);
 }

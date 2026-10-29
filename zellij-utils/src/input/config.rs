@@ -14,6 +14,7 @@ use thiserror::Error;
 
 use std::convert::TryFrom;
 
+use super::attention::AttentionConfig;
 use super::context_menu::ContextMenuConfig;
 use super::keybind_presets::KeybindsLayers;
 use super::keybinds::Keybinds;
@@ -22,9 +23,9 @@ use super::mousebinds::Mousebinds;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::session_suggestions::SessionSuggestionsConfig;
+use super::terminal::TerminalConfig;
 use super::theme::{Theme, Themes, UiConfig};
 use super::web_client::WebClientConfig;
-use super::window::WindowConfig;
 use crate::cli::{CliArgs, Command};
 use crate::consts::{DEFAULT_LIGHT_THEME_NAME, DEFAULT_THEME_NAME};
 use crate::envs::EnvironmentVariables;
@@ -52,9 +53,11 @@ pub struct Config {
     pub keybinds_layers: KeybindsLayers,
     #[serde(default, with = "shared_mousebinds")]
     pub mousebinds: Arc<Mousebinds>,
-    pub window: WindowConfig,
+    pub terminal: TerminalConfig,
     #[serde(default)]
     pub session_suggestions: SessionSuggestionsConfig,
+    #[serde(default)]
+    pub attention: AttentionConfig,
 }
 
 mod shared_mousebinds {
@@ -389,8 +392,9 @@ impl Config {
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
         self.context_menu = self.context_menu.merge(other.context_menu);
-        self.window = self.window.merge(other.window);
+        self.terminal = self.terminal.merge(other.terminal);
         self.session_suggestions = self.session_suggestions.merge(other.session_suggestions);
+        self.attention = self.attention.merge(other.attention);
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {

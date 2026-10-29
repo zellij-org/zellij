@@ -11,19 +11,24 @@ pub mod output;
 pub mod panes;
 pub mod tab;
 
+pub mod attention;
 pub mod background_jobs;
+mod desktop_app;
+pub use desktop_app::{set_app_starter, AppStarter};
 mod global_async_runtime;
 mod logging_pipe;
 mod mobile_web;
 pub mod nested_guest;
 pub mod notifications;
 mod pane_groups;
+pub mod pane_mirror;
 mod plugins;
 mod pty;
 mod pty_writer;
 mod route;
 mod screen;
 mod session_layout_metadata;
+pub mod session_link;
 mod session_previews;
 pub mod session_suggestions;
 mod socket_folder_watcher;
@@ -49,7 +54,7 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
-use zellij_utils::input::window::WindowSettings;
+use zellij_utils::input::terminal::TerminalSettings;
 
 use wasmi::Engine;
 
@@ -138,6 +143,11 @@ pub enum ServerInstruction {
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
     SwitchSessionAndCloseCurrent(ConnectToSession, ClientId, Option<NotificationEnd>),
+    HistoryMove(
+        zellij_utils::session_history::HistoryMove,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     TerminalCommandSubmitted,
     SessionRenamed(String),
     UnblockCliPipeInput(String, Option<i32>),
@@ -146,7 +156,7 @@ pub enum ServerInstruction {
         pipe_id: String,
         client_id: ClientId,
     },
-    DisconnectAllClientsExcept(ClientId),
+    DisconnectAllClientsExcept(ClientId, ExitReason),
     ChangeMode(ClientId, InputMode, Option<NotificationEnd>),
     ChangeModeForAllClients(InputMode),
     Reconfigure {
@@ -155,8 +165,9 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(Config),
-    WindowSettingsChanged(ClientId, Box<WindowSettings>),
+    TerminalSettingsChanged(ClientId, Box<TerminalSettings>),
     FontFamilies(ClientId, Vec<String>),
+    AdoptSessionHistory(ClientId, zellij_utils::session_history::SessionHistory),
     HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
@@ -236,6 +247,7 @@ pub enum ServerInstruction {
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
+    HostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
     PopupStateChanged(ClientId, bool, bool),
 }
 
@@ -259,6 +271,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SwitchSessionAndCloseCurrent(..) => {
                 ServerContext::SwitchSessionAndCloseCurrent
             },
+            ServerInstruction::HistoryMove(..) => ServerContext::HistoryMove,
             ServerInstruction::TerminalCommandSubmitted => ServerContext::TerminalCommandSubmitted,
             ServerInstruction::SessionRenamed(..) => ServerContext::SessionRenamed,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
@@ -299,8 +312,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
-            ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
+            ServerInstruction::TerminalSettingsChanged(..) => {
+                ServerContext::TerminalSettingsChanged
+            },
             ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
+            ServerInstruction::AdoptSessionHistory(..) => ServerContext::AdoptSessionHistory,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {
                 ServerContext::HostTerminalThemeModeChanged
             },
@@ -317,6 +333,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::EmitNestedSessionFrameToClient
             },
             ServerInstruction::PopupStateChanged(..) => ServerContext::PopupStateChanged,
+            ServerInstruction::HostProgramStatus(..) => ServerContext::HostProgramStatus,
         }
     }
 }
@@ -1064,6 +1081,7 @@ pub(crate) struct SessionMetaData {
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
     pub modal_popup_clients: HashSet<ClientId>,
+    pub live_view_captures: crate::pane_mirror::SharedLiveViewCaptures,
     pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
@@ -1077,27 +1095,28 @@ pub(crate) struct SessionMetaData {
     config_file_path: Option<PathBuf>,
     config_file: ConfigFileState,
     applied_env: AppliedEnv,
-    sent_window_settings: HashMap<ClientId, WindowSettings>,
+    sent_terminal_settings: HashMap<ClientId, TerminalSettings>,
     font_families: HashMap<ClientId, Vec<String>>,
+    pub live_sessions: crate::attention::peers::LiveSessions,
 }
 
 impl SessionMetaData {
-    fn send_window_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
-        let settings = WindowSettings::from_config(config);
-        if self.sent_window_settings.get(&client_id) == Some(&settings) {
+    fn send_terminal_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
+        let settings = TerminalSettings::from_config(config);
+        if self.sent_terminal_settings.get(&client_id) == Some(&settings) {
             return;
         }
-        self.sent_window_settings
+        self.sent_terminal_settings
             .insert(client_id, settings.clone());
         let _ = self
             .senders
-            .send_to_server(ServerInstruction::WindowSettingsChanged(
+            .send_to_server(ServerInstruction::TerminalSettingsChanged(
                 client_id,
                 Box::new(settings),
             ));
     }
     fn forget_window_client(&mut self, client_id: ClientId) {
-        self.sent_window_settings.remove(&client_id);
+        self.sent_terminal_settings.remove(&client_id);
         self.font_families.remove(&client_id);
     }
     fn config_snapshot_for(&self, client_id: ClientId) -> ConfigSnapshot {
@@ -1140,9 +1159,35 @@ impl SessionMetaData {
             _ => None,
         }
     }
+    pub fn live_view_release_keys(&self, client_id: &ClientId) -> Vec<KeyWithModifier> {
+        self.get_client_keybinds_and_mode(client_id)
+            .and_then(|(keybinds, mode, _)| keybinds.0.get(mode))
+            .map(|bindings| crate::pane_mirror::live_view::keys_bound_to_the_inbox(bindings))
+            .unwrap_or_default()
+    }
+    pub fn publish_live_view_release_keys(&self) {
+        let bound_keys: BTreeMap<ClientId, Vec<KeyWithModifier>> = self
+            .current_input_modes
+            .keys()
+            .map(|client_id| (*client_id, self.live_view_release_keys(client_id)))
+            .collect();
+        let changed = self
+            .live_view_captures
+            .lock()
+            .map(|mut captures| captures.publish_bound_keys(bound_keys))
+            .unwrap_or(false);
+        if changed {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::LiveViewReleaseKeysChanged);
+        }
+    }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
         self.modal_popup_clients.remove(&client_id);
+        if let Ok(mut captures) = self.live_view_captures.lock() {
+            captures.forget_client(client_id);
+        }
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -1204,7 +1249,7 @@ impl SessionMetaData {
         let mut new_plugin_config = None;
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
-            self.send_window_settings_if_changed(client_id, &new_config);
+            self.send_terminal_settings_if_changed(client_id, &new_config);
             self.follow_keybinds_dir(&new_config);
             self.sync_pane_env(new_config.env.inner());
             let pane_env = self.applied_env.pane_env();
@@ -1346,15 +1391,46 @@ impl SessionMetaData {
                 .send_to_screen(ScreenInstruction::SetGraphemeClusters(
                     new_config.options.grapheme_clusters.unwrap_or(true),
                 ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetMirrorResizesSourcePane(
+                    new_config
+                        .options
+                        .mirror_resizes_source_pane
+                        .unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetLiveViewReleaseKey(
+                    new_config.options.live_view_release_key.clone(),
+                ));
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
             ));
             let _ = self
                 .senders
+                .send_to_screen(ScreenInstruction::SetHiddenBarsNotification(
+                    new_config.options.hidden_bars_notification.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetModeHintsWhenBarsHidden(
+                    new_config
+                        .options
+                        .mode_hints_when_bars_hidden
+                        .unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetAttentionConfig(
+                    new_config.attention.clone(),
+                ));
+            let _ = self
+                .senders
                 .send_to_background_jobs(BackgroundJob::SessionSuggestions(
                     SessionSuggestionsJob::Configure {
                         config: new_config.session_suggestions.clone(),
-                        session_card: new_config.options.session_card.unwrap_or(true),
+                        startup_card: new_config.attention.startup_card(),
                         session_indicator: new_config.options.session_indicator.unwrap_or(true),
                     },
                 ));
@@ -1405,6 +1481,9 @@ impl Drop for SessionMetaData {
         if let Some(watcher) = self.config_file.keybinds_dir_watcher.as_mut() {
             watcher.stop();
         }
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::SessionEnding);
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
@@ -2661,6 +2740,7 @@ mod session_state_tests {
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
             modal_popup_clients: HashSet::new(),
+            live_view_captures: Default::default(),
             terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
@@ -2674,8 +2754,9 @@ mod session_state_tests {
                 ..Default::default()
             },
             applied_env: AppliedEnv::default(),
-            sent_window_settings: HashMap::new(),
+            sent_terminal_settings: HashMap::new(),
             font_families: HashMap::new(),
+            live_sessions: Default::default(),
         };
         (
             Arc::new(RwLock::new(Some(session))),
@@ -2700,16 +2781,16 @@ mod session_state_tests {
         (session_data, server_receiver)
     }
 
-    fn pushed_window_settings(
+    fn pushed_terminal_settings(
         server_receiver: &zellij_utils::channels::Receiver<(
             ServerInstruction,
             zellij_utils::errors::ErrorContext,
         )>,
-    ) -> Vec<(ClientId, WindowSettings)> {
+    ) -> Vec<(ClientId, TerminalSettings)> {
         server_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
-                ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                ServerInstruction::TerminalSettingsChanged(client_id, settings) => {
                     Some((client_id, *settings))
                 },
                 _ => None,
@@ -2743,24 +2824,24 @@ theme \"first\"
 ";
 
     #[test]
-    fn window_settings_are_pushed_only_when_they_or_the_theme_change() {
+    fn terminal_settings_are_pushed_only_when_they_or_the_theme_change() {
         let session_configuration = session_configuration_with_one_client(TWO_THEMES);
         let (session_data, server_receiver) = test_session_with_server(session_configuration);
 
-        reconfigure_session(&session_data, 1, "window { blur true; }", false);
-        let pushed = pushed_window_settings(&server_receiver);
+        reconfigure_session(&session_data, 1, "terminal { blur true; }", false);
+        let pushed = pushed_terminal_settings(&server_receiver);
         assert_eq!(pushed.len(), 1);
         assert_eq!(pushed[0].0, 1);
         assert_eq!(pushed[0].1.section.blur, Some(true));
 
         reconfigure_session(&session_data, 1, "simplified_ui true", false);
         assert!(
-            pushed_window_settings(&server_receiver).is_empty(),
+            pushed_terminal_settings(&server_receiver).is_empty(),
             "a change the window does not read was pushed to it"
         );
 
         reconfigure_session(&session_data, 1, "theme \"second\"", false);
-        let pushed = pushed_window_settings(&server_receiver);
+        let pushed = pushed_terminal_settings(&server_receiver);
         assert_eq!(pushed.len(), 1, "a new theme did not reach the window");
         assert_eq!(
             pushed[0]
@@ -2778,8 +2859,8 @@ theme \"first\"
     fn a_disconnected_window_is_forgotten_so_a_reconnect_is_told_again() {
         let session_configuration = session_configuration_with_one_client(TWO_THEMES);
         let (session_data, server_receiver) = test_session_with_server(session_configuration);
-        reconfigure_session(&session_data, 1, "window { blur true; }", false);
-        assert_eq!(pushed_window_settings(&server_receiver).len(), 1);
+        reconfigure_session(&session_data, 1, "terminal { blur true; }", false);
+        assert_eq!(pushed_terminal_settings(&server_receiver).len(), 1);
         session_data
             .write()
             .unwrap()
@@ -2798,12 +2879,12 @@ theme \"first\"
         {
             let session = session_data.read().unwrap();
             let session = session.as_ref().unwrap();
-            assert!(session.sent_window_settings.is_empty());
+            assert!(session.sent_terminal_settings.is_empty());
             assert!(session.font_families.is_empty());
         }
         reconfigure_session(&session_data, 1, "simplified_ui true", false);
         assert_eq!(
-            pushed_window_settings(&server_receiver).len(),
+            pushed_terminal_settings(&server_receiver).len(),
             1,
             "a window that reconnected was not told its settings"
         );
@@ -2838,6 +2919,53 @@ theme \"first\"
             session.config_snapshot_for(1).font_families,
             Vec::<String>::new(),
             "a client that listed no fonts was given another client's"
+        );
+    }
+
+    fn published_release_keys(config: &str) -> (Vec<KeyWithModifier>, Vec<KeyWithModifier>, bool) {
+        let (session_data, screen_receiver, _plugin_receiver) =
+            test_session(session_configuration_with_one_client(config), None);
+        let session = session_data.read().unwrap();
+        let session = session.as_ref().unwrap();
+        session.publish_live_view_release_keys();
+        let announced = screen_receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+        });
+        session.publish_live_view_release_keys();
+        assert!(
+            !screen_receiver.try_iter().any(|(instruction, _)| {
+                matches!(instruction, ScreenInstruction::LiveViewReleaseKeysChanged)
+            }),
+            "unchanged keys are not announced again"
+        );
+        let published = session.live_view_captures.lock().unwrap().bound_keys_of(1);
+        (published, session.live_view_release_keys(&1), announced)
+    }
+
+    #[test]
+    fn the_release_key_hint_comes_from_the_keys_the_route_thread_checks() {
+        use crate::pane_mirror::live_view::release_key_text_for;
+        let (published, checked, announced) = published_release_keys(
+            "keybinds {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert!(announced);
+        assert_eq!(
+            published, checked,
+            "the hint and the route thread use the same keys"
+        );
+        assert_eq!(published.len(), 3);
+        assert_eq!(release_key_text_for(published), "F9");
+        let (published, checked, _) = published_release_keys(
+            "keybinds clear-defaults=true {\n    normal {\n        bind \"Ctrl Alt y\" { ToggleSessionCard; }\n        bind \"Alt i\" { ToggleSessionCard; }\n    }\n}\n",
+        );
+        assert_eq!(published, checked);
+        assert_eq!(release_key_text_for(published), "Alt i");
+        let (published, checked, _) = published_release_keys("keybinds clear-defaults=true {\n}\n");
+        assert!(published.is_empty() && checked.is_empty());
+        assert_eq!(
+            release_key_text_for(published),
+            "F9",
+            "the desktop panel has no bindings and shows F9"
         );
     }
 
@@ -3247,7 +3375,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 fn handle_new_connection(
     session_data: Arc<RwLock<Option<SessionMetaData>>>,
     session_state: Arc<RwLock<SessionState>>,
-    mut os_input: Box<dyn ServerOsApi>,
+    os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
     stream: interprocess::local_socket::Stream,
     #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
@@ -3262,12 +3390,132 @@ fn handle_new_connection(
     };
     let _ = receiver.set_read_timeout(None);
 
-    if let ClientToServerMsg::ConnStatus = first_instruction {
-        let mut sender = receiver.get_sender::<ServerToClientMsg>();
-        let _ = sender.send_server_msg(ServerToClientMsg::Connected);
-        return Ok(());
+    match first_instruction {
+        ClientToServerMsg::ConnStatus => {
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::Connected,
+            );
+            return Ok(());
+        },
+        ClientToServerMsg::RequestSessionAttention {
+            include_command_text,
+        } => {
+            let senders = session_data
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.senders.clone());
+            let attention = senders
+                .map(|senders| {
+                    crate::session_link::local_session_attention(&senders, include_command_text)
+                })
+                .unwrap_or_default();
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::SessionAttention { attention },
+            );
+            return Ok(());
+        },
+        ClientToServerMsg::RequestSessionPreview {
+            tab_index,
+            pane_id,
+            anchor,
+        } => {
+            let senders = session_data
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.senders.clone());
+            let preview = crate::session_previews::answer_preview_request(
+                senders.as_ref(),
+                tab_index,
+                pane_id,
+                anchor,
+            );
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::SessionPreview { preview },
+            );
+            return Ok(());
+        },
+        ClientToServerMsg::PeerAttentionChanged {
+            session_name,
+            attention,
+        } => {
+            if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                let _ = session_data
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::PeerAttention(
+                        crate::attention::peers::PeerAttentionJob::PeerChanged {
+                            session_name,
+                            attention,
+                        },
+                    ));
+            }
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::Connected,
+            );
+            return Ok(());
+        },
+        ClientToServerMsg::PaneMirror { payload } => {
+            crate::pane_mirror::source::serve_mirror_connection(
+                session_data,
+                receiver,
+                #[cfg(windows)]
+                reply_stream,
+                payload,
+            );
+            return Ok(());
+        },
+        first_instruction => {
+            return handle_client_connection(
+                session_data,
+                session_state,
+                os_input,
+                to_server,
+                receiver,
+                first_instruction,
+                #[cfg(windows)]
+                reply_stream,
+            );
+        },
     }
+}
 
+fn answer_before_registration(
+    receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+    message: ServerToClientMsg,
+) {
+    #[cfg(windows)]
+    let mut sender = {
+        let _ = receiver;
+        zellij_utils::ipc::IpcSenderWithContext::<ServerToClientMsg>::new(reply_stream)
+    };
+    #[cfg(not(windows))]
+    let mut sender = receiver.get_sender::<ServerToClientMsg>();
+    let _ = sender.send_server_msg(message);
+}
+
+fn handle_client_connection(
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
+    mut os_input: Box<dyn ServerOsApi>,
+    to_server: SenderWithContext<ServerInstruction>,
+    receiver: IpcReceiverWithContext<ClientToServerMsg>,
+    first_instruction: ClientToServerMsg,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+) -> Result<()> {
     let client_id = session_state.write().unwrap().new_client();
 
     #[cfg(windows)]
@@ -3379,29 +3627,56 @@ impl SocketOwnership {
 /// that lost a bind race to another server must leave the winner's socket alone.
 #[derive(Clone)]
 struct ServerSocket {
-    path: PathBuf,
+    path: Arc<std::sync::Mutex<PathBuf>>,
     ownership: Arc<std::sync::Mutex<Option<SocketOwnership>>>,
 }
 
 impl ServerSocket {
     fn new(path: PathBuf) -> Self {
         ServerSocket {
-            path,
+            path: Arc::new(std::sync::Mutex::new(path)),
             ownership: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
+    fn path(&self) -> PathBuf {
+        self.path.lock().unwrap().clone()
+    }
+
     fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
-        let ownership = SocketOwnership::acquire(&self.path)?;
-        drop(std::fs::remove_file(&self.path));
-        let listener = zellij_utils::consts::ipc_bind(&self.path)?;
+        let path = self.path();
+        let ownership = SocketOwnership::acquire(&path)?;
+        drop(std::fs::remove_file(&path));
+        let listener = zellij_utils::consts::ipc_bind(&path)?;
         *self.ownership.lock().unwrap() = Some(ownership);
         Ok(listener)
     }
 
+    fn rename(&self, new_path: PathBuf) -> std::io::Result<()> {
+        let mut ownership = self.ownership.lock().unwrap();
+        let mut path = self.path.lock().unwrap();
+        if *path == new_path {
+            return Ok(());
+        }
+        if ownership.is_none() {
+            *path = new_path;
+            return Ok(());
+        }
+        let new_ownership = SocketOwnership::acquire(&new_path)?;
+        if let Err(e) = std::fs::rename(&*path, &new_path) {
+            new_ownership.release();
+            return Err(e);
+        }
+        if let Some(old_ownership) = ownership.replace(new_ownership) {
+            old_ownership.release();
+        }
+        *path = new_path;
+        Ok(())
+    }
+
     fn remove_on_exit(&self) {
         if let Some(ownership) = self.ownership.lock().unwrap().take() {
-            drop(std::fs::remove_file(&self.path));
+            drop(std::fs::remove_file(self.path()));
             ownership.release();
         }
     }
@@ -3482,6 +3757,34 @@ mod server_socket_tests {
         let _second_listener = second.bind().unwrap();
 
         assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_renamed_server_moves_its_socket_and_lock_and_removes_them_on_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old-name");
+        let new_path = dir.path().join("new-name");
+        let server = ServerSocket::new(old_path.clone());
+        let _listener = server.bind().unwrap();
+
+        server.rename(new_path.clone()).unwrap();
+
+        assert!(!old_path.exists());
+        assert!(!SocketOwnership::lock_path(&old_path).unwrap().exists());
+        assert!(new_path.exists());
+        assert!(SocketOwnership::lock_path(&new_path).unwrap().exists());
+        let other = ServerSocket::new(new_path.clone());
+        assert_eq!(
+            other.bind().unwrap_err().kind(),
+            std::io::ErrorKind::AddrInUse
+        );
+
+        server.remove_on_exit();
+
+        assert!(!old_path.exists());
+        assert!(!new_path.exists());
+        assert!(!SocketOwnership::lock_path(&new_path).unwrap().exists());
     }
 }
 
@@ -3604,11 +3907,18 @@ pub fn start_server_impl(
 
     let mut last_attached_client_count = 0;
     let mut delete_session_on_exit = false;
+    let mut last_host_program_status: Option<zellij_utils::attention::HostProgramStatus> = None;
     // The socket filename is the session id, not the (renameable) display name.
     let mut own_session_name = zellij_utils::sessions::display_name_for_session_id(&session_id);
+    let mut client_histories: HashMap<ClientId, zellij_utils::session_history::SessionHistory> =
+        HashMap::new();
+    let mut last_detached_at_ms: Option<u64> = None;
     loop {
         let attached_client_count = session_state.read().unwrap().attached_client_count();
         if attached_client_count != last_attached_client_count {
+            if attached_client_count == 0 && last_attached_client_count > 0 {
+                last_detached_at_ms = Some(crate::attention::now_ms());
+            }
             last_attached_client_count = attached_client_count;
             if let Some(session_data) = session_data.read().unwrap().as_ref() {
                 let _ = session_data.senders.send_to_background_jobs(
@@ -3617,6 +3927,9 @@ pub fn start_server_impl(
                     )),
                 );
             }
+        }
+        if let Some(session_data) = session_data.read().unwrap().as_ref() {
+            session_data.publish_live_view_release_keys();
         }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
@@ -3628,8 +3941,12 @@ pub fn start_server_impl(
                     _ => false,
                 };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let in_desktop_terminal = host_terminal_env
+                    .contains_key(zellij_utils::input::cli_assets::DESKTOP_TERMINAL_ENV_KEY);
+                let switch_context = cli_assets.switch_context.clone().unwrap_or_default();
                 let mut initial_panes = cli_assets.initial_panes.clone();
-                let (config, layout) = cli_assets.load_config_and_layout();
+                let (config, mut layout) = cli_assets.load_config_and_layout();
+                layout.populate_plugin_aliases_in_swap_layouts(&config.plugins);
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));
@@ -3643,13 +3960,20 @@ pub fn start_server_impl(
                             &cli_assets.config_file_path,
                         )
                     };
-                // if we successfully wrote the config to disk, it means two things:
-                // 1. It did not exist beforehand
-                // 2. The config folder is writeable
-                //
-                // If these two are true, we should launch the setup wizard, if even one of them is
-                // false, we should never launch it.
-                let should_launch_setup_wizard = successfully_written_config;
+                let created_from_welcome_screen = switch_context.startup_card
+                    == Some(zellij_utils::input::attention::StartupCard::Never);
+                let should_launch_setup_wizard = session_may_show_setup(
+                    is_resumed_session,
+                    layout_is_welcome_screen,
+                    created_from_welcome_screen,
+                    initial_panes
+                        .as_ref()
+                        .map(|p| !p.is_empty())
+                        .unwrap_or(false),
+                )
+                    && zellij_utils::desktop_integration::platform::should_offer_setup(
+                        successfully_written_config,
+                    );
 
                 let runtime_config_options = match &cli_assets.configuration_options {
                     Some(configuration_options) => {
@@ -3775,15 +4099,33 @@ pub fn start_server_impl(
                         .unwrap()
                 };
 
+                let mut onboarding_pane = if is_resumed_session {
+                    None
+                } else {
+                    onboarding_floating_pane(&Onboarding {
+                        setup_wizard: should_launch_setup_wizard,
+                        in_desktop_terminal,
+                        is_web_client,
+                        show_release_notes: runtime_config_options.show_release_notes,
+                        show_startup_tips: runtime_config_options.show_startup_tips,
+                        layout_is_welcome_screen,
+                    })
+                };
                 if layout.has_tabs() {
                     let focused_tab_index = layout.focused_tab_index().unwrap_or(0);
                     for (tab_index, (tab_name, tab_layout, floating_panes_layout)) in
                         layout.tabs().into_iter().enumerate()
                     {
                         let should_focus_tab = tab_index == focused_tab_index;
+                        let mut floating_panes_layout = floating_panes_layout.clone();
+                        if should_focus_tab {
+                            if let Some(pane) = onboarding_pane.take() {
+                                floating_panes_layout.push(pane);
+                            }
+                        }
                         spawn_tabs(
                             Some(tab_layout.clone()),
-                            floating_panes_layout.clone(),
+                            floating_panes_layout,
                             tab_name,
                             (
                                 Some(layout.swap_tiled_layouts.clone()),
@@ -3795,23 +4137,8 @@ pub fn start_server_impl(
                 } else {
                     let mut floating_panes =
                         layout.template.map(|t| t.1).clone().unwrap_or_default();
-                    if should_launch_setup_wizard {
-                        // we only do this here (and only once) because otherwise it will be
-                        // intrusive
-                        let setup_wizard = setup_wizard_floating_pane();
-                        floating_panes.push(setup_wizard);
-                    } else if should_show_release_notes(
-                        runtime_config_options.show_release_notes,
-                        layout_is_welcome_screen,
-                    ) {
-                        let about = about_floating_pane();
-                        floating_panes.push(about);
-                    } else if should_show_startup_tip(
-                        runtime_config_options.show_startup_tips,
-                        layout_is_welcome_screen,
-                    ) {
-                        let tip = tip_floating_pane();
-                        floating_panes.push(tip);
+                    if let Some(pane) = onboarding_pane.take() {
+                        floating_panes.push(pane);
                     }
                     spawn_tabs(
                         None,
@@ -3830,7 +4157,7 @@ pub fn start_server_impl(
                     let _ = session_data.senders.send_to_background_jobs(
                         BackgroundJob::SessionSuggestions(SessionSuggestionsJob::Configure {
                             config: config.session_suggestions.clone(),
-                            session_card: runtime_config_options.session_card.unwrap_or(true),
+                            startup_card: config.attention.startup_card(),
                             session_indicator: runtime_config_options
                                 .session_indicator
                                 .unwrap_or(true),
@@ -3845,7 +4172,16 @@ pub fn start_server_impl(
                             } else {
                                 None
                             },
+                            startup_card: switch_context.startup_card,
                         }),
+                    );
+                    report_attached_client_history(
+                        &mut client_histories,
+                        &session_data.senders,
+                        client_id,
+                        Some(&switch_context),
+                        false,
+                        None,
                     );
                     session_data
                         .senders
@@ -3888,6 +4224,29 @@ pub fn start_server_impl(
                 };
                 let config = session_data.session_configuration.saved_config.clone();
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let is_a_reattach = !session_state
+                    .read()
+                    .unwrap()
+                    .other_clients_are_attached(client_id);
+                report_attached_client_history(
+                    &mut client_histories,
+                    &session_data.senders,
+                    client_id,
+                    cli_assets.switch_context.as_ref(),
+                    is_a_reattach && pane_id_to_focus.is_none(),
+                    last_detached_at_ms,
+                );
+                if cli_assets
+                    .switch_context
+                    .as_ref()
+                    .map(|c| c.disconnect_others)
+                    .unwrap_or(false)
+                {
+                    let _ = to_server.send(ServerInstruction::DisconnectAllClientsExcept(
+                        client_id,
+                        ExitReason::KickedByHost,
+                    ));
+                }
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -3970,6 +4329,14 @@ pub fn start_server_impl(
                         None,
                     ))
                     .unwrap();
+                if last_host_program_status.is_some() {
+                    let _ = os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::HostProgramStatus {
+                            status: last_host_program_status.clone(),
+                        },
+                    );
+                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -4073,6 +4440,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::ClientExit(client_id, completion_tx) => {
+                client_histories.remove(&client_id);
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit {
@@ -4140,6 +4508,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::RemoveClient(client_id) => {
+                client_histories.remove(&client_id);
                 // Check if this is a watcher
                 let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
                 if is_watcher {
@@ -4193,7 +4562,7 @@ pub fn start_server_impl(
                 }
                 break;
             },
-            ServerInstruction::DisconnectAllClientsExcept(client_id) => {
+            ServerInstruction::DisconnectAllClientsExcept(client_id, exit_reason) => {
                 let client_ids: Vec<ClientId> = session_state
                     .read()
                     .unwrap()
@@ -4209,7 +4578,7 @@ pub fn start_server_impl(
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::KickedByHost,
+                            exit_reason: exit_reason.clone(),
                         },
                     );
                     remove_client!(client_id, os_input, session_state, session_data);
@@ -4337,6 +4706,12 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::SessionRenamed(new_name) => {
+                if let Err(e) =
+                    server_socket.rename(zellij_utils::consts::session_socket_path(&new_name))
+                {
+                    log::error!("Failed to rename ipc socket: {:?}", e);
+                }
+                rename_in_client_histories(&mut client_histories, &own_session_name, &new_name);
                 own_session_name = new_name;
             },
             ServerInstruction::TerminalCommandSubmitted => {
@@ -4376,11 +4751,50 @@ pub fn start_server_impl(
                     let _ = to_server.send(ServerInstruction::KillSession);
                 }
             },
+            ServerInstruction::HistoryMove(history_move, client_id, completion_tx) => {
+                let live_sessions = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|s| s.live_sessions.clone())
+                    .unwrap_or_default();
+                match history_move_switch(
+                    &mut client_histories,
+                    &own_session_name,
+                    &live_sessions,
+                    history_move,
+                    client_id,
+                ) {
+                    Ok(connect_to_session) => {
+                        let _ = to_server.send(ServerInstruction::SwitchSession(
+                            connect_to_session,
+                            client_id,
+                            completion_tx,
+                        ));
+                    },
+                    Err(history) => {
+                        if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                            let _ = session_data.senders.send_to_screen(
+                                ScreenInstruction::UpdateClientSessionHistory {
+                                    client_id,
+                                    history,
+                                },
+                            );
+                        }
+                        drop(completion_tx);
+                    },
+                }
+            },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
-                let current_session_name = envs::get_session_name();
-                if connect_to_session.name == current_session_name.ok() {
+                if connect_to_session.name.as_deref() == Some(own_session_name.as_str()) {
                     log::error!("Cannot attach to same session");
                 } else {
+                    attach_switch_context(
+                        &mut connect_to_session,
+                        &mut client_histories,
+                        &own_session_name,
+                        client_id,
+                    );
                     let layout_dir = session_data
                         .read()
                         .unwrap()
@@ -4499,11 +4913,27 @@ pub fn start_server_impl(
                     session_data.font_families.insert(client_id, families);
                 }
             },
-            ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+            ServerInstruction::AdoptSessionHistory(client_id, history) => {
+                let merged = adopt_client_history(
+                    &mut client_histories,
+                    &own_session_name,
+                    client_id,
+                    history,
+                );
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    let _ = session_data.senders.send_to_screen(
+                        ScreenInstruction::UpdateClientSessionHistory {
+                            client_id,
+                            history: merged,
+                        },
+                    );
+                }
+            },
+            ServerInstruction::TerminalSettingsChanged(client_id, settings) => {
                 send_to_client!(
                     client_id,
                     os_input,
-                    ServerToClientMsg::WindowSettingsChanged { settings },
+                    ServerToClientMsg::TerminalSettingsChanged { settings },
                     session_state,
                     session_data
                 );
@@ -5028,6 +5458,20 @@ pub fn start_server_impl(
                     session_data
                 );
             },
+            ServerInstruction::HostProgramStatus(status) => {
+                if last_host_program_status != status {
+                    last_host_program_status = status.clone();
+                    let client_ids = session_state.read().unwrap().client_ids();
+                    for client_id in client_ids {
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::HostProgramStatus {
+                                status: status.clone(),
+                            },
+                        );
+                    }
+                }
+            },
         }
     }
 
@@ -5045,12 +5489,12 @@ fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     if session_id.is_empty() {
         return;
     }
-    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
-        session_id,
-    ));
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
     }
+    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
+        session_id,
+    ));
 }
 
 fn init_session(
@@ -5129,6 +5573,7 @@ fn init_session(
 
     let default_mode = config.options.default_mode.unwrap_or_default();
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
+    let live_view_captures = crate::pane_mirror::SharedLiveViewCaptures::default();
     let applied_env = AppliedEnv::at_startup(config.env.inner());
 
     let pty_thread = thread::Builder::new()
@@ -5180,6 +5625,7 @@ fn init_session(
             let config = config.clone();
             let default_keybinds = default_keybinds.clone();
             let session_id = session_id.clone();
+            let live_view_captures = live_view_captures.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -5190,6 +5636,7 @@ fn init_session(
                     layout,
                     default_keybinds,
                     session_id,
+                    live_view_captures,
                 )
                 .fatal();
             }
@@ -5265,9 +5712,11 @@ fn init_session(
         })
         .unwrap();
 
+    let live_sessions = crate::attention::peers::LiveSessions::default();
     let background_jobs_thread = thread::Builder::new()
         .name("background_jobs".to_string())
         .spawn({
+            let live_sessions = live_sessions.clone();
             let background_jobs_bus = Bus::new(
                 vec![background_jobs_receiver],
                 Some(&to_screen),
@@ -5293,6 +5742,7 @@ fn init_session(
                     disable_session_metadata,
                     web_server_base_url,
                     session_id,
+                    live_sessions,
                 )
                 .fatal()
             }
@@ -5364,10 +5814,12 @@ fn init_session(
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
         modal_popup_clients: HashSet::new(),
+        live_view_captures,
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
-        sent_window_settings: HashMap::new(),
+        sent_terminal_settings: HashMap::new(),
         font_families: HashMap::new(),
+        live_sessions,
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path
@@ -5380,37 +5832,129 @@ fn init_session(
     }
 }
 
-fn setup_wizard_floating_pane() -> FloatingPaneLayout {
-    let mut setup_wizard_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_setup_wizard".to_owned(), "true".to_owned())]);
-    setup_wizard_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "configuration",
-        &Some(configuration),
-        None,
-    ))));
-    setup_wizard_pane
+fn session_may_show_setup(
+    is_resumed_session: bool,
+    layout_is_welcome_screen: bool,
+    created_from_welcome_screen: bool,
+    runs_a_command: bool,
+) -> bool {
+    !is_resumed_session
+        && !layout_is_welcome_screen
+        && !created_from_welcome_screen
+        && !runs_a_command
 }
 
-fn about_floating_pane() -> FloatingPaneLayout {
-    let mut about_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_release_notes".to_owned(), "true".to_owned())]);
-    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "about",
-        &Some(configuration),
-        None,
-    ))));
-    about_pane
+struct Onboarding {
+    setup_wizard: bool,
+    in_desktop_terminal: bool,
+    is_web_client: bool,
+    show_release_notes: Option<bool>,
+    show_startup_tips: Option<bool>,
+    layout_is_welcome_screen: bool,
 }
 
-fn tip_floating_pane() -> FloatingPaneLayout {
-    let mut about_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter([("is_startup_tip".to_owned(), "true".to_owned())]);
-    about_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
-        "about",
+fn onboarding_floating_pane(onboarding: &Onboarding) -> Option<FloatingPaneLayout> {
+    use zellij_utils::desktop_integration::{Flag, ReminderContext};
+    let window_flag = |mut configuration: BTreeMap<String, String>| {
+        if onboarding.in_desktop_terminal {
+            configuration.insert("in_desktop_terminal".to_owned(), "true".to_owned());
+        }
+        configuration
+    };
+    if onboarding.setup_wizard {
+        return Some(plugin_floating_pane(
+            "configuration",
+            window_flag(BTreeMap::from([(
+                "is_setup_wizard".to_owned(),
+                "true".to_owned(),
+            )])),
+        ));
+    }
+    if onboarding.layout_is_welcome_screen {
+        return None;
+    }
+    let state = zellij_utils::desktop_integration::load();
+    if let Some(offer) = launcher_repair_offer(&state) {
+        return Some(plugin_floating_pane(
+            "about",
+            window_flag(BTreeMap::from([
+                ("page".to_owned(), "repair".to_owned()),
+                ("missing".to_owned(), offer.missing.display().to_string()),
+                ("current".to_owned(), offer.current.display().to_string()),
+            ])),
+        ));
+    }
+    if should_show_release_notes(onboarding.show_release_notes, false) {
+        return Some(plugin_floating_pane(
+            "about",
+            window_flag(BTreeMap::from([(
+                "is_release_notes".to_owned(),
+                "true".to_owned(),
+            )])),
+        ));
+    }
+    if onboarding.in_desktop_terminal && state.needs_welcome_card() {
+        let missing = state.missing_services.clone();
+        let first_time = !state.has(Flag::WelcomeCardShown);
+        let _ = zellij_utils::desktop_integration::update(|state| {
+            state.set(Flag::WelcomeCardShown);
+            if !state.missing_services.is_empty() {
+                state.set(Flag::MissingServicesShown);
+            }
+        });
+        let mut configuration = BTreeMap::from([
+            ("page".to_owned(), "window_welcome".to_owned()),
+            ("missing_services".to_owned(), missing.join("\n")),
+        ]);
+        if !first_time {
+            configuration.insert("only_missing_services".to_owned(), "true".to_owned());
+        }
+        return Some(plugin_floating_pane("about", window_flag(configuration)));
+    }
+    if should_show_startup_tip(onboarding.show_startup_tips, false) {
+        let reminders = ReminderContext {
+            show_startup_tips: onboarding.show_startup_tips.unwrap_or(true),
+            show_release_notes: onboarding.show_release_notes.unwrap_or(true),
+            inside_desktop_terminal: onboarding.in_desktop_terminal,
+            web_client: onboarding.is_web_client,
+        };
+        let mut configuration = BTreeMap::from([("is_startup_tip".to_owned(), "true".to_owned())]);
+        if state.should_offer_desktop_tip(&reminders) {
+            configuration.insert("desktop_tip".to_owned(), "true".to_owned());
+            let _ = zellij_utils::desktop_integration::update(|state| {
+                state.set(Flag::DesktopAppIntroduced);
+            });
+        }
+        return Some(plugin_floating_pane("about", window_flag(configuration)));
+    }
+    None
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn launcher_repair_offer(
+    _state: &zellij_utils::desktop_integration::IntegrationState,
+) -> Option<zellij_utils::desktop_integration::RepairOffer> {
+    zellij_utils::desktop_integration::platform::launcher_repair_offer()
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn launcher_repair_offer(
+    _state: &zellij_utils::desktop_integration::IntegrationState,
+) -> Option<zellij_utils::desktop_integration::RepairOffer> {
+    None
+}
+
+fn plugin_floating_pane(
+    alias: &str,
+    configuration: BTreeMap<String, String>,
+) -> FloatingPaneLayout {
+    let mut pane = FloatingPaneLayout::new();
+    pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        alias,
         &Some(configuration),
         None,
     ))));
-    about_pane
+    pane
 }
 
 fn should_show_release_notes(
@@ -5602,6 +6146,153 @@ fn client_configuration(
                 .get_client_configuration(&client_id)
         })
         .unwrap_or_default()
+}
+
+#[inline(never)]
+fn history_move_switch(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    live_sessions: &crate::attention::peers::LiveSessions,
+    history_move: zellij_utils::session_history::HistoryMove,
+    client_id: ClientId,
+) -> std::result::Result<ConnectToSession, zellij_utils::session_history::SessionHistory> {
+    let mut history = client_histories
+        .get(&client_id)
+        .cloned()
+        .unwrap_or_default();
+    history.remove_session(own_session_name);
+    loop {
+        let Some(target) = history.target(history_move).map(|t| t.to_owned()) else {
+            if history_move == zellij_utils::session_history::HistoryMove::Toggle {
+                if let Some(target) = next_live_session(live_sessions, own_session_name) {
+                    let context = zellij_utils::session_history::SwitchContext::local_switch(
+                        &history,
+                        own_session_name,
+                        &target,
+                        zellij_utils::session_history::SessionArrival::Toggle,
+                    );
+                    return Ok(ConnectToSession {
+                        name: Some(target),
+                        switch_context: Some(context),
+                        ..Default::default()
+                    });
+                }
+            }
+            client_histories.insert(client_id, history.clone());
+            return Err(history);
+        };
+        let is_live = live_sessions
+            .is_live(&target)
+            .unwrap_or_else(|| zellij_utils::consts::session_socket_path(&target).exists());
+        if is_live {
+            history.apply(history_move, own_session_name);
+            return Ok(ConnectToSession {
+                name: Some(target),
+                switch_context: Some(zellij_utils::session_history::SwitchContext {
+                    history,
+                    arrival: Some(history_move.into()),
+                    from_session: Some(own_session_name.to_owned()),
+                    startup_card: None,
+                    disconnect_others: false,
+                }),
+                ..Default::default()
+            });
+        }
+        history.remove_session(&target);
+    }
+}
+
+fn next_live_session(
+    live_sessions: &crate::attention::peers::LiveSessions,
+    own_session_name: &str,
+) -> Option<String> {
+    let names: std::collections::BTreeSet<String> = live_sessions.known().unwrap_or_else(|| {
+        zellij_utils::session_index::running_session_names_in(
+            &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+            &zellij_utils::session_index::session_names_by_id(),
+        )
+        .into_iter()
+        .collect()
+    });
+    zellij_utils::session_history::next_session_after(names.iter(), own_session_name)
+}
+
+#[inline(never)]
+fn rename_in_client_histories(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    old_name: &str,
+    new_name: &str,
+) {
+    for history in client_histories.values_mut() {
+        history.rename_session(old_name, new_name);
+    }
+}
+
+#[inline(never)]
+fn attach_switch_context(
+    connect_to_session: &mut ConnectToSession,
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    client_id: ClientId,
+) {
+    let mut switch_context = connect_to_session.switch_context.take().unwrap_or_default();
+    if switch_context.from_session.is_none() {
+        let mut history = client_histories
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_default();
+        history.record_switch(
+            own_session_name,
+            connect_to_session.name.as_deref().unwrap_or_default(),
+        );
+        switch_context.history = history;
+        switch_context.from_session = Some(own_session_name.to_owned());
+        if switch_context.arrival.is_none() {
+            switch_context.arrival = Some(zellij_utils::session_history::SessionArrival::Switch);
+        }
+    }
+    connect_to_session.switch_context = Some(switch_context);
+    client_histories.remove(&client_id);
+}
+
+#[inline(never)]
+fn adopt_client_history(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    client_id: ClientId,
+    handed: zellij_utils::session_history::SessionHistory,
+) -> zellij_utils::session_history::SessionHistory {
+    let history = client_histories.entry(client_id).or_default();
+    history.adopt(handed, own_session_name);
+    history.clone()
+}
+
+#[inline(never)]
+fn report_attached_client_history(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    senders: &ThreadSenders,
+    client_id: ClientId,
+    switch_context: Option<&zellij_utils::session_history::SwitchContext>,
+    may_be_a_reattach: bool,
+    last_detached_at_ms: Option<u64>,
+) {
+    let switch_context = switch_context.cloned().unwrap_or_default();
+    client_histories.insert(client_id, switch_context.history.clone());
+    let _ = senders.send_to_screen(ScreenInstruction::ClientSessionHistory {
+        client_id,
+        history: switch_context.history.clone(),
+        arrival: switch_context.arrival.clone(),
+        arrived_from: switch_context.from_session.clone(),
+    });
+    if may_be_a_reattach && !switch_context.is_a_switch() {
+        let _ = senders.send_to_background_jobs(BackgroundJob::SessionSuggestions(
+            SessionSuggestionsJob::ClientReattached {
+                client_id,
+                away_since_ms: last_detached_at_ms.unwrap_or_else(crate::attention::now_ms),
+                startup_card: switch_context.startup_card,
+            },
+        ));
+    }
 }
 
 fn apply_runtime_change(
@@ -5891,5 +6582,84 @@ mod theme_file_tests {
         assert!(session_configuration
             .delete_theme_file(&1, "dracula")
             .is_err());
+    }
+}
+
+#[cfg(test)]
+mod adopted_history_tests {
+    use super::adopt_client_history;
+    use std::collections::HashMap;
+    use zellij_utils::session_history::{HistoryMove, SessionHistory};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn a_handed_over_history_is_the_most_recent_and_toggling_returns_where_the_user_came_from() {
+        let mut client_histories = HashMap::new();
+        client_histories.insert(
+            7,
+            SessionHistory {
+                back: names(&["older", "s2"]),
+                forward: names(&["ahead"]),
+                last: Some("older".to_owned()),
+            },
+        );
+        let handed = SessionHistory {
+            back: names(&["far", "s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 7, handed);
+        assert_eq!(merged.back, names(&["older", "far", "s1"]));
+        assert!(merged.forward.is_empty());
+        assert_eq!(merged.last.as_deref(), Some("s1"));
+        assert_eq!(client_histories.get(&7), Some(&merged));
+        let mut toggled = merged.clone();
+        assert_eq!(
+            toggled.apply(HistoryMove::Toggle, "s2"),
+            Some("s1".to_owned())
+        );
+        let mut walked = merged.clone();
+        assert_eq!(walked.apply(HistoryMove::Back, "s2"), Some("s1".to_owned()));
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "s1"),
+            Some("far".to_owned())
+        );
+        assert_eq!(
+            walked.apply(HistoryMove::Back, "far"),
+            Some("older".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_client_with_no_history_of_its_own_takes_the_handed_over_one() {
+        let mut client_histories = HashMap::new();
+        let handed = SessionHistory {
+            back: names(&["s1"]),
+            forward: vec![],
+            last: Some("s1".to_owned()),
+        };
+        let merged = adopt_client_history(&mut client_histories, "s2", 3, handed.clone());
+        assert_eq!(merged, handed);
+        assert!(
+            adopt_client_history(&mut client_histories, "s2", 4, SessionHistory::default())
+                .is_empty()
+        );
+    }
+}
+
+#[cfg(test)]
+mod setup_screen_session_tests {
+    use super::session_may_show_setup;
+
+    #[test]
+    fn only_a_plain_new_session_may_show_the_setup_screen() {
+        assert!(session_may_show_setup(false, false, false, false));
+        assert!(!session_may_show_setup(true, false, false, false));
+        assert!(!session_may_show_setup(false, true, false, false));
+        assert!(!session_may_show_setup(false, false, true, false));
+        assert!(!session_may_show_setup(false, false, false, true));
     }
 }

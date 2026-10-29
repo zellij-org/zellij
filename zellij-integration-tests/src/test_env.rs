@@ -92,6 +92,19 @@ fn isolate_process_environment(test_root: &Path) {
     std::env::set_current_dir(test_root.join("cwd")).unwrap();
 }
 
+pub fn prepare_setup_wizard(show: bool) {
+    let path = zellij_utils::desktop_integration::state_path();
+    if show {
+        std::env::remove_var("DISPLAY");
+        std::env::remove_var("WAYLAND_DISPLAY");
+        let _ = std::fs::remove_file(&path);
+    } else if !path.exists() {
+        let _ = zellij_utils::desktop_integration::update(|state| {
+            state.set(zellij_utils::desktop_integration::Flag::SetupNeverShow);
+        });
+    }
+}
+
 pub fn unique_session_name() -> String {
     let session_index = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("test-{}", session_index)
@@ -230,8 +243,8 @@ mouse_mode false
 advanced_mouse_actions false
 pane_frame_style "titles"
 theme "default"
-session_card false
 session_indicator false
+attention { startup_card "never"; }
 swap_layout_notification false
 on_quit "quit"
 "#;

@@ -463,6 +463,7 @@ impl MockScreen {
         .should_silently_fail();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -476,6 +477,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -546,6 +548,7 @@ impl MockScreen {
         )
         .should_silently_fail();
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -559,6 +562,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -585,6 +589,7 @@ impl MockScreen {
         .should_silently_fail();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        let live_view_captures = self.session_metadata.live_view_captures.clone();
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -598,6 +603,7 @@ impl MockScreen {
                     Box::new(Layout::default()),
                     default_keybinds,
                     "test-session-id".to_string(),
+                    live_view_captures,
                 )
                 .expect("TEST")
             })
@@ -772,11 +778,13 @@ impl MockScreen {
             config_file_path: self.session_metadata.config_file_path.clone(),
             config_file: self.session_metadata.config_file.clone(),
             applied_env: self.session_metadata.applied_env.clone(),
-            sent_window_settings: self.session_metadata.sent_window_settings.clone(),
+            sent_terminal_settings: self.session_metadata.sent_terminal_settings.clone(),
             font_families: self.session_metadata.font_families.clone(),
+            live_sessions: self.session_metadata.live_sessions.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
             modal_popup_clients: self.session_metadata.modal_popup_clients.clone(),
+            live_view_captures: self.session_metadata.live_view_captures.clone(),
             terminal_command_submitted: self.session_metadata.terminal_command_submitted.clone(),
         }
     }
@@ -834,11 +842,13 @@ impl MockScreen {
             config_file_path: None,
             config_file: Default::default(),
             applied_env: Default::default(),
-            sent_window_settings: Default::default(),
+            sent_terminal_settings: Default::default(),
             font_families: Default::default(),
+            live_sessions: Default::default(),
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
             modal_popup_clients: Default::default(),
+            live_view_captures: Default::default(),
             terminal_command_submitted: Default::default(),
         };
 
@@ -955,6 +965,27 @@ macro_rules! log_actions_in_thread {
             })
             .unwrap()
     };
+}
+
+fn rendered_frames(log: &Arc<Mutex<Vec<ServerInstruction>>>) -> usize {
+    log.lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| matches!(instruction, ServerInstruction::Render(Some(_))))
+        .count()
+}
+
+fn wait_for_rendered_frames(log: &Arc<Mutex<Vec<ServerInstruction>>>, count: usize) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while rendered_frames(log) < count {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for {} rendered frames, got {}",
+            count,
+            rendered_frames(log)
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
@@ -3644,6 +3675,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3756,6 +3788,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3813,6 +3846,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3881,6 +3915,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -4826,6 +4861,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -4846,17 +4882,17 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 4);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -4925,6 +4961,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -4946,17 +4983,17 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    wait_for_rendered_frames(&received_server_instructions, 4);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -5225,6 +5262,7 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -5243,15 +5281,15 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneRight(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 5);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -5285,6 +5323,7 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         ServerInstruction::KillSession,
         server_receiver
     );
+    wait_for_rendered_frames(&received_server_instructions, 1);
 
     let _ = mock_screen
         .to_screen
@@ -5301,15 +5340,15 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         None,
         None,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 2);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 3);
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPaneLeft(1, None));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    wait_for_rendered_frames(&received_server_instructions, 5);
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -5789,6 +5828,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         borderless: None,
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8654,6 +8694,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8718,6 +8759,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8832,6 +8874,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8895,6 +8938,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -10054,14 +10098,106 @@ fn reattaching_a_client_restores_floating_pane_visibility_notifications() {
 
     screen.remove_client(1).expect("TEST");
     screen.add_client(1, false).expect("TEST");
+    screen.sync_plugin_visibility();
     let _ = capture.drain_visible_events();
     screen.get_active_tab_mut(1).unwrap().hide_floating_panes();
+    screen.sync_plugin_visibility();
 
     assert!(
         capture.drain_visible_events().contains(&(Some(2), false)),
         "a floating plugin must still be told when its surface is hidden after a reattach, \
          otherwise plugins idling on a timer keep working while off screen"
     );
+}
+
+fn screen_with_floating_plugin(plugin_id: u32) -> (Screen, ThemeCapture) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(plugin_id),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(None),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.sync_plugin_visibility();
+    let _ = capture.drain_visible_events();
+    (screen, capture)
+}
+
+#[test]
+fn plugins_are_told_about_their_visibility_only_when_it_changes() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+
+    for show in [false, false, true, true] {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        if show {
+            tab.show_floating_panes();
+        } else {
+            tab.hide_floating_panes();
+        }
+        screen.sync_plugin_visibility();
+    }
+
+    assert_eq!(
+        capture.drain_visible_events(),
+        vec![(Some(2), false), (Some(2), true)]
+    );
+}
+
+#[test]
+fn a_plugin_behind_a_fullscreen_pane_is_told_it_is_hidden() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.hide_floating_panes();
+    tab.new_pane(
+        PaneId::Plugin(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    screen.sync_plugin_visibility();
+    let _ = capture.drain_visible_events();
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .toggle_pane_fullscreen(PaneId::Terminal(1));
+    screen.sync_plugin_visibility();
+
+    assert_eq!(capture.drain_visible_events(), vec![(Some(3), false)]);
+}
+
+#[test]
+fn detaching_the_last_client_hides_the_plugins_and_reattaching_shows_them() {
+    let (mut screen, capture) = screen_with_floating_plugin(2);
+
+    screen.remove_client(1).expect("TEST");
+    assert!(capture.drain_visible_events().contains(&(Some(2), false)));
+
+    screen.add_client(1, false).expect("TEST");
+    screen.sync_plugin_visibility();
+    assert!(capture.drain_visible_events().contains(&(Some(2), true)));
 }
 
 fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
@@ -14696,6 +14832,98 @@ mod nested_hint_reporting {
             .collect()
     }
 
+    fn modal_shown(harness: &Harness) -> bool {
+        harness
+            .screen
+            .tabs
+            .values()
+            .any(|tab| tab.pane_has_guest_modal_for_client(PaneId::Terminal(1), 1))
+    }
+
+    fn announce_session(harness: &mut Harness, session_name: &str) {
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Announce {
+                session_name: session_name.to_owned(),
+                capabilities: vec![NestedSessionCapability::NestedControl],
+            },
+        );
+    }
+
+    #[test]
+    fn a_guest_switching_sessions_keeps_the_choice_and_shows_no_dialogue() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
+        harness.descend_into_guest();
+        assert!(!modal_shown(&harness));
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!modal_shown(&harness));
+        assert!(
+            harness
+                .frames_written_to_guest()
+                .contains(&NestedSessionMessage::FocusGained {
+                    from_direction: None
+                }),
+            "the client of the new guest session must be told that it has control"
+        );
+        assert_eq!(
+            harness
+                .screen
+                .nested_guest_choices
+                .get(&(1, PaneId::Terminal(1))),
+            Some(&super::super::NestedGuestChoice::Descend)
+        );
+    }
+
+    #[test]
+    fn a_zoomed_guest_switching_sessions_is_told_it_is_still_fullscreen() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.screen.handle_guest_modal_choice(
+            1,
+            PaneId::Terminal(1),
+            super::super::GuestModalOutcome::Zoom,
+        );
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        let frames = harness.frames_written_to_guest();
+        assert!(
+            frames.contains(&NestedSessionMessage::FullscreenState { fullscreen: true }),
+            "{:?}",
+            frames
+        );
+        assert!(frames.contains(&NestedSessionMessage::FocusGained {
+            from_direction: None
+        }));
+    }
+
+    #[test]
+    fn a_reannouncing_guest_that_is_not_controlled_is_not_given_focus() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!harness
+            .frames_written_to_guest()
+            .iter()
+            .any(|frame| matches!(frame, NestedSessionMessage::FocusGained { .. })));
+    }
+
+    #[test]
+    fn a_guest_that_left_and_came_back_is_asked_again() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.descend_into_guest();
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Bye,
+        );
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
+    }
+
     #[test]
     fn a_plugin_pane_is_not_a_nested_session() {
         let mut harness = Harness::new();
@@ -16838,6 +17066,7 @@ fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
         None,
         true,
         false,
+        false,
     );
     let (client_id, kind, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(client_id, 1);
@@ -16865,6 +17094,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         true,
         false,
+        false,
     );
     let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(anchor_pane, Some(focused_pane));
@@ -16883,6 +17113,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         false,
         false,
+        false,
     );
     let (_, kind, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(kind, crate::tab::PopupKind::Info);
@@ -16899,6 +17130,7 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
         None,
         true,
+        false,
         false,
     );
     let failed = plugin_receiver.try_iter().any(|(instruction, _)| {
@@ -19108,12 +19340,12 @@ fn a_session_preview_shows_the_requested_pane_or_falls_back_to_the_focused_one()
         };
         tab.handle_pty_bytes(pid, text.as_bytes().to_vec()).unwrap();
     }
-    let preview = screen.session_preview(Some(0), Some((1, false)));
+    let preview = screen.session_preview(Some(0), Some((1, false)), None);
     assert!(preview.contents.contains("first pane text"));
     assert_eq!(preview.tab_index, Some(0));
-    let fallback = screen.session_preview(Some(1), Some((1, false)));
+    let fallback = screen.session_preview(Some(1), Some((1, false)), None);
     assert!(fallback.contents.contains("second pane text"));
-    let focused = screen.session_preview(None, None);
+    let focused = screen.session_preview(None, None, None);
     assert_eq!(focused.tab_names.len(), 2);
     assert_eq!(focused.tabs.len(), 2);
     assert_eq!(focused.tabs[0].panes.len(), 1);
@@ -19234,4 +19466,261 @@ fn cli_pane_renames_drop_control_characters() {
         tab.get_pane_with_id(pane_id).unwrap().current_title(),
         "a]0;evilbc\u{1F1E9}\u{1F1EA}"
     );
+}
+
+#[test]
+fn closing_a_pane_that_needs_you_updates_the_reported_session_attention() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.render(None).expect("TEST");
+    let blocked = crate::attention::program_status::parse(
+        &[b"7501", b"state=blocked:kind=permission"],
+        false,
+    )
+    .expect("TEST");
+    for tab in screen.tabs.values_mut() {
+        if tab.has_terminal_pid(1) {
+            tab.pending_pane_signals.push((
+                PaneId::Terminal(1),
+                vec![crate::attention::PaneSignal::ProgramStatus(blocked.clone())],
+            ));
+        }
+    }
+    screen.process_attention();
+    let reported_pane_ids = |screen: &Screen| -> Vec<zellij_utils::data::PaneId> {
+        screen
+            .last_session_attention
+            .as_ref()
+            .map(|summary| summary.items.iter().map(|item| item.pane_id).collect())
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        reported_pane_ids(&screen),
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        "precondition: the blocked pane is reported"
+    );
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    screen.close_tab(1).expect("TEST");
+    screen.sync_attention_visibility();
+    assert!(screen.session_attention().items.is_empty());
+    assert_eq!(
+        reported_pane_ids(&screen),
+        Vec::<zellij_utils::data::PaneId>::new(),
+        "the session still reports the closed pane to peers and to its own global attention"
+    );
+}
+
+#[test]
+fn a_new_tab_does_not_inherit_the_mute_of_a_closed_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let muted_tab_id = screen.get_active_tab(1).expect("TEST").id;
+    assert!(screen.toggle_tab_mute(None, 1));
+    assert!(screen.attention.tab_is_muted(muted_tab_id));
+    screen.close_tab(1).expect("TEST");
+    let new_tab_id = screen.get_new_tab_id();
+    assert_eq!(
+        new_tab_id, muted_tab_id,
+        "precondition: the tab id is reused"
+    );
+    new_tab(&mut screen, 3, new_tab_id);
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    let new_tab = screen.tabs.get(&new_tab_id).expect("TEST");
+    assert!(
+        !screen.tab_attention(new_tab).muted,
+        "a freshly opened tab is reported as muted"
+    );
+}
+
+#[test]
+fn a_session_preview_with_an_anchor_includes_lines_that_scrolled_off_the_pane() {
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let mut output = String::new();
+    for line in 0..60 {
+        output.push_str(&format!("history line {:03}\r\n", line));
+    }
+    for tab in screen.tabs.values_mut() {
+        tab.handle_pty_bytes(1, output.as_bytes().to_vec()).unwrap();
+    }
+    let screen_only = screen.session_preview(None, Some((1, false)), None);
+    assert!(screen_only.contents.contains("history line 059"));
+    assert!(!screen_only.contents.contains("history line 000"));
+    let with_history = screen.session_preview(
+        None,
+        Some((1, false)),
+        Some(zellij_utils::data::PreviewAnchor::Bottom),
+    );
+    assert!(with_history.contents.contains("history line 000"));
+    assert!(with_history.contents.contains("history line 059"));
+    assert_eq!(with_history.anchor_line, None);
+    assert_eq!(with_history.pane_id, Some((1, false)));
+}
+
+mod session_rename {
+    use super::*;
+    use crate::plugins::{PromptCaller, SERVER_NOTICE_CALLER_ID};
+    use zellij_utils::data::{InputMode, SessionInfo};
+    use zellij_utils::prompt::PromptSpec;
+
+    struct Harness {
+        screen: Screen,
+        plugin_receiver: Receiver<(PluginInstruction, ErrorContext)>,
+    }
+
+    fn harness() -> Harness {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let (mut screen, _tty, _server_receiver) =
+            create_new_screen_with_capture(size, true, true, true, true);
+        let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
+            channels::unbounded();
+        screen
+            .bus
+            .senders
+            .replace_to_plugin(SenderWithContext::new(to_plugin));
+        new_tab(&mut screen, 1, 0);
+        screen.add_client(2, false).expect("TEST");
+        while plugin_receiver.try_recv().is_ok() {}
+        Harness {
+            screen,
+            plugin_receiver,
+        }
+    }
+
+    fn shown_name(screen: &Screen, client_id: ClientId) -> Option<String> {
+        screen
+            .mode_info
+            .get(&client_id)
+            .and_then(|mode_info| mode_info.session_name.clone())
+    }
+
+    fn prompts(h: &Harness) -> Vec<(PromptCaller, zellij_utils::prompt::PromptRequest)> {
+        h.plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::PromptRequest {
+                    caller, request, ..
+                } => Some((caller, request)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn start_renaming(h: &mut Harness, client_id: ClientId) {
+        h.screen
+            .change_mode(InputMode::RenameSession, Some(InputMode::Normal), client_id)
+            .expect("TEST");
+        h.screen
+            .update_session_name_draft(vec![0], client_id)
+            .expect("TEST");
+    }
+
+    fn type_text(h: &mut Harness, client_id: ClientId, text: &str) {
+        h.screen
+            .update_session_name_draft(text.as_bytes().to_vec(), client_id)
+            .expect("TEST");
+    }
+
+    #[test]
+    fn the_draft_is_shown_only_to_the_client_renaming() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "new-nam");
+        type_text(&mut h, 1, "e");
+        type_text(&mut h, 1, "x");
+        type_text(&mut h, 1, "\u{007F}");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("new-name"));
+        assert_ne!(shown_name(&h.screen, 2).as_deref(), Some("new-name"));
+        assert_eq!(h.screen.session_name, "zellij-test");
+    }
+
+    #[test]
+    fn escape_brings_back_the_current_name_without_renaming() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "other");
+        h.screen.undo_session_rename(1).expect("TEST");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        h.screen
+            .change_mode(InputMode::Session, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        assert!(prompts(&h).is_empty());
+    }
+
+    #[test]
+    fn a_taken_name_shows_a_popup_and_snaps_back() {
+        let mut h = harness();
+        h.screen
+            .peer_sessions_cache
+            .insert("taken".to_owned(), SessionInfo::new("taken".to_owned()));
+        start_renaming(&mut h, 1);
+        type_text(&mut h, 1, "taken");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("taken"));
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        let prompts = prompts(&h);
+        let [(caller, request)] = &prompts[..] else {
+            panic!("expected one prompt, got {:?}", prompts);
+        };
+        assert_eq!(caller.plugin_id, SERVER_NOTICE_CALLER_ID);
+        assert_eq!(caller.client_id, 1);
+        assert_eq!(request.title.as_deref(), Some("Could not rename session"));
+        let PromptSpec::Info { message } = &request.spec else {
+            panic!("expected an info popup, got {:?}", request.spec);
+        };
+        assert!(message.text.contains("already exists"), "{}", message.text);
+    }
+
+    #[test]
+    fn an_empty_name_shows_a_popup_and_snaps_back() {
+        let mut h = harness();
+        start_renaming(&mut h, 1);
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
+        assert_eq!(prompts(&h).len(), 1);
+    }
+
+    #[test]
+    fn leaving_with_the_same_name_does_nothing() {
+        let mut h = harness();
+        h.screen
+            .change_mode(InputMode::RenameSession, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        h.screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .expect("TEST");
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert!(prompts(&h).is_empty());
+    }
+
+    #[test]
+    fn typing_outside_rename_mode_changes_nothing() {
+        let mut h = harness();
+        type_text(&mut h, 1, "stray");
+        assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
+        assert!(h.screen.session_rename_drafts.is_empty());
+    }
 }
