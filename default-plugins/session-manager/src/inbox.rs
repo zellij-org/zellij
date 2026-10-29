@@ -1781,44 +1781,55 @@ impl Inbox {
         let x = layout.list_x;
         let y = layout.help_y;
         let width = LiveLayout::help_width(cols);
+        let details = self.live_view_details_text();
+        let reserved = if details.is_empty() || details.width() + 2 > width / 2 {
+            0
+        } else {
+            details.width() + 2
+        };
+        let left_width = width - reserved;
         let used = if capturing || self.live_notice.is_some() {
-            let hint = truncate_plain(&self.live_view_hint_text(), width);
+            let hint = truncate_plain(&self.live_view_hint_text(), left_width);
             let used = hint.width();
             let text = self.view_hint(&hint, capturing);
             print_text_with_coordinates(text, x, y, Some(used.max(1)), None);
             used
         } else {
-            let help = self.help_block(width, true);
+            let help = self.help_block(left_width, true);
             let Some(line) = help.last().cloned() else {
                 return;
             };
             let used = line.text.width();
-            self.render_help_block(&[line], x, y, width, true);
+            self.render_help_block(&[line], x, y, left_width, true);
             used
         };
         let mut right = x + width;
+        if reserved > 0 {
+            right -= details.width();
+            print_text_with_coordinates(
+                Text::from(details.as_str()).dim_all(),
+                right,
+                y,
+                Some(details.width()),
+                None,
+            );
+            right -= 2;
+        }
         if !capturing && self.live_notice.is_none() {
-            let room = width.saturating_sub(used + 2);
+            let room = right.saturating_sub(x + used + 2);
             if let Some(detail) = self
                 .selected_detail(room)
                 .filter(|_| room >= MIN_TEXT_WIDTH)
             {
                 let detail_width = detail.content().width();
-                right -= detail_width;
-                print_text_with_coordinates(detail, right, y, Some(detail_width), None);
-                right = right.saturating_sub(2);
+                print_text_with_coordinates(
+                    detail,
+                    right - detail_width,
+                    y,
+                    Some(detail_width),
+                    None,
+                );
             }
-        }
-        let details = self.live_view_details_text();
-        let room = right.saturating_sub(x + used + 2);
-        if !details.is_empty() && details.width() <= room {
-            print_text_with_coordinates(
-                Text::from(details.as_str()).dim_all(),
-                right - details.width(),
-                y,
-                Some(details.width()),
-                None,
-            );
         }
     }
 
