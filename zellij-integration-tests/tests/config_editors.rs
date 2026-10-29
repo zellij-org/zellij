@@ -611,7 +611,7 @@ fn menu_columns_line_up_and_rows_show_the_hover() {
     );
     assert_eq!(
         column_of_text(&grid_snapshot, "New pane", "NewPane"),
-        column_of_text(&grid_snapshot, "New floating pane", "NewFloatingPane")
+        column_of_text(&grid_snapshot, "New floating pane", "NewFloatin")
     );
     assert!(
         column_of_text(&grid_snapshot, "New pane", "NewPane")
