@@ -1631,6 +1631,12 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::PasteFromClipboardByPaneId { pane_id } => {
+            drop(NotificationEnd::new(completion_tx));
+            senders
+                .send_to_screen(ScreenInstruction::PasteFromClipboard { client_id, pane_id })
+                .with_context(err_context)?;
+        },
         Action::OpenSessionInTerminal => {
             drop(NotificationEnd::new(completion_tx));
             let session_name = zellij_utils::envs::get_session_name().ok();
@@ -3367,6 +3373,22 @@ pub(crate) fn route_thread_main(
                                 ScreenInstruction::SetStructuredRenderSupport {
                                     client_id,
                                     supported
+                                },
+                                instruction,
+                                retry_queue
+                            )
+                            .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::ClipboardPasteSupport {
+                            supported,
+                            ref shortcut,
+                        } => {
+                            send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SetClipboardPasteSupport {
+                                    client_id,
+                                    supported,
+                                    shortcut: shortcut.clone()
                                 },
                                 instruction,
                                 retry_queue

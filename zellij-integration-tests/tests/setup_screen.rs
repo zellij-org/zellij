@@ -89,7 +89,7 @@ fn open_setup_from_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     });
     zellij.send_stdin(&keys::ctrl('w'));
     wait_for_setup_items(zellij);

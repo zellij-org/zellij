@@ -6,12 +6,15 @@ use crate::blocks_screen::BlockPage;
 use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
 use crate::mousebindings_screen::MousebindingsScreen;
-use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
+use crate::help::{setting_help, wrap};
+use crate::page::{
+    changed_by, note_group, note_overlay, outside_overlays, run_effects, Page, PageResponse,
+};
 use crate::settings::{
-    check_text, describe, inherits_from, is_row_kind, kdl_for, mode_choice_label, option_value,
-    parse_hex_colour, release_key_placeholder, section, settings_in, sort_for_display, Category,
-    Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT, CATEGORIES, INPUT_MODES,
-    MISSING_SUFFIX, UNSET_CHOICE,
+    check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value, page_matches,
+    parse_hex_colour, placement, release_key_placeholder, search_settings, section, settings_in,
+    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
+    CATEGORIES, ZELLIJ_TERMINAL_NOTE, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -33,7 +36,7 @@ const KEYS_SCREEN_ROWS: usize = 18;
 const CLOSE_NOTICE_SECONDS: f64 = 1.5;
 const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
-const WINDOW_TITLE: &str = "Configuration";
+const WINDOW_TITLE: &str = "Settings";
 const KEYBINDINGS_MIN_ROWS: usize = 8;
 const COLOUR_SWATCH_WIDTH: usize = 4;
 const PAGE_CATEGORIES: [Category; 4] = [
@@ -42,6 +45,9 @@ const PAGE_CATEGORIES: [Category; 4] = [
     Category::MouseBindings,
     Category::PluginsAndEnvironment,
 ];
+const HOVER_HELP_SECONDS: f64 = 1.0;
+const HELP_MAX_WIDTH: usize = 72;
+const DANGER_MARKER: &str = "⚠ dangerous";
 const THEME_NOTE: &str = "  A dark or light terminal theme is set and is used instead of this one";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,9 +92,24 @@ const CANCEL_CHOICE: &str = "cancel";
 const RELOADED_FROM_OUTSIDE: &str =
     "The config file was changed outside the settings and has been reloaded.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HelpView {
+    key: SettingKey,
+    from_hover: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HelpLine {
+    Text(String),
+    Fact(String, String),
+    Warning(String),
+    Blank,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Row {
     Setting(SettingKey),
+    Link(Category),
     Heading(String),
     LabelledHeading(String, String),
     Line(String),
@@ -131,6 +152,15 @@ pub struct SettingsScreen {
     file_link_hovered: bool,
     last_mouse: Option<(isize, usize)>,
     setup_requested: bool,
+    sub_page: Option<Category>,
+    label_width: usize,
+    value_width: Option<usize>,
+    sorted_theme_names: Vec<String>,
+    page_haystacks: Vec<(Category, String)>,
+    help: Option<HelpView>,
+    help_area: Option<Rect>,
+    hover_candidate: Option<(SettingKey, std::time::Instant)>,
+    rows_area: Option<(usize, usize, usize, usize)>,
 }
 
 impl Default for SettingsScreen {
@@ -175,6 +205,15 @@ impl Default for SettingsScreen {
             file_link_hovered: false,
             last_mouse: None,
             setup_requested: false,
+            sub_page: None,
+            label_width: 2,
+            value_width: None,
+            sorted_theme_names: vec![],
+            page_haystacks: vec![],
+            help: None,
+            help_area: None,
+            hover_candidate: None,
+            rows_area: None,
         }
     }
 }
@@ -254,11 +293,69 @@ impl SettingsScreen {
         screen.rebuild_rows();
         screen
     }
-    fn category(&self) -> Category {
+    fn menu_category(&self) -> Category {
         CATEGORIES
             .get(self.menu.selected_index())
             .copied()
-            .unwrap_or(Category::Appearance)
+            .unwrap_or(Category::General)
+    }
+    fn category(&self) -> Category {
+        self.sub_page.unwrap_or_else(|| self.menu_category())
+    }
+    fn link_at(&self, key: SettingKey) -> Option<Category> {
+        self.rows.iter().find_map(|row| match row {
+            Row::Link(page) if page.link_key() == Some(key) => Some(*page),
+            _ => None,
+        })
+    }
+    fn open_sub_page(&mut self, page: Category) {
+        self.restore_theme_preview();
+        self.leave_pages();
+        if let Some(parent) = page.parent() {
+            if let Some(index) = CATEGORIES.iter().position(|c| *c == parent) {
+                self.menu.set_selected(index);
+            }
+        }
+        if self.search_active {
+            self.search_active = false;
+            self.search.clear();
+        }
+        self.sub_page = Some(page);
+        self.bindings_focused = false;
+        self.scroll.set_offset(0);
+        self.elements.blur();
+        self.rebuild_rows();
+        self.set_focus(Focus::Content);
+        if page.is_keys_screen() {
+            self.keys_screen.focus_preset();
+        }
+    }
+    fn close_sub_page(&mut self) -> bool {
+        let Some(page) = self.sub_page.take() else {
+            return false;
+        };
+        self.restore_theme_preview();
+        self.leave_pages();
+        self.bindings_focused = false;
+        self.scroll.set_offset(0);
+        self.elements.blur();
+        self.rebuild_rows();
+        self.set_focus(Focus::Content);
+        if let Some(key) = page.link_key() {
+            self.elements.focus(&key);
+        }
+        self.follow_focus = true;
+        true
+    }
+    fn go_back(&mut self) {
+        if !self.close_sub_page() {
+            self.set_focus(Focus::Menu);
+        }
+    }
+    fn close_or_go_back(&mut self) {
+        if !self.close_sub_page() {
+            self.begin_close();
+        }
     }
     fn showing_keys_screen(&self) -> bool {
         !self.search_active && self.category().is_keys_screen()
@@ -371,6 +468,7 @@ impl SettingsScreen {
     }
     pub fn refresh(&mut self) {
         self.snapshot = read_config();
+        self.update_snapshot_caches();
         self.keys_screen.set_snapshot(&self.snapshot);
         self.keybindings_screen.set_snapshot(&self.snapshot);
         self.blocks_screen.set_snapshot(&self.snapshot);
@@ -386,6 +484,60 @@ impl SettingsScreen {
         self.sync_elements();
         self.update_menu_labels();
     }
+    fn update_snapshot_caches(&mut self) {
+        let mut names: Vec<String> = self.snapshot.theme_names.clone();
+        names.retain(|name| name != DEFAULT_THEME);
+        names.sort();
+        names.dedup();
+        self.sorted_theme_names = names;
+        self.value_width = None;
+        let lower = |items: Vec<String>| items.join("\n").to_lowercase();
+        let keybindings = self
+            .snapshot
+            .keybindings
+            .iter()
+            .map(|entry| format!("{} {}", entry.key, entry.actions.join(" ")))
+            .collect();
+        let mousebindings = self
+            .snapshot
+            .mousebindings
+            .iter()
+            .map(|entry| entry.actions.join(" "))
+            .collect();
+        let plugins = self
+            .snapshot
+            .plugin_aliases
+            .iter()
+            .chain(self.snapshot.load_plugins.iter())
+            .chain(self.snapshot.env_vars.iter())
+            .cloned()
+            .collect();
+        self.page_haystacks = vec![
+            (Category::Themes, lower(self.snapshot.theme_names.clone())),
+            (Category::Keys, lower(keybindings)),
+            (Category::MouseBindings, lower(mousebindings)),
+            (
+                Category::ContextMenu,
+                lower(self.snapshot.context_menu_items.clone()),
+            ),
+            (Category::PluginsAndEnvironment, lower(plugins)),
+        ];
+    }
+    fn page_found_by_search(&self, page: Category, query: &str) -> bool {
+        if page == Category::Borders {
+            return false;
+        }
+        if page_matches(page, query) {
+            return true;
+        }
+        let query = query.trim().to_lowercase();
+        if query.chars().count() < 3 {
+            return false;
+        }
+        self.page_haystacks
+            .iter()
+            .any(|(candidate, haystack)| *candidate == page && haystack.contains(&query))
+    }
     fn theme_note_needed(&self) -> bool {
         self.current_value(SettingKey::ThemeDark).is_some()
             || self.current_value(SettingKey::ThemeLight).is_some()
@@ -396,9 +548,8 @@ impl SettingsScreen {
             .map(|category| {
                 let has_unsaved = self.snapshot.settings.iter().any(|setting| {
                     setting.is_unsaved() && {
-                        let info = describe(setting.key);
-                        info.category == *category
-                            || (info.kind == SettingKind::Keybindings && category.is_keys_screen())
+                        let owner = placement(setting.key).0;
+                        owner == *category || owner.parent() == Some(*category)
                     }
                 });
                 if has_unsaved {
@@ -416,53 +567,120 @@ impl SettingsScreen {
     }
     fn displayed_settings(&self) -> Vec<SettingKey> {
         if self.search_active {
-            let query = self.search.get_text().trim().to_lowercase();
-            let mut keys = SettingKey::all()
-                .into_iter()
-                .filter(|key| is_row_kind(describe(*key).kind))
-                .filter(|key| {
-                    if query.is_empty() {
-                        return true;
-                    }
-                    let info = describe(*key);
-                    fuzzy_match_indices(&query, &info.name.to_lowercase()).is_some()
-                        || info.description.to_lowercase().contains(&query)
-                        || key.id().contains(&query)
-                })
-                .collect::<Vec<_>>();
-            sort_for_display(&mut keys);
-            keys
+            search_settings(self.search.get_text())
         } else {
             settings_in(self.category())
         }
     }
+    fn displayed_links(&self) -> Vec<Category> {
+        if self.search_active {
+            let query = self.search.get_text().to_owned();
+            SUB_PAGES
+                .iter()
+                .copied()
+                .filter(|page| self.page_found_by_search(*page, &query))
+                .collect()
+        } else if self.sub_page.is_some() {
+            vec![]
+        } else {
+            self.category().links()
+        }
+    }
     fn rebuild_rows(&mut self) {
         self.editing = None;
+        self.help = None;
+        self.hover_candidate = None;
+        self.value_width = None;
         self.theme_note_shown = self.theme_note_needed();
         let focused = self.elements.focused_key().copied();
         self.elements = FocusGroup::new().wrap(false);
         self.rows.clear();
-        if !self.search_active && self.category() == Category::FoldersAndFiles {
-            let folder = self
-                .snapshot
-                .config_file_path
-                .as_ref()
-                .and_then(|path| std::path::Path::new(path).parent())
-                .map(|folder| folder.display().to_string())
-                .unwrap_or_else(|| "none".to_owned());
-            self.rows
-                .push(Row::LabelledHeading("Config folder".to_owned(), folder));
+        let keys = if self.showing_page() || self.showing_keys_screen() {
+            vec![]
+        } else {
+            self.displayed_settings()
+        };
+        self.label_width = keys
+            .iter()
+            .map(|key| describe(*key).name.chars().count())
+            .max()
+            .unwrap_or(0)
+            .min(MAX_LABEL_WIDTH)
+            + 2;
+        if !self.search_active {
+            if let Some(page) = self.sub_page.filter(|page| page.has_rows()) {
+                let parent = page.parent().unwrap_or(Category::General).title();
+                self.rows.push(Row::Line(format!(
+                    "{} › {}  (Esc goes back)",
+                    parent,
+                    page.title()
+                )));
+            }
+            match self.category() {
+                Category::ZellijTerminal => self.rows.push(Row::Line(ZELLIJ_TERMINAL_NOTE.to_owned())),
+                Category::Advanced => {
+                    let folder = self
+                        .snapshot
+                        .config_file_path
+                        .as_ref()
+                        .and_then(|path| std::path::Path::new(path).parent())
+                        .map(|folder| folder.display().to_string())
+                        .unwrap_or_else(|| "none".to_owned());
+                    self.rows
+                        .push(Row::LabelledHeading("Config folder".to_owned(), folder));
+                },
+                _ => {},
+            }
         }
-        if !self.showing_page() {
-            let mut current_heading: Option<String> = None;
-            for key in self.displayed_settings() {
-                let Some(element) = self.build_element(key) else {
-                    continue;
-                };
+        if !self.showing_page() && !self.showing_keys_screen() {
+            let links = self.displayed_links();
+            let mut items: Vec<(String, Row)> = vec![];
+            for key in keys {
                 let heading = if self.search_active {
                     describe(key).category.title().to_owned()
                 } else {
                     section(key).to_owned()
+                };
+                items.push((heading, Row::Setting(key)));
+            }
+            for link in links {
+                let heading = if self.search_active {
+                    "Pages".to_owned()
+                } else {
+                    link.link_section().to_owned()
+                };
+                let position = items
+                    .iter()
+                    .rposition(|(existing, _)| *existing == heading)
+                    .map(|index| index + 1)
+                    .unwrap_or_else(|| {
+                        let wanted = crate::settings::section_index(&heading);
+                        items
+                            .iter()
+                            .position(|(existing, _)| {
+                                !self.search_active
+                                    && crate::settings::section_index(existing) > wanted
+                            })
+                            .unwrap_or(items.len())
+                    });
+                items.insert(position, (heading, Row::Link(link)));
+            }
+            let mut current_heading: Option<String> = None;
+            for (heading, row) in items {
+                let element: Option<(SettingKey, Element)> = match &row {
+                    Row::Setting(key) => self.build_element(*key).map(|element| (*key, element)),
+                    Row::Link(page) => page.link_key().map(|key| {
+                        let label = if self.search_active {
+                            format!("{} ({})", page.link_label(), page.title())
+                        } else {
+                            page.link_label().to_owned()
+                        };
+                        (key, Button::new(label).left_aligned().into())
+                    }),
+                    _ => None,
+                };
+                let Some((key, element)) = element else {
+                    continue;
                 };
                 if current_heading.as_ref() != Some(&heading) {
                     if !heading.is_empty() {
@@ -471,8 +689,11 @@ impl SettingsScreen {
                     current_heading = Some(heading);
                 }
                 self.elements.add(key, element);
-                self.rows.push(Row::Setting(key));
-                if key == SettingKey::Theme && self.theme_note_shown {
+                self.rows.push(row);
+                if key == SettingKey::Theme
+                    && self.theme_note_shown
+                    && matches!(self.rows.last(), Some(Row::Setting(_)))
+                {
                     self.rows.push(Row::Line(THEME_NOTE.to_owned()));
                 }
             }
@@ -488,15 +709,17 @@ impl SettingsScreen {
         }
     }
     fn label_width(&self) -> usize {
-        self.displayed_settings()
-            .iter()
-            .map(|key| describe(*key).name.chars().count())
-            .max()
-            .unwrap_or(0)
-            .min(MAX_LABEL_WIDTH)
-            + 2
+        self.label_width
     }
-    fn value_width(&self) -> usize {
+    fn value_width(&mut self) -> usize {
+        if let Some(width) = self.value_width {
+            return width;
+        }
+        let width = self.compute_value_width();
+        self.value_width = Some(width);
+        width
+    }
+    fn compute_value_width(&self) -> usize {
         let widest = self
             .rows
             .iter()
@@ -543,29 +766,38 @@ impl SettingsScreen {
         if can_be_unset {
             options.push(UNSET_CHOICE.to_owned());
         }
-        let mut names: Vec<String> = self.snapshot.theme_names.clone();
-        names.push(DEFAULT_THEME.to_owned());
-        if let Some(current) = current {
-            if !names.contains(current) {
-                names.push(format!("{}{}", current, MISSING_SUFFIX));
-            }
-        }
-        names.sort();
-        names.dedup();
-        names.retain(|name| name != DEFAULT_THEME);
         options.push(DEFAULT_THEME.to_owned());
-        options.extend(names);
+        let missing = current.as_ref().filter(|current| {
+            current.as_str() != DEFAULT_THEME && !self.sorted_theme_names.contains(current)
+        });
+        match missing {
+            Some(current) => {
+                let mut names = self.sorted_theme_names.clone();
+                names.push(format!("{}{}", current, MISSING_SUFFIX));
+                names.sort();
+                options.extend(names);
+            },
+            None => options.extend(self.sorted_theme_names.iter().cloned()),
+        }
         options
     }
     fn choice_options(&self, key: SettingKey, info: &SettingInfo) -> Vec<String> {
         let current = self.current_value(key);
         match info.kind {
-            SettingKind::Choice(choices) if choices == INPUT_MODES => {
-                choices.iter().map(|c| mode_choice_label(c)).collect()
+            SettingKind::Choice(choices) => {
+                let mut options: Vec<String> =
+                    choices.iter().map(|c| choice_label(key, c)).collect();
+                if let Some(current) = current.filter(|current| {
+                    !choices
+                        .iter()
+                        .any(|choice| choice.eq_ignore_ascii_case(current))
+                }) {
+                    options.push(current);
+                }
+                options
             },
-            SettingKind::Choice(choices) => choices.iter().map(|c| c.to_string()).collect(),
             SettingKind::OptionalChoice(choices) => std::iter::once(UNSET_CHOICE.to_owned())
-                .chain(choices.iter().map(|c| c.to_string()))
+                .chain(choices.iter().map(|c| choice_label(key, c)))
                 .collect(),
             SettingKind::OptionalToggle => vec![
                 UNSET_CHOICE.to_owned(),
@@ -609,11 +841,11 @@ impl SettingsScreen {
             .and_then(|value| {
                 options
                     .iter()
-                    .position(|option| option_value(option) == value)
+                    .position(|option| value_for_label(key, option) == value)
                     .or_else(|| {
-                        options
-                            .iter()
-                            .position(|option| option_value(option).eq_ignore_ascii_case(&value))
+                        options.iter().position(|option| {
+                            value_for_label(key, option).eq_ignore_ascii_case(&value)
+                        })
                     })
             })
             .unwrap_or(0)
@@ -753,13 +985,13 @@ impl SettingsScreen {
                             let highlighted = dropdown
                                 .highlighted_index()
                                 .and_then(|index| dropdown.options().get(index))
-                                .map(|label| option_value(label).to_owned());
+                                .map(|label| value_for_label(key, label));
                             dropdown.set_options(options.clone());
                             dropdown.set_selected(selected);
                             if let Some(index) = highlighted.and_then(|highlighted| {
                                 options
                                     .iter()
-                                    .position(|option| option_value(option) == highlighted)
+                                    .position(|option| value_for_label(key, option) == highlighted)
                             }) {
                                 dropdown.set_highlighted_index(index);
                             }
@@ -814,7 +1046,12 @@ impl SettingsScreen {
         self.refresh();
     }
     fn revert_focused(&mut self) {
-        if let Some(key) = self.elements.focused_key().copied() {
+        if let Some(key) = self
+            .elements
+            .focused_key()
+            .copied()
+            .filter(|key| self.link_at(*key).is_none())
+        {
             let is_unsaved = self.setting(key).map(|s| s.is_unsaved()).unwrap_or(false);
             if is_unsaved {
                 revert_config(Some(key));
@@ -1081,7 +1318,204 @@ impl SettingsScreen {
                 pages_changed |= page.handle_timer();
             }
         }
-        self.elements.handle_timer() || keys_screen_changed || pages_changed
+        let help_changed = self.show_hover_help_when_due();
+        self.elements.handle_timer() || keys_screen_changed || pages_changed || help_changed
+    }
+    fn hover_help_enabled(&self) -> bool {
+        self.toggle_value(SettingKey::MouseHoverTips)
+    }
+    fn showing_rows(&self) -> bool {
+        !self.showing_page() && !self.showing_keys_screen() && !self.closing
+    }
+    fn show_hover_help_when_due(&mut self) -> bool {
+        let Some((key, since)) = self.hover_candidate else {
+            return false;
+        };
+        if self.help.is_some()
+            || since.elapsed().as_secs_f64() + 0.05 < HOVER_HELP_SECONDS
+            || !self.showing_rows()
+            || self.elements.has_open_overlay()
+            || self.editing.is_some()
+        {
+            return false;
+        }
+        self.hover_candidate = None;
+        self.help = Some(HelpView {
+            key,
+            from_hover: true,
+        });
+        true
+    }
+    fn label_key_at(&self, line: isize, column: usize) -> Option<SettingKey> {
+        let (x, _, _, _) = self.rows_area?;
+        if !self.showing_rows()
+            || column < x
+            || column >= x + self.label_width
+            || crate::page::under_overlay(line, column)
+        {
+            return None;
+        }
+        self.row_offsets.iter().find_map(|(key, (start, _))| {
+            match self.scroll.screen_row(*start) {
+                Some(screen_y) if screen_y as isize == line => Some(*key),
+                _ => None,
+            }
+        })
+    }
+    fn track_hover_help(&mut self, line: isize, column: usize) -> bool {
+        let hovered = self.label_key_at(line, column);
+        let over_help = self
+            .help_area
+            .map(|area| area.contains(line, column))
+            .unwrap_or(false);
+        let mut changed = false;
+        if let Some(help) = self.help {
+            if help.from_hover && hovered != Some(help.key) && !over_help {
+                self.help = None;
+                changed = true;
+            }
+        }
+        if !self.hover_help_enabled() {
+            self.hover_candidate = None;
+            return changed;
+        }
+        match hovered {
+            Some(key) if self.help.map(|help| help.key) != Some(key) => {
+                if self.hover_candidate.map(|(candidate, _)| candidate) != Some(key) {
+                    self.hover_candidate = Some((key, std::time::Instant::now()));
+                    set_timeout(HOVER_HELP_SECONDS);
+                }
+            },
+            Some(_) => {},
+            None if !over_help => self.hover_candidate = None,
+            None => {},
+        }
+        changed
+    }
+    fn open_help_for_focused(&mut self) -> bool {
+        let Some(key) = self.elements.focused_key().copied() else {
+            return false;
+        };
+        self.hover_candidate = None;
+        self.help = Some(HelpView {
+            key,
+            from_hover: false,
+        });
+        self.follow_focus = true;
+        true
+    }
+    fn help_content(&self, key: SettingKey) -> (String, Vec<HelpLine>) {
+        if let Some(page) = self.link_at(key) {
+            return (
+                page.title().to_owned(),
+                vec![HelpLine::Text(format!(
+                    "Opens the {} page. Press Enter or click it to open, and Esc to come back here.",
+                    page.title().to_lowercase()
+                ))],
+            );
+        }
+        let info = describe(key);
+        let text = setting_help(key)
+            .filter(|help| !help.trim().is_empty())
+            .unwrap_or(info.description);
+        let mut lines = vec![HelpLine::Text(text.to_owned())];
+        if let Some(warning) = self.active_danger(key) {
+            lines.push(HelpLine::Blank);
+            lines.push(HelpLine::Warning(warning.to_owned()));
+        }
+        lines.push(HelpLine::Blank);
+        lines.push(HelpLine::Fact("Default".to_owned(), info.default.to_owned()));
+        lines.push(HelpLine::Fact(
+            "Applies to".to_owned(),
+            match info.scope {
+                Scope::OnlyYou => "only you".to_owned(),
+                Scope::Everyone => "everyone in this session".to_owned(),
+            },
+        ));
+        lines.push(HelpLine::Fact(
+            "Takes effect".to_owned(),
+            if key.requires_restart() {
+                "after a restart".to_owned()
+            } else {
+                "right away".to_owned()
+            },
+        ));
+        lines.push(HelpLine::Fact("Config file".to_owned(), key.id()));
+        (info.name.to_owned(), lines)
+    }
+    fn render_help(&mut self, rows: usize, cols: usize) {
+        self.help_area = None;
+        let Some(help) = self.help else {
+            return;
+        };
+        let Some((area_x, area_y, area_width, area_height)) = self.rows_area else {
+            return;
+        };
+        if !self.showing_rows() {
+            return;
+        }
+        let (title, content) = self.help_content(help.key);
+        let width = area_width.saturating_sub(2).min(HELP_MAX_WIDTH).min(cols);
+        if width < 20 {
+            return;
+        }
+        let inner = width.saturating_sub(4);
+        let fact_label = content
+            .iter()
+            .filter_map(|line| match line {
+                HelpLine::Fact(label, _) => Some(label.chars().count()),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
+            + 2;
+        let mut lines: Vec<Text> = vec![];
+        for line in content {
+            match line {
+                HelpLine::Blank => lines.push(Text::from("")),
+                HelpLine::Text(text) => {
+                    for wrapped in wrap(&text, inner) {
+                        lines.push(Text::from(truncate(&wrapped, inner)));
+                    }
+                },
+                HelpLine::Warning(text) => {
+                    for wrapped in wrap(&text, inner) {
+                        lines.push(Text::from(truncate(&wrapped, inner)).error_color_all());
+                    }
+                },
+                HelpLine::Fact(label, value) => {
+                    let label_length = label.chars().count();
+                    let text = format!("{:<width$}{}", label, value, width = fact_label);
+                    lines.push(Text::from(truncate(&text, inner)).color_range(0, ..label_length));
+                },
+            }
+        }
+        let max_height = rows.min(area_height + 2).max(5);
+        let mut height = lines.len() + 4;
+        if height > max_height {
+            height = max_height;
+            let keep = height.saturating_sub(5);
+            lines.truncate(keep);
+            lines.push(Text::from("…").dim_all());
+        }
+        let row_y = self
+            .row_offsets
+            .get(&help.key)
+            .and_then(|(start, _)| self.scroll.screen_row(*start));
+        let bottom = area_y + area_height;
+        let y = match row_y {
+            Some(row_y) if row_y + 1 + height <= bottom => row_y + 1,
+            Some(row_y) if row_y >= area_y + height => row_y - height,
+            _ => area_y + area_height.saturating_sub(height) / 2,
+        };
+        let x = (area_x + 2).min(cols.saturating_sub(width));
+        crate::page::render_frame(&title, x, y, width, height);
+        for (index, line) in lines.into_iter().enumerate() {
+            print_text_with_coordinates(line, x + 2, y + 2 + index, None, None);
+        }
+        let area = Rect::new(x, y, width, height);
+        note_overlay(area);
+        self.help_area = Some(area);
     }
     fn set_focus(&mut self, focus: Focus) {
         self.focus = focus;
@@ -1114,6 +1548,8 @@ impl SettingsScreen {
     }
     fn open_search(&mut self) {
         self.restore_theme_preview();
+        self.leave_pages();
+        self.sub_page = None;
         self.search_active = true;
         self.search.clear();
         self.scroll.set_offset(0);
@@ -1130,6 +1566,7 @@ impl SettingsScreen {
     fn select_category(&mut self) {
         self.restore_theme_preview();
         self.leave_pages();
+        self.sub_page = None;
         self.bindings_focused = false;
         self.scroll.set_offset(0);
         self.elements.blur();
@@ -1173,6 +1610,12 @@ impl SettingsScreen {
         if self.closing {
             close_self();
             return true;
+        }
+        self.hover_candidate = None;
+        if let Some(help) = self.help.take() {
+            if !help.from_hover {
+                return true;
+            }
         }
         let embedded_keys_screen = self.showing_keys_screen() && self.focus == Focus::Content;
         let keys_capture = (embedded_keys_screen
@@ -1228,6 +1671,10 @@ impl SettingsScreen {
         }
     }
     fn handle_menu_key(&mut self, key: KeyWithModifier) -> bool {
+        if self.sub_page.is_some() {
+            self.sub_page = None;
+            self.rebuild_rows();
+        }
         if is_plain_key(&key, BareKey::Tab)
             || is_plain_key(&key, BareKey::Right)
             || is_plain_key(&key, BareKey::Enter)
@@ -1296,12 +1743,12 @@ impl SettingsScreen {
                 return true;
             }
             if moves_back {
-                self.set_focus(Focus::Menu);
+                self.go_back();
                 return true;
             }
         }
         if take_close_request() {
-            self.begin_close();
+            self.close_or_go_back();
         } else if self.keys_screen.take_needs_refresh() {
             self.refresh();
         }
@@ -1313,7 +1760,7 @@ impl SettingsScreen {
         match response {
             PageResponse::Handled => true,
             PageResponse::LeaveToMenu => {
-                self.set_focus(Focus::Menu);
+                self.go_back();
                 true
             },
             PageResponse::LeaveUp => {
@@ -1321,7 +1768,7 @@ impl SettingsScreen {
                 true
             },
             PageResponse::Close => {
-                self.begin_close();
+                self.close_or_go_back();
                 true
             },
             PageResponse::NotHandled => false,
@@ -1336,11 +1783,11 @@ impl SettingsScreen {
         match response {
             PageResponse::Handled => true,
             PageResponse::LeaveToMenu | PageResponse::LeaveUp => {
-                self.set_focus(Focus::Menu);
+                self.go_back();
                 true
             },
             PageResponse::Close => {
-                self.begin_close();
+                self.close_or_go_back();
                 true
             },
             PageResponse::NotHandled => {
@@ -1368,11 +1815,11 @@ impl SettingsScreen {
             || is_plain_key(&key, BareKey::Tab)
             || is_shift_tab(&key)
         {
-            self.set_focus(Focus::Menu);
+            self.go_back();
         } else if is_plain_key(&key, BareKey::Char('/')) {
             self.open_search();
         } else if is_plain_key(&key, BareKey::Esc) {
-            self.begin_close();
+            self.close_or_go_back();
         } else {
             return self.scroll_key(&key).unwrap_or(false);
         }
@@ -1381,6 +1828,12 @@ impl SettingsScreen {
     fn handle_content_key(&mut self, key: KeyWithModifier) -> bool {
         if self.elements.is_empty() && !self.search_active {
             return self.handle_read_only_key(key);
+        }
+        if is_plain_key(&key, BareKey::Char('?'))
+            && self.editing.is_none()
+            && !self.focused_dropdown_open()
+        {
+            return self.open_help_for_focused();
         }
         let moves_focus = is_plain_key(&key, BareKey::Tab) || is_shift_tab(&key);
         let mut pass_to_elements = true;
@@ -1425,7 +1878,7 @@ impl SettingsScreen {
             if self.search_active {
                 self.set_focus(Focus::Search);
             } else {
-                self.set_focus(Focus::Menu);
+                self.go_back();
             }
         } else if is_plain_key(&key, BareKey::Char('/')) {
             self.open_search();
@@ -1435,7 +1888,7 @@ impl SettingsScreen {
             if self.search_active {
                 self.close_search();
             } else {
-                self.begin_close();
+                self.close_or_go_back();
             }
         } else if let Some(handled) = self.scroll_key(&key) {
             return handled;
@@ -1473,6 +1926,15 @@ impl SettingsScreen {
         response: UiResponse,
         dropdown_was_open: bool,
     ) {
+        if let Some(page) = self.link_at(key) {
+            match response {
+                UiResponse::Activated => self.open_sub_page(page),
+                UiResponse::Cancelled if self.search_active => self.close_search(),
+                UiResponse::Cancelled => self.close_or_go_back(),
+                _ => {},
+            }
+            return;
+        }
         match response {
             UiResponse::Changed(UiValue::Bool(on)) => self.set_value(key, &on.to_string()),
             UiResponse::Changed(UiValue::Choice { label, .. }) => {
@@ -1480,7 +1942,8 @@ impl SettingsScreen {
                 if label == UNSET_CHOICE || label == BUNDLED_FONT {
                     self.unset_value(key);
                 } else {
-                    self.set_value(key, option_value(&label));
+                    let value = value_for_label(key, &label);
+                    self.set_value(key, &value);
                 }
             },
             UiResponse::Changed(UiValue::Number(number)) => self.set_number(key, number),
@@ -1509,7 +1972,7 @@ impl SettingsScreen {
                 } else if self.search_active {
                     self.close_search();
                 } else {
-                    self.begin_close();
+                    self.close_or_go_back();
                 }
             },
             _ => {},
@@ -1609,6 +2072,33 @@ impl SettingsScreen {
         if self.closing {
             return false;
         }
+        let mut help_changed = false;
+        match mouse {
+            Mouse::Hover(line, column) => {
+                help_changed = self.track_hover_help(line, column);
+            },
+            Mouse::LeftClick(line, column) | Mouse::RightClick(line, column) => {
+                self.hover_candidate = None;
+                if let Some(help) = self.help.take() {
+                    let inside = self
+                        .help_area
+                        .map(|area| area.contains(line, column))
+                        .unwrap_or(false);
+                    self.help_area = None;
+                    if inside || !help.from_hover {
+                        return true;
+                    }
+                    help_changed = true;
+                }
+            },
+            Mouse::ScrollUp(_) | Mouse::ScrollDown(_) => {
+                self.hover_candidate = None;
+                if self.help.take().is_some() {
+                    help_changed = true;
+                }
+            },
+            _ => {},
+        }
         match mouse {
             Mouse::Hover(line, column) | Mouse::LeftClick(line, column) => {
                 self.last_mouse = Some((line, column));
@@ -1640,7 +2130,7 @@ impl SettingsScreen {
             _ => false,
         };
         let changed = self.route_mouse(mouse);
-        changed || link_changed
+        changed || link_changed || help_changed
     }
     fn route_mouse(&mut self, mouse: Mouse) -> bool {
         if self.showing_page() {
@@ -1798,6 +2288,9 @@ impl SettingsScreen {
         self.handle_focus_event(event, dropdown_was_open);
         handled || self.scroll.handle_mouse(mouse).is_handled()
     }
+    fn active_danger(&self, key: SettingKey) -> Option<&'static str> {
+        danger_warning(key).filter(|_| self.toggle_value(key))
+    }
     fn marker_for(&self, key: SettingKey) -> (String, bool, bool) {
         let setting = self.setting(key);
         let unsaved = setting.map(|s| s.is_unsaved()).unwrap_or(false);
@@ -1814,6 +2307,12 @@ impl SettingsScreen {
             }
             marker.push_str("⟳ restart");
         }
+        if self.active_danger(key).is_some() {
+            if !marker.is_empty() {
+                marker.push(' ');
+            }
+            marker.push_str(DANGER_MARKER);
+        }
         (marker, unsaved, !unsaved && !set_in_file)
     }
     fn layout_rows(&mut self) -> Vec<usize> {
@@ -1825,6 +2324,13 @@ impl SettingsScreen {
                 Row::Setting(key) => {
                     starts.push(total);
                     self.row_offsets.insert(*key, (total, 1));
+                    total += 1;
+                },
+                Row::Link(page) => {
+                    starts.push(total);
+                    if let Some(key) = page.link_key() {
+                        self.row_offsets.insert(key, (total, 1));
+                    }
                     total += 1;
                 },
                 Row::Heading(_) | Row::LabelledHeading(..) => {
@@ -1930,6 +2436,9 @@ impl SettingsScreen {
         self.elements.clear_areas();
         let showing_keys_screen = self.showing_keys_screen();
         let showing_page = self.showing_page();
+        if showing_keys_screen || showing_page {
+            self.rows_area = None;
+        }
         if showing_keys_screen {
             self.scroll.clear_area();
             let keys_rows = body_height.saturating_sub(1);
@@ -1941,11 +2450,13 @@ impl SettingsScreen {
                 page.render(content_x, body_y, content_width, page_rows);
             }
         } else {
+            self.rows_area = Some((content_x, body_y, content_width, body_height));
             self.render_content(content_x, body_y, content_width, body_height);
         }
         self.render_footer(x0, y0 + ui_height, ui_width);
         self.elements.render_overlays(rows, cols);
         note_group(&self.elements);
+        self.render_help(rows, cols);
         if showing_keys_screen {
             self.keys_screen.render_overlays(rows, cols);
             self.keybindings_screen.render_overlays(rows, cols);
@@ -2099,18 +2610,28 @@ impl SettingsScreen {
         }
     }
     fn natural_body_height(&self) -> usize {
-        let tallest_category = CATEGORIES
-            .iter()
-            .filter(|category| category.has_rows())
-            .map(|category| {
-                let keys = settings_in(*category);
-                let mut sections: Vec<&str> = keys.iter().map(|key| section(*key)).collect();
-                sections.dedup();
-                let headings = sections.iter().filter(|name| !name.is_empty()).count();
-                keys.len() + headings * (1 + SECTION_PADDING)
-            })
-            .max()
-            .unwrap_or(0);
+        static TALLEST: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        let tallest_category = *TALLEST.get_or_init(|| {
+            CATEGORIES
+                .iter()
+                .chain(SUB_PAGES.iter())
+                .filter(|category| category.has_rows())
+                .map(|category| {
+                    let keys = settings_in(*category);
+                    let links = category.links();
+                    let mut sections: Vec<&str> = keys
+                        .iter()
+                        .map(|key| section(*key))
+                        .chain(links.iter().map(|link| link.link_section()))
+                        .collect();
+                    sections.sort();
+                    sections.dedup();
+                    let headings = sections.iter().filter(|name| !name.is_empty()).count();
+                    keys.len() + links.len() + 2 + headings * (1 + SECTION_PADDING)
+                })
+                .max()
+                .unwrap_or(0)
+        });
         tallest_category
             .max(self.menu.items().len())
             .max(KEYS_SCREEN_ROWS)
@@ -2132,7 +2653,7 @@ impl SettingsScreen {
             vec![
                 ("<Ctrl a>", "save"),
                 ("<Ctrl r>", "revert all"),
-                ("<Ctrl w>", "Setup Zellij"),
+                ("<Ctrl w>", "setup wizard"),
             ]
         });
         let mut header = key_hints(&format!("{} · ", count), &hints, cols);
@@ -2189,6 +2710,10 @@ impl SettingsScreen {
         } else {
             None
         }
+        .or_else(|| {
+            self.sub_page
+                .map(|page| format!("{} › {}", WINDOW_TITLE, page.title()))
+        })
         .unwrap_or_else(|| WINDOW_TITLE.to_owned());
         if title != self.window_title {
             rename_plugin_pane(get_plugin_ids().plugin_id, &title);
@@ -2211,6 +2736,9 @@ impl SettingsScreen {
             return None;
         }
         let key = self.elements.focused_key()?;
+        if let Some(page) = self.link_at(*key) {
+            return Some(format!("Opens the {} page", page.title().to_lowercase()));
+        }
         let info = describe(*key);
         let scope = match info.scope {
             Scope::OnlyYou => "applies only to you",
@@ -2239,7 +2767,15 @@ impl SettingsScreen {
                     None,
                 );
             } else if self.focus == Focus::Content {
-                let hints = self.page_hints();
+                let in_sub_page = self.sub_page.is_some();
+                let hints: Vec<(&str, &str)> = self
+                    .page_hints()
+                    .into_iter()
+                    .map(|(key, action)| match (key, action) {
+                        ("<Esc>", "close") if in_sub_page => (key, "back"),
+                        other => other,
+                    })
+                    .collect();
                 print_text_with_coordinates(key_hints("Help: ", &hints, cols), x, y, None, None);
             } else {
                 let hints = [
@@ -2271,6 +2807,19 @@ impl SettingsScreen {
                 None,
                 None,
             );
+        } else if let Some(warning) = self
+            .elements
+            .focused_key()
+            .filter(|_| self.focus == Focus::Content)
+            .and_then(|key| self.active_danger(*key))
+        {
+            print_text_with_coordinates(
+                Text::from(truncate(warning, cols)).error_color_all(),
+                x,
+                description_y,
+                None,
+                None,
+            );
         } else if let Some(description) = self.focused_description() {
             print_text_with_coordinates(
                 Text::from(truncate(&description, cols)).color_all(0),
@@ -2296,9 +2845,13 @@ impl SettingsScreen {
             Focus::Content if self.editing.is_some() => {
                 &[("<Enter>", "apply"), ("<Esc>", "cancel")]
             },
+            Focus::Content if self.help.map(|help| !help.from_hover).unwrap_or(false) => {
+                &[("<any key>", "close help")]
+            },
             Focus::Content if self.focused_text_input().is_some() => &[
                 ("<↓↑>", "move"),
                 ("<Enter>", "edit"),
+                ("<?>", "help"),
                 ("<r>", "revert"),
                 ("<←>", "categories"),
                 ("</>", "search"),
@@ -2307,13 +2860,22 @@ impl SettingsScreen {
             Focus::Content => &[
                 ("<↓↑>", "move"),
                 ("<Space>", "change"),
+                ("<?>", "help"),
                 ("<r>", "revert"),
                 ("<←>", "categories"),
                 ("</>", "search"),
                 ("<Esc>", "close"),
             ],
         };
-        print_text_with_coordinates(key_hints("Help: ", hints, cols), x, y, None, None);
+        let in_sub_page = self.sub_page.is_some() && !self.search_active;
+        let hints: Vec<(&str, &str)> = hints
+            .iter()
+            .map(|(key, action)| match (*key, *action) {
+                ("<←>", "categories") | ("<Esc>", "close") if in_sub_page => (*key, "back"),
+                other => other,
+            })
+            .collect();
+        print_text_with_coordinates(key_hints("Help: ", &hints, cols), x, y, None, None);
     }
     fn render_content(&mut self, x: usize, y: usize, width: usize, height: usize) {
         let starts = self.layout_rows();
@@ -2341,16 +2903,31 @@ impl SettingsScreen {
         }
         let content_width = self.scroll.content_width().saturating_sub(1);
         let value_width = self.value_width();
-        let rows = self.rows.clone();
-        for (row, start) in rows.into_iter().zip(starts.into_iter()) {
+        let widest_marker = self.widest_marker();
+        let rows = std::mem::take(&mut self.rows);
+        for (row, start) in rows.iter().zip(starts.into_iter()) {
             match row {
-                Row::Setting(key) => {
-                    self.render_setting_row(key, start, x, content_width, value_width)
+                Row::Setting(key) => self.render_setting_row(
+                    *key,
+                    start,
+                    x,
+                    content_width,
+                    value_width,
+                    widest_marker,
+                ),
+                Row::Link(page) => {
+                    if let (Some(screen_y), Some(key)) =
+                        (self.scroll.screen_row(start), page.link_key())
+                    {
+                        if let Some(Element::Button(button)) = self.elements.get_mut(&key) {
+                            button.render(x, screen_y);
+                        }
+                    }
                 },
                 Row::Heading(title) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
                         print_text_with_coordinates(
-                            Text::from(truncate(&title, content_width)).color_all(2),
+                            Text::from(truncate(title, content_width)).color_all(2),
                             x,
                             screen_y,
                             None,
@@ -2375,7 +2952,7 @@ impl SettingsScreen {
                 Row::Line(line) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
                         print_text_with_coordinates(
-                            Text::from(truncate(&line, content_width)),
+                            Text::from(truncate(line, content_width)).dim_all(),
                             x,
                             screen_y,
                             None,
@@ -2385,6 +2962,7 @@ impl SettingsScreen {
                 },
             }
         }
+        self.rows = rows;
         if self.rows.is_empty() {
             print_text_with_coordinates(
                 Text::from("No settings match").dim_all(),
@@ -2396,25 +2974,8 @@ impl SettingsScreen {
         }
         self.scroll.render_indicators();
     }
-    fn render_setting_row(
-        &mut self,
-        key: SettingKey,
-        start: usize,
-        x: usize,
-        width: usize,
-        value_width: usize,
-    ) {
-        let Some(screen_y) = self.scroll.screen_row(start) else {
-            return;
-        };
-        let (marker, unsaved, is_default) = self.marker_for(key);
-        let label_width = self.label_width();
-        let marker_width = marker.chars().count();
-        let full_width_text = self.elements.text_input(&key).is_some()
-            && !self.search_active
-            && self.category() == Category::FoldersAndFiles;
-        let widest_marker = self
-            .rows
+    fn widest_marker(&self) -> usize {
+        self.rows
             .iter()
             .filter_map(|row| match row {
                 Row::Setting(key) => {
@@ -2428,7 +2989,26 @@ impl SettingsScreen {
                 _ => None,
             })
             .max()
-            .unwrap_or(0);
+            .unwrap_or(0)
+    }
+    fn render_setting_row(
+        &mut self,
+        key: SettingKey,
+        start: usize,
+        x: usize,
+        width: usize,
+        value_width: usize,
+        widest_marker: usize,
+    ) {
+        let Some(screen_y) = self.scroll.screen_row(start) else {
+            return;
+        };
+        let (marker, unsaved, is_default) = self.marker_for(key);
+        let label_width = self.label_width();
+        let marker_width = marker.chars().count();
+        let full_width_text = self.elements.text_input(&key).is_some()
+            && !self.search_active
+            && self.category() == Category::Advanced;
         let value_width = if full_width_text {
             width.saturating_sub(label_width + marker_width + 2)
         } else {
@@ -2480,6 +3060,9 @@ impl SettingsScreen {
             } else if is_default {
                 let default_len = "○ default".chars().count();
                 marker_text = marker_text.dim_range(..default_len);
+            }
+            if self.active_danger(key).is_some() {
+                marker_text = marker_text.error_color_substring(DANGER_MARKER);
             }
             print_text_with_coordinates(marker_text, marker_x, screen_y, None, None);
         }
@@ -2659,6 +3242,78 @@ mod tests {
         assert!(!screen.handle_mouse(Mouse::Hover(line, column)));
         assert!(screen.handle_mouse(Mouse::Hover(0, 0)));
         assert!(screen.menu.hovered_index().is_none());
+    }
+
+    #[test]
+    fn question_mark_opens_help_for_the_focused_setting_and_any_key_closes_it() {
+        let mut screen = rendered_screen();
+        screen.set_focus(Focus::Content);
+        let focused = *screen.elements.focused_key().unwrap();
+        assert!(screen.handle_key(KeyWithModifier::new(BareKey::Char('?'))));
+        assert_eq!(
+            screen.help,
+            Some(HelpView {
+                key: focused,
+                from_hover: false
+            })
+        );
+        screen.render(ROWS, COLS);
+        assert!(screen.help_area.is_some());
+        assert!(screen.handle_key(KeyWithModifier::new(BareKey::Down)));
+        assert_eq!(screen.help, None);
+        assert_eq!(screen.elements.focused_key(), Some(&focused));
+    }
+
+    #[test]
+    fn help_shows_the_config_file_text_and_the_facts_of_a_setting() {
+        let screen = rendered_screen();
+        let (title, lines) = screen.help_content(SettingKey::OnForceClose);
+        assert_eq!(title, describe(SettingKey::OnForceClose).name);
+        assert!(lines
+            .iter()
+            .any(|line| matches!(line, HelpLine::Text(text) if text.contains("SIGTERM"))));
+        assert!(lines.contains(&HelpLine::Fact(
+            "Takes effect".to_owned(),
+            "after a restart".to_owned()
+        )));
+        assert!(lines.contains(&HelpLine::Fact(
+            "Config file".to_owned(),
+            "on_force_close".to_owned()
+        )));
+    }
+
+    #[test]
+    fn resting_the_pointer_on_a_setting_name_shows_its_help_until_it_moves_away() {
+        let mut screen = rendered_screen();
+        let (key, line, column) = screen
+            .row_offsets
+            .iter()
+            .find_map(|(key, (start, _))| {
+                let (x, _, _, _) = screen.rows_area?;
+                screen
+                    .scroll
+                    .screen_row(*start)
+                    .map(|y| (*key, y as isize, x + 1))
+            })
+            .unwrap();
+        screen.handle_mouse(Mouse::Hover(line, column));
+        assert_eq!(screen.hover_candidate.map(|(k, _)| k), Some(key));
+        screen.handle_timer();
+        assert_eq!(screen.help, None);
+        if let Some((_, since)) = screen.hover_candidate.as_mut() {
+            *since -= std::time::Duration::from_secs(2);
+        }
+        assert!(screen.handle_timer());
+        assert_eq!(
+            screen.help,
+            Some(HelpView {
+                key,
+                from_hover: true
+            })
+        );
+        screen.render(ROWS, COLS);
+        assert!(screen.handle_mouse(Mouse::Hover(0, 0)));
+        assert_eq!(screen.help, None);
     }
 
     #[test]

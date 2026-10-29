@@ -941,7 +941,7 @@ impl AttentionTracker {
         }
         if let Some(first_unseen) = track.first_unseen_output_ms {
             let watched = track.watch_armed_ms.is_some();
-            if !track.ignore_output && !track.is_looked_at() && (watched || !has_records) {
+            if !track.ignore_output && !watched && !track.is_looked_at() && !has_records {
                 candidates.push(Candidate {
                     status: AttentionStatus::NewOutput,
                     source: AttentionSource::UnseenOutput,
@@ -949,7 +949,7 @@ impl AttentionTracker {
                     detail: AttentionDetail::default(),
                     since_ms: first_unseen,
                     past: true,
-                    on_frame: watched,
+                    on_frame: false,
                     from_watch: false,
                 });
             }

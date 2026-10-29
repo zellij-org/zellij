@@ -2399,7 +2399,7 @@ impl SectionedList {
             if !self.sections[section].add_separator(after) {
                 return false;
             }
-        } else if typed(key, 'd') {
+        } else if typed(key, 'd') || is_plain(key, BareKey::Delete) {
             match self.selected {
                 Row::Entry(section, entry) => self.sections[section].request_delete(entry),
                 _ => return false,
@@ -2815,11 +2815,7 @@ impl SectionedList {
             }
         }
         let mut hints = vec![("<↓↑>", "move")];
-        let delete_key = if self.styled.is_some() {
-            "<Del>"
-        } else {
-            "<d>"
-        };
+        let delete_key = "<Del>";
         match self.selected {
             Row::Actions(_) => {
                 hints.push(("<←→>", "choose"));

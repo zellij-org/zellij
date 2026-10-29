@@ -828,7 +828,24 @@ impl Screen {
             .get_active_tab(context.client_id)
             .ok()
             .map(|tab| tab.id);
+        let clicked_any_pane = context.target_pane_id().map(PaneId::from);
+        let clicked_pane_is_fullscreen = || {
+            let Some(pane_id) = clicked_any_pane else {
+                return false;
+            };
+            self.tabs
+                .values()
+                .find(|tab| tab.get_pane_with_id(pane_id).is_some())
+                .map(|tab| tab.fullscreen_pane_id() == Some(pane_id))
+                .unwrap_or(false)
+        };
         actions.iter().any(|action| match action {
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleFocusFullscreen) => {
+                clicked_pane_is_fullscreen()
+            },
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleEmbedOrFloating) => {
+                context.pane_is_floating
+            },
             ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleMute) => clicked_pane
                 .map(|p| self.attention.pane_is_muted(&p))
                 .unwrap_or(false),

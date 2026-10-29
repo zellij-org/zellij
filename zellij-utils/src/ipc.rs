@@ -270,6 +270,10 @@ pub enum ClientToServerMsg {
     StructuredRenderSupport {
         supported: bool,
     },
+    ClipboardPasteSupport {
+        supported: bool,
+        shortcut: Option<String>,
+    },
     RenderFrameAck {
         seq: u64,
     },
@@ -318,6 +322,9 @@ pub enum ServerToClientMsg {
     QueryTerminalSize,
     SetSoftKeyboard {
         on: bool,
+    },
+    PasteFromClipboard {
+        pane_id: Option<PaneId>,
     },
     StartWebServer,
     RenamedSession {

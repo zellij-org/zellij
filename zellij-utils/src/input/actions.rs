@@ -797,6 +797,9 @@ pub enum Action {
     GoToNextAttention,
     ToggleTrayIcon,
     OpenSessionInTerminal,
+    PasteFromClipboardByPaneId {
+        pane_id: PaneId,
+    },
     WaitForPaneExit {
         pane_id: PaneId,
     },
@@ -877,6 +880,10 @@ impl Action {
             Action::IgnorePaneOutputByPaneId { .. } => vec![Action::IgnorePaneOutput],
             Action::WatchPaneByPaneId { .. } => vec![Action::WatchPane],
             Action::MuteTabByTabId { .. } => vec![Action::MuteTab],
+            Action::ShowBars => vec![Action::ToggleBars { bars: vec![] }],
+            Action::HideBars { bars } if bars.is_empty() => {
+                vec![Action::ToggleBars { bars: vec![] }]
+            },
             Action::TogglePaneInGroupByPaneId { .. } => vec![Action::TogglePaneInGroup],
             Action::StartRenamePaneByPaneId { .. } => vec![
                 Action::SwitchToMode {

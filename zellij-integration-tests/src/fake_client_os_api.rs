@@ -55,6 +55,7 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::EmitNestedSessionFrame { .. } => "EmitNestedSessionFrame",
         ServerToClientMsg::HostTerminalThemeChanged { .. } => "HostTerminalThemeChanged",
         ServerToClientMsg::PaneMirror { .. } => "PaneMirror",
+        ServerToClientMsg::PasteFromClipboard { .. } => "PasteFromClipboard",
     }
     .to_string()
 }

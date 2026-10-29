@@ -557,6 +557,8 @@ pub struct ContextMenuPayload {
     pub client_id: u32,
     #[prost(message, repeated, tag="10")]
     pub entries: ::prost::alloc::vec::Vec<ContextMenuEntry>,
+    #[prost(string, optional, tag="11")]
+    pub paste_shortcut: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1895,6 +1897,7 @@ pub enum ClickedPaneAction {
     ToggleIgnoreOutput = 7,
     ToggleWatch = 8,
     HideBar = 9,
+    PasteFromClipboard = 10,
 }
 impl ClickedPaneAction {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1913,6 +1916,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleIgnoreOutput => "ClickedPaneActionToggleIgnoreOutput",
             ClickedPaneAction::ToggleWatch => "ClickedPaneActionToggleWatch",
             ClickedPaneAction::HideBar => "ClickedPaneActionHideBar",
+            ClickedPaneAction::PasteFromClipboard => "ClickedPaneActionPasteFromClipboard",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1928,6 +1932,7 @@ impl ClickedPaneAction {
             "ClickedPaneActionToggleIgnoreOutput" => Some(Self::ToggleIgnoreOutput),
             "ClickedPaneActionToggleWatch" => Some(Self::ToggleWatch),
             "ClickedPaneActionHideBar" => Some(Self::HideBar),
+            "ClickedPaneActionPasteFromClipboard" => Some(Self::PasteFromClipboard),
             _ => None,
         }
     }

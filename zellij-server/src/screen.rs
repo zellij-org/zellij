@@ -588,6 +588,15 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         supported: bool,
     },
+    SetClipboardPasteSupport {
+        client_id: ClientId,
+        supported: bool,
+        shortcut: Option<String>,
+    },
+    PasteFromClipboard {
+        client_id: ClientId,
+        pane_id: zellij_utils::data::PaneId,
+    },
     RenderFrameAck {
         client_id: ClientId,
         seq: u64,
@@ -1381,6 +1390,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetStructuredRenderSupport { .. } => {
                 ScreenContext::SetStructuredRenderSupport
             },
+            ScreenInstruction::SetClipboardPasteSupport { .. } => {
+                ScreenContext::SetClipboardPasteSupport
+            },
+            ScreenInstruction::PasteFromClipboard { .. } => ScreenContext::PasteFromClipboard,
             ScreenInstruction::RenderFrameAck { .. } => ScreenContext::RenderFrameAck,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::PromptReturnedInPane { .. } => ScreenContext::PromptReturnedInPane,
@@ -2029,6 +2042,7 @@ pub(crate) struct Screen {
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -2400,6 +2414,7 @@ impl Screen {
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
+            clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
@@ -3700,6 +3715,45 @@ impl Screen {
         self.structured_render_clients
             .borrow_mut()
             .remove(&client_id);
+        self.clipboard_paste_clients.remove(&client_id);
+    }
+
+    pub fn update_clipboard_paste_support(
+        &mut self,
+        client_id: ClientId,
+        supported: bool,
+        shortcut: Option<String>,
+    ) {
+        if supported {
+            self.clipboard_paste_clients.insert(client_id, shortcut);
+        } else {
+            self.clipboard_paste_clients.remove(&client_id);
+        }
+    }
+
+    pub fn client_can_paste_from_clipboard(&self, client_id: ClientId) -> bool {
+        self.clipboard_paste_clients.contains_key(&client_id)
+    }
+
+    pub fn client_paste_shortcut(&self, client_id: ClientId) -> Option<String> {
+        self.clipboard_paste_clients
+            .get(&client_id)
+            .cloned()
+            .flatten()
+    }
+
+    fn paste_from_clipboard(&self, client_id: ClientId, pane_id: zellij_utils::data::PaneId) {
+        if !self.client_can_paste_from_clipboard(client_id) {
+            return;
+        }
+        if let Some(os_input) = &self.bus.os_input {
+            let _ = os_input.send_to_client(
+                client_id,
+                ServerToClientMsg::PasteFromClipboard {
+                    pane_id: Some(pane_id),
+                },
+            );
+        }
     }
 
     pub fn update_sixel_support(&mut self, client_id: ClientId, supported: bool) {
@@ -12939,6 +12993,16 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.update_structured_render_support(client_id, supported);
                 screen.render(None)?;
+            },
+            ScreenInstruction::SetClipboardPasteSupport {
+                client_id,
+                supported,
+                shortcut,
+            } => {
+                screen.update_clipboard_paste_support(client_id, supported, shortcut);
+            },
+            ScreenInstruction::PasteFromClipboard { client_id, pane_id } => {
+                screen.paste_from_clipboard(client_id, pane_id);
             },
             ScreenInstruction::RenderFrameAck { client_id, seq } => {
                 screen.handle_render_frame_ack(client_id, seq)?;

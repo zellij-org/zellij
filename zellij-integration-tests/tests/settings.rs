@@ -8,26 +8,27 @@ use zellij_integration_tests::{
 const ARROW_LEFT: &[u8] = b"\x1b[D";
 const ARROW_RIGHT: &[u8] = b"\x1b[C";
 const ARROW_DOWN: &[u8] = b"\x1b[B";
+const HIDE_SESSION_NAME_INDEX: usize = 10;
 
 fn open_settings(zellij: &TestSession) -> GridSnapshot {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     })
 }
 
 fn close_search(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("search closed and categories shown", |grid_snapshot| {
-        grid_snapshot.contains("Mouse and clipboard") && !grid_snapshot.contains(" match")
+        grid_snapshot.contains("Clipboard and selection") && !grid_snapshot.contains(" match")
     });
 }
 
 fn close_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings screen closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
+        !grid_snapshot.contains("unsaved change")
     });
 }
 
@@ -103,6 +104,9 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
     open_settings(&zellij);
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(&keys::TAB);
+    for _ in 0..HIDE_SESSION_NAME_INDEX {
+        zellij.send_stdin(ARROW_DOWN);
+    }
     zellij.wait_until(
         "unsaved marker shown again after reopening",
         |grid_snapshot| {
@@ -196,13 +200,11 @@ fn the_unsaved_marker_in_the_side_menu_takes_the_hover_background() {
     });
     close_search(&zellij);
     let grid_snapshot = zellij.wait_until("menu marker shown", |grid_snapshot| {
-        grid_snapshot.contains("Pane frames and borders ●")
+        grid_snapshot.contains("Appearance ●")
     });
-    let row = grid_snapshot
-        .row_of_line("Pane frames and borders ●")
-        .unwrap();
+    let row = grid_snapshot.row_of_line("Appearance ●").unwrap();
     let line = grid_snapshot.lines()[row].clone();
-    let title_column = line[..line.find("Pane frames").unwrap()].chars().count();
+    let title_column = line[..line.find("Appearance").unwrap()].chars().count();
     let marker_column = line[..line.find('●').unwrap()].chars().count();
 
     let background_before_hover = grid_snapshot.cell_style(title_column, row).background;

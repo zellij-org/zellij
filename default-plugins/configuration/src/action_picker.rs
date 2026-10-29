@@ -522,7 +522,7 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     ),
     menu_only(
         "TogglePaneEmbedOrFloatingByPaneId",
-        "Float or embed the clicked pane",
+        "Make the clicked pane floating or tiled",
         &[],
     ),
     menu_only("TogglePanePinnedByPaneId", "Pin the clicked pane", &[]),
@@ -536,6 +536,11 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     menu_only(
         "IgnorePaneOutputByPaneId",
         "Ignore new output of the clicked pane",
+        &[],
+    ),
+    menu_only(
+        "PasteFromClipboardByPaneId",
+        "Paste the clipboard into the clicked pane (desktop app only)",
         &[],
     ),
     menu_only(

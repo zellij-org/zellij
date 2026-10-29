@@ -184,6 +184,7 @@ const EVERY_WINDOW_SETTING_SET: &str = "terminal {
     shift_drag_selects false
     reuse_session_windows false
     middle_click_paste false
+    allow_remote_clipboard_read true
     hide_pointer_while_typing true
     macos_option_as_alt \"both\"
     paste_keys \"Ctrl Shift v\" \"Shift Insert\"

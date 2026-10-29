@@ -10,7 +10,6 @@ const PANE_MODE_HINT: &str = "- Close pane";
 const STATUS_BAR_MENU_ITEM: &str = "Hide status bar";
 const HIDE_ALL_MENU_ITEM: &str = "Hide all bars";
 const SHOW_BARS_MENU_ITEM: &str = "Show bars";
-const PANE_HIDE_BARS_MENU_ITEM: &str = "Hide bars";
 
 fn start_zellij_with(extra_config: &str) -> TestSession {
     TestRunner::new(TERMINAL_SIZE)
@@ -236,7 +235,7 @@ fn the_right_click_menu_hides_the_clicked_bar_and_shows_the_bars_again() {
 }
 
 #[test]
-fn the_pane_menu_hides_every_bar_and_then_offers_to_show_them() {
+fn the_pane_menu_offers_to_show_the_bars_only_while_they_are_hidden() {
     let mut zellij = start_zellij_with("mouse_mode true\nhidden_bars_notification false");
     claim_first_terminal_and_wait_for_prompt(&zellij);
     zellij.wait_until("both bars shown", |grid_snapshot| {
@@ -244,29 +243,30 @@ fn the_pane_menu_hides_every_bar_and_then_offers_to_show_them() {
     });
 
     right_click(&zellij, 30, 10);
-    let grid_snapshot =
-        zellij.wait_until("the pane menu offers to hide the bars", |grid_snapshot| {
-            grid_snapshot.contains(PANE_HIDE_BARS_MENU_ITEM) && grid_snapshot.contains("Close pane")
-        });
+    let grid_snapshot = zellij.wait_until("the pane menu opened", |grid_snapshot| {
+        grid_snapshot.contains("Close pane")
+    });
     assert!(
         !grid_snapshot.contains(SHOW_BARS_MENU_ITEM),
         "nothing is hidden yet, so there is nothing to show:\n{}",
         grid_snapshot.text
     );
-    click_menu_item(&zellij, &grid_snapshot, PANE_HIDE_BARS_MENU_ITEM);
-    zellij.wait_until("every bar is hidden", |grid_snapshot| {
-        bars_are_hidden(grid_snapshot) && !grid_snapshot.contains("Close pane")
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the pane menu closed", |grid_snapshot| {
+        !grid_snapshot.contains("Close pane")
     });
+
+    toggle_bars_via_keybinding(&zellij);
+    zellij.wait_until("every bar is hidden", bars_are_hidden);
 
     right_click(&zellij, 30, 10);
     let grid_snapshot =
         zellij.wait_until("the pane menu offers to show the bars", |grid_snapshot| {
             grid_snapshot.contains(SHOW_BARS_MENU_ITEM) && grid_snapshot.contains("Close pane")
         });
-    assert!(
-        !grid_snapshot.contains(PANE_HIDE_BARS_MENU_ITEM),
-        "every bar is already hidden:\n{}",
-        grid_snapshot.text
-    );
+    click_menu_item(&zellij, &grid_snapshot, SHOW_BARS_MENU_ITEM);
+    zellij.wait_until("both bars are back", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.status_bar_appears()
+    });
     zellij.quit();
 }

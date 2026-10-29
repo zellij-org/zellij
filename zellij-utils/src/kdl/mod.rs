@@ -1527,6 +1527,7 @@ impl Action {
             | Action::IgnorePaneOutputByPaneId { pane_id }
             | Action::WatchPaneByPaneId { pane_id }
             | Action::HideBarByPaneId { pane_id }
+            | Action::PasteFromClipboardByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1540,6 +1541,7 @@ impl Action {
                     Action::IgnorePaneOutputByPaneId { .. } => "IgnorePaneOutputByPaneId",
                     Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
                     Action::HideBarByPaneId { .. } => "HideBarByPaneId",
+                    Action::PasteFromClipboardByPaneId { .. } => "PasteFromClipboardByPaneId",
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
@@ -2731,6 +2733,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "IgnorePaneOutputByPaneId"
             | "WatchPaneByPaneId"
             | "HideBarByPaneId"
+            | "PasteFromClipboardByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2765,6 +2768,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     "IgnorePaneOutputByPaneId" => Action::IgnorePaneOutputByPaneId { pane_id },
                     "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
                     "HideBarByPaneId" => Action::HideBarByPaneId { pane_id },
+                    "PasteFromClipboardByPaneId" => Action::PasteFromClipboardByPaneId { pane_id },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
@@ -5505,11 +5509,14 @@ impl Options {
     }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// Note: This only applies to web clients at the moment."#;
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores."#;
         let create_node = |node_value: usize| -> KdlNode {
             let mut node = KdlNode::new("client_async_worker_tasks");
             node.push(KdlValue::Base10(node_value as i64));
@@ -11095,7 +11102,7 @@ fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
         context_menu {
             pane {
                 remove "New floating pane"
-                item "Clear" after="Rename pane" { Detach; }
+                item "Clear" after="Rename pane…" { Detach; }
                 item "Close pane" { CloseFocus; }
             }
             tab {
@@ -11118,7 +11125,7 @@ fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
         serialized
     );
     assert!(
-        serialized.contains("after=\"Rename pane\""),
+        serialized.contains("after=\"Rename pane…\""),
         "{}",
         serialized
     );

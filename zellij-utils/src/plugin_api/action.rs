@@ -855,6 +855,19 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::HideBarByPaneId"),
             },
+            Some(ProtobufActionName::PasteFromClipboardByPaneId) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                        Ok(Action::PasteFromClipboardByPaneId {
+                            pane_id: payload
+                                .pane_id
+                                .ok_or("Missing pane id for Action::PasteFromClipboardByPaneId")?
+                                .try_into()?,
+                        })
+                    },
+                    _ => Err("Wrong payload for Action::PasteFromClipboardByPaneId"),
+                }
+            },
             Some(ProtobufActionName::MuteTabByTabId) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::TargetTabIdPayload(payload)) => {
                     Ok(Action::MuteTabByTabId { id: payload.tab_id })
@@ -2212,6 +2225,12 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::HideBarByPaneId { pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::HideBarByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::PasteFromClipboardByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::PasteFromClipboardByPaneId as i32,
                 optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
@@ -3992,6 +4011,9 @@ mod tests {
             Action::ShowBars,
             Action::HideBarByPaneId {
                 pane_id: PaneId::Plugin(7),
+            },
+            Action::PasteFromClipboardByPaneId {
+                pane_id: PaneId::Terminal(3),
             },
         ] {
             let protobuf: ProtobufAction = original.clone().try_into().unwrap();

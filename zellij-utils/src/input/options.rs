@@ -536,11 +536,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub post_command_discovery_hook: Option<String>,
 
-    /// Number of async worker tasks to spawn per active client.
+    /// Number of background threads used by `zellij attach <url>` when it connects to a session
+    /// on another machine. One set is made for that program, not one per client; the web server,
+    /// browser clients and local sessions are not affected.
     ///
-    /// Allocating few tasks may result in resource contention and lags. Small values (around 4)
-    /// should typically work best. Set to 0 to use the number of (physical) CPU cores.
-    /// NOTE: This only applies to web clients at the moment.
+    /// Most of the work runs on the main thread, so these threads are usually idle. Set to 0 to
+    /// use the number of (physical) CPU cores.
     #[clap(long)]
     pub client_async_worker_tasks: Option<usize>,
 

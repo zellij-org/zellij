@@ -155,11 +155,15 @@ fn parse_osc52_query(bytes: &[u8]) -> Option<(char, &[u8])> {
 }
 
 pub fn paste_message(chars: String) -> ClientToServerMsg {
+    paste_message_into(chars, None)
+}
+
+pub fn paste_message_into(
+    chars: String,
+    pane_id: Option<zellij_utils::data::PaneId>,
+) -> ClientToServerMsg {
     ClientToServerMsg::Action {
-        action: Action::Paste {
-            chars,
-            pane_id: None,
-        },
+        action: Action::Paste { chars, pane_id },
         terminal_id: None,
         client_id: None,
         is_cli_client: false,

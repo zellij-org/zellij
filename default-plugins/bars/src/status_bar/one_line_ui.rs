@@ -1688,7 +1688,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameSession}, A::SessionNameInput{input: vec![0]}])),
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Share"), s("Share"), share_key(&km)),
-        (s("Configure"), s("Config"), configuration_key(&km)),
+        (s("Settings"), s("Settings"), configuration_key(&km)),
         (s("Layout Manager"), s("Layouts"), layout_manager_key(&km)),
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
         (s("About"), s("About"), about_key(&km)),

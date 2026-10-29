@@ -398,6 +398,7 @@ enum ClickedPaneAction {
   ClickedPaneActionToggleIgnoreOutput = 7;
   ClickedPaneActionToggleWatch = 8;
   ClickedPaneActionHideBar = 9;
+  ClickedPaneActionPasteFromClipboard = 10;
 }
 
 enum ClickedTabAction {
@@ -435,6 +436,7 @@ message ContextMenuPayload {
   uint32 column = 8;
   uint32 client_id = 9;
   repeated ContextMenuEntry entries = 10;
+  optional string paste_shortcut = 11;
 }
 
 message NestedSessionEndedPayload {

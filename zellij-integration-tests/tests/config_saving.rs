@@ -14,7 +14,7 @@ fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     });
 }
 
@@ -69,10 +69,14 @@ fn saving_writes_only_the_changed_lines_and_keeps_comments() {
     });
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("keyboard settings shown", |grid_snapshot| {
+        grid_snapshot.contains("Key bindings and preset…")
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("keys page shown", |grid_snapshot| {
         grid_snapshot.contains("Save as a preset")
     });
-    zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("preset list opened", |grid_snapshot| {
         grid_snapshot.contains("unlock-first")
@@ -179,6 +183,10 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     open_settings(&zellij);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("appearance settings shown", |grid_snapshot| {
+        grid_snapshot.contains("Theme (dark terminal)")
+    });
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("theme list opened", |grid_snapshot| {
@@ -192,7 +200,7 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('x'));
     zellij.wait_until("settings pane closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
+        !grid_snapshot.contains("unsaved change")
     });
 
     open_settings(&zellij);
@@ -406,7 +414,7 @@ fn go_back_on_the_keybindings_screen_returns_to_the_setup_screen() {
     zellij.wait_until("the keybindings screen follows", |grid_snapshot| {
         grid_snapshot.contains("Please Choose a Keybinding Preset")
             && grid_snapshot.contains("You can always change this later.")
-            && grid_snapshot.contains("<Ctrl a> Finish")
+            && grid_snapshot.contains("<Ctrl a> Save and finish")
     });
     click_on(&zellij, "Go back", 0);
     zellij.wait_until("the setup screen is back", |grid_snapshot| {
