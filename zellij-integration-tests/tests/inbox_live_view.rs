@@ -3,9 +3,9 @@
 use std::time::Duration;
 use zellij_integration_tests::attention::{needs_you, program_status};
 use zellij_integration_tests::inbox::{
-    background_session_with, inbox_shows, open_inbox, open_inbox_on, press_esc, press_release_key,
-    press_type_key, shows_inbox, ATTENTION_CONFIG, RELEASE_KEY_HINT, SESSIONS_HELP, TYPE_INTO_IT,
-    TYPE_INTO_IT_HINT, TYPING_INTO,
+    background_session_with, inbox_shows, inbox_view_area, open_inbox, open_inbox_on, press_esc,
+    press_release_key, press_type_key, shows_inbox, ATTENTION_CONFIG, RELEASE_KEY_HINT,
+    SESSIONS_HELP, TYPE_INTO_IT, TYPING_INTO,
 };
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
@@ -78,23 +78,9 @@ fn wait_for_count(zellij: &TestSession, count: usize) {
     });
 }
 
-fn view_area(grid_snapshot: &GridSnapshot, session: &str) -> Option<Area> {
-    let place = format!(" {} › ", session);
-    let lines = grid_snapshot.lines();
-    let row = lines
-        .iter()
-        .position(|line| line.contains(&place) && line.contains('┌'))?;
-    let top: Vec<char> = lines[row].chars().collect();
-    let place_column = lines[row][..lines[row].find(&place)?].chars().count();
-    let column = (0..place_column).rev().find(|x| top[*x] == '┌')?;
-    let right = (column + 1..top.len()).find(|x| top[*x] == '┐')?;
-    let bottom = (row + 1..lines.len()).find(|y| lines[*y].chars().nth(column) == Some('└'))?;
-    Some(Area {
-        x: column + 1,
-        y: row + 1,
-        cols: right - column - 1,
-        rows: bottom - row - 1,
-    })
+fn view_area(grid_snapshot: &GridSnapshot, _session: &str) -> Option<Area> {
+    let (x, y, cols, rows) = inbox_view_area(grid_snapshot)?;
+    Some(Area { x, y, cols, rows })
 }
 
 fn shown_inside_the_view(grid_snapshot: &GridSnapshot, session: &str, text: &str) -> bool {
@@ -608,7 +594,7 @@ fn a_closing_source_pane_shows_the_closed_message_and_the_selection_moves_on_onc
 
 #[test]
 fn a_narrow_browser_lists_the_items_without_a_live_view() {
-    let mut zellij = TestRunner::new(Size { cols: 80, rows: 24 })
+    let mut zellij = TestRunner::new(Size { cols: 70, rows: 24 })
         .with_config(ATTENTION_CONFIG)
         .start();
     let terminal = zellij.expect_pty_spawn();
@@ -821,7 +807,7 @@ fn a_double_esc_reaches_the_program_and_f9_stops_typing_without_closing_the_inbo
     wait_for_the_view_of(&zellij, &other, "escape here");
     let grid_snapshot = zellij.snapshot();
     assert!(
-        grid_snapshot.contains(TYPE_INTO_IT_HINT),
+        grid_snapshot.contains(TYPE_INTO_IT),
         "{}",
         grid_snapshot.text
     );

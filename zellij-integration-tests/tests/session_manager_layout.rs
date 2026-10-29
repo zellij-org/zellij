@@ -229,7 +229,7 @@ fn the_inbox_shows_the_pane_live_beside_the_list_when_wide_and_only_the_list_whe
     terminal.output(b"some output\r\n");
     terminal.output(&needs_you(text));
 
-    let (mut narrow, _) = main_session_sized(Size { cols: 80, rows: 40 });
+    let (mut narrow, _) = main_session_sized(Size { cols: 70, rows: 40 });
     wait_for_indicator(&narrow, "the item is counted", "● 1");
     let grid_snapshot = open_live_view_of(&narrow, text);
     assert!(
@@ -257,7 +257,7 @@ fn the_inbox_shows_the_pane_live_beside_the_list_when_wide_and_only_the_list_whe
 
 #[test]
 fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
-    let size = Size { cols: 88, rows: 44 };
+    let size = Size { cols: 70, rows: 44 };
     let word = "Z".repeat(200);
     let (_background, terminal) = background_session_with(ATTENTION_CONFIG);
     terminal.output(&needs_you(&word));

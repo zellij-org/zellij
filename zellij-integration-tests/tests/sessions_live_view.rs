@@ -71,6 +71,16 @@ fn layout_size_of(terminal: &FakePtyHandle) -> (u16, u16) {
 }
 
 fn view_area(grid_snapshot: &GridSnapshot, session: &str) -> Option<Area> {
+    framed_view_area(grid_snapshot, session).or_else(|| {
+        if !shows_inbox(grid_snapshot) && !grid_snapshot.contains("typing into") {
+            return None;
+        }
+        let (x, y, cols, rows) = zellij_integration_tests::inbox::inbox_view_area(grid_snapshot)?;
+        Some(Area { x, y, cols, rows })
+    })
+}
+
+fn framed_view_area(grid_snapshot: &GridSnapshot, session: &str) -> Option<Area> {
     let place = format!(" {} › ", session);
     let lines = grid_snapshot.lines();
     let row = lines

@@ -85,3 +85,27 @@ pub fn press_release_key(client: &impl TypesKeys) {
 pub fn press_type_key(client: &impl TypesKeys) {
     client.type_bytes(&keys::ALT_ENTER);
 }
+
+pub fn inbox_view_area(grid_snapshot: &GridSnapshot) -> Option<(usize, usize, usize, usize)> {
+    let lines = grid_snapshot.lines();
+    let is_separator = |c: Option<char>| matches!(c, Some('│') | Some('┃'));
+    let tab_row = lines
+        .iter()
+        .position(|line| line.contains("Inbox (") && line.contains("Sessions ("))?;
+    let tab_line: Vec<char> = lines[tab_row].chars().collect();
+    let column_of = |text: &str| -> Option<usize> {
+        Some(lines[tab_row][..lines[tab_row].find(text)?].chars().count())
+    };
+    let inbox_column = column_of("Inbox (")?;
+    let sessions_column = column_of("Sessions (")?;
+    let right = (sessions_column..tab_line.len())
+        .find(|x| tab_line[*x] == '│')
+        .unwrap_or(tab_line.len());
+    let top = tab_row + 1;
+    let row: Vec<char> = lines.get(top)?.chars().collect();
+    let separator = (inbox_column..right.min(row.len())).find(|x| is_separator(Some(row[*x])))?;
+    let bottom = (top..lines.len())
+        .find(|y| !is_separator(lines[*y].chars().nth(separator)))
+        .unwrap_or(lines.len());
+    Some((separator + 1, top, right - separator - 1, bottom - top))
+}

@@ -19146,26 +19146,59 @@ fn f9_closes_a_focused_session_card() {
 }
 
 #[test]
-fn f9_opens_a_focused_session_card_when_none_is_open() {
+fn f9_opens_the_session_manager_as_a_floating_pane_at_its_final_size() {
     let client_id = 1;
     let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
     screen.toggle_session_card(client_id);
-    let loaded: Vec<(crate::tab::PopupKind, Option<String>)> = plugin_receiver
-        .try_iter()
-        .filter_map(|(instruction, _)| match instruction {
-            PluginInstruction::LoadPopup {
+    let mut popups = 0;
+    let mut loaded = vec![];
+    for (instruction, _) in plugin_receiver.try_iter() {
+        match instruction {
+            PluginInstruction::LoadPopup { .. } => popups += 1,
+            PluginInstruction::Load(
+                should_float,
+                _,
+                _,
+                _,
                 run_plugin_or_alias,
-                kind,
-                ..
-            } => Some((kind, role_of(&run_plugin_or_alias))),
-            _ => None,
-        })
-        .collect();
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                should_focus,
+                coordinates,
+                _,
+            ) => loaded.push((
+                should_float,
+                should_focus,
+                role_of(&run_plugin_or_alias),
+                coordinates,
+            )),
+            _ => {},
+        }
+    }
+    assert_eq!(
+        popups, 0,
+        "no popup that would be converted and resized later"
+    );
+    let (x, y, width, height) = crate::screen::popups::session_manager_geometry(121, 20);
+    assert_eq!((x, y, width, height), (15, 2, 90, 15));
     assert_eq!(
         loaded,
         vec![(
-            crate::tab::PopupKind::Prompt,
-            Some("card_focused".to_owned())
+            Some(true),
+            Some(true),
+            Some(crate::screen::popups::SESSION_MANAGER_ROLE.to_owned()),
+            Some(
+                zellij_utils::data::FloatingPaneCoordinates::default()
+                    .with_x_fixed(x)
+                    .with_y_fixed(y)
+                    .with_width_fixed(width)
+                    .with_height_fixed(height)
+            ),
         )]
     );
 }
