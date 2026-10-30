@@ -26,10 +26,12 @@ message ServerToClientMsg {
     MobileStateMsg mobile_state = 19;
     RenderFrameMsg render_frame = 20;
     HostThemeModeMsg host_theme_mode = 21;
-    WindowSettingsMsg window_settings = 22;
+    TerminalSettingsMsg terminal_settings = 22;
     HostProgramStatusMsg host_program_status = 23;
     SessionAttentionMsg session_attention = 24;
     SessionPreviewMsg session_preview = 25;
+    ServerPaneMirrorMsg pane_mirror = 26;
+    PasteFromClipboardMsg paste_from_clipboard = 27;
   }
 }
 
@@ -111,7 +113,7 @@ message ConfigFileUpdatedMsg {
   // Empty message
 }
 
-message WindowSettingsMsg {
+message TerminalSettingsMsg {
   string settings_json = 1;
 }
 
@@ -135,6 +137,10 @@ message ForwardQueryToHostMsg {
   uint32 token = 1;
   bytes query_bytes = 2;
   bool resolve_async = 3;
+}
+
+message PasteFromClipboardMsg {
+  optional PaneId pane_id = 1;
 }
 
 message SetSoftKeyboardMsg {
@@ -197,4 +203,8 @@ message MobileStateMsg {
   repeated MobilePaneMsg panes = 8;
   repeated MobileSessionMsg sessions = 9;
   MobileRenderPrefsMsg render_prefs = 10;
+}
+
+message ServerPaneMirrorMsg {
+  bytes payload = 1;
 }

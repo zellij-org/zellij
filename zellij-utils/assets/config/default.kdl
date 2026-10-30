@@ -68,50 +68,57 @@ load_plugins {
 // but right clicks are still taken by Zellij; use "context_menu_enabled false" to turn the menu off
 context_menu {
     pane {
+        item "Paste" { PasteFromClipboardByPaneId; }
+        separator
         item "New pane" { NewPane; }
         item "New floating pane" { NewFloatingPane; }
         separator
-        item "Fullscreen" { ToggleFocusFullscreenByPaneId; }
-        item "Float / Embed" { TogglePaneEmbedOrFloatingByPaneId; }
-        item "Rename pane" { StartRenamePaneByPaneId; }
-        item "Add to group" { TogglePaneInGroupByPaneId; }
+        item "Rename pane…" { StartRenamePaneByPaneId; }
+        item "Fullscreen" toggled_label="Exit fullscreen" { ToggleFocusFullscreenByPaneId; }
+        item "Make floating" toggled_label="Make tiled" { TogglePaneEmbedOrFloatingByPaneId; }
         separator
-        item "Watch this pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
-        item "Ignore output" toggled_label="Report output" { IgnorePaneOutputByPaneId; }
+        item "Watch pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
         item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
         separator
         item "Close pane" { CloseFocusByPaneId; }
     }
     tab {
         item "New tab" { NewTab; }
-        item "Rename tab" { StartRenameTabByTabId; }
-        item "Move tab left" { MoveTabByTabId "left"; }
-        item "Move tab right" { MoveTabByTabId "right"; }
-        item "Move tab to start" { MoveTabToPosition "start"; }
-        item "Move tab to end" { MoveTabToPosition "end"; }
+        item "Rename tab…" { StartRenameTabByTabId; }
+        item "Move left" { MoveTabByTabId "left"; }
+        item "Move right" { MoveTabByTabId "right"; }
+        item "Move to start" { MoveTabToPosition "start"; }
+        item "Move to end" { MoveTabToPosition "end"; }
         item "Mute tab" toggled_label="Unmute tab" { MuteTabByTabId; }
         separator
         item "Close tab" { CloseTabById; }
     }
     bar {
-        item "New pane" { NewPane; }
         item "New tab" { NewTab; }
+        separator
+        item "Rename session…" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         item "Back to {}" { ToggleSession; }
+        item "Session manager…" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Open in a Zellij terminal" { OpenSessionInTerminal; }
+        separator
+        item "Hide {}" { HideBarByPaneId; }
+        item "Hide all bars" { HideBars; }
+        separator
+        item "Detach" { Detach; }
     }
     common {
+        item "Show bars" { ShowBars; }
         item "Settings…" {
             LaunchOrFocusPlugin "configuration" {
                 floating true
                 move_to_focused_tab true
             }
         }
-        item "Session manager" {
-            LaunchOrFocusPlugin "session-manager" {
-                floating true
-                move_to_focused_tab true
-            }
-        }
-        item "Detach" { Detach; }
     }
 }
 
@@ -123,6 +130,53 @@ context_menu {
 //   - quit
 //
 // on_force_close "quit"
+
+// Choose what the quit key (Ctrl q by default) does
+// Options:
+//   - ask_quit (Default - ask, with quitting preselected)
+//   - ask_detach (ask, with detaching preselected)
+//   - quit (quit without asking)
+//   - detach (detach without asking; the session keeps running)
+//
+// on_quit "ask_detach"
+
+// The name of the session to create when Zellij starts
+// Default: a random name
+// (Requires restart)
+//
+// session_name "My singleton session"
+
+// Attach to the session named in session_name if it already exists, instead of
+// failing to start
+// (Requires restart)
+// Default: false
+//
+// attach_to_session true
+
+// Bars a new session starts with hidden: "none" (Default), "all", or bar names
+// separated by commas, eg. "tab-bar,status-bar". Hidden bars come back with the
+// "Show bars" right-click menu item or the ToggleBars action.
+//
+// bars_hidden_on_start "all"
+
+// Briefly show a note saying what was hidden and how to show it again whenever
+// bars are hidden
+// Default: true
+//
+// hidden_bars_notification false
+
+// While the bar that shows the keys of the current mode is hidden, show those
+// keys in a corner of the screen when entering a mode
+// Default: true
+//
+// mode_hints_when_bars_hidden false
+
+// The key that stops typing into a live view of a pane (in the inbox or a
+// mirror) and gives the keys back to the plugin showing it. A key repeated,
+// eg. "Esc Esc", must be pressed twice in a row.
+// Default: the key that opens the inbox, F9 if there is none
+//
+// live_view_release_key "Ctrl Alt Home"
 
 // Choose how to handle a nested Zellij session detected running inside a pane
 // Options:
@@ -170,6 +224,8 @@ context_menu {
 //     pane_frames {
 //         // round the corners of single-line borders
 //         rounded_corners true
+//         // hide the session name that is shown in the frame of the focused pane
+//         hide_session_name false
 //         // line style for all four sides of tiled pane frames
 //         // one of: single, double, heavy, dashed, heavy_dashed
 //         border_style "single"
@@ -178,6 +234,8 @@ context_menu {
 //         border_right "single"
 //         border_bottom "single"
 //         border_left "single"
+//         // rounded corners for tiled panes only, overriding rounded_corners
+//         border_rounded_corners true
 //         // when two neighbouring panes disagree about a shared grid line
 //         // (pane frames off), that line falls back to border_style above
 //         // the same keys prefixed with "floating_" apply to floating panes,
@@ -206,7 +264,7 @@ context_menu {
 //
 // session_serialization false
 
-// Whether pane viewports are serialized along with the session, default is false
+// Whether pane viewports are serialized along with the session
 // (Requires restart)
 // Options:
 //   - true
@@ -273,7 +331,6 @@ context_menu {
 // default_layout "compact"
 
 // Choose the mode that zellij uses when starting up and returns to after actions.
-// Changes apply to the running session without a restart.
 // Default: normal
 //
 // default_mode "locked"
@@ -294,7 +351,7 @@ context_menu {
 // Excess rows are discarded in a FIFO fashion.
 // (Requires restart)
 // Valid values: positive integers
-// Default value: 10000
+// Default: 10000
 //
 // scroll_buffer_size 10000
 
@@ -340,7 +397,6 @@ context_menu {
 // layout_dir "/path/to/my/layout_dir"
 
 // The folder in which Zellij will look for themes
-// Changes apply to the running session without a restart.
 // Themes from this folder are read-only in the settings screen (copy one to edit it)
 //
 // theme_dir "/path/to/my/theme_dir"
@@ -382,6 +438,11 @@ context_menu {
 // Default: true
 //
 // grapheme_clusters false
+
+// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default
+// Default: true
+//
+// mirror_resizes_source_pane false
 
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
@@ -536,12 +597,15 @@ context_menu {
 //
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 // (Requires restart)
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// NOTE: This only applies to web clients at the moment.
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores.
 // client_async_worker_tasks 4
 
 // How often (in seconds) sessions are saved to disk so they can be resurrected
@@ -617,14 +681,36 @@ context_menu {
 // Settings for the web client (font, font_size, cursor_blink, cursor_style, ...)
 // (Requires restart)
 web_client {
+    // Font family the browser draws the terminal with
     font "monospace"
+
+    // Font size in pixels
+    // font_size 14
+
+    // Whether the cursor blinks
+    // cursor_blink false
+
+    // Cursor shape: "block", "bar" or "underline"
+    // cursor_style "block"
+
+    // Cursor shape while the browser tab is not focused: "outline", "block",
+    // "bar", "underline" or "no_style"
+    // cursor_inactive_style "outline"
+
+    // Whether the Option key on macOS acts as Meta (Alt)
+    // Default: true
+    // mac_option_is_meta false
+
+    // The address the web client is served under, when it sits behind a
+    // reverse proxy at a sub-path
+    // base_url "/zellij"
 }
 
-// Options for zellij's own window (`zellij window`). Every key is optional;
-// with the whole section absent the window behaves exactly as it does with no
+// Options for the Zellij terminal (`zellij terminal`). Every key is optional;
+// with the whole section absent the terminal behaves exactly as it does with no
 // configuration at all.
 //
-// window {
+// terminal {
 //     // Font family to render with, resolved through the system's font
 //     // configuration. An unresolvable family falls back to the built-in font.
 //     font "Iosevka Term"
@@ -673,6 +759,9 @@ web_client {
 //     // padding_bottom and padding_left override one side each.
 //     padding 0
 //     padding_top 0
+//     padding_right 0
+//     padding_bottom 0
+//     padding_left 0
 //
 //     // Whether the pixels left over when the window is not a whole number of
 //     // cells are shared evenly on all sides instead of all going to the
@@ -706,6 +795,28 @@ web_client {
 //     // The chords that switch the window between fullscreen and the size it
 //     // had before. List no chords to leave them all to the session.
 //     fullscreen_keys "F11"
+//
+//     // The chords that make text larger, make it smaller, and return it to
+//     // the configured font size. List no chords to leave them to the session.
+//     zoom_in_keys "Ctrl =" "Ctrl +"
+//     zoom_out_keys "Ctrl -"
+//     zoom_reset_keys "Ctrl 0"
+//
+//     // Whether the middle mouse button pastes the primary selection (the
+//     // text last selected anywhere on Linux). A pane whose program asks for
+//     // mouse reporting still gets the click instead.
+//     middle_click_paste true
+//
+//     // What the window does when a program rings the bell: "visual" (the
+//     // default) asks the desktop to draw attention to the window, eg. by
+//     // highlighting it in the taskbar, "audible" plays the system sound,
+//     // "both" or "none"
+//     bell "visual"
+//
+//     // Whether programs in a session on another machine (attached with
+//     // `zellij attach <url>`) may read this computer's clipboard with OSC 52.
+//     // Local sessions follow dangerously_enable_paste_buffer_read instead.
+//     allow_remote_clipboard_read false
 //
 //     // Whether the mouse pointer is hidden while typing, until it moves again
 //     hide_pointer_while_typing false
@@ -758,6 +869,13 @@ web_client {
 //     // borders.
 //     shift_drag_selects true
 //
+//     // Whether a session is shown in at most one desktop app window. When on,
+//     // switching a window to a session that another app window already shows
+//     // brings that other window forward and closes the switching one; the
+//     // session it left keeps running. When off, the window always switches in
+//     // place. Windows opened with --standalone always switch in place.
+//     reuse_session_windows true
+//
 //     // How opaque the window is, from 0.0 (invisible) to 1.0 (solid). Needs
 //     // a compositor; without one the window stays solid.
 //     opacity 1.0
@@ -782,12 +900,21 @@ web_client {
 //     // "remember" (the default), which reopens at the size, counted in rows
 //     // and columns, and in the state the last window was closed in. With
 //     // nothing remembered yet, "remember" opens windowed at 120x40.
+//     // (Requires restart)
 //     startup_mode "remember"
+//
+//     // Where a command opens when another app uses Zellij as its terminal
+//     // (`zellij terminal -e <command>`, as xdg-terminal-exec or a file manager
+//     // runs it): "new_session" (the default) gives it a session of its own;
+//     // "existing_session" opens it as a new tab in the session whose window
+//     // was focused last, or in a new session when no window is open.
+//     terminal_requests "new_session"
 //
 //     // The size, in columns and rows, of a window that has no remembered
 //     // size to reopen at. The --cols and --rows arguments still win, and a
 //     // size remembered by "remember" wins over these. A maximized or
 //     // fullscreen window returns to this size when it is restored.
+//     // (Requires restart)
 //     initial_columns 120
 //     initial_rows 40
 //
@@ -815,4 +942,116 @@ web_client {
 //         bright_cyan "#00ffff"
 //         bright_white "#ffffff"
 //     }
+// }
+
+// Status of panes, tabs and sessions: the symbols on frames and tabs, the inbox,
+// and the desktop app's tray icon and notifications. Every key is optional.
+// To turn all of this off, set the first four keys below to false, startup_card
+// to "never", every desktop_notifications type to false (and session_indicator
+// false).
+//
+// Each pane can also be set apart from this, from its right-click menu, the
+// pane mode keys or `zellij action`:
+//   - Watch pane (WatchPane): asks for more. Every finished command, even a
+//     short one, the pane exiting and its output going quiet all count as
+//     needing you. New output alone is not reported. Stays on until turned off.
+//   - Ignore output (IgnorePaneOutput): hides only the "new output" note;
+//     needing you, failures and finished commands are still reported.
+//   - Mute pane (MutePane, also MuteTab and MuteSession): hides everything the
+//     pane reports, including desktop notifications. It is still tracked, so
+//     unmuting shows its current state.
+//
+// attention {
+//     // Show what a pane needs (approval, a failure, a finished command) in
+//     // its frame title.
+//     frame_markers true
+//
+//     // Show what a tab's panes need as a symbol in the tab bar.
+//     tab_markers true
+//
+//     // Tell the terminal Zellij runs in what the session needs, when that
+//     // terminal supports it.
+//     host_status true
+//
+//     // Show the desktop app's tray icon (sessions and notifications go on
+//     // when it is hidden).
+//     tray_icon true
+//
+//     // Notice when busy output goes quiet in "all" panes, or only in
+//     // "watched" ones.
+//     idle_rule "all"
+//
+//     // Seconds a successful command must run before it is reported as done.
+//     done_threshold_secs 10
+//
+//     // Seconds of steady output before quiet detection applies.
+//     idle_activity_secs 10
+//
+//     // Seconds of silence after busy output that count as gone quiet.
+//     idle_silence_secs 3
+//
+//     // When a new session shows its session card: "attention" (when
+//     // something needs you), "always" or "never".
+//     startup_card "attention"
+//
+//     // Which inbox items the desktop app shows as desktop notifications,
+//     // one type per line.
+//     desktop_notifications {
+//         // Show a pop-up when something needs you.
+//         needs_you true
+//
+//         // Show a pop-up when a command fails.
+//         failed true
+//
+//         // Show a pop-up when a long command finishes.
+//         done true
+//     }
+//
+//     // Which inbox items the desktop app's tray icon counts. The badge shows
+//     // the count of the most important type that is turned on.
+//     tray_badge {
+//         // Count items that need you.
+//         needs_you true
+//
+//         // Count failed commands.
+//         failed true
+//
+//         // Count finished commands.
+//         done true
+//
+//         // Count working programs.
+//         working true
+//
+//         // Count panes that went quiet.
+//         quiet false
+//
+//         // Count panes with output you have not seen.
+//         new_output false
+//     }
+//
+//     // The colour of the tray badge for each type, as a hex colour. The inbox
+//     // and the sessions list use these colours too. A type without a colour
+//     // keeps the default badge colour and the theme colour in lists.
+//     tray_badge_colors {
+//         // Items that need you.
+//         needs_you "#ff8c00"
+//
+//         // Failed commands.
+//         failed "#e5484d"
+//
+//         // Finished commands.
+//         done "#30a46c"
+//
+//         // Working programs.
+//         working "#3e82f7"
+//
+//         // Panes that went quiet.
+//         quiet "#8b8d98"
+//
+//         // Panes with output you have not seen.
+//         new_output "#12a594"
+//     }
+//
+//     // Show the program and command text in desktop notifications.
+//     notification_details true
 // }

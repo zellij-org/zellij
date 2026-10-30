@@ -1239,7 +1239,7 @@ impl<E: ListEntry> BindingsList<E> {
             ],
             ListFocus::List if !self.marked.is_empty() => vec![
                 ("<Del>", "delete marked"),
-                ("<r>", "reset marked"),
+                ("<r>", "revert marked"),
                 ("<Space>", "mark"),
                 ("<Shift ↓↑>", "extend"),
                 ("<A/C>", "all / category"),
@@ -1249,7 +1249,7 @@ impl<E: ListEntry> BindingsList<E> {
                 ("<a>", "add"),
                 ("<Enter>", "edit"),
                 ("<Del>", "delete"),
-                ("<r>", "reset"),
+                ("<r>", "revert"),
                 ("<Space/Shift ↓↑/A>", "mark"),
                 ("</>", "search"),
             ],

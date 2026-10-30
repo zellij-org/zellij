@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.zellij.Zellij</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Zellij</name>
+  <summary>Terminal workspace with panes, tabs, sessions and an inbox</summary>
+  <developer id="dev.zellij">
+    <name>Zellij Contributors</name>
+  </developer>
+  <description>
+    <p>
+      Zellij is a terminal workspace. It splits a window into panes and tabs,
+      keeps sessions running when the window closes, and brings them back later.
+    </p>
+    <p>
+      It runs inside any terminal, or as its own app with a window, a tray icon
+      and desktop notifications that tell you when a command finishes, fails or
+      needs you. The inbox gathers everything that needs you across sessions.
+    </p>
+    <ul>
+      <li>Panes, tabs, floating panes and layouts</li>
+      <li>Sessions that keep running when you close the window</li>
+      <li>An inbox and status symbols for commands that finish, fail or wait for you</li>
+      <li>Plugins written in any language that compiles to WebAssembly</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">dev.zellij.Zellij.desktop</launchable>
+  <provides>
+    <binary>zellij</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>multiplexer</keyword>
+    <keyword>shell</keyword>
+    <keyword>workspace</keyword>
+  </keywords>
+  <url type="homepage">https://zellij.dev</url>
+  <url type="bugtracker">https://github.com/zellij-org/zellij/issues</url>
+  <url type="vcs-browser">https://github.com/zellij-org/zellij</url>
+  <url type="donation">https://github.com/sponsors/imsnif</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Panes, tabs and the status bar</caption>
+      <image>https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.45.0" date="2026-08-20"/>
+    <release version="0.44.3" date="2026-05-13"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

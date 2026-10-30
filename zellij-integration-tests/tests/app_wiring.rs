@@ -109,7 +109,7 @@ fn clearing_all_notifications_empties_every_session() {
         first.session_name().to_owned(),
         second.session_name().to_owned(),
     ];
-    zellij_window::clear_all_sessions(names.clone());
+    zellij_terminal::clear_all_sessions(names.clone());
     for name in &names {
         wait_for(&format!("{} to be cleared", name), || {
             needs_you_in(name) == Some(0)
@@ -132,7 +132,7 @@ fn stopping_all_sessions_ends_every_listed_session_and_only_those() {
         first.session_name().to_owned(),
         second.session_name().to_owned(),
     ];
-    zellij_window::stop_all_sessions(stopped.clone());
+    zellij_terminal::stop_all_sessions(stopped.clone());
     for name in &stopped {
         wait_for(&format!("{} to stop", name), || {
             !session_answers(name, Duration::from_millis(300))
@@ -217,7 +217,7 @@ fn detaching_everywhere_detaches_every_client_of_every_listed_session_and_only_t
             grid_snapshot.status_bar_appears()
         });
     }
-    zellij_window::detach_everywhere(vec![
+    zellij_terminal::detach_everywhere(vec![
         first.session_name().to_owned(),
         second.session_name().to_owned(),
     ]);

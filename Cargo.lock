@@ -6491,8 +6491,8 @@ dependencies = [
  "vte 0.15.0",
  "zellij-client",
  "zellij-server",
+ "zellij-terminal",
  "zellij-utils",
- "zellij-window",
 ]
 
 [[package]]
@@ -6565,8 +6565,8 @@ dependencies = [
  "vte 0.15.0",
  "zellij-client",
  "zellij-server",
+ "zellij-terminal",
  "zellij-utils",
- "zellij-window",
 ]
 
 [[package]]
@@ -6617,6 +6617,57 @@ dependencies = [
  "wasmi",
  "wasmi_wasi",
  "windows-sys 0.59.0",
+ "zellij-utils",
+]
+
+[[package]]
+name = "zellij-terminal"
+version = "0.46.0"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "arboard",
+ "base64",
+ "block2 0.6.2",
+ "chrono",
+ "clap",
+ "dunce",
+ "fontdb",
+ "futures-util",
+ "glow",
+ "glutin",
+ "glutin-winit",
+ "humantime",
+ "interprocess",
+ "khronos-egl",
+ "libc",
+ "libloading",
+ "log",
+ "memmap2",
+ "miette 7.6.0",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "objc2-user-notifications 0.3.2",
+ "png",
+ "serde",
+ "serde_json",
+ "signal-hook 0.3.18",
+ "sixel-tokenizer",
+ "swash",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "unicode-width 0.2.2",
+ "url",
+ "vte 0.15.0",
+ "wayland-client",
+ "wayland-protocols",
+ "windows",
+ "windows-sys 0.59.0",
+ "winit",
+ "zellij-client",
+ "zellij-server",
  "zellij-utils",
 ]
 
@@ -6695,58 +6746,8 @@ dependencies = [
  "url",
  "uuid",
  "winapi",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "zellij-window"
-version = "0.46.0"
-dependencies = [
- "alacritty_terminal",
- "anyhow",
- "arboard",
- "base64",
- "block2 0.6.2",
- "chrono",
- "clap",
- "dunce",
- "fontdb",
- "futures-util",
- "glow",
- "glutin",
- "glutin-winit",
- "humantime",
- "interprocess",
- "khronos-egl",
- "libc",
- "libloading",
- "log",
- "memmap2",
- "miette 7.6.0",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "objc2-user-notifications 0.3.2",
- "png",
- "serde",
- "serde_json",
- "signal-hook 0.3.18",
- "sixel-tokenizer",
- "swash",
- "tempfile",
- "tokio",
- "tokio-tungstenite",
- "unicode-width 0.2.2",
- "url",
- "vte 0.15.0",
- "wayland-client",
- "wayland-protocols",
  "windows",
  "windows-sys 0.59.0",
- "winit",
- "zellij-client",
- "zellij-server",
- "zellij-utils",
 ]
 
 [[package]]

@@ -346,6 +346,17 @@ message Action {
     MarkAllSeenAction mark_all_seen = 180;
     WriteKeyToPaneIdAction write_key_to_pane_id = 181;
     ToggleTrayIconAction toggle_tray_icon = 182;
+    OpenSessionInTerminalAction open_session_in_terminal = 183;
+    WaitForPaneExitAction wait_for_pane_exit = 184;
+    SessionNameInputAction session_name_input = 185;
+    UndoRenameSessionAction undo_rename_session = 186;
+    ToggleMirrorResizeAction toggle_mirror_resize = 187;
+    SetResurrectCommandAction set_resurrect_command = 188;
+    ToggleBarsAction toggle_bars = 189;
+    HideBarsAction hide_bars = 190;
+    ShowBarsAction show_bars = 191;
+    HideBarByPaneIdAction hide_bar_by_pane_id = 192;
+    PasteFromClipboardByPaneIdAction paste_from_clipboard_by_pane_id = 193;
   }
 }
 
@@ -405,6 +416,7 @@ message GoToPreviousTabAction {}
 message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
+message UndoRenameSessionAction {}
 message DetachAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
@@ -624,6 +636,10 @@ message TabNameInputAction {
   repeated uint32 input = 1;
 }
 
+message SessionNameInputAction {
+  repeated uint32 input = 1;
+}
+
 message MoveTabAction {
   Direction direction = 1;
 }
@@ -778,6 +794,8 @@ message CliPipeAction {
   optional string pane_title = 12;
   optional string popup = 13;
   bool popup_no_focus = 14;
+  bool popup_capture_all_keys = 15;
+  optional string popup_outside_click = 16;
 }
 
 message KeybindPipeAction {
@@ -819,6 +837,31 @@ message SetPaneColorAction {
   optional string bg = 3;
 }
 
+message ResurrectCommand {
+  string command = 1;
+  repeated string args = 2;
+  optional string cwd = 3;
+}
+
+message SetResurrectCommandAction {
+  PaneId pane_id = 1;
+  optional ResurrectCommand resurrect = 2;
+}
+
+message ToggleBarsAction {
+  repeated string bars = 1;
+}
+
+message HideBarsAction {
+  repeated string bars = 1;
+}
+
+message ShowBarsAction {}
+
+message HideBarByPaneIdAction {
+  PaneId pane_id = 1;
+}
+
 message SetPaneBorderStyleAction {
   PaneId pane_id = 1;
   BorderStyleOverride border_style = 2;
@@ -841,6 +884,7 @@ enum InputMode {
   INPUT_MODE_MOVE = 12;
   INPUT_MODE_PROMPT = 13;
   INPUT_MODE_TMUX = 14;
+  INPUT_MODE_RENAME_SESSION = 15;
 }
 
 enum Direction {
@@ -1328,6 +1372,11 @@ message Options {
   reserved 80;
   optional string on_quit = 81;
   optional bool grapheme_clusters = 82;
+  optional bool mirror_resizes_source_pane = 83;
+  optional string live_view_release_key = 84;
+  optional string bars_hidden_on_start = 85;
+  optional bool hidden_bars_notification = 86;
+  optional bool mode_hints_when_bars_hidden = 87;
 }
 
 enum OnForceClose {
@@ -1426,6 +1475,10 @@ message GoToPreviousSessionAction {}
 message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
+message OpenSessionInTerminalAction {}
+message PasteFromClipboardByPaneIdAction { PaneId pane_id = 1; }
+message WaitForPaneExitAction { PaneId pane_id = 1; }
+message ToggleMirrorResizeAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
 message MarkAllSeenAction {
   optional string session = 1;

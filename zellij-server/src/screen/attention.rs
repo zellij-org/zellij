@@ -4,6 +4,7 @@ use crate::attention::{now_ms, AttentionEvent};
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::route::NotificationEnd;
 use crate::screen::SessionPaneCommand;
 use crate::tab::Tab;
 use crate::{ClientId, ServerInstruction};
@@ -38,9 +39,36 @@ impl Screen {
             .collect()
     }
 
+    pub(crate) fn wait_for_pane_exit(&mut self, pane_id: PaneId, waiter: NotificationEnd) {
+        let mut waiter = Some(waiter);
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                if let Some(mut refused) = waiter.take().and_then(|w| pane.attach_exit_waiter(w)) {
+                    refused.set_error_message(format!(
+                        "Something else is already waiting for pane {:?}",
+                        pane_id
+                    ));
+                }
+                return;
+            }
+        }
+        if let Some(mut waiter) = waiter {
+            waiter.set_error_message(format!("There is no pane {:?} in this session", pane_id));
+        }
+    }
+
     pub(super) fn tab_attention(&self, tab: &Tab) -> TabAttention {
-        self.attention
-            .tab_attention(tab.id, &Self::attention_pane_ids(tab))
+        let attention = self
+            .attention
+            .tab_attention(tab.id, &Self::attention_pane_ids(tab));
+        if self.attention.config().tab_markers() {
+            attention
+        } else {
+            TabAttention {
+                muted: attention.muted,
+                ..TabAttention::default()
+            }
+        }
     }
 
     pub(super) fn decorate_pane_infos(&self, pane_infos: &mut Vec<PaneInfo>) {
@@ -145,7 +173,20 @@ impl Screen {
         let pane_id = zellij_utils::data::PaneId::Terminal(pid);
         if self.attention.has_pane(&pane_id) {
             let was_unseen = self.attention.unseen_output_since(&pane_id).is_some();
-            self.attention.on_output(pane_id, now_ms());
+            let redraw = self
+                .tabs
+                .values()
+                .find_map(|tab| tab.get_pane_with_id(PaneId::Terminal(pid)))
+                .and_then(|pane| pane.program_resized_at())
+                .map(|at| {
+                    at.elapsed()
+                        < std::time::Duration::from_millis(
+                            crate::attention::tracker::RESIZE_OUTPUT_GRACE_MS,
+                        )
+                })
+                .unwrap_or(false);
+            self.attention
+                .on_output_after_resize(pane_id, now_ms(), redraw);
             if !was_unseen && self.attention.unseen_output_since(&pane_id).is_some() {
                 let server_pane_id = PaneId::Terminal(pid);
                 for tab in self.tabs.values_mut() {
@@ -276,7 +317,12 @@ impl Screen {
             ));
     }
 
-    pub(crate) fn set_global_attention(&mut self, global: GlobalAttention) {
+    pub(crate) fn set_global_attention(&mut self, mut global: GlobalAttention) {
+        let colors = &self.attention.config().tray_badge_colors;
+        global.badge_colors = zellij_utils::input::attention::BADGE_STATUSES
+            .iter()
+            .filter_map(|status| colors.get(*status).map(|rgb| (*status, rgb)))
+            .collect();
         if self.global_attention.as_ref() == Some(&global) {
             return;
         }
@@ -767,6 +813,9 @@ impl Screen {
         }
         self.flush_attention(true);
         self.report_session_attention();
+        if let Some(global) = self.global_attention.clone() {
+            self.set_global_attention(global);
+        }
     }
 
     fn context_menu_toggle_is_on(
@@ -787,7 +836,24 @@ impl Screen {
             .get_active_tab(context.client_id)
             .ok()
             .map(|tab| tab.id);
+        let clicked_any_pane = context.target_pane_id().map(PaneId::from);
+        let clicked_pane_is_fullscreen = || {
+            let Some(pane_id) = clicked_any_pane else {
+                return false;
+            };
+            self.tabs
+                .values()
+                .find(|tab| tab.get_pane_with_id(pane_id).is_some())
+                .map(|tab| tab.fullscreen_pane_id() == Some(pane_id))
+                .unwrap_or(false)
+        };
         actions.iter().any(|action| match action {
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleFocusFullscreen) => {
+                clicked_pane_is_fullscreen()
+            },
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleEmbedOrFloating) => {
+                context.pane_is_floating
+            },
             ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleMute) => clicked_pane
                 .map(|p| self.attention.pane_is_muted(&p))
                 .unwrap_or(false),

@@ -85,6 +85,23 @@ impl<'a> TiledPaneGrid<'a> {
         }
         .is_fixed())
     }
+    pub fn edge_can_move(&self, pane_id: &PaneId, direction: Direction) -> bool {
+        if !self
+            .pane_is_flexible(direction.into(), pane_id)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        match self.neighbor_pane_ids(pane_id, direction) {
+            Ok(neighbors) => {
+                !neighbors.is_empty()
+                    && neighbors
+                        .iter()
+                        .all(|p| self.pane_is_flexible(direction.into(), p).unwrap_or(false))
+            },
+            Err(_) => false,
+        }
+    }
     fn neighbor_pane_ids(&self, pane_id: &PaneId, direction: Direction) -> Result<Vec<PaneId>> {
         let err_context = || format!("Failed to get neighboring panes");
         // Shorthand

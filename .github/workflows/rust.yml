@@ -25,9 +25,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -45,9 +52,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -75,9 +89,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -95,9 +116,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -127,9 +155,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -152,9 +187,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Install a virtual display and software rendering
         run: |
@@ -184,9 +226,16 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
+            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
+            Windows) asset=protoc-23.4-win64.zip ;;
+          esac
+          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
+          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
 
       - name: Setup toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -213,6 +262,22 @@ jobs:
 
       - name: Check bundled assets
         run: cargo xtask assets --check
+
+  desktop-files:
+    name: Validate Desktop Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install validators
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
+
+      - name: Validate the software-centre listing
+        run: appstreamcli validate --no-net assets/dev.zellij.Zellij.metainfo.xml
+
+      - name: Validate the launcher
+        run: desktop-file-validate assets/dev.zellij.Zellij.desktop
 
   format:
     name: Check Formatting

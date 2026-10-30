@@ -6,7 +6,7 @@ use zellij_utils::input::config_blocks::{
 };
 
 use crate::blocks_screen::check_name;
-use crate::contrast::{slot_contrasts, suggest, SlotContrast, GOOD_CONTRAST, LOW_CONTRAST};
+use crate::contrast::{slot_contrasts, suggest_for_all, SlotContrast, LOW_CONTRAST};
 use crate::page::{
     changed_by, is_click, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays,
     print_dim, print_heading, truncate, typed, under_overlay, ButtonRow, ColumnLayout, ColumnStyle,
@@ -117,14 +117,14 @@ fn contrast_advice(
         count => format!(" · Ctrl e fixes all {} colors below 3:1", count),
     };
     if let Some(Some(found)) = contrasts.get(focused) {
-        if found.ratio < GOOD_CONTRAST {
-            let better = suggest(found.foreground, found.background, GOOD_CONTRAST);
+        if found.ratio < found.target {
+            let better = suggest_for_all(found.foreground, &found.backgrounds());
             let better_text = colour_text(&better);
             let better_ratio = crate::contrast::contrast(better, found.background);
             let ratio = format!("{:.1}:1", found.ratio);
             let prefix = format!(
-                "{} against {} (4.5:1 reads well). Suggested: ",
-                ratio, found.background_slot
+                "{} against {} ({}:1 reads well). Suggested: ",
+                ratio, found.background_slot, found.target
             );
             let start = prefix.chars().count();
             let text = format!(
@@ -152,7 +152,7 @@ fn contrast_advice(
                 .filter(|index| {
                     contrasts[**index]
                         .as_ref()
-                        .map(|found| found.background_slot == slot)
+                        .map(|found| found.fails_on(&slot, LOW_CONTRAST))
                         .unwrap_or(false)
                 })
                 .count();
@@ -628,21 +628,22 @@ impl ThemesScreen {
             return;
         };
         let focused = form.inputs.focused_key().copied().unwrap_or(0);
-        let contrasts = slot_contrasts(&Self::typed_colours(form));
+        let slot_count = theme_slots().len();
         let mut fixed = 0;
-        for (index, found) in contrasts.iter().enumerate() {
-            let Some(found) = found else {
+        for index in 0..slot_count {
+            let contrasts = slot_contrasts(&Self::typed_colours(form));
+            let Some(Some(found)) = contrasts.get(index) else {
                 continue;
             };
             let wanted = if focused_only {
-                index == focused && found.ratio < GOOD_CONTRAST
+                index == focused && found.ratio < found.target
             } else {
                 found.ratio < LOW_CONTRAST
             };
             if !wanted {
                 continue;
             }
-            let better = suggest(found.foreground, found.background, GOOD_CONTRAST);
+            let better = suggest_for_all(found.foreground, &found.backgrounds());
             if let Some(input) = form.inputs.text_input_mut(&index) {
                 input.set_text(colour_text(&better));
                 fixed += 1;
@@ -754,6 +755,7 @@ impl ThemesScreen {
         }
         self.name_form = None;
         let mut config_themes = self.config_themes();
+        let is_new = purpose == NamePurpose::New;
         match purpose {
             NamePurpose::New => {
                 let colours = self
@@ -785,6 +787,14 @@ impl ThemesScreen {
         }
         self.apply_config_themes(config_themes);
         self.select_named(&name);
+        if is_new
+            && self
+                .selected_theme()
+                .map(|theme| theme.name == name)
+                .unwrap_or(false)
+        {
+            self.open_colours();
+        }
         Ok(())
     }
     fn request_delete(&mut self) {
@@ -1506,7 +1516,7 @@ impl Page for ThemesScreen {
                             let label = format!("{:.1}:1", found.ratio);
                             if found.ratio < LOW_CONTRAST {
                                 Text::from(label).error_color_all()
-                            } else if found.ratio < GOOD_CONTRAST {
+                            } else if found.ratio < found.target {
                                 Text::from(label).color_all(3)
                             } else {
                                 Text::from(label).dim_all()
@@ -1575,10 +1585,17 @@ impl Page for ThemesScreen {
         self.colour_form.is_some()
     }
     fn header_hints(&self) -> Option<Vec<(&'static str, &'static str)>> {
-        self.colour_form.as_ref().map(|_| {
+        self.colour_form.as_ref().map(|form| {
             vec![
-                ("<Ctrl a>", "apply colors"),
-                ("<Esc>", "back to configuration"),
+                (
+                    "<Ctrl a>",
+                    if form.file.is_some() {
+                        "save colors"
+                    } else {
+                        "apply colors"
+                    },
+                ),
+                ("<Esc>", "back to settings"),
             ]
         })
     }
@@ -1599,7 +1616,7 @@ impl Page for ThemesScreen {
     fn hints(&self) -> Vec<(&'static str, &'static str)> {
         if self.colour_form.is_some() {
             return vec![
-                ("<Esc>", "back to configuration"),
+                ("<Esc>", "back to settings"),
                 ("<Enter/↓↑>", "next / previous color"),
                 ("<Ctrl a>", "apply"),
                 ("<Ctrl f>", "fix contrast"),
@@ -1983,7 +2000,10 @@ mod tests {
         let mut screen = low_contrast_screen();
         screen.handle_key(&ctrl('f'));
         let fixed = parse_colour(&input_text(&screen, 0)).unwrap();
-        assert!(crate::contrast::contrast(fixed, PaletteColor::Rgb((0, 0, 0))) >= GOOD_CONTRAST);
+        assert!(
+            crate::contrast::contrast(fixed, PaletteColor::Rgb((0, 0, 0)))
+                >= crate::contrast::GOOD_CONTRAST
+        );
         assert_eq!(
             input_text(&screen, slot_index("text_unselected", "emphasis_0")),
             "#050505"

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use zellij_terminal::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 use zellij_utils::app_control::{
     describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, OpenWindowRequest,
     PanelState, PopupView,
@@ -16,7 +17,6 @@ use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
-use zellij_window::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 
 const REQUIRE_ENV: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 const BINARY_ENV: &str = "ZELLIJ_TEST_BINARY";
@@ -227,9 +227,9 @@ impl Desktop {
         command
     }
 
-    fn window_command(&self, extra: &[&str]) -> Command {
+    fn terminal_command(&self, extra: &[&str]) -> Command {
         let socket_dir = self.socket_dir();
-        let mut args = vec!["window", "--socket-dir", socket_dir.to_str().unwrap()];
+        let mut args = vec!["terminal", "--socket-dir", socket_dir.to_str().unwrap()];
         args.extend_from_slice(extra);
         self.command(&args)
     }
@@ -242,7 +242,7 @@ impl Desktop {
         let index = self.apps.len();
         let log = std::fs::File::create(self.log_path(index)).unwrap();
         let child = self
-            .window_command(extra)
+            .terminal_command(extra)
             .stdout(log.try_clone().unwrap())
             .stderr(log)
             .spawn()
@@ -1132,6 +1132,10 @@ fn the_desktop_entry_is_installed_and_removed_from_the_cli() {
     let applications = desktop.root.path().join("data/applications");
     let output = desktop
         .command(&["setup", "--install-desktop-entry"])
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "on",
+        )
         .output()
         .expect("zellij runs");
     assert!(
@@ -1156,6 +1160,10 @@ fn the_desktop_entry_is_installed_and_removed_from_the_cli() {
     }
     let status = desktop
         .command(&["setup", "--uninstall-desktop-entry"])
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "on",
+        )
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -1241,4 +1249,397 @@ fn a_window_on_an_unnamed_new_session_starts_in_the_chosen_folder() {
             .map(|lines| lines.iter().any(|line| line.contains(&folder_text)))
             .unwrap_or(false)
     });
+}
+
+#[test]
+fn the_cli_setup_actions_refuse_what_the_setup_screen_would_not_offer() {
+    let Some(desktop) = Desktop::start() else {
+        return;
+    };
+    let output = desktop
+        .command(&["setup", "--install-desktop-entry"])
+        .env(
+            zellij_utils::desktop_integration::DESKTOP_OVERRIDE_ENV,
+            "off",
+        )
+        .output()
+        .expect("zellij runs");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Install the desktop entry: Turned off by ZELLIJ_DESKTOP_INTEGRATION"),
+        "{}",
+        stderr
+    );
+    assert!(
+        !desktop.root.path().join("data/applications").exists()
+            || std::fs::read_dir(desktop.root.path().join("data/applications"))
+                .unwrap()
+                .next()
+                .is_none()
+    );
+    let output = desktop
+        .command(&["setup", "--keybinding-preset", "unlock-first"])
+        .output()
+        .expect("zellij runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config = std::fs::read_to_string(desktop.root.path().join("config/zellij/config.kdl"))
+        .expect("the config file was written");
+    assert!(
+        config.contains("keybinds preset=\"unlock-first\""),
+        "{}",
+        config
+    );
+    let output = desktop
+        .command(&["setup", "--keybinding-preset", "no-such-preset"])
+        .output()
+        .expect("zellij runs");
+    assert!(!output.status.success());
+}
+
+const FIRST: &str = "one-first";
+const SECOND: &str = "zzz-second";
+const DECOY: &str = "0-decoy";
+
+impl Desktop {
+    fn clients_of(&self, session: &str) -> Option<Vec<(u32, String)>> {
+        let mut link = SessionLink::open_path(&self.socket_of(session)).ok()?;
+        link.send(ClientToServerMsg::Action {
+            action: Action::ListClients,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: true,
+        })
+        .ok()?;
+        loop {
+            match link.recv(Duration::from_secs(2)).ok()? {
+                ServerToClientMsg::Log { lines } => {
+                    return Some(
+                        lines
+                            .iter()
+                            .flat_map(|line| line.lines())
+                            .skip(1)
+                            .filter_map(|line| {
+                                let mut words = line.split_whitespace();
+                                let id = words.next()?.parse().ok()?;
+                                let pane = words.next().unwrap_or_default().to_owned();
+                                Some((id, pane))
+                            })
+                            .collect(),
+                    )
+                },
+                ServerToClientMsg::UnblockInputThread | ServerToClientMsg::Exit { .. } => {
+                    return None
+                },
+                _ => {},
+            }
+        }
+    }
+
+    fn wait_for_clients(
+        &self,
+        session: &str,
+        check: impl Fn(&[(u32, String)]) -> bool,
+    ) -> Vec<(u32, String)> {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let clients = self.clients_of(session);
+            if let Some(clients) = clients.as_ref().filter(|clients| check(clients)) {
+                return clients.clone();
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for the clients of {}: {:?}\nlast state: {:?}\n{}",
+                    session,
+                    clients,
+                    self.state(),
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn wait_for_client_count(&self, session: &str, count: usize) {
+        self.wait_for_clients(session, |clients| clients.len() == count);
+    }
+
+    fn only_client_of(&self, session: &str) -> u32 {
+        self.wait_for_clients(session, |clients| clients.len() == 1)[0].0
+    }
+
+    fn act_as(&self, session: &str, client: u32, action: Action) {
+        let mut link =
+            SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
+        link.send(ClientToServerMsg::Action {
+            action,
+            terminal_id: None,
+            client_id: Some(client),
+            is_cli_client: false,
+        })
+        .unwrap();
+    }
+
+    fn switch_window(&self, from: &str, to: &str, pane_id: Option<(u32, bool)>) {
+        let client = self.only_client_of(from);
+        self.act_as(
+            from,
+            client,
+            Action::SwitchSession {
+                name: to.to_owned(),
+                tab_position: None,
+                pane_id,
+                layout: None,
+                cwd: None,
+                close_current: false,
+            },
+        );
+    }
+
+    fn create_background_session(&self, name: &str) {
+        let status = self
+            .command(&["attach", "--create-background", name])
+            .env("ZELLIJ_SOCKET_DIR", self.socket_dir())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("zellij attach runs");
+        assert!(status.success(), "the background session {} started", name);
+        self.wait_for(&format!("{} to answer", name), || self.answers(name));
+    }
+
+    fn start_app_on(&mut self, sessions: &[&str]) {
+        for session in sessions {
+            self.create_background_session(session);
+        }
+        self.launch(&[sessions[0]]);
+        self.wait_for_state(&format!("the first window on {}", sessions[0]), |state| {
+            windows_on(state, sessions[0]) == 1
+        });
+        for (index, session) in sessions.iter().enumerate().skip(1) {
+            assert_eq!(
+                send_app_request_to(
+                    &self.control_socket(),
+                    &AppRequest::OpenWindow(OpenWindowRequest {
+                        session: Some((*session).to_owned()),
+                        create: false,
+                        ..Default::default()
+                    })
+                ),
+                Ok(AppReply::Done)
+            );
+            self.wait_for_state(&format!("a window on {}", session), |state| {
+                state.windows.len() == index + 1 && windows_on(state, session) == 1
+            });
+        }
+        for session in sessions {
+            self.wait_for_client_count(session, 1);
+        }
+    }
+
+    fn configure_windows(&self, window_section: &str) {
+        std::fs::write(
+            self.root.path().join("config/zellij/config.kdl"),
+            format!("{}terminal {{\n{}\n}}\n", CONFIG, window_section),
+        )
+        .unwrap();
+    }
+}
+
+fn windows_on(state: &AppState, session: &str) -> usize {
+    state
+        .windows
+        .iter()
+        .filter(|window| window.session.as_deref() == Some(session))
+        .count()
+}
+
+fn only_on(state: &AppState, session: &str) -> bool {
+    state.windows.len() == 1 && windows_on(state, session) == 1
+}
+
+#[test]
+fn switching_to_a_session_shown_in_another_window_raises_it_and_closes_this_one() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app_on(&[FIRST, SECOND]);
+    desktop.switch_window(FIRST, SECOND, None);
+    let state = desktop.wait_for_state("only the window on the target to stay", |state| {
+        only_on(state, SECOND)
+    });
+    assert_eq!(state.focused_session.as_deref(), Some(SECOND));
+    desktop.wait_for_client_count(FIRST, 0);
+    desktop.wait_for_client_count(SECOND, 1);
+    assert!(desktop.answers(FIRST), "the session left keeps running");
+    assert!(
+        desktop.apps[0].try_wait().unwrap().is_none(),
+        "the app quit"
+    );
+}
+
+#[test]
+fn toggling_in_the_raised_window_goes_back_and_switches_in_place() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.create_background_session(DECOY);
+    desktop.start_app_on(&[FIRST, SECOND]);
+    desktop.switch_window(FIRST, SECOND, None);
+    desktop.wait_for_state("only the window on the target to stay", |state| {
+        only_on(state, SECOND)
+    });
+    let raised = desktop.only_client_of(SECOND);
+    desktop.act_as(SECOND, raised, Action::ToggleSession);
+    desktop.wait_for_state(
+        "the raised window to go back to the first session",
+        |state| only_on(state, FIRST),
+    );
+    desktop.wait_for_client_count(FIRST, 1);
+    desktop.wait_for_client_count(SECOND, 0);
+    desktop.wait_for_client_count(DECOY, 0);
+}
+
+#[test]
+fn going_back_in_a_raised_window_with_its_own_history_returns_where_the_user_came_from() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.create_background_session("own-a");
+    desktop.create_background_session("own-b");
+    desktop.start_app_on(&[FIRST, SECOND]);
+    for (from, to) in [(SECOND, "own-a"), ("own-a", "own-b"), ("own-b", SECOND)] {
+        desktop.switch_window(from, to, None);
+        desktop.wait_for_state(&format!("the second window to move to {}", to), |state| {
+            state.windows.len() == 2 && windows_on(state, to) == 1 && windows_on(state, FIRST) == 1
+        });
+        desktop.wait_for_client_count(to, 1);
+        desktop.wait_for_client_count(from, 0);
+    }
+    desktop.switch_window(FIRST, SECOND, None);
+    desktop.wait_for_state("only the window on the target to stay", |state| {
+        only_on(state, SECOND)
+    });
+    desktop.wait_for_client_count(FIRST, 0);
+    let raised = desktop.only_client_of(SECOND);
+    desktop.act_as(SECOND, raised, Action::GoToPreviousSession);
+    desktop.wait_for_state(
+        "the raised window to go back to the session the other window left",
+        |state| only_on(state, FIRST),
+    );
+    desktop.wait_for_client_count(FIRST, 1);
+    desktop.wait_for_client_count(SECOND, 0);
+    desktop.wait_for_client_count("own-a", 0);
+    desktop.wait_for_client_count("own-b", 0);
+}
+
+#[test]
+fn a_switch_naming_a_pane_focuses_it_in_the_raised_window() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app_on(&[FIRST, SECOND]);
+    let second_window = desktop.only_client_of(SECOND);
+    desktop.act_as(
+        SECOND,
+        second_window,
+        Action::NewPane {
+            direction: None,
+            pane_name: None,
+            start_suppressed: false,
+        },
+    );
+    desktop.wait_for_clients(SECOND, |clients| {
+        clients == [(second_window, "terminal_1".to_owned())]
+    });
+    desktop.switch_window(FIRST, SECOND, Some((0, false)));
+    desktop.wait_for_state("only the window on the target to stay", |state| {
+        only_on(state, SECOND)
+    });
+    desktop.wait_for_clients(SECOND, |clients| {
+        clients == [(second_window, "terminal_0".to_owned())]
+    });
+}
+
+#[test]
+fn with_window_reuse_off_the_window_switches_in_place_and_both_stay_open() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.configure_windows("reuse_session_windows false");
+    desktop.start_app_on(&[FIRST, SECOND]);
+    desktop.switch_window(FIRST, SECOND, None);
+    desktop.wait_for_client_count(SECOND, 2);
+    desktop.wait_for_state("both windows on the target", |state| {
+        state.windows.len() == 2 && windows_on(state, SECOND) == 2
+    });
+    desktop.wait_for_client_count(FIRST, 0);
+    assert!(desktop.answers(FIRST));
+}
+
+#[test]
+fn a_standalone_window_switching_to_a_session_with_an_app_window_switches_in_place() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app_on(&[FIRST, SECOND]);
+    desktop.create_background_session("solo");
+    let standalone = desktop.launch(&["--standalone", "solo"]);
+    desktop.wait_for_client_count("solo", 1);
+    desktop.switch_window("solo", SECOND, None);
+    desktop.wait_for_client_count(SECOND, 2);
+    desktop.wait_for_client_count("solo", 0);
+    assert!(
+        desktop.apps[standalone].try_wait().unwrap().is_none(),
+        "the standalone window closed\n{}",
+        desktop.logs()
+    );
+    desktop.wait_for_client_count(FIRST, 1);
+    let state = desktop.state().unwrap();
+    assert_eq!(windows_on(&state, FIRST), 1, "{:?}", state);
+    assert!(desktop.answers("solo"));
+}
+
+#[test]
+fn an_app_window_switching_to_a_session_shown_only_standalone_switches_in_place() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app_on(&[FIRST]);
+    desktop.create_background_session("solo");
+    let standalone = desktop.launch(&["--standalone", "solo"]);
+    desktop.wait_for_client_count("solo", 1);
+    desktop.switch_window(FIRST, "solo", None);
+    desktop.wait_for_client_count("solo", 2);
+    desktop.wait_for_client_count(FIRST, 0);
+    assert!(
+        desktop.apps[standalone].try_wait().unwrap().is_none(),
+        "the standalone window closed\n{}",
+        desktop.logs()
+    );
+    assert!(desktop.answers(FIRST));
+    assert!(
+        desktop.apps[0].try_wait().unwrap().is_none(),
+        "the app quit"
+    );
+}
+
+#[test]
+fn switching_to_a_session_no_window_shows_switches_in_place() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app_on(&[FIRST]);
+    desktop.create_background_session("lonely");
+    desktop.switch_window(FIRST, "lonely", None);
+    desktop.wait_for_state("the window to move to the session", |state| {
+        only_on(state, "lonely")
+    });
+    desktop.wait_for_client_count("lonely", 1);
+    desktop.wait_for_client_count(FIRST, 0);
+    assert!(desktop.answers(FIRST));
 }

@@ -1,9 +1,9 @@
 mod action_types;
 mod clipboard_utils;
-mod keybind_utils;
+pub(crate) mod keybind_utils;
 mod line;
 mod tab;
-mod tooltip;
+pub(crate) mod tooltip;
 
 use crate::session_indicator::SessionIndicator;
 use std::cmp::{max, min};
@@ -523,7 +523,16 @@ impl CompactBar {
         new_mode: InputMode,
         base_mode: InputMode,
     ) {
-        if self.has_toggle_key() && new_mode != base_mode && !is_restricted_mode(new_mode) {
+        let compact_bar_is_hidden = self
+            .clients
+            .get(&client_id)
+            .map(|client| client.mode_info.hidden_bars.hides(COMPACT_BAR))
+            .unwrap_or(false);
+        if self.has_toggle_key()
+            && new_mode != base_mode
+            && !is_restricted_mode(new_mode)
+            && !compact_bar_is_hidden
+        {
             if let Some(slot_id) = self.main_slot_for_client(client_id) {
                 self.launch_tooltip_if_not_launched(slot_id, client_id, new_mode);
             }
@@ -1119,6 +1128,7 @@ fn is_restricted_mode(mode: InputMode) -> bool {
             | InputMode::EnterSearch
             | InputMode::RenameTab
             | InputMode::RenamePane
+            | InputMode::RenameSession
             | InputMode::Prompt
             | InputMode::Tmux
     )

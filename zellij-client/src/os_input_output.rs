@@ -194,6 +194,7 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// On Windows this clears ENABLE_MOUSE_INPUT and ENABLE_VIRTUAL_TERMINAL_INPUT
     /// that crossterm's disable_raw_mode() leaves behind. No-op on other platforms.
     fn restore_console_mode(&self) {}
+    fn discard_pending_input(&self) {}
     fn env_variable(&self, _name: &str) -> Option<String> {
         None
     }
@@ -387,6 +388,14 @@ impl ClientOsApi for ClientOsInputOutput {
     #[cfg(windows)]
     fn restore_console_mode(&self) {
         restore_console_mode();
+    }
+
+    #[cfg(unix)]
+    fn discard_pending_input(&self) {
+        let stdin = std::io::stdin();
+        if stdin.is_terminal() {
+            let _ = nix::sys::termios::tcflush(&stdin, nix::sys::termios::FlushArg::TCIFLUSH);
+        }
     }
 
     fn env_variable(&self, name: &str) -> Option<String> {

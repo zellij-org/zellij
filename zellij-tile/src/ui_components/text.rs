@@ -2,6 +2,9 @@ use std::ops::Bound;
 use std::ops::RangeBounds;
 use zellij_utils::data::StyledText;
 
+pub const CUSTOM_COLOR_LEVEL: usize = 9;
+pub const CUSTOM_COLOR_MARK: usize = 1 << 30;
+
 #[derive(Debug, Default, Clone)]
 pub struct Text {
     text: String,
@@ -268,6 +271,27 @@ impl Text {
             .get_mut(index_level)
             .map(|i| i.append(&mut indices));
         self
+    }
+    pub fn rgb_color_range<R: RangeBounds<usize>>(mut self, rgb: [u8; 3], indices: R) -> Self {
+        let mark = CUSTOM_COLOR_MARK
+            + ((rgb[0] as usize) << 16 | (rgb[1] as usize) << 8 | rgb[2] as usize);
+        let existing = self
+            .indices
+            .iter()
+            .enumerate()
+            .skip(CUSTOM_COLOR_LEVEL)
+            .find(|(_, level)| level.contains(&mark))
+            .map(|(level, _)| level);
+        let level = match existing {
+            Some(level) => level,
+            None => {
+                let level = self.indices.len().max(CUSTOM_COLOR_LEVEL);
+                self.pad_indices(level);
+                self.indices[level].push(mark);
+                level
+            },
+        };
+        self.color_range(level, indices)
     }
     pub fn color_range<R: RangeBounds<usize>>(mut self, index_level: usize, indices: R) -> Self {
         self.pad_indices(index_level);
@@ -586,6 +610,18 @@ pub fn serialize_text_with_coordinates(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_custom_colour_gets_one_level_per_colour() {
+        let text = Text::from("abcd")
+            .rgb_color_range([1, 2, 3], 0..1)
+            .rgb_color_range([4, 5, 6], 1..2)
+            .rgb_color_range([1, 2, 3], 2..3);
+        let first = CUSTOM_COLOR_MARK + 0x010203;
+        let second = CUSTOM_COLOR_MARK + 0x040506;
+        assert_eq!(text.indices[CUSTOM_COLOR_LEVEL], vec![first, 0, 2]);
+        assert_eq!(text.indices[CUSTOM_COLOR_LEVEL + 1], vec![second, 1]);
+    }
 
     fn text_body(text: &str) -> String {
         text.as_bytes()

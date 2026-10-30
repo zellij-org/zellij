@@ -10,7 +10,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::status_bar::{
-    action_key, action_key_group, style_key_with_modifier,
+    action_key, action_key_group, bars_hint, style_key_with_modifier,
     tip::{data::TIPS, TipFn},
     LinePart, MORE_MSG, TO_NORMAL,
 };
@@ -128,6 +128,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Toggle Floating"), s("Floating"),
             action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
         (s("Toggle Embed"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
+        (s("Mute"), s("Mute"), action_key(&km, &[A::MutePane, TO_NORMAL])),
+        (s("Ignore output"), s("Ignore"), action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
+        (s("Watch"), s("Watch"), action_key(&km, &[A::WatchPane, TO_NORMAL])),
+        (s(bars_hint(mi).0), s(bars_hint(mi).1), action_key(&km, &[A::ToggleBars{bars: vec![]}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tab {
         let old_keymap = mi.get_mode_keybinds();
@@ -225,7 +229,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Whole words"), s("Whole"),
             action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
+        (s("Next item"), s("Next"), action_key(&km, &[A::GoToNextAttention, TO_NORMAL])),
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
+        (s("Rename"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameSession}, A::SessionNameInput{input: vec![0]}])),
         (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin{plugin: Default::default(), should_float: true, move_to_focused_tab: true, should_open_in_place: false, close_replaced_pane: false, skip_cache: false, tab_id: None}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
@@ -251,7 +258,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
-    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab | IM::RenameSession) { vec![
         (s("When done"), s("Done"), to_normal_key),
         (s("Select pane"), s("Select"), action_key_group(&km, &[
             &[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],

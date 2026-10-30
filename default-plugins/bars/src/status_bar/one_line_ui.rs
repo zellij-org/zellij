@@ -15,7 +15,9 @@ use crate::status_bar::second_line::{
     ascended_to_host_session_hint, descended_into_nested_session_hint, system_clipboard_error,
     text_copied_hint,
 };
-use crate::status_bar::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
+use crate::status_bar::{
+    action_key, action_key_group, bars_hint, color_elements, MORE_MSG, TO_NORMAL,
+};
 use crate::status_bar::{ColoredElements, LinePart};
 use zellij_tile::graphemes::display_width;
 
@@ -1423,6 +1425,7 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
         let mode_help_text = match help.mode {
             InputMode::RenamePane => Some("RENAMING PANE"),
             InputMode::RenameTab => Some("RENAMING TAB"),
+            InputMode::RenameSession => Some("RENAMING SESSION"),
             InputMode::EnterSearch => Some("ENTERING SEARCH TERM"),
             InputMode::Search => Some("SEARCHING"),
             _ => None,
@@ -1452,6 +1455,7 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
     let mode_help_text = match help.mode {
         InputMode::RenamePane => Some("RENAMING PANE"),
         InputMode::RenameTab => Some("RENAMING TAB"),
+        InputMode::RenameSession => Some("RENAMING SESSION"),
         InputMode::EnterSearch => Some("ENTERING SEARCH TERM"),
         InputMode::Search => Some("SEARCHING"),
         _ => None,
@@ -1562,6 +1566,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Split Right"), s("Right"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Split Down"), s("Down"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane{command: None, pane_name: None, near_current_pane: false, no_focus: false, tab_id: None}, TO_NORMAL])),
+        (s("Mute"), s("Mute"), single_action_key(&km, &[A::MutePane, TO_NORMAL])),
+        (s("Ignore output"), s("Ignore"), single_action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
+        (s("Watch"), s("Watch"), single_action_key(&km, &[A::WatchPane, TO_NORMAL])),
+        (s(bars_hint(mi).0), s(bars_hint(mi).1), single_action_key(&km, &[A::ToggleBars{bars: vec![]}, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Tab {
         let old_keymap = mi.get_mode_keybinds();
@@ -1673,14 +1681,14 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             hints_list.push((format!("back to {}", previous), s("Back"), toggle_keys.into_iter().take(1).collect()));
             hints_list.push((s("history"), s("History"), history_keys));
         }
-        if hints.has_items {
-            hints_list.push((s("next item"), s("Next"), next_keys.into_iter().take(1).collect()));
-        }
+        hints_list.push((s("next item"), s("Next"), next_keys.into_iter().take(1).collect()));
         hints_list.extend(vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
+        (s("Rename"), s("Rename"),
+            single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameSession}, A::SessionNameInput{input: vec![0]}])),
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Share"), s("Share"), share_key(&km)),
-        (s("Configure"), s("Config"), configuration_key(&km)),
+        (s("Settings"), s("Settings"), configuration_key(&km)),
         (s("Layout Manager"), s("Layouts"), layout_manager_key(&km)),
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
         (s("About"), s("About"), about_key(&km)),
@@ -1710,7 +1718,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
         (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_basemode_key),
-    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab | IM::RenameSession) { vec![
         (s("When done"), s("Done"), to_basemode_key),
     ]} else { vec![] }
 }

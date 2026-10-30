@@ -16,9 +16,10 @@ pub mod options;
 pub mod permission;
 pub mod plugins;
 pub mod session_suggestions;
+pub mod terminal;
 pub mod theme;
+pub mod theme_contrast;
 pub mod web_client;
-pub mod window;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
@@ -71,6 +72,7 @@ mod not_wasm {
             session_ascended: None,
             nested_descend_keys: vec![],
             remote_client: None,
+            hidden_bars: Default::default(),
         }
     }
 

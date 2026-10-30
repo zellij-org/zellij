@@ -15,28 +15,36 @@ const END: &[u8] = b"\x1b[F";
 const BACKSPACE: &[u8] = &[0x7f];
 const PROMPT_MARKER: &str = "<Esc> - cancel";
 
-const KEYS_PAGE: usize = 2;
-const MOUSE_BINDINGS_PAGE: usize = 4;
-const MENU_PAGE: usize = 5;
-const THEMES_PAGE: usize = 6;
-const PLUGINS_PAGE: usize = 14;
+const KEYS_PAGE: (usize, usize) = (2, 0);
+const MOUSE_BINDINGS_PAGE: (usize, usize) = (3, 10);
+const MENU_PAGE: (usize, usize) = (3, 9);
+const THEMES_PAGE: (usize, usize) = (1, 4);
+const PLUGINS_PAGE: (usize, usize) = (10, 0);
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     });
 }
 
-fn open_page(zellij: &TestSession, index: usize, marker: &str) {
-    for _ in 0..index {
+fn open_page(zellij: &TestSession, (category, link): (usize, usize), marker: &str) {
+    for _ in 0..category {
         zellij.send_stdin(ARROW_DOWN);
     }
+    open_link(zellij, link, marker);
+}
+
+fn open_link(zellij: &TestSession, link: usize, marker: &str) {
+    zellij.send_stdin(&keys::TAB);
+    for _ in 0..link {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("settings page shown", |grid_snapshot| {
         grid_snapshot.contains(marker)
     });
-    zellij.send_stdin(&keys::TAB);
 }
 
 fn open_keybindings(zellij: &TestSession) {
@@ -67,8 +75,13 @@ fn save_and_wait(zellij: &TestSession) {
 
 fn close_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
+    zellij.wait_until(
+        "back on the category that links the page",
+        |grid_snapshot| grid_snapshot.contains("Opens the"),
+    );
+    zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration") && grid_snapshot.status_bar_appears()
+        !grid_snapshot.contains("unsaved change") && grid_snapshot.status_bar_appears()
     });
 }
 
@@ -502,7 +515,7 @@ fn a_new_right_click_menu_item_shows_in_the_menu_with_its_shortcut() {
     let saved = std::fs::read_to_string(&config_file_path).unwrap();
     assert!(!saved.contains("clear-defaults"), "{}", saved);
     assert!(
-        saved.contains("item \"Hello\" after=\"New pane\" { NewTab; }"),
+        saved.contains("item \"Hello\" after=\"Paste\" { NewTab; }"),
         "{}",
         saved
     );
@@ -520,7 +533,7 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
 
     zellij.send_stdin(END);
     let grid_snapshot = zellij.wait_until("the common items are shown", |grid_snapshot| {
-        grid_snapshot.contains("Common items") && grid_snapshot.contains("Detach")
+        grid_snapshot.contains("Show bars") && grid_snapshot.contains("Settings…")
     });
     click_text(&zellij, &grid_snapshot, "+ Add separator", 0);
     zellij.wait_until("a separator was added", |grid_snapshot| {
@@ -528,13 +541,18 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
     });
 
     let grid_snapshot = zellij.wait_until("the item is shown", |grid_snapshot| {
-        grid_snapshot.contains("Detach")
+        grid_snapshot.contains("Show bars")
     });
-    click_text(&zellij, &grid_snapshot, "Detach", 0);
-    let grid_snapshot = zellij.wait_until("the item is selected", |grid_snapshot| {
-        grid_snapshot.contains("<Del> - delete")
-    });
-    click_text(&zellij, &grid_snapshot, "Detach", 0);
+    let row_before = grid_snapshot.row_of_line("Show bars");
+    click_text(&zellij, &grid_snapshot, "Show bars", 0);
+    let grid_snapshot = zellij.wait_until(
+        "the item is selected and scrolled into view with its heading",
+        |grid_snapshot| {
+            grid_snapshot.row_of_line("Show bars").is_some()
+                && grid_snapshot.row_of_line("Show bars") != row_before
+        },
+    );
+    click_text(&zellij, &grid_snapshot, "Show bars", 0);
     zellij.wait_until("the edit popup opened", |grid_snapshot| {
         grid_snapshot.contains("Edit Item") && grid_snapshot.contains("[ Done ]")
     });
@@ -548,7 +566,7 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
         |grid_snapshot| {
             grid_snapshot.contains("Don't ask again")
                 && grid_snapshot.contains("Cancel")
-                && grid_snapshot.contains("<Esc> - cancel │")
+                && grid_snapshot.contains("ShowBars?     │")
         },
     );
     let row = grid_snapshot.row_of_line("Cancel").unwrap();
@@ -556,13 +574,13 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
     let column = line[..line.find("Delete").unwrap()].chars().count();
     sgr_click(&zellij, column + 2, row + 1);
     zellij.wait_until("the item is gone", |grid_snapshot| {
-        !grid_snapshot.contains("Detach") && grid_snapshot.contains("Common items")
+        !grid_snapshot.contains("Show bars") && grid_snapshot.contains("Settings…")
     });
 
     save_and_wait(&zellij);
     let saved = std::fs::read_to_string(&config_file_path).unwrap();
     assert!(!saved.contains("clear-defaults"), "{}", saved);
-    assert!(saved.contains("remove \"Detach\""), "{}", saved);
+    assert!(saved.contains("remove \"Show bars\""), "{}", saved);
     assert!(saved.contains("separator"), "{}", saved);
     zellij.quit();
 }
@@ -586,23 +604,23 @@ fn menu_columns_line_up_and_rows_show_the_hover() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     open_menu_page(&zellij);
     let grid_snapshot = zellij.wait_until("pane items listed", |grid_snapshot| {
-        grid_snapshot.contains("New pane") && grid_snapshot.contains("Fullscreen")
+        grid_snapshot.contains("New pane") && grid_snapshot.contains("New floating pane")
     });
     assert_eq!(
         column_of_text(&grid_snapshot, "New pane", "Alt n"),
-        column_of_text(&grid_snapshot, "Fullscreen", "Ctrl p, f")
+        column_of_text(&grid_snapshot, "New floating pane", "Ctrl p, a")
     );
     assert_eq!(
         column_of_text(&grid_snapshot, "New pane", "NewPane"),
-        column_of_text(&grid_snapshot, "Fullscreen", "ToggleFocus")
+        column_of_text(&grid_snapshot, "New floating pane", "NewFloatin")
     );
     assert!(
         column_of_text(&grid_snapshot, "New pane", "NewPane")
             < column_of_text(&grid_snapshot, "New pane", "Alt n")
     );
 
-    let row = grid_snapshot.row_of_line("Fullscreen").unwrap();
-    let column = column_of_text(&grid_snapshot, "Fullscreen", "Fullscreen");
+    let row = grid_snapshot.row_of_line("New floating pane").unwrap();
+    let column = column_of_text(&grid_snapshot, "New floating pane", "New floating pane");
     let before = format!("{:?}", grid_snapshot.cell_style(column, row).background);
     zellij.send_stdin(format!("\u{1b}[<35;{};{}M", column + 2, row + 1).as_bytes());
     zellij.wait_until("the hovered row is highlighted", |grid_snapshot| {
@@ -685,6 +703,25 @@ fn a_colour_of_the_active_config_file_theme_applies_live_and_saves() {
 }
 
 #[test]
+fn a_new_theme_opens_its_color_editor_once_named() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    open_page(&zellij, THEMES_PAGE, "+ New theme");
+    zellij.send_stdin(&keys::key('a'));
+    zellij.wait_until("the name form is shown", |grid_snapshot| {
+        grid_snapshot.contains("New theme") && grid_snapshot.contains("Name")
+    });
+    type_text(&zellij, "fresh");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until(
+        "the color editor of the new theme is shown",
+        |grid_snapshot| grid_snapshot.contains("Colors of fresh"),
+    );
+    zellij.quit();
+}
+
+#[test]
 fn the_keybinding_search_finds_keys_of_every_mode_and_hides_the_dropdowns() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
@@ -749,28 +786,24 @@ fn menu_items_move_with_shift_arrows_and_the_menu_search_finds_them() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     open_menu_page(&zellij);
     let grid_snapshot = zellij.wait_until("pane items listed", |grid_snapshot| {
-        grid_snapshot.contains("New pane") && grid_snapshot.contains("New floating pane")
+        grid_snapshot.contains("Paste") && grid_snapshot.contains("New pane ")
     });
+    let paste_row = grid_snapshot.row_of_line("Paste").unwrap();
     let new_pane_row = grid_snapshot.row_of_line("New pane ").unwrap();
-    let floating_row = grid_snapshot.row_of_line("New floating pane").unwrap();
-    assert!(new_pane_row < floating_row);
+    assert!(paste_row < new_pane_row);
     zellij.send_stdin(SHIFT_DOWN);
-    zellij.wait_until("the first item moved down", |grid_snapshot| {
-        match (
-            grid_snapshot.row_of_line("New pane "),
-            grid_snapshot.row_of_line("New floating pane"),
-        ) {
-            (Some(new_pane), Some(floating)) => {
-                new_pane > floating && grid_snapshot.contains("1 unsaved change ")
-            },
-            _ => false,
-        }
-    });
+    zellij.wait_until(
+        "the first item moved down",
+        |grid_snapshot| match grid_snapshot.row_of_line("Paste") {
+            Some(row) => row > paste_row && grid_snapshot.contains("1 unsaved change "),
+            None => false,
+        },
+    );
     zellij.send_stdin(&keys::key('/'));
-    type_text(&zellij, "detach");
+    type_text(&zellij, "settings");
     zellij.wait_until("the search lists the matching item", |grid_snapshot| {
         grid_snapshot.contains("Common items")
-            && grid_snapshot.contains("Detach")
+            && grid_snapshot.contains("Settings…")
             && !grid_snapshot.contains("New floating pane")
     });
     zellij.quit();
@@ -783,7 +816,6 @@ fn wait_for_mouse_bindings_page(zellij: &TestSession) {
 }
 
 fn enter_mouse_binding_search(zellij: &TestSession) {
-    zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::key('/'));
     zellij.wait_until("the mouse binding search is focused", |grid_snapshot| {
         grid_snapshot.contains("- search mouse bindings and actions")
@@ -792,9 +824,7 @@ fn enter_mouse_binding_search(zellij: &TestSession) {
 
 fn open_mouse_binding_search(zellij: &TestSession) {
     open_settings(zellij);
-    for _ in 0..MOUSE_BINDINGS_PAGE {
-        zellij.send_stdin(ARROW_DOWN);
-    }
+    open_page(zellij, MOUSE_BINDINGS_PAGE, "From preset:");
     wait_for_mouse_bindings_page(zellij);
     enter_mouse_binding_search(zellij);
 }
@@ -1010,15 +1040,15 @@ fn switching_the_preset_updates_the_leader_keys_of_the_mouse_bindings() {
         grid_snapshot.contains("<Del> - delete")
     });
     zellij.send_stdin(ARROW_LEFT);
+    zellij.wait_until("back on the mouse settings", |grid_snapshot| {
+        grid_snapshot.contains("Mouse bindings…")
+    });
+    zellij.send_stdin(ARROW_LEFT);
     zellij.wait_until("the category menu is focused", |grid_snapshot| {
         grid_snapshot.contains("<↓↑> - category")
     });
     zellij.send_stdin(ARROW_UP);
-    zellij.send_stdin(ARROW_UP);
-    zellij.wait_until("keys page shown", |grid_snapshot| {
-        grid_snapshot.contains("Save as a preset")
-    });
-    zellij.send_stdin(&keys::TAB);
+    open_link(&zellij, KEYS_PAGE.1, "Save as a preset");
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("preset list opened", |grid_snapshot| {
         grid_snapshot.contains("unlock-first") && grid_snapshot.contains("swapped")
@@ -1041,11 +1071,15 @@ fn switching_the_preset_updates_the_leader_keys_of_the_mouse_bindings() {
         grid_snapshot.contains("<Del> - delete")
     });
     zellij.send_stdin(ARROW_LEFT);
+    zellij.wait_until("back on the keyboard settings", |grid_snapshot| {
+        grid_snapshot.contains("Key bindings and preset…")
+    });
+    zellij.send_stdin(ARROW_LEFT);
     zellij.wait_until("the category menu is focused", |grid_snapshot| {
         grid_snapshot.contains("<↓↑> - category")
     });
     zellij.send_stdin(ARROW_DOWN);
-    zellij.send_stdin(ARROW_DOWN);
+    open_link(&zellij, MOUSE_BINDINGS_PAGE.1, "From preset:");
     wait_for_mouse_bindings_page(&zellij);
     enter_mouse_binding_search(&zellij);
     zellij.wait_until(

@@ -9,6 +9,15 @@ use zellij_integration_tests::{
 };
 
 const IDLE_BEYOND_SHORT_FLUSH: Duration = Duration::from_millis(150);
+const EXIT_QUERY: &[u8] = b"\x1b[?1004l\x1b[c";
+const EXIT_ALTERNATE_SCREEN: &[u8] = b"\x1b[?1049l";
+const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?62;22c";
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
 
 fn start_zellij_with_a_silent_host() -> TestSession {
     TestRunner::new(TERMINAL_SIZE)
@@ -185,4 +194,40 @@ fn normal_typing_is_not_delayed_or_duplicated() {
 
     unlock_interface(&zellij);
     zellij.quit();
+}
+
+#[test]
+fn a_detaching_client_waits_for_the_host_to_stop_reporting_and_drops_input_meanwhile() {
+    let mut zellij = start_zellij_with_a_silent_host();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    zellij.send_stdin(PRIMARY_DA_REPLY);
+
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('d'));
+    zellij.wait_until_raw_output(
+        "the client turned host reporting off and asked the host to confirm",
+        |bytes| contains_bytes(bytes, EXIT_QUERY),
+    );
+
+    zellij.send_stdin(b"leak\x1b[<35;10;5M\x1b[I");
+    sleep(IDLE_BEYOND_SHORT_FLUSH);
+    assert!(
+        !contains_bytes(&zellij.raw_bytes(), EXIT_ALTERNATE_SCREEN),
+        "the client restored the terminal before the host confirmed it stopped reporting"
+    );
+
+    zellij.send_stdin(PRIMARY_DA_REPLY);
+    zellij.wait_until_raw_output("the client left the alternate screen", |bytes| {
+        contains_bytes(bytes, EXIT_ALTERNATE_SCREEN)
+    });
+    zellij.wait_for_main_client_to_exit();
+
+    let stdin = terminal.stdin_bytes();
+    assert!(
+        !contains_bytes(&stdin, b"leak"),
+        "input that arrived while the client was exiting reached the pane: {:?}",
+        String::from_utf8_lossy(&stdin)
+    );
+    zellij.kill_session();
 }

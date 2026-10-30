@@ -339,6 +339,16 @@ fn test_client_messages() {
     test_client_roundtrip!(ClientToServerMsg::FontFamilies {
         families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
     });
+    test_client_roundtrip!(ClientToServerMsg::AdoptSessionHistory {
+        history: crate::session_history::SessionHistory {
+            back: vec!["docs".to_owned(), "api".to_owned()],
+            forward: vec!["notes".to_owned()],
+            last: Some("api".to_owned()),
+        },
+    });
+    test_client_roundtrip!(ClientToServerMsg::AdoptSessionHistory {
+        history: crate::session_history::SessionHistory::default(),
+    });
     test_client_roundtrip!(ClientToServerMsg::DetachSession {
         client_ids: vec![1],
     });
@@ -529,6 +539,8 @@ fn test_client_messages() {
                 support_kitty_keyboard_protocol: Some(true),
                 support_kitty_graphics_protocol: Some(false),
                 grapheme_clusters: Some(false),
+                mirror_resizes_source_pane: Some(false),
+                live_view_release_key: Some("Ctrl Alt End".to_owned()),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
@@ -560,6 +572,12 @@ fn test_client_messages() {
                 session_indicator: Some(true),
                 swap_layout_notification: Some(false),
                 on_quit: Some(crate::input::options::OnQuit::AskDetach),
+                bars_hidden_on_start: Some(crate::data::HiddenBars::from_names(&[
+                    "tab-bar",
+                    "status-bar",
+                ])),
+                hidden_bars_notification: Some(false),
+                mode_hints_when_bars_hidden: Some(true),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -1184,6 +1202,34 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePaneFrames,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleBars {
+            bars: vec!["status-bar".to_owned()],
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HideBars { bars: vec![] },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ShowBars,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::HideBarByPaneId {
+            pane_id: PaneId::Plugin(4),
+        },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -2106,10 +2152,10 @@ fn test_client_messages() {
                     args: vec![],
                     cwd: None,
                     hold_on_close: false,
+                    drop_to_shell_on_exit: false,
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: true,
-                    drop_to_shell_on_exit: true,
                     notify: Default::default(),
                 })),
                 ..Default::default()
@@ -2135,6 +2181,7 @@ fn test_client_messages() {
                     args: vec!["arg1".to_owned(), "arg2".to_owned(), "arg3".to_owned()],
                     cwd: Some(PathBuf::from("/path/to/cwd")),
                     hold_on_close: true,
+                    drop_to_shell_on_exit: false,
                     hold_on_start: true,
                     originating_plugin: Some(OriginatingPlugin {
                         plugin_id: 11,
@@ -2142,7 +2189,6 @@ fn test_client_messages() {
                         context: empty_context.clone(),
                     }),
                     use_terminal_title: true,
-                    drop_to_shell_on_exit: true,
                     notify: Default::default(),
                 })),
                 ..Default::default()
@@ -3182,6 +3228,8 @@ fn test_client_messages() {
             pane_title: None,
             popup: None,
             popup_no_focus: false,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3203,6 +3251,8 @@ fn test_client_messages() {
             pane_title: Some("pane_title".to_owned()),
             popup: Some(crate::data::PipePopupPlacement::Center),
             popup_no_focus: false,
+            popup_capture_all_keys: true,
+            popup_outside_click: Some(crate::data::OutsideClick::Close),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3224,6 +3274,8 @@ fn test_client_messages() {
             pane_title: None,
             popup: Some(crate::data::PipePopupPlacement::TopRight),
             popup_no_focus: true,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3275,6 +3327,12 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePanePinned,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleMirrorResize,
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -4250,19 +4308,19 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::QueryTerminalSize);
     test_server_roundtrip!(ServerToClientMsg::StartWebServer);
     test_server_roundtrip!(ServerToClientMsg::ConfigFileUpdated);
-    test_server_roundtrip!(ServerToClientMsg::WindowSettingsChanged {
-        settings: Box::new(crate::input::window::WindowSettings::default()),
+    test_server_roundtrip!(ServerToClientMsg::TerminalSettingsChanged {
+        settings: Box::new(crate::input::terminal::TerminalSettings::default()),
     });
     let mut window_config = crate::input::config::Config::from_kdl(
-        "theme \"dracula\"\nwindow {\n    font \"Iosevka\"\n    opacity 0.9\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n    theme {\n        red 1 2 3\n    }\n}\n",
+        "theme \"dracula\"\nterminal {\n    font \"Iosevka\"\n    opacity 0.9\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n    theme {\n        red 1 2 3\n    }\n}\n",
         Some(crate::input::config::Config::from_default_assets().unwrap()),
     )
     .unwrap();
     window_config.themes = window_config
         .themes
         .merge(crate::setup::get_default_themes());
-    test_server_roundtrip!(ServerToClientMsg::WindowSettingsChanged {
-        settings: Box::new(crate::input::window::WindowSettings::from_config(
+    test_server_roundtrip!(ServerToClientMsg::TerminalSettingsChanged {
+        settings: Box::new(crate::input::terminal::TerminalSettings::from_config(
             &window_config
         )),
     });
@@ -4751,6 +4809,144 @@ fn by_id_actions_without_a_pane_id_are_rejected_over_ipc() {
         });
         assert!(decoded.is_err(), "{} decoded without a pane id", described);
     }
+}
+
+#[test]
+fn pane_mirror_wrappers_carry_mirror_messages_unchanged() {
+    use crate::data::MirrorClosedReason;
+    use crate::pane_mirror::{
+        MirrorAttach, MirrorInput, SourceMessage, ViewerMessage, PANE_MIRROR_VERSION,
+    };
+    let viewer_messages = vec![
+        ViewerMessage::Attach(MirrorAttach {
+            resize_allowed: true,
+            view_only: true,
+            focused: true,
+            viewer_sessions: vec!["outer".to_owned()],
+            ..MirrorAttach::new(PaneId::Terminal(2), Size { cols: 40, rows: 12 })
+        }),
+        ViewerMessage::Input(MirrorInput::Key {
+            key: KeyWithModifier::new(BareKey::Down),
+            raw_bytes: b"\x1b[B".to_vec(),
+            is_kitty_keyboard_protocol: false,
+        }),
+        ViewerMessage::Input(MirrorInput::Paste(b"hi".to_vec())),
+        ViewerMessage::Input(MirrorInput::Mouse(MouseEvent::new_scroll_up_event(
+            Position::new(1, 1),
+        ))),
+        ViewerMessage::Resize {
+            size: Size { cols: 20, rows: 5 },
+            focused: true,
+            resize_allowed: true,
+        },
+        ViewerMessage::FrameAck { seq: 9 },
+        ViewerMessage::Detach,
+        ViewerMessage::Park,
+        ViewerMessage::Unpark {
+            resize_allowed: true,
+        },
+        ViewerMessage::Unpark {
+            resize_allowed: false,
+        },
+    ];
+    for message in viewer_messages {
+        let payload = message.encode();
+        test_client_roundtrip!(ClientToServerMsg::PaneMirror {
+            payload: payload.clone()
+        });
+        let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+            ClientToServerMsg::PaneMirror { payload }.into();
+        match ClientToServerMsg::try_from(proto).unwrap() {
+            ClientToServerMsg::PaneMirror { payload } => {
+                assert_eq!(ViewerMessage::decode(&payload), Ok(message))
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+    let source_messages = vec![
+        SourceMessage::Attached {
+            version: PANE_MIRROR_VERSION,
+            capabilities: vec!["structured-frame".to_owned()],
+            pane_size: Size { cols: 80, rows: 24 },
+        },
+        SourceMessage::Frame {
+            frame: vec![4, 0, 1, 2],
+            alternate_screen: true,
+        },
+        SourceMessage::PinState {
+            pinned: true,
+            pane_size: Size { cols: 20, rows: 5 },
+        },
+        SourceMessage::closed(MirrorClosedReason::SessionEnding),
+        SourceMessage::closed(MirrorClosedReason::ContainsViewer),
+    ];
+    for message in source_messages {
+        let payload = message.encode();
+        test_server_roundtrip!(ServerToClientMsg::PaneMirror {
+            payload: payload.clone()
+        });
+        let proto: crate::client_server_contract::client_server_contract::ServerToClientMsg =
+            ServerToClientMsg::PaneMirror { payload }.into();
+        match ServerToClientMsg::try_from(proto).unwrap() {
+            ServerToClientMsg::PaneMirror { payload } => {
+                assert_eq!(SourceMessage::decode(&payload), Ok(message))
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+    test_client_roundtrip!(ClientToServerMsg::PaneMirror { payload: vec![] });
+    test_server_roundtrip!(ServerToClientMsg::PaneMirror { payload: vec![] });
+}
+
+fn assert_action_wire_roundtrip(action: Action) {
+    use prost::Message;
+
+    let original = ClientToServerMsg::Action {
+        action,
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    };
+    let proto: crate::client_server_contract::client_server_contract::ClientToServerMsg =
+        original.clone().into();
+    let bytes = proto.encode_to_vec();
+    let decoded_proto =
+        crate::client_server_contract::client_server_contract::ClientToServerMsg::decode(
+            &bytes[..],
+        )
+        .expect("Failed to decode protobuf bytes");
+    let roundtrip: ClientToServerMsg = decoded_proto
+        .try_into()
+        .expect("Failed to convert decoded protobuf back to Rust");
+    assert_eq!(original, roundtrip);
+}
+
+#[test]
+fn set_resurrect_command_wire_roundtrip() {
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: Some(crate::input::actions::ResurrectCommand {
+            command: PathBuf::from("opencode"),
+            args: vec!["-s".to_owned(), "ses_abc".to_owned()],
+            cwd: Some(PathBuf::from("/tmp/project")),
+        }),
+    });
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: Some(crate::input::actions::ResurrectCommand {
+            command: PathBuf::from("htop"),
+            args: vec![],
+            cwd: None,
+        }),
+    });
+}
+
+#[test]
+fn clear_resurrect_command_wire_roundtrip() {
+    assert_action_wire_roundtrip(Action::SetResurrectCommand {
+        pane_id: PaneId::Terminal(3),
+        resurrect: None,
+    });
 }
 
 #[test]

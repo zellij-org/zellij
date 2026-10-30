@@ -4,7 +4,10 @@ use std::io::Write;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 use wasmi::{Instance, Store, StoreLimits};
 use wasmi_wasi::WasiCtx;
@@ -49,6 +52,7 @@ pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
     plugin_metadata: HashMap<PluginId, PluginMetadata>,
     shared_assets: HashMap<PluginId, PluginAssets>,
+    shared_blocking_calls: HashMap<PluginId, Arc<AtomicBool>>,
 }
 
 impl PluginMap {
@@ -77,11 +81,32 @@ impl PluginMap {
         }
         removed
     }
-    pub fn insert_shared(&mut self, instance_id: PluginId, assets: PluginAssets) {
+    pub fn insert_shared(
+        &mut self,
+        instance_id: PluginId,
+        assets: PluginAssets,
+        in_blocking_call: Option<Arc<AtomicBool>>,
+    ) {
         self.shared_assets.insert(instance_id, assets);
+        match in_blocking_call {
+            Some(in_blocking_call) => {
+                self.shared_blocking_calls
+                    .insert(instance_id, in_blocking_call);
+            },
+            None => {
+                self.shared_blocking_calls.remove(&instance_id);
+            },
+        }
     }
     pub fn remove_shared(&mut self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_blocking_calls.remove(&instance_id);
         self.shared_assets.remove(&instance_id)
+    }
+    pub fn shared_instance_in_blocking_call(&self, instance_id: PluginId) -> bool {
+        self.shared_blocking_calls
+            .get(&instance_id)
+            .map(|in_blocking_call| in_blocking_call.load(Ordering::SeqCst))
+            .unwrap_or(false)
     }
     pub fn shared_running_plugin(
         &self,
@@ -357,6 +382,7 @@ pub struct SharedEnv {
     pub clients: BTreeSet<ClientId>,
     pub visible_slots: HashMap<ClientId, HashSet<PluginId>>,
     pub last_events: HashMap<(EventType, Option<ClientId>), (Event, Option<SharedKeybinds>)>,
+    pub in_blocking_call: Arc<AtomicBool>,
 }
 
 impl SharedEnv {

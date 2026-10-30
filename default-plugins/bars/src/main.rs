@@ -3,6 +3,7 @@ mod compact_bar;
 mod double_click;
 mod keybinds;
 mod link;
+mod mode_hints;
 mod session_indicator;
 mod status_bar;
 mod tab_bar;
@@ -16,6 +17,7 @@ use zellij_tile::prelude::*;
 use compact_bar::CompactBar;
 use keybinds::{take_keybinds, KeybindStore};
 use link::Link;
+use mode_hints::ModeHints;
 use status_bar::StatusBar;
 use tab_bar::TabBar;
 use timers::{TimerOwner, Timers};
@@ -26,6 +28,7 @@ enum Role {
     StatusBar,
     CompactBar,
     Link,
+    ModeHints,
 }
 
 impl Role {
@@ -34,9 +37,24 @@ impl Role {
             Some("status-bar") => Role::StatusBar,
             Some("compact-bar") => Role::CompactBar,
             Some("link") => Role::Link,
+            Some("mode-hints") => Role::ModeHints,
             _ => Role::TabBar,
         }
     }
+}
+
+pub fn displayed_session_name(mode_info: &ModeInfo) -> Option<String> {
+    if mode_info.mode == InputMode::RenameSession {
+        return match mode_info.session_name.as_deref() {
+            Some(name) if !name.is_empty() => Some(name.to_owned()),
+            _ => Some("Enter name...".to_owned()),
+        };
+    }
+    mode_info.session_name.clone()
+}
+
+pub fn session_name_hidden(mode_info: &ModeInfo) -> bool {
+    mode_info.style.hide_session_name && mode_info.mode != InputMode::RenameSession
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,6 +87,7 @@ struct State {
     status_bar: StatusBar,
     compact_bar: CompactBar,
     link: Link,
+    mode_hints: ModeHints,
     keybinds: KeybindStore,
     timers: Timers,
 }
@@ -82,6 +101,7 @@ impl State {
             Role::StatusBar => self.status_bar.has_slots(),
             Role::CompactBar => self.compact_bar.has_slots(),
             Role::Link => self.link.has_slots(),
+            Role::ModeHints => self.mode_hints.has_slots(),
         }
     }
 
@@ -189,6 +209,7 @@ impl State {
                 if self.link.has_slots() {
                     self.link.update(event);
                 }
+                render = render.merge(self.mode_hints.update(event, context));
                 render
             },
         }
@@ -199,7 +220,7 @@ impl State {
             Role::TabBar => self.tab_bar.snapshot(),
             Role::StatusBar => self.status_bar.snapshot(),
             Role::CompactBar => self.compact_bar.snapshot(),
-            Role::Link => BTreeMap::new(),
+            Role::Link | Role::ModeHints => BTreeMap::new(),
         }
     }
 }
@@ -207,16 +228,16 @@ impl State {
 impl ZellijSharedPlugin for State {
     fn slot_added(&mut self, slot: Slot) {
         let role = Role::from_configuration(&slot.configuration);
-        if slot.kind == SlotKind::Pane {
+        if slot.kind == SlotKind::Pane && role != Role::ModeHints {
             set_selectable(false);
         }
-        if role != Role::Link && !self.role_has_slots(role) {
+        if role != Role::Link && role != Role::ModeHints && !self.role_has_slots(role) {
             let seeds = self.snapshot_for(role);
             match role {
                 Role::TabBar => self.tab_bar.seed(&seeds),
                 Role::StatusBar => self.status_bar.seed(&seeds),
                 Role::CompactBar => self.compact_bar.seed(&seeds),
-                Role::Link => {},
+                Role::Link | Role::ModeHints => {},
             }
         }
         self.slots.insert(slot.id, role);
@@ -225,6 +246,7 @@ impl ZellijSharedPlugin for State {
             Role::StatusBar => self.status_bar.slot_added(&slot),
             Role::CompactBar => self.compact_bar.slot_added(&slot),
             Role::Link => self.link.slot_added(&slot),
+            Role::ModeHints => self.mode_hints.slot_added(&slot),
         }
         if self.any_bar_has_slots() {
             self.pending.clear();
@@ -240,8 +262,9 @@ impl ZellijSharedPlugin for State {
             Role::StatusBar => self.status_bar.slot_removed(slot_id),
             Role::CompactBar => self.compact_bar.slot_removed(slot_id),
             Role::Link => self.link.slot_removed(slot_id),
+            Role::ModeHints => self.mode_hints.slot_removed(slot_id),
         }
-        if role != Role::Link && !self.role_has_slots(role) {
+        if role != Role::Link && role != Role::ModeHints && !self.role_has_slots(role) {
             if !self.any_bar_has_slots() {
                 self.pending = self.snapshot_of(role);
             }
@@ -249,7 +272,7 @@ impl ZellijSharedPlugin for State {
                 Role::TabBar => self.tab_bar.reset(),
                 Role::StatusBar => self.status_bar.reset(),
                 Role::CompactBar => self.compact_bar.reset(),
-                Role::Link => {},
+                Role::Link | Role::ModeHints => {},
             }
         }
     }
@@ -272,6 +295,7 @@ impl ZellijSharedPlugin for State {
         self.tab_bar.client_disconnected(client_id);
         self.status_bar.client_disconnected(client_id);
         self.compact_bar.client_disconnected(client_id);
+        self.mode_hints.client_disconnected(client_id);
     }
 
     fn update(&mut self, mut event: Event, context: EventContext) -> RenderResponse {
@@ -314,6 +338,10 @@ impl ZellijSharedPlugin for State {
             },
             Some(Role::CompactBar) => {
                 self.compact_bar
+                    .render(rows, cols, slot_id, client_id, &mut self.keybinds)
+            },
+            Some(Role::ModeHints) => {
+                self.mode_hints
                     .render(rows, cols, slot_id, client_id, &mut self.keybinds)
             },
             _ => {},

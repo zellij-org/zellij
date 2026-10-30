@@ -8,6 +8,7 @@ pub use super::generated_api::api::{
         Action as ProtobufAction,
         ActionName as ProtobufActionName,
         AreFloatingPanesVisiblePayload,
+        BarNamesPayload,
         BareKey as ProtobufBareKey,
         // New layout-related types
         CommandOrPlugin as ProtobufCommandOrPlugin,
@@ -652,6 +653,16 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("UndoRenameTab should not have a payload"),
                 None => Ok(Action::UndoRenameTab),
             },
+            Some(ProtobufActionName::SessionNameInput) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::SessionNameInputPayload(bytes)) => {
+                    Ok(Action::SessionNameInput { input: bytes })
+                },
+                _ => Err("Wrong payload for Action::SessionNameInput"),
+            },
+            Some(ProtobufActionName::UndoRenameSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("UndoRenameSession should not have a payload"),
+                None => Ok(Action::UndoRenameSession),
+            },
             Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
                     let direction: Direction = ProtobufMoveTabDirection::try_from(move_tab_payload)
@@ -746,6 +757,18 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleTrayIcon should not have a payload"),
                 None => Ok(Action::ToggleTrayIcon),
             },
+            Some(ProtobufActionName::OpenSessionInTerminal) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("OpenSessionInTerminal should not have a payload"),
+                    None => Ok(Action::OpenSessionInTerminal),
+                }
+            },
+            Some(ProtobufActionName::ToggleMirrorResize) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleMirrorResize should not have a payload"),
+                    None => Ok(Action::ToggleMirrorResize),
+                }
+            },
             Some(ProtobufActionName::MarkPaneSeen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkPaneSeen {
                     session: payload.session,
@@ -802,6 +825,48 @@ impl TryFrom<ProtobufAction> for Action {
                     })
                 },
                 _ => Err("Wrong payload for Action::WatchPaneByPaneId"),
+            },
+            Some(ProtobufActionName::ToggleBars) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::BarNamesPayload(payload)) => Ok(Action::ToggleBars {
+                    bars: payload.bar_names,
+                }),
+                None => Ok(Action::ToggleBars { bars: vec![] }),
+                _ => Err("Wrong payload for Action::ToggleBars"),
+            },
+            Some(ProtobufActionName::HideBars) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::BarNamesPayload(payload)) => Ok(Action::HideBars {
+                    bars: payload.bar_names,
+                }),
+                None => Ok(Action::HideBars { bars: vec![] }),
+                _ => Err("Wrong payload for Action::HideBars"),
+            },
+            Some(ProtobufActionName::ShowBars) => match protobuf_action.optional_payload {
+                Some(_) => Err("ShowBars should not have a payload"),
+                None => Ok(Action::ShowBars),
+            },
+            Some(ProtobufActionName::HideBarByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                    Ok(Action::HideBarByPaneId {
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for Action::HideBarByPaneId")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Wrong payload for Action::HideBarByPaneId"),
+            },
+            Some(ProtobufActionName::PasteFromClipboardByPaneId) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                        Ok(Action::PasteFromClipboardByPaneId {
+                            pane_id: payload
+                                .pane_id
+                                .ok_or("Missing pane id for Action::PasteFromClipboardByPaneId")?
+                                .try_into()?,
+                        })
+                    },
+                    _ => Err("Wrong payload for Action::PasteFromClipboardByPaneId"),
+                }
             },
             Some(ProtobufActionName::MuteTabByTabId) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::TargetTabIdPayload(payload)) => {
@@ -2002,6 +2067,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::UndoRenameTab as i32,
                 optional_payload: None,
             }),
+            Action::SessionNameInput { input: bytes } => Ok(ProtobufAction {
+                name: ProtobufActionName::SessionNameInput as i32,
+                optional_payload: Some(OptionalPayload::SessionNameInputPayload(bytes)),
+            }),
+            Action::UndoRenameSession => Ok(ProtobufAction {
+                name: ProtobufActionName::UndoRenameSession as i32,
+                optional_payload: None,
+            }),
             Action::MoveTab { direction } => {
                 let direction: ProtobufMoveTabDirection = direction.try_into()?;
                 Ok(ProtobufAction {
@@ -2089,6 +2162,14 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleTrayIcon as i32,
                 optional_payload: None,
             }),
+            Action::OpenSessionInTerminal => Ok(ProtobufAction {
+                name: ProtobufActionName::OpenSessionInTerminal as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleMirrorResize => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleMirrorResize as i32,
+                optional_payload: None,
+            }),
             Action::MarkPaneSeen { session, pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::MarkPaneSeen as i32,
                 optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
@@ -2122,6 +2203,34 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::WatchPaneByPaneId { pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::WatchPaneByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::ToggleBars { bars } => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleBars as i32,
+                optional_payload: Some(OptionalPayload::BarNamesPayload(BarNamesPayload {
+                    bar_names: bars,
+                })),
+            }),
+            Action::HideBars { bars } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideBars as i32,
+                optional_payload: Some(OptionalPayload::BarNamesPayload(BarNamesPayload {
+                    bar_names: bars,
+                })),
+            }),
+            Action::ShowBars => Ok(ProtobufAction {
+                name: ProtobufActionName::ShowBars as i32,
+                optional_payload: None,
+            }),
+            Action::HideBarByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::HideBarByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::PasteFromClipboardByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::PasteFromClipboardByPaneId as i32,
                 optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
@@ -2500,6 +2609,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::CliPipe { .. }
             | Action::ListClients
             | Action::ListPanes { .. }
+            | Action::WaitForPaneExit { .. }
             | Action::StackPanes { pane_ids: _ }
             | Action::ChangeFloatingPaneCoordinates {
                 pane_id: _,
@@ -2513,7 +2623,8 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::SaveSession
             | Action::ListTabs { .. }
             | Action::CurrentTabInfo { .. }
-            | Action::SetPaneColor { .. } => Err("Unsupported action"),
+            | Action::SetPaneColor { .. }
+            | Action::SetResurrectCommand { .. } => Err("Unsupported action"),
         }
     }
 }
@@ -3887,6 +3998,31 @@ mod tests {
     }
 
     #[test]
+    fn bar_actions_round_trip_over_protobuf() {
+        for original in [
+            Action::ToggleBars { bars: vec![] },
+            Action::ToggleBars {
+                bars: vec!["status-bar".to_owned(), "tab-bar".to_owned()],
+            },
+            Action::HideBars {
+                bars: vec!["compact-bar".to_owned()],
+            },
+            Action::HideBars { bars: vec![] },
+            Action::ShowBars,
+            Action::HideBarByPaneId {
+                pane_id: PaneId::Plugin(7),
+            },
+            Action::PasteFromClipboardByPaneId {
+                pane_id: PaneId::Terminal(3),
+            },
+        ] {
+            let protobuf: ProtobufAction = original.clone().try_into().unwrap();
+            let decoded: Action = protobuf.try_into().unwrap();
+            assert_eq!(original, decoded);
+        }
+    }
+
+    #[test]
     fn by_id_actions_keep_their_target_over_protobuf() {
         for original in by_id_actions() {
             let protobuf: ProtobufAction = original
@@ -3898,6 +4034,15 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{:?} did not decode: {}", original, e));
             assert_eq!(original, decoded);
         }
+    }
+
+    #[test]
+    fn toggle_mirror_resize_round_trips_over_protobuf() {
+        let protobuf: ProtobufAction = Action::ToggleMirrorResize.try_into().unwrap();
+        assert_eq!(protobuf.name, ProtobufActionName::ToggleMirrorResize as i32);
+        assert_eq!(protobuf.optional_payload, None);
+        let decoded: Action = protobuf.try_into().unwrap();
+        assert_eq!(decoded, Action::ToggleMirrorResize);
     }
 
     #[test]

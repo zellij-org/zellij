@@ -9,44 +9,44 @@ themes {
             emphasis_3 149 127 184
         }
         text_selected {
-            base 22 22 29
-            background 118 148 106
+            base 151 151 160
+            background 48 47 49
             emphasis_0 255 160 102
             emphasis_1 127 180 202
-            emphasis_2 118 148 106
-            emphasis_3 149 127 184
+            emphasis_2 128 159 116
+            emphasis_3 163 141 199
         }
         ribbon_selected {
             base 22 22 29
             background 118 148 106
-            emphasis_0 195 64 67
+            emphasis_0 83 0 10
             emphasis_1 255 160 102
             emphasis_2 149 127 184
-            emphasis_3 126 156 216
+            emphasis_3 12 34 84
         }
         ribbon_unselected {
             base 22 22 29
             background 220 215 186
-            emphasis_0 195 64 67
+            emphasis_0 174 43 50
             emphasis_1 220 215 186
             emphasis_2 126 156 216
-            emphasis_3 149 127 184
+            emphasis_3 105 83 137
         }
         table_title {
             base 118 148 106
-            background 0
+            background 22 22 29
             emphasis_0 255 160 102
             emphasis_1 127 180 202
             emphasis_2 118 148 106
             emphasis_3 149 127 184
         }
         table_cell_selected {
-            base 22 22 29
-            background 118 148 106
+            base 151 151 160
+            background 48 47 49
             emphasis_0 255 160 102
             emphasis_1 127 180 202
-            emphasis_2 118 148 106
-            emphasis_3 149 127 184
+            emphasis_2 128 159 116
+            emphasis_3 163 141 199
         }
         table_cell_unselected {
             base 220 215 186
@@ -57,12 +57,12 @@ themes {
             emphasis_3 149 127 184
         }
         list_selected {
-            base 22 22 29
-            background 118 148 106
+            base 151 151 160
+            background 48 47 49
             emphasis_0 255 160 102
             emphasis_1 127 180 202
-            emphasis_2 118 148 106
-            emphasis_3 149 127 184
+            emphasis_2 128 159 116
+            emphasis_3 163 141 199
         }
         list_unselected {
             base 220 215 186
@@ -78,7 +78,7 @@ themes {
             emphasis_0 255 160 102
             emphasis_1 127 180 202
             emphasis_2 149 127 184
-            emphasis_3 0
+            emphasis_3 149 127 184
         }
         frame_highlight {
             base 255 160 102
@@ -100,21 +100,21 @@ themes {
             base 195 64 67
             background 0
             emphasis_0 255 158 59
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 160 102
+            emphasis_2 149 127 184
+            emphasis_3 127 180 202
         }
         multiplayer_user_colors {
             player_1 149 127 184
             player_2 126 156 216
-            player_3 0
+            player_3 118 148 106
             player_4 255 158 59
             player_5 127 180 202
-            player_6 0
+            player_6 152 187 108
             player_7 195 64 67
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 230 195 132
+            player_9 192 163 110
+            player_10 209 145 180
         }
         // terminal_colors: https://github.com/rebelot/kanagawa.nvim/blob/master/extras/alacritty_kanagawa.toml (wave)
         terminal_colors {

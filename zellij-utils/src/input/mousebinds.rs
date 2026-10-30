@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use super::actions::Action;
+use super::layout::RunPluginOrAlias;
 use super::mouse::MouseEvent;
 use crate::data::{InputMode, KeyModifier, MouseButton, MouseTarget, MouseTrigger};
 
@@ -19,7 +21,7 @@ pub enum ResizeScrollDirection {
     Decrease,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MouseBehaviour {
     Click,
     Select,
@@ -34,11 +36,12 @@ pub enum MouseBehaviour {
     ScrollColumns(usize),
     ScrollToPrompt(PromptDirection),
     ResizeScroll(ResizeScrollDirection),
+    DrawFloatingPane(Option<Box<RunPluginOrAlias>>),
     PassToApp,
     Ignore,
 }
 
-pub const MOUSE_BEHAVIOUR_NAMES: [&str; 15] = [
+pub const MOUSE_BEHAVIOUR_NAMES: [&str; 16] = [
     "Click",
     "Select",
     "FocusPane",
@@ -52,6 +55,7 @@ pub const MOUSE_BEHAVIOUR_NAMES: [&str; 15] = [
     "ScrollColumns",
     "ScrollToPrompt",
     "ResizeScroll",
+    "DrawFloatingPane",
     "PassToApp",
     "Ignore",
 ];
@@ -72,12 +76,35 @@ impl MouseBehaviour {
             MouseBehaviour::ScrollColumns(_) => "ScrollColumns",
             MouseBehaviour::ScrollToPrompt(_) => "ScrollToPrompt",
             MouseBehaviour::ResizeScroll(_) => "ResizeScroll",
+            MouseBehaviour::DrawFloatingPane(_) => "DrawFloatingPane",
             MouseBehaviour::PassToApp => "PassToApp",
             MouseBehaviour::Ignore => "Ignore",
         }
     }
     pub fn is_behaviour_name(name: &str) -> bool {
         MOUSE_BEHAVIOUR_NAMES.contains(&name)
+    }
+    pub fn draw_floating_plugin_pane(
+        plugin: &str,
+        configuration: Option<BTreeMap<String, String>>,
+        cwd: Option<PathBuf>,
+    ) -> Result<MouseBehaviour, String> {
+        let configuration = configuration.filter(|configuration| !configuration.is_empty());
+        RunPluginOrAlias::from_url(plugin, &configuration, None, cwd)
+            .map(|plugin| MouseBehaviour::DrawFloatingPane(Some(Box::new(plugin))))
+    }
+    pub fn plugin_configuration(&self) -> BTreeMap<String, String> {
+        match self {
+            MouseBehaviour::DrawFloatingPane(Some(plugin)) => match plugin.as_ref() {
+                RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.configuration.inner().clone(),
+                RunPluginOrAlias::Alias(alias) => alias
+                    .configuration
+                    .as_ref()
+                    .map(|configuration| configuration.inner().clone())
+                    .unwrap_or_default(),
+            },
+            _ => BTreeMap::new(),
+        }
     }
     pub fn from_name_and_arguments(
         name: &str,
@@ -133,6 +160,12 @@ impl MouseBehaviour {
                 ),
                 _ => Err("ResizeScroll needs \"increase\" or \"decrease\"".to_owned()),
             },
+            "DrawFloatingPane" => match arguments {
+                [] => Ok(MouseBehaviour::DrawFloatingPane(None)),
+                [plugin] if plugin.trim().is_empty() => Ok(MouseBehaviour::DrawFloatingPane(None)),
+                [plugin] => MouseBehaviour::draw_floating_plugin_pane(plugin, None, None),
+                _ => Err("DrawFloatingPane takes one plugin".to_owned()),
+            },
             _ => Err(format!("Unknown mouse behaviour '{}'", name)),
         }
     }
@@ -150,6 +183,7 @@ impl MouseBehaviour {
             MouseBehaviour::ResizeScroll(ResizeScrollDirection::Decrease) => {
                 vec!["decrease".to_owned()]
             },
+            MouseBehaviour::DrawFloatingPane(Some(plugin)) => vec![plugin.location_string()],
             _ => vec![],
         }
     }
@@ -180,11 +214,26 @@ impl MouseBehaviour {
                 Err(_) => format!("\"{}\"", argument),
             })
             .collect();
-        if arguments.is_empty() {
+        let text = if arguments.is_empty() {
             self.name().to_owned()
         } else {
             format!("{} {}", self.name(), arguments.join(" "))
+        };
+        let configuration = self.plugin_configuration();
+        if configuration.is_empty() {
+            return text;
         }
+        let entries: Vec<String> = configuration
+            .iter()
+            .map(|(key, value)| {
+                format!(
+                    "{} \"{}\";",
+                    key,
+                    value.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            })
+            .collect();
+        format!("{} {{ {} }}", text, entries.join(" "))
     }
 }
 
@@ -234,7 +283,7 @@ impl MouseBinding {
     }
     pub fn as_behaviour(&self) -> Option<MouseBehaviour> {
         match &self.kind {
-            MouseBindingKind::Behaviour(behaviour) => Some(*behaviour),
+            MouseBindingKind::Behaviour(behaviour) => Some(behaviour.clone()),
             MouseBindingKind::Actions(_) => None,
         }
     }

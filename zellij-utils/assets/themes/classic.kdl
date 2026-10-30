@@ -11,10 +11,10 @@ themes {
         text_selected {
             base 255
             background 238
-            emphasis_0 166
+            emphasis_0 179
             emphasis_1 51
             emphasis_2 154
-            emphasis_3 201
+            emphasis_3 213
         }
         ribbon_selected {
             base 16
@@ -22,31 +22,31 @@ themes {
             emphasis_0 124
             emphasis_1 166
             emphasis_2 201
-            emphasis_3 45
+            emphasis_3 61
         }
         ribbon_unselected {
             base 16
             background 245
-            emphasis_0 124
+            emphasis_0 234
             emphasis_1 255
             emphasis_2 45
-            emphasis_3 201
+            emphasis_3 18
         }
         table_title {
             base 154
             background 238
-            emphasis_0 166
+            emphasis_0 179
             emphasis_1 51
             emphasis_2 154
-            emphasis_3 201
+            emphasis_3 213
         }
         table_cell_selected {
             base 255
             background 238
-            emphasis_0 166
+            emphasis_0 179
             emphasis_1 51
             emphasis_2 154
-            emphasis_3 201
+            emphasis_3 213
         }
         table_cell_unselected {
             base 255
@@ -59,10 +59,10 @@ themes {
         list_selected {
             base 255
             background 238
-            emphasis_0 166
+            emphasis_0 179
             emphasis_1 51
             emphasis_2 154
-            emphasis_3 201
+            emphasis_3 213
         }
         list_unselected {
             base 255
@@ -97,7 +97,7 @@ themes {
             emphasis_3 45
         }
         exit_code_error {
-            base 124
+            base 160
             background 0
             emphasis_0 226
             emphasis_1 136
@@ -111,7 +111,7 @@ themes {
             player_4 226
             player_5 51
             player_6 136
-            player_7 124
+            player_7 160
             player_8 245
             player_9 207
             player_10 215

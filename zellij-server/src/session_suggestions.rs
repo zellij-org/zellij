@@ -546,7 +546,7 @@ impl SessionSuggestionsService {
             let _ = index.touch(name, now);
         }
         self.last_used_written = Some(Instant::now());
-        self.context.folder = cwd;
+        self.context.folder = local_folder(cwd);
         let start_folder = self.context.folder.clone();
         self.start_facts = Some(self.run_custom_facts(start_folder.as_deref(), FactTiming::Start));
         self.attached_clients = self.attached_clients.max(1);
@@ -557,6 +557,7 @@ impl SessionSuggestionsService {
         if !self.enabled() || self.attached_clients == 0 || self.session_name.is_none() {
             return;
         }
+        let folder = local_folder(folder);
         let folder_changed = folder.is_some() && folder != self.context.folder;
         if folder_changed {
             self.context.folder = folder;
@@ -1125,6 +1126,10 @@ fn session_layout_from_info(
     (tabs, info.connected_clients)
 }
 
+fn local_folder(folder: Option<PathBuf>) -> Option<PathBuf> {
+    folder.filter(|folder| !crate::attention::shell::is_network_path(&folder.to_string_lossy()))
+}
+
 fn run_git_rev_parse(folder: &Path) -> Option<zellij_utils::session_index::GitInfo> {
     let output = run_background_command_blocking(BackgroundCommand {
         program: "git".to_owned(),
@@ -1164,6 +1169,20 @@ fn expand_home_with(path: &Path, home: Option<PathBuf>) -> PathBuf {
 mod tests {
     use super::*;
     use zellij_utils::session_index::SessionRow;
+
+    #[test]
+    fn network_folders_are_never_used_to_run_commands_in() {
+        assert_eq!(local_folder(Some(PathBuf::from("//evil.host/share"))), None);
+        assert_eq!(
+            local_folder(Some(PathBuf::from("\\\\evil.host\\share"))),
+            None
+        );
+        assert_eq!(
+            local_folder(Some(PathBuf::from("/home/me/project"))),
+            Some(PathBuf::from("/home/me/project"))
+        );
+        assert_eq!(local_folder(None), None);
+    }
 
     fn ranked(name: &str, state: SessionState, tier: Option<usize>) -> RankedCandidate {
         RankedCandidate {

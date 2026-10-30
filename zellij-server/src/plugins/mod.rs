@@ -31,13 +31,13 @@ pub use prompt_requests::{PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::{PipePopupRoute, WasmBridge};
 
-use crate::tab::{PopupKind, PopupPlacement};
+use crate::tab::{PopupBehavior, PopupPlacement};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
         KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError, MessageToPlugin,
-        PermissionStatus, PermissionType, PipeMessage, PipePopupPlacement, PipeSource, SettingKey,
-        WebServerStatus,
+        OutsideClick, PermissionStatus, PermissionType, PipeMessage, PipePopupPlacement,
+        PipeSource, SettingKey, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -168,6 +168,8 @@ pub enum PluginInstruction {
         caller_pane_id: Option<PaneId>,
         popup: Option<PipePopupPlacement>,
         popup_focused: bool,
+        popup_capture_all_keys: bool,
+        popup_outside_click: OutsideClick,
     },
     SetCliPipeExitCode {
         pipe_id: String,
@@ -267,7 +269,7 @@ pub enum PluginInstruction {
         tab_index: usize,
         client_id: ClientId,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         anchor_pane: Option<PaneId>,
         size: Size,
         initial_events: Vec<Event>,
@@ -497,7 +499,7 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
                 placement,
-                kind,
+                behavior,
                 anchor_pane,
                 size,
                 initial_events,
@@ -527,7 +529,7 @@ pub(crate) fn plugin_thread_main(
                             tab_id,
                             run_plugin_or_alias,
                             placement,
-                            kind,
+                            behavior,
                             width: size.cols,
                             height: size.rows,
                             anchor_pane,
@@ -940,10 +942,18 @@ pub(crate) fn plugin_thread_main(
                     wasm_bridge.send_host_terminal_theme_mode_to_plugin(plugin_id, client_id);
                 }
                 if events.contains(&EventType::GlobalAttentionUpdate) {
-                    wasm_bridge.send_global_attention_to_plugin(plugin_id, client_id);
+                    wasm_bridge.send_global_attention_to_plugin(
+                        plugin_id,
+                        client_id,
+                        shutdown_send.clone(),
+                    )?;
                 }
                 if events.contains(&EventType::SessionHistoryUpdate) {
-                    wasm_bridge.send_session_history_to_plugin(plugin_id, client_id);
+                    wasm_bridge.send_session_history_to_plugin(
+                        plugin_id,
+                        client_id,
+                        shutdown_send.clone(),
+                    )?;
                 }
                 if events.contains(&EventType::HintText) {
                     let _ = bus
@@ -1124,6 +1134,8 @@ pub(crate) fn plugin_thread_main(
                 caller_pane_id,
                 popup,
                 popup_focused,
+                popup_capture_all_keys,
+                popup_outside_click,
             } => {
                 if wasm_bridge.cli_pipe_is_finished(&pipe_id) {
                     continue;
@@ -1169,6 +1181,8 @@ pub(crate) fn plugin_thread_main(
                                             caller_pane_id,
                                             placement,
                                             focused: popup_focused,
+                                            capture_all_keys: popup_capture_all_keys,
+                                            outside_click: popup_outside_click,
                                         },
                                     ));
                                 },
@@ -1283,6 +1297,7 @@ pub(crate) fn plugin_thread_main(
                                     placement: request.placement,
                                     focused: request.focused,
                                     capture_all_keys: request.capture_all_keys,
+                                    outside_click: request.outside_click_or_default(),
                                 }),
                         );
                     },

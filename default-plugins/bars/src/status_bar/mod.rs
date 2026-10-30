@@ -106,6 +106,61 @@ pub struct StatusBar {
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     runner: ActionRunner,
     timer_requests: Vec<f64>,
+    desktop_offer: DesktopOffer,
+}
+
+const DESKTOP_OFFER_TEXT: &str =
+    "Get desktop notifications for this: run `zellij terminal` (it opens on this computer)";
+
+#[derive(Default)]
+struct DesktopOffer {
+    state: Option<desktop_integration::IntegrationState>,
+    requested: bool,
+    decided: bool,
+    until_ms: Option<u64>,
+}
+
+impl DesktopOffer {
+    fn active(&self, now_ms: u64) -> bool {
+        self.until_ms.map(|until| now_ms < until).unwrap_or(false)
+    }
+}
+
+fn pane_is_out_of_view(client: &ClientState, pane_id: &PaneId) -> bool {
+    let PaneId::Terminal(id) = pane_id else {
+        return false;
+    };
+    let active_tab = client.tabs.iter().find(|t| t.active).map(|t| t.position);
+    let Some(panes) = client.panes.as_ref() else {
+        return false;
+    };
+    let in_active_tab = active_tab
+        .and_then(|position| panes.panes.get(&position))
+        .map(|panes| {
+            panes
+                .iter()
+                .any(|p| !p.is_plugin && p.id == *id && !p.is_suppressed)
+        })
+        .unwrap_or(false);
+    !in_active_tab
+}
+
+fn reminder_context(client: &ClientState) -> desktop_integration::ReminderContext {
+    let snapshot = read_config();
+    let enabled = |key: SettingKey| {
+        snapshot
+            .setting(key)
+            .and_then(|setting| setting.current_value.clone())
+            .map(|value| value != "false")
+            .unwrap_or(true)
+    };
+    let web_client = client.mode_info.is_web_client.unwrap_or(false);
+    desktop_integration::ReminderContext {
+        show_startup_tips: enabled(SettingKey::ShowStartupTips),
+        show_release_notes: enabled(SettingKey::ShowReleaseNotes),
+        inside_desktop_terminal: client.mode_info.remote_client.is_none() && !web_client,
+        web_client,
+    }
 }
 
 #[derive(Default)]
@@ -322,7 +377,57 @@ impl StatusBar {
             EventType::GlobalAttentionUpdate,
             EventType::SessionHistoryUpdate,
             EventType::Timer,
+            EventType::CommandFinished,
+            EventType::DesktopIntegration,
         ]);
+        if !self.desktop_offer.requested {
+            self.desktop_offer.requested = true;
+            request_desktop_integration(&desktop_integration::Request::GetState);
+        }
+    }
+
+    fn desktop_offer_event(&mut self, event: &Event) -> bool {
+        match event {
+            Event::DesktopIntegration(payload) => {
+                if let desktop_integration::Response::Done(state) =
+                    desktop_integration::Response::from_json(payload)
+                {
+                    self.desktop_offer.state = Some(state);
+                }
+                false
+            },
+            Event::CommandFinished(pane_id, outcome) => {
+                if self.desktop_offer.decided {
+                    return false;
+                }
+                let Some(state) = self.desktop_offer.state.as_ref() else {
+                    return false;
+                };
+                if outcome.result == CommandResult::Unknown {
+                    return false;
+                }
+                let Some(client) = self.clients.values().next() else {
+                    return false;
+                };
+                if !pane_is_out_of_view(client, pane_id) {
+                    return false;
+                }
+                self.desktop_offer.decided = true;
+                if !state.reminders_allowed(&reminder_context(client)) {
+                    return false;
+                }
+                self.desktop_offer.until_ms =
+                    Some(session_hints::now_ms() + session_hints::SWITCH_HINT_MS);
+                self.timer_requests
+                    .push(session_hints::SWITCH_HINT_MS as f64 / 1000.0 + 0.2);
+                request_desktop_integration(&desktop_integration::Request::SetFlag(
+                    desktop_integration::Flag::DesktopAppIntroduced,
+                ));
+                true
+            },
+            Event::Timer(_) => self.desktop_offer.until_ms.is_some(),
+            _ => false,
+        }
     }
 
     pub fn slot_removed(&mut self, slot_id: SlotId) {
@@ -373,6 +478,9 @@ impl StatusBar {
     }
 
     pub fn update(&mut self, event: &Event, context: EventContext) -> RenderResponse {
+        if self.desktop_offer_event(event) {
+            return RenderResponse::Slots(self.slots.keys().copied().collect());
+        }
         let target_clients: Vec<ClientId> = match context.client_id {
             Some(client_id) => vec![client_id],
             None => self.clients.keys().copied().collect(),
@@ -542,6 +650,7 @@ impl StatusBar {
     }
 
     fn render_client(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+        let offer_active = self.desktop_offer.active(session_hints::now_ms());
         let Some(client) = self.clients.get(&client_id) else {
             return;
         };
@@ -563,7 +672,10 @@ impl StatusBar {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = client.tabs.iter().find(|t| t.active);
-            let hints = client.session_hints();
+            let mut hints = client.session_hints();
+            if offer_active {
+                hints.transient = Some(DESKTOP_OFFER_TEXT.to_owned());
+            }
             let render_line = |hovered: Option<Vec<Action>>| {
                 with_hovered(hovered, || {
                     session_hints::with_session_hints(hints.clone(), || {
@@ -702,6 +814,14 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
             .collect();
     }
     common_modifiers.into_iter().collect()
+}
+
+pub fn bars_hint(mode_info: &ModeInfo) -> (&'static str, &'static str) {
+    if mode_info.hidden_bars.is_empty() {
+        ("Hide bars", "Bars")
+    } else {
+        ("Show bars", "Bars")
+    }
 }
 
 pub fn action_key(

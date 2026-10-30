@@ -59,6 +59,6 @@ pub fn hard_cap_timeout() -> Duration {
         .ok()
         .and_then(|v| v.parse().ok())
         .map(Duration::from_millis)
-        .unwrap_or(Duration::from_secs(60))
+        .unwrap_or(Duration::from_secs(45))
         .max(default_timeout())
 }
