@@ -1,0 +1,141 @@
+// Translated from https://github.com/everviolet/nvim
+//
+// ┌────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+// │        │   Red   │ Magenta │  Blue   │  Green  │ Yellow  │  White  │  Grey   │  Black  │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Bright │ #ffaaac │ #fbf0ff │ #e2f4ff │ #f3ffe2 │ #f8dfb9 │ #f8f9e8 │ #839e9a │ #3e4a4f │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Normal │ #f57f82 │ #d2bff3 │ #b2caed │ #cbe3b3 │ #f5d098 │ #adc9bc │ #6f8788 │ #343e43 │
+// ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+// │ Dim    │ #9a5052 │ #9386aa │ #7a8ba2 │ #8a9b7a │ #f7a182 │ #96b4aa │ #58686d │ #2b3438 │
+// └────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+// 
+// ┌────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+// │        │     Red     │   Magenta   │    Blue     │    Green    │   Yellow    │    White    │    Grey     │    Black    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Bright │ 255 170 172 │ 251 240 255 │ 226 244 255 │ 243 255 226 │ 248 223 185 │ 248 249 232 │ 131 158 154 │ 62 74 79    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Normal │ 245 127 130 │ 210 191 243 │ 178 202 237 │ 203 227 179 │ 245 208 152 │ 173 201 188 │ 111 135 136 │ 52 62 67    │
+// ├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
+// │ Dim    │ 154 80 82   │ 147 134 170 │ 122 139 162 │ 138 155 122 │ 247 161 130 │ 150 180 170 │ 88 104 109  │ 43 52 56    │
+// └────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘
+themes {
+    evergarden-spring {
+        text_unselected {
+            base 248 249 232       // Normal White
+            background 52 62 67    // Normal Black
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        text_selected {
+            base 173 201 188       // Normal White
+            background 62 74 79    // Bright Black
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        ribbon_selected {
+            base 52 62 67          // Normal Black
+            background 138 155 122 // Dim Green
+            emphasis_0 43 52 56  // Dim Black
+            emphasis_1 43 52 56  // Dim Black
+            emphasis_2 43 52 56  // Dim Black
+            emphasis_3 43 52 56  // Dim Black
+        }
+        ribbon_unselected {
+            base 52 62 67          // Normal Black
+            background 88 104 109  // Dim Grey
+            emphasis_0 226 244 255 // Bright Blue
+            emphasis_1 243 255 226 // Bright Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        table_title {
+            base 203 227 179       // Normal Green
+            background 0
+            emphasis_0 226 244 255 // Bright Blue
+            emphasis_1 243 255 226 // Bright Green
+            emphasis_2 248 223 185 // Bright Yellow
+            emphasis_3 251 240 255 // Bright Magenta
+        }
+        table_cell_selected {
+            base 173 201 188       // Normal White
+            background 62 74 79    // Bright Black
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        table_cell_unselected {
+            base 150 180 170       // Dim White
+            background 52 62 67    // Normal Black
+            emphasis_0 122 139 162 // Dim Blue
+            emphasis_1 138 155 122 // Dim Green
+            emphasis_2 247 161 130 // Dim Yellow
+            emphasis_3 147 134 170 // Dim Magenta
+        }
+        list_selected {
+            base 173 201 188       // Normal White
+            background 62 74 79    // Bright Black
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        list_unselected {
+            base 173 201 188       // Normal White
+            background 52 62 67    // Normal Black
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        frame_selected {
+            base 178 202 237       // Normal Blue
+            background 0
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        frame_highlight {
+            base 245 208 152       // Normal Yellow
+            background 0
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        exit_code_success {
+            base 203 227 179       // Normal Green
+            background 0
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        exit_code_error {
+            base 245 127 130       // Normal Red
+            background 0
+            emphasis_0 178 202 237 // Normal Blue
+            emphasis_1 203 227 179 // Normal Green
+            emphasis_2 245 208 152 // Normal Yellow
+            emphasis_3 210 191 243 // Normal Magenta
+        }
+        multiplayer_user_colors {
+            player_1 255 170 172   // Bright Red
+            player_2 178 202 237   // Normal Blue
+            player_3 0
+            player_4 203 227 179   // Normal Green
+            player_5 245 208 152   // Normal Yellow
+            player_6 0
+            player_7 226 244 255   // Bright Blue
+            player_8 0
+            player_9 0
+            player_10 0
+        }
+    }
+}
