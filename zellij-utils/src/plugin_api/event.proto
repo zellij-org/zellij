@@ -94,6 +94,7 @@ enum EventType {
     SessionHistoryUpdate = 68;
     DesktopIntegration = 69;
     LiveViewStateChanged = 71;
+    PluginSettingsEntries = 72;
 }
 
 message EventNameList {
@@ -164,7 +165,17 @@ message Event {
     SessionHistoryUpdatePayload session_history_update_payload = 60;
     string desktop_integration_payload = 61;
     LiveViewStateChangedPayload live_view_state_changed_payload = 63;
+    PluginSettingsEntriesPayload plugin_settings_entries_payload = 64;
   }
+}
+
+message PluginSettingsEntry {
+  uint32 plugin_id = 1;
+  string title = 2;
+}
+
+message PluginSettingsEntriesPayload {
+  repeated PluginSettingsEntry entries = 1;
 }
 
 message AttentionItem {

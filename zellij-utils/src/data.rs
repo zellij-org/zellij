@@ -1365,6 +1365,7 @@ pub enum Event {
     GlobalAttentionUpdate(crate::attention::GlobalAttention),
     SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
     DesktopIntegration(String),
+    PluginSettingsEntries(Vec<PluginSettingsEntry>),
     LiveViewStateChanged {
         target: Option<PaneAddress>,
         state: MirrorState,
@@ -1546,6 +1547,16 @@ pub struct SavedTabPreview {
     pub focused: bool,
     pub panes: Vec<SavedPanePreview>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct PluginSettingsEntry {
+    pub plugin_id: u32,
+    pub title: String,
+}
+
+pub const OPEN_PLUGIN_SETTINGS_MESSAGE: &str = "zellij:open_plugin_settings";
+
+pub const OPEN_PLUGIN_SETTINGS_CLIENT_ID_ARG: &str = "client_id";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SavedSessionPreview {
@@ -5421,6 +5432,8 @@ pub enum PluginCommand {
     ToggleBars(Vec<String>),
     HideBars(Vec<String>),
     ShowBars,
+    RegisterSettingsEntry(String),
+    UnregisterSettingsEntry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
