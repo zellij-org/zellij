@@ -60,7 +60,12 @@ impl ZellijSharedPlugin for State {
         self.configuration = configuration;
         self.instance_id = get_plugin_ids().plugin_id;
         subscribe(&[EventType::Key]);
-        if self.configuration.get("settings_entries").map(|v| v == "true") == Some(true) {
+        if self
+            .configuration
+            .get("settings_entries")
+            .map(|v| v == "true")
+            == Some(true)
+        {
             subscribe(&[EventType::PermissionRequestResult]);
             request_permission(&[PermissionType::ChangeApplicationState]);
         }
