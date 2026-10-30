@@ -626,8 +626,8 @@ fn introspection(path: &str) -> String {
 mod tests {
     use super::*;
     use crate::app::model::{tray_state, MenuState, Pill, TrayLook};
-    use zellij_utils::attention::AttentionStatus;
     use crate::app::tray::MenuAction;
+    use zellij_utils::attention::AttentionStatus;
 
     fn shared() -> Mutex<Shared> {
         let mut cache = IconCache::default();

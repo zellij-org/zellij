@@ -529,7 +529,11 @@ fn the_most_recent_exited_sessions_are_listed_above_the_folded_rest() {
             && grid_snapshot.contains("▸ Exited (1)")
             && grid_snapshot.contains(background.session_name())
     });
-    assert!(!grid_snapshot.contains("gone-one"), "{}", grid_snapshot.text);
+    assert!(
+        !grid_snapshot.contains("gone-one"),
+        "{}",
+        grid_snapshot.text
+    );
     let (_, heading_row) = list_position(&grid_snapshot, "Recent");
     let (_, first_row) = list_position(&grid_snapshot, RECENT_SESSIONS[0]);
     let (_, exited_row) = list_position(&grid_snapshot, "Exited (1)");
@@ -964,15 +968,18 @@ fn after_reopening_the_panel_unfocused_hover_marks_the_name_and_the_first_click_
     leave_older_exited_sessions(&[]);
     let mut panel = start_panel_on("sessions");
     panel.wait_until("the sessions are listed", |grid_snapshot| {
-        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(background.session_name())
+        grid_snapshot.contains(RECENT_SESSIONS[2])
+            && grid_snapshot.contains(background.session_name())
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
     let reopened = panel.attach_client(TERMINAL_SIZE);
     send_view("sessions");
-    let grid_snapshot = reopened.wait_until("the reopened panel lists the sessions", |grid_snapshot| {
-        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(background.session_name())
-    });
+    let grid_snapshot =
+        reopened.wait_until("the reopened panel lists the sessions", |grid_snapshot| {
+            grid_snapshot.contains(RECENT_SESSIONS[2])
+                && grid_snapshot.contains(background.session_name())
+        });
     reopened.send_stdin(b"\x1b[O");
     std::thread::sleep(Duration::from_millis(300));
     let (column, row) = list_position(&grid_snapshot, RECENT_SESSIONS[2]);
@@ -1015,9 +1022,10 @@ fn a_session_opened_by_a_mouse_press_leaves_the_reopened_panel_responsive() {
     assert_eq!(switched.name.as_deref(), Some(live.as_str()));
     let reopened = panel.attach_client(TERMINAL_SIZE);
     send_view("sessions");
-    let grid_snapshot = reopened.wait_until("the reopened panel lists the sessions", |grid_snapshot| {
-        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(&live)
-    });
+    let grid_snapshot = reopened
+        .wait_until("the reopened panel lists the sessions", |grid_snapshot| {
+            grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(&live)
+        });
     let (column, row) = list_position(&grid_snapshot, RECENT_SESSIONS[2]);
     reopened.send_stdin(format!("\x1b[<35;{};{}M", column + 1, row + 1).as_bytes());
     reopened.wait_until("hover works before any click", |grid_snapshot| {
@@ -1044,9 +1052,9 @@ fn the_inbox_and_sessions_symbols_use_a_badge_colour_set_in_the_config() {
         )
         .with_layout(LayoutInfo::Stringified(panel_layout("inbox")))
         .start();
-    let purple = Some(zellij_integration_tests::client_screen::AnsiCode::RgbCode((
-        0x8e, 0x4e, 0xc6,
-    )));
+    let purple = Some(zellij_integration_tests::client_screen::AnsiCode::RgbCode(
+        (0x8e, 0x4e, 0xc6),
+    ));
     let grid_snapshot = panel.wait_until("the inbox lists the item", |grid_snapshot| {
         shows_inbox(&grid_snapshot) && grid_snapshot.contains("Deploy now")
     });

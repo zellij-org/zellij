@@ -213,7 +213,10 @@ mod tests {
     use super::*;
     use zellij_utils::attention::AttentionStatus;
 
-    fn status_of(global: &GlobalAttention, badge: &BadgeSettings) -> Option<(AttentionStatus, usize)> {
+    fn status_of(
+        global: &GlobalAttention,
+        badge: &BadgeSettings,
+    ) -> Option<(AttentionStatus, usize)> {
         pill(global, badge).map(|p| (p.status, p.count))
     }
 

@@ -4730,7 +4730,11 @@ mod sessions_live_view_tests {
             "a session whose focused pane is a plugin keeps the snapshot"
         );
         select(&mut state, 6);
-        assert_eq!(state.tree_cursor(), Some(7), "the Recent heading is skipped");
+        assert_eq!(
+            state.tree_cursor(),
+            Some(7),
+            "the Recent heading is skipped"
+        );
         assert_eq!(
             state.selected_session(),
             Some(("old".to_owned(), false, false))

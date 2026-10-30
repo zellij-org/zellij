@@ -166,7 +166,9 @@ impl<T: Copy> StatusMap<T> {
         merged
     }
     pub fn is_empty(&self) -> bool {
-        BADGE_STATUSES.iter().all(|status| self.get(*status).is_none())
+        BADGE_STATUSES
+            .iter()
+            .all(|status| self.get(*status).is_none())
     }
 }
 
@@ -224,10 +226,7 @@ fn colour_value(node: &KdlNode) -> Result<[u8; 3], ConfigError> {
         .and_then(parse_colour)
         .ok_or_else(|| {
             kdl_error(
-                format!(
-                    "{} must be a colour like \"#ff8c00\"",
-                    node.name().value()
-                ),
+                format!("{} must be a colour like \"#ff8c00\"", node.name().value()),
                 node,
             )
         })
@@ -510,7 +509,10 @@ mod tests {
         assert_eq!(config.idle_silence_secs(), 3);
         assert_eq!(config.startup_card(), StartupCard::Attention);
         assert!(config.tray_icon());
-        assert_eq!(config.desktop_notifications(), StatusSet::of(&POPUP_STATUSES));
+        assert_eq!(
+            config.desktop_notifications(),
+            StatusSet::of(&POPUP_STATUSES)
+        );
         assert_eq!(config.tray_badge(), StatusSet::of(&DEFAULT_BADGE_STATUSES));
         assert_eq!(config.tray_badge_color(AttentionStatus::Failed), None);
         assert!(config.notification_details());

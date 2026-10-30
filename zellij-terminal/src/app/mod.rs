@@ -910,10 +910,18 @@ mod tests {
             now,
         );
         assert!(!background.policy().statuses.includes(AttentionStatus::Done));
-        assert!(background.menu_state().badge.statuses.includes(AttentionStatus::Quiet));
+        assert!(background
+            .menu_state()
+            .badge
+            .statuses
+            .includes(AttentionStatus::Quiet));
         let config = attention_config(Some(&path));
-        assert!(!config.desktop_notifications().includes(AttentionStatus::Done));
-        assert!(config.desktop_notifications().includes(AttentionStatus::Failed));
+        assert!(!config
+            .desktop_notifications()
+            .includes(AttentionStatus::Done));
+        assert!(config
+            .desktop_notifications()
+            .includes(AttentionStatus::Failed));
         assert!(config.tray_badge().includes(AttentionStatus::Quiet));
         assert_eq!(
             config.tray_badge_color(AttentionStatus::Failed),

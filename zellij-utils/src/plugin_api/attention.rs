@@ -397,10 +397,7 @@ impl TryFrom<GlobalAttentionUpdatePayload> for GlobalAttention {
             .filter_map(|color| {
                 let status = AttentionStatus::from_str(&color.status)?;
                 let rgb = color.rgb;
-                Some((
-                    status,
-                    [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8],
-                ))
+                Some((status, [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]))
             })
             .collect();
         Ok(global)

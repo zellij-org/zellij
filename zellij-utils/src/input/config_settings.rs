@@ -762,10 +762,7 @@ fn attention_values(
             );
         }
         if let Some(key) = badge_setting_key(status) {
-            values.insert(
-                key,
-                attention.tray_badge.get(status).map(|v| v.to_string()),
-            );
+            values.insert(key, attention.tray_badge.get(status).map(|v| v.to_string()));
         }
         if let Some(key) = badge_colour_setting_key(status) {
             values.insert(
@@ -828,9 +825,7 @@ fn copy_status_setting(
             return true;
         }
         if badge_setting_key(status) == Some(key) {
-            target
-                .tray_badge
-                .set(status, source.tray_badge.get(status));
+            target.tray_badge.set(status, source.tray_badge.get(status));
             return true;
         }
         if badge_colour_setting_key(status) == Some(key) {
