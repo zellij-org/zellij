@@ -891,6 +891,7 @@ fn route_action_with_origin(
 
                 if i == 1 {
                     // SHAKED move left for gets the 2*2 pos.
+                    //sleep is for timing isuse
                     std::thread::sleep(std::time::Duration::from_millis(200));
                     senders
                         .send_to_screen(ScreenInstruction::MoveFocusLeft(client_id, None))

@@ -117,7 +117,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("SHAEKD"), s("SHAKED"), action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("New4Pane"), s("+"), action_key(&km, &[A::New4Pane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
                 &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),
@@ -152,7 +153,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             initial_panes: None,
             first_pane_unblock_condition: None,
         }, TO_NORMAL])),
-        (s("Change focus"), s("Move"), focus_keys),
+        (s("Change focus"), s("Move"), focus_keys), 
+        //(s("SHAKED"), s("Move"), focus_keys), 
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameTab}, A::TabNameInput{input: vec![0]}])),

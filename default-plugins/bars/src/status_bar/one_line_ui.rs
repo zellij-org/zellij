@@ -1512,7 +1512,12 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), single_action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (s("NEW"), s("NEW"), single_action_key(&km, &[A::NewPane{direction: None, pane_name: None, start_suppressed: false}, TO_NORMAL])),
+        (
+        s("New4Pane"), //SHAKED add the new func to bar after control + p
+        s("New4Pane"),
+        vec![KeyWithModifier::new(BareKey::Char('+'))],
+        ),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
                 &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),

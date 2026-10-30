@@ -746,8 +746,10 @@ impl TiledPanes {
         self.reset_boundaries();
     }
     pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
+        return true;
         match self.active_panes.get(&client_id).copied() {
-            Some(active_pane_id) => self.can_split_pane_id_horizontally(active_pane_id),
+            Some(active_pane_id) => true, // SHAKED
+            //Some(active_pane_id) => self.can_split_pane_id_horizontally(active_pane_id),
             None => false,
         }
     }
@@ -775,6 +777,7 @@ impl TiledPanes {
         false
     }
     pub fn can_split_pane_vertically(&mut self, client_id: ClientId) -> bool {
+        return true;
         match self.active_panes.get(&client_id).copied() {
             Some(active_pane_id) => self.can_split_pane_id_vertically(active_pane_id),
             None => false,
@@ -783,7 +786,7 @@ impl TiledPanes {
     pub fn can_split_pane_id_vertically(&mut self, active_pane_id: PaneId) -> bool {
         if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
             let mut full_pane_size = active_pane.position_and_size();
-
+            return true; // SHAKED we can split!
             if full_pane_size.is_stacked() {
                 let Some(position_and_size_of_stack) =
                     StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
