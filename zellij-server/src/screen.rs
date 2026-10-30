@@ -8144,7 +8144,7 @@ impl Screen {
         }
         let (_, resurrectable_sessions) = crate::background_jobs::scan_session_list_default_dirs(
             &self.session_name,
-            &[],
+            None,
             &BTreeMap::new(),
         );
         let running_session_exists = zellij_utils::sessions::get_sessions()
