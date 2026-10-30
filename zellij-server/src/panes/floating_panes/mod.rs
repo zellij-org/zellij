@@ -361,6 +361,9 @@ impl FloatingPanes {
         self.make_sure_pinned_panes_are_on_top();
         self.set_pane_active_at(pane_id);
     }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        self.active_panes.remove_client(&client_id, &mut self.panes);
+    }
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
