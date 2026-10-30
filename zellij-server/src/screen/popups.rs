@@ -1103,6 +1103,7 @@ impl Screen {
                 cli_client_id: client_id,
                 plugin_and_client_id: Some((plugin_id, client_id)),
                 notification_end: None,
+                client_local: false,
             });
     }
     pub fn open_session_card(&mut self, client_id: ClientId) {

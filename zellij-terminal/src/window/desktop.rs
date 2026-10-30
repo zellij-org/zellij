@@ -1018,6 +1018,7 @@ fn send_panel_view(app: &App, view: Option<PopupView>) {
         in_place: None,
         cwd: None,
         pane_title: None,
+        client_local: false,
     });
 }
 
