@@ -292,7 +292,9 @@ impl PaneGeom {
         // (DrawFloatingPane and plugin APIs pass screen positions). Auto-centering is
         // inside the viewport.
         self.x = match &x {
-            Some(PercentOrFixed::Percent(p)) => viewport_x + PercentOrFixed::Percent(*p).to_fixed(viewport_cols),
+            Some(PercentOrFixed::Percent(p)) => {
+                viewport_x + PercentOrFixed::Percent(*p).to_fixed(viewport_cols)
+            },
             Some(PercentOrFixed::Fixed(v)) => *v,
             None if width.is_some() => {
                 viewport_x + viewport_cols.saturating_sub(self.cols.as_usize()) / 2
@@ -300,7 +302,9 @@ impl PaneGeom {
             None => self.x,
         };
         self.y = match &y {
-            Some(PercentOrFixed::Percent(p)) => viewport_y + PercentOrFixed::Percent(*p).to_fixed(viewport_rows),
+            Some(PercentOrFixed::Percent(p)) => {
+                viewport_y + PercentOrFixed::Percent(*p).to_fixed(viewport_rows)
+            },
             Some(PercentOrFixed::Fixed(v)) => *v,
             None if height.is_some() => {
                 viewport_y + viewport_rows.saturating_sub(self.rows.as_usize()) / 2
