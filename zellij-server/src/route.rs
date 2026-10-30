@@ -854,22 +854,23 @@ fn route_action_with_origin(
         } => {
             let mut completion_tx = Some(completion_tx);
 
-            for i in 0..4 {
+            for i in 0..3 {
                 let shell = default_shell.clone();
 
-                let new_pane_placement = match direction.clone() {
-                    Some(direction) => NewPanePlacement::Tiled {
-                        direction: Some(direction),
-                        borderless: None,
-                        border_style: None,
-                    },
-                    None => NewPanePlacement::NoPreference {
-                        borderless: None,
-                        border_style: None,
-                    },
+                let split_direction = match i {
+                    0 => Direction::Right,
+                    1 => Direction::Down,
+                    2 => Direction::Down,
+                    _ => unreachable!(),
                 };
 
-                let notification = if i == 3 {
+                let new_pane_placement = NewPanePlacement::Tiled {
+                    direction: Some(split_direction),
+                    borderless: None,
+                    border_style: None,
+                };
+
+                let notification = if i == 2 {
                     completion_tx.take().map(NotificationEnd::new)
                 } else {
                     None
@@ -887,6 +888,15 @@ fn route_action_with_origin(
                         None,
                     ))
                     .with_context(err_context)?;
+
+                if i == 1 {
+                    // SHAKED move left for gets the 2*2 pos.
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    senders
+                        .send_to_screen(ScreenInstruction::MoveFocusLeft(client_id, None))
+                        .with_context(err_context)?;
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
             }
         },
         Action::NewBlockingPane {
