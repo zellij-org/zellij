@@ -233,6 +233,19 @@ pub struct PromptAnswerArgs {
         help = "Open the popup in the middle of the screen instead of over the calling pane (e.g. --at-center)"
     )]
     pub at_center: bool,
+
+    #[clap(
+        long,
+        help = "Send every key to the prompt, including the ones bound to Zellij actions (e.g. --capture-all-keys)"
+    )]
+    pub capture_all_keys: bool,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "What a click outside the popup does: block (ignore it) or close (cancel the prompt) (e.g. --outside-click close)"
+    )]
+    pub outside_click: Option<crate::data::OutsideClick>,
 }
 
 impl PromptCli {
@@ -2002,6 +2015,24 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
             help = "Open the --popup as an information popup that does not take key focus (e.g. --popup top-right --popup-no-focus)"
         )]
         popup_no_focus: bool,
+        #[clap(
+            long,
+            value_parser,
+            display_order(13),
+            requires("popup"),
+            conflicts_with("popup_no_focus"),
+            help = "Send every key to the --popup, including the ones bound to Zellij actions (e.g. --popup center --popup-capture-all-keys)"
+        )]
+        popup_capture_all_keys: bool,
+        #[clap(
+            long,
+            value_parser,
+            display_order(14),
+            requires("popup"),
+            conflicts_with("popup_no_focus"),
+            help = "What a click outside the --popup does: block (ignore it) or close (close the popup) (e.g. --popup mouse --popup-outside-click close)"
+        )]
+        popup_outside_click: Option<crate::data::OutsideClick>,
     },
     ListClients,
     /// List all panes in the current session

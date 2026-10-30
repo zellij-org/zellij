@@ -748,6 +748,8 @@ message OpenPluginPopupPayload {
   uint32 height = 6;
   optional bool focused = 7;
   optional string corner = 8;
+  optional bool capture_all_keys = 9;
+  optional string outside_click = 10;
 }
 
 message SetPopupSizePayload {

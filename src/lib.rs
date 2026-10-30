@@ -285,6 +285,8 @@ fn main() {
                 plugin_title: None,
                 popup: None,
                 popup_no_focus: false,
+                popup_capture_all_keys: false,
+                popup_outside_click: None,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

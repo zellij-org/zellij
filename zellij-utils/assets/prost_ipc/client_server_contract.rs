@@ -1427,6 +1427,10 @@ pub struct CliPipeAction {
     pub popup: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="14")]
     pub popup_no_focus: bool,
+    #[prost(bool, tag="15")]
+    pub popup_capture_all_keys: bool,
+    #[prost(string, optional, tag="16")]
+    pub popup_outside_click: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

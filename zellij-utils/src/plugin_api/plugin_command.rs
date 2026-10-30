@@ -2659,6 +2659,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 .corner
                                 .as_deref()
                                 .and_then(|corner| corner.parse().ok()),
+                            capture_all_keys: payload.capture_all_keys.unwrap_or(false),
+                            outside_click: payload
+                                .outside_click
+                                .as_deref()
+                                .and_then(|outside_click| outside_click.parse().ok()),
                         },
                     })
                 },
@@ -4902,6 +4907,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     height: height as u32,
                     focused: Some(options.focused),
                     corner: options.corner.map(|corner| corner.to_string()),
+                    capture_all_keys: Some(options.capture_all_keys),
+                    outside_click: options
+                        .outside_click
+                        .map(|outside_click| outside_click.to_string()),
                 })),
             }),
             PluginCommand::ReadConfig => Ok(ProtobufPluginCommand {
@@ -6198,6 +6207,39 @@ mod tests {
         let decoded = ProtobufReadConfigResponse::decode(protobuf.encode_to_vec().as_slice())
             .expect("decode bytes");
         assert_eq!(ConfigSnapshot::from(decoded), original);
+    }
+
+    #[test]
+    fn open_plugin_popup_keeps_its_options_through_protobuf() {
+        use crate::data::{OutsideClick, PopupCorner};
+        for options in [
+            PopupOptions::default(),
+            PopupOptions {
+                focused: true,
+                corner: Some(PopupCorner::BottomLeft),
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Block),
+            },
+        ] {
+            let original = PluginCommand::OpenPluginPopup {
+                plugin_url: "zellij:session-manager".to_owned(),
+                configuration: BTreeMap::new(),
+                line: 2,
+                column: 4,
+                width: 30,
+                height: 8,
+                options: options.clone(),
+            };
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::OpenPluginPopup {
+                    options: decoded_options,
+                    ..
+                } => assert_eq!(decoded_options, options),
+                other => panic!("expected OpenPluginPopup, got {:?}", other),
+            }
+        }
     }
 
     #[test]

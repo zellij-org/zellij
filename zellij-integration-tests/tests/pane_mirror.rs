@@ -173,6 +173,8 @@ fn pipe_to_the_fixture(
         plugin_title: None,
         popup,
         popup_no_focus: false,
+        popup_capture_all_keys: false,
+        popup_outside_click: None,
     };
     zellij.run_cli_pipe(pipe, caller).wait_for_exit();
 }
@@ -1870,6 +1872,8 @@ fn a_live_view_inside_a_popup_plugin_pane_shows_the_source_and_takes_keys() {
             plugin_title: None,
             popup: Some(PipePopupPlacement::Center),
             popup_no_focus: false,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         CliCaller::from_pane(local_terminal.terminal_id()),
     );
@@ -2446,6 +2450,8 @@ fn a_popup_starts_capture_through_the_api_shows_the_cursor_over_a_pinned_pane_an
             plugin_title: None,
             popup: Some(PipePopupPlacement::Center),
             popup_no_focus: false,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         CliCaller::from_pane(local_terminal.terminal_id()),
     );

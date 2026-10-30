@@ -4454,10 +4454,43 @@ impl fmt::Display for PopupCorner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum OutsideClick {
+    #[default]
+    Block,
+    Close,
+}
+
+impl FromStr for OutsideClick {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "block" => Ok(OutsideClick::Block),
+            "close" => Ok(OutsideClick::Close),
+            other => Err(format!(
+                "invalid outside click behavior '{}', expected one of: block, close",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for OutsideClick {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutsideClick::Block => write!(f, "block"),
+            OutsideClick::Close => write!(f, "close"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct PopupOptions {
     pub focused: bool,
     pub corner: Option<PopupCorner>,
+    pub capture_all_keys: bool,
+    pub outside_click: Option<OutsideClick>,
 }
 
 impl Default for PopupOptions {
@@ -4465,7 +4498,28 @@ impl Default for PopupOptions {
         PopupOptions {
             focused: true,
             corner: None,
+            capture_all_keys: false,
+            outside_click: None,
         }
+    }
+}
+
+impl PopupOptions {
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
+    pub fn corner(mut self, corner: PopupCorner) -> Self {
+        self.corner = Some(corner);
+        self
+    }
+    pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
+        self.capture_all_keys = capture_all_keys;
+        self
+    }
+    pub fn outside_click(mut self, outside_click: OutsideClick) -> Self {
+        self.outside_click = Some(outside_click);
+        self
     }
 }
 
@@ -6234,8 +6288,36 @@ mod popup_placement_tests {
             PopupOptions {
                 focused: true,
                 corner: None,
+                capture_all_keys: false,
+                outside_click: None,
             }
         );
+    }
+
+    #[test]
+    fn popup_options_builders_set_each_option() {
+        assert_eq!(
+            PopupOptions::default()
+                .focused(false)
+                .corner(PopupCorner::BottomLeft)
+                .capture_all_keys(true)
+                .outside_click(OutsideClick::Close),
+            PopupOptions {
+                focused: false,
+                corner: Some(PopupCorner::BottomLeft),
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Close),
+            }
+        );
+    }
+
+    #[test]
+    fn outside_click_parses_its_own_display_form() {
+        for outside_click in [OutsideClick::Block, OutsideClick::Close] {
+            assert_eq!(outside_click.to_string().parse(), Ok(outside_click));
+        }
+        assert_eq!(" Close ".parse::<OutsideClick>(), Ok(OutsideClick::Close));
+        assert!("unfocus".parse::<OutsideClick>().is_err());
     }
 }
 
