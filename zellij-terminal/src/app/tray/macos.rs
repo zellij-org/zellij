@@ -15,7 +15,7 @@ use objc2_foundation::{NSArray, NSData, NSSize, NSString};
 
 use super::{find_action, menu, Anchor, MenuAction, MenuEntry, Tray, TrayEvent, TrayEvents};
 use crate::app::icon::{render, DARK_INK, LIGHT_INK};
-use crate::app::model::{TrayLook, TrayState};
+use crate::app::model::{MenuState, TrayLook, TrayState};
 
 const POINTS: f64 = 18.0;
 const PIXELS: u32 = 36;
@@ -23,7 +23,7 @@ const PIXELS: u32 = 36;
 pub struct HandlerIvars {
     events: TrayEvents,
     item: RefCell<Option<Retained<NSStatusItem>>>,
-    paused: Cell<bool>,
+    menu: Cell<MenuState>,
 }
 
 define_class!(
@@ -60,7 +60,7 @@ define_class!(
             };
             let tag: isize = unsafe { msg_send![sender, tag] };
             let action = main_menu_action(tag as i32)
-                .or_else(|| find_action(&menu(self.ivars().paused.get()), tag as i32));
+                .or_else(|| find_action(&menu(&self.ivars().menu.get()), tag as i32));
             if let Some(action) = action {
                 (self.ivars().events)(TrayEvent::Menu(action));
             }
@@ -73,7 +73,7 @@ impl Handler {
         let this = Self::alloc(mtm).set_ivars(HandlerIvars {
             events,
             item: RefCell::new(None),
-            paused: Cell::new(false),
+            menu: Cell::new(MenuState::default()),
         });
         unsafe { msg_send![super(this), init] }
     }
@@ -82,7 +82,7 @@ impl Handler {
         let Some(item) = self.ivars().item.borrow().clone() else {
             return;
         };
-        let menu = build_menu(mtm, &menu(self.ivars().paused.get()), self);
+        let menu = build_menu(mtm, &menu(&self.ivars().menu.get()), self);
         item.setMenu(Some(&menu));
         if let Some(button) = item.button(mtm) {
             unsafe { button.performClick(None) };
@@ -98,7 +98,11 @@ fn build_menu(mtm: MainThreadMarker, entries: &[MenuEntry], handler: &Handler) -
         match entry {
             MenuEntry::Separator { .. } => menu.addItem(&NSMenuItem::separatorItem(mtm)),
             MenuEntry::Item {
-                id, label, enabled, ..
+                id,
+                label,
+                enabled,
+                checked,
+                ..
             } => {
                 let item = unsafe {
                     NSMenuItem::initWithTitle_action_keyEquivalent(
@@ -111,6 +115,10 @@ fn build_menu(mtm: MainThreadMarker, entries: &[MenuEntry], handler: &Handler) -
                 unsafe { item.setTarget(Some(handler)) };
                 item.setTag(*id as isize);
                 item.setEnabled(*enabled);
+                if let Some(checked) = checked {
+                    let state: isize = if *checked { 1 } else { 0 };
+                    let _: () = unsafe { msg_send![&*item, setState: state] };
+                }
                 menu.addItem(&item);
             },
             MenuEntry::Submenu { label, items, .. } => {
@@ -215,7 +223,7 @@ impl StatusItem {
 impl Tray for StatusItem {
     fn update(&mut self, state: &TrayState) {
         self.state = state.clone();
-        self.handler.ivars().paused.set(state.paused);
+        self.handler.ivars().menu.set(state.menu);
         self.draw(false);
         if let Some(button) = self.item.button(self.mtm) {
             button.setToolTip(Some(&NSString::from_str(&state.tooltip)));

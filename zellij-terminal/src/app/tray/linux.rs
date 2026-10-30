@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 
 use super::{find_action, menu, Anchor, MenuEntry, Tray, TrayEvent, TrayEvents};
 use crate::app::icon::{IconCache, SNI_SIZES};
-use crate::app::model::TrayState;
+use crate::app::model::{MenuState, TrayState};
 use crate::dbus::{
     match_rule, Bus, Handler, Kind, Message, Value, BUS_SERVICE, INTROSPECTABLE, PROPERTIES,
 };
@@ -22,7 +22,7 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(2);
 pub struct Shared {
     tooltip: String,
     pixmaps: Value,
-    paused: bool,
+    menu: MenuState,
     revision: u32,
     anchor: Option<(i32, i32)>,
     token: Option<String>,
@@ -86,7 +86,7 @@ impl StatusNotifier {
         let shared = Arc::new(Mutex::new(Shared {
             tooltip: state.tooltip.clone(),
             pixmaps: pixmaps(&mut cache, state),
-            paused: state.paused,
+            menu: state.menu,
             revision: 1,
             anchor: None,
             token: None,
@@ -182,11 +182,11 @@ impl Tray for StatusNotifier {
             };
             let icon_changed = shared.pixmaps != pixmaps;
             let tooltip_changed = shared.tooltip != state.tooltip;
-            let menu_changed = shared.paused != state.paused;
+            let menu_changed = shared.menu != state.menu;
             shared.pixmaps = pixmaps;
             shared.tooltip = state.tooltip.clone();
             if menu_changed {
-                shared.paused = state.paused;
+                shared.menu = state.menu;
                 shared.revision += 1;
             }
             (
@@ -357,14 +357,14 @@ fn answer(
         },
         (MENU_PATH, MENU_INTERFACE, "GetLayout") => {
             let parent = message.body.first().and_then(Value::as_i32).unwrap_or(0);
-            let entries = menu(shared.paused);
+            let entries = menu(&shared.menu);
             Some(Ok(vec![
                 Value::U32(shared.revision),
                 menu_layout(&entries, parent),
             ]))
         },
         (MENU_PATH, MENU_INTERFACE, "GetGroupProperties") => {
-            let entries = menu(shared.paused);
+            let entries = menu(&shared.menu);
             let ids: Vec<i32> = message
                 .body
                 .first()
@@ -381,7 +381,7 @@ fn answer(
         (MENU_PATH, MENU_INTERFACE, "GetProperty") => {
             let id = message.body.first().and_then(Value::as_i32).unwrap_or(-1);
             let name = message.body.get(1).and_then(Value::as_str).unwrap_or("");
-            let entries = menu(shared.paused);
+            let entries = menu(&shared.menu);
             let found = flatten(&entries)
                 .into_iter()
                 .find(|(i, _)| *i == id)
@@ -406,7 +406,7 @@ fn answer(
             let id = message.body.first().and_then(Value::as_i32).unwrap_or(-1);
             let event = message.body.get(1).and_then(Value::as_str).unwrap_or("");
             let action = (event == "clicked")
-                .then(|| menu_action_for(shared.paused, id))
+                .then(|| menu_action_for(&shared.menu, id))
                 .flatten();
             drop(shared);
             if let Some(action) = action {
@@ -415,7 +415,7 @@ fn answer(
             Some(Ok(vec![]))
         },
         (MENU_PATH, MENU_INTERFACE, "EventGroup") => {
-            let paused = shared.paused;
+            let state = shared.menu;
             drop(shared);
             if let Some(group) = message.body.first() {
                 for event in group.items() {
@@ -423,7 +423,7 @@ fn answer(
                     let id = parts.first().and_then(Value::as_i32).unwrap_or(-1);
                     let kind = parts.get(1).and_then(Value::as_str).unwrap_or("");
                     if kind == "clicked" {
-                        if let Some(action) = menu_action_for(paused, id) {
+                        if let Some(action) = menu_action_for(&state, id) {
                             events(TrayEvent::Menu(action));
                         }
                     }
@@ -440,8 +440,8 @@ fn answer(
     }
 }
 
-pub fn menu_action_for(paused: bool, id: i32) -> Option<super::MenuAction> {
-    find_action(&menu(paused), id)
+pub fn menu_action_for(state: &MenuState, id: i32) -> Option<super::MenuAction> {
+    find_action(&menu(state), id)
 }
 
 fn item_properties(shared: &Shared) -> Vec<(&'static str, Value)> {
@@ -504,11 +504,23 @@ fn flatten(entries: &[MenuEntry]) -> Vec<(i32, &MenuEntry)> {
 
 fn entry_properties(entry: &MenuEntry) -> Value {
     match entry {
-        MenuEntry::Item { label, enabled, .. } => Value::dict(vec![
-            ("label", Value::str(*label)),
-            ("enabled", Value::Bool(*enabled)),
-            ("visible", Value::Bool(true)),
-        ]),
+        MenuEntry::Item {
+            label,
+            enabled,
+            checked,
+            ..
+        } => {
+            let mut properties = vec![
+                ("label", Value::str(*label)),
+                ("enabled", Value::Bool(*enabled)),
+                ("visible", Value::Bool(true)),
+            ];
+            if let Some(checked) = checked {
+                properties.push(("toggle-type", Value::str("checkmark")));
+                properties.push(("toggle-state", Value::I32(i32::from(*checked))));
+            }
+            Value::dict(properties)
+        },
         MenuEntry::Submenu { label, .. } => Value::dict(vec![
             ("label", Value::str(*label)),
             ("enabled", Value::Bool(true)),
@@ -613,16 +625,17 @@ fn introspection(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::{tray_state, Pill, PillColor, TrayLook};
+    use crate::app::model::{tray_state, MenuState, Pill, TrayLook};
+    use zellij_utils::attention::AttentionStatus;
     use crate::app::tray::MenuAction;
 
     fn shared() -> Mutex<Shared> {
         let mut cache = IconCache::default();
-        let state = tray_state(&Default::default(), false);
+        let state = tray_state(&Default::default(), MenuState::default());
         Mutex::new(Shared {
             tooltip: "Zellij · 0 running".to_owned(),
             pixmaps: pixmaps(&mut cache, &state),
-            paused: false,
+            menu: MenuState::default(),
             revision: 1,
             anchor: None,
             token: None,
@@ -756,16 +769,49 @@ mod tests {
 
     #[test]
     fn the_menu_layout_nests_submenus_and_has_the_dbusmenu_shape() {
-        let layout = menu_layout(&menu(false), 0);
+        let layout = menu_layout(&menu(&MenuState::default()), 0);
         assert_eq!(layout.signature(), "(ia{sv}av)");
         let children = layout.items()[2].items();
-        assert_eq!(children.len(), 10);
+        assert_eq!(children.len(), 11);
         let pause = children[6].items();
         assert_eq!(pause[0], Value::I32(5));
         assert_eq!(pause[2].items().len(), 3);
-        let sub = menu_layout(&menu(false), 6);
+        let sub = menu_layout(&menu(&MenuState::default()), 6);
         assert_eq!(sub.items()[0], Value::I32(6));
         assert_eq!(sub.items()[2].items().len(), 2);
+        let colours = menu_layout(&menu(&MenuState::default()), 23);
+        assert_eq!(colours.items()[2].items().len(), 6);
+    }
+
+    #[test]
+    fn ticked_items_say_they_are_checkmarks() {
+        let entries = menu(&MenuState::default());
+        let all = flatten(&entries);
+        let property = |id: i32, name: &str| {
+            let (_, entry) = all.iter().find(|(i, _)| *i == id).unwrap();
+            entry_properties(entry)
+                .items()
+                .iter()
+                .find_map(|pair| match pair {
+                    Value::DictEntry(key, value) if key.as_str() == Some(name) => {
+                        Some((**value).clone())
+                    },
+                    _ => None,
+                })
+        };
+        assert_eq!(
+            property(210, "toggle-type"),
+            Some(Value::variant(Value::str("checkmark")))
+        );
+        assert_eq!(
+            property(210, "toggle-state"),
+            Some(Value::variant(Value::I32(1)))
+        );
+        assert_eq!(
+            property(224, "toggle-state"),
+            Some(Value::variant(Value::I32(0)))
+        );
+        assert_eq!(property(1, "toggle-type"), None);
     }
 
     #[test]
@@ -782,11 +828,12 @@ mod tests {
     #[test]
     fn a_new_pill_changes_the_pixmaps() {
         let mut cache = IconCache::default();
-        let calm = tray_state(&Default::default(), false);
+        let calm = tray_state(&Default::default(), MenuState::default());
         let mut attention = calm.clone();
         attention.look = TrayLook {
             pill: Some(Pill {
-                color: PillColor::Attention,
+                status: AttentionStatus::NeedsYou,
+                color: [255, 140, 0],
                 count: 2,
             }),
             dimmed: false,
@@ -810,7 +857,7 @@ mod tests {
             }
         });
         let (events, _) = recorded();
-        let state = tray_state(&Default::default(), false);
+        let state = tray_state(&Default::default(), MenuState::default());
         let tray = StatusNotifier::over(ours, events, &state);
         (bus, tray)
     }

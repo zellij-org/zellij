@@ -23,7 +23,7 @@ use zellij_utils::input::attention::AttentionConfig;
 use zellij_utils::input::config::Config;
 
 use crate::app::engine::{Engine, Policy};
-use crate::app::model::{tray_state, TrayState};
+use crate::app::model::{tray_state, BadgeSettings, MenuState, TrayState};
 use crate::app::notifier::{Notifier, SinkEvent};
 use crate::app::state::CloseNotice;
 use crate::app::tray::{MenuAction, Tray, TrayEvent};
@@ -203,6 +203,25 @@ pub fn hide_icon_permanently(path: Option<&Path>) -> Result<(), String> {
     std::fs::write(path, written).map_err(|e| e.to_string())
 }
 
+pub fn save_setting(
+    path: Option<&Path>,
+    key: zellij_utils::data::SettingKey,
+    value: Option<String>,
+) -> Result<(), String> {
+    use zellij_utils::input::config_file_edit::{apply_edits, read_config_file, ConfigEdit};
+    let path = path.ok_or_else(|| "there is no configuration file to write to".to_owned())?;
+    let edit = match value.as_deref().and_then(|value| key.kdl_values(value)) {
+        Some(values) => ConfigEdit::SetSetting { key, values },
+        None => ConfigEdit::RemoveSetting(key),
+    };
+    let current = read_config_file(path).map_err(|e| e.to_string())?;
+    let written = apply_edits(current.as_deref(), &[edit], &Config::default())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, written).map_err(|e| e.to_string())
+}
+
 pub fn tomorrow() -> SystemTime {
     use chrono::{Duration as ChronoDuration, Local, TimeZone};
     let now = Local::now();
@@ -295,8 +314,32 @@ impl Background {
             .unwrap_or(self.config.tray_icon() && !self.hidden_until_restart)
     }
 
+    fn menu_state(&self) -> MenuState {
+        MenuState {
+            paused: self.paused(),
+            popups: self.config.desktop_notifications(),
+            badge: BadgeSettings::of(&self.config),
+        }
+    }
+
     fn tray_state(&self) -> TrayState {
-        tray_state(&self.snapshot.global, self.paused())
+        tray_state(&self.snapshot.global, self.menu_state())
+    }
+
+    fn save(&self, key: Option<zellij_utils::data::SettingKey>, value: Option<String>) {
+        let Some(key) = key else {
+            return;
+        };
+        if let Err(e) = save_setting(self.config_path.as_deref(), key, value) {
+            report!("the notification setting could not be saved: {}", e);
+        }
+    }
+
+    fn settings_changed(&mut self, now: Instant) {
+        let policy = self.policy();
+        let commands = self.engine.set_policy(policy, now);
+        self.notifier.apply(commands);
+        self.refresh_tray();
     }
 
     fn apply_tray_visibility(&mut self) {
@@ -421,6 +464,30 @@ impl Background {
                 }
                 self.tray_override = Some(false);
                 self.apply_tray_visibility();
+                vec![]
+            },
+            MenuAction::TogglePopup(status) => {
+                use zellij_utils::input::config_settings::popup_setting_key;
+                let on = !self.config.desktop_notifications().includes(status);
+                self.config.desktop_notifications.set(status, Some(on));
+                self.save(popup_setting_key(status), Some(on.to_string()));
+                self.settings_changed(now);
+                vec![]
+            },
+            MenuAction::ToggleBadge(status) => {
+                use zellij_utils::input::config_settings::badge_setting_key;
+                let on = !self.config.tray_badge().includes(status);
+                self.config.tray_badge.set(status, Some(on));
+                self.save(badge_setting_key(status), Some(on.to_string()));
+                self.settings_changed(now);
+                vec![]
+            },
+            MenuAction::BadgeColor(status, colour) => {
+                use zellij_utils::input::attention::colour_text;
+                use zellij_utils::input::config_settings::badge_colour_setting_key;
+                self.config.tray_badge_colors.set(status, colour);
+                self.save(badge_colour_setting_key(status), colour.map(colour_text));
+                self.settings_changed(now);
                 vec![]
             },
             MenuAction::QuitAll => vec![Intent::ConfirmQuitAll],
@@ -817,6 +884,49 @@ mod tests {
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("default_mode \"locked\""), "{}", written);
         assert!(hide_icon_permanently(None).is_err());
+    }
+
+    #[test]
+    fn the_notifications_menu_writes_its_choices_into_the_config_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("config.kdl");
+        std::fs::write(&path, "default_mode \"locked\"\n").unwrap();
+        let (mut background, _) = background();
+        background.config_path = Some(path.clone());
+        let now = Instant::now();
+        background.on_tray(
+            TrayEvent::Menu(MenuAction::TogglePopup(AttentionStatus::Done)),
+            now,
+        );
+        background.on_tray(
+            TrayEvent::Menu(MenuAction::ToggleBadge(AttentionStatus::Quiet)),
+            now,
+        );
+        background.on_tray(
+            TrayEvent::Menu(MenuAction::BadgeColor(
+                AttentionStatus::Failed,
+                Some([1, 2, 3]),
+            )),
+            now,
+        );
+        assert!(!background.policy().statuses.includes(AttentionStatus::Done));
+        assert!(background.menu_state().badge.statuses.includes(AttentionStatus::Quiet));
+        let config = attention_config(Some(&path));
+        assert!(!config.desktop_notifications().includes(AttentionStatus::Done));
+        assert!(config.desktop_notifications().includes(AttentionStatus::Failed));
+        assert!(config.tray_badge().includes(AttentionStatus::Quiet));
+        assert_eq!(
+            config.tray_badge_color(AttentionStatus::Failed),
+            Some([1, 2, 3])
+        );
+        background.on_tray(
+            TrayEvent::Menu(MenuAction::BadgeColor(AttentionStatus::Failed, None)),
+            now,
+        );
+        let config = attention_config(Some(&path));
+        assert_eq!(config.tray_badge_color(AttentionStatus::Failed), None);
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("default_mode \"locked\""), "{}", written);
     }
 
     #[test]

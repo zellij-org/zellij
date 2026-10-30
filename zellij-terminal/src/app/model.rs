@@ -1,16 +1,12 @@
-use zellij_utils::attention::GlobalAttention;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PillColor {
-    Attention,
-    Error,
-    Done,
-    Working,
-}
+use zellij_utils::attention::{AttentionStatus, GlobalAttention};
+use zellij_utils::input::attention::{
+    AttentionConfig, StatusMap, StatusSet, BADGE_STATUSES, DEFAULT_BADGE_STATUSES, POPUP_STATUSES,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pill {
-    pub color: PillColor,
+    pub status: AttentionStatus,
+    pub color: [u8; 3],
     pub count: usize,
 }
 
@@ -24,32 +20,60 @@ impl Pill {
     }
 }
 
-pub fn pill(global: &GlobalAttention) -> Option<Pill> {
-    if global.counts.needs_you > 0 {
-        return Some(Pill {
-            color: PillColor::Attention,
-            count: global.counts.needs_you,
-        });
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BadgeSettings {
+    pub statuses: StatusSet,
+    pub colors: StatusMap<[u8; 3]>,
+}
+
+impl Default for BadgeSettings {
+    fn default() -> Self {
+        BadgeSettings {
+            statuses: StatusSet::of(&DEFAULT_BADGE_STATUSES),
+            colors: StatusMap::default(),
+        }
     }
-    if global.counts.failed > 0 {
-        return Some(Pill {
-            color: PillColor::Error,
-            count: global.counts.failed,
-        });
+}
+
+impl BadgeSettings {
+    pub fn of(config: &AttentionConfig) -> Self {
+        BadgeSettings {
+            statuses: config.tray_badge(),
+            colors: config.tray_badge_colors,
+        }
     }
-    if global.counts.done > 0 {
-        return Some(Pill {
-            color: PillColor::Done,
-            count: global.counts.done,
-        });
+    pub fn color(&self, status: AttentionStatus) -> [u8; 3] {
+        self.colors
+            .get(status)
+            .unwrap_or_else(|| crate::app::icon::default_badge_color(status))
     }
-    if global.counts.working > 0 {
-        return Some(Pill {
-            color: PillColor::Working,
-            count: global.counts.working,
-        });
+}
+
+pub fn count_of(global: &GlobalAttention, status: AttentionStatus) -> usize {
+    let counts = &global.counts;
+    match status {
+        AttentionStatus::NeedsYou => counts.needs_you,
+        AttentionStatus::Failed => counts.failed,
+        AttentionStatus::Done => counts.done,
+        AttentionStatus::Working => counts.working,
+        AttentionStatus::Quiet => counts.quiet,
+        AttentionStatus::NewOutput => counts.new_output,
+        AttentionStatus::Idle => 0,
     }
-    None
+}
+
+pub fn pill(global: &GlobalAttention, badge: &BadgeSettings) -> Option<Pill> {
+    BADGE_STATUSES
+        .iter()
+        .filter(|status| badge.statuses.includes(**status))
+        .find_map(|status| {
+            let count = count_of(global, *status);
+            (count > 0).then(|| Pill {
+                status: *status,
+                color: badge.color(*status),
+                count,
+            })
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,25 +82,42 @@ pub struct TrayLook {
     pub dimmed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuState {
+    pub paused: bool,
+    pub popups: StatusSet,
+    pub badge: BadgeSettings,
+}
+
+impl Default for MenuState {
+    fn default() -> Self {
+        MenuState {
+            paused: false,
+            popups: StatusSet::of(&POPUP_STATUSES),
+            badge: BadgeSettings::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrayState {
     pub look: TrayLook,
     pub tooltip: String,
-    pub paused: bool,
+    pub menu: MenuState,
 }
 
-pub fn tray_state(global: &GlobalAttention, paused: bool) -> TrayState {
+pub fn tray_state(global: &GlobalAttention, menu: MenuState) -> TrayState {
     TrayState {
         look: TrayLook {
-            pill: pill(global),
-            dimmed: paused,
+            pill: pill(global, &menu.badge),
+            dimmed: menu.paused,
         },
-        tooltip: tooltip(global, paused),
-        paused,
+        tooltip: tooltip(global, menu.paused, menu.badge.statuses),
+        menu,
     }
 }
 
-pub fn tooltip(global: &GlobalAttention, paused: bool) -> String {
+pub fn tooltip(global: &GlobalAttention, paused: bool, badge: StatusSet) -> String {
     let mut parts = vec!["Zellij".to_owned()];
     let needs_you = global.counts.needs_you;
     if needs_you > 0 {
@@ -94,6 +135,12 @@ pub fn tooltip(global: &GlobalAttention, paused: bool) -> String {
     }
     if global.counts.working > 0 {
         parts.push(format!("{} working", global.counts.working));
+    }
+    if badge.includes(AttentionStatus::Quiet) && global.counts.quiet > 0 {
+        parts.push(format!("{} quiet", global.counts.quiet));
+    }
+    if badge.includes(AttentionStatus::NewOutput) && global.counts.new_output > 0 {
+        parts.push(format!("{} with new output", global.counts.new_output));
     }
     parts.push(format!("{} running", global.running()));
     if paused {
@@ -166,8 +213,13 @@ mod tests {
     use super::*;
     use zellij_utils::attention::AttentionStatus;
 
+    fn status_of(global: &GlobalAttention, badge: &BadgeSettings) -> Option<(AttentionStatus, usize)> {
+        pill(global, badge).map(|p| (p.status, p.count))
+    }
+
     #[test]
-    fn the_pill_mirrors_the_top_counted_status() {
+    fn the_pill_mirrors_the_top_status_the_badge_shows() {
+        let badge = BadgeSettings::default();
         let calm = global(vec![(
             "a",
             vec![
@@ -175,14 +227,11 @@ mod tests {
                 item(4, AttentionStatus::NewOutput, "", 1),
             ],
         )]);
-        assert_eq!(pill(&calm), None);
+        assert_eq!(pill(&calm, &badge), None);
         let working = global(vec![("a", vec![item(1, AttentionStatus::Working, "", 1)])]);
         assert_eq!(
-            pill(&working),
-            Some(Pill {
-                color: PillColor::Working,
-                count: 1
-            })
+            status_of(&working, &badge),
+            Some((AttentionStatus::Working, 1))
         );
         let done = global(vec![(
             "a",
@@ -192,23 +241,21 @@ mod tests {
                 item(3, AttentionStatus::Done, "", 1),
             ],
         )]);
-        assert_eq!(
-            pill(&done),
-            Some(Pill {
-                color: PillColor::Done,
-                count: 2
-            })
-        );
+        assert_eq!(status_of(&done, &badge), Some((AttentionStatus::Done, 2)));
         let seen_done = global(vec![(
             "a",
             vec![seen(item(1, AttentionStatus::Done, "", 1))],
         )]);
-        assert_eq!(pill(&seen_done).map(|p| p.color), Some(PillColor::Done));
+        assert_eq!(
+            pill(&seen_done, &badge).map(|p| p.status),
+            Some(AttentionStatus::Done)
+        );
         let failed = global(vec![("a", vec![item(1, AttentionStatus::Failed, "", 1)])]);
         assert_eq!(
-            pill(&failed),
+            pill(&failed, &badge),
             Some(Pill {
-                color: PillColor::Error,
+                status: AttentionStatus::Failed,
+                color: crate::app::icon::ERROR_COLOR,
                 count: 1
             })
         );
@@ -223,24 +270,57 @@ mod tests {
             ),
         ]);
         assert_eq!(
-            pill(&mixed),
-            Some(Pill {
-                color: PillColor::Attention,
-                count: 2
-            })
+            status_of(&mixed, &badge),
+            Some((AttentionStatus::NeedsYou, 2))
         );
         let only_muted = global(vec![(
             "a",
             vec![muted(item(1, AttentionStatus::NeedsYou, "", 1))],
         )]);
-        assert_eq!(pill(&only_muted), None);
+        assert_eq!(pill(&only_muted, &badge), None);
+    }
+
+    #[test]
+    fn the_badge_skips_turned_off_statuses_and_uses_chosen_colours() {
+        let mixed = global(vec![(
+            "a",
+            vec![
+                item(1, AttentionStatus::NeedsYou, "", 1),
+                item(2, AttentionStatus::Quiet, "", 1),
+                item(3, AttentionStatus::Quiet, "", 1),
+            ],
+        )]);
+        let mut colors = StatusMap::default();
+        colors.set(AttentionStatus::Quiet, Some([1, 2, 3]));
+        let badge = BadgeSettings {
+            statuses: StatusSet::of(&[AttentionStatus::Quiet]),
+            colors,
+        };
+        assert_eq!(
+            pill(&mixed, &badge),
+            Some(Pill {
+                status: AttentionStatus::Quiet,
+                color: [1, 2, 3],
+                count: 2
+            })
+        );
+        let nothing = BadgeSettings {
+            statuses: StatusSet::default(),
+            colors,
+        };
+        assert_eq!(pill(&mixed, &nothing), None);
+        assert_eq!(
+            tooltip(&mixed, false, badge.statuses),
+            "Zellij · 1 needs you · 2 quiet · 1 running"
+        );
     }
 
     #[test]
     fn the_pill_label_stops_at_nine_plus() {
         let label = |count| {
             Pill {
-                color: PillColor::Attention,
+                status: AttentionStatus::NeedsYou,
+                color: [0, 0, 0],
                 count,
             }
             .label()
@@ -266,12 +346,19 @@ mod tests {
             ("d", vec![]),
             ("e", vec![]),
         ]);
-        assert_eq!(tooltip(&global, false), "Zellij · 2 need you · 5 running");
+        let badge = BadgeSettings::default().statuses;
+        assert_eq!(
+            tooltip(&global, false, badge),
+            "Zellij · 2 need you · 5 running"
+        );
         let one =
             super::fixtures::global(vec![("a", vec![item(1, AttentionStatus::NeedsYou, "", 1)])]);
-        assert_eq!(tooltip(&one, false), "Zellij · 1 needs you · 1 running");
         assert_eq!(
-            tooltip(&GlobalAttention::default(), true),
+            tooltip(&one, false, badge),
+            "Zellij · 1 needs you · 1 running"
+        );
+        assert_eq!(
+            tooltip(&GlobalAttention::default(), true, badge),
             "Zellij · 0 running · notifications paused"
         );
     }

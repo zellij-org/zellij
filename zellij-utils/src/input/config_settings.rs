@@ -748,15 +748,99 @@ fn attention_values(
         attention.tray_icon.map(|v| v.to_string()),
     );
     values.insert(
-        SettingKey::AttentionDesktopNotifications,
-        attention
-            .desktop_notifications
-            .map(|v| v.as_str().to_owned()),
-    );
-    values.insert(
         SettingKey::AttentionNotificationDetails,
         attention.notification_details.map(|v| v.to_string()),
     );
+    for status in crate::input::attention::BADGE_STATUSES {
+        if let Some(key) = popup_setting_key(status) {
+            values.insert(
+                key,
+                attention
+                    .desktop_notifications
+                    .get(status)
+                    .map(|v| v.to_string()),
+            );
+        }
+        if let Some(key) = badge_setting_key(status) {
+            values.insert(
+                key,
+                attention.tray_badge.get(status).map(|v| v.to_string()),
+            );
+        }
+        if let Some(key) = badge_colour_setting_key(status) {
+            values.insert(
+                key,
+                attention
+                    .tray_badge_colors
+                    .get(status)
+                    .map(crate::input::attention::colour_text),
+            );
+        }
+    }
+}
+
+pub fn popup_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionPopupNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionPopupFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionPopupDone),
+        _ => None,
+    }
+}
+
+pub fn badge_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionBadgeNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionBadgeFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionBadgeDone),
+        AttentionStatus::Working => Some(SettingKey::AttentionBadgeWorking),
+        AttentionStatus::Quiet => Some(SettingKey::AttentionBadgeQuiet),
+        AttentionStatus::NewOutput => Some(SettingKey::AttentionBadgeNewOutput),
+        AttentionStatus::Idle => None,
+    }
+}
+
+pub fn badge_colour_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionBadgeColorNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionBadgeColorFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionBadgeColorDone),
+        AttentionStatus::Working => Some(SettingKey::AttentionBadgeColorWorking),
+        AttentionStatus::Quiet => Some(SettingKey::AttentionBadgeColorQuiet),
+        AttentionStatus::NewOutput => Some(SettingKey::AttentionBadgeColorNewOutput),
+        AttentionStatus::Idle => None,
+    }
+}
+
+fn copy_status_setting(
+    target: &mut crate::input::attention::AttentionConfig,
+    source: &crate::input::attention::AttentionConfig,
+    key: SettingKey,
+) -> bool {
+    for status in crate::input::attention::BADGE_STATUSES {
+        if popup_setting_key(status) == Some(key) {
+            target
+                .desktop_notifications
+                .set(status, source.desktop_notifications.get(status));
+            return true;
+        }
+        if badge_setting_key(status) == Some(key) {
+            target
+                .tray_badge
+                .set(status, source.tray_badge.get(status));
+            return true;
+        }
+        if badge_colour_setting_key(status) == Some(key) {
+            target
+                .tray_badge_colors
+                .set(status, source.tray_badge_colors.get(status));
+            return true;
+        }
+    }
+    false
 }
 
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
@@ -803,15 +887,14 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             target.attention.tray_icon = source.attention.tray_icon;
             return;
         },
-        SettingKey::AttentionDesktopNotifications => {
-            target.attention.desktop_notifications = source.attention.desktop_notifications;
-            return;
-        },
         SettingKey::AttentionNotificationDetails => {
             target.attention.notification_details = source.attention.notification_details;
             return;
         },
         _ => {},
+    }
+    if copy_status_setting(&mut target.attention, &source.attention, key) {
+        return;
     }
     match key {
         SettingKey::SimplifiedUi => options.simplified_ui = from.simplified_ui,

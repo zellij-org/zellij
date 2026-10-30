@@ -710,16 +710,109 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
-        SettingKey::AttentionDesktopNotifications => info(
-            "Desktop notifications",
-            "Which inbox items the desktop app shows as desktop notifications",
-            Choice(&[
-                "needs_you",
-                "needs_you_failed",
-                "needs_you_failed_done",
-                "none",
-            ]),
-            "needs_you_failed_done",
+        SettingKey::AttentionPopupNeedsYou => info(
+            "Needs you pop-ups",
+            "Show a desktop notification when something needs you",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionPopupFailed => info(
+            "Failed pop-ups",
+            "Show a desktop notification when a command fails",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionPopupDone => info(
+            "Done pop-ups",
+            "Show a desktop notification when a long command finishes",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeNeedsYou => info(
+            "Needs you badge",
+            "Count items that need you on the tray icon",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeFailed => info(
+            "Failed badge",
+            "Count failed commands on the tray icon",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeDone => info(
+            "Done badge",
+            "Count finished commands on the tray icon",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeWorking => info(
+            "Working badge",
+            "Count working programs on the tray icon",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeQuiet => info(
+            "Gone quiet badge",
+            "Count panes that went quiet on the tray icon",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeNewOutput => info(
+            "New output badge",
+            "Count panes with unseen output on the tray icon",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorNeedsYou => info(
+            "Needs you colour",
+            "Tray badge colour for items that need you; not set uses orange",
+            Text(TextCheck::Colour),
+            "#ff8c00",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorFailed => info(
+            "Failed colour",
+            "Tray badge colour for failed commands; not set uses red",
+            Text(TextCheck::Colour),
+            "#e5484d",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorDone => info(
+            "Done colour",
+            "Tray badge colour for finished commands; not set uses green",
+            Text(TextCheck::Colour),
+            "#30a46c",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorWorking => info(
+            "Working colour",
+            "Tray badge colour for working programs; not set uses blue",
+            Text(TextCheck::Colour),
+            "#3e82f7",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorQuiet => info(
+            "Gone quiet colour",
+            "Tray badge colour for panes that went quiet; not set uses gray",
+            Text(TextCheck::Colour),
+            "#8b8d98",
+            OnlyYou,
+        ),
+        SettingKey::AttentionBadgeColorNewOutput => info(
+            "New output colour",
+            "Tray badge colour for panes with unseen output; not set uses teal",
+            Text(TextCheck::Colour),
+            "#12a594",
             OnlyYou,
         ),
         SettingKey::AttentionNotificationDetails => info(
@@ -1679,7 +1772,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 39] = [
+pub const SECTION_ORDER: [&str; 42] = [
     "Startup",
     "Quitting",
     "Starting points",
@@ -1703,6 +1796,9 @@ pub const SECTION_ORDER: [&str; 39] = [
     "Mirrors",
     "Inside Zellij",
     "Outside Zellij",
+    "Desktop pop-ups",
+    "Tray badge",
+    "Tray badge colours",
     "Timing",
     "Session name",
     "Resurrection",
@@ -1773,9 +1869,23 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         },
         AttentionHostStatus
         | HostNotificationProtocol
-        | AttentionDesktopNotifications
         | AttentionTrayIcon
         | AttentionNotificationDetails => (C::Notifications, "Outside Zellij"),
+        AttentionPopupNeedsYou | AttentionPopupFailed | AttentionPopupDone => {
+            (C::Notifications, "Desktop pop-ups")
+        },
+        AttentionBadgeNeedsYou
+        | AttentionBadgeFailed
+        | AttentionBadgeDone
+        | AttentionBadgeWorking
+        | AttentionBadgeQuiet
+        | AttentionBadgeNewOutput => (C::Notifications, "Tray badge"),
+        AttentionBadgeColorNeedsYou
+        | AttentionBadgeColorFailed
+        | AttentionBadgeColorDone
+        | AttentionBadgeColorWorking
+        | AttentionBadgeColorQuiet
+        | AttentionBadgeColorNewOutput => (C::Notifications, "Tray badge colours"),
         AttentionIdleRule
         | AttentionDoneThresholdSecs
         | AttentionIdleActivitySecs
@@ -2018,13 +2128,6 @@ pub fn choice_label(key: SettingKey, value: &str) -> String {
     let special = match (key, value) {
         (SettingKey::OnQuit, "ask_quit") => Some("Ask, suggest quitting"),
         (SettingKey::OnQuit, "ask_detach") => Some("Ask, suggest detaching"),
-        (SettingKey::AttentionDesktopNotifications, "needs_you") => Some("When a pane needs you"),
-        (SettingKey::AttentionDesktopNotifications, "needs_you_failed") => {
-            Some("Needs you or failed")
-        },
-        (SettingKey::AttentionDesktopNotifications, "needs_you_failed_done") => {
-            Some("Needs you, failed or done")
-        },
         (SettingKey::TerminalTerminalRequests, "new_session") => Some("Open a new session"),
         (SettingKey::TerminalTerminalRequests, "existing_session") => {
             Some("Use the current session")

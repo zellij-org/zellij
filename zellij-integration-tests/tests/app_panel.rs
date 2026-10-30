@@ -180,7 +180,7 @@ fn exited_sessions_are_collapsed_under_one_line_in_the_sessions_view() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    leave_exited_sessions(&["gone-one", "gone-two"]);
+    leave_older_exited_sessions(&["gone-one", "gone-two"]);
     let mut panel = start_panel_on("sessions");
     let grid_snapshot = panel.wait_until("the exited sessions are folded", |grid_snapshot| {
         grid_snapshot.contains("▸ Exited (2)") && grid_snapshot.contains(background.session_name())
@@ -205,6 +205,7 @@ const LEFT: &[u8] = b"\x1b[D";
 const HOME: &[u8] = b"\x1b[H";
 const END: &[u8] = b"\x1b[F";
 const DELETE: &[u8] = b"\x1b[3~";
+const SHIFT_DELETE: &[u8] = b"\x1b[3;2~";
 const BACKSPACE: &[u8] = b"\x7f";
 const SESSIONS_VIEW_ONLY: &str = "Folder";
 const EMPTY_PREVIEW: &str = "Select a session to see its preview";
@@ -230,18 +231,32 @@ fn send_view(view: &str) {
     .unwrap();
 }
 
-fn leave_exited_sessions(names: &[&str]) {
+const RECENT_SESSIONS: [&str; 3] = ["recent-a", "recent-b", "recent-c"];
+
+fn leave_exited_sessions_used(names: &[&str], seconds_ago: u64) {
     let index = zellij_utils::session_index::SessionIndex::open_default().unwrap();
-    let now = std::time::SystemTime::now()
+    let used = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .as_secs();
+        .as_secs()
+        - seconds_ago;
     for name in names {
         let folder = zellij_utils::consts::session_info_folder_for_session(name);
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("session-layout.kdl"), "layout {\n    pane\n}\n").unwrap();
-        index.ensure_row(name, now).unwrap();
+        index.ensure_row(name, used).unwrap();
     }
+}
+
+fn leave_older_exited_sessions(names: &[&str]) {
+    leave_exited_sessions_used(names, 600);
+    leave_exited_sessions_used(&RECENT_SESSIONS, 0);
+}
+
+fn saved_layout_exists(name: &str) -> bool {
+    zellij_utils::consts::session_info_folder_for_session(name)
+        .join("session-layout.kdl")
+        .exists()
 }
 
 fn position(
@@ -414,7 +429,7 @@ fn the_keyboard_walks_onto_into_and_out_of_the_exited_group() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    leave_exited_sessions(&["gone-one", "gone-two"]);
+    leave_older_exited_sessions(&["gone-one", "gone-two"]);
     let live = background.session_name().to_owned();
     let mut panel = start_panel_on("sessions");
     panel.wait_until("the exited sessions are folded", |grid_snapshot| {
@@ -423,9 +438,13 @@ fn the_keyboard_walks_onto_into_and_out_of_the_exited_group() {
     panel.send_stdin(&keys::DOWN);
     wait_for_selected(&panel, &live);
     panel.send_stdin(&keys::DOWN);
-    wait_for_selected(&panel, "Exited (2)");
+    wait_for_selected(&panel, RECENT_SESSIONS[0]);
     panel.send_stdin(&keys::UP);
     wait_for_selected(&panel, &live);
+    panel.send_stdin(END);
+    wait_for_selected(&panel, "Exited (2)");
+    panel.send_stdin(&keys::UP);
+    wait_for_selected(&panel, RECENT_SESSIONS[2]);
     panel.send_stdin(&keys::DOWN);
     wait_for_selected(&panel, "Exited (2)");
     panel.send_stdin(&keys::RIGHT);
@@ -469,7 +488,7 @@ fn searching_opens_the_exited_group_and_clearing_the_search_folds_it_again() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    leave_exited_sessions(&["gone-one", "gone-two"]);
+    leave_older_exited_sessions(&["gone-one", "gone-two"]);
     let mut panel = start_panel_on("sessions");
     panel.wait_until("the exited sessions are folded", |grid_snapshot| {
         grid_snapshot.contains("▸ Exited (2)") && grid_snapshot.contains(background.session_name())
@@ -496,11 +515,75 @@ fn searching_opens_the_exited_group_and_clearing_the_search_folds_it_again() {
 }
 
 #[test]
+fn the_most_recent_exited_sessions_are_listed_above_the_folded_rest() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    leave_older_exited_sessions(&["gone-one"]);
+    let mut panel = start_panel_on("sessions");
+    let grid_snapshot = panel.wait_until("the recent sessions are listed", |grid_snapshot| {
+        grid_snapshot.contains("Recent")
+            && RECENT_SESSIONS
+                .iter()
+                .all(|name| grid_snapshot.contains(name))
+            && grid_snapshot.contains("▸ Exited (1)")
+            && grid_snapshot.contains(background.session_name())
+    });
+    assert!(!grid_snapshot.contains("gone-one"), "{}", grid_snapshot.text);
+    let (_, heading_row) = list_position(&grid_snapshot, "Recent");
+    let (_, first_row) = list_position(&grid_snapshot, RECENT_SESSIONS[0]);
+    let (_, exited_row) = list_position(&grid_snapshot, "Exited (1)");
+    assert!(heading_row < first_row && first_row < exited_row);
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+}
+
+#[test]
+fn shift_delete_asks_and_then_deletes_every_exited_session() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    leave_older_exited_sessions(&["gone-one"]);
+    let mut panel = start_panel_on("sessions");
+    panel.wait_until("the exited sessions are listed", |grid_snapshot| {
+        grid_snapshot.contains("▸ Exited (1)") && grid_snapshot.contains(background.session_name())
+    });
+    panel.send_stdin(SHIFT_DELETE);
+    panel.wait_until("the deletion is confirmed first", |grid_snapshot| {
+        grid_snapshot.contains("This will delete all 4 exited sessions")
+            && grid_snapshot.contains("Are you sure? (y/n)")
+    });
+    panel.send_stdin(&keys::key('n'));
+    panel.wait_until("no cancels", |grid_snapshot| {
+        grid_snapshot.contains("▸ Exited (1)") && !grid_snapshot.contains("Are you sure")
+    });
+    assert!(saved_layout_exists("gone-one"));
+    panel.send_stdin(SHIFT_DELETE);
+    panel.wait_until("the question is asked again", |grid_snapshot| {
+        grid_snapshot.contains("This will delete all 4 exited sessions")
+    });
+    panel.send_stdin(&keys::key('y'));
+    zellij_integration_tests::wait_for("the exited sessions are deleted", || {
+        !saved_layout_exists("gone-one")
+            && RECENT_SESSIONS
+                .iter()
+                .all(|name| !saved_layout_exists(name))
+    });
+    panel.wait_until("the list has no exited sessions", |grid_snapshot| {
+        !grid_snapshot.contains("Exited")
+            && !grid_snapshot.contains("Recent")
+            && grid_snapshot.contains(background.session_name())
+    });
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+}
+
+#[test]
 fn delete_and_rename_do_nothing_on_the_exited_header_and_it_has_no_preview() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    leave_exited_sessions(&["gone-one", "gone-two"]);
+    leave_older_exited_sessions(&["gone-one", "gone-two"]);
     let live = background.session_name().to_owned();
     let mut panel = start_panel_on("sessions");
     panel.wait_until("the exited sessions are folded", |grid_snapshot| {
@@ -510,7 +593,7 @@ fn delete_and_rename_do_nothing_on_the_exited_header_and_it_has_no_preview() {
     panel.wait_until("the live session is previewed", |grid_snapshot| {
         is_selected(grid_snapshot, &live) && !grid_snapshot.contains(EMPTY_PREVIEW)
     });
-    panel.send_stdin(&keys::DOWN);
+    panel.send_stdin(END);
     panel.wait_until("the header has no preview", |grid_snapshot| {
         is_selected(grid_snapshot, "Exited (2)") && grid_snapshot.contains(EMPTY_PREVIEW)
     });
@@ -535,7 +618,7 @@ fn the_exited_header_is_dim_and_exited_sessions_sit_one_level_in() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    leave_exited_sessions(&["gone-one"]);
+    leave_older_exited_sessions(&["gone-one"]);
     let live = background.session_name().to_owned();
     let mut panel = start_panel_on("sessions");
     panel.wait_until("the exited session is folded", |grid_snapshot| {
@@ -543,9 +626,9 @@ fn the_exited_header_is_dim_and_exited_sessions_sit_one_level_in() {
     });
     panel.send_stdin(&keys::DOWN);
     wait_for_selected(&panel, &live);
-    panel.send_stdin(&keys::DOWN);
+    panel.send_stdin(END);
     panel.send_stdin(&keys::RIGHT);
-    panel.send_stdin(&keys::UP);
+    panel.send_stdin(HOME);
     let grid_snapshot = panel.wait_until(
         "the group is open with the header unselected",
         |grid_snapshot| {
@@ -869,6 +952,122 @@ fn a_long_list_shows_more_markers() {
     panel.wait_until("the list shows a more marker", |grid_snapshot| {
         grid_snapshot.contains("Inbox (4)") && grid_snapshot.contains("more")
     });
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+}
+
+#[test]
+fn after_reopening_the_panel_unfocused_hover_marks_the_name_and_the_first_click_selects() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    leave_older_exited_sessions(&[]);
+    let mut panel = start_panel_on("sessions");
+    panel.wait_until("the sessions are listed", |grid_snapshot| {
+        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(background.session_name())
+    });
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+    let reopened = panel.attach_client(TERMINAL_SIZE);
+    send_view("sessions");
+    let grid_snapshot = reopened.wait_until("the reopened panel lists the sessions", |grid_snapshot| {
+        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(background.session_name())
+    });
+    reopened.send_stdin(b"\x1b[O");
+    std::thread::sleep(Duration::from_millis(300));
+    let (column, row) = list_position(&grid_snapshot, RECENT_SESSIONS[2]);
+    reopened.send_stdin(format!("\x1b[<35;{};{}M", column + 1, row + 1).as_bytes());
+    let grid_snapshot = reopened.wait_until("the hovered name turns italic", |grid_snapshot| {
+        grid_snapshot.cell_style(column, row).italic
+    });
+    let line = &grid_snapshot.lines()[row];
+    let dash = line[..line.find('—').unwrap()].chars().count();
+    assert!(
+        !grid_snapshot.cell_style(dash, row).italic,
+        "only the name is italic:\n{}",
+        grid_snapshot.text
+    );
+    assert!(!is_selected(&grid_snapshot, RECENT_SESSIONS[2]));
+    reopened.send_stdin(&keys::sgr_click(column, row));
+    reopened.wait_until("the first click selects the row", |grid_snapshot| {
+        is_selected(grid_snapshot, RECENT_SESSIONS[2])
+    });
+}
+
+#[test]
+fn a_session_opened_by_a_mouse_press_leaves_the_reopened_panel_responsive() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    leave_older_exited_sessions(&[]);
+    let live = background.session_name().to_owned();
+    let mut panel = start_panel_on("sessions");
+    let grid_snapshot = panel.wait_until("the sessions are listed", |grid_snapshot| {
+        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(&live)
+    });
+    let (column, row) = list_position(&grid_snapshot, &live);
+    panel.send_stdin(&keys::sgr_click(column, row));
+    wait_for_selected(&panel, &live);
+    panel.send_stdin(format!("\x1b[<0;{};{}M", column + 1, row + 1).as_bytes());
+    let switched = panel
+        .join_main_client()
+        .expect("the press on the selected row opens the session");
+    assert_eq!(switched.name.as_deref(), Some(live.as_str()));
+    let reopened = panel.attach_client(TERMINAL_SIZE);
+    send_view("sessions");
+    let grid_snapshot = reopened.wait_until("the reopened panel lists the sessions", |grid_snapshot| {
+        grid_snapshot.contains(RECENT_SESSIONS[2]) && grid_snapshot.contains(&live)
+    });
+    let (column, row) = list_position(&grid_snapshot, RECENT_SESSIONS[2]);
+    reopened.send_stdin(format!("\x1b[<35;{};{}M", column + 1, row + 1).as_bytes());
+    reopened.wait_until("hover works before any click", |grid_snapshot| {
+        grid_snapshot.cell_style(column, row).italic
+    });
+    reopened.send_stdin(&keys::sgr_click(column, row));
+    reopened.wait_until("the first click selects the row", |grid_snapshot| {
+        is_selected(grid_snapshot, RECENT_SESSIONS[2])
+    });
+}
+
+#[test]
+fn the_inbox_and_sessions_symbols_use_a_badge_colour_set_in_the_config() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    terminal.output(b"$ ");
+    terminal.output(&needs_you("Deploy now?"));
+    let mut panel = TestRunner::new(TERMINAL_SIZE)
+        .with_session_name(APP_PANEL_SESSION)
+        .with_config(
+            "show_startup_tips false\nshow_release_notes false\npane_frames false\nattention {\n    tray_badge_colors {\n        needs_you \"#8e4ec6\"\n    }\n}",
+        )
+        .with_layout(LayoutInfo::Stringified(panel_layout("inbox")))
+        .start();
+    let purple = Some(zellij_integration_tests::client_screen::AnsiCode::RgbCode((
+        0x8e, 0x4e, 0xc6,
+    )));
+    let grid_snapshot = panel.wait_until("the inbox lists the item", |grid_snapshot| {
+        shows_inbox(&grid_snapshot) && grid_snapshot.contains("Deploy now")
+    });
+    let lines = grid_snapshot.lines();
+    let row = lines
+        .iter()
+        .position(|line| line.contains('●') && line.contains(background.session_name()))
+        .expect("the item row is drawn");
+    let column = lines[row][..lines[row].find('●').unwrap()].chars().count();
+    assert_eq!(grid_snapshot.cell_foreground(column, row), purple);
+    panel.send_stdin(&keys::TAB);
+    let grid_snapshot = panel.wait_until("the sessions list is shown", |grid_snapshot| {
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY)
+    });
+    let (column, row) = list_position(&grid_snapshot, background.session_name());
+    assert_eq!(
+        grid_snapshot.cell_foreground(column.saturating_sub(2), row),
+        purple,
+        "{}",
+        grid_snapshot.text
+    );
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
 }

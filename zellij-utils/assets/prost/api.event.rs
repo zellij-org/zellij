@@ -183,6 +183,16 @@ pub struct GlobalAttentionUpdatePayload {
     pub current_session: ::prost::alloc::string::String,
     #[prost(message, repeated, tag="2")]
     pub sessions: ::prost::alloc::vec::Vec<GlobalSessionAttention>,
+    #[prost(message, repeated, tag="3")]
+    pub badge_colors: ::prost::alloc::vec::Vec<StatusColor>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StatusColor {
+    #[prost(string, tag="1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(uint32, tag="2")]
+    pub rgb: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

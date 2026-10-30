@@ -277,15 +277,10 @@ fn an_exited_session_shows_its_saved_preview() {
     let (mut zellij, _) = main_session();
     leave_exited_sessions(&["gone-one"]);
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the exited group is listed", |grid_snapshot| {
-        grid_snapshot.contains("▸ Exited (1)")
+    zellij.wait_until("the exited session is listed as recent", |grid_snapshot| {
+        grid_snapshot.contains("Recent") && grid_snapshot.contains("gone-one")
     });
     zellij.send_stdin(END);
-    zellij.send_stdin(&keys::ENTER);
-    zellij.wait_until("the exited group opens", |grid_snapshot| {
-        grid_snapshot.contains("▾ Exited (1)")
-    });
-    zellij.send_stdin(&keys::DOWN);
     let grid_snapshot = zellij.wait_until("the saved preview is shown", |grid_snapshot| {
         grid_snapshot.contains("┌ gone-one ") && grid_snapshot.contains("Folder:")
     });

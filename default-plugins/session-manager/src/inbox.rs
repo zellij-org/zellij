@@ -329,6 +329,7 @@ pub struct Inbox {
     pub card_targets: Vec<(usize, Range<usize>, CardTarget)>,
     pub browser_targets: Vec<(usize, Range<usize>, BrowserTarget)>,
     pub card_hovered: Option<CardTarget>,
+    pub hovered: Option<ItemKey>,
     pub away_since_ms: Option<u64>,
     pub list_scroll: usize,
     pub selected_range: Range<usize>,
@@ -450,6 +451,9 @@ pub fn away_text(away_ms: u64) -> String {
 }
 
 pub fn style_status(text: Text, status: AttentionStatus, range: Range<usize>) -> Text {
+    if let Some(rgb) = crate::badge_colors::of(status) {
+        return text.rgb_color_range(rgb, range);
+    }
     match status {
         AttentionStatus::NeedsYou => text.color_range(0, range),
         AttentionStatus::Failed => text.error_color_range(range),
@@ -2293,6 +2297,16 @@ impl Inbox {
                 if is_selected {
                     text = text.selected();
                 }
+                if self.hovered.as_ref() == Some(&ItemKey::of(&item)) {
+                    text = text.italic_range(hover_range(
+                        &item,
+                        session_width,
+                        width,
+                        now,
+                        show_age,
+                        simplified_ui,
+                    ));
+                }
                 lines.push(BlockLine::Item {
                     text,
                     target: Some(BrowserTarget::Item(ItemKey::of(&item))),
@@ -2685,15 +2699,21 @@ fn section_heading(section: Section, count: usize, width: usize) -> Text {
         .dim_range(title_end..total)
 }
 
-fn pane_row(
+struct PaneRowParts {
+    session: String,
+    head: String,
+    pane: String,
+    tail: String,
+}
+
+fn pane_row_parts(
     item: &GlobalAttentionItem,
     session_width: usize,
     width: usize,
     now: u64,
     show_age: bool,
     simplified_ui: bool,
-    held: bool,
-) -> Text {
+) -> PaneRowParts {
     let symbol = item_symbol(item, simplified_ui);
     let session = truncate_plain(&session_name(item), session_width);
     let session_cell = format!(
@@ -2706,7 +2726,6 @@ fn pane_row(
     } else {
         format!("{} {}  ", symbol, session_cell)
     };
-    let head_len = head.chars().count();
     let mut tail = String::new();
     if show_age {
         let detail = row_text(item);
@@ -2728,6 +2747,46 @@ fn pane_row(
         room.min(pane.width().max(room / 2))
     };
     let pane = truncate_middle(&pane, pane_room);
+    PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    }
+}
+
+fn hover_range(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+) -> std::ops::Range<usize> {
+    let parts = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    if session_width > 0 {
+        return 2..2 + parts.session.chars().count();
+    }
+    let start = parts.head.chars().count();
+    start..start + parts.pane.chars().count()
+}
+
+fn pane_row(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+    held: bool,
+) -> Text {
+    let PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    } = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    let head_len = head.chars().count();
     let pane_len = pane.chars().count();
     let line = truncate_plain(&format!("{}{}{}", head, pane, tail), width);
     let padded = format!("{}{}", line, " ".repeat(width.saturating_sub(line.width())));
@@ -3870,6 +3929,11 @@ mod tests {
         );
         assert_eq!(level(&row, 0), vec![0]);
         assert!(level(&row, 4).is_empty());
+        assert_eq!(
+            hover_range(&long, SESSION_COLUMN_MAX, 40, 200, false, false),
+            2..2 + SESSION_COLUMN_MAX,
+            "a hover marks the session name"
+        );
         let listed = pane_row(
             &long,
             SESSION_COLUMN_MAX,

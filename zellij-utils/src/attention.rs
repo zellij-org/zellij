@@ -687,6 +687,7 @@ pub struct GlobalAttention {
     pub items: Vec<GlobalAttentionItem>,
     pub counts: AttentionCounts,
     pub status: AttentionStatus,
+    pub badge_colors: Vec<(AttentionStatus, [u8; 3])>,
 }
 
 impl GlobalAttention {
@@ -728,6 +729,7 @@ impl GlobalAttention {
             items,
             status: counts.highest_counted(),
             counts,
+            badge_colors: vec![],
         }
     }
     pub fn running(&self) -> usize {

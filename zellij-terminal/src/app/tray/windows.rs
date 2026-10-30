@@ -17,14 +17,14 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
     DestroyMenu, DestroyWindow, GetCursorPos, GetWindowLongPtrW, PostMessageW, RegisterClassExW,
     RegisterWindowMessageW, SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA,
-    HICON, HMENU, HWND_MESSAGE, ICONINFO, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
+    HICON, HMENU, HWND_MESSAGE, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
     SM_CXSMICON, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU,
     WM_LBUTTONUP, WM_NULL, WNDCLASSEXW,
 };
 
 use super::{find_action, menu, Anchor, MenuEntry, Tray, TrayEvent, TrayEvents};
 use crate::app::icon::{render, DARK_INK, LIGHT_INK};
-use crate::app::model::TrayState;
+use crate::app::model::{MenuState, TrayState};
 use crate::app::platform_windows::wide;
 
 const CALLBACK: u32 = WM_APP + 1;
@@ -33,7 +33,7 @@ const CLASS_NAME: &str = "ZellijTrayWindow";
 
 struct WinState {
     events: TrayEvents,
-    paused: Cell<bool>,
+    menu: Cell<MenuState>,
     cursor: Cell<Option<(i32, i32)>>,
     taskbar_created: u32,
     data: RefCell<NOTIFYICONDATAW>,
@@ -183,14 +183,21 @@ fn append(menu: HMENU, entries: &[MenuEntry]) {
                     AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
                 },
                 MenuEntry::Item {
-                    id, label, enabled, ..
+                    id,
+                    label,
+                    enabled,
+                    checked,
+                    ..
                 } => {
                     let text = wide(label);
-                    let flags = if *enabled {
+                    let mut flags = if *enabled {
                         MF_STRING
                     } else {
                         MF_STRING | MF_GRAYED
                     };
+                    if *checked == Some(true) {
+                        flags |= MF_CHECKED;
+                    }
                     AppendMenuW(menu, flags, *id as usize, text.as_ptr());
                 },
                 MenuEntry::Submenu { label, items, .. } => {
@@ -205,7 +212,7 @@ fn append(menu: HMENU, entries: &[MenuEntry]) {
 }
 
 fn show_menu(hwnd: HWND, state: &WinState, x: i32, y: i32) {
-    let entries = menu(state.paused.get());
+    let entries = menu(&state.menu.get());
     unsafe {
         let popup = CreatePopupMenu();
         append(popup, &entries);
@@ -266,7 +273,7 @@ impl NotifyIcon {
         data.Anonymous.uVersion = NOTIFYICON_VERSION_4;
         let state = Box::new(WinState {
             events,
-            paused: Cell::new(initial.paused),
+            menu: Cell::new(initial.menu),
             cursor: Cell::new(None),
             taskbar_created,
             data: RefCell::new(data),
@@ -296,7 +303,7 @@ impl NotifyIcon {
 
 impl Tray for NotifyIcon {
     fn update(&mut self, state: &TrayState) {
-        self.state.paused.set(state.paused);
+        self.state.menu.set(state.menu);
         let size = icon_size();
         let light = light_taskbar();
         let key = (state.look.clone(), size, light);
@@ -362,7 +369,7 @@ impl Tray for NotifyIcon {
                 self.update(&TrayState {
                     look,
                     tooltip,
-                    paused: self.state.paused.get(),
+                    menu: self.state.menu.get(),
                 });
             }
         }

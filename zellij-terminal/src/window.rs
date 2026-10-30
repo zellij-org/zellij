@@ -479,7 +479,10 @@ impl App {
     fn reapply(&mut self, zoom_reset: bool) {
         self.cancel_scroll_animations();
         self.stop_momentum();
-        let next = crate::options::resolve(&self.settings, self.theme_mode);
+        let mut next = crate::options::resolve(&self.settings, self.theme_mode);
+        if matches!(self.look, WindowLook::Popup { .. }) {
+            crate::panel_look(&mut next);
+        }
         let change = Change::between(&self.options, &next);
         if !change.is_anything() && !zoom_reset {
             return;
@@ -4156,6 +4159,21 @@ mod tests {
         fn push(&mut self, section: TerminalConfig) {
             self.app.settings_pushed(settings(section));
         }
+    }
+
+    #[test]
+    fn a_panel_keeps_its_grip_margins_when_its_session_pushes_settings() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.look = WindowLook::Popup { position: None };
+        crate::panel_look(&mut harness.app.options);
+        let margins = harness.app.padding_px();
+        assert!(margins.left > 0 && margins.top > 0);
+        harness.push(TerminalConfig::default());
+        assert_eq!(harness.app.padding_px(), margins);
+        assert_eq!(
+            harness.app.options.padding_color,
+            zellij_utils::input::terminal::PaddingColor::Background
+        );
     }
 
     #[test]

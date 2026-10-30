@@ -267,9 +267,28 @@ pub(crate) fn every_setting_set() -> Config {
             idle_silence_secs: Some(5),
             startup_card: Some(crate::input::attention::StartupCard::Never),
             tray_icon: Some(false),
-            desktop_notifications: Some(
-                crate::input::attention::DesktopNotifications::NeedsYouFailedDone,
-            ),
+            desktop_notifications: crate::input::attention::StatusMap {
+                needs_you: Some(true),
+                failed: Some(false),
+                done: Some(true),
+                ..Default::default()
+            },
+            tray_badge: crate::input::attention::StatusMap {
+                needs_you: Some(true),
+                failed: Some(true),
+                done: Some(false),
+                working: Some(false),
+                quiet: Some(true),
+                new_output: Some(true),
+            },
+            tray_badge_colors: crate::input::attention::StatusMap {
+                needs_you: Some([1, 2, 3]),
+                failed: Some([4, 5, 6]),
+                done: Some([7, 8, 9]),
+                working: Some([10, 11, 12]),
+                quiet: Some([13, 14, 15]),
+                new_output: Some([16, 17, 18]),
+            },
             notification_details: Some(false),
         },
         ..Default::default()
@@ -332,7 +351,22 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         .and_then(|attention| attention.children())
         .unwrap();
     for node in attention.nodes() {
-        names.insert((SettingSection::Attention, node.name().value().to_owned()));
+        let section = match node.name().value() {
+            "desktop_notifications" => Some(SettingSection::AttentionPopups),
+            "tray_badge" => Some(SettingSection::AttentionBadge),
+            "tray_badge_colors" => Some(SettingSection::AttentionBadgeColors),
+            _ => None,
+        };
+        match section {
+            Some(section) => {
+                for child in node.children().unwrap().nodes() {
+                    names.insert((section, child.name().value().to_owned()));
+                }
+            },
+            None => {
+                names.insert((SettingSection::Attention, node.name().value().to_owned()));
+            },
+        }
     }
     let window = document
         .get("terminal")

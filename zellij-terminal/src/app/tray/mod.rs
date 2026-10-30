@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::app::model::TrayState;
+use crate::app::icon::BADGE_PALETTE;
+use crate::app::model::{MenuState, TrayState};
+use zellij_utils::attention::AttentionStatus;
+use zellij_utils::input::attention::{BADGE_STATUSES, POPUP_STATUSES};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -31,6 +34,9 @@ pub enum MenuAction {
     QuitAll,
     Back,
     QuitApp,
+    TogglePopup(AttentionStatus),
+    ToggleBadge(AttentionStatus),
+    BadgeColor(AttentionStatus, Option<[u8; 3]>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +65,7 @@ pub enum MenuEntry {
         label: &'static str,
         action: MenuAction,
         enabled: bool,
+        checked: Option<bool>,
     },
     Submenu {
         id: i32,
@@ -70,12 +77,116 @@ pub enum MenuEntry {
     },
 }
 
-pub fn menu(paused: bool) -> Vec<MenuEntry> {
+pub fn status_label(status: AttentionStatus) -> &'static str {
+    match status {
+        AttentionStatus::NeedsYou => "Needs you",
+        AttentionStatus::Failed => "Failed",
+        AttentionStatus::Done => "Done",
+        AttentionStatus::Working => "Working",
+        AttentionStatus::Quiet => "Gone quiet",
+        AttentionStatus::NewOutput => "New output",
+        AttentionStatus::Idle => "Idle",
+    }
+}
+
+fn check(id: i32, label: &'static str, action: MenuAction, checked: bool) -> MenuEntry {
+    MenuEntry::Item {
+        id,
+        label,
+        action,
+        enabled: true,
+        checked: Some(checked),
+    }
+}
+
+fn notifications_menu(state: &MenuState) -> MenuEntry {
+    let popups = POPUP_STATUSES
+        .iter()
+        .enumerate()
+        .map(|(index, status)| {
+            check(
+                210 + index as i32,
+                status_label(*status),
+                MenuAction::TogglePopup(*status),
+                state.popups.includes(*status),
+            )
+        })
+        .collect();
+    let badge = BADGE_STATUSES
+        .iter()
+        .enumerate()
+        .map(|(index, status)| {
+            check(
+                220 + index as i32,
+                status_label(*status),
+                MenuAction::ToggleBadge(*status),
+                state.badge.statuses.includes(*status),
+            )
+        })
+        .collect();
+    let colours = BADGE_STATUSES
+        .iter()
+        .enumerate()
+        .map(|(index, status)| {
+            let chosen = state.badge.colors.get(*status);
+            let base = 2300 + index as i32 * 10;
+            let mut items = vec![check(
+                base,
+                "Default",
+                MenuAction::BadgeColor(*status, None),
+                chosen.is_none(),
+            )];
+            items.extend(
+                BADGE_PALETTE
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, (name, colour))| {
+                        check(
+                            base + 1 + offset as i32,
+                            name,
+                            MenuAction::BadgeColor(*status, Some(*colour)),
+                            chosen == Some(*colour),
+                        )
+                    }),
+            );
+            MenuEntry::Submenu {
+                id: 230 + index as i32,
+                label: status_label(*status),
+                items,
+            }
+        })
+        .collect();
+    MenuEntry::Submenu {
+        id: 20,
+        label: "Notifications",
+        items: vec![
+            MenuEntry::Submenu {
+                id: 21,
+                label: "Pop-ups",
+                items: popups,
+            },
+            MenuEntry::Submenu {
+                id: 22,
+                label: "Icon badge",
+                items: badge,
+            },
+            MenuEntry::Submenu {
+                id: 23,
+                label: "Badge colours",
+                items: colours,
+            },
+        ],
+    }
+}
+
+pub fn menu(state: &MenuState) -> Vec<MenuEntry> {
+    let paused = state.paused;
     let item = |id, label, action, enabled| MenuEntry::Item {
         id,
         label,
         action,
         enabled,
+        checked: None,
     };
     vec![
         item(1, "Show inbox", MenuAction::ShowInbox, true),
@@ -105,6 +216,7 @@ pub fn menu(paused: bool) -> Vec<MenuEntry> {
                 item(53, "Resume", MenuAction::Resume, paused),
             ],
         },
+        notifications_menu(state),
         MenuEntry::Submenu {
             id: 6,
             label: "Hide icon",
@@ -188,7 +300,12 @@ mod tests {
 
     #[test]
     fn the_menu_reads_like_the_plan_and_resume_needs_a_pause() {
-        let labels: Vec<&str> = menu(false)
+        let calm = MenuState::default();
+        let paused = MenuState {
+            paused: true,
+            ..MenuState::default()
+        };
+        let labels: Vec<&str> = menu(&calm)
             .iter()
             .map(|entry| match entry {
                 MenuEntry::Item { label, .. } | MenuEntry::Submenu { label, .. } => *label,
@@ -205,27 +322,81 @@ mod tests {
                 "Detach all",
                 "Clear all notifications",
                 "Pause notifications",
+                "Notifications",
                 "Hide icon",
                 "─",
                 "Quit Zellij and stop all sessions…",
             ]
         );
-        assert_eq!(find_action(&menu(false), 53), None);
-        assert_eq!(find_action(&menu(true), 53), Some(MenuAction::Resume));
+        assert_eq!(find_action(&menu(&calm), 53), None);
+        assert_eq!(find_action(&menu(&paused), 53), Some(MenuAction::Resume));
         assert_eq!(
-            find_action(&menu(false), 62),
+            find_action(&menu(&calm), 62),
             Some(MenuAction::HidePermanently)
         );
-        assert_eq!(find_action(&menu(false), 3), None);
-        assert_eq!(find_action(&menu(false), 99), None);
-        assert_eq!(find_action(&menu(false), 9), Some(MenuAction::ClearAll));
+        assert_eq!(find_action(&menu(&calm), 3), None);
+        assert_eq!(find_action(&menu(&calm), 99), None);
+        assert_eq!(find_action(&menu(&calm), 9), Some(MenuAction::ClearAll));
         assert_eq!(
-            find_action(&menu(false), 111),
+            find_action(&menu(&calm), 111),
             Some(MenuAction::DetachAllWindows)
         );
         assert_eq!(
-            find_action(&menu(false), 112),
+            find_action(&menu(&calm), 112),
             Some(MenuAction::DetachEverywhere)
         );
+    }
+
+    fn checked(entries: &[MenuEntry], wanted: i32) -> Option<bool> {
+        for entry in entries {
+            match entry {
+                MenuEntry::Item { id, checked, .. } if *id == wanted => return *checked,
+                MenuEntry::Submenu { items, .. } => {
+                    if let Some(found) = checked(items, wanted) {
+                        return Some(found);
+                    }
+                },
+                _ => {},
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn the_notifications_menu_ticks_the_chosen_types_and_colours() {
+        let mut state = MenuState::default();
+        state.popups = state.popups.with(AttentionStatus::Done, false);
+        state
+            .badge
+            .colors
+            .set(AttentionStatus::Failed, Some(BADGE_PALETTE[4].1));
+        let entries = menu(&state);
+        assert_eq!(checked(&entries, 210), Some(true));
+        assert_eq!(checked(&entries, 212), Some(false), "done pop-ups are off");
+        assert_eq!(
+            find_action(&entries, 212),
+            Some(MenuAction::TogglePopup(AttentionStatus::Done))
+        );
+        assert_eq!(checked(&entries, 223), Some(true), "working shows a badge");
+        assert_eq!(checked(&entries, 224), Some(false), "quiet does not");
+        assert_eq!(
+            find_action(&entries, 225),
+            Some(MenuAction::ToggleBadge(AttentionStatus::NewOutput))
+        );
+        assert_eq!(checked(&entries, 2310), Some(false));
+        assert_eq!(checked(&entries, 2315), Some(true), "failed is purple");
+        assert_eq!(checked(&entries, 2300), Some(true), "needs you is default");
+        assert_eq!(
+            find_action(&entries, 2300),
+            Some(MenuAction::BadgeColor(AttentionStatus::NeedsYou, None))
+        );
+        assert_eq!(
+            find_action(&entries, 2351),
+            Some(MenuAction::BadgeColor(
+                AttentionStatus::NewOutput,
+                Some(BADGE_PALETTE[0].1)
+            ))
+        );
+        assert_eq!(checked(&entries, 1), None, "plain items are not ticks");
     }
 }
