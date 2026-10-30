@@ -8,7 +8,7 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
 );
 
 use std::io::{Read, Seek};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
 pub const MAX_DIMENSION: u32 = 10_000;
@@ -511,11 +511,22 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
     Ok(command)
 }
 
+/// Per the kitty spec, a temp file is only deleted if it is in a known temporary
+/// directory *and* its path contains "tty-graphics-protocol". Both checks use the
+/// canonical path so that `..` components can't point them at another file.
 fn should_delete_temp_file(path: &Path) -> bool {
+    let Ok(path) = path.canonicalize() else {
+        return false;
+    };
     path.to_string_lossy().contains("tty-graphics-protocol")
-        || path.starts_with(std::env::temp_dir())
-        || path.starts_with("/tmp")
-        || path.starts_with("/dev/shm")
+        && [
+            std::env::temp_dir(),
+            PathBuf::from("/tmp"),
+            PathBuf::from("/dev/shm"),
+        ]
+        .iter()
+        .filter_map(|dir| dir.canonicalize().ok())
+        .any(|dir| path.starts_with(dir))
 }
 
 fn read_file_range(
