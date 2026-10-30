@@ -947,7 +947,8 @@ web_client {
 // Status of panes, tabs and sessions: the symbols on frames and tabs, the inbox,
 // and the desktop app's tray icon and notifications. Every key is optional.
 // To turn all of this off, set the first four keys below to false, startup_card
-// to "never" and desktop_notifications to "none" (and session_indicator false).
+// to "never", every desktop_notifications type to false (and session_indicator
+// false).
 //
 // Each pane can also be set apart from this, from its right-click menu, the
 // pane mode keys or `zellij action`:
@@ -993,9 +994,63 @@ web_client {
 //     // something needs you), "always" or "never".
 //     startup_card "attention"
 //
-//     // Which inbox items the desktop app shows as desktop notifications:
-//     // "needs_you", "needs_you_failed", "needs_you_failed_done" or "none".
-//     desktop_notifications "needs_you_failed_done"
+//     // Which inbox items the desktop app shows as desktop notifications,
+//     // one type per line.
+//     desktop_notifications {
+//         // Show a pop-up when something needs you.
+//         needs_you true
+//
+//         // Show a pop-up when a command fails.
+//         failed true
+//
+//         // Show a pop-up when a long command finishes.
+//         done true
+//     }
+//
+//     // Which inbox items the desktop app's tray icon counts. The badge shows
+//     // the count of the most important type that is turned on.
+//     tray_badge {
+//         // Count items that need you.
+//         needs_you true
+//
+//         // Count failed commands.
+//         failed true
+//
+//         // Count finished commands.
+//         done true
+//
+//         // Count working programs.
+//         working true
+//
+//         // Count panes that went quiet.
+//         quiet false
+//
+//         // Count panes with output you have not seen.
+//         new_output false
+//     }
+//
+//     // The colour of the tray badge for each type, as a hex colour. The inbox
+//     // and the sessions list use these colours too. A type without a colour
+//     // keeps the default badge colour and the theme colour in lists.
+//     tray_badge_colors {
+//         // Items that need you.
+//         needs_you "#ff8c00"
+//
+//         // Failed commands.
+//         failed "#e5484d"
+//
+//         // Finished commands.
+//         done "#30a46c"
+//
+//         // Working programs.
+//         working "#3e82f7"
+//
+//         // Panes that went quiet.
+//         quiet "#8b8d98"
+//
+//         // Panes with output you have not seen.
+//         new_output "#12a594"
+//     }
 //
 //     // Show the program and command text in desktop notifications.
 //     notification_details true
