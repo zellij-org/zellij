@@ -3,6 +3,7 @@ pub mod cli;
 pub mod client_server_contract;
 pub mod consts;
 pub mod data;
+pub mod desktop_integration;
 pub mod distribution;
 pub mod envs;
 pub mod errors;
@@ -40,6 +41,8 @@ pub mod ipc; // Requires interprocess
 pub mod logging; // Requires log4rs
 #[cfg(not(target_family = "wasm"))]
 pub mod nested_session;
+#[cfg(not(target_family = "wasm"))]
+pub mod pane_mirror;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod remote_session_tokens;
 #[cfg(not(target_family = "wasm"))]

@@ -76,6 +76,7 @@ message AppStateReply {
   optional AppPanelState panel = 2;
   repeated string live_sessions = 3;
   bool tray_icon = 4;
+  optional string focused_session = 5;
 }
 
 message AppWindowState {

@@ -21,8 +21,10 @@ message PromptRequest {
     MenuSpec menu = 13;
     FormSpec form = 14;
     NotifySpec notify = 15;
+    InfoSpec info = 17;
   }
   bool capture_all_keys = 16;
+  optional string outside_click = 18;
 }
 
 enum PromptPlacementKind {
@@ -122,6 +124,10 @@ message NotifySpec {
   api.style.StyledText message = 1;
   bool show_pane_name = 2;
   bool show_tab_name = 3;
+}
+
+message InfoSpec {
+  api.style.StyledText message = 1;
 }
 
 message PromptValueList {

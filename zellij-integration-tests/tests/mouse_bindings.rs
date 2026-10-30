@@ -8,7 +8,7 @@ use zellij_integration_tests::{
 const FULL_FRAMES_CONFIG: &str = "mouse_mode true\npane_frame_style \"full\"";
 const LOCKED_PASS_THROUGH_CONFIG: &str =
     "mouse_mode true\nmousebinds {\n    locked clear-defaults=true {\n    }\n}";
-const COMMON_MENU_MARKER: &str = "Session manager";
+const COMMON_MENU_MARKER: &str = "Settings…";
 const ENABLE_MOUSE_REPORTING: &[u8] = b"\x1b[?1000h\x1b[?1006h";
 
 fn sgr_press(column: usize, line: usize, button: u8) -> Vec<u8> {

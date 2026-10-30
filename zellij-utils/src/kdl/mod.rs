@@ -7,7 +7,8 @@ use crate::data::{
     StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
 use crate::data::{
-    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, TAB_POSITION_END,
+    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, HiddenBars,
+    TAB_POSITION_END,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -30,11 +31,11 @@ use crate::input::options::{
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::session_suggestions::SessionSuggestionsConfig;
+use crate::input::terminal::TerminalConfig;
 use crate::input::theme::{
     FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
 };
 use crate::input::web_client::WebClientConfig;
-use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -106,6 +107,9 @@ pub fn action_without_arguments(
         "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
         "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
         "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
+        "ToggleBars" => Ok(Action::ToggleBars { bars: vec![] }),
+        "HideBars" => Ok(Action::HideBars { bars: vec![] }),
+        "ShowBars" => Ok(Action::ShowBars),
         "CloseFocus" => Ok(Action::CloseFocus),
         "UndoRenamePane" => Ok(Action::UndoRenamePane),
         "NoOp" => Ok(Action::NoOp),
@@ -114,6 +118,7 @@ pub fn action_without_arguments(
         "CloseTab" => Ok(Action::CloseTab),
         "ToggleTab" => Ok(Action::ToggleTab),
         "UndoRenameTab" => Ok(Action::UndoRenameTab),
+        "UndoRenameSession" => Ok(Action::UndoRenameSession),
         "Detach" => Ok(Action::Detach),
         "SetDarkTheme" => Ok(Action::SetDarkTheme),
         "SetLightTheme" => Ok(Action::SetLightTheme),
@@ -131,6 +136,8 @@ pub fn action_without_arguments(
         "GoToNextSession" => Ok(Action::GoToNextSession),
         "GoToNextAttention" => Ok(Action::GoToNextAttention),
         "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
+        "OpenSessionInTerminal" => Ok(Action::OpenSessionInTerminal),
+        "ToggleMirrorResize" => Ok(Action::ToggleMirrorResize),
         "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
             session: None,
             pane_id: None,
@@ -488,6 +495,7 @@ impl Action {
             }),
             "PaneNameInput" => Ok(Action::PaneNameInput { input: bytes }),
             "TabNameInput" => Ok(Action::TabNameInput { input: bytes }),
+            "SessionNameInput" => Ok(Action::SessionNameInput { input: bytes }),
             "SearchInput" => Ok(Action::SearchInput { input: bytes }),
             "GoToTab" => {
                 let tab_index = *bytes.get(0).ok_or_else(|| {
@@ -856,6 +864,18 @@ impl Action {
                 }
                 Some(node)
             },
+            Action::ToggleBars { bars } | Action::HideBars { bars } => {
+                let name = match self {
+                    Action::ToggleBars { .. } => "ToggleBars",
+                    _ => "HideBars",
+                };
+                let mut node = KdlNode::new(name);
+                for bar in bars {
+                    node.push(bar.clone());
+                }
+                Some(node)
+            },
+            Action::ShowBars => Some(KdlNode::new("ShowBars")),
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
             Action::PaneNameInput { input: bytes } => {
                 let mut node = KdlNode::new("PaneNameInput");
@@ -918,6 +938,14 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
+            Action::SessionNameInput { input: bytes } => {
+                let mut node = KdlNode::new("SessionNameInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            },
+            Action::UndoRenameSession => Some(KdlNode::new("UndoRenameSession")),
             Action::MoveTab { direction } => {
                 let mut node = KdlNode::new("MoveTab");
                 let direction = match direction {
@@ -1471,6 +1499,8 @@ impl Action {
             Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
             Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
             Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
+            Action::OpenSessionInTerminal => Some(KdlNode::new("OpenSessionInTerminal")),
+            Action::ToggleMirrorResize => Some(KdlNode::new("ToggleMirrorResize")),
             Action::MarkPaneSeen {
                 session: None,
                 pane_id: None,
@@ -1496,6 +1526,8 @@ impl Action {
             | Action::MutePaneByPaneId { pane_id }
             | Action::IgnorePaneOutputByPaneId { pane_id }
             | Action::WatchPaneByPaneId { pane_id }
+            | Action::HideBarByPaneId { pane_id }
+            | Action::PasteFromClipboardByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1508,6 +1540,8 @@ impl Action {
                     Action::MutePaneByPaneId { .. } => "MutePaneByPaneId",
                     Action::IgnorePaneOutputByPaneId { .. } => "IgnorePaneOutputByPaneId",
                     Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
+                    Action::HideBarByPaneId { .. } => "HideBarByPaneId",
+                    Action::PasteFromClipboardByPaneId { .. } => "PasteFromClipboardByPaneId",
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
@@ -1901,6 +1935,15 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .map(|n| n as usize);
                 Ok(Action::HideFloatingPanes { tab_id })
             },
+            "ToggleBars" | "HideBars" => {
+                let bars = kdl_arguments_that_are_strings(action_arguments.iter().copied())?;
+                if action_name == "ToggleBars" {
+                    Ok(Action::ToggleBars { bars })
+                } else {
+                    Ok(Action::HideBars { bars })
+                }
+            },
+            "ShowBars" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "CloseFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "UndoRenamePane" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
@@ -1913,6 +1956,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "CloseTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "ToggleTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "UndoRenameTab" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "UndoRenameSession" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleMouseMode" => {
@@ -1945,6 +1991,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "GoToNextSession"
             | "GoToNextAttention"
             | "ToggleTrayIcon"
+            | "OpenSessionInTerminal"
+            | "ToggleMirrorResize"
             | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
@@ -2303,6 +2351,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
+                parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "SessionNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
             "SearchInput" => {
@@ -2681,6 +2732,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "MutePaneByPaneId"
             | "IgnorePaneOutputByPaneId"
             | "WatchPaneByPaneId"
+            | "HideBarByPaneId"
+            | "PasteFromClipboardByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2714,6 +2767,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     "MutePaneByPaneId" => Action::MutePaneByPaneId { pane_id },
                     "IgnorePaneOutputByPaneId" => Action::IgnorePaneOutputByPaneId { pane_id },
                     "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
+                    "HideBarByPaneId" => Action::HideBarByPaneId { pane_id },
+                    "PasteFromClipboardByPaneId" => Action::PasteFromClipboardByPaneId { pane_id },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
@@ -3323,6 +3378,12 @@ impl Options {
         let grapheme_clusters =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "grapheme_clusters")
                 .map(|(v, _)| v);
+        let mirror_resizes_source_pane =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mirror_resizes_source_pane")
+                .map(|(v, _)| v);
+        let live_view_release_key =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "live_view_release_key")
+                .map(|(key, _entry)| key.to_string());
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -3468,6 +3529,29 @@ impl Options {
             },
             None => None,
         };
+        let bars_hidden_on_start = match kdl_options.get("bars_hidden_on_start") {
+            Some(property) => {
+                let names = kdl_arguments_that_are_strings(property.entries().iter())?;
+                let joined = names.join(",");
+                match joined.parse::<HiddenBars>() {
+                    Ok(hidden_bars) => Some(hidden_bars),
+                    Err(e) => {
+                        return Err(ConfigError::new_kdl_error(
+                            e,
+                            property.span().offset(),
+                            property.span().len(),
+                        ))
+                    },
+                }
+            },
+            None => None,
+        };
+        let hidden_bars_notification =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "hidden_bars_notification")
+                .map(|(v, _)| v);
+        let mode_hints_when_bars_hidden =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "mode_hints_when_bars_hidden")
+                .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -3509,6 +3593,8 @@ impl Options {
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
             grapheme_clusters,
+            mirror_resizes_source_pane,
+            live_view_release_key,
             web_server,
             web_sharing,
             stacked_resize,
@@ -3540,6 +3626,9 @@ impl Options {
             session_indicator,
             swap_layout_notification,
             on_quit,
+            bars_hidden_on_start,
+            hidden_bars_notification,
+            mode_hints_when_bars_hidden,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4546,6 +4635,61 @@ impl Options {
             None
         }
     }
+    fn mirror_resizes_source_pane_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mirror_resizes_source_pane");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mirror_resizes_source_pane) = self.mirror_resizes_source_pane {
+            let mut node = create_node(mirror_resizes_source_pane);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn live_view_release_key_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard",
+            "// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("live_view_release_key");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(live_view_release_key) = &self.live_view_release_key {
+            let mut node = create_node(live_view_release_key);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(crate::data::DEFAULT_LIVE_VIEW_RELEASE_KEY);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn support_kitty_graphics_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!("{}\n{}\n{}\n{}\n{}",
             " ",
@@ -5365,11 +5509,14 @@ impl Options {
     }
     fn client_async_worker_tasks_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = r#"
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// Note: This only applies to web clients at the moment."#;
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores."#;
         let create_node = |node_value: usize| -> KdlNode {
             let mut node = KdlNode::new("client_async_worker_tasks");
             node.push(KdlValue::Base10(node_value as i64));
@@ -5475,6 +5622,66 @@ impl Options {
         } else {
             None
         }
+    }
+    fn bars_hidden_on_start_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = [
+            " ",
+            "// Which bars a new session starts with hidden",
+            "// Options:",
+            "//   - \"none\" (Default)",
+            "//   - \"all\"",
+            "//   - one or more bar names, eg. \"tab-bar\" \"status-bar\"",
+            "// ",
+        ]
+        .join("\n");
+        let create_node = |value: &HiddenBars| -> KdlNode {
+            let mut node = KdlNode::new("bars_hidden_on_start");
+            let names = value.names();
+            if names.is_empty() {
+                node.push(KdlValue::String("none".to_owned()));
+            }
+            for name in names {
+                node.push(KdlValue::String(name));
+            }
+            node
+        };
+        if let Some(value) = &self.bars_hidden_on_start {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(&HiddenBars::None);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn hidden_bars_notification_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "hidden_bars_notification",
+            self.hidden_bars_notification,
+            &[
+                "// Whether to briefly show what was hidden and how to show it again when bars are hidden",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn mode_hints_when_bars_hidden_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "mode_hints_when_bars_hidden",
+            self.mode_hints_when_bars_hidden,
+            &[
+                "// Whether to show the current mode's keys in a corner while the bar that would show them is hidden",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
     }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
@@ -5589,6 +5796,14 @@ impl Options {
         if let Some(grapheme_clusters) = self.grapheme_clusters_to_kdl(add_comments) {
             nodes.push(grapheme_clusters);
         }
+        if let Some(mirror_resizes_source_pane) =
+            self.mirror_resizes_source_pane_to_kdl(add_comments)
+        {
+            nodes.push(mirror_resizes_source_pane);
+        }
+        if let Some(live_view_release_key) = self.live_view_release_key_to_kdl(add_comments) {
+            nodes.push(live_view_release_key);
+        }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
         }
@@ -5692,6 +5907,15 @@ impl Options {
         }
         if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
             nodes.push(on_quit);
+        }
+        if let Some(node) = self.bars_hidden_on_start_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.hidden_bars_notification_to_kdl(add_comments) {
+            nodes.push(node);
+        }
+        if let Some(node) = self.mode_hints_when_bars_hidden_to_kdl(add_comments) {
+            nodes.push(node);
         }
         nodes
     }
@@ -6159,6 +6383,37 @@ fn mouse_binding_from_kdl(
                         behaviour_node.span().len(),
                     )
                 })?;
+        let behaviour = match behaviour {
+            MouseBehaviour::DrawFloatingPane(Some(_)) => {
+                let configuration =
+                    KdlLayoutParser::parse_plugin_user_configuration(behaviour_node)?;
+                MouseBehaviour::draw_floating_plugin_pane(
+                    &arguments[0],
+                    Some(configuration.inner().clone()),
+                    None,
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        e,
+                        behaviour_node.span().offset(),
+                        behaviour_node.span().len(),
+                    )
+                })?
+            },
+            MouseBehaviour::DrawFloatingPane(None)
+                if behaviour_node
+                    .children()
+                    .map(|children| !children.nodes().is_empty())
+                    .unwrap_or(false) =>
+            {
+                return Err(ConfigError::new_kdl_error(
+                    "DrawFloatingPane needs a plugin before its configuration".to_owned(),
+                    behaviour_node.span().offset(),
+                    behaviour_node.span().len(),
+                ));
+            },
+            behaviour => behaviour,
+        };
         return Ok(MouseBinding::behaviour(behaviour).with_app_first(app_first));
     }
     let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
@@ -6184,6 +6439,17 @@ pub fn mouse_binding_node(trigger: &MouseTrigger, binding: &MouseBinding) -> Kdl
                     Ok(number) => behaviour_node.push(number),
                     Err(_) => behaviour_node.push(argument),
                 }
+            }
+            let configuration = behaviour.plugin_configuration();
+            if !configuration.is_empty() {
+                let mut configuration_children = KdlDocument::new();
+                for (key, value) in configuration {
+                    let mut configuration_node = KdlNode::new(key);
+                    configuration_node.push(value);
+                    configuration_children.nodes_mut().push(configuration_node);
+                }
+                behaviour_node.set_children(configuration_children);
+                have_children = true;
             }
             children.nodes_mut().push(behaviour_node);
         },
@@ -6758,9 +7024,9 @@ impl Config {
         if should_resolve_keybinds {
             config.resolve_keybinds();
         }
-        if let Some(window_config) = kdl_config.get("window") {
-            let config_window = WindowConfig::from_kdl(&window_config)?;
-            config.window = config.window.merge(config_window);
+        if let Some(window_config) = kdl_config.get("terminal") {
+            let config_window = TerminalConfig::from_kdl(&window_config)?;
+            config.terminal = config.terminal.merge(config_window);
         }
         if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
             let session_suggestions =
@@ -6812,7 +7078,7 @@ impl Config {
             document.nodes_mut().push(context_menu);
         }
 
-        if let Some(window) = self.window.to_kdl() {
+        if let Some(window) = self.terminal.to_kdl() {
             document.nodes_mut().push(window);
         }
 
@@ -8976,6 +9242,34 @@ fn can_bind_dismiss_info_popups_and_write_it_back() {
 }
 
 #[test]
+fn can_bind_toggle_mirror_resize_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt m" { ToggleMirrorResize; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let alt_m = KeyWithModifier::new(BareKey::Char('m')).with_alt_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &alt_m),
+        Some(&vec![Action::ToggleMirrorResize])
+    );
+    let written = Action::ToggleMirrorResize
+        .to_kdl()
+        .expect("the action is written back");
+    assert_eq!(written.name().value(), "ToggleMirrorResize");
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, Action::ToggleMirrorResize);
+}
+
+#[test]
 fn can_bind_theme_actions() {
     // Regression test for https://github.com/zellij-org/zellij/issues/5297
     // SetDarkTheme / SetLightTheme / ToggleTheme work via the CLI but used to be
@@ -9055,6 +9349,63 @@ fn can_bind_named_swap_layout_actions() {
         Some(&vec![Action::ApplyFloatingSwapLayout {
             name: "staggered".to_owned()
         }])
+    );
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
+}
+
+#[test]
+fn can_bind_session_rename_actions() {
+    let fake_config = r#"
+        keybinds {
+            session {
+                bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
+            }
+            renamesession {
+                bind "Esc" { UndoRenameSession; SwitchToMode "Session"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(
+            &InputMode::Session,
+            &KeyWithModifier::new(BareKey::Char('r'))
+        ),
+        Some(&vec![
+            Action::SwitchToMode {
+                input_mode: InputMode::RenameSession
+            },
+            Action::SessionNameInput { input: vec![0] },
+        ])
+    );
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(
+            &InputMode::RenameSession,
+            &KeyWithModifier::new(BareKey::Esc)
+        ),
+        Some(&vec![
+            Action::UndoRenameSession,
+            Action::SwitchToMode {
+                input_mode: InputMode::Session
+            },
+        ])
     );
     let serialized = Keybinds::to_kdl(&deserialized, true);
     let deserialized_from_serialized = Keybinds::from_kdl(
@@ -10322,6 +10673,22 @@ fn grapheme_clusters_config_parsing() {
     assert_eq!(config.options.grapheme_clusters, Some(true));
 }
 
+#[test]
+fn mirror_resizes_source_pane_config_parsing() {
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, None);
+
+    let config = Config::from_kdl("mirror_resizes_source_pane false", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, Some(false));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.mirror_resizes_source_pane, Some(false));
+
+    let config = Config::from_kdl("mirror_resizes_source_pane true", None).unwrap();
+    assert_eq!(config.options.mirror_resizes_source_pane, Some(true));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.mirror_resizes_source_pane, Some(true));
+}
+
 #[cfg(test)]
 fn context_menu_from(
     config: &str,
@@ -10735,7 +11102,7 @@ fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
         context_menu {
             pane {
                 remove "New floating pane"
-                item "Clear" after="Rename pane" { Detach; }
+                item "Clear" after="Rename pane…" { Detach; }
                 item "Close pane" { CloseFocus; }
             }
             tab {
@@ -10758,7 +11125,7 @@ fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
         serialized
     );
     assert!(
-        serialized.contains("after=\"Rename pane\""),
+        serialized.contains("after=\"Rename pane…\""),
         "{}",
         serialized
     );
@@ -10996,4 +11363,119 @@ fn run_with_background_parses_and_is_written_back() {
     let written = action.to_kdl().unwrap();
     let reparsed = Action::try_from((&written, &Options::default())).unwrap();
     assert_eq!(reparsed, expected);
+}
+
+#[test]
+fn hidden_bars_options_round_trip_through_kdl() {
+    let fake_config = r##"
+        bars_hidden_on_start "tab-bar" "status-bar"
+        hidden_bars_notification false
+        mode_hints_when_bars_hidden false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let options = Options::from_kdl(&document).unwrap();
+    assert_eq!(
+        options.bars_hidden_on_start,
+        Some(HiddenBars::from_names(&["tab-bar", "status-bar"]))
+    );
+    assert_eq!(options.hidden_bars_notification, Some(false));
+    assert_eq!(options.mode_hints_when_bars_hidden, Some(false));
+    let mut serialized = Options::to_kdl(&options, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let reparsed =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(options, reparsed);
+}
+
+#[test]
+fn bars_hidden_on_start_accepts_all_and_none() {
+    for (value, expected) in [("\"all\"", HiddenBars::All), ("\"none\"", HiddenBars::None)] {
+        let document: KdlDocument = format!("bars_hidden_on_start {}", value).parse().unwrap();
+        let options = Options::from_kdl(&document).unwrap();
+        assert_eq!(options.bars_hidden_on_start, Some(expected));
+    }
+}
+
+#[test]
+fn bar_actions_round_trip_through_keybinds() {
+    let config = r#"
+        keybinds clear-defaults=true {
+            normal {
+                bind "Alt a" { ToggleBars; }
+                bind "Alt b" { ToggleBars "status-bar" "tab-bar"; }
+                bind "Alt c" { HideBars "compact-bar"; }
+                bind "Alt d" { ShowBars; }
+                bind "Alt e" { HideBarByPaneId "plugin_3"; }
+            }
+        }"#;
+    let config = Config::from_kdl(config, None).unwrap();
+    let action_for = |key: &str| {
+        config
+            .keybinds
+            .0
+            .get(&InputMode::Normal)
+            .and_then(|binds| binds.get(&KeyWithModifier::from_str(key).unwrap()))
+            .cloned()
+    };
+    assert_eq!(
+        action_for("Alt a"),
+        Some(vec![Action::ToggleBars { bars: vec![] }])
+    );
+    assert_eq!(
+        action_for("Alt b"),
+        Some(vec![Action::ToggleBars {
+            bars: vec!["status-bar".to_owned(), "tab-bar".to_owned()]
+        }])
+    );
+    assert_eq!(
+        action_for("Alt c"),
+        Some(vec![Action::HideBars {
+            bars: vec!["compact-bar".to_owned()]
+        }])
+    );
+    assert_eq!(action_for("Alt d"), Some(vec![Action::ShowBars]));
+    assert_eq!(
+        action_for("Alt e"),
+        Some(vec![Action::HideBarByPaneId {
+            pane_id: PaneId::Plugin(3)
+        }])
+    );
+    for action in [
+        Action::ToggleBars { bars: vec![] },
+        Action::ToggleBars {
+            bars: vec!["status-bar".to_owned()],
+        },
+        Action::HideBars {
+            bars: vec!["compact-bar".to_owned()],
+        },
+        Action::ShowBars,
+    ] {
+        let node = action.to_kdl().unwrap();
+        let reparsed = Action::try_from((&node, &Options::default())).unwrap();
+        assert_eq!(reparsed, action);
+    }
+}
+
+#[test]
+fn the_default_config_offers_to_hide_and_show_bars_in_the_right_click_menu() {
+    let config = Config::from_default_assets().unwrap();
+    let has_action = |entries: &[ContextMenuEntry], wanted: &ContextMenuAction| {
+        entries.iter().any(|entry| match entry {
+            ContextMenuEntry::Item { actions, .. } => actions.contains(wanted),
+            ContextMenuEntry::Separator => false,
+        })
+    };
+    assert!(has_action(
+        &config.context_menu.bar,
+        &ContextMenuAction::ClickedPane(ClickedPaneAction::HideBar)
+    ));
+    assert!(has_action(
+        &config.context_menu.bar,
+        &ContextMenuAction::Action(Action::HideBars { bars: vec![] })
+    ));
+    assert!(has_action(
+        &config.context_menu.common,
+        &ContextMenuAction::Action(Action::ShowBars)
+    ));
 }

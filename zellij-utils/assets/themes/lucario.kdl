@@ -3,73 +3,73 @@ themes {
         text_unselected {
             base 248 248 242
             background 25 36 47
-            emphasis_0 233 75 53
+            emphasis_0 242 84 61
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 28 158 76
             emphasis_3 202 148 255
         }
         text_selected {
             base 248 248 242
             background 43 62 90
-            emphasis_0 233 75 53
+            emphasis_0 255 132 111
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 72 190 106
             emphasis_3 202 148 255
         }
         ribbon_selected {
-            base 25 36 47
+            base 23 34 44
             background 25 156 75
-            emphasis_0 233 75 53
+            emphasis_0 72 4 0
             emphasis_1 233 75 53
             emphasis_2 202 148 255
-            emphasis_3 92 152 205
+            emphasis_3 0 34 61
         }
         ribbon_unselected {
             base 25 36 47
             background 248 248 242
-            emphasis_0 233 75 53
+            emphasis_0 211 53 32
             emphasis_1 248 248 242
             emphasis_2 92 152 205
-            emphasis_3 202 148 255
+            emphasis_3 143 89 191
         }
         table_title {
-            base 25 156 75
-            background 0
-            emphasis_0 233 75 53
+            base 28 158 76
+            background 25 36 47
+            emphasis_0 242 84 61
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 28 158 76
             emphasis_3 202 148 255
         }
         table_cell_selected {
             base 248 248 242
             background 43 62 90
-            emphasis_0 233 75 53
+            emphasis_0 255 132 111
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 72 190 106
             emphasis_3 202 148 255
         }
         table_cell_unselected {
             base 248 248 242
             background 25 36 47
-            emphasis_0 233 75 53
+            emphasis_0 242 84 61
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 28 158 76
             emphasis_3 202 148 255
         }
         list_selected {
             base 248 248 242
             background 43 62 90
-            emphasis_0 233 75 53
+            emphasis_0 255 132 111
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 72 190 106
             emphasis_3 202 148 255
         }
         list_unselected {
             base 248 248 242
             background 25 36 47
-            emphasis_0 233 75 53
+            emphasis_0 242 84 61
             emphasis_1 139 244 253
-            emphasis_2 25 156 75
+            emphasis_2 28 158 76
             emphasis_3 202 148 255
         }
         frame_selected {
@@ -78,7 +78,7 @@ themes {
             emphasis_0 233 75 53
             emphasis_1 139 244 253
             emphasis_2 202 148 255
-            emphasis_3 0
+            emphasis_3 202 148 255
         }
         frame_highlight {
             base 233 75 53
@@ -100,21 +100,21 @@ themes {
             base 233 75 53
             background 0
             emphasis_0 240 204 4
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 233 75 53
+            emphasis_2 202 148 255
+            emphasis_3 139 244 253
         }
         multiplayer_user_colors {
             player_1 202 148 255
             player_2 92 152 205
-            player_3 0
+            player_3 25 156 75
             player_4 240 204 4
             player_5 139 244 253
-            player_6 0
+            player_6 114 204 90
             player_7 233 75 53
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 255 255 165
+            player_9 255 138 149
+            player_10 0 203 204
         }
         // terminal_colors: https://github.com/raphamorim/lucario/blob/main/alacritty/lucario.toml
         terminal_colors {

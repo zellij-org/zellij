@@ -135,10 +135,17 @@ pub(crate) fn stdin_loop(
                         // Strip + classify any host-reply sequences
                         // continuously. The residue is the byte stream
                         // the keyboard parser should see.
-                        let parse_output = {
+                        let (parse_output, exit_draining) = {
                             let mut p = stdin_ansi_parser.lock().unwrap();
-                            p.feed(&buf)
+                            let parse_output = p.feed(&buf);
+                            (parse_output, p.is_exit_draining())
                         };
+                        if exit_draining {
+                            current_buffer.clear();
+                            needs_finalization = false;
+                            reply_in_progress_since = None;
+                            continue;
+                        }
                         if !parse_output.replies.is_empty() {
                             let _ = send_input_instructions.send(
                                 InputInstruction::AnsiStdinInstructions(parse_output.replies),
@@ -268,6 +275,11 @@ pub(crate) fn stdin_loop(
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                if stdin_ansi_parser.lock().unwrap().is_exit_draining() {
+                    needs_finalization = false;
+                    reply_in_progress_since = None;
+                    continue;
+                }
                 let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
                 if pending.uses_reply_flush_guard() {
                     let elapsed = reply_in_progress_since

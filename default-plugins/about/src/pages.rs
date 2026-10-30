@@ -9,6 +9,7 @@ use crate::active_component::{ActiveComponent, ClickAction};
 use crate::keybindings::{
     apply_missing_binds, ApplyStatus, ExpectedBind, Feature, KeybindingState,
 };
+use crate::onboarding::DesktopFacts;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PageKind {
@@ -17,6 +18,8 @@ pub enum PageKind {
     PaneFocus,
     ScrollByCommand,
     UpdateKeybindings,
+    DesktopApp,
+    Inbox,
     Other,
 }
 
@@ -38,6 +41,7 @@ impl Page {
         base_mode: Rc<RefCell<InputMode>>,
         is_release_notes: bool,
         keybinding_state: Rc<RefCell<KeybindingState>>,
+        facts: Rc<RefCell<DesktopFacts>>,
     ) -> Self {
         let has_missing_binds = keybinding_state.borrow().has_missing_binds();
         let main_screen_builder: Rc<dyn Fn() -> Page> = Rc::new({
@@ -45,6 +49,7 @@ impl Page {
             let zellij_version = zellij_version.clone();
             let base_mode = base_mode.clone();
             let keybinding_state = keybinding_state.clone();
+            let facts = facts.clone();
             move || {
                 Page::new_main_screen(
                     link_executable.clone(),
@@ -52,6 +57,7 @@ impl Page {
                     base_mode.clone(),
                     is_release_notes,
                     keybinding_state.clone(),
+                    facts.clone(),
                 )
             }
         });
@@ -60,6 +66,23 @@ impl Page {
             .with_kind(PageKind::MainScreen)
             .with_title(main_screen_title(zellij_version.clone(), is_release_notes))
             .with_bulletin_list(BulletinList::new(whats_new_title()).with_items(vec![
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
+                        "Zellij as your terminal",
+                    )))
+                    .with_hover(TextOrCustomRender::Text(
+                        main_menu_item("Zellij as your terminal").selected(),
+                    ))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        let facts = facts.clone();
+                        move || Page::new_desktop_app(facts)
+                    })),
+                    ActiveComponent::new(TextOrCustomRender::Text(main_menu_item("Inbox")))
+                    .with_hover(TextOrCustomRender::Text(main_menu_item("Inbox").selected()))
+                    .with_left_click_action(ClickAction::new_change_page({
+                        let keybinding_state = keybinding_state.clone();
+                        let main_screen_builder = main_screen_builder.clone();
+                        move || Page::new_inbox(keybinding_state, main_screen_builder)
+                    })),
                     ActiveComponent::new(TextOrCustomRender::Text(main_menu_item(
                         "Nested Sessions",
                     )))
@@ -129,6 +152,37 @@ impl Page {
                         move || Page::new_pane_focus(keybinding_state, main_screen_builder)
                     })),
                 ]));
+        let mut page = page.with_paragraph(vec![
+            ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                Text::from("Prefer things as they were? <o> turns the new status symbols,")
+                    .color_substring(3, "<o>"),
+            ))]),
+            ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
+                Text::from(
+                    "tray icon and notifications off (Settings → Attention turns them back on).",
+                ),
+            ))]),
+        ]);
+        if !is_release_notes {
+            page = page.with_paragraph(vec![ComponentLine::new(vec![
+                ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::from("Use Zellij as your terminal app").color_range(3, ..),
+                ))
+                .with_hover(TextOrCustomRender::Text(
+                    Text::from("Use Zellij as your terminal app")
+                        .color_range(3, ..)
+                        .selected(),
+                ))
+                .with_left_click_action(ClickAction::new_change_page({
+                    let facts = facts.clone();
+                    move || Page::new_desktop_app(facts)
+                }))
+                .keyboard_selectable(),
+                ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::from(" · <s> Setup Zellij").color_substring(3, "<s>"),
+                )),
+            ])]);
+        }
         page.with_paragraph(vec![ComponentLine::new(vec![
             ActiveComponent::new(TextOrCustomRender::Text(Text::from("Full Changelog: "))),
             ActiveComponent::new(TextOrCustomRender::Text(changelog_link_unselected(
@@ -599,7 +653,7 @@ fn keybinding_status_text(status: &ApplyStatus) -> Text {
     }
 }
 
-fn missing_binds_note(
+pub(crate) fn missing_binds_note(
     keybinding_state: &Rc<RefCell<KeybindingState>>,
     main_screen_builder: &Rc<dyn Fn() -> Page>,
     feature: Feature,
@@ -659,6 +713,9 @@ fn feature_page(
         Feature::PaneFocus => Page::new_pane_focus(keybinding_state, main_screen_builder),
         Feature::ScrollByCommand => {
             Page::new_scroll_by_command(keybinding_state, main_screen_builder)
+        },
+        Feature::Inbox | Feature::SessionHistory => {
+            Page::new_inbox(keybinding_state, main_screen_builder)
         },
     }
 }
@@ -1208,7 +1265,7 @@ fn main_screen_help_text(
     if has_missing_binds {
         help_text.push_str(", <u> - Update Keybindings");
     }
-    help_text.push_str(", <ESC> - Dismiss");
+    help_text.push_str(", <o> - Opt Out, <s> - Setup, <ESC> - Dismiss");
     if !menu_item_is_selected {
         help_text.push_str(", <?> - Usage Tips");
     }
@@ -1230,7 +1287,7 @@ fn release_notes_main_help(
     if has_missing_binds {
         help_text.push_str(", <u> - Update Keybindings");
     }
-    help_text.push_str(", <ESC> - Dismiss");
+    help_text.push_str(", <o> - Opt Out, <ESC> - Dismiss");
     color_help_keys(help_text)
 }
 
@@ -1240,6 +1297,8 @@ fn color_help_keys(help_text: String) -> Text {
         .color_substring(1, "<ENTER>")
         .color_substring(2, "Update Keybindings")
         .color_substring(1, "<u>")
+        .color_substring(1, "<o>")
+        .color_substring(1, "<s>")
         .color_substring(1, "<ESC>")
         .color_substring(1, "<?>")
 }

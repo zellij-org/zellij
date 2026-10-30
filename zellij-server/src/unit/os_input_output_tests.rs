@@ -205,7 +205,7 @@ fn spawn_and_read_output() {
 }
 
 // Run with this process's stdin redirected to NUL by the test below, the way a server started
-// by the zellij-window launcher runs: a pane's shell must still read the pseudo console.
+// by the zellij-terminal launcher runs: a pane's shell must still read the pseudo console.
 #[cfg(windows)]
 #[test]
 #[ignore = "run by a_pane_shell_reads_the_pseudo_console_even_when_the_server_input_is_redirected"]

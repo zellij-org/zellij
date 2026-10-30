@@ -81,11 +81,20 @@ fn styled_key_text(
 
 pub struct TooltipRenderer<'a> {
     mode_info: &'a ModeInfo,
+    origin: (usize, usize),
 }
 
 impl<'a> TooltipRenderer<'a> {
     pub fn new(mode_info: &'a ModeInfo) -> Self {
-        Self { mode_info }
+        Self {
+            mode_info,
+            origin: (0, 0),
+        }
+    }
+
+    pub fn at(mut self, x: usize, y: usize) -> Self {
+        self.origin = (x, y);
+        self
     }
 
     fn entries(&self, mode: InputMode) -> Vec<TooltipEntry> {
@@ -209,6 +218,7 @@ impl<'a> TooltipRenderer<'a> {
             let (components, tooltip_columns) = self.normal_components(current_mode);
             let base_x = cols.saturating_sub(tooltip_columns) / 2;
             let base_y = rows.saturating_sub(1) / 2;
+            let (origin_x, origin_y) = self.origin;
 
             for component in components {
                 let key_text = component.key_text();
@@ -223,8 +233,8 @@ impl<'a> TooltipRenderer<'a> {
                     let ellipsis = Text::from("...").opaque();
                     print_text_with_coordinates(
                         ellipsis,
-                        base_x + x,
-                        base_y,
+                        origin_x + base_x + x,
+                        origin_y + base_y,
                         Some(remaining_space),
                         None,
                     );
@@ -239,15 +249,33 @@ impl<'a> TooltipRenderer<'a> {
                 } else {
                     ribbon
                 };
-                print_text_with_coordinates(text.opaque(), base_x + x, base_y, None, None);
-                print_ribbon_with_coordinates(ribbon, base_x + x + text_width, base_y, None, None);
+                print_text_with_coordinates(
+                    text.opaque(),
+                    origin_x + base_x + x,
+                    origin_y + base_y,
+                    None,
+                    None,
+                );
+                print_ribbon_with_coordinates(
+                    ribbon,
+                    origin_x + base_x + x + text_width,
+                    origin_y + base_y,
+                    None,
+                    None,
+                );
             }
         } else {
             let (table, tooltip_rows, tooltip_columns) =
                 self.other_mode_tooltip(current_mode, hovered);
             let base_x = cols.saturating_sub(tooltip_columns) / 2;
             let base_y = rows.saturating_sub(tooltip_rows) / 2;
-            print_table_with_coordinates(table, base_x, base_y, None, None);
+            print_table_with_coordinates(
+                table,
+                self.origin.0 + base_x,
+                self.origin.1 + base_y,
+                None,
+                None,
+            );
         }
     }
 
@@ -279,6 +307,7 @@ impl<'a> TooltipRenderer<'a> {
                 InputMode::EnterSearch => "Entering search term...".to_owned(),
                 InputMode::RenameTab => "Renaming tab...".to_owned(),
                 InputMode::RenamePane => "Renaming pane...".to_owned(),
+                InputMode::RenameSession => "Renaming session...".to_owned(),
                 _ => {
                     format!("{:?}", self.mode_info.mode)
                 },

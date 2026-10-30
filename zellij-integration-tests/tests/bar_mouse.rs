@@ -203,7 +203,7 @@ fn open_tab_menu(zellij: &TestSession, tab: &str) -> GridSnapshot {
     let tab_column = column_of(&grid_snapshot, 0, tab);
     right_click(zellij, tab_column + 2, 1);
     zellij.wait_until("tab menu opened", |grid_snapshot| {
-        grid_snapshot.contains("Move tab to start") && grid_snapshot.contains("Move tab to end")
+        grid_snapshot.contains("Move to start") && grid_snapshot.contains("Move to end")
     })
 }
 
@@ -213,16 +213,16 @@ fn the_tab_menu_moves_a_tab_to_the_start_and_to_the_end() {
     three_marked_tabs(&zellij);
 
     let grid_snapshot = open_tab_menu(&zellij, "Tab #3");
-    click_menu_item(&zellij, &grid_snapshot, "Move tab to start");
+    click_menu_item(&zellij, &grid_snapshot, "Move to start");
     zellij.wait_until("tab three moved to the start", |grid_snapshot| {
-        !grid_snapshot.contains("Move tab to end")
+        !grid_snapshot.contains("Move to end")
             && first_row_order(grid_snapshot, &["Tab #3", "Tab #1", "Tab #2"])
     });
 
     let grid_snapshot = open_tab_menu(&zellij, "Tab #3");
-    click_menu_item(&zellij, &grid_snapshot, "Move tab to end");
+    click_menu_item(&zellij, &grid_snapshot, "Move to end");
     zellij.wait_until("tab three moved back to the end", |grid_snapshot| {
-        !grid_snapshot.contains("Move tab to start")
+        !grid_snapshot.contains("Move to start")
             && first_row_order(grid_snapshot, &["Tab #1", "Tab #2", "Tab #3"])
     });
     zellij.quit();

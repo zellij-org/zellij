@@ -7,9 +7,9 @@ use zellij_integration_tests::{
 use zellij_utils::cli::CliAction;
 
 const PANE_MENU_MARKER: &str = "Close pane";
-const TAB_MENU_MARKER: &str = "Move tab right";
-const COMMON_MENU_MARKER: &str = "Session manager";
-const LAST_COMMON_MENU_ITEM: &str = "Detach";
+const TAB_MENU_MARKER: &str = "Move right";
+const COMMON_MENU_MARKER: &str = "Settings…";
+const LAST_COMMON_MENU_ITEM: &str = "Settings…";
 
 fn start_zellij() -> TestSession {
     TestRunner::new(TERMINAL_SIZE)
@@ -158,7 +158,7 @@ fn choosing_rename_pane_renames_the_clicked_pane_and_not_the_focused_one() {
 
     right_click(&zellij, 10, 12);
     let grid_snapshot = wait_for_pane_menu(&zellij);
-    click_menu_item(&zellij, &grid_snapshot, "Rename pane");
+    click_menu_item(&zellij, &grid_snapshot, "Rename pane…");
     zellij.wait_until("rename pane mode entered", |grid_snapshot| {
         !grid_snapshot.contains(COMMON_MENU_MARKER) && grid_snapshot.contains("RENAMING PANE")
     });
@@ -365,7 +365,7 @@ fn the_default_menu_shows_the_keyboard_shortcuts_of_its_items() {
             && grid_snapshot.contains("Ctrl p, e")
             && grid_snapshot.contains("Ctrl p, c")
             && grid_snapshot.contains("Ctrl p, x")
-            && grid_snapshot.contains("Ctrl o, d")
+            && grid_snapshot.contains("Ctrl p, v")
             && grid_snapshot.contains("Ctrl p, a")
     });
     zellij.send_stdin(&keys::ESC);
@@ -381,14 +381,18 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("configuration plugin opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration")
+        grid_snapshot.contains("unsaved change")
     });
     zellij.send_stdin(b"\x1b[B");
     zellij.send_stdin(b"\x1b[B");
+    zellij.wait_until("keyboard settings shown", |grid_snapshot| {
+        grid_snapshot.contains("Key bindings and preset…")
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("keys screen opened", |grid_snapshot| {
         grid_snapshot.contains("Save as a preset") && grid_snapshot.contains("Preset")
     });
-    zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("preset list opened", |grid_snapshot| {
         grid_snapshot.contains("unlock-first") && grid_snapshot.contains("default")
@@ -399,8 +403,12 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
         grid_snapshot.contains("UNLOCK")
     });
     zellij.send_stdin(&keys::ctrl('c'));
+    zellij.wait_until("back on the keyboard settings", |grid_snapshot| {
+        grid_snapshot.contains("Opens the key bindings page")
+    });
+    zellij.send_stdin(&keys::ESC);
     zellij.wait_until("configuration plugin closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
+        !grid_snapshot.contains("unsaved change")
     });
 
     right_click(&zellij, 30, 10);
@@ -435,7 +443,7 @@ fn turning_the_menu_off_in_the_settings_stops_right_clicks_from_opening_it() {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     zellij.wait_until("settings screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+        grid_snapshot.contains("unsaved change")
     });
     zellij.send_stdin(&keys::key('/'));
     zellij.send_stdin(b"right-click");
@@ -449,11 +457,11 @@ fn turning_the_menu_off_in_the_settings_stops_right_clicks_from_opening_it() {
     });
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("search closed", |grid_snapshot| {
-        grid_snapshot.contains("Mouse and clipboard") && !grid_snapshot.contains(" match")
+        grid_snapshot.contains("Clipboard and selection") && !grid_snapshot.contains(" match")
     });
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings screen closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration") && grid_snapshot.status_bar_appears()
+        !grid_snapshot.contains("unsaved change") && grid_snapshot.status_bar_appears()
     });
 
     right_click(&zellij, 30, 10);
@@ -589,7 +597,7 @@ fn right_click_on_a_watched_pane_offers_stop_watching() {
     right_click(&zellij, 30, 10);
     let grid_snapshot = wait_for_pane_menu(&zellij);
     assert!(
-        grid_snapshot.contains("Watch this pane"),
+        grid_snapshot.contains("Watch pane"),
         "{}",
         grid_snapshot.text
     );
@@ -603,7 +611,7 @@ fn right_click_on_a_watched_pane_offers_stop_watching() {
         grid_snapshot.contains(PANE_MENU_MARKER) && grid_snapshot.contains("Stop watching")
     });
     assert!(
-        !grid_snapshot.contains("Watch this pane"),
+        !grid_snapshot.contains("Watch pane"),
         "{}",
         grid_snapshot.text
     );

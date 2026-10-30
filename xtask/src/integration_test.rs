@@ -62,7 +62,7 @@ pub fn integration_test(sh: &Shell, flags: flags::IntegrationTest) -> anyhow::Re
 }
 
 const DESKTOP_TESTS: &str = "desktop_app";
-const DESKTOP_BINARY_FEATURES: &str = "vendored_curl,web_server_capability,window";
+const DESKTOP_BINARY_FEATURES: &str = "vendored_curl,web_server_capability,terminal";
 const REQUIRE_DESKTOP_TESTS: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 
 fn desktop_tests_wanted(args: &[std::ffi::OsString]) -> bool {

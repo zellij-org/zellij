@@ -15,6 +15,7 @@ use super::generated_api::api::event::{
     AttentionItem as ProtobufAttentionItem, GlobalAttentionUpdatePayload,
     GlobalSessionAttention as ProtobufGlobalSessionAttention, PaneId as ProtobufPaneId,
     SessionAttention as ProtobufSessionAttention, SessionHistoryUpdatePayload,
+    StatusColor as ProtobufStatusColor,
 };
 use crate::attention::{
     AttentionCounts, AttentionDetail, AttentionSource, AttentionStatus, BlockedKind,
@@ -361,6 +362,14 @@ impl TryFrom<GlobalAttention> for GlobalAttentionUpdatePayload {
                     })
                 })
                 .collect::<Result<Vec<_>, &'static str>>()?,
+            badge_colors: global
+                .badge_colors
+                .iter()
+                .map(|(status, rgb)| ProtobufStatusColor {
+                    status: status.as_str().to_owned(),
+                    rgb: (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32,
+                })
+                .collect(),
         })
     }
 }
@@ -381,7 +390,17 @@ impl TryFrom<GlobalAttentionUpdatePayload> for GlobalAttention {
                 ))
             })
             .collect::<Result<Vec<(String, SessionAttention)>, &'static str>>()?;
-        Ok(GlobalAttention::build(&payload.current_session, sessions))
+        let mut global = GlobalAttention::build(&payload.current_session, sessions);
+        global.badge_colors = payload
+            .badge_colors
+            .iter()
+            .filter_map(|color| {
+                let status = AttentionStatus::from_str(&color.status)?;
+                let rgb = color.rgb;
+                Some((status, [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]))
+            })
+            .collect();
+        Ok(global)
     }
 }
 

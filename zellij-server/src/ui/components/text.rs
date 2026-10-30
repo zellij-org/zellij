@@ -270,6 +270,22 @@ impl Text {
     ) -> Option<PaletteColor> {
         const ERROR_COLOR_LEVEL: usize = 6;
         const SUCCESS_COLOR_LEVEL: usize = 7;
+        const CUSTOM_COLOR_LEVEL: usize = 9;
+        const CUSTOM_COLOR_MARK: usize = 1 << 30;
+
+        for level in self.indices.iter().skip(CUSTOM_COLOR_LEVEL) {
+            let Some(mark) = level.iter().find(|value| **value >= CUSTOM_COLOR_MARK) else {
+                continue;
+            };
+            if level.contains(&index) {
+                let rgb = mark - CUSTOM_COLOR_MARK;
+                return Some(PaletteColor::Rgb((
+                    ((rgb >> 16) & 0xff) as u8,
+                    ((rgb >> 8) & 0xff) as u8,
+                    (rgb & 0xff) as u8,
+                )));
+            }
+        }
 
         // Check error color first (highest precedence)
         if let Some(indices) = self.indices.get(ERROR_COLOR_LEVEL) {
@@ -314,6 +330,9 @@ pub fn text_cell_width(text: &str) -> usize {
 }
 
 pub fn parse_text(stringified: &mut String) -> Result<String> {
+    if stringified.is_empty() {
+        return Ok(String::new());
+    }
     let mut utf8 = vec![];
     for stringified_character in stringified.split(',') {
         utf8.push(
@@ -324,4 +343,42 @@ pub fn parse_text(stringified: &mut String) -> Result<String> {
         );
     }
     Ok(String::from_utf8_lossy(&utf8).to_string())
+}
+
+#[cfg(test)]
+mod empty_text_tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_text_component_is_kept() {
+        let mut params = vec!["z".to_owned()];
+        let parsed = parse_text_params(params.iter_mut());
+        assert_eq!(parsed.len(), 1);
+        assert!(parsed[0].text.is_empty());
+        assert!(parsed[0].opaque);
+    }
+
+    #[test]
+    fn a_custom_colour_level_paints_its_indices_in_that_colour() {
+        let mark = (1usize << 30) + 0x8e4ec6;
+        let mut indices = vec![vec![]; 9];
+        indices.push(vec![mark, 0]);
+        let text = Text {
+            text: "ab".to_owned(),
+            selected: false,
+            opaque: false,
+            disabled: false,
+            indices,
+        };
+        let style = StyleDeclaration::default();
+        let styling = zellij_utils::data::Styling::default();
+        assert_eq!(
+            text.style_of_index(0, &style, &styling),
+            Some(PaletteColor::Rgb((0x8e, 0x4e, 0xc6)))
+        );
+        assert_ne!(
+            text.style_of_index(1, &style, &styling),
+            Some(PaletteColor::Rgb((0x8e, 0x4e, 0xc6)))
+        );
+    }
 }

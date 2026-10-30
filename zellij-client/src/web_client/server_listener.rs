@@ -202,7 +202,7 @@ pub fn zellij_server_listener(
                                 }
                             },
                             Some(ServerToClientMsg::Connected) => {},
-                            Some(ServerToClientMsg::WindowSettingsChanged { .. }) => {},
+                            Some(ServerToClientMsg::TerminalSettingsChanged { .. }) => {},
                             Some(ServerToClientMsg::CliPipeOutput { .. } ) => {},
                             Some(ServerToClientMsg::UnblockCliPipeInput { .. } ) => {},
                             Some(ServerToClientMsg::StartWebServer { .. } ) => {},
@@ -288,6 +288,8 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::HostProgramStatus { .. }) => {},
                             Some(ServerToClientMsg::SessionAttention { .. }) => {},
                             Some(ServerToClientMsg::SessionPreview { .. }) => {},
+                            Some(ServerToClientMsg::PaneMirror { .. }) => {},
+                            Some(ServerToClientMsg::PasteFromClipboard { .. }) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost {
                                 token,
                                 query_bytes,

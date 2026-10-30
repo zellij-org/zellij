@@ -41,13 +41,16 @@ use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
 mod attention;
+mod hidden_bars;
+mod live_view;
+mod mirror;
 mod popups;
 
 use log::{debug, warn};
 use zellij_utils::data::{
     BorderStyle, BorderStyleOverride, CommandOrPlugin, ContextMenuContext, ContextMenuEntry,
     ContextMenuTarget, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
+    HiddenBars, HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
     ListPanesResponse, ListTabsResponse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, NewPanePlacement, PaneContents,
     PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport, PaneScrollbackResponse,
@@ -432,6 +435,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId, Option<NotificationEnd>),
     MovePaneLeft(ClientId, Option<NotificationEnd>),
     Exit,
+    SessionEnding,
     ClearScreen(ClientId, Option<NotificationEnd>),
     DumpScreen(
         Option<String>,
@@ -584,6 +588,15 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         supported: bool,
     },
+    SetClipboardPasteSupport {
+        client_id: ClientId,
+        supported: bool,
+        shortcut: Option<String>,
+    },
+    PasteFromClipboard {
+        client_id: ClientId,
+        pane_id: zellij_utils::data::PaneId,
+    },
     RenderFrameAck {
         client_id: ClientId,
         seq: u64,
@@ -601,6 +614,9 @@ pub enum ScreenInstruction {
         message: NestedSessionMessage,
     },
     NestedGuestPingTick {
+        pane_id: PaneId,
+    },
+    PromptReturnedInPane {
         pane_id: PaneId,
     },
     NestedSessionMessageFromHost {
@@ -826,6 +842,8 @@ pub enum ScreenInstruction {
     ),
     SerializeLayoutForResurrection,
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
+    UpdateSessionNameDraft(Vec<u8>, ClientId, Option<NotificationEnd>),
+    UndoRenameSession(ClientId, Option<NotificationEnd>),
     ListClientsMetadata(Option<PathBuf>, ClientId, Option<NotificationEnd>), // Option<PathBuf> - default shell
     ListPanes {
         show_all: bool,
@@ -970,6 +988,7 @@ pub enum ScreenInstruction {
     TerminalInputSubmitted(ClientId),
     TerminalEscapePressed(ClientId),
     ToggleSessionCard(ClientId, Option<NotificationEnd>),
+    WaitForPaneExit(PaneId, NotificationEnd),
     SetPopupFocused {
         plugin_id: u32,
         focused: bool,
@@ -980,6 +999,12 @@ pub enum ScreenInstruction {
     },
     ShowSwapLayoutNotification(ClientId),
     SetSwapLayoutNotification(bool),
+    ToggleBars(Vec<String>, ClientId, Option<NotificationEnd>),
+    HideBars(Vec<String>, ClientId, Option<NotificationEnd>),
+    ShowBars(ClientId, Option<NotificationEnd>),
+    HideBarByPaneId(PaneId, ClientId, Option<NotificationEnd>),
+    SetHiddenBarsNotification(bool),
+    SetModeHintsWhenBarsHidden(bool),
     SetGraphemeClusters(bool),
     GetSessionPreview {
         tab_index: Option<usize>,
@@ -1036,7 +1061,7 @@ pub enum ScreenInstruction {
         tab_id: usize,
         run_plugin_or_alias: RunPluginOrAlias,
         placement: crate::tab::PopupPlacement,
-        kind: crate::tab::PopupKind,
+        behavior: crate::tab::PopupBehavior,
         width: usize,
         height: usize,
         anchor_pane: Option<PaneId>,
@@ -1047,6 +1072,8 @@ pub enum ScreenInstruction {
         caller_pane_id: Option<PaneId>,
         placement: zellij_utils::data::PipePopupPlacement,
         focused: bool,
+        capture_all_keys: bool,
+        outside_click: zellij_utils::data::OutsideClick,
     },
     OpenPromptPopup {
         caller: crate::plugins::PromptCaller,
@@ -1056,6 +1083,7 @@ pub enum ScreenInstruction {
         placement: Option<zellij_utils::prompt::PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
+        outside_click: zellij_utils::data::OutsideClick,
     },
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
@@ -1101,6 +1129,58 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    MirrorAttach {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        attach: zellij_utils::pane_mirror::MirrorAttach,
+        outbox: crate::pane_mirror::MirrorOutbox,
+    },
+    MirrorInput {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        input: zellij_utils::pane_mirror::MirrorInput,
+    },
+    MirrorResize {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        size: Size,
+        focused: bool,
+        resize_allowed: bool,
+    },
+    MirrorFrameAck {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        seq: u64,
+    },
+    MirrorDetach {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+    },
+    MirrorPark {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+    },
+    MirrorUnpark {
+        subscriber_id: crate::pane_mirror::MirrorSubscriberId,
+        resize_allowed: bool,
+    },
+    ToggleMirrorResize(ClientId, Option<NotificationEnd>),
+    SetMirrorResizesSourcePane(bool),
+    MirrorTick,
+    MirrorTransportEvent {
+        view_id: u32,
+        generation: u64,
+        event: zellij_utils::pane_mirror::MirrorTransportEvent,
+    },
+    SetLiveView {
+        plugin_pane_id: u32,
+        client_id: ClientId,
+        view: Option<zellij_utils::data::LiveView>,
+    },
+    SetLiveViewInput {
+        plugin_pane_id: u32,
+        client_id: ClientId,
+        capture: bool,
+    },
+    ClearLiveViewsOfPlugin(u32),
+    ReleaseLiveViewInputWithKey(ClientId),
+    ReportLiveViewCaptureChange,
+    SetLiveViewReleaseKey(Option<String>),
+    LiveViewReleaseKeysChanged,
     DesktopNotificationResponse(Vec<u8>, ClientId),
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
     ClearHintTextCache,
@@ -1234,6 +1314,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::SessionEnding => ScreenContext::SessionEnding,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
@@ -1311,8 +1392,13 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetStructuredRenderSupport { .. } => {
                 ScreenContext::SetStructuredRenderSupport
             },
+            ScreenInstruction::SetClipboardPasteSupport { .. } => {
+                ScreenContext::SetClipboardPasteSupport
+            },
+            ScreenInstruction::PasteFromClipboard { .. } => ScreenContext::PasteFromClipboard,
             ScreenInstruction::RenderFrameAck { .. } => ScreenContext::RenderFrameAck,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
+            ScreenInstruction::PromptReturnedInPane { .. } => ScreenContext::PromptReturnedInPane,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
             },
@@ -1424,6 +1510,8 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::SerializeLayoutForResurrection
             },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
+            ScreenInstruction::UpdateSessionNameDraft(..) => ScreenContext::UpdateSessionNameDraft,
+            ScreenInstruction::UndoRenameSession(..) => ScreenContext::UndoRenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::ListPanes { .. } => ScreenContext::ListPanes,
             ScreenInstruction::ListTabs { .. } => ScreenContext::ListTabs,
@@ -1509,6 +1597,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalInputSubmitted(..) => ScreenContext::TerminalInputSubmitted,
             ScreenInstruction::TerminalEscapePressed(..) => ScreenContext::TerminalEscapePressed,
             ScreenInstruction::ToggleSessionCard(..) => ScreenContext::ToggleSessionCard,
+            ScreenInstruction::WaitForPaneExit(..) => ScreenContext::WaitForPaneExit,
             ScreenInstruction::SetPopupFocused { .. } => ScreenContext::SetPopupFocused,
             ScreenInstruction::PopupToFloatingPane { .. } => ScreenContext::PopupToFloatingPane,
             ScreenInstruction::ShowSwapLayoutNotification(..) => {
@@ -1516,6 +1605,16 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SetSwapLayoutNotification(..) => {
                 ScreenContext::SetSwapLayoutNotification
+            },
+            ScreenInstruction::ToggleBars(..) => ScreenContext::ToggleBars,
+            ScreenInstruction::HideBars(..) => ScreenContext::HideBars,
+            ScreenInstruction::ShowBars(..) => ScreenContext::ShowBars,
+            ScreenInstruction::HideBarByPaneId(..) => ScreenContext::HideBarByPaneId,
+            ScreenInstruction::SetHiddenBarsNotification(..) => {
+                ScreenContext::SetHiddenBarsNotification
+            },
+            ScreenInstruction::SetModeHintsWhenBarsHidden(..) => {
+                ScreenContext::SetModeHintsWhenBarsHidden
             },
             ScreenInstruction::SetGraphemeClusters(..) => ScreenContext::SetGraphemeClusters,
             ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
@@ -1568,6 +1667,24 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            ScreenInstruction::MirrorAttach { .. }
+            | ScreenInstruction::MirrorInput { .. }
+            | ScreenInstruction::MirrorResize { .. }
+            | ScreenInstruction::MirrorFrameAck { .. }
+            | ScreenInstruction::MirrorDetach { .. }
+            | ScreenInstruction::MirrorPark { .. }
+            | ScreenInstruction::MirrorUnpark { .. }
+            | ScreenInstruction::ToggleMirrorResize(..)
+            | ScreenInstruction::SetMirrorResizesSourcePane(..)
+            | ScreenInstruction::MirrorTick
+            | ScreenInstruction::MirrorTransportEvent { .. }
+            | ScreenInstruction::SetLiveView { .. }
+            | ScreenInstruction::SetLiveViewInput { .. }
+            | ScreenInstruction::ClearLiveViewsOfPlugin(..)
+            | ScreenInstruction::ReleaseLiveViewInputWithKey(..)
+            | ScreenInstruction::ReportLiveViewCaptureChange
+            | ScreenInstruction::SetLiveViewReleaseKey(..)
+            | ScreenInstruction::LiveViewReleaseKeysChanged => ScreenContext::PaneMirror,
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
@@ -1927,6 +2044,7 @@ pub(crate) struct Screen {
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -1946,12 +2064,14 @@ pub(crate) struct Screen {
     default_context_menu_config: ContextMenuConfig,
     context_menu_configs: HashMap<ClientId, ContextMenuConfig>,
     default_mousebinds: Arc<Mousebinds>,
+    configured_default_shell: Option<PathBuf>,
     client_mousebinds: HashMap<ClientId, Arc<Mousebinds>>,
     open_context_menus: HashMap<ClientId, (ContextMenuContext, Vec<ContextMenuEntry>)>,
     last_client_input: HashMap<ClientId, std::time::Instant>,
     last_mouse_positions: HashMap<ClientId, Position>,
     rename_pane_targets: HashMap<ClientId, PaneId>,
     rename_tab_targets: HashMap<ClientId, usize>,
+    session_rename_drafts: HashMap<ClientId, String>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -2011,6 +2131,10 @@ pub(crate) struct Screen {
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
     pub(crate) swap_layout_notification: bool,
+    pub(crate) hidden_bars: HiddenBars,
+    pub(crate) hidden_bars_notification: bool,
+    pub(crate) mode_hints_when_bars_hidden: bool,
+    pub(crate) mode_hints_requested: HashSet<ClientId>,
     grapheme_clusters: bool,
     pub(crate) on_quit: zellij_utils::input::options::OnQuit,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
@@ -2061,6 +2185,7 @@ pub(crate) struct Screen {
     pane_not_created_reasons: HashMap<PaneId, PaneNotCreatedReason>,
     mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
     client_host_focused: HashMap<ClientId, bool>,
+    hidden_plugins: HashSet<u32>,
     client_notification_protocols: HashMap<ClientId, NotificationProtocol>,
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
@@ -2073,6 +2198,9 @@ pub(crate) struct Screen {
         HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
     remote_actions: crate::session_link::RemoteActions,
     pub(crate) pending_session_card_away_since: HashMap<ClientId, u64>,
+    pane_mirrors: mirror::PaneMirrors,
+    mirror_connector: Arc<dyn zellij_utils::pane_mirror::MirrorConnector>,
+    live_views: crate::pane_mirror::SharedLiveViews,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2288,6 +2416,7 @@ impl Screen {
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
+            clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
@@ -2307,6 +2436,7 @@ impl Screen {
             client_keybinds: BTreeMap::new(),
             default_context_menu_config: ContextMenuConfig::default(),
             context_menu_configs: HashMap::new(),
+            configured_default_shell: None,
             default_mousebinds: zellij_utils::input::config_settings::default_config()
                 .mousebinds
                 .clone(),
@@ -2316,6 +2446,7 @@ impl Screen {
             last_mouse_positions: HashMap::new(),
             rename_pane_targets: HashMap::new(),
             rename_tab_targets: HashMap::new(),
+            session_rename_drafts: HashMap::new(),
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -2363,11 +2494,18 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            pane_mirrors: Default::default(),
+            mirror_connector: Arc::new(zellij_utils::pane_mirror::LocalSocketConnector),
+            live_views: Default::default(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
             terminal_command_submitted: false,
             swap_layout_notification: true,
+            hidden_bars: HiddenBars::default(),
+            hidden_bars_notification: true,
+            mode_hints_when_bars_hidden: true,
+            mode_hints_requested: HashSet::new(),
             grapheme_clusters: false,
             on_quit: Default::default(),
             last_reported_client_visible_plugins: HashMap::new(),
@@ -2418,6 +2556,7 @@ impl Screen {
             pane_not_created_reasons: HashMap::new(),
             mobile_web_prefs: HashMap::new(),
             client_host_focused: HashMap::new(),
+            hidden_plugins: HashSet::new(),
             client_notification_protocols: HashMap::new(),
             host_notification_protocol: HostNotificationProtocol::default(),
             client_host_terminal_env: HashMap::new(),
@@ -2650,6 +2789,7 @@ impl Screen {
             },
         }
         self.clear_bell_for_focused_pane(client_id);
+        self.update_mode_hints(client_id);
     }
 
     /// A helper function to switch to a new tab at specified position.
@@ -3577,6 +3717,45 @@ impl Screen {
         self.structured_render_clients
             .borrow_mut()
             .remove(&client_id);
+        self.clipboard_paste_clients.remove(&client_id);
+    }
+
+    pub fn update_clipboard_paste_support(
+        &mut self,
+        client_id: ClientId,
+        supported: bool,
+        shortcut: Option<String>,
+    ) {
+        if supported {
+            self.clipboard_paste_clients.insert(client_id, shortcut);
+        } else {
+            self.clipboard_paste_clients.remove(&client_id);
+        }
+    }
+
+    pub fn client_can_paste_from_clipboard(&self, client_id: ClientId) -> bool {
+        self.clipboard_paste_clients.contains_key(&client_id)
+    }
+
+    pub fn client_paste_shortcut(&self, client_id: ClientId) -> Option<String> {
+        self.clipboard_paste_clients
+            .get(&client_id)
+            .cloned()
+            .flatten()
+    }
+
+    fn paste_from_clipboard(&self, client_id: ClientId, pane_id: zellij_utils::data::PaneId) {
+        if !self.client_can_paste_from_clipboard(client_id) {
+            return;
+        }
+        if let Some(os_input) = &self.bus.os_input {
+            let _ = os_input.send_to_client(
+                client_id,
+                ServerToClientMsg::PasteFromClipboard {
+                    pane_id: Some(pane_id),
+                },
+            );
+        }
     }
 
     pub fn update_sixel_support(&mut self, client_id: ClientId, supported: bool) {
@@ -4807,6 +4986,23 @@ impl Screen {
         let _ = self.log_and_report_session_state();
     }
 
+    pub fn handle_prompt_returned_in_pane(&mut self, pane_id: PaneId) {
+        if !self.nested_guest_tracker.is_known(pane_id) {
+            return;
+        }
+        log::info!(
+            "shell prompt returned in pane {:?} while a nested session guest was still registered, treating the guest as gone",
+            pane_id
+        );
+        self.clear_nested_guest(pane_id);
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                pane.reset_input_modes_left_by_lost_guest();
+                break;
+            }
+        }
+    }
+
     pub fn clear_nested_guest(&mut self, pane_id: PaneId) {
         let was_nested_guest = self.nested_guest_tracker.is_known(pane_id);
         self.nested_guest_tracker.remove(pane_id);
@@ -5565,6 +5761,10 @@ impl Screen {
 
         self.sync_structured_client_viewports();
         self.sync_attention_visibility();
+        self.sync_plugin_visibility();
+        self.sync_live_views();
+        self.apply_mirror_pins();
+        self.deliver_to_mirrors();
 
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
@@ -6330,6 +6530,7 @@ impl Screen {
         tab.update_selection_options(self.osc133_command_selection, self.word_separators.clone());
         tab.update_context_menu_enabled(self.context_menu_enabled);
         tab.update_grapheme_clusters(self.grapheme_clusters);
+        tab.set_live_views(self.live_views.clone());
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -6643,6 +6844,7 @@ impl Screen {
         self.close_popup_for_client(client_id);
         self.rename_pane_targets.remove(&client_id);
         self.rename_tab_targets.remove(&client_id);
+        self.session_rename_drafts.remove(&client_id);
         self.context_menu_configs.remove(&client_id);
         self.client_mousebinds.remove(&client_id);
         self.last_client_input.remove(&client_id);
@@ -6762,6 +6964,32 @@ impl Screen {
         }
         self.log_and_report_session_state().non_fatal();
         Ok(())
+    }
+
+    pub(crate) fn sync_plugin_visibility(&mut self) {
+        let mut present = HashSet::new();
+        let mut shown = HashSet::new();
+        for tab in self.tabs.values() {
+            present.extend(tab.all_plugin_ids());
+            shown.extend(tab.shown_plugin_ids());
+        }
+        let mut updates = vec![];
+        for plugin_id in &present {
+            let is_shown = shown.contains(plugin_id);
+            let was_hidden = self.hidden_plugins.contains(plugin_id);
+            if is_shown == was_hidden {
+                updates.push((Some(*plugin_id), None, Event::Visible(is_shown)));
+            }
+        }
+        self.hidden_plugins = present.difference(&shown).copied().collect();
+        if updates.is_empty() {
+            return;
+        }
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(updates))
+            .context("failed to update plugin visibility")
+            .non_fatal();
     }
 
     pub fn add_watcher_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -7080,7 +7308,13 @@ impl Screen {
         let mut visible: HashMap<ClientId, HashSet<PluginId>> = HashMap::new();
         for (client_id, tab_id) in self.active_tab_ids.iter() {
             if let Some(tab) = self.tabs.get(tab_id) {
-                visible.insert(*client_id, tab.get_plugin_ids().into_iter().collect());
+                visible.insert(
+                    *client_id,
+                    tab.get_plugin_ids()
+                        .into_iter()
+                        .chain(tab.popup_plugin_ids_for_client(*client_id))
+                        .collect(),
+                );
             }
         }
         if visible == self.last_reported_client_visible_plugins {
@@ -7104,6 +7338,7 @@ impl Screen {
         self.reconcile_all_single_pane_focus();
         self.report_plugin_tab_indices();
         self.report_client_visible_plugins();
+        self.sync_plugin_visibility();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -7789,8 +8024,22 @@ impl Screen {
         let previous_mode = mode_info.mode;
         mode_info.mode = new_mode;
         mode_info.base_mode = base_mode;
-        if mode_info.session_name.as_ref() != Some(&self.session_name) {
-            mode_info.session_name = Some(self.session_name.clone());
+        let pending_session_rename = if new_mode == InputMode::RenameSession {
+            if !self.session_rename_drafts.contains_key(&client_id) {
+                self.session_rename_drafts
+                    .insert(client_id, self.session_name.clone());
+            }
+            None
+        } else {
+            self.session_rename_drafts.remove(&client_id)
+        };
+        let session_rename_error = match pending_session_rename {
+            Some(new_name) if new_name != self.session_name => self.rename_session(new_name)?.err(),
+            _ => None,
+        };
+        let displayed_session_name = self.displayed_session_name(client_id);
+        if mode_info.session_name.as_ref() != Some(&displayed_session_name) {
+            mode_info.session_name = Some(displayed_session_name);
         }
         mode_info.remote_client = self.client_location(client_id);
 
@@ -7830,6 +8079,140 @@ impl Screen {
         }
 
         self.style = mode_info.style;
+        self.propagate_mode_info(mode_info, client_id)?;
+        if let Some(error_text) = session_rename_error {
+            log::error!("{}", error_text);
+            self.show_session_rename_error(client_id, error_text);
+        }
+        Ok(())
+    }
+
+    fn displayed_session_name(&self, client_id: ClientId) -> String {
+        self.session_rename_drafts
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.session_name.clone())
+    }
+
+    fn refresh_displayed_session_name(&mut self, client_id: ClientId) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        mode_info.session_name = Some(self.displayed_session_name(client_id));
+        self.propagate_mode_info(mode_info, client_id)
+    }
+
+    pub fn update_session_name_draft(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        let in_rename_mode = self
+            .mode_info
+            .get(&client_id)
+            .map(|mode_info| mode_info.mode == InputMode::RenameSession)
+            .unwrap_or(false);
+        if !in_rename_mode {
+            return Ok(());
+        }
+        let Ok(s) = str::from_utf8(&buf) else {
+            return Ok(());
+        };
+        let current_name = self.session_name.clone();
+        let draft = self
+            .session_rename_drafts
+            .entry(client_id)
+            .or_insert(current_name);
+        match s {
+            "\0" => draft.clear(),
+            "\u{007F}" | "\u{0008}" => {
+                zellij_utils::graphemes::pop_cluster(draft);
+            },
+            c => draft.push_str(&clean_string_from_control_and_linebreak(c)),
+        }
+        self.refresh_displayed_session_name(client_id)
+    }
+
+    pub fn undo_session_rename(&mut self, client_id: ClientId) -> Result<()> {
+        if self.session_rename_drafts.remove(&client_id).is_some() {
+            self.refresh_displayed_session_name(client_id)?;
+        }
+        Ok(())
+    }
+
+    pub fn rename_session(&mut self, name: String) -> Result<std::result::Result<(), String>> {
+        if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+            return Ok(Err(error_text));
+        }
+        let (_, resurrectable_sessions) = crate::background_jobs::scan_session_list_default_dirs(
+            &self.session_name,
+            &[],
+            &BTreeMap::new(),
+        );
+        let running_session_exists = zellij_utils::sessions::get_sessions()
+            .map(|sessions| sessions.iter().any(|(session, _)| session == &name))
+            .unwrap_or(false);
+        if self.peer_sessions_cache.contains_key(&name) || running_session_exists {
+            return Ok(Err("A session by this name already exists.".to_owned()));
+        }
+        if self.resurrectable_sessions_cache.contains_key(&name)
+            || resurrectable_sessions.contains_key(&name)
+        {
+            return Ok(Err(
+                "A resurrectable session by this name exists, cannot use this name.".to_owned(),
+            ));
+        }
+        let err_context = || format!("Failed to rename session");
+        let old_session_name = self.session_name.clone();
+
+        self.session_name = name.clone();
+        self.default_mode_info.session_name = Some(name.clone());
+        for (_client_id, mode_info) in self.mode_info.iter_mut() {
+            mode_info.session_name = Some(name.clone());
+        }
+        for (_, tab) in self.tabs.iter_mut() {
+            tab.rename_session(name.clone()).with_context(err_context)?;
+        }
+        let clients_with_drafts: Vec<ClientId> =
+            self.session_rename_drafts.keys().copied().collect();
+        for client_id in clients_with_drafts {
+            self.refresh_displayed_session_name(client_id)
+                .with_context(err_context)?;
+        }
+
+        zellij_utils::sessions::rename_session(&self.session_id, &name);
+
+        self.peer_sessions_cache.remove(&old_session_name);
+        self.log_and_report_session_state()
+            .with_context(err_context)?;
+
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
+                    old_name: old_session_name,
+                    new_name: name.clone(),
+                },
+            ));
+
+        set_session_name(name.clone());
+        let connected_client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
+        for client_id in connected_client_ids {
+            if let Some(os_input) = &mut self.bus.os_input {
+                let _ = os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::RenamedSession { name: name.clone() },
+                );
+            }
+        }
+        Ok(Ok(()))
+    }
+
+    fn propagate_mode_info(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+        mode_info.hidden_bars = self.hidden_bars.clone();
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -7856,6 +8239,8 @@ impl Screen {
         if self.nested_via_client_id == Some(client_id) {
             self.report_upward();
         }
+        self.report_live_views();
+        self.update_mode_hints(client_id);
         Ok(())
     }
 
@@ -9022,8 +9407,10 @@ impl Screen {
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
         self.update_keybinds(new_keybinds, client_id);
+        self.report_live_views();
         self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
+        self.configured_default_shell = default_shell.clone();
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
@@ -9448,8 +9835,18 @@ impl Screen {
         if event.event_type == MouseEventType::Press {
             self.record_client_input(client_id);
         }
-        if self.handle_popup_mouse_event(&event, client_id) {
+        if self.handle_live_view_mouse_event(&event, client_id) {
             return;
+        }
+        if self.handle_popup_mouse_event(&event, client_id) {
+            let ends_a_held_gesture = event.event_type == MouseEventType::Release
+                && self
+                    .get_active_tab(client_id)
+                    .map(|tab| tab.mouse_gesture_is_held())
+                    .unwrap_or(false);
+            if !ends_a_held_gesture {
+                return;
+            }
         }
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
@@ -9559,20 +9956,26 @@ impl Screen {
     }
     fn run_mouse_bound_actions(&self, actions: Vec<Action>, client_id: ClientId) {
         let senders = self.bus.senders.clone();
-        let default_mode = self.base_input_mode();
+        let default_mode = self
+            .mode_info
+            .get(&client_id)
+            .and_then(|mode_info| mode_info.base_mode)
+            .unwrap_or_else(|| self.base_input_mode());
+        let default_shell = self.configured_default_shell.clone().map(|command| {
+            TerminalAction::RunCommand(RunCommand {
+                command,
+                use_terminal_title: true,
+                ..Default::default()
+            })
+        });
         std::thread::spawn(move || {
             for action in actions {
-                if let Err(e) = crate::route::route_action(
+                if let Err(e) = crate::route::route_bound_mouse_action(
                     action,
                     client_id,
-                    None,
-                    None,
                     senders.clone(),
-                    None,
-                    None,
+                    default_shell.clone(),
                     default_mode,
-                    None,
-                    false,
                 ) {
                     log::error!("Failed to run a mouse-bound action: {:?}", e);
                 }
@@ -10188,6 +10591,10 @@ impl Screen {
         }
     }
     fn notify_pane_closed_to_subscribers(&mut self, pane_id: zellij_utils::data::PaneId) {
+        self.notify_mirrors_pane_closed(pane_id.into());
+        if let zellij_utils::data::PaneId::Plugin(plugin_pane_id) = pane_id {
+            self.forget_live_views_of_closed_pane(plugin_pane_id);
+        }
         let mut dead_subscribers = Vec::new();
 
         for (subscriber_id, subscription) in &mut self.pane_render_subscribers {
@@ -10298,6 +10705,7 @@ pub(crate) fn screen_thread_main(
     default_layout: Box<Layout>,
     default_keybinds: SharedKeybinds,
     session_id: String,
+    live_view_captures: crate::pane_mirror::SharedLiveViewCaptures,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -10332,6 +10740,7 @@ pub(crate) fn screen_thread_main(
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
+    let configured_default_shell = config_options.default_shell.clone();
     #[cfg(test)]
     let default_shell = config_options
         .default_shell
@@ -10448,15 +10857,26 @@ pub(crate) fn screen_thread_main(
         session_id,
     );
     screen.default_keybinds = default_keybinds;
+    screen.live_views.borrow_mut().captures = live_view_captures;
     screen.default_context_menu_config = config.context_menu.clone();
     screen.default_mousebinds = config.mousebinds.clone();
+    screen.configured_default_shell = configured_default_shell;
     screen.update_context_menu_enabled(config_options.context_menu_enabled.unwrap_or(true));
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
     screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
     screen.update_grapheme_clusters(config_options.grapheme_clusters.unwrap_or(true));
+    screen
+        .set_mirror_resizes_source_pane(config_options.mirror_resizes_source_pane.unwrap_or(true));
+    screen.set_live_view_release_key(config_options.live_view_release_key.clone());
     screen.on_quit = config_options.on_quit.unwrap_or_default();
+    screen.hidden_bars = config_options
+        .bars_hidden_on_start
+        .clone()
+        .unwrap_or_default();
+    screen.hidden_bars_notification = config_options.hidden_bars_notification.unwrap_or(true);
+    screen.mode_hints_when_bars_hidden = config_options.mode_hints_when_bars_hidden.unwrap_or(true);
     screen.set_host_notification_protocol(host_notification_protocol);
     screen
         .attention
@@ -10886,6 +11306,7 @@ pub(crate) fn screen_thread_main(
                 completion,
             ) => {
                 screen.record_client_input(client_id);
+                screen.release_live_view_if_unreachable(client_id);
                 if screen.send_key_to_popup(
                     client_id,
                     key_with_modifier.clone(),
@@ -10933,6 +11354,15 @@ pub(crate) fn screen_thread_main(
                         continue;
                     }
                 }
+                if screen.write_to_live_view(
+                    client_id,
+                    &key_with_modifier,
+                    &raw_bytes,
+                    is_kitty_keyboard_protocol,
+                ) {
+                    screen.render(None)?;
+                    continue;
+                }
                 let mut state_changed = false;
                 let client_input_mode = screen.get_client_input_mode(client_id);
                 match client_input_mode {
@@ -10940,6 +11370,13 @@ pub(crate) fn screen_thread_main(
                         if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
                         {
                             screen.update_active_tab_name(raw_bytes, client_id)?;
+                            state_changed = true;
+                        }
+                    },
+                    Some(InputMode::RenameSession) => {
+                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
+                        {
+                            screen.update_session_name_draft(raw_bytes, client_id)?;
                             state_changed = true;
                         }
                     },
@@ -12287,6 +12724,7 @@ pub(crate) fn screen_thread_main(
                     (client_id, is_web_client),
                     blocking_terminal,
                 )?;
+                screen.apply_hidden_bars_to_tab(tab_id);
                 let tab_of_layout = screen.tabs.get(&tab_id);
                 let pane_exists_in_tab = |pane_id: &PaneId| {
                     tab_of_layout
@@ -12558,6 +12996,16 @@ pub(crate) fn screen_thread_main(
                 screen.update_structured_render_support(client_id, supported);
                 screen.render(None)?;
             },
+            ScreenInstruction::SetClipboardPasteSupport {
+                client_id,
+                supported,
+                shortcut,
+            } => {
+                screen.update_clipboard_paste_support(client_id, supported, shortcut);
+            },
+            ScreenInstruction::PasteFromClipboard { client_id, pane_id } => {
+                screen.paste_from_clipboard(client_id, pane_id);
+            },
             ScreenInstruction::RenderFrameAck { client_id, seq } => {
                 screen.handle_render_frame_ack(client_id, seq)?;
             },
@@ -12569,6 +13017,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NestedGuestPingTick { pane_id } => {
                 screen.handle_nested_guest_ping_tick(pane_id);
+            },
+            ScreenInstruction::PromptReturnedInPane { pane_id } => {
+                screen.handle_prompt_returned_in_pane(pane_id);
             },
             ScreenInstruction::NestedSessionMessageFromHost { client_id, message } => {
                 screen.handle_nested_session_message_from_host(client_id, message);
@@ -12689,7 +13140,13 @@ pub(crate) fn screen_thread_main(
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
             },
+            ScreenInstruction::SessionEnding => {
+                screen.end_mirrors_with_the_session();
+            },
             ScreenInstruction::Exit => {
+                screen.close_all_mirror_subscribers(
+                    zellij_utils::data::MirrorClosedReason::SessionEnding,
+                );
                 break;
             },
             ScreenInstruction::ToggleTab(
@@ -12722,6 +13179,7 @@ pub(crate) fn screen_thread_main(
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
                 screen.show_guest_modals_for_new_client(client_id);
+                screen.show_hidden_bars_notification_on_attach(client_id);
                 let focused_pane_id = screen.get_active_pane_id(&client_id);
                 if let Some(focused) = focused_pane_id {
                     screen.report_key_passthrough_state(client_id, focused, focused);
@@ -12742,6 +13200,8 @@ pub(crate) fn screen_thread_main(
                 screen.last_session_history_infos.remove(&client_id);
                 screen.pending_session_card_away_since.remove(&client_id);
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
+                screen.clear_live_views_of_client(client_id);
+                screen.mode_hints_requested.remove(&client_id);
                 screen.remove_client(client_id).non_fatal();
                 if was_attached {
                     screen.log_and_report_session_state().non_fatal();
@@ -13186,6 +13646,7 @@ pub(crate) fn screen_thread_main(
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
+                screen.apply_hidden_bars_to_all_tabs();
                 // Single render and log after all tabs are updated (performance optimization)
                 screen.log_and_report_session_state()?;
                 let _ = screen.render(None);
@@ -13494,6 +13955,7 @@ pub(crate) fn screen_thread_main(
                         PaneNotCreatedReason::TabNotFound,
                     );
                 }
+                screen.apply_hidden_bars_to_tab_with_pane(PaneId::Plugin(plugin_id));
                 screen.finish_pane_creation(
                     PaneId::Plugin(plugin_id),
                     &mut completion_tx,
@@ -13627,6 +14089,16 @@ pub(crate) fn screen_thread_main(
                                 screen.render(None)?;
                                 screen.log_and_report_session_state()?;
                             } else {
+                                let floating_session_manager = (should_float
+                                    && !should_open_in_place
+                                    && popups::is_session_manager(&run_plugin))
+                                .then(|| screen.get_active_tab(client_id).ok())
+                                .flatten()
+                                .map(popups::session_manager_coordinates);
+                                let (size, coordinates) = match floating_session_manager {
+                                    Some((coordinates, content)) => (content, Some(coordinates)),
+                                    None => (Size::default(), None),
+                                };
                                 screen
                                     .bus
                                     .senders
@@ -13639,11 +14111,11 @@ pub(crate) fn screen_thread_main(
                                         tab_index,
                                         None,
                                         client_id,
-                                        Size::default(),
+                                        size,
                                         skip_cache,
                                         None,
                                         None,
-                                        None,
+                                        coordinates,
                                         completion_tx,
                                     ))?;
                             }
@@ -13966,7 +14438,9 @@ pub(crate) fn screen_thread_main(
                     }
                 });
 
-                if !found {
+                if found {
+                    screen.report_popup_state_for_plugin(plugin_id);
+                } else {
                     log::error!("PluginId '{}' not found - caching request", plugin_id);
                     pending_events_waiting_for_client.push(
                         ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission),
@@ -14103,13 +14577,8 @@ pub(crate) fn screen_thread_main(
                     })
                     .with_context(err_context)?;
             },
-            ScreenInstruction::RenameSession(
-                name,
-                client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
-            ) => {
-                if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+            ScreenInstruction::RenameSession(name, client_id, _completion_tx) => {
+                if let Err(error_text) = screen.rename_session(name)? {
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
                         let _ = os_input.send_to_client(
@@ -14119,80 +14588,15 @@ pub(crate) fn screen_thread_main(
                             },
                         );
                     }
-                } else if screen.peer_sessions_cache.contains_key(&name) {
-                    let error_text = "A session by this name already exists.";
-                    log::error!("{}", error_text);
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input.send_to_client(
-                            client_id,
-                            ServerToClientMsg::LogError {
-                                lines: vec![error_text.to_owned()],
-                            },
-                        );
-                    }
-                } else if screen.resurrectable_sessions_cache.contains_key(&name) {
-                    let error_text =
-                        "A resurrectable session by this name exists, cannot use this name.";
-                    log::error!("{}", error_text);
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input.send_to_client(
-                            client_id,
-                            ServerToClientMsg::LogError {
-                                lines: vec![error_text.to_owned()],
-                            },
-                        );
-                    }
-                } else {
-                    let err_context = || format!("Failed to rename session");
-                    let old_session_name = screen.session_name.clone();
-
-                    // update state
-                    screen.session_name = name.clone();
-                    screen.default_mode_info.session_name = Some(name.clone());
-                    for (_client_id, mode_info) in screen.mode_info.iter_mut() {
-                        mode_info.session_name = Some(name.clone());
-                    }
-                    for (_, tab) in screen.tabs.iter_mut() {
-                        tab.rename_session(name.clone()).with_context(err_context)?;
-                    }
-
-                    // Record the new name in the session index. Nothing on disk is
-                    // renamed: the socket/pipe and the session-info cache folder
-                    // are both named by the stable session id — which is what makes
-                    // rename work for Windows named pipes (they cannot be renamed).
-                    zellij_utils::sessions::rename_session(&screen.session_id, &name);
-
-                    // report
-                    screen
-                        .log_and_report_session_state()
-                        .with_context(err_context)?;
-
-                    let _ = screen
-                        .bus
-                        .senders
-                        .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
-                    let _ = screen.bus.senders.send_to_background_jobs(
-                        BackgroundJob::SessionSuggestions(
-                            crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
-                                old_name: old_session_name.clone(),
-                                new_name: name.clone(),
-                            },
-                        ),
-                    );
-
-                    // set the env variable
-                    set_session_name(name.clone());
-                    let connected_client_ids: Vec<ClientId> =
-                        screen.active_tab_ids.keys().copied().collect();
-                    for client_id in connected_client_ids {
-                        if let Some(os_input) = &mut screen.bus.os_input {
-                            let _ = os_input.send_to_client(
-                                client_id,
-                                ServerToClientMsg::RenamedSession { name: name.clone() },
-                            );
-                        }
-                    }
                 }
+            },
+            ScreenInstruction::UpdateSessionNameDraft(input, client_id, _completion_tx) => {
+                screen.update_session_name_draft(input, client_id)?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::UndoRenameSession(client_id, _completion_tx) => {
+                screen.undo_session_rename(client_id)?;
+                screen.render(None)?;
             },
             ScreenInstruction::Reconfigure {
                 client_id,
@@ -14319,6 +14723,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                     None => {
+                        screen.release_live_view_if_unreachable(client_id);
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
@@ -14887,6 +15292,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleSessionCard(client_id, _completion_tx) => {
                 screen.toggle_session_card(client_id);
             },
+            ScreenInstruction::WaitForPaneExit(pane_id, waiter) => {
+                screen.wait_for_pane_exit(pane_id, waiter);
+            },
             ScreenInstruction::SetPopupFocused { plugin_id, focused } => {
                 screen.set_popup_focused(plugin_id, focused);
             },
@@ -14901,6 +15309,30 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetSwapLayoutNotification(enabled) => {
                 screen.swap_layout_notification = enabled;
+            },
+            ScreenInstruction::ToggleBars(bars, client_id, _completion_tx) => {
+                screen.toggle_bars(&bars, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::HideBars(bars, client_id, _completion_tx) => {
+                screen.hide_bars(&bars, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ShowBars(_client_id, _completion_tx) => {
+                screen.show_bars();
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::HideBarByPaneId(pane_id, client_id, _completion_tx) => {
+                screen.hide_bar_by_pane_id(pane_id, client_id);
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetHiddenBarsNotification(enabled) => {
+                screen.hidden_bars_notification = enabled;
+            },
+            ScreenInstruction::SetModeHintsWhenBarsHidden(enabled) => {
+                screen.mode_hints_when_bars_hidden = enabled;
+                screen.update_mode_hints_for_all_clients();
+                screen.render(None)?;
             },
             ScreenInstruction::SetGraphemeClusters(enabled) => {
                 screen.update_grapheme_clusters(enabled);
@@ -15011,7 +15443,7 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 run_plugin_or_alias,
                 placement,
-                kind,
+                behavior,
                 width,
                 height,
                 anchor_pane,
@@ -15022,7 +15454,7 @@ pub(crate) fn screen_thread_main(
                     tab_id,
                     run_plugin_or_alias,
                     placement,
-                    kind,
+                    behavior,
                     width,
                     height,
                     anchor_pane,
@@ -15038,6 +15470,8 @@ pub(crate) fn screen_thread_main(
                 caller_pane_id,
                 placement,
                 focused,
+                capture_all_keys,
+                outside_click,
             } => {
                 screen.open_pipe_popup(
                     pipe_id,
@@ -15045,6 +15479,8 @@ pub(crate) fn screen_thread_main(
                     caller_pane_id,
                     placement,
                     focused,
+                    capture_all_keys,
+                    outside_click,
                 );
             },
             ScreenInstruction::OpenPromptPopup {
@@ -15055,6 +15491,7 @@ pub(crate) fn screen_thread_main(
                 placement,
                 focused,
                 capture_all_keys,
+                outside_click,
             } => {
                 screen.open_prompt_popup(
                     caller,
@@ -15064,6 +15501,7 @@ pub(crate) fn screen_thread_main(
                     placement,
                     focused,
                     capture_all_keys,
+                    outside_click,
                 );
             },
             ScreenInstruction::CloseTopPopup(client_id) => {
@@ -15219,6 +15657,87 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            ScreenInstruction::MirrorAttach {
+                subscriber_id,
+                attach,
+                outbox,
+            } => {
+                screen.mirror_attach(subscriber_id, attach, outbox);
+            },
+            ScreenInstruction::MirrorInput {
+                subscriber_id,
+                input,
+            } => {
+                screen.mirror_input(subscriber_id, input);
+            },
+            ScreenInstruction::MirrorResize {
+                subscriber_id,
+                size,
+                focused,
+                resize_allowed,
+            } => {
+                screen.mirror_resize(subscriber_id, size, focused, resize_allowed);
+            },
+            ScreenInstruction::MirrorFrameAck { subscriber_id, seq } => {
+                screen.mirror_frame_ack(subscriber_id, seq);
+            },
+            ScreenInstruction::MirrorDetach { subscriber_id } => {
+                screen.mirror_detach(subscriber_id);
+            },
+            ScreenInstruction::MirrorPark { subscriber_id } => {
+                screen.mirror_park(subscriber_id);
+            },
+            ScreenInstruction::MirrorUnpark {
+                subscriber_id,
+                resize_allowed,
+            } => {
+                screen.mirror_unpark(subscriber_id, resize_allowed);
+            },
+            ScreenInstruction::ToggleMirrorResize(client_id, completion) => {
+                screen.toggle_live_view_resize(client_id, completion);
+            },
+            ScreenInstruction::SetMirrorResizesSourcePane(resizes_source_pane) => {
+                screen.set_mirror_resizes_source_pane(resizes_source_pane);
+            },
+            ScreenInstruction::MirrorTick => {
+                screen.mirror_tick();
+            },
+            ScreenInstruction::MirrorTransportEvent {
+                view_id,
+                generation,
+                event,
+            } => {
+                screen.handle_live_view_transport_event(view_id, generation, event);
+            },
+            ScreenInstruction::SetLiveView {
+                plugin_pane_id,
+                client_id,
+                view,
+            } => {
+                screen.set_live_view(plugin_pane_id, client_id, view);
+            },
+            ScreenInstruction::SetLiveViewInput {
+                plugin_pane_id,
+                client_id,
+                capture,
+            } => {
+                screen.set_live_view_input(plugin_pane_id, client_id, capture);
+            },
+            ScreenInstruction::ClearLiveViewsOfPlugin(plugin_pane_id) => {
+                screen.clear_live_views_of_plugin(plugin_pane_id);
+            },
+            ScreenInstruction::ReleaseLiveViewInputWithKey(client_id) => {
+                screen.release_live_view_input(client_id, zellij_utils::data::LiveViewRelease::Key);
+            },
+            ScreenInstruction::ReportLiveViewCaptureChange => {
+                screen.after_live_view_capture_change();
+            },
+            ScreenInstruction::SetLiveViewReleaseKey(release_key) => {
+                screen.set_live_view_release_key(release_key);
+            },
+            ScreenInstruction::LiveViewReleaseKeysChanged => {
+                screen.report_live_views();
             },
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                 plugin_id,

@@ -36,6 +36,7 @@ fn note_switch() {
 }
 
 fn leave() {
+    zellij_tile::prelude::set_live_view(None);
     let switched = SWITCHED.with(|switched| switched.replace(false));
     if !switched {
         zellij_tile::prelude::detach();

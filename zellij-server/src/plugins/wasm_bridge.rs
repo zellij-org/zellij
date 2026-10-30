@@ -651,6 +651,9 @@ impl WasmBridge {
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(pid));
         if self.shared_slot_owner.contains_key(&pid) {
             self.unload_shared_slot(pid);
             return Ok(());
@@ -756,6 +759,9 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
         let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
         self.apply_prompt_actions(prompt_actions);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
@@ -1758,26 +1764,55 @@ impl WasmBridge {
         )]));
     }
 
-    pub fn send_global_attention_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+    pub fn send_global_attention_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let Some(global) = self.last_global_attention.clone() else {
-            return;
+            return Ok(());
         };
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            Some(client_id),
+        self.send_initial_state_to_plugin(
+            plugin_id,
+            client_id,
             Event::GlobalAttentionUpdate(global),
-        )]));
+            shutdown_sender,
+        )
     }
 
-    pub fn send_session_history_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+    pub fn send_session_history_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let Some(info) = self.session_history_infos.get(&client_id).cloned() else {
-            return;
+            return Ok(());
         };
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            Some(client_id),
+        self.send_initial_state_to_plugin(
+            plugin_id,
+            client_id,
             Event::SessionHistoryUpdate(info),
-        )]));
+            shutdown_sender,
+        )
+    }
+
+    fn send_initial_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        event: Event,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        if let Some(cached_events) = self.cached_events_for_pending_plugins.get_mut(&plugin_id) {
+            cached_events.insert(0, EventOrPipeMessage::Event(event, Some(client_id)));
+            return Ok(());
+        }
+        self.update_plugins(
+            vec![(Some(plugin_id), Some(client_id), event)],
+            shutdown_sender,
+        )
     }
 
     fn send_keybinds_payload_to_plugin(
@@ -2779,6 +2814,11 @@ impl WasmBridge {
                     .unwrap()
                     .shared_running_plugin(instance_id)
                     .is_some();
+                let instance_is_in_blocking_call = self
+                    .plugin_map
+                    .lock()
+                    .unwrap()
+                    .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
                 self.plugin_executor.execute_for_plugin(
                     instance_id,
@@ -2793,7 +2833,7 @@ impl WasmBridge {
                         );
                     },
                 );
-                if instance_is_running {
+                if instance_is_running && !instance_is_in_blocking_call {
                     let _ = slot_added_receiver
                         .recv_timeout(std::time::Duration::from_millis(SLOT_ADDED_WAIT_MS));
                 }
@@ -2943,6 +2983,11 @@ impl WasmBridge {
         };
         let slot_ids: Vec<PluginId> = info.slots.iter().copied().collect();
         let mut loading_context = info.loading_context.clone();
+        for slot_id in &slot_ids {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(*slot_id));
+        }
         if let Some(first_client_id) = self.get_first_client_id() {
             loading_context.client_id = first_client_id;
         }
@@ -3411,6 +3456,7 @@ pub fn check_event_permission(
         | Event::CommandFinished(..)
         | Event::GlobalAttentionUpdate(..)
         | Event::SessionHistoryUpdate(..)
+        | Event::DesktopIntegration(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3418,6 +3464,7 @@ pub fn check_event_permission(
         },
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
+        Event::LiveViewStateChanged { .. } => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
@@ -3479,6 +3526,13 @@ pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
                     for pane_info in pane_infos.iter_mut() {
                         redact_pane_info(pane_info);
                     }
+                }
+            }
+        },
+        Event::SavedSessionPreview(preview) => {
+            for tab in preview.tabs.iter_mut() {
+                for pane in tab.panes.iter_mut() {
+                    pane.contents = None;
                 }
             }
         },

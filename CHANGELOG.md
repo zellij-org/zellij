@@ -38,7 +38,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: plugin config editor keeps comments and value spaces, scrolls long option lists (https://github.com/zellij-org/zellij/pull/5729)
 * fix: replay cached startup events to background plugins (https://github.com/zellij-org/zellij/pull/5706)
 * fix: busy-loop and log spam on dangling symlinks in layout/config folders (https://github.com/zellij-org/zellij/pull/5731)
-* feat: inbox, cross-session activity notifications, OSC7501 support, desktop integrations (https://github.com/zellij-org/zellij/pull/5734)
+* feat: inbox, cross-session activity notifications, OSC7501 support, desktop integrations (https://github.com/zellij-org/zellij/pull/5734 and https://github.com/zellij-org/zellij/pull/5758)
+* fix: restore opacity and blur in the macOS window and reduce WindowServer load when see-through (https://github.com/zellij-org/zellij/pull/5748)
+* fix: allow renaming sessions from session mode (https://github.com/zellij-org/zellij/pull/5754)
+* feat: ctrl-mouse-drag to create a floating pane (https://github.com/zellij-org/zellij/pull/5766)
+* feat: allow programs to set their own resurrection command with zellij action set-resurrection-command (https://github.com/zellij-org/zellij/pull/5769)
+* feat: allow hiding tab-bar + status-bar at runtime (https://github.com/zellij-org/zellij/pull/5781)
 
 
 ## [0.45.1] - 2026-08-28

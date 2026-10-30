@@ -9,8 +9,8 @@ themes {
             emphasis_3 190 148 228
         }
         text_selected {
-            base 5 21 37
-            background 103 214 121
+            base 133 154 175
+            background 35 49 63
             emphasis_0 250 179 135
             emphasis_1 94 196 169
             emphasis_2 103 214 121
@@ -19,22 +19,22 @@ themes {
         ribbon_selected {
             base 5 21 37
             background 103 214 121
-            emphasis_0 221 94 86
+            emphasis_0 152 26 28
             emphasis_1 250 179 135
             emphasis_2 190 148 228
-            emphasis_3 138 168 248
+            emphasis_3 51 74 146
         }
         ribbon_unselected {
             base 5 21 37
             background 215 221 233
-            emphasis_0 221 94 86
+            emphasis_0 176 52 49
             emphasis_1 254 255 255
             emphasis_2 138 168 248
-            emphasis_3 190 148 228
+            emphasis_3 120 79 153
         }
         table_title {
             base 103 214 121
-            background 0
+            background 5 21 37
             emphasis_0 250 179 135
             emphasis_1 94 196 169
             emphasis_2 103 214 121
@@ -42,7 +42,7 @@ themes {
         }
         table_cell_selected {
             base 254 255 255
-            background 5 21 37
+            background 35 49 63
             emphasis_0 250 179 135
             emphasis_1 94 196 169
             emphasis_2 103 214 121
@@ -58,7 +58,7 @@ themes {
         }
         list_selected {
             base 254 255 255
-            background 5 21 37
+            background 35 49 63
             emphasis_0 250 179 135
             emphasis_1 94 196 169
             emphasis_2 103 214 121
@@ -78,7 +78,7 @@ themes {
             emphasis_0 250 179 135
             emphasis_1 94 196 169
             emphasis_2 190 148 228
-            emphasis_3 0
+            emphasis_3 190 148 228
         }
         frame_highlight {
             base 250 179 135
@@ -100,21 +100,21 @@ themes {
             base 221 94 86
             background 0
             emphasis_0 182 217 118
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 250 179 135
+            emphasis_2 190 148 228
+            emphasis_3 94 196 169
         }
         multiplayer_user_colors {
             player_1 190 148 228
             player_2 138 168 248
-            player_3 0
+            player_3 250 179 135
             player_4 182 217 118
             player_5 94 196 169
-            player_6 0
+            player_6 255 235 149
             player_7 221 94 86
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 34 218 110
+            player_9 246 150 180
+            player_10 80 199 241
         }
         // terminal_colors: https://github.com/sdras/night-owl-vscode-theme/blob/main/themes/Night%20Owl-color-theme.json (terminal.ansi*)
         terminal_colors {

@@ -14,7 +14,7 @@ pub fn get_cargo_metadata(sh: &Shell) -> anyhow::Result<Value> {
 }
 
 pub const WEB_FEATURE: &str = "web_server_capability";
-pub const WINDOW_FEATURE: &str = "window";
+pub const TERMINAL_FEATURE: &str = "terminal";
 
 /// Get the appropriate features string for a crate when --no-web is enabled
 /// Returns Some(features_string) if the crate has web_server_capability and should use --no-default-features
@@ -126,7 +126,7 @@ mod tests {
             "plugins_from_target",
             "vendored_curl",
             WEB_FEATURE,
-            WINDOW_FEATURE,
+            TERMINAL_FEATURE,
         ])
     }
 
@@ -136,7 +136,7 @@ mod tests {
             applicable_features(
                 &zellij_defaults(),
                 &owned(&["plugins_from_target"]),
-                &[WINDOW_FEATURE]
+                &[TERMINAL_FEATURE]
             ),
             None
         );
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn the_excluded_feature_is_dropped_and_the_rest_of_the_defaults_kept() {
         assert_eq!(
-            applicable_features(&zellij_defaults(), &zellij_defaults(), &[WINDOW_FEATURE]),
+            applicable_features(&zellij_defaults(), &zellij_defaults(), &[TERMINAL_FEATURE]),
             Some(format!("plugins_from_target vendored_curl {}", WEB_FEATURE))
         );
     }
@@ -156,7 +156,7 @@ mod tests {
             applicable_features(
                 &zellij_defaults(),
                 &zellij_defaults(),
-                &[WEB_FEATURE, WINDOW_FEATURE]
+                &[WEB_FEATURE, TERMINAL_FEATURE]
             ),
             Some("plugins_from_target vendored_curl".to_owned())
         );
@@ -180,12 +180,12 @@ mod tests {
                 {
                     "name": "zellij",
                     "features": {
-                        "default": ["plugins_from_target", "vendored_curl", WEB_FEATURE, WINDOW_FEATURE],
+                        "default": ["plugins_from_target", "vendored_curl", WEB_FEATURE, TERMINAL_FEATURE],
                         "plugins_from_target": [],
                         "vendored_curl": [],
                         "unstable": [],
                         WEB_FEATURE: [],
-                        WINDOW_FEATURE: [],
+                        TERMINAL_FEATURE: [],
                     }
                 },
                 {
@@ -193,7 +193,7 @@ mod tests {
                     "features": { "plugins_from_target": [], "vendored_curl": [], WEB_FEATURE: [] }
                 },
                 {
-                    "name": "zellij-window",
+                    "name": "zellij-terminal",
                     "features": {}
                 }
             ]
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn the_root_crate_is_addressed_by_its_directory() {
         assert_eq!(
-            features_without(&metadata(), ".", &[WINDOW_FEATURE]).unwrap(),
+            features_without(&metadata(), ".", &[TERMINAL_FEATURE]).unwrap(),
             Some(format!("plugins_from_target vendored_curl {}", WEB_FEATURE))
         );
     }
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn a_featureless_crate_is_reported_as_unaffected() {
         assert_eq!(
-            features_without(&metadata(), "zellij-window", &[WINDOW_FEATURE]).unwrap(),
+            features_without(&metadata(), "zellij-terminal", &[TERMINAL_FEATURE]).unwrap(),
             None
         );
     }

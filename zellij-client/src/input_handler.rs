@@ -247,6 +247,14 @@ impl InputHandler {
                                     None,
                                 );
                             }
+                            if self.mode == InputMode::RenameSession {
+                                self.dispatch_action(
+                                    Action::SessionNameInput {
+                                        input: pasted_text.as_bytes().to_vec(),
+                                    },
+                                    None,
+                                );
+                            }
                         },
                         _ => {},
                     }

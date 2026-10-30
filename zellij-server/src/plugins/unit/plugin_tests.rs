@@ -6736,6 +6736,8 @@ pub fn unblock_input_plugin_command() {
         caller_pane_id: None,
         popup: None,
         popup_focused: true,
+        popup_capture_all_keys: false,
+        popup_outside_click: zellij_utils::data::OutsideClick::Block,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6827,6 +6829,8 @@ pub fn block_input_plugin_command() {
         caller_pane_id: None,
         popup: None,
         popup_focused: true,
+        popup_capture_all_keys: false,
+        popup_outside_click: zellij_utils::data::OutsideClick::Block,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6924,6 +6928,8 @@ pub fn pipe_output_plugin_command() {
         caller_pane_id: None,
         popup: None,
         popup_focused: true,
+        popup_capture_all_keys: false,
+        popup_outside_click: zellij_utils::data::OutsideClick::Block,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -7014,6 +7020,8 @@ pub fn pipe_message_to_plugin_plugin_command() {
         caller_pane_id: None,
         popup: None,
         popup_focused: true,
+        popup_capture_all_keys: false,
+        popup_outside_click: zellij_utils::data::OutsideClick::Block,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -13356,6 +13364,8 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
         caller_pane_id: None,
         popup: None,
         popup_focused: true,
+        popup_capture_all_keys: false,
+        popup_outside_click: zellij_utils::data::OutsideClick::Block,
     });
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let unblocked = received_server_instruction.lock().unwrap().iter().any(
@@ -13935,7 +13945,7 @@ fn plugin_env_with_permissions(granted: &[PermissionType]) -> super::plugin_map:
 }
 
 fn session_pane_commands() -> Vec<(zellij_utils::data::PluginCommand, PermissionType)> {
-    use zellij_utils::data::{PaneId, PluginCommand, SessionWindowRequest};
+    use zellij_utils::data::{PaneId, PluginCommand, SessionTerminalRequest};
     let session_name = "other-session".to_owned();
     let pane_id = PaneId::Terminal(1);
     vec![
@@ -13953,7 +13963,7 @@ fn session_pane_commands() -> Vec<(zellij_utils::data::PluginCommand, Permission
             PermissionType::ChangeApplicationState,
         ),
         (
-            PluginCommand::OpenSessionWindow(SessionWindowRequest::existing(
+            PluginCommand::OpenSessionTerminal(SessionTerminalRequest::existing(
                 &session_name,
                 None,
                 true,
@@ -14117,6 +14127,27 @@ const WITH_PANE_READ: [PermissionType; 2] = [
     PermissionType::ReadApplicationState,
     PermissionType::ReadPaneContents,
 ];
+
+#[test]
+pub fn saved_session_preview_hides_pane_contents_without_pane_read_permission() {
+    let preview = Event::SavedSessionPreview(zellij_utils::data::SavedSessionPreview {
+        session_name: "saved".to_owned(),
+        tabs: vec![zellij_utils::data::SavedTabPreview {
+            name: "tab".to_owned(),
+            focused: true,
+            panes: vec![zellij_utils::data::SavedPanePreview {
+                title: Some("visible-title".to_owned()),
+                contents: Some("hunter2".to_owned()),
+                ..Default::default()
+            }],
+        }],
+        ..Default::default()
+    });
+    let hidden = redacted(&WITHOUT_PANE_READ, preview.clone());
+    assert!(!hidden.contains("hunter2"));
+    assert!(hidden.contains("visible-title"));
+    assert!(redacted(&WITH_PANE_READ, preview).contains("hunter2"));
+}
 
 #[test]
 pub fn command_started_and_finished_hide_the_command_without_pane_read_permission() {
