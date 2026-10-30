@@ -243,6 +243,55 @@ fn a_taller_source_is_cropped_to_keep_the_cursor_row_in_view() {
     assert_eq!((chunks[0].y, chunk_text(&chunks[0])), (4, "ten".to_owned()));
 }
 
+fn screen_of(lines: &[&str], rows: usize, cols: u16) -> MirrorScreen {
+    let mut all: Vec<Vec<MirrorCell>> = lines.iter().map(|line| text_row(line)).collect();
+    all.resize(rows, vec![]);
+    screen_with(&all, cols)
+}
+
+#[test]
+fn a_visible_cursor_keeps_its_row_in_view() {
+    let mut screen = screen_of(&["a", "b", "c", "d", "e", "f"], 6, 3);
+    screen.cursor.visible = true;
+    screen.cursor.y = 1;
+    assert_eq!(anchor_row(&screen), 1);
+    assert_eq!(screen_offset(&screen, 3), 0);
+    screen.cursor.y = 4;
+    assert_eq!(screen_offset(&screen, 3), 2);
+}
+
+#[test]
+fn a_hidden_cursor_keeps_the_last_row_with_content_in_view() {
+    let mut screen = screen_of(&["top", "", "", "", "", "end"], 6, 3);
+    screen.cursor.visible = false;
+    screen.cursor.y = 0;
+    assert_eq!(anchor_row(&screen), 5);
+    assert_eq!(screen_offset(&screen, 3), 3);
+}
+
+#[test]
+fn a_hidden_cursor_on_a_nearly_empty_screen_shows_the_top() {
+    let mut screen = screen_of(&["one", "two", "six"], 10, 3);
+    screen.cursor.visible = false;
+    assert_eq!(anchor_row(&screen), 2);
+    assert_eq!(screen_offset(&screen, 4), 0);
+    let empty = screen_of(&[], 10, 3);
+    assert_eq!(anchor_row(&empty), 0);
+    assert_eq!(screen_offset(&empty, 4), 0);
+}
+
+#[test]
+fn a_coloured_blank_row_counts_as_content() {
+    let mut screen = screen_of(&["one"], 6, 2);
+    let painted = MirrorCell::plain(WireCell {
+        bg: WireColor::Indexed(4).pack(),
+        ..WireCell::BLANK
+    });
+    screen.cells[5 * 2] = painted;
+    screen.cursor.visible = false;
+    assert_eq!(anchor_row(&screen), 5);
+}
+
 #[test]
 fn a_row_redraw_draws_only_the_changed_rows_inside_the_rectangle() {
     let screen = screen_with(&[text_row("one"), text_row("two"), text_row("six")], 3);

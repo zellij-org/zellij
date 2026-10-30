@@ -191,6 +191,12 @@ message GlobalSessionAttention {
 message GlobalAttentionUpdatePayload {
   string current_session = 1;
   repeated GlobalSessionAttention sessions = 2;
+  repeated StatusColor badge_colors = 3;
+}
+
+message StatusColor {
+  string status = 1;
+  uint32 rgb = 2;
 }
 
 message SessionHistoryUpdatePayload {

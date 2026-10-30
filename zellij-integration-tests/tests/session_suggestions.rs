@@ -592,14 +592,12 @@ fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions
     assert_no_card_after_the_session_settles(&zellij);
     open_the_sessions_tab_with_f9(&zellij);
     zellij.wait_until(
-        "the sessions tab folds the ended session",
-        |grid_snapshot| grid_snapshot.contains("▸ Exited (1)"),
-    );
-    zellij.send_stdin(b"\x1b[F");
-    zellij.send_stdin(&keys::ENTER);
-    zellij.wait_until(
-        "the sessions tab lists the ended session",
-        |grid_snapshot| grid_snapshot.contains(&resurrectable) && grid_snapshot.contains("ended"),
+        "the sessions tab lists the ended session as recent",
+        |grid_snapshot| {
+            grid_snapshot.contains("Recent")
+                && grid_snapshot.contains(&resurrectable)
+                && grid_snapshot.contains("ended")
+        },
     );
     zellij.quit();
 }
@@ -1049,15 +1047,10 @@ fn enter_on_an_exited_session_resumes_it() {
         .start();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     open_the_sessions_tab_with_f9(&zellij);
-    zellij.wait_until("the exited group is listed", |grid_snapshot| {
-        grid_snapshot.contains("▸ Exited (1)")
+    zellij.wait_until("the exited session is listed as recent", |grid_snapshot| {
+        grid_snapshot.contains("Recent") && grid_snapshot.contains(&resurrectable)
     });
     zellij.send_stdin(b"\x1b[F");
-    zellij.send_stdin(&keys::ENTER);
-    zellij.wait_until("the exited group opens", |grid_snapshot| {
-        grid_snapshot.contains(&resurrectable)
-    });
-    zellij.send_stdin(&keys::DOWN);
     wait_for_preview_of(&zellij, &resurrectable, "the exited session is selected");
     zellij.send_stdin(&keys::ENTER);
     let switch = zellij.follow_switch();

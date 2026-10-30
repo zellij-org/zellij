@@ -44,8 +44,7 @@ pub fn missing_descriptions(
 #[cfg(target_os = "linux")]
 pub fn check_soon(attention: &AttentionConfig) {
     let wants_tray = attention.tray_icon();
-    let wants_notifications = attention.desktop_notifications()
-        != zellij_utils::input::attention::DesktopNotifications::None;
+    let wants_notifications = !attention.desktop_notifications().is_empty();
     if !wants_tray && !wants_notifications {
         return;
     }

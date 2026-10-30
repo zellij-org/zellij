@@ -2621,6 +2621,9 @@ impl Tab {
             } else {
                 None
             };
+            if is_last_connected_client {
+                self.forget_held_mouse_gestures();
+            }
         }
         let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
@@ -2634,6 +2637,15 @@ impl Tab {
             self.set_client_dimmed(client_id, false);
             self.set_force_render();
         }
+    }
+    fn forget_held_mouse_gestures(&mut self) {
+        if let Some(pane_id) = self.selecting_with_mouse_in_pane.take() {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.reset_selection(None);
+            }
+        }
+        self.pane_being_resized_with_mouse = None;
+        self.floating_panes.forget_pane_being_moved_with_mouse();
     }
     pub fn drain_connected_clients(
         &mut self,

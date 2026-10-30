@@ -329,6 +329,7 @@ pub struct Inbox {
     pub card_targets: Vec<(usize, Range<usize>, CardTarget)>,
     pub browser_targets: Vec<(usize, Range<usize>, BrowserTarget)>,
     pub card_hovered: Option<CardTarget>,
+    pub hovered: Option<ItemKey>,
     pub away_since_ms: Option<u64>,
     pub list_scroll: usize,
     pub selected_range: Range<usize>,
@@ -342,6 +343,7 @@ pub struct Inbox {
     pub current_session: Option<String>,
     pub live_layout: Option<LiveLayout>,
     pub live_view_drawn: bool,
+    tabs_row: Option<(usize, usize, usize)>,
     pub live_mode: bool,
     pub live_view_sent: Option<LiveView>,
     pub capture_target: Option<ItemKey>,
@@ -450,6 +452,9 @@ pub fn away_text(away_ms: u64) -> String {
 }
 
 pub fn style_status(text: Text, status: AttentionStatus, range: Range<usize>) -> Text {
+    if let Some(rgb) = crate::badge_colors::of(status) {
+        return text.rgb_color_range(rgb, range);
+    }
     match status {
         AttentionStatus::NeedsYou => text.color_range(0, range),
         AttentionStatus::Failed => text.error_color_range(range),
@@ -1306,6 +1311,7 @@ impl Inbox {
             text = text.color_range(3, hint_start..hint_start + "<TAB>".chars().count());
         }
         print_text_with_coordinates(text, x, y, Some(cols.max(1)), None);
+        self.tabs_row = Some((y, x + line.width(), x + cols));
         self.browser_targets
             .retain(|(_, _, t)| !matches!(t, BrowserTarget::Tab(_)));
         let inbox_width = inbox.width();
@@ -1349,7 +1355,7 @@ impl Inbox {
                     })
                     .map(|live| live.resize_allowed)
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
     }
 
     pub fn toggle_resize(&mut self) {
@@ -1374,7 +1380,7 @@ impl Inbox {
         if self.views_own_session() {
             Some(self.own_resize_allowed)
         } else {
-            self.resize_allowed
+            Some(self.resize_allowed.unwrap_or(false))
         }
     }
 
@@ -1630,10 +1636,10 @@ impl Inbox {
             return String::new();
         };
         let mut parts = vec![];
-        if !live.resize_allowed {
+        if !live.resize_allowed && !live.pinned {
             parts.push("resize off".to_owned());
         }
-        if live.resize_allowed || live.state != MirrorState::Live {
+        if live.resize_allowed || live.pinned || live.state != MirrorState::Live {
             return parts.join(" · ");
         }
         let view_size = self
@@ -1655,9 +1661,10 @@ impl Inbox {
                 .clone()
                 .unwrap_or_else(|| ("?".to_owned(), "?".to_owned()));
             return format!(
-                "typing into {} › {} · {} or click outside to return",
+                "typing into {} › {} · {}, {} or click outside to return",
                 session,
                 pane,
+                TYPE_KEY,
                 self.release_key_text()
             );
         }
@@ -1782,7 +1789,37 @@ impl Inbox {
         let y = layout.help_y;
         let width = LiveLayout::help_width(cols);
         let details = self.live_view_details_text();
-        let reserved = if details.is_empty() || details.width() + 2 > width / 2 {
+        let browsing = !capturing && self.live_notice.is_none();
+        let crowded = if !browsing {
+            self.live_view_hint_text().width() + details.width() + 2 > width
+        } else {
+            let detail_need = self
+                .selected_detail(width)
+                .map(|detail| detail.content().width())
+                .unwrap_or(0);
+            let help_need = self
+                .help_block(width, true)
+                .last()
+                .map(|line| line.text.width())
+                .unwrap_or(0);
+            detail_need > 0 && help_need + detail_need + details.width() + 4 > width
+        };
+        let tabs_row = self.tabs_row.take();
+        if crowded && !details.is_empty() {
+            if let Some((tabs_y, tabs_end, tabs_right)) = tabs_row {
+                let right = tabs_right.saturating_sub(2);
+                if tabs_end + 2 + details.width() <= right {
+                    print_text_with_coordinates(
+                        Text::from(details.as_str()).dim_all(),
+                        right - details.width(),
+                        tabs_y,
+                        Some(details.width()),
+                        None,
+                    );
+                }
+            }
+        }
+        let reserved = if details.is_empty() || details.width() + 2 > width / 2 || crowded {
             0
         } else {
             details.width() + 2
@@ -2293,6 +2330,16 @@ impl Inbox {
                 if is_selected {
                     text = text.selected();
                 }
+                if self.hovered.as_ref() == Some(&ItemKey::of(&item)) {
+                    text = text.italic_range(hover_range(
+                        &item,
+                        session_width,
+                        width,
+                        now,
+                        show_age,
+                        simplified_ui,
+                    ));
+                }
                 lines.push(BlockLine::Item {
                     text,
                     target: Some(BrowserTarget::Item(ItemKey::of(&item))),
@@ -2685,15 +2732,21 @@ fn section_heading(section: Section, count: usize, width: usize) -> Text {
         .dim_range(title_end..total)
 }
 
-fn pane_row(
+struct PaneRowParts {
+    session: String,
+    head: String,
+    pane: String,
+    tail: String,
+}
+
+fn pane_row_parts(
     item: &GlobalAttentionItem,
     session_width: usize,
     width: usize,
     now: u64,
     show_age: bool,
     simplified_ui: bool,
-    held: bool,
-) -> Text {
+) -> PaneRowParts {
     let symbol = item_symbol(item, simplified_ui);
     let session = truncate_plain(&session_name(item), session_width);
     let session_cell = format!(
@@ -2706,7 +2759,6 @@ fn pane_row(
     } else {
         format!("{} {}  ", symbol, session_cell)
     };
-    let head_len = head.chars().count();
     let mut tail = String::new();
     if show_age {
         let detail = row_text(item);
@@ -2728,6 +2780,46 @@ fn pane_row(
         room.min(pane.width().max(room / 2))
     };
     let pane = truncate_middle(&pane, pane_room);
+    PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    }
+}
+
+fn hover_range(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+) -> std::ops::Range<usize> {
+    let parts = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    if session_width > 0 {
+        return 2..2 + parts.session.chars().count();
+    }
+    let start = parts.head.chars().count();
+    start..start + parts.pane.chars().count()
+}
+
+fn pane_row(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+    held: bool,
+) -> Text {
+    let PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    } = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    let head_len = head.chars().count();
     let pane_len = pane.chars().count();
     let line = truncate_plain(&format!("{}{}{}", head, pane, tail), width);
     let padded = format!("{}{}", line, " ".repeat(width.saturating_sub(line.width())));
@@ -3504,7 +3596,7 @@ mod tests {
         );
         assert_eq!(
             inbox.live_view_hint_text(),
-            "typing into here › pane2 · <F9> or click outside to return"
+            "typing into here › pane2 · <Alt ENTER>, <F9> or click outside to return"
         );
         let mut released = live_status(Some(key("here", 2)), false);
         released.input_released_by = Some(LiveViewRelease::Key);
@@ -3547,7 +3639,7 @@ mod tests {
                 .live_view_sent
                 .as_ref()
                 .map(|view| view.resize_allowed),
-            Some(None)
+            Some(Some(false))
         );
         let mut reported = live_status(inbox.live_view_target(), false);
         reported.resize_allowed = false;
@@ -3588,8 +3680,16 @@ mod tests {
             cols: view_cols,
             rows: view_rows,
         });
-        inbox.apply_live_view_status(reported);
+        inbox.apply_live_view_status(reported.clone());
         assert_eq!(inbox.live_view_details_text(), "resize off");
+        reported.pinned = true;
+        reported.source_size = Some(Size { cols: 80, rows: 24 });
+        inbox.apply_live_view_status(reported);
+        assert_eq!(
+            inbox.live_view_details_text(),
+            "",
+            "a pane resized by typing into it is neither off nor cropped"
+        );
         let mut resizing = live_status(inbox.live_view_target(), true);
         resizing.source_size = Some(Size { cols: 80, rows: 24 });
         inbox.toggle_resize();
@@ -3870,6 +3970,11 @@ mod tests {
         );
         assert_eq!(level(&row, 0), vec![0]);
         assert!(level(&row, 4).is_empty());
+        assert_eq!(
+            hover_range(&long, SESSION_COLUMN_MAX, 40, 200, false, false),
+            2..2 + SESSION_COLUMN_MAX,
+            "a hover marks the session name"
+        );
         let listed = pane_row(
             &long,
             SESSION_COLUMN_MAX,
@@ -4373,7 +4478,11 @@ mod tests {
         assert_eq!(sent(&inbox), Some(true));
         inbox.select_item(key("api", 1));
         render(&mut inbox, 88, 15, false);
-        assert_eq!(sent(&inbox), None, "other sessions keep their own setting");
+        assert_eq!(
+            sent(&inbox),
+            Some(false),
+            "other sessions are not resized while browsing either"
+        );
     }
 
     #[test]

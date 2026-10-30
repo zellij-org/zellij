@@ -5379,6 +5379,9 @@ pub enum SettingSection {
     Keybinds,
     Blocks,
     Attention,
+    AttentionPopups,
+    AttentionBadge,
+    AttentionBadgeColors,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5618,8 +5621,22 @@ setting_keys! {
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
     AttentionStartupCard => (Attention, "startup_card", false, Text),
     AttentionTrayIcon => (Attention, "tray_icon", false, Flag),
-    AttentionDesktopNotifications => (Attention, "desktop_notifications", false, Text),
     AttentionNotificationDetails => (Attention, "notification_details", false, Flag),
+    AttentionPopupNeedsYou => (AttentionPopups, "needs_you", false, Flag),
+    AttentionPopupFailed => (AttentionPopups, "failed", false, Flag),
+    AttentionPopupDone => (AttentionPopups, "done", false, Flag),
+    AttentionBadgeNeedsYou => (AttentionBadge, "needs_you", false, Flag),
+    AttentionBadgeFailed => (AttentionBadge, "failed", false, Flag),
+    AttentionBadgeDone => (AttentionBadge, "done", false, Flag),
+    AttentionBadgeWorking => (AttentionBadge, "working", false, Flag),
+    AttentionBadgeQuiet => (AttentionBadge, "quiet", false, Flag),
+    AttentionBadgeNewOutput => (AttentionBadge, "new_output", false, Flag),
+    AttentionBadgeColorNeedsYou => (AttentionBadgeColors, "needs_you", false, Colour),
+    AttentionBadgeColorFailed => (AttentionBadgeColors, "failed", false, Colour),
+    AttentionBadgeColorDone => (AttentionBadgeColors, "done", false, Colour),
+    AttentionBadgeColorWorking => (AttentionBadgeColors, "working", false, Colour),
+    AttentionBadgeColorQuiet => (AttentionBadgeColors, "quiet", false, Colour),
+    AttentionBadgeColorNewOutput => (AttentionBadgeColors, "new_output", false, Colour),
 }
 
 impl SettingKey {
@@ -5637,6 +5654,13 @@ impl SettingKey {
             SettingSection::Terminal => format!("terminal.{}", self.kdl_name()),
             SettingSection::TerminalTheme => format!("terminal.theme.{}", self.kdl_name()),
             SettingSection::Attention => format!("attention.{}", self.kdl_name()),
+            SettingSection::AttentionPopups => {
+                format!("attention.desktop_notifications.{}", self.kdl_name())
+            },
+            SettingSection::AttentionBadge => format!("attention.tray_badge.{}", self.kdl_name()),
+            SettingSection::AttentionBadgeColors => {
+                format!("attention.tray_badge_colors.{}", self.kdl_name())
+            },
         }
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
@@ -5650,6 +5674,9 @@ impl SettingKey {
             SettingSection::Terminal => &["terminal"],
             SettingSection::TerminalTheme => &["terminal", "theme"],
             SettingSection::Attention => &["attention"],
+            SettingSection::AttentionPopups => &["attention", "desktop_notifications"],
+            SettingSection::AttentionBadge => &["attention", "tray_badge"],
+            SettingSection::AttentionBadgeColors => &["attention", "tray_badge_colors"],
         }
     }
     pub fn is_terminal(&self) -> bool {

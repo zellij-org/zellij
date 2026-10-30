@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use zellij_utils::input::attention::DesktopNotifications;
+use zellij_utils::input::attention::{StatusSet, POPUP_STATUSES};
 
 use crate::app::engine::{Command, Engine, Policy};
 use crate::app::watcher::{Snapshot, Watcher};
@@ -36,7 +36,7 @@ impl NotificationProbe {
         let events: Arc<Mutex<Vec<ProbeEvent>>> = Arc::default();
         let latest: Arc<Mutex<Snapshot>> = Arc::default();
         let policy = Policy {
-            statuses: DesktopNotifications::default(),
+            statuses: StatusSet::of(&POPUP_STATUSES),
             details,
             ..Policy::default()
         };

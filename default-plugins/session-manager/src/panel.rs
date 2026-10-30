@@ -208,6 +208,9 @@ fn status_marker(status: AttentionStatus) -> &'static str {
 
 fn style_marker(text: Text, status: AttentionStatus) -> Text {
     let range = 0..1;
+    if let Some(rgb) = crate::badge_colors::of(status) {
+        return text.rgb_color_range(rgb, range);
+    }
     match status {
         AttentionStatus::NeedsYou => text.color_range(0, range),
         AttentionStatus::Failed => text.error_color_range(range),
@@ -745,7 +748,12 @@ pub fn render_session_tree(
             )
         })
         .collect();
-    let rows = panel.tree.flatten_grouped(&sessions, expand_exited);
+    let recent = if expand_exited {
+        0
+    } else {
+        crate::session_tree::RECENT_EXITED
+    };
+    let rows = panel.tree.flatten_grouped(&sessions, expand_exited, recent);
     if rows.is_empty() || max_rows < 2 {
         panel.tree.rows = rows;
         return;
@@ -852,6 +860,7 @@ pub fn render_session_tree(
     );
     let mut items = vec![];
     for (offset_index, row) in rows[offset..offset + visible].iter().enumerate() {
+        let mut name_range = 0..0;
         let mut text = match row.node {
             TreeNode::Exited => {
                 let line = format!(
@@ -859,8 +868,10 @@ pub fn render_session_tree(
                     if row.expanded { "▾" } else { "▸" },
                     row.covers.len()
                 );
+                name_range = 2..line.chars().count();
                 Text::from(line).dim_all()
             },
+            TreeNode::Recent => Text::from("Recent").dim_all(),
             TreeNode::Session => {
                 let Some(cached_row) = cached.get(&row.original_index) else {
                     continue;
@@ -891,6 +902,7 @@ pub fn render_session_tree(
                     line.push_str(&returns_to);
                 }
                 let name_len = cached_row.session_name.chars().count();
+                name_range = 2..2 + name_len;
                 let mut text = style_marker(
                     Text::from(line).color_range(1, 2..2 + name_len),
                     session_status(&row.session),
@@ -968,6 +980,7 @@ pub fn render_session_tree(
                     if active { " active" } else { "" }
                 );
                 let name_end = 2 + name.chars().count();
+                name_range = 2..name_end;
                 style_marker(
                     Text::from(line)
                         .color_range(2, 2..name_end)
@@ -1000,12 +1013,19 @@ pub fn render_session_tree(
                     if focused { " focused" } else { "" }
                 );
                 let title_end = 2 + title.chars().count();
+                name_range = 2..title_end;
                 style_marker(Text::from(line).dim_range(title_end..), status)
             },
         };
         let flat_index = offset + offset_index;
         if cursor == Some(flat_index) {
             text = text.selected();
+        }
+        if row.node != TreeNode::Recent
+            && !name_range.is_empty()
+            && panel.tree.hovered.as_ref() == Some(&(row.session.clone(), row.node))
+        {
+            text = text.italic_range(name_range);
         }
         items.push(NestedListItem::new(text).indent(row.depth));
         let row_y = y + 1 + offset_index;

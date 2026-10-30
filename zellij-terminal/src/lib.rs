@@ -529,22 +529,34 @@ fn switch(
     )
 }
 
-fn open(args: TerminalArgs, opts: CliArgs) -> Result<()> {
-    let windowed = !args.headless;
-    let config_options = match Setup::from_cli_args(&opts) {
+type Loaded = (SessionOptions, settings::Settings);
+
+fn load(args: &TerminalArgs, opts: &CliArgs) -> std::result::Result<Loaded, Result<()>> {
+    let config_options = match Setup::from_cli_args(opts) {
         Ok((_, _, config_options, _, _)) => config_options,
-        Err(e) => return refuse(Refusal::new(notice::described(&e)), &args, None),
+        Err(e) => return Err(refuse(Refusal::new(notice::described(&e)), args, None)),
     };
-    let settings = if windowed {
-        match settings::load(Config::config_file_path(&opts).as_deref()) {
-            Ok(settings) => settings,
-            Err(e) => return refuse(Refusal::new(format!("{:#}", e)), &args, None),
-        }
-    } else {
+    let settings = if args.headless {
         settings::Settings::default()
+    } else {
+        match settings::load(Config::config_file_path(opts).as_deref()) {
+            Ok(settings) => settings,
+            Err(e) => return Err(refuse(Refusal::new(format!("{:#}", e)), args, None)),
+        }
+    };
+    Ok((config_options, settings))
+}
+
+fn open(args: TerminalArgs, opts: CliArgs) -> Result<()> {
+    if panel_view(&args).is_some() {
+        return launch_app(args, opts, None);
+    }
+    let (config_options, settings) = match load(&args, &opts) {
+        Ok(loaded) => loaded,
+        Err(done) => return done,
     };
     if hosted_by_the_app(&args) {
-        return launch_app(args, opts, config_options, settings);
+        return launch_app(args, opts, Some((config_options, settings)));
     }
     open_alone(args, opts, config_options, settings)
 }
@@ -658,12 +670,7 @@ fn window_request(args: &TerminalArgs) -> OpenWindowRequest {
     }
 }
 
-fn launch_app(
-    args: TerminalArgs,
-    opts: CliArgs,
-    config_options: SessionOptions,
-    settings: settings::Settings,
-) -> Result<()> {
+fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loaded>) -> Result<()> {
     let token = app::launch_token();
     let (handed, first) = match panel_view(&args) {
         Some(view) => (
@@ -686,6 +693,10 @@ fn launch_app(
         Ok(app::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::instance::Claim::Primary(instance)) => {
+            let (config_options, settings) = match loaded.map_or_else(|| load(&args, &opts), Ok) {
+                Ok(loaded) => loaded,
+                Err(done) => return done,
+            };
             run_app(instance, Some(first), args, opts, config_options, settings)
         },
         Err(e) if panel_view(&args).is_some() => refuse(
@@ -701,6 +712,10 @@ fn launch_app(
                 "the desktop app could not take charge, so this window runs on its own: {:#}",
                 e
             );
+            let (config_options, settings) = match loaded.map_or_else(|| load(&args, &opts), Ok) {
+                Ok(loaded) => loaded,
+                Err(done) => return done,
+            };
             open_alone(args, opts, config_options, settings)
         },
     }
@@ -976,6 +991,19 @@ impl Dialer {
     }
 }
 
+pub(crate) fn panel_look(options: &mut Options) {
+    options.transparency = crate::scene::Transparency::OPAQUE;
+    options.blur = false;
+    options.padding = options::Padding {
+        top: PANEL_GRIP_TOP,
+        right: PANEL_GRIP_SIDE,
+        bottom: PANEL_GRIP_SIDE,
+        left: PANEL_GRIP_SIDE,
+    };
+    options.padding_balance = false;
+    options.padding_color = zellij_utils::input::terminal::PaddingColor::Background;
+}
+
 const PANEL_GRIP_TOP: f32 = 10.0;
 const PANEL_GRIP_SIDE: f32 = 8.0;
 
@@ -1083,16 +1111,7 @@ impl window::WindowMaker for Launcher {
 
     fn panel(&self, area: (f64, f64)) -> Result<window::PreparedWindow> {
         let (settings, mut options) = self.current()?;
-        options.transparency = crate::scene::Transparency::OPAQUE;
-        options.blur = false;
-        options.padding = options::Padding {
-            top: PANEL_GRIP_TOP,
-            right: PANEL_GRIP_SIDE,
-            bottom: PANEL_GRIP_SIDE,
-            left: PANEL_GRIP_SIDE,
-        };
-        options.padding_balance = false;
-        options.padding_color = zellij_utils::input::terminal::PaddingColor::Background;
+        panel_look(&mut options);
         let border = panel_border(&settings, &options);
         let fonts = options.font.stack(1.0)?;
         let metrics = fonts.metrics();

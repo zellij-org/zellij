@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use zellij_utils::attention::{AttentionStatus, GlobalAttention, GlobalAttentionItem};
 use zellij_utils::data::PaneId;
-use zellij_utils::input::attention::DesktopNotifications;
+use zellij_utils::input::attention::{StatusSet, POPUP_STATUSES};
 
 pub const FIRST_SHOW_DELAY: Duration = Duration::from_millis(1500);
 pub const WITHDRAW_GRACE: Duration = Duration::from_millis(2000);
@@ -70,7 +70,7 @@ pub enum Command {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy {
-    pub statuses: DesktopNotifications,
+    pub statuses: StatusSet,
     pub done_after_ms: u64,
     pub details: bool,
     pub paused: bool,
@@ -80,7 +80,7 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Policy {
-            statuses: DesktopNotifications::default(),
+            statuses: StatusSet::of(&POPUP_STATUSES),
             done_after_ms: zellij_utils::input::attention::DEFAULT_DONE_THRESHOLD_SECS * 1000,
             details: true,
             paused: false,
@@ -705,7 +705,7 @@ mod tests {
 
         let mut engine = started(now);
         let without_done = Policy {
-            statuses: DesktopNotifications::NeedsYouFailed,
+            statuses: StatusSet::of(&[AttentionStatus::NeedsYou, AttentionStatus::Failed]),
             ..policy()
         };
         engine.update(&quiet, without_done, now);

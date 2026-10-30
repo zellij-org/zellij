@@ -1,10 +1,13 @@
-use crate::app::model::{Pill, PillColor, TrayLook};
+use crate::app::model::TrayLook;
+use zellij_utils::attention::AttentionStatus;
 
 pub const DOT_BELOW: u32 = 20;
 pub const ATTENTION_COLOR: [u8; 3] = [255, 140, 0];
 pub const ERROR_COLOR: [u8; 3] = [229, 72, 77];
 pub const DONE_COLOR: [u8; 3] = [48, 164, 108];
 pub const WORKING_COLOR: [u8; 3] = [62, 130, 247];
+pub const QUIET_COLOR: [u8; 3] = [139, 141, 152];
+pub const NEW_OUTPUT_COLOR: [u8; 3] = [18, 165, 148];
 pub const PILL_TEXT: [u8; 3] = [255, 255, 255];
 #[cfg_attr(not(any(target_os = "macos", windows, test)), allow(dead_code))]
 pub const LIGHT_INK: [u8; 3] = [236, 236, 236];
@@ -214,14 +217,27 @@ fn label_pixels(shape: &PillShape, label: &str) -> Vec<(u32, u32)> {
     pixels
 }
 
-fn pill_color(pill: &Pill) -> [u8; 3] {
-    match pill.color {
-        PillColor::Attention => ATTENTION_COLOR,
-        PillColor::Error => ERROR_COLOR,
-        PillColor::Done => DONE_COLOR,
-        PillColor::Working => WORKING_COLOR,
+pub fn default_badge_color(status: AttentionStatus) -> [u8; 3] {
+    match status {
+        AttentionStatus::NeedsYou => ATTENTION_COLOR,
+        AttentionStatus::Failed => ERROR_COLOR,
+        AttentionStatus::Done => DONE_COLOR,
+        AttentionStatus::Working => WORKING_COLOR,
+        AttentionStatus::Quiet => QUIET_COLOR,
+        AttentionStatus::NewOutput | AttentionStatus::Idle => NEW_OUTPUT_COLOR,
     }
 }
+
+pub const BADGE_PALETTE: [(&str, [u8; 3]); 8] = [
+    ("Orange", ATTENTION_COLOR),
+    ("Red", ERROR_COLOR),
+    ("Green", DONE_COLOR),
+    ("Blue", WORKING_COLOR),
+    ("Purple", [142, 78, 198]),
+    ("Yellow", [214, 166, 0]),
+    ("Teal", NEW_OUTPUT_COLOR),
+    ("Gray", QUIET_COLOR),
+];
 
 pub fn render(size: u32, look: &TrayLook, ink: [u8; 3]) -> Rgba {
     let size = size.max(8);
@@ -258,7 +274,7 @@ pub fn render(size: u32, look: &TrayLook, ink: [u8; 3]) -> Rgba {
                 image.put(x, y, ink, mark as f32 / total * mark_alpha);
             }
             if pill > 0 {
-                if let Some(color) = look.pill.as_ref().map(pill_color) {
+                if let Some(color) = look.pill.as_ref().map(|pill| pill.color) {
                     image.put(x, y, color, pill as f32 / total);
                 }
             }
@@ -310,9 +326,13 @@ mod tests {
         }
     }
 
-    fn with_pill(color: PillColor, count: usize) -> TrayLook {
+    fn with_pill(status: AttentionStatus, count: usize) -> TrayLook {
         TrayLook {
-            pill: Some(Pill { color, count }),
+            pill: Some(crate::app::model::Pill {
+                status,
+                color: default_badge_color(status),
+                count,
+            }),
             dimmed: false,
         }
     }
@@ -341,7 +361,7 @@ mod tests {
 
     #[test]
     fn needs_you_draws_an_attention_pill_with_digits_from_twenty_pixels() {
-        let image = render(32, &with_pill(PillColor::Attention, 3), LIGHT_INK);
+        let image = render(32, &with_pill(AttentionStatus::NeedsYou, 3), LIGHT_INK);
         assert!(has_color(&image, ATTENTION_COLOR));
         assert!(has_color(&image, PILL_TEXT));
         assert_eq!(
@@ -349,18 +369,18 @@ mod tests {
             255,
             "the pill sits in the top-right corner"
         );
-        let error = render(32, &with_pill(PillColor::Error, 1), LIGHT_INK);
+        let error = render(32, &with_pill(AttentionStatus::Failed, 1), LIGHT_INK);
         assert!(has_color(&error, ERROR_COLOR));
         assert!(!has_color(&error, ATTENTION_COLOR));
-        let done = render(32, &with_pill(PillColor::Done, 1), LIGHT_INK);
+        let done = render(32, &with_pill(AttentionStatus::Done, 1), LIGHT_INK);
         assert!(has_color(&done, DONE_COLOR));
-        let working = render(32, &with_pill(PillColor::Working, 1), LIGHT_INK);
+        let working = render(32, &with_pill(AttentionStatus::Working, 1), LIGHT_INK);
         assert!(has_color(&working, WORKING_COLOR));
     }
 
     #[test]
     fn below_twenty_pixels_the_pill_is_a_plain_dot() {
-        let image = render(16, &with_pill(PillColor::Attention, 7), LIGHT_INK);
+        let image = render(16, &with_pill(AttentionStatus::NeedsYou, 7), LIGHT_INK);
         assert!(has_color(&image, ATTENTION_COLOR));
         assert!(
             !image
@@ -381,7 +401,7 @@ mod tests {
 
     #[test]
     fn paused_dims_the_mark_but_not_the_pill() {
-        let mut look = with_pill(PillColor::Attention, 2);
+        let mut look = with_pill(AttentionStatus::NeedsYou, 2);
         look.dimmed = true;
         let image = render(32, &look, LIGHT_INK);
         let strongest_mark = image
@@ -402,7 +422,7 @@ mod tests {
         let second = cache.get(22, &calm(), DARK_INK);
         assert_eq!(first, second);
         assert_eq!(cache.entries.len(), 1);
-        cache.get(22, &with_pill(PillColor::Error, 1), DARK_INK);
+        cache.get(22, &with_pill(AttentionStatus::Failed, 1), DARK_INK);
         assert_eq!(cache.entries.len(), 2);
     }
 
