@@ -6654,6 +6654,11 @@ fn override_layout(
 // formatted as string from the plugin.
 fn report_panic(env: &PluginEnv, msg: &str) {
     log::error!("PANIC IN PLUGIN!\n\r{}", msg);
+    if env.shared.is_some() {
+        let _ = env
+            .senders
+            .send_to_plugin(PluginInstruction::UnregisterSettingsEntry(env.plugin_id));
+    }
     for pane_id in crash_pane_ids(env) {
         handle_plugin_crash(pane_id, msg.to_owned(), env.senders.clone());
     }

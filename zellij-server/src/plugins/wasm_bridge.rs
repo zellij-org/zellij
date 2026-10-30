@@ -771,7 +771,6 @@ impl WasmBridge {
         // the reloaded plugin registers again if it still wants an entry
         self.unregister_settings_entry(plugin_id);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
-            self.unregister_settings_entry(instance_id);
             self.reload_shared_instance(instance_id);
             return Ok(());
         }
@@ -3019,6 +3018,10 @@ impl WasmBridge {
         }
     }
     fn reload_shared_instance(&mut self, instance_id: PluginId) {
+        if !self.shared_instances.contains_key(&instance_id) {
+            return;
+        }
+        self.unregister_settings_entry(instance_id);
         let Some(info) = self.shared_instances.get(&instance_id) else {
             return;
         };
