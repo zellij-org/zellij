@@ -1,5 +1,5 @@
 use super::cells::{
-    cursor_shape_csi, placeholder_chunks, row_offset, screen_chunks_from, LiveViewRect,
+    cursor_shape_csi, placeholder_chunks, screen_chunks_from, screen_offset, LiveViewRect,
 };
 use super::view::{MirrorRedraw, MirrorView};
 use crate::output::CharacterChunk;
@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use zellij_utils::data::{
-    Event, KeyModifier, KeyWithModifier, LiveViewRelease, LiveViewReleaseGesture, MirrorState,
-    PaneAddress, DEFAULT_LIVE_VIEW_RELEASE_KEY, LIVE_VIEW_DOUBLE_PRESS_MS,
+    BareKey, Event, KeyModifier, KeyWithModifier, LiveViewRelease, LiveViewReleaseGesture,
+    MirrorState, PaneAddress, DEFAULT_LIVE_VIEW_RELEASE_KEY, LIVE_VIEW_DOUBLE_PRESS_MS,
 };
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::mouse::MouseEvent;
@@ -86,6 +86,10 @@ impl LiveViewCaptures {
         key: &KeyWithModifier,
         bound_keys: impl FnOnce() -> Vec<KeyWithModifier>,
     ) -> bool {
+        if self.gestures.contains_key(&client_id) && *key == type_key() {
+            self.presses.remove(&client_id);
+            return true;
+        }
         match self.gestures.get(&client_id) {
             Some(LiveViewReleaseKey::Configured(gesture)) => {
                 is_release_press(gesture, key, &mut self.presses, client_id)
@@ -329,7 +333,7 @@ impl LiveViewSlot {
         let offset = self
             .view
             .shown_screen()
-            .map(|screen| row_offset(screen.rows as usize, screen.cursor.y as usize, area.rows))
+            .map(|screen| screen_offset(screen, area.rows))
             .unwrap_or(0);
         let moved = self.drawn_at != Some(area) || self.drawn_offset != offset;
         self.drawn_offset = offset;
@@ -376,7 +380,7 @@ impl LiveViewSlot {
         match self.view.live_screen() {
             Some(screen) => {
                 let cursor = screen.cursor;
-                let offset = row_offset(screen.rows as usize, cursor.y as usize, area.rows);
+                let offset = screen_offset(screen, area.rows);
                 let x = cursor.x as usize;
                 let y = (cursor.y as usize).saturating_sub(offset);
                 let inside = x < area.cols && y < area.rows && cursor.y as usize >= offset;
@@ -463,6 +467,10 @@ impl Default for LiveViews {
             captures: Arc::new(Mutex::new(LiveViewCaptures::default())),
         }
     }
+}
+
+pub fn type_key() -> KeyWithModifier {
+    KeyWithModifier::new(BareKey::Enter).with_alt_modifier()
 }
 
 pub fn default_release_key() -> LiveViewReleaseGesture {

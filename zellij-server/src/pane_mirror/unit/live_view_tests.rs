@@ -329,6 +329,22 @@ fn the_default_release_key_is_f9_and_a_double_esc_reaches_the_source() {
 }
 
 #[test]
+fn alt_enter_stops_typing_whatever_the_release_key_and_reaches_nothing_when_not_typing() {
+    let alt_enter = KeyWithModifier::new(BareKey::Enter).with_alt_modifier();
+    let mut fixture = fixture();
+    assert!(!fixture.route_keybinding(alt_enter.clone()));
+    fixture.capture();
+    assert!(fixture.route_key(alt_enter.clone(), b"\x1b\r"));
+    assert!(fixture.inputs().is_empty(), "Alt Enter stays in Zellij");
+    assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
+    fixture.configure("Esc Esc");
+    fixture.capture();
+    assert!(!fixture.route_key(esc(), b"\x1b"));
+    assert!(fixture.route_key(alt_enter, b"\x1b\r"));
+    assert!(!fixture.live_views.is_captured(PLUGIN, CLIENT));
+}
+
+#[test]
 fn the_key_bound_to_the_inbox_releases_and_f9_then_reaches_the_source() {
     let mut fixture = fixture();
     let ctrl_y = KeyWithModifier::new(BareKey::Char('y')).with_ctrl_modifier();

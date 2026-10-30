@@ -256,13 +256,14 @@ fn alt_enter_types_into_the_pane_and_the_release_key_or_a_click_outside_ends_typ
     let grid_snapshot = wait_for_the_view_of(&zellij, &other, "type here");
     let area = view_area(&grid_snapshot, other.session_name()).unwrap();
     let view_size = (area.cols as u16, area.rows as u16);
-    terminal.wait_for_size("the shown source is resized to the view", |cols, rows| {
-        (cols, rows) == view_size
-    });
+    start_typing(&zellij);
+    terminal.wait_for_size(
+        "typing resizes the shown source to the view",
+        |cols, rows| (cols, rows) == view_size,
+    );
     source_view.wait_until("the source shows the pin marker", |grid_snapshot| {
         grid_snapshot.contains(&pinned_marker(view_size))
     });
-    start_typing(&zellij);
     type_into(&zellij, &terminal, "hello");
     press_release_key(&zellij);
     zellij.wait_until("the release key returns to the list", |grid_snapshot| {
@@ -343,23 +344,34 @@ fn assert_not_pinned_after_a_barrier(
 }
 
 #[test]
-fn z_turns_resizing_off_gives_the_source_its_size_back_and_says_the_view_is_cropped() {
+fn z_turns_resizing_on_and_off_and_typing_resizes_even_with_it_off() {
     let (mut zellij, _) = main_session();
     let (other, terminal, source_client, layout_size) =
         source_with_a_client_on_the_other_pane("not resized", "Resize?");
     wait_for_count(&zellij, 1);
     open_inbox_on(&zellij, "Resize?");
-    z_hint_says(&zellij, &other, "not resized", "on");
+    z_hint_says(&zellij, &other, "not resized", "off");
     let view_size = shown_view_size(&zellij, &other, "not resized");
+    let cropped = format!("cropped from {}x{}", layout_size.0, layout_size.1);
+    zellij.wait_until(
+        "browsing says resizing is off and the view is cropped",
+        |grid_snapshot| grid_snapshot.contains("resize off") && grid_snapshot.contains(&cropped),
+    );
+    assert_not_pinned_after_a_barrier(&source_client, &terminal, layout_size, "while browsing");
+    zellij.send_stdin(&keys::key('z'));
+    zellij.wait_until("resizing is on", |grid_snapshot| {
+        !grid_snapshot.contains("resize off")
+    });
     terminal.wait_for_size("the shown source is resized to the view", |cols, rows| {
         (cols, rows) == view_size
     });
     source_client.wait_until("the source shows the pin marker", |grid_snapshot| {
         grid_snapshot.contains(&pinned_marker(view_size))
     });
+    z_hint_says(&zellij, &other, "not resized", "on");
     zellij.send_stdin(&keys::key('z'));
-    zellij.wait_until("resizing is off", |grid_snapshot| {
-        grid_snapshot.contains("resize off")
+    zellij.wait_until("resizing is off again", |grid_snapshot| {
+        grid_snapshot.contains("resize off") && grid_snapshot.contains(&cropped)
     });
     terminal.wait_for_size("turning resizing off gives the size back", |cols, rows| {
         (cols, rows) == layout_size
@@ -367,24 +379,42 @@ fn z_turns_resizing_off_gives_the_source_its_size_back_and_says_the_view_is_crop
     assert_not_pinned_after_a_barrier(&source_client, &terminal, layout_size, "after z");
     z_hint_says(&zellij, &other, "not resized", "off");
     start_typing(&zellij);
-    type_into(&zellij, &terminal, "cropped");
-    let cropped = format!("cropped from {}x{}", layout_size.0, layout_size.1);
-    zellij.wait_until("the status says the view is cropped", |grid_snapshot| {
-        grid_snapshot.contains(&cropped)
+    type_into(&zellij, &terminal, "pinned");
+    terminal.wait_for_size(
+        "typing resizes the source to the view with resizing off",
+        |cols, rows| (cols, rows) == view_size,
+    );
+    source_client.wait_until("the source shows the pin marker", |grid_snapshot| {
+        grid_snapshot.contains(&pinned_marker(view_size))
     });
-    assert_not_pinned_after_a_barrier(&source_client, &terminal, layout_size, "while typing");
+    zellij.wait_until(
+        "a resized source is neither off nor cropped",
+        |grid_snapshot| {
+            grid_snapshot.contains(TYPING_INTO)
+                && !grid_snapshot.contains("resize off")
+                && !grid_snapshot.contains("cropped from")
+        },
+    );
     press_release_key(&zellij);
     zellij.wait_until("typing ended", |grid_snapshot| {
         !grid_snapshot.contains(TYPING_INTO)
+            && grid_snapshot.contains(TYPE_INTO_IT)
+            && !grid_snapshot.contains("resize off")
     });
+    terminal.output(b"\r\n$ after typing\r\n");
+    source_client.wait_until("the source keeps the pin after typing", |grid_snapshot| {
+        grid_snapshot.contains("after typing") && grid_snapshot.contains(&pinned_marker(view_size))
+    });
+    assert_eq!(
+        terminal.size(),
+        Some(view_size),
+        "the typed into source keeps the size of the view after typing"
+    );
     zellij.send_stdin(&keys::key('z'));
-    zellij.wait_until("resizing is on again", |grid_snapshot| {
-        !grid_snapshot.contains("resize off")
-    });
+    z_hint_says(&zellij, &other, "after typing", "on");
     terminal.wait_for_size("the source is resized to the view again", |cols, rows| {
         (cols, rows) == view_size
     });
-    z_hint_says(&zellij, &other, "not resized", "on");
     source_client.detach();
     zellij.quit();
 }
@@ -479,6 +509,20 @@ fn wait_for_the_settled_view(
     });
 }
 
+fn type_until_resized(
+    zellij: &TestSession,
+    other: &BackgroundTestSession,
+    terminal: &FakePtyHandle,
+    text: &str,
+    view_size: (u16, u16),
+) {
+    wait_for_the_view_of(zellij, other, text);
+    start_typing(zellij);
+    terminal.wait_for_size("typing resizes the shown pane", |cols, rows| {
+        (cols, rows) == view_size
+    });
+}
+
 #[test]
 fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give_the_size_back() {
     let (mut zellij, _) = main_session();
@@ -488,8 +532,7 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
     wait_for_count(&zellij, 1);
     open_inbox_on(&zellij, "Clear?");
     let view_size = shown_view_size(&zellij, &other, text);
-    wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
-    start_typing(&zellij);
+    type_until_resized(&zellij, &other, &terminal, text, view_size);
     zellij.send_stdin(&keys::F9);
     zellij.wait_until(
         "pressing the inbox key while typing stops typing",
@@ -512,8 +555,7 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
         !shows_inbox(grid_snapshot)
     });
     zellij.send_stdin(&keys::F9);
-    wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
-    start_typing(&zellij);
+    type_until_resized(&zellij, &other, &terminal, text, view_size);
     let grid_snapshot = zellij.snapshot();
     let (column, row) = grid_snapshot
         .position_of("Sessions (")
@@ -530,7 +572,12 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
         text,
     );
     zellij.send_stdin(&keys::TAB);
-    wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
+    type_until_resized(&zellij, &other, &terminal, text, view_size);
+    press_release_key(&zellij);
+    zellij.wait_until("typing ended", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(TYPE_INTO_IT)
+    });
+    assert_eq!(terminal.size(), Some(view_size));
     zellij.send_stdin(&keys::key('?'));
     zellij.wait_until("all keys are listed", |grid_snapshot| {
         grid_snapshot.contains("All keys")
@@ -543,8 +590,7 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
         text,
     );
     zellij.send_stdin(&keys::ESC);
-    wait_for_the_settled_view(&zellij, &other, &terminal, text, view_size);
-    start_typing(&zellij);
+    type_until_resized(&zellij, &other, &terminal, text, view_size);
     zellij.send_stdin(&keys::alt('f'));
     wait_until_cleared(
         &zellij,
@@ -814,7 +860,7 @@ fn a_double_esc_reaches_the_program_and_f9_stops_typing_without_closing_the_inbo
     start_typing(&zellij);
     assert!(zellij
         .snapshot()
-        .contains(&format!("· {} or click", RELEASE_KEY_HINT)));
+        .contains(&format!("<Alt ENTER>, {} or click", RELEASE_KEY_HINT)));
     press_esc(&zellij);
     press_esc(&zellij);
     type_into(&zellij, &terminal, "q");
@@ -871,7 +917,15 @@ fn alt_enter_sent_with_kitty_encoding_types_and_g_and_right_do_nothing() {
         grid_snapshot.contains(TYPING_INTO)
     });
     type_into(&zellij, &newer_terminal, "kitty");
-    press_release_key(&zellij);
+    zellij.send_stdin(&keys::ALT_ENTER);
+    zellij.wait_until("alt enter again stops typing", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(TYPE_INTO_IT)
+    });
+    assert!(
+        newer_terminal.stdin_bytes().ends_with(b"kitty"),
+        "alt enter reached the pane: {:?}",
+        String::from_utf8_lossy(&newer_terminal.stdin_bytes())
+    );
     zellij.quit();
 }
 
@@ -894,6 +948,16 @@ fn source_with_a_client_on_the_other_pane(
     (session, terminal, client, layout_size)
 }
 
+fn turn_browse_resizing_on(client: &TestClient) {
+    client.wait_until("browsing does not resize by default", |grid_snapshot| {
+        grid_snapshot.contains("resize off")
+    });
+    client.send_stdin(&keys::key('z'));
+    client.wait_until("z turns resizing on", |grid_snapshot| {
+        !grid_snapshot.contains("resize off")
+    });
+}
+
 fn shown_view_size(
     zellij: &TestSession,
     session: &BackgroundTestSession,
@@ -905,7 +969,8 @@ fn shown_view_size(
 }
 
 #[test]
-fn browsing_resizes_a_pane_once_it_settles_and_it_keeps_that_size_until_focused_in_its_session() {
+fn browsing_with_z_on_resizes_a_pane_once_it_settles_and_it_keeps_that_size_until_focused_in_its_session(
+) {
     let (mut zellij, _) = main_session();
     let (other, other_terminal) = item_session("$ the other item", "Other?");
     wait_for_count(&zellij, 1);
@@ -917,6 +982,7 @@ fn browsing_resizes_a_pane_once_it_settles_and_it_keeps_that_size_until_focused_
     wait_for_count(&zellij, 3);
     open_inbox_on(&zellij, "First?");
     let view_size = shown_view_size(&zellij, &first, "first item");
+    turn_browse_resizing_on(zellij.main_client());
     first_terminal.wait_for_size("the shown pane is resized to the view", |cols, rows| {
         (cols, rows) == view_size
     });
@@ -964,6 +1030,7 @@ fn typing_into_a_shown_pane_in_its_own_session_gives_its_size_back_until_typing_
     wait_for_count(&zellij, 1);
     open_inbox_on(&zellij, "Local?");
     let view_size = shown_view_size(&zellij, &session, "typed in place");
+    turn_browse_resizing_on(zellij.main_client());
     terminal.wait_for_size("the shown pane is resized to the view", |cols, rows| {
         (cols, rows) == view_size
     });
@@ -981,6 +1048,54 @@ fn typing_into_a_shown_pane_in_its_own_session_gives_its_size_back_until_typing_
         |cols, rows| (cols, rows) == view_size,
     );
     press_release_key(&zellij);
+    source_client.detach();
+    zellij.quit();
+}
+
+#[test]
+fn browsing_another_sessions_pane_does_not_resize_it_typing_does_and_it_keeps_the_view_size_after_typing_ends(
+) {
+    let (mut zellij, _) = main_session();
+    let (other, terminal, source_client, layout_size) =
+        source_with_a_client_on_the_other_pane("browsed only", "Browse?");
+    wait_for_count(&zellij, 1);
+    open_inbox_on(&zellij, "Browse?");
+    let view_size = shown_view_size(&zellij, &other, "browsed only");
+    zellij.wait_until("browsing says resizing is off", |grid_snapshot| {
+        grid_snapshot.contains("resize off")
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    assert_not_pinned_after_a_barrier(&source_client, &terminal, layout_size, "while browsing");
+    start_typing(&zellij);
+    terminal.wait_for_size("typing resizes the pane to the view", |cols, rows| {
+        (cols, rows) == view_size
+    });
+    source_client.wait_until("the source shows the pin marker", |grid_snapshot| {
+        grid_snapshot.contains(&pinned_marker(view_size))
+    });
+    type_into(&zellij, &terminal, "typed");
+    press_release_key(&zellij);
+    zellij.wait_until("typing ended", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(TYPE_INTO_IT)
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    terminal.output(b"\r\n$ after typing\r\n");
+    source_client.wait_until("the source keeps the pin after typing", |grid_snapshot| {
+        grid_snapshot.contains("after typing") && grid_snapshot.contains(&pinned_marker(view_size))
+    });
+    assert_eq!(
+        terminal.size(),
+        Some(view_size),
+        "the pane keeps the size of the view after typing ends"
+    );
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the inbox is closed", |grid_snapshot| {
+        !shows_inbox(grid_snapshot)
+    });
+    terminal.wait_for_size("closing the inbox gives the size back", |cols, rows| {
+        (cols, rows) == layout_size
+    });
+    assert_not_pinned_after_a_barrier(&source_client, &terminal, layout_size, "after closing");
     source_client.detach();
     zellij.quit();
 }
@@ -1127,29 +1242,29 @@ fn the_wheel_does_not_move_the_selection_while_typing() {
 }
 
 #[test]
-fn z_after_the_resize_action_turns_resizing_back_on() {
+fn z_after_the_resize_action_turns_resizing_back_off() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = item_session("$ toggled", "Toggle?");
     let layout_size = layout_size_of(&terminal);
     wait_for_count(&zellij, 1);
     open_inbox_on(&zellij, "Toggle?");
     let view_size = shown_view_size(&zellij, &other, "toggled");
+    zellij.wait_until("resizing starts off", |grid_snapshot| {
+        grid_snapshot.contains("resize off")
+    });
+    zellij.main_client().send_action(Action::ToggleMirrorResize);
+    zellij.wait_until("the action turned resizing on", |grid_snapshot| {
+        !grid_snapshot.contains("resize off")
+    });
     terminal.wait_for_size("the shown pane is resized", |cols, rows| {
         (cols, rows) == view_size
     });
-    zellij.main_client().send_action(Action::ToggleMirrorResize);
-    zellij.wait_until("the action turned resizing off", |grid_snapshot| {
+    zellij.send_stdin(&keys::key('z'));
+    zellij.wait_until("z turned resizing back off", |grid_snapshot| {
         grid_snapshot.contains("resize off")
     });
     terminal.wait_for_size("the pane has its size back", |cols, rows| {
         (cols, rows) == layout_size
-    });
-    zellij.send_stdin(&keys::key('z'));
-    zellij.wait_until("z turned resizing back on", |grid_snapshot| {
-        !grid_snapshot.contains("resize off")
-    });
-    terminal.wait_for_size("the pane is resized again", |cols, rows| {
-        (cols, rows) == view_size
     });
     zellij.quit();
 }
@@ -1226,7 +1341,9 @@ fn a_configured_double_esc_sent_as_two_plain_escape_bytes_stops_typing_and_f9_do
     open_inbox_on(&zellij, "Plain?");
     wait_for_the_view_of(&zellij, &other, "plain escapes");
     start_typing(&zellij);
-    assert!(zellij.snapshot().contains("· <ESC> twice or click"));
+    assert!(zellij
+        .snapshot()
+        .contains("<Alt ENTER>, <ESC> twice or click"));
     type_into(&zellij, &terminal, "a");
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("F9 closes the inbox instead", |grid_snapshot| {
@@ -1244,8 +1361,8 @@ fn a_configured_double_esc_sent_as_two_plain_escape_bytes_stops_typing_and_f9_do
 }
 
 #[test]
-fn browsing_three_items_resizes_each_once_it_settles_going_back_does_not_and_closing_restores_all()
-{
+fn browsing_three_items_with_z_on_resizes_each_once_it_settles_going_back_does_not_and_closing_restores_all(
+) {
     let (mut zellij, _) = main_session();
     let (third, third_terminal) = item_session("$ the third item", "Third?");
     wait_for_count(&zellij, 1);
@@ -1258,6 +1375,7 @@ fn browsing_three_items_resizes_each_once_it_settles_going_back_does_not_and_clo
     let third_layout = layout_size_of(&third_terminal);
     open_inbox_on(&zellij, "First?");
     let view_size = shown_view_size(&zellij, &first, "the first item");
+    turn_browse_resizing_on(zellij.main_client());
     first_terminal.wait_for_size("the first item is resized once it settles", |cols, rows| {
         (cols, rows) == view_size
     });
@@ -1334,6 +1452,7 @@ fn a_viewing_client_that_detaches_gives_the_panes_it_browsed_their_size_back() {
         });
     let area = view_area(&grid_snapshot, newer.session_name()).unwrap();
     let view_size = (area.cols as u16, area.rows as u16);
+    turn_browse_resizing_on(&second);
     newer_terminal.wait_for_size("the newer pane is resized once it settles", |cols, rows| {
         (cols, rows) == view_size
     });
@@ -1453,7 +1572,7 @@ fn rebinding_the_inbox_key_makes_it_stop_typing_and_f9_then_reaches_the_program(
     });
     wait_for_the_view_of(&zellij, &other, "rebound");
     start_typing(&zellij);
-    assert!(zellij.snapshot().contains("· <F8> or click"));
+    assert!(zellij.snapshot().contains("<Alt ENTER>, <F8> or click"));
     zellij.send_stdin(&keys::F9);
     type_into(&zellij, &terminal, "after");
     assert!(
@@ -1487,7 +1606,7 @@ fn a_configured_release_key_beats_the_inbox_binding() {
     open_inbox_on(&zellij, "Configured?");
     wait_for_the_view_of(&zellij, &other, "configured");
     start_typing(&zellij);
-    assert!(zellij.snapshot().contains("· <Ctrl y> or click"));
+    assert!(zellij.snapshot().contains("<Alt ENTER>, <Ctrl y> or click"));
     type_into(&zellij, &terminal, "typed");
     zellij.send_stdin(&keys::ctrl('y'));
     zellij.wait_until("the configured key stops typing", |grid_snapshot| {
@@ -1561,7 +1680,7 @@ fn rebinding_the_inbox_key_while_typing_shows_the_new_key_in_the_hint() {
     start_typing(&zellij);
     assert!(zellij
         .snapshot()
-        .contains(&format!("· {} or click", RELEASE_KEY_HINT)));
+        .contains(&format!("<Alt ENTER>, {} or click", RELEASE_KEY_HINT)));
     let config_file_path = zellij
         .config_file_path()
         .expect("the session has a config file");
@@ -1571,7 +1690,7 @@ fn rebinding_the_inbox_key_while_typing_shows_the_new_key_in_the_hint() {
     config.push('\n');
     std::fs::write(&config_file_path, config).unwrap();
     zellij.wait_until("the hint shows the new key", |grid_snapshot| {
-        grid_snapshot.contains("· <F8> or click") && grid_snapshot.contains(TYPING_INTO)
+        grid_snapshot.contains("<Alt ENTER>, <F8> or click") && grid_snapshot.contains(TYPING_INTO)
     });
     type_into(&zellij, &terminal, "still typing");
     zellij.send_stdin(&keys::F8);

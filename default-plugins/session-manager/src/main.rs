@@ -2969,7 +2969,10 @@ impl State {
             ));
         }
         if self.sessions_live_target().is_some() {
-            hints.push(hint(inbox::TYPE_KEY, "type into the shown pane"));
+            hints.push(hint(
+                inbox::TYPE_KEY,
+                "type into the shown pane (again to stop)",
+            ));
             hints.push(hint("<click the view>", "type into the shown pane"));
             hints.push(hint(
                 self.inbox.release_key_text(),
@@ -3019,7 +3022,7 @@ impl State {
         let mut hints = if self.inbox.live_mode {
             vec![
                 hint("<ENTER>", "go to the pane"),
-                hint(inbox::TYPE_KEY, "type into the shown pane"),
+                hint(inbox::TYPE_KEY, "type into the shown pane (again to stop)"),
                 hint("<click the view>", "type into the shown pane"),
                 hint(
                     "<z>",
@@ -5094,7 +5097,7 @@ mod sessions_live_view_tests {
         assert_eq!(sent_resize_allowed(&state), Some(false));
         select(&mut state, 0);
         assert_eq!(shown(&state), api(2));
-        assert_eq!(sent_resize_allowed(&state), None);
+        assert_eq!(sent_resize_allowed(&state), Some(false));
     }
 
     #[test]

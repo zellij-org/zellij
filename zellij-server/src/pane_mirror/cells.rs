@@ -204,6 +204,27 @@ pub fn row_offset(screen_rows: usize, cursor_row: usize, view_rows: usize) -> us
         .min(screen_rows - view_rows)
 }
 
+fn shows_something(cell: &MirrorCell) -> bool {
+    cell.text.is_some()
+        || !matches!(cell.cell.character(), ' ' | '\0')
+        || cell.cell.bg != WireCell::BLANK.bg
+}
+
+pub fn anchor_row(screen: &MirrorScreen) -> usize {
+    if screen.cursor.visible {
+        return screen.cursor.y as usize;
+    }
+    (0..screen.rows)
+        .rev()
+        .find(|row| screen.row(*row).iter().any(shows_something))
+        .map(|row| row as usize)
+        .unwrap_or(0)
+}
+
+pub fn screen_offset(screen: &MirrorScreen, view_rows: usize) -> usize {
+    row_offset(screen.rows as usize, anchor_row(screen), view_rows)
+}
+
 pub fn screen_chunks(
     screen: &MirrorScreen,
     area: &LiveViewRect,

@@ -1483,7 +1483,7 @@ fn a_newer_protocol_version_is_refused() {
 }
 
 #[test]
-fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
+fn a_viewer_with_resizing_off_in_its_config_pins_only_when_toggled_or_typed_into() {
     let watched = start_watched_source("");
     let mut viewer = start_viewer_with_config("mirror_resizes_source_pane false");
     show_pane(
@@ -1492,7 +1492,6 @@ fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
         watched.terminal.terminal_id(),
     );
     status_shows(&viewer.zellij, "the live view is live", "watched source");
-    capture_input(&viewer.zellij);
     status_shows(
         &viewer.zellij,
         "the live view may not resize",
@@ -1508,6 +1507,32 @@ fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
         &viewer.zellij,
         "the plugin sees the pin",
         "resize=true view_only=false pinned=true",
+    );
+    assert_eq!(
+        viewer.zellij.run_cli_action(CliAction::ToggleMirrorResize),
+        0
+    );
+    wait_for_the_release(
+        &watched.terminal,
+        watched.layout_size,
+        "the toggle turns resizing off again",
+    );
+    status_shows(
+        &viewer.zellij,
+        "the plugin sees resizing turned off",
+        "resize=false view_only=false pinned=false",
+    );
+    assert_not_pinned_after_a_barrier(&watched, "second barrier");
+    capture_input(&viewer.zellij);
+    wait_for_the_pin_at(
+        &watched.terminal,
+        VIEW_SIZE,
+        "typing into the view resizes the source even with resizing off",
+    );
+    status_shows(
+        &viewer.zellij,
+        "the plugin sees the pin while resizing is off",
+        "resize=false view_only=false pinned=true",
     );
     viewer.zellij.quit();
 }
@@ -1538,7 +1563,12 @@ fn a_source_with_resizing_off_in_its_config_refuses_every_pin() {
 
 #[test]
 fn the_toggle_action_releases_and_restores_the_pin() {
-    let pinned = capture_and_pin();
+    let pinned = show_the_watched_source(&[]);
+    wait_for_the_pin_at(
+        pinned.terminal(),
+        VIEW_SIZE,
+        "showing the source pins it at the size of the live view",
+    );
     assert_eq!(
         pinned
             .zellij()
@@ -1568,15 +1598,27 @@ fn the_toggle_action_releases_and_restores_the_pin() {
 }
 
 #[test]
-fn a_live_view_that_may_not_resize_never_pins() {
+fn a_live_view_that_may_not_resize_pins_only_once_typed_into_and_keeps_the_pin_after() {
     let pinned = show_the_watched_source(&[("resize", "false".to_owned())]);
-    capture_input(pinned.zellij());
     status_shows(
         pinned.zellij(),
         "the live view may not resize",
         "resize=false view_only=false pinned=false",
     );
     assert_not_pinned_after_a_barrier(&pinned.watched, "resize false barrier");
+    capture_input(pinned.zellij());
+    wait_for_the_pin_at(
+        pinned.terminal(),
+        VIEW_SIZE,
+        "typing into the view resizes the source",
+    );
+    status_shows(
+        pinned.zellij(),
+        "the plugin sees the pin while resizing is off",
+        "resize=false view_only=false pinned=true",
+    );
+    release_input(pinned.zellij());
+    assert_keeps_the_size_after_a_barrier(&pinned.watched, VIEW_SIZE, "after typing");
     let mut viewer = pinned.viewer;
     viewer.zellij.quit();
 }
