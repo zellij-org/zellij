@@ -3,7 +3,7 @@ use crate::output::Output;
 use crate::panes::{PaneId, PluginPane};
 use crate::plugins::PluginInstruction;
 use crate::ClientId;
-use zellij_utils::data::{Event, KeyWithModifier, Mouse, PopupCorner};
+use zellij_utils::data::{Event, KeyWithModifier, Mouse, OutsideClick, PopupCorner};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::Run;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
@@ -20,27 +20,59 @@ pub enum PopupPlacement {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PopupKind {
-    Menu,
-    Prompt,
-    Modal,
-    Info,
+pub struct PopupBehavior {
+    pub focused: bool,
+    pub capture_all_keys: bool,
+    pub outside_click: OutsideClick,
+    pub menu: bool,
 }
 
-impl PopupKind {
-    pub fn takes_focus(&self) -> bool {
-        !matches!(self, PopupKind::Info)
+impl PopupBehavior {
+    pub fn menu() -> Self {
+        PopupBehavior {
+            focused: true,
+            capture_all_keys: false,
+            outside_click: OutsideClick::Close,
+            menu: true,
+        }
+    }
+    pub fn prompt() -> Self {
+        PopupBehavior {
+            focused: true,
+            capture_all_keys: false,
+            outside_click: OutsideClick::Block,
+            menu: false,
+        }
+    }
+    pub fn info() -> Self {
+        PopupBehavior {
+            focused: false,
+            ..PopupBehavior::prompt()
+        }
+    }
+    pub fn capturing_all_keys(self, capture_all_keys: bool) -> Self {
+        PopupBehavior {
+            capture_all_keys,
+            ..self
+        }
+    }
+    pub fn on_outside_click(self, outside_click: OutsideClick) -> Self {
+        PopupBehavior {
+            outside_click,
+            ..self
+        }
     }
 }
 
 pub(crate) struct Popup {
     pub pane: Box<dyn Pane>,
     pub placement: PopupPlacement,
-    pub kind: PopupKind,
+    pub behavior: PopupBehavior,
     pub wanted_cols: usize,
     pub wanted_rows: usize,
     pub anchor_pane: Option<PaneId>,
     pub held_back: bool,
+    pub awaiting_permission: bool,
 }
 
 impl Popup {
@@ -51,7 +83,7 @@ impl Popup {
         }
     }
     fn takes_focus(&self) -> bool {
-        self.kind.takes_focus()
+        self.behavior.focused || self.awaiting_permission
     }
 }
 
@@ -201,14 +233,14 @@ impl Tab {
         client_id: ClientId,
         plugin_id: u32,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         wanted_cols: usize,
         wanted_rows: usize,
         invoked_with: Option<Run>,
         title: String,
     ) -> Result<Vec<u32>> {
         let err_context = || format!("failed to open popup for client {client_id}");
-        let replaced = if kind == PopupKind::Menu {
+        let replaced = if behavior.menu {
             self.close_menu_popups(client_id)
         } else {
             vec![]
@@ -241,11 +273,12 @@ impl Tab {
         self.popups.entry(client_id).or_default().push(Popup {
             pane,
             placement,
-            kind,
+            behavior,
             wanted_cols,
             wanted_rows,
             anchor_pane: None,
             held_back: false,
+            awaiting_permission: false,
         });
         self.reflow_popups_for_client(client_id, Some(plugin_id));
         self.set_force_render();
@@ -257,6 +290,12 @@ impl Tab {
             .get(&client_id)
             .map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()).collect())
             .unwrap_or_default()
+    }
+    pub fn all_popup_plugin_ids(&self) -> Vec<u32> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()))
+            .collect()
     }
     fn popup_with_plugin_id_mut(&mut self, plugin_id: u32) -> Option<&mut Popup> {
         self.popups
@@ -356,7 +395,7 @@ impl Tab {
             return vec![];
         };
         let (info, rest): (Vec<Popup>, Vec<Popup>) =
-            stack.drain(..).partition(|popup| !popup.takes_focus());
+            stack.drain(..).partition(|popup| !popup.behavior.focused);
         *stack = rest;
         if stack.is_empty() {
             self.popups.remove(&client_id);
@@ -391,7 +430,7 @@ impl Tab {
         let _ = self.update_input_modes();
     }
     pub fn close_focused_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.takes_focus())
+        self.remove_popups_where(client_id, |popup| popup.behavior.focused)
     }
     fn remove_popups_where(
         &mut self,
@@ -425,10 +464,10 @@ impl Tab {
         self.remove_popups_where(client_id, |_| true)
     }
     pub fn close_menu_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.kind == PopupKind::Menu)
+        self.remove_popups_where(client_id, |popup| popup.behavior.menu)
     }
     pub fn close_info_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.kind == PopupKind::Info)
+        self.remove_popups_where(client_id, |popup| !popup.takes_focus())
     }
     pub fn close_popups_with_missing_anchor(&mut self) -> Vec<(ClientId, u32)> {
         let missing_anchors: Vec<PaneId> = self
@@ -495,12 +534,12 @@ impl Tab {
             .get(&client_id)
             .and_then(|stack| stack.iter().rev().find(|popup| popup.takes_focus()))
     }
-    pub fn popup_kind_of_plugin(&self, plugin_id: u32) -> Option<PopupKind> {
+    pub fn popup_behavior_of_plugin(&self, plugin_id: u32) -> Option<PopupBehavior> {
         self.popups
             .values()
             .flat_map(|stack| stack.iter())
             .find(|popup| popup.plugin_id() == Some(plugin_id))
-            .map(|popup| popup.kind)
+            .map(|popup| popup.behavior)
     }
     #[cfg(test)]
     pub fn has_popup_for_client(&self, client_id: ClientId) -> bool {
@@ -514,7 +553,7 @@ impl Tab {
     }
     pub fn focused_popup_takes_all_keys(&self, client_id: ClientId) -> bool {
         self.top_focused_popup(client_id)
-            .map(|popup| popup.kind == PopupKind::Modal)
+            .map(|popup| popup.behavior.capture_all_keys)
             .unwrap_or(false)
     }
     #[cfg(test)]
@@ -560,6 +599,19 @@ impl Tab {
             })
             .unwrap_or_default()
     }
+    pub fn popup_layer_of(&self, client_id: ClientId, plugin_id: u32) -> Option<usize> {
+        let stack = self.popups.get(&client_id)?;
+        let mut drawing_order: Vec<&Popup> =
+            stack.iter().filter(|popup| !popup.held_back).collect();
+        drawing_order.sort_by_key(|popup| popup.takes_focus());
+        drawing_order
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))
+    }
+    pub fn popup_z_index_of(&self, client_id: ClientId, plugin_id: u32) -> Option<usize> {
+        self.popup_layer_of(client_id, plugin_id)
+            .map(|layer| POPUP_Z_INDEX + layer)
+    }
     pub fn send_key_to_popup(
         &mut self,
         client_id: ClientId,
@@ -570,6 +622,15 @@ impl Tab {
         let Some(plugin_id) = self.popup_plugin_id(client_id) else {
             return false;
         };
+        if self.live_views.borrow().is_captured(plugin_id, client_id) {
+            self.live_views.borrow_mut().send_key(
+                client_id,
+                &Some(key_with_modifier),
+                &raw_bytes,
+                is_kitty_keyboard_protocol,
+            );
+            return true;
+        }
         let adjusted_input = match self.popup_pane_mut(plugin_id) {
             Some(pane) => pane.adjust_input_to_terminal(
                 &Some(key_with_modifier),
@@ -591,6 +652,7 @@ impl Tab {
                 if let Some(pane) = self.popup_pane_mut(plugin_id) {
                     pane.request_permissions_from_user(None);
                 }
+                self.set_popup_awaiting_permission(plugin_id, false);
                 let _ = self
                     .senders
                     .send_to_plugin(PluginInstruction::PermissionRequestResult(
@@ -606,14 +668,42 @@ impl Tab {
         }
         true
     }
-    pub fn set_popup_kind(&mut self, plugin_id: u32, kind: PopupKind) -> Option<ClientId> {
+    pub fn set_popup_awaiting_permission(
+        &mut self,
+        plugin_id: u32,
+        awaiting_permission: bool,
+    ) -> Option<ClientId> {
+        let client_id = self.popup_client_for_plugin(plugin_id)?;
+        let stack = self.popups.get_mut(&client_id)?;
+        let position = stack
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))?;
+        if stack[position].awaiting_permission == awaiting_permission {
+            return Some(client_id);
+        }
+        let mut popup = stack.remove(position);
+        popup.awaiting_permission = awaiting_permission;
+        popup.pane.set_should_render(true);
+        popup.pane.render_full_viewport();
+        if awaiting_permission {
+            stack.push(popup);
+        } else {
+            stack.insert(position, popup);
+        }
+        self.reflow_popups_for_client(client_id, None);
+        self.mark_popups_for_full_render();
+        self.set_force_render();
+        let _ = self.update_input_modes();
+        Some(client_id)
+    }
+    pub fn set_popup_focused(&mut self, plugin_id: u32, focused: bool) -> Option<ClientId> {
         let client_id = self.popup_client_for_plugin(plugin_id)?;
         let stack = self.popups.get_mut(&client_id)?;
         let position = stack
             .iter()
             .position(|popup| popup.plugin_id() == Some(plugin_id))?;
         let mut popup = stack.remove(position);
-        popup.kind = kind;
+        popup.behavior.focused = focused;
         popup.pane.set_should_render(true);
         popup.pane.render_full_viewport();
         stack.push(popup);
@@ -681,6 +771,13 @@ impl Tab {
     }
     pub fn has_popup_plugin(&self, plugin_id: u32) -> bool {
         self.popup_client_for_plugin(plugin_id).is_some()
+    }
+    pub fn popup_pane(&self, plugin_id: u32) -> Option<&dyn Pane> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
+            .map(|popup| popup.pane.as_ref())
     }
     pub fn popup_pane_mut(&mut self, plugin_id: u32) -> Option<&mut Box<dyn Pane>> {
         self.popups
@@ -768,6 +865,12 @@ impl Tab {
             })
             .unwrap_or_default()
     }
+    pub fn mouse_gesture_is_held(&self) -> bool {
+        self.selecting_with_mouse_in_pane.is_some()
+            || self.pane_being_resized_with_mouse.is_some()
+            || self.floating_panes.pane_is_being_moved_with_mouse()
+            || !self.pane_drawings.is_empty()
+    }
     pub fn clear_hover_under_popups(&mut self, client_id: ClientId) -> bool {
         super::mouse_handler::clear_hover_for_client(self, client_id)
     }
@@ -786,11 +889,12 @@ impl Tab {
         let is_press = event.event_type == MouseEventType::Press
             && (event.left || event.right || event.middle);
         if !inside && is_press {
-            return match popup.kind {
-                PopupKind::Menu => Some(PopupMouseOutcome::CloseRequested),
-                PopupKind::Prompt | PopupKind::Modal | PopupKind::Info => {
-                    Some(PopupMouseOutcome::Consumed)
-                },
+            if popup.awaiting_permission {
+                return Some(PopupMouseOutcome::Consumed);
+            }
+            return match popup.behavior.outside_click {
+                OutsideClick::Close => Some(PopupMouseOutcome::CloseRequested),
+                OutsideClick::Block => Some(PopupMouseOutcome::Consumed),
             };
         }
         let (line, column) = if inside {
@@ -859,10 +963,16 @@ impl Tab {
         self.send_mouse_to_popup_plugin(plugin_id, client_id, mouse);
         true
     }
-    pub(crate) fn render_popups(&mut self, output: &mut Output, force: bool) -> Result<()> {
+    pub(crate) fn render_popups(
+        &mut self,
+        output: &mut Output,
+        force: bool,
+        draw_live_views: bool,
+    ) -> Result<()> {
         let err_context = || "failed to render popups".to_string();
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
+        let live_views = self.live_views.clone();
         for (client_id, stack) in self.popups.iter_mut() {
             if !connected_clients.contains(client_id) {
                 continue;
@@ -888,11 +998,13 @@ impl Tab {
                     popup.pane.set_should_render(true);
                     popup.pane.render_full_viewport();
                 }
+                let rendered = popup
+                    .pane
+                    .render(Some(*client_id))
+                    .with_context(err_context)?;
+                let plugin_redrew = rendered.is_some();
                 if let Some((character_chunks, raw_vte_output, _sixel_chunks, _kitty_chunks)) =
-                    popup
-                        .pane
-                        .render(Some(*client_id))
-                        .with_context(err_context)?
+                    rendered
                 {
                     output
                         .add_character_chunks_to_client(
@@ -911,6 +1023,30 @@ impl Tab {
                                 raw_vte_output
                             ),
                         );
+                    }
+                }
+                if let (PaneId::Plugin(plugin_id), true) = (popup.pane.pid(), draw_live_views) {
+                    let content = crate::pane_mirror::LiveViewRect::new(
+                        popup.pane.get_content_x(),
+                        popup.pane.get_content_y(),
+                        popup.pane.get_content_columns(),
+                        popup.pane.get_content_rows(),
+                    );
+                    let link_handler = output.link_handler();
+                    let chunks = live_views.borrow_mut().draw(
+                        &(plugin_id, *client_id),
+                        &content,
+                        plugin_redrew,
+                        link_handler.as_ref(),
+                    );
+                    if !chunks.is_empty() {
+                        output
+                            .add_character_chunks_to_client(
+                                *client_id,
+                                chunks,
+                                Some(POPUP_Z_INDEX + layer),
+                            )
+                            .with_context(err_context)?;
                     }
                 }
             }

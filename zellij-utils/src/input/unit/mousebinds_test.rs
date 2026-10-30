@@ -146,7 +146,10 @@ fn the_default_preset_reproduces_the_built_in_mouse_behaviour() {
             b(MouseButton::Left, &[KeyModifier::Ctrl], 1, true),
             Some(MouseBehaviour::ResizePane)
         );
-        assert_eq!(b(MouseButton::Left, &[KeyModifier::Ctrl], 1, false), None);
+        assert_eq!(
+            b(MouseButton::Left, &[KeyModifier::Ctrl], 1, false),
+            Some(MouseBehaviour::DrawFloatingPane(None))
+        );
         assert_eq!(
             b(MouseButton::Left, &[KeyModifier::Alt], 1, false),
             Some(MouseBehaviour::GroupToggle)
@@ -640,4 +643,103 @@ fn a_command_line_preset_keeps_user_and_layout_additions() {
         ),
         Some(MouseBehaviour::ContextMenu)
     );
+}
+
+#[test]
+fn ctrl_left_on_pane_content_draws_a_floating_terminal_by_default() {
+    let config = defaults();
+    for mode in [InputMode::Normal, InputMode::Locked, InputMode::Pane] {
+        assert_eq!(
+            behaviour(
+                &config,
+                mode,
+                MouseButton::Left,
+                &[KeyModifier::Ctrl],
+                1,
+                false
+            ),
+            Some(MouseBehaviour::DrawFloatingPane(None)),
+            "{:?}",
+            mode
+        );
+        assert_eq!(
+            behaviour(
+                &config,
+                mode,
+                MouseButton::Left,
+                &[KeyModifier::Ctrl],
+                1,
+                true
+            ),
+            Some(MouseBehaviour::ResizePane),
+            "{:?}",
+            mode
+        );
+    }
+}
+
+#[test]
+fn draw_floating_pane_can_name_a_plugin_with_a_configuration() {
+    let config = user_config(
+        "mousebinds {\n    normal {\n        bind \"Ctrl Alt Left\" { DrawFloatingPane \"file:/path/to/plugin.wasm\" { key \"value\"; other 2; }; }\n        bind \"Alt Shift Left\" { DrawFloatingPane \"filepicker\"; }\n    }\n}\n",
+    );
+    let drawn = behaviour(
+        &config,
+        InputMode::Normal,
+        MouseButton::Left,
+        &[KeyModifier::Ctrl, KeyModifier::Alt],
+        1,
+        false,
+    )
+    .unwrap();
+    let MouseBehaviour::DrawFloatingPane(Some(plugin)) = &drawn else {
+        panic!("expected a plugin, got {:?}", drawn);
+    };
+    assert_eq!(plugin.location_string(), "file:/path/to/plugin.wasm");
+    assert_eq!(
+        drawn.plugin_configuration().into_iter().collect::<Vec<_>>(),
+        vec![
+            ("key".to_owned(), "value".to_owned()),
+            ("other".to_owned(), "2".to_owned())
+        ]
+    );
+    assert_eq!(
+        drawn.kdl_text(),
+        "DrawFloatingPane \"file:/path/to/plugin.wasm\" { key \"value\"; other \"2\"; }"
+    );
+    let alias = behaviour(
+        &config,
+        InputMode::Normal,
+        MouseButton::Left,
+        &[KeyModifier::Alt, KeyModifier::Shift],
+        1,
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        alias,
+        MouseBehaviour::from_name_and_arguments("DrawFloatingPane", &["filepicker".to_owned()])
+            .unwrap()
+    );
+    assert_eq!(alias.kdl_text(), "DrawFloatingPane \"filepicker\"");
+}
+
+#[test]
+fn draw_floating_pane_bindings_round_trip_through_kdl() {
+    let text = "mousebinds {\n    normal {\n        bind \"Ctrl Left\" on=\"content\" { DrawFloatingPane; }\n        bind \"Ctrl Shift Left\" app_first=true { DrawFloatingPane \"filepicker\" { cwd \"/tmp\"; key \"value\"; }; }\n    }\n}\n";
+    let parsed = changes(text);
+    let written = parsed.to_kdl().unwrap().to_string();
+    assert_eq!(changes(&written), parsed);
+}
+
+#[test]
+fn draw_floating_pane_rejects_bad_arguments() {
+    assert!(parse_error(
+        "mousebinds {\n    normal {\n        bind \"Ctrl Left\" { DrawFloatingPane \"a\" \"b\"; }\n    }\n}\n"
+    )
+    .contains("DrawFloatingPane takes one plugin"));
+    assert!(parse_error(
+        "mousebinds {\n    normal {\n        bind \"Ctrl Left\" { DrawFloatingPane { key \"value\"; }; }\n    }\n}\n"
+    )
+    .contains("needs a plugin"));
 }

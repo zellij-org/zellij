@@ -322,6 +322,12 @@ impl App {
             .map(|screen| screen.has_own_frame())
             .unwrap_or(false)
     }
+    fn has_own_footer(&self) -> bool {
+        self.screen
+            .as_ref()
+            .map(|screen| screen.has_own_footer())
+            .unwrap_or(false)
+    }
     fn is_framed(&self) -> bool {
         let in_popup = self
             .request
@@ -406,7 +412,7 @@ impl App {
             .max(title)
             .max(footer.min(MAX_WIDTH))
             .clamp(MIN_WIDTH, MAX_WIDTH);
-        let footer_rows = if self.has_confirm_footer() {
+        let footer_rows = if self.has_confirm_footer() || self.has_own_footer() {
             0
         } else {
             FOOTER_ROWS
@@ -505,6 +511,11 @@ impl App {
                     Some(area.width),
                     None,
                 );
+            }
+        } else if self.has_own_footer() {
+            let body_height = height.saturating_sub(header_rows).max(1);
+            if let Some(screen) = self.screen.as_mut() {
+                screen.render(x, y + header_rows, width, body_height);
             }
         } else {
             let body_height = height.saturating_sub(header_rows + FOOTER_ROWS).max(1);
@@ -1141,6 +1152,20 @@ mod tests {
         );
         assert_eq!(
             answered_with(request(), &[BareKey::Esc]),
+            vec![
+                Effect::ReplyToPrompt(5, PromptResult::Cancelled),
+                Effect::CloseSelf
+            ]
+        );
+    }
+
+    #[test]
+    fn an_info_popup_closes_with_esc_and_answers_cancelled() {
+        assert_eq!(
+            answered_with(
+                PromptRequest::info("About this", "Some explanation"),
+                &[BareKey::Char('x'), BareKey::Esc]
+            ),
             vec![
                 Effect::ReplyToPrompt(5, PromptResult::Cancelled),
                 Effect::CloseSelf

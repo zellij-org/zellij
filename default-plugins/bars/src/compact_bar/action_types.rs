@@ -35,6 +35,8 @@ pub enum ActionType {
     Detach,
     Quit,
     NewStackedPane,
+    ToggleBars,
+    ShowBars,
     Other(String),
 }
 
@@ -57,13 +59,16 @@ impl ActionType {
             ActionType::HalfPageScroll => "Scroll half Page".to_string(),
             ActionType::SessionManager => "Session manager".to_string(),
             ActionType::PluginManager => "Plugin manager".to_string(),
-            ActionType::Configuration => "Configuration".to_string(),
+            ActionType::Configuration => "Settings".to_string(),
             ActionType::About => "About Zellij".to_string(),
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenamePane => {
                 "Rename pane".to_string()
             },
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameTab => {
                 "Rename tab".to_string()
+            },
+            ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::RenameSession => {
+                "Rename session".to_string()
             },
             ActionType::SwitchToMode(input_mode) if input_mode == &InputMode::EnterSearch => {
                 "Search".to_string()
@@ -88,6 +93,8 @@ impl ActionType {
             ActionType::NewTab => "New tab".to_string(),
             ActionType::Detach => "Detach".to_string(),
             ActionType::Quit => "Quit".to_string(),
+            ActionType::ToggleBars => "Show/hide bars".to_string(),
+            ActionType::ShowBars => "Show bars".to_string(),
             ActionType::Other(_) => "Other action".to_string(),
         }
     }
@@ -134,6 +141,8 @@ impl ActionType {
             Action::EditScrollback { .. } => ActionType::EditScrollback,
             Action::Detach => ActionType::Detach,
             Action::Quit => ActionType::Quit,
+            Action::ToggleBars { .. } => ActionType::ToggleBars,
+            Action::ShowBars => ActionType::ShowBars,
             action if action.launches_plugin("session-manager") => ActionType::SessionManager,
             action if action.launches_plugin("configuration") => ActionType::Configuration,
             action if action.launches_plugin("plugin-manager") => ActionType::PluginManager,

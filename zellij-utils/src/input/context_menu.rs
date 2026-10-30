@@ -343,6 +343,28 @@ mod tests {
     use super::*;
     use crate::input::actions::Action;
 
+    #[test]
+    fn showing_and_hiding_every_bar_show_the_bar_toggle_key() {
+        let config = crate::input::config::Config::from_default_assets().unwrap();
+        let keybinds = config.keybinds.to_keybinds_vec();
+        let shortcut = |section: &[ContextMenuEntry], wanted: &str| {
+            section.iter().find_map(|entry| match entry {
+                ContextMenuEntry::Item { label, actions, .. } if label == wanted => {
+                    context_menu_shortcut(&keybinds, InputMode::Normal, actions)
+                },
+                _ => None,
+            })
+        };
+        assert_eq!(
+            shortcut(&config.context_menu.common, "Show bars").as_deref(),
+            Some("Ctrl p, Shift z")
+        );
+        assert_eq!(
+            shortcut(&config.context_menu.bar, "Hide all bars").as_deref(),
+            Some("Ctrl p, Shift z")
+        );
+    }
+
     fn item(label: &str) -> ContextMenuEntry {
         ContextMenuEntry::item(label, vec![Action::Detach.into()])
     }

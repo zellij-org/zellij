@@ -258,7 +258,13 @@ message Action {
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
     MoveTabToPositionPayload move_tab_to_position_payload = 68;
     SessionPanePayload session_pane_payload = 69;
+    bytes session_name_input_payload = 70;
+    BarNamesPayload bar_names_payload = 71;
   }
+}
+
+message BarNamesPayload {
+  repeated string bar_names = 1;
 }
 
 message SessionPanePayload {
@@ -582,6 +588,15 @@ enum ActionName {
     MarkPaneSeen = 143;
     MarkAllSeen = 144;
     ToggleTrayIcon = 145;
+    OpenSessionInTerminal = 146;
+    SessionNameInput = 147;
+    UndoRenameSession = 148;
+    ToggleMirrorResize = 149;
+    ToggleBars = 150;
+    HideBars = 151;
+    ShowBars = 152;
+    HideBarByPaneId = 153;
+    PasteFromClipboardByPaneId = 154;
 }
 
 message Position {

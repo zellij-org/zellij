@@ -67,17 +67,6 @@ impl UnifiedResultsRenderCache {
         self.abbr_details_width = 0;
 
         for (orig_i, result) in results.iter().enumerate() {
-            let is_current = matches!(
-                result,
-                UnifiedSearchResult::ActiveSession {
-                    is_current_session: true,
-                    ..
-                }
-            );
-            if is_current {
-                continue;
-            }
-
             let row = match result {
                 UnifiedSearchResult::ActiveSession {
                     indices,

@@ -1,4 +1,4 @@
-use crate::data::{PaneId, PopupCorner, StyledText};
+use crate::data::{OutsideClick, PaneId, PopupCorner, StyledText};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -57,6 +57,7 @@ pub enum PromptElement {
     Menu,
     Form,
     Notify,
+    Info,
 }
 
 impl PromptElement {
@@ -71,6 +72,7 @@ impl PromptElement {
             PromptElement::Menu => "menu",
             PromptElement::Form => "form",
             PromptElement::Notify => "notify",
+            PromptElement::Info => "info",
         }
     }
 }
@@ -94,8 +96,9 @@ impl FromStr for PromptElement {
             "menu" => Ok(PromptElement::Menu),
             "form" => Ok(PromptElement::Form),
             "notify" => Ok(PromptElement::Notify),
+            "info" => Ok(PromptElement::Info),
             other => Err(format!(
-                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form, notify",
+                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form, notify, info",
                 other
             )),
         }
@@ -869,6 +872,9 @@ pub enum PromptSpec {
         show_pane_name: bool,
         show_tab_name: bool,
     },
+    Info {
+        message: StyledText,
+    },
 }
 
 impl PromptSpec {
@@ -883,11 +889,13 @@ impl PromptSpec {
             PromptSpec::Menu { .. } => PromptElement::Menu,
             PromptSpec::Form { .. } => PromptElement::Form,
             PromptSpec::Notify { .. } => PromptElement::Notify,
+            PromptSpec::Info { .. } => PromptElement::Info,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct PromptRequest {
     pub element: PromptElement,
     pub title: Option<String>,
@@ -896,6 +904,7 @@ pub struct PromptRequest {
     pub placement: Option<PromptPlacement>,
     pub focused: bool,
     pub capture_all_keys: bool,
+    pub outside_click: Option<OutsideClick>,
     pub spec: PromptSpec,
 }
 
@@ -909,6 +918,7 @@ impl PromptRequest {
             placement: None,
             focused: !matches!(spec, PromptSpec::Notify { .. }),
             capture_all_keys: false,
+            outside_click: None,
             spec,
         }
     }
@@ -1001,6 +1011,12 @@ impl PromptRequest {
         })
         .placement(PromptPlacement::Corner(PopupCorner::TopRight))
     }
+    pub fn info(title: impl Into<String>, message: impl Into<StyledText>) -> Self {
+        PromptRequest::new(PromptSpec::Info {
+            message: message.into(),
+        })
+        .title(title)
+    }
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
@@ -1013,7 +1029,8 @@ impl PromptRequest {
         match &mut self.spec {
             PromptSpec::Confirm { message, .. }
             | PromptSpec::Select { message, .. }
-            | PromptSpec::Notify { message, .. } => *message = text,
+            | PromptSpec::Notify { message, .. }
+            | PromptSpec::Info { message } => *message = text,
             PromptSpec::Input { message, .. }
             | PromptSpec::Number { message, .. }
             | PromptSpec::Toggle { message } => *message = Some(text),
@@ -1048,6 +1065,17 @@ impl PromptRequest {
     pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
         self.capture_all_keys = capture_all_keys;
         self
+    }
+    pub fn outside_click(mut self, outside_click: OutsideClick) -> Self {
+        self.outside_click = Some(outside_click);
+        self
+    }
+    pub fn outside_click_or_default(&self) -> OutsideClick {
+        match (self.outside_click, self.element) {
+            (Some(outside_click), _) => outside_click,
+            (None, PromptElement::Info) => OutsideClick::Close,
+            (None, _) => OutsideClick::Block,
+        }
     }
     pub fn yes(mut self, label: impl Into<String>) -> Self {
         if let PromptSpec::Confirm { yes, .. } = &mut self.spec {
@@ -1255,6 +1283,9 @@ impl PromptRequest {
                 if !show_tab_name {
                     insert(&mut args, ARG_NO_TAB_NAME, "true".to_owned());
                 }
+            },
+            PromptSpec::Info { message } => {
+                set_styled(&mut args, message);
             },
         }
         (self.spec.element().name().to_owned(), args, payload)
@@ -1518,6 +1549,14 @@ pub fn parse_request(
                 show_tab_name: !flag(args, ARG_NO_TAB_NAME)?,
             }
         },
+        PromptElement::Info => {
+            let message = message
+                .or_else(|| payload.map(|p| strip_line_ending(p, false)))
+                .ok_or_else(|| "info needs the text to show".to_owned())?;
+            PromptSpec::Info {
+                message: styled(message),
+            }
+        },
     };
     let caller = PromptCallerInfo {
         pane_id: args
@@ -1543,6 +1582,30 @@ pub fn parse_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_info_prompts_close_on_an_outside_click_unless_asked() {
+        assert_eq!(
+            PromptRequest::info("About this", "Details").outside_click_or_default(),
+            OutsideClick::Close
+        );
+        assert_eq!(
+            PromptRequest::confirm("Go?").outside_click_or_default(),
+            OutsideClick::Block
+        );
+        assert_eq!(
+            PromptRequest::info("About this", "Details")
+                .outside_click(OutsideClick::Block)
+                .outside_click_or_default(),
+            OutsideClick::Block
+        );
+        assert_eq!(
+            PromptRequest::confirm("Go?")
+                .outside_click(OutsideClick::Close)
+                .outside_click_or_default(),
+            OutsideClick::Close
+        );
+    }
 
     #[test]
     fn durations_accept_common_units() {
@@ -1754,6 +1817,7 @@ mod tests {
             ])
             .remember("Always do this")
             .padded(),
+            PromptRequest::info("About this", "Some explanation"),
         ]
     }
 

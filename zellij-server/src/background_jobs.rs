@@ -82,6 +82,9 @@ pub enum BackgroundJob {
         plugin_id: u32,
         delay_ms: u64,
     },
+    MirrorTickAfter {
+        delay_ms: u64,
+    },
     ClearCommandOutputFlash {
         pane_id: PaneId,
     },
@@ -137,6 +140,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
             BackgroundJob::RevealPopupAfter { .. } => BackgroundJobContext::RevealPopup,
+            BackgroundJob::MirrorTickAfter { .. } => BackgroundJobContext::MirrorTick,
             BackgroundJob::ClearCommandOutputFlash { .. } => {
                 BackgroundJobContext::ClearCommandOutputFlash
             },
@@ -179,8 +183,8 @@ static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 const SESSION_SUGGESTIONS_EXIT_WAIT: Duration = Duration::from_secs(3);
-pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
-pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
+pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(4);
+pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(10);
 
 static IMMEDIATE_RENDER_REQUESTS: AtomicUsize = AtomicUsize::new(0);
 
@@ -726,6 +730,15 @@ pub(crate) fn background_jobs_main(
                     async move {
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         let _ = senders.send_to_screen(ScreenInstruction::RevealPopup(plugin_id));
+                    }
+                });
+            },
+            BackgroundJob::MirrorTickAfter { delay_ms } => {
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        let _ = senders.send_to_screen(ScreenInstruction::MirrorTick);
                     }
                 });
             },
@@ -1558,6 +1571,21 @@ mod render_schedule_tests {
         );
         assert_eq!(
             schedule.step(later + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
+    }
+
+    #[test]
+    fn a_redraw_split_by_a_short_stall_under_load_renders_once() {
+        let stall = Duration::from_millis(3);
+        assert!(stall < RENDER_QUIET_PERIOD);
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        assert_ne!(schedule.step(start + stall), RenderStep::Render);
+        assert!(!schedule.request(start + stall));
+        assert_eq!(
+            schedule.step(start + stall + RENDER_QUIET_PERIOD),
             RenderStep::Render
         );
     }

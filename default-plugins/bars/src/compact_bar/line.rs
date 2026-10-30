@@ -37,8 +37,8 @@ pub fn tab_line(
     };
     let nested_hint = NestedSessionHint::from_mode_info(mode_info);
     let config = TabLineConfig {
-        session_name: mode_info.session_name.to_owned(),
-        hide_session_name: mode_info.style.hide_session_name,
+        session_name: crate::displayed_session_name(mode_info),
+        hide_session_name: crate::session_name_hidden(mode_info),
         mode: mode_info.mode,
         session_indicator: session_indicator.clone(),
         toggle_tooltip_key,

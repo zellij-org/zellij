@@ -1,5 +1,5 @@
 use crate::client_server_contract::client_server_contract as proto;
-use crate::input::window::StartupMode;
+use crate::input::terminal::StartupMode;
 use prost::Message;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -57,6 +57,7 @@ pub struct AppState {
     pub panel: Option<PanelState>,
     pub live_sessions: Vec<String>,
     pub tray_icon: bool,
+    pub focused_session: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -162,6 +163,10 @@ pub fn send_app_request_to(socket: &Path, request: &AppRequest) -> Result<AppRep
 
 pub fn app_is_running() -> bool {
     matches!(send_app_request(&AppRequest::Ping), Ok(AppReply::Done))
+}
+
+pub fn describe_app() -> Result<AppState, String> {
+    describe_app_at(&crate::consts::app_control_socket())
 }
 
 impl From<PopupView> for proto::AppPopupView {
@@ -320,6 +325,7 @@ impl From<&AppReply> for proto::AppControlReply {
                 }),
                 live_sessions: state.live_sessions.clone(),
                 tray_icon: state.tray_icon,
+                focused_session: state.focused_session.clone(),
             }),
         };
         proto::AppControlReply { reply: Some(reply) }
@@ -347,6 +353,7 @@ impl TryFrom<proto::AppControlReply> for AppReply {
                 }),
                 live_sessions: state.live_sessions,
                 tray_icon: state.tray_icon,
+                focused_session: state.focused_session,
             }),
         })
     }
@@ -416,6 +423,7 @@ mod tests {
                 }),
                 live_sessions: vec!["api".to_owned()],
                 tray_icon: false,
+                focused_session: Some("api".to_owned()),
             }),
             AppReply::State(AppState {
                 panel: Some(PanelState {

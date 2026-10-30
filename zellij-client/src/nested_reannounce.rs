@@ -13,6 +13,7 @@ pub struct NestedReannounce {
     scheduler: Arc<Mutex<ReannounceScheduler>>,
     wakeup: Arc<Condvar>,
     stop: Arc<AtomicBool>,
+    thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
 
 impl NestedReannounce {
@@ -21,11 +22,12 @@ impl NestedReannounce {
             scheduler: Arc::new(Mutex::new(ReannounceScheduler::new(Instant::now()))),
             wakeup: Arc::new(Condvar::new()),
             stop: Arc::new(AtomicBool::new(false)),
+            thread: Arc::new(Mutex::new(None)),
         };
         let scheduler = handle.scheduler.clone();
         let wakeup = handle.wakeup.clone();
         let stop = handle.stop.clone();
-        let _ = std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("nested_reannounce".to_string())
             .spawn(move || {
                 let check_interval = Duration::from_millis(reannounce_check_interval_ms());
@@ -62,6 +64,7 @@ impl NestedReannounce {
                     }
                 }
             });
+        *handle.thread.lock().unwrap() = thread.ok();
         handle
     }
 
@@ -83,5 +86,9 @@ impl NestedReannounce {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
         self.wakeup.notify_all();
+        let thread = self.thread.lock().unwrap().take();
+        if let Some(thread) = thread {
+            let _ = thread.join();
+        }
     }
 }

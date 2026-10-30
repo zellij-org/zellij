@@ -265,6 +265,16 @@ web_client {
 // Default: true
 // 
 // grapheme_clusters false
+ 
+// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default
+// Default: true
+// 
+// mirror_resizes_source_pane false
+ 
+// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard
+// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)
+// 
+// live_view_release_key "F9"
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -407,11 +417,14 @@ web_client {
 // Note: be sure to escape backslashes and similar characters properly
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// Note: This only applies to web clients at the moment.
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores.
 // client_async_worker_tasks 4
  
 // Whether to let programs running inside panes read the paste buffer
@@ -457,3 +470,19 @@ web_client {
 //   - "detach" (detach without asking)
 // 
 // on_quit "ask_quit"
+ 
+// Which bars a new session starts with hidden
+// Options:
+//   - "none" (Default)
+//   - "all"
+//   - one or more bar names, eg. "tab-bar" "status-bar"
+// 
+// bars_hidden_on_start "none"
+ 
+// Whether to briefly show what was hidden and how to show it again when bars are hidden
+// default is true
+// hidden_bars_notification false
+ 
+// Whether to show the current mode's keys in a corner while the bar that would show them is hidden
+// default is true
+// mode_hints_when_bars_hidden false

@@ -197,6 +197,9 @@ impl PaneFrame {
             attention_marker: None,
         }
     }
+    pub fn omits_title(&self) -> bool {
+        self.omit_title
+    }
     pub fn set_attention_marker(&mut self, marker: Option<FrameAttentionMarker>) {
         self.attention_marker = marker;
     }

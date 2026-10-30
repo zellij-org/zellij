@@ -10,7 +10,7 @@ themes {
         }
         text_selected {
             base 145 243 228
-            background 11 14 26
+            background 23 39 36
             emphasis_0 255 127 80
             emphasis_1 0 229 229
             emphasis_2 0 255 0
@@ -19,22 +19,22 @@ themes {
         ribbon_selected {
             base 0 0 0
             background 0 255 0
-            emphasis_0 255 87 141
+            emphasis_0 190 2 89
             emphasis_1 255 127 80
             emphasis_2 255 0 255
-            emphasis_3 51 119 255
+            emphasis_3 19 86 220
         }
         ribbon_unselected {
             base 0 0 0
             background 145 243 228
-            emphasis_0 255 87 141
+            emphasis_0 195 17 93
             emphasis_1 145 243 228
             emphasis_2 51 119 255
-            emphasis_3 255 0 255
+            emphasis_3 178 0 178
         }
         table_title {
             base 0 255 0
-            background 0
+            background 0 0 0
             emphasis_0 255 127 80
             emphasis_1 0 229 229
             emphasis_2 0 255 0
@@ -42,7 +42,7 @@ themes {
         }
         table_cell_selected {
             base 145 243 228
-            background 11 14 26
+            background 23 39 36
             emphasis_0 255 127 80
             emphasis_1 0 229 229
             emphasis_2 0 255 0
@@ -58,7 +58,7 @@ themes {
         }
         list_selected {
             base 145 243 228
-            background 11 14 26
+            background 23 39 36
             emphasis_0 255 127 80
             emphasis_1 0 229 229
             emphasis_2 0 255 0
@@ -78,7 +78,7 @@ themes {
             emphasis_0 255 127 80
             emphasis_1 0 229 229
             emphasis_2 255 0 255
-            emphasis_3 0
+            emphasis_3 255 0 255
         }
         frame_highlight {
             base 255 127 80
@@ -100,21 +100,21 @@ themes {
             base 255 87 141
             background 0
             emphasis_0 255 215 0
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 127 80
+            emphasis_2 255 0 255
+            emphasis_3 0 229 229
         }
         multiplayer_user_colors {
             player_1 255 0 255
             player_2 51 119 255
-            player_3 0
+            player_3 0 255 0
             player_4 255 215 0
             player_5 0 229 229
-            player_6 0
+            player_6 255 127 80
             player_7 255 87 141
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 186 143 255
+            player_9 156 184 0
+            player_10 50 180 255
         }
     }
 }

@@ -79,6 +79,7 @@ pub struct Distribution {
     pub name: &'static str,
     /// Human-readable name, shown in `zellij setup --check`. Defaults to `name`.
     pub display_name: &'static str,
+    pub app_id: &'static str,
     pub version: &'static str,
     /// `(qualifier, organization, application)` for the platform-specific config, cache, data and
     /// runtime directories. Defaults to `("", "", name)`.
@@ -99,6 +100,7 @@ impl Distribution {
         Distribution {
             name,
             display_name: name,
+            app_id: name,
             version,
             project_dirs: None,
             plugins: vec![],
@@ -111,6 +113,10 @@ impl Distribution {
     }
     pub fn with_display_name(mut self, display_name: &'static str) -> Self {
         self.display_name = display_name;
+        self
+    }
+    pub fn with_app_id(mut self, app_id: &'static str) -> Self {
+        self.app_id = app_id;
         self
     }
     /// Override the `(qualifier, organization, application)` triple used to derive the platform
@@ -168,6 +174,7 @@ impl Distribution {
         Distribution {
             name: "zellij",
             display_name: "Zellij",
+            app_id: ZELLIJ_APP_ID,
             version: crate::consts::VERSION,
             project_dirs: None,
             plugins: zellij_builtin_plugins(),
@@ -206,6 +213,8 @@ impl Distribution {
             .find(|preset| preset.name == name)
     }
 }
+
+pub const ZELLIJ_APP_ID: &str = "dev.zellij.Zellij";
 
 pub const ZELLIJ_BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "bars",
@@ -503,6 +512,10 @@ pub fn display_name() -> &'static str {
     distribution().display_name
 }
 
+pub fn app_id() -> &'static str {
+    distribution().app_id
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,6 +706,7 @@ mod tests {
         let zellij = Distribution::zellij();
         assert_eq!(zellij.name, "zellij");
         assert_eq!(zellij.display_name, "Zellij");
+        assert_eq!(zellij.app_id, "dev.zellij.Zellij");
         if cfg!(windows) {
             assert_eq!(zellij.project_dirs(), ("", "", "Zellij"));
         } else {
@@ -707,6 +721,14 @@ mod tests {
     fn a_distribution_derives_its_platform_dirs_from_its_name() {
         let distribution = Distribution::new("yazelix", "0.9.0").with_display_name("Yazelix");
         assert_eq!(distribution.project_dirs(), ("", "", "yazelix"));
+        assert_eq!(distribution.app_id, "yazelix");
+        assert_eq!(
+            distribution
+                .clone()
+                .with_app_id("dev.yazelix.Yazelix")
+                .app_id,
+            "dev.yazelix.Yazelix"
+        );
         let overridden = distribution.with_project_dirs("dev", "Yazelix Authors", "Yazelix");
         assert_eq!(
             overridden.project_dirs(),

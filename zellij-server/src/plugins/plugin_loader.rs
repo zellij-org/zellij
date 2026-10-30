@@ -227,6 +227,11 @@ impl<'a> PluginLoader<'a> {
         }
 
         let subscriptions = store.data().subscriptions.clone();
+        let in_blocking_call = store
+            .data()
+            .shared
+            .as_ref()
+            .map(|shared| shared.in_blocking_call.clone());
         let plugin = Arc::new(Mutex::new(RunningPlugin::new(
             store,
             main_user_instance,
@@ -234,8 +239,11 @@ impl<'a> PluginLoader<'a> {
             self.size.cols,
         )));
         if shared {
-            self.plugin_map
-                .insert_shared(self.plugin_id, (plugin.clone(), subscriptions, workers));
+            self.plugin_map.insert_shared(
+                self.plugin_id,
+                (plugin.clone(), subscriptions, workers),
+                in_blocking_call,
+            );
         } else {
             self.plugin_map.insert(
                 self.plugin_id,

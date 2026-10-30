@@ -2,10 +2,7 @@ use std::collections::BTreeMap;
 use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::*;
 
-pub const SESSION_MANAGER_ALIAS: &str = "session-manager";
 pub const PANEL_SIZE_PIPE: &str = "session_panel_size";
-pub const CARD_WIDTH: usize = 72;
-pub const CARD_HEIGHT: usize = 13;
 const DROPDOWN_CHROME_WIDTH: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -50,8 +47,7 @@ pub struct IndicatorText {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClickAction {
-    Close,
-    OpenCard,
+    Toggle,
 }
 
 fn plain(text: String) -> IndicatorText {
@@ -265,41 +261,19 @@ impl SessionIndicator {
     }
 
     pub fn click_action(&self) -> Option<ClickAction> {
-        if self.panel_size != PanelSize::Closed {
-            return Some(ClickAction::Close);
+        if self.panel_size != PanelSize::Closed || self.is_visible() {
+            Some(ClickAction::Toggle)
+        } else {
+            None
         }
-        if !self.is_visible() {
-            return None;
-        }
-        Some(ClickAction::OpenCard)
     }
 
-    pub fn clicked(&self, line: usize, column: usize) {
-        match self.click_action() {
-            Some(ClickAction::Close) => {
-                if let Some(plugin_id) = self.manager_plugin_id {
-                    pipe_message_to_plugin(
-                        MessageToPlugin::new("close").with_destination_plugin_id(plugin_id),
-                    );
-                }
-            },
-            Some(ClickAction::OpenCard) => {
-                let mut configuration = BTreeMap::new();
-                configuration.insert("role".to_owned(), "card".to_owned());
-                open_plugin_popup_with_options(
-                    SESSION_MANAGER_ALIAS,
-                    configuration,
-                    line,
-                    column,
-                    CARD_WIDTH,
-                    CARD_HEIGHT,
-                    PopupOptions {
-                        focused: true,
-                        corner: Some(PopupCorner::TopRight),
-                    },
-                );
-            },
-            None => {},
+    pub fn clicked(&self, _line: usize, _column: usize) {
+        if let Some(ClickAction::Toggle) = self.click_action() {
+            run_action(
+                zellij_tile::prelude::actions::Action::ToggleSessionCard,
+                BTreeMap::new(),
+            );
         }
     }
 }
@@ -448,13 +422,13 @@ mod tests {
     }
 
     #[test]
-    fn clicks_open_the_browser_or_close_whatever_is_open() {
+    fn clicks_toggle_through_the_server_whatever_this_bar_believes() {
         let mut indicator = indicator(None, 1);
-        assert_eq!(indicator.click_action(), Some(ClickAction::OpenCard));
+        assert_eq!(indicator.click_action(), Some(ClickAction::Toggle));
         indicator.panel_size = PanelSize::Card;
-        assert_eq!(indicator.click_action(), Some(ClickAction::Close));
+        assert_eq!(indicator.click_action(), Some(ClickAction::Toggle));
         indicator.panel_size = PanelSize::Manager;
-        assert_eq!(indicator.click_action(), Some(ClickAction::Close));
+        assert_eq!(indicator.click_action(), Some(ClickAction::Toggle));
     }
 
     #[test]
@@ -498,8 +472,7 @@ mod tests {
         indicator.handle_pipe(&message("8", "manager"));
         assert!(!indicator.handle_pipe(&message("7", "closed")));
         assert_eq!(indicator.panel_size, PanelSize::Manager);
-        assert_eq!(indicator.click_action(), Some(ClickAction::Close));
         assert!(indicator.handle_pipe(&message("8", "closed")));
-        assert_eq!(indicator.click_action(), Some(ClickAction::OpenCard));
+        assert_eq!(indicator.panel_size, PanelSize::Closed);
     }
 }

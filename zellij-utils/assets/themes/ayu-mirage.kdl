@@ -4,47 +4,47 @@ themes {
             base 199 199 199
             background 26 31 41
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 127 135 146
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
         text_selected {
             base 199 199 199
-            background 64 159 255
+            background 50 55 63
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 153 161 172
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
         ribbon_selected {
             base 26 31 41
             background 213 255 128
-            emphasis_0 242 135 121
+            emphasis_0 179 78 67
             emphasis_1 255 173 102
             emphasis_2 223 191 255
-            emphasis_3 115 208 255
+            emphasis_3 0 117 159
         }
         ribbon_unselected {
             base 26 31 41
             background 204 202 194
-            emphasis_0 242 135 121
+            emphasis_0 147 49 41
             emphasis_1 199 199 199
             emphasis_2 115 208 255
-            emphasis_3 223 191 255
+            emphasis_3 101 72 128
         }
         table_title {
             base 213 255 128
-            background 0
+            background 26 31 41
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 127 135 146
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
         table_cell_selected {
             base 199 199 199
-            background 64 159 255
+            background 50 55 63
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 153 161 172
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
@@ -52,15 +52,15 @@ themes {
             base 199 199 199
             background 26 31 41
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 127 135 146
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
         list_selected {
             base 199 199 199
-            background 64 159 255
+            background 50 55 63
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 153 161 172
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
@@ -68,7 +68,7 @@ themes {
             base 199 199 199
             background 26 31 41
             emphasis_0 255 173 102
-            emphasis_1 68 75 85
+            emphasis_1 127 135 146
             emphasis_2 213 255 128
             emphasis_3 223 191 255
         }
@@ -78,7 +78,7 @@ themes {
             emphasis_0 255 173 102
             emphasis_1 68 75 85
             emphasis_2 223 191 255
-            emphasis_3 0
+            emphasis_3 223 191 255
         }
         frame_highlight {
             base 255 173 102
@@ -91,7 +91,7 @@ themes {
         exit_code_success {
             base 213 255 128
             background 0
-            emphasis_0 68 75 85
+            emphasis_0 98 106 116
             emphasis_1 26 31 41
             emphasis_2 223 191 255
             emphasis_3 115 208 255
@@ -100,21 +100,21 @@ themes {
             base 242 135 121
             background 0
             emphasis_0 255 204 119
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 173 102
+            emphasis_2 223 191 255
+            emphasis_3 68 75 85
         }
         multiplayer_user_colors {
             player_1 223 191 255
             player_2 115 208 255
-            player_3 0
+            player_3 135 217 108
             player_4 255 204 119
-            player_5 68 75 85
-            player_6 0
+            player_5 98 106 116
+            player_6 213 255 128
             player_7 242 135 121
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 149 230 203
+            player_9 255 186 190
+            player_10 197 219 128
         }
         // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Ayu%20Mirage.toml
         terminal_colors {

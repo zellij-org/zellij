@@ -4,23 +4,27 @@ use std::time::Instant;
 use zellij_utils::data::{
     ContextMenuKind, Direction, InputMode, KeyModifier, MouseButton, Resize, ResizeStrategy,
 };
+use zellij_utils::data::{FloatingPaneCoordinates, PaletteColor};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
+use zellij_utils::input::layout::RunPluginOrAlias;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::mousebinds::{
     mouse_button_of_event, mouse_modifiers_of_event, MouseBehaviour, MouseBinding,
     MouseBindingKind, Mousebinds, PromptDirection, ResizeScrollDirection,
 };
-use zellij_utils::pane_size::PaneGeom;
+use zellij_utils::pane_size::{PaneGeom, Viewport};
 use zellij_utils::position::Position;
 
 use crate::background_jobs::BackgroundJob;
+use crate::output::CharacterChunk;
+use crate::panes::terminal_character::{AnsiCode, RcCharacterStyles, TerminalCharacter};
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
 use crate::screen::{GuestModalOutcome, ScreenInstruction};
 use crate::ClientId;
 
-use super::{Pane, Tab};
+use super::{Pane, Tab, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 
 pub(crate) const CLASSIC_WHEEL_LINES: usize = 3;
 
@@ -85,6 +89,99 @@ pub struct MouseEffect {
 }
 
 const CLICK_TIME_THRESHOLD_MS: u128 = 400;
+
+pub const PANE_DRAWING_Z_INDEX: usize = usize::MAX;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaneDrawing {
+    pub start: Position,
+    pub end: Position,
+    pub plugin: Option<Box<RunPluginOrAlias>>,
+}
+
+impl PaneDrawing {
+    pub fn area(&self, viewport: &Viewport) -> Option<Viewport> {
+        if viewport.cols == 0 || viewport.rows == 0 {
+            return None;
+        }
+        let clamp_column = |column: usize| column.clamp(viewport.x, viewport.x + viewport.cols - 1);
+        let clamp_line =
+            |line: isize| (line.max(0) as usize).clamp(viewport.y, viewport.y + viewport.rows - 1);
+        let (start_x, end_x) = (
+            clamp_column(self.start.column()),
+            clamp_column(self.end.column()),
+        );
+        let (start_y, end_y) = (clamp_line(self.start.line()), clamp_line(self.end.line()));
+        Some(Viewport {
+            x: start_x.min(end_x),
+            y: start_y.min(end_y),
+            cols: start_x.abs_diff(end_x) + 1,
+            rows: start_y.abs_diff(end_y) + 1,
+        })
+    }
+    pub fn pane_area(&self, viewport: &Viewport) -> Option<Viewport> {
+        self.area(viewport)
+            .filter(|area| area.cols >= MIN_TERMINAL_WIDTH && area.rows >= MIN_TERMINAL_HEIGHT)
+    }
+    pub fn action(self, area: &Viewport, tab_id: usize) -> Action {
+        let coordinates = FloatingPaneCoordinates::default()
+            .with_x_fixed(area.x)
+            .with_y_fixed(area.y)
+            .with_width_fixed(area.cols)
+            .with_height_fixed(area.rows);
+        match self.plugin {
+            Some(plugin) => Action::NewFloatingPluginPane {
+                plugin: *plugin,
+                pane_name: None,
+                skip_cache: false,
+                cwd: None,
+                coordinates: Some(coordinates),
+                no_focus: false,
+                tab_id: Some(tab_id),
+            },
+            None => Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: Some(coordinates),
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            },
+        }
+    }
+}
+
+pub fn pane_drawing_outline(area: &Viewport, color: PaletteColor) -> Vec<CharacterChunk> {
+    if area.cols < 2 || area.rows < 2 {
+        return vec![];
+    }
+    let mut styles = RcCharacterStyles::reset();
+    styles.update(|styles| {
+        styles.bold = Some(AnsiCode::On);
+        styles.foreground = Some(AnsiCode::from(color));
+    });
+    let character = |c: char| TerminalCharacter::new_singlewidth_styled(c, styles.clone());
+    let horizontal_line = |left: char, right: char| {
+        let mut line = Vec::with_capacity(area.cols);
+        line.push(character(left));
+        line.extend((0..area.cols - 2).map(|_| character('─')));
+        line.push(character(right));
+        line
+    };
+    let mut chunks = vec![
+        CharacterChunk::new(horizontal_line('┌', '┐'), area.x, area.y),
+        CharacterChunk::new(horizontal_line('└', '┘'), area.x, area.y + area.rows - 1),
+    ];
+    for line in area.y + 1..area.y + area.rows - 1 {
+        chunks.push(CharacterChunk::new(vec![character('│')], area.x, line));
+        chunks.push(CharacterChunk::new(
+            vec![character('│')],
+            area.x + area.cols - 1,
+            line,
+        ));
+    }
+    chunks
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MousePressOwner {
@@ -258,6 +355,17 @@ enum MouseAction {
         pane_id: Option<PaneId>,
         position: Option<Position>,
     },
+    StartDrawingPane {
+        pane_id: PaneId,
+        position: Position,
+        plugin: Option<Box<RunPluginOrAlias>>,
+    },
+    ContinueDrawingPane {
+        position: Position,
+    },
+    StopDrawingPane {
+        position: Position,
+    },
     FocusOnHover {
         pane_id: PaneId,
         position: Position,
@@ -322,6 +430,7 @@ struct MouseEventContext {
     pane_being_resized: bool,
     selecting_with_mouse: bool,
     pane_being_moved: bool,
+    drawing_pane: bool,
     clicked_pane: Option<ClickedPaneDetails>,
     advanced_mouse_actions: bool,
     pinned_selectable: Option<PaneId>,
@@ -477,9 +586,29 @@ impl MouseHandler {
         passthrough_pane_id: Option<PaneId>,
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
+        let guest_modal_hover_changed = Self::update_guest_modal_hover(tab, event, client_id)?;
         if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
             return Ok(effect);
         }
+        let mut effect = Self::handle_mouse_event_outside_guest_modal(
+            tab,
+            event,
+            client_id,
+            passthrough_pane_id,
+            mousebinds,
+        )?;
+        effect.state_changed |= guest_modal_hover_changed;
+        Ok(effect)
+    }
+
+    fn handle_mouse_event_outside_guest_modal(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+        passthrough_pane_id: Option<PaneId>,
+        mousebinds: Arc<Mousebinds>,
+    ) -> Result<MouseEffect> {
+        Self::forget_unfinished_pane_drawing(tab, event, client_id);
         let click_count = Self::count_click(tab, event, client_id);
         let mut context =
             Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
@@ -498,6 +627,14 @@ impl MouseHandler {
             }
         }
         Ok(effect)
+    }
+
+    fn forget_unfinished_pane_drawing(tab: &mut Tab, event: &MouseEvent, client_id: ClientId) {
+        let is_button_press = event.event_type == MouseEventType::Press
+            && (event.left || event.right || event.middle);
+        if is_button_press && tab.pane_drawings.remove(&client_id).is_some() {
+            tab.set_force_render();
+        }
     }
 
     fn count_click(tab: &mut Tab, event: &MouseEvent, client_id: ClientId) -> u8 {
@@ -558,7 +695,10 @@ impl MouseHandler {
                 | MouseAction::UpdateSelection { .. }
                 | MouseAction::EndSelection { .. }
                 | MouseAction::ContinueMovingFloatingPane { .. }
-                | MouseAction::StopMovingFloatingPane { .. } => None,
+                | MouseAction::StopMovingFloatingPane { .. }
+                | MouseAction::StartDrawingPane { .. }
+                | MouseAction::ContinueDrawingPane { .. }
+                | MouseAction::StopDrawingPane { .. } => None,
                 _ => Some(MousePressOwner::Swallow),
             };
             match owner {
@@ -607,40 +747,24 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<Option<MouseEffect>> {
-        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
-        let pane_id = match pane_id_at_position {
+        let pane_id = match Self::guest_modal_pane_at(tab, event, client_id)? {
             Some(pane_id) => pane_id,
             None => return Ok(None),
         };
-        if !tab.pane_has_guest_modal_for_client(pane_id, client_id) {
-            return Ok(None);
-        }
-        let hit_option = if event.event_type == MouseEventType::Release && event.left {
-            let style = tab.style;
-            if let Some(pane) = tab.get_pane_with_id(pane_id) {
-                let relative_position = pane.relative_position(&event.position);
-                let rows = pane.get_content_rows();
-                let columns = pane.get_content_columns();
-                let row = relative_position.line();
-                if row < 0 {
-                    None
-                } else {
-                    let session_name = pane.guest_session_name().unwrap_or_default();
-                    let selection = pane.guest_modal_selection(client_id).unwrap_or(0);
-                    let shortcuts = pane.guest_modal_shortcuts();
-                    crate::panes::nested_session_modal::guest_modal_option_at_content_row(
-                        rows,
-                        columns,
-                        row as usize,
-                        &style,
-                        &session_name,
-                        selection,
-                        &shortcuts,
-                    )
-                }
-            } else {
-                None
+        let is_left_press = event.event_type == MouseEventType::Press && event.left;
+        let is_left_release = event.event_type == MouseEventType::Release && event.left;
+        if is_left_press {
+            if tab.get_active_pane_id(client_id) != Some(pane_id) {
+                tab.mouse_press_owner
+                    .insert(client_id, MousePressOwner::Swallow);
+                return Self::execute_focus_pane(tab, event.position, true, client_id).map(Some);
             }
+            tab.mouse_press_owner.remove(&client_id);
+        }
+        let press_started_elsewhere =
+            is_left_release && tab.mouse_press_owner.remove(&client_id).is_some();
+        let hit_option = if is_left_release && !press_started_elsewhere {
+            Self::guest_modal_option_at(tab, pane_id, event, client_id)
         } else {
             None
         };
@@ -658,6 +782,54 @@ impl MouseHandler {
                 });
         }
         Ok(Some(MouseEffect::state_changed()))
+    }
+
+    fn guest_modal_pane_at(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<Option<PaneId>> {
+        let pane_id = Self::get_pane_at(tab, &event.position, false)?.map(|pane| pane.pid());
+        Ok(pane_id.filter(|pane_id| tab.pane_has_guest_modal_for_client(*pane_id, client_id)))
+    }
+
+    fn update_guest_modal_hover(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        if event.event_type != MouseEventType::Motion {
+            return Ok(false);
+        }
+        let hovered = Self::guest_modal_pane_at(tab, event, client_id)?.and_then(|pane_id| {
+            Self::guest_modal_option_at(tab, pane_id, event, client_id)
+                .map(|option| (pane_id, option))
+        });
+        Ok(tab.set_guest_modal_hover_for_client(client_id, hovered))
+    }
+
+    fn guest_modal_option_at(
+        tab: &Tab,
+        pane_id: PaneId,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Option<usize> {
+        let pane = tab.get_pane_with_id(pane_id)?;
+        if pane.position_is_on_frame(&event.position) {
+            return None;
+        }
+        let relative_position = pane.relative_position(&event.position);
+        let row = usize::try_from(relative_position.line()).ok()?;
+        crate::panes::nested_session_modal::guest_modal_option_at_content_position(
+            pane.get_content_rows(),
+            pane.get_content_columns(),
+            row,
+            relative_position.column(),
+            &tab.style,
+            &pane.guest_session_name().unwrap_or_default(),
+            pane.guest_modal_selection(client_id).unwrap_or(0),
+            &pane.guest_modal_shortcuts(),
+        )
     }
 
     fn gather_mouse_event_context(
@@ -709,6 +881,7 @@ impl MouseHandler {
             pane_being_resized: tab.pane_being_resized_with_mouse.is_some(),
             selecting_with_mouse: tab.selecting_with_mouse_in_pane.is_some(),
             pane_being_moved: tab.floating_panes.pane_is_being_moved_with_mouse(),
+            drawing_pane: tab.pane_drawings.contains_key(&client_id),
             clicked_pane,
             advanced_mouse_actions: tab.advanced_mouse_actions,
             pinned_selectable,
@@ -767,6 +940,100 @@ impl MouseHandler {
         })
     }
 
+    fn corner_edge_directions(edge: PaneEdge) -> Option<(Direction, Direction)> {
+        match edge {
+            PaneEdge::TopLeft => Some((Direction::Up, Direction::Left)),
+            PaneEdge::TopRight => Some((Direction::Up, Direction::Right)),
+            PaneEdge::BottomLeft => Some((Direction::Down, Direction::Left)),
+            PaneEdge::BottomRight => Some((Direction::Down, Direction::Right)),
+            _ => None,
+        }
+    }
+
+    fn tiled_corner_moves_both_ways(tab: &mut Tab, pane_id: PaneId, edge: PaneEdge) -> bool {
+        match Self::corner_edge_directions(edge) {
+            Some((vertical, horizontal)) => {
+                tab.tiled_panes.pane_edge_can_move(pane_id, vertical)
+                    && tab.tiled_panes.pane_edge_can_move(pane_id, horizontal)
+            },
+            None => false,
+        }
+    }
+
+    fn corner_position(geom: &PaneGeom, edge: PaneEdge) -> Option<(isize, isize)> {
+        let left = geom.x as isize;
+        let top = geom.y as isize;
+        let right = (geom.x + geom.cols.as_usize()) as isize - 1;
+        let bottom = (geom.y + geom.rows.as_usize()) as isize - 1;
+        match edge {
+            PaneEdge::TopLeft => Some((top, left)),
+            PaneEdge::TopRight => Some((top, right)),
+            PaneEdge::BottomLeft => Some((bottom, left)),
+            PaneEdge::BottomRight => Some((bottom, right)),
+            _ => None,
+        }
+    }
+
+    fn resolve_tiled_junction(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        edge: PaneEdge,
+        position: &Position,
+    ) -> (PaneId, PaneEdge) {
+        if Self::corner_edge_directions(edge).is_none()
+            || Self::tiled_corner_moves_both_ways(tab, pane_id, edge)
+        {
+            return (pane_id, edge);
+        }
+        let offsets: [(isize, isize); 8] = [
+            (0, 1),
+            (0, -1),
+            (1, 0),
+            (-1, 0),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+        for (line_offset, column_offset) in offsets {
+            let line = position.line() + line_offset;
+            let column = position.column() as isize + column_offset;
+            if line < 0 || column < 0 {
+                continue;
+            }
+            let neighbor_position = Position::new(line as i32, column as u16);
+            let Ok(Some(candidate_id)) = tab.get_pane_id_at(&neighbor_position, false) else {
+                continue;
+            };
+            if candidate_id == pane_id || !tab.tiled_panes.panes_contain(&candidate_id) {
+                continue;
+            }
+            let Some((candidate_edge, candidate_geom)) =
+                tab.tiled_panes.get_pane(candidate_id).and_then(|pane| {
+                    if !pane.position_is_on_frame(&neighbor_position) {
+                        return None;
+                    }
+                    pane.get_edge_at_position(&neighbor_position)
+                        .map(|edge| (edge, pane.position_and_size()))
+                })
+            else {
+                continue;
+            };
+            let Some((corner_line, corner_column)) =
+                Self::corner_position(&candidate_geom, candidate_edge)
+            else {
+                continue;
+            };
+            let near_corner = (corner_line - position.line()).abs() <= 1
+                && (corner_column - position.column() as isize).abs() <= 1;
+            if near_corner && Self::tiled_corner_moves_both_ways(tab, candidate_id, candidate_edge)
+            {
+                return (candidate_id, candidate_edge);
+            }
+        }
+        (pane_id, edge)
+    }
+
     fn start_pane_resize_with_mouse(
         tab: &mut Tab,
         pane_id: PaneId,
@@ -774,9 +1041,13 @@ impl MouseHandler {
         position: Position,
         _client_id: ClientId,
     ) -> Result<()> {
-        let err_context = || format!("failed to start pane resize for pane {pane_id:?}");
-
         let is_floating = tab.floating_panes.panes_contain(&pane_id);
+        let (pane_id, edge) = if is_floating {
+            (pane_id, edge)
+        } else {
+            Self::resolve_tiled_junction(tab, pane_id, edge, &position)
+        };
+        let err_context = || format!("failed to start pane resize for pane {pane_id:?}");
 
         let start_geom = if is_floating {
             tab.floating_panes
@@ -1193,7 +1464,79 @@ impl MouseHandler {
                 }
                 Ok(MouseEffect::default())
             },
+            MouseAction::StartDrawingPane {
+                pane_id,
+                position,
+                plugin,
+            } => Self::execute_start_drawing_pane(tab, pane_id, position, plugin, client_id),
+            MouseAction::ContinueDrawingPane { position } => {
+                if let Some(drawing) = tab.pane_drawings.get_mut(&client_id) {
+                    if drawing.end != position {
+                        drawing.end = position;
+                        tab.set_force_render();
+                    }
+                }
+                Ok(MouseEffect::default())
+            },
+            MouseAction::StopDrawingPane { position } => {
+                Self::execute_stop_drawing_pane(tab, position, client_id)
+            },
             MouseAction::NoAction => Ok(MouseEffect::default()),
+        }
+    }
+
+    fn execute_start_drawing_pane(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        position: Position,
+        plugin: Option<Box<RunPluginOrAlias>>,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let is_selectable = tab
+            .get_pane_with_id(pane_id)
+            .map(|pane| pane.selectable())
+            .unwrap_or(false);
+        let is_active = tab.get_active_pane_id(client_id) == Some(pane_id);
+        let would_hide_floating_panes =
+            tab.floating_panes.panes_are_visible() && !tab.floating_panes.panes_contain(&pane_id);
+        clear_hover_for_client(tab, client_id);
+        let mut state_changed = false;
+        if is_selectable && !is_active && !would_hide_floating_panes {
+            Self::focus_pane_at(tab, &position, client_id)?;
+            state_changed = true;
+        }
+        tab.pane_drawings.insert(
+            client_id,
+            PaneDrawing {
+                start: position,
+                end: position,
+                plugin,
+            },
+        );
+        Ok(MouseEffect {
+            state_changed,
+            ..Default::default()
+        })
+    }
+
+    fn execute_stop_drawing_pane(
+        tab: &mut Tab,
+        position: Position,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let Some(mut drawing) = tab.pane_drawings.remove(&client_id) else {
+            return Ok(MouseEffect::default());
+        };
+        tab.set_force_render();
+        drawing.end = position;
+        let viewport = *tab.viewport.borrow();
+        match drawing.pane_area(&viewport) {
+            Some(area) => Ok(MouseEffect {
+                state_changed: true,
+                run_actions: Some(vec![drawing.action(&area, tab.id)]),
+                ..Default::default()
+            }),
+            None => Ok(MouseEffect::state_changed()),
         }
     }
 
@@ -1719,6 +2062,18 @@ impl MouseHandler {
     }
 
     fn determine_mouse_action(event: &MouseEvent, ctx: &MouseEventContext) -> Result<MouseAction> {
+        if ctx.drawing_pane {
+            return Ok(match event.event_type {
+                MouseEventType::Motion => MouseAction::ContinueDrawingPane {
+                    position: event.position,
+                },
+                MouseEventType::Release => MouseAction::StopDrawingPane {
+                    position: event.position,
+                },
+                _ => MouseAction::NoAction,
+            });
+        }
+
         if ctx.pane_being_resized {
             return Ok(match event.event_type {
                 MouseEventType::Motion => MouseAction::ContinueResize {
@@ -1755,7 +2110,7 @@ impl MouseHandler {
             });
         }
 
-        if event.alt {
+        if event.alt || event.event_type == MouseEventType::Press {
             if let Some(action) = Self::passthrough_pane_action(event, ctx) {
                 return Ok(action);
             }
@@ -2081,6 +2436,16 @@ impl MouseHandler {
                     },
                     _ => MouseAction::NoAction,
                 }
+            },
+            MouseBehaviour::DrawFloatingPane(plugin) => match details {
+                Some(details) if button == MouseButton::Left && !details.is_unselectable_plugin => {
+                    MouseAction::StartDrawingPane {
+                        pane_id: details.pane_id,
+                        position: event.position,
+                        plugin,
+                    }
+                },
+                _ => Self::pass_to_app_action(button, event, ctx),
             },
             MouseBehaviour::PassToApp => Self::pass_to_app_action(button, event, ctx),
             MouseBehaviour::Ignore => MouseAction::NoAction,
@@ -2603,7 +2968,7 @@ impl MouseHandler {
         Ok(MouseEffect::pane_resized())
     }
 
-    fn get_pane_at<'a>(
+    pub(super) fn get_pane_at<'a>(
         tab: &'a mut Tab,
         point: &Position,
         search_selectable: bool,
@@ -2660,6 +3025,7 @@ mod tests {
             pane_being_resized: false,
             selecting_with_mouse: false,
             pane_being_moved: false,
+            drawing_pane: false,
             clicked_pane: None,
             advanced_mouse_actions: true,
             pinned_selectable: None,
@@ -3154,11 +3520,31 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_click_goes_to_a_focused_program_that_wants_the_mouse() {
+    fn ctrl_click_on_a_focused_program_that_wants_the_mouse_starts_drawing_a_pane() {
         let position = Position::new(3, 4);
         let mut details = clicked(PaneId::Terminal(1));
         details.terminal_wants_mouse = true;
         let context = context_with(details);
+        let event = MouseEvent::new_left_press_with_ctrl_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::StartDrawingPane {
+                pane_id: PaneId::Terminal(1),
+                position,
+                plugin: None,
+            }
+        );
+    }
+
+    #[test]
+    fn ctrl_click_goes_to_a_focused_program_that_wants_the_mouse_when_the_app_comes_first() {
+        let position = Position::new(3, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.terminal_wants_mouse = true;
+        let mut context = context_with(details);
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"Ctrl Left\" on=\"content\" app_first=true { DrawFloatingPane; }\n    }\n}\n",
+        );
         let event = MouseEvent::new_left_press_with_ctrl_event(position);
         assert_eq!(
             MouseHandler::determine_mouse_action(&event, &context).unwrap(),
@@ -3170,10 +3556,147 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_click_on_a_frame_still_resizes() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.on_frame = true;
+        details.edge = Some(PaneEdge::Top);
+        let context = context_with(details);
+        let event = MouseEvent::new_left_press_with_ctrl_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::StartResize {
+                pane_id: PaneId::Terminal(1),
+                edge: PaneEdge::Top,
+                is_floating: false,
+                position,
+            }
+        );
+    }
+
+    #[test]
+    fn a_bound_plugin_is_carried_into_the_drawing() {
+        let position = Position::new(3, 4);
+        let mut context = context_with(clicked(PaneId::Terminal(2)));
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"Ctrl Alt Left\" { DrawFloatingPane \"filepicker\"; }\n    }\n}\n",
+        );
+        let mut event = MouseEvent::new_left_press_with_ctrl_event(position);
+        event.alt = true;
+        let MouseBehaviour::DrawFloatingPane(plugin) =
+            MouseBehaviour::from_name_and_arguments("DrawFloatingPane", &["filepicker".to_owned()])
+                .unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::StartDrawingPane {
+                pane_id: PaneId::Terminal(2),
+                position,
+                plugin,
+            }
+        );
+    }
+
+    #[test]
+    fn ctrl_click_on_an_unselectable_plugin_is_not_drawn_on() {
+        let position = Position::new(3, 4);
+        let mut details = clicked(PaneId::Plugin(1));
+        details.is_unselectable_plugin = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_left_press_with_ctrl_event(position);
+        assert!(!matches!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::StartDrawingPane { .. }
+        ));
+    }
+
+    #[test]
+    fn a_drawing_in_progress_takes_every_motion_and_the_release() {
+        let mut context = context_with(clicked(PaneId::Terminal(1)));
+        context.drawing_pane = true;
+        context.selecting_with_mouse = true;
+        let position = Position::new(8, 30);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_left_motion_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ContinueDrawingPane { position }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_left_release_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::StopDrawingPane { position }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_up_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::NoAction
+        );
+    }
+
+    #[test]
+    fn a_drawing_covers_the_dragged_rectangle_in_any_direction() {
+        let viewport = Viewport {
+            x: 0,
+            y: 1,
+            cols: 80,
+            rows: 20,
+        };
+        let drawing = PaneDrawing {
+            start: Position::new(12, 40),
+            end: Position::new(4, 10),
+            plugin: None,
+        };
+        assert_eq!(
+            drawing.pane_area(&viewport),
+            Some(Viewport {
+                x: 10,
+                y: 4,
+                cols: 31,
+                rows: 9,
+            })
+        );
+        let past_the_edges = PaneDrawing {
+            start: Position::new(-3, 70),
+            end: Position::new(40, 200),
+            plugin: None,
+        };
+        assert_eq!(
+            past_the_edges.pane_area(&viewport),
+            Some(Viewport {
+                x: 70,
+                y: 1,
+                cols: 10,
+                rows: 20,
+            })
+        );
+        let too_small = PaneDrawing {
+            start: Position::new(4, 10),
+            end: Position::new(7, 30),
+            plugin: None,
+        };
+        assert_eq!(too_small.pane_area(&viewport), None);
+        assert!(too_small.area(&viewport).is_some());
+    }
+
+    #[test]
     fn modified_clicks_on_a_focused_plugin_carry_their_modifiers() {
         let position = Position::new(3, 4);
         let mut context = context_with(clicked(PaneId::Plugin(1)));
         context.active_pane_id = Some(PaneId::Plugin(1));
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        unbind \"Ctrl Left\" on=\"content\"\n    }\n}\n",
+        );
         let ctrl_click = MouseEvent::new_left_press_with_ctrl_event(position);
         let mut shift_click = MouseEvent::new_left_press_event(position);
         shift_click.shift = true;

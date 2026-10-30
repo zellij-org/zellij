@@ -443,29 +443,25 @@ fn a_watch_stays_armed_and_fires_on_every_command_until_turned_off() {
 }
 
 #[test]
-fn new_output_in_a_watched_pane_needs_you() {
+fn new_output_in_a_watched_pane_is_not_reported() {
     let mut tracker = tracker();
     tracker.set_pane_watched(PANE, true, 1_000);
     hidden(&mut tracker, 4_500);
     tracker.on_output(PANE, 5_000);
     tracker.on_output(OTHER, 5_000);
     let watched = tracker.attention(&PANE).unwrap();
-    assert_eq!(watched.status, AttentionStatus::NeedsYou);
-    assert!(watched.from_watch);
-    assert_eq!(watched.text, "new output");
-    assert!(frame(&tracker).is_some());
+    assert_eq!(watched.status, AttentionStatus::Idle);
+    assert!(watched.watched);
+    assert!(frame(&tracker).is_none());
     assert_eq!(
         tracker.attention(&OTHER).unwrap().status,
         AttentionStatus::NewOutput
     );
-    visible(&mut tracker, 6_000);
-    focused(&mut tracker, 6_100);
-    assert_eq!(status(&tracker), AttentionStatus::Idle);
     assert!(tracker.pane_is_watched(&PANE));
 }
 
 #[test]
-fn watch_without_markers_fires_on_idle_rule_even_when_visible() {
+fn watch_without_markers_fires_on_idle_rule_and_an_alert_raised_in_sight_is_seen_at_once() {
     let mut tracker = tracker();
     tracker.set_pane_watched(PANE, true, 9_000);
     visible(&mut tracker, 9_500);
@@ -473,7 +469,13 @@ fn watch_without_markers_fires_on_idle_rule_even_when_visible() {
     tracker.idle_check(PANE, 24_100);
     assert!(tracker.pane_is_watched(&PANE));
     hidden(&mut tracker, 24_200);
-    assert_eq!(tracker.attention(&PANE).unwrap().source, None);
+    assert!(!tracker.attention(&PANE).unwrap().from_watch);
+    assert!(frame(&tracker).is_none());
+    steady_output(&mut tracker, 25_000, 36_000);
+    tracker.idle_check(PANE, 39_100);
+    let attention = tracker.attention(&PANE).unwrap();
+    assert_eq!(attention.status, AttentionStatus::NeedsYou);
+    assert!(attention.from_watch);
     assert_eq!(frame(&tracker).unwrap().text, "went quiet");
 }
 
@@ -666,7 +668,7 @@ fn output_from_a_program_reporting_under_an_id_or_as_idle_is_not_new_output() {
     );
     tracker.set_pane_watched(PANE, true, 10_000);
     tracker.on_output(PANE, 11_000);
-    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
 }
 
 #[test]
@@ -709,4 +711,57 @@ fn programs_that_report_nothing_are_never_working() {
     let session = tracker.session_attention(&[(0, "t".to_owned(), vec![(PANE, "p".to_owned())])]);
     assert_eq!(session.counts.working, 0);
     assert!(session.items.is_empty());
+}
+
+#[test]
+fn output_right_after_the_program_was_resized_is_not_new_output() {
+    let mut tracker = tracker();
+    tracker.on_output_after_resize(PANE, 10_000, true);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(tracker.unseen_output_since(&PANE), None);
+    tracker.on_output_after_resize(PANE, 12_000, false);
+    assert_eq!(status(&tracker), AttentionStatus::NewOutput);
+    assert_eq!(tracker.unseen_output_since(&PANE), Some(12_000));
+}
+
+#[test]
+fn a_pane_shown_in_a_live_view_counts_as_seen() {
+    let mut tracker = tracker();
+    tracker.on_output(PANE, 10_000);
+    assert_eq!(status(&tracker), AttentionStatus::NewOutput);
+    tracker.set_viewed_elsewhere(PANE, true, 11_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(tracker.unseen_output_since(&PANE), None);
+    tracker.on_output(PANE, 12_000);
+    assert_eq!(
+        status(&tracker),
+        AttentionStatus::Idle,
+        "output shown in the view is not unseen"
+    );
+    assert_eq!(tracker.unseen_output_since(&PANE), None);
+    tracker.set_viewed_elsewhere(PANE, false, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    tracker.on_output(PANE, 14_000);
+    assert_eq!(status(&tracker), AttentionStatus::NewOutput);
+}
+
+#[test]
+fn a_watch_alert_clears_once_seen_without_being_focused() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "make", 2_000);
+    tracker.set_pane_watched(PANE, true, 2_100);
+    finish(&mut tracker, Some(0), None, 3_000);
+    assert!(tracker.attention(&PANE).unwrap().from_watch);
+    visible(&mut tracker, 4_000);
+    hidden(&mut tracker, 4_100);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert!(!tracker.attention(&PANE).unwrap().from_watch);
+    run_command(&mut tracker, "make", 5_000);
+    finish(&mut tracker, Some(0), None, 6_000);
+    assert!(tracker.attention(&PANE).unwrap().from_watch);
+    tracker.set_viewed_elsewhere(PANE, true, 7_000);
+    tracker.set_viewed_elsewhere(PANE, false, 7_500);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert!(!tracker.attention(&PANE).unwrap().from_watch);
+    assert!(tracker.pane_is_watched(&PANE));
 }

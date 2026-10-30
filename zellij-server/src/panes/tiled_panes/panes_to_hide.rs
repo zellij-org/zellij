@@ -14,17 +14,33 @@ pub struct PanesToHide {
     fullscreen_pane: Option<PaneId>,
     beneath_fullscreen: HashSet<PaneId>,
     covered: HashSet<PaneId>,
+    hidden_bars: HashSet<PaneId>,
+}
+
+#[derive(Debug, Default)]
+pub struct CoveredPanes {
+    collapsed: HashSet<PaneId>,
+    hidden_bars: HashSet<PaneId>,
+}
+
+impl CoveredPanes {
+    pub fn is_empty(&self) -> bool {
+        self.collapsed.is_empty() && self.hidden_bars.is_empty()
+    }
+    pub fn retain(&mut self, mut keep: impl FnMut(&PaneId) -> bool) {
+        self.collapsed.retain(|pane_id| keep(pane_id));
+        self.hidden_bars.retain(|pane_id| keep(pane_id));
+    }
 }
 
 impl PanesToHide {
     pub fn contains(&self, pane_id: &PaneId) -> bool {
         self.beneath_fullscreen.contains(pane_id)
-            || (self.covered.contains(pane_id) && self.fullscreen_pane != Some(*pane_id))
+            || (self.is_covered(pane_id) && self.fullscreen_pane != Some(*pane_id))
     }
     pub fn len(&self) -> usize {
         let covered_and_not_beneath_fullscreen = self
-            .covered
-            .iter()
+            .covered()
             .filter(|pane_id| {
                 !self.beneath_fullscreen.contains(pane_id)
                     && self.fullscreen_pane != Some(**pane_id)
@@ -56,24 +72,47 @@ impl PanesToHide {
     pub fn unset_covered(&mut self, pane_id: &PaneId) -> bool {
         self.covered.remove(pane_id)
     }
-    pub fn is_covered(&self, pane_id: &PaneId) -> bool {
+    pub fn set_hidden_bar(&mut self, pane_id: PaneId) -> bool {
+        let was_covered = self.is_covered(&pane_id);
+        self.hidden_bars.insert(pane_id);
+        !was_covered
+    }
+    pub fn unset_hidden_bar(&mut self, pane_id: &PaneId) -> bool {
+        self.hidden_bars.remove(pane_id) && !self.covered.contains(pane_id)
+    }
+    pub fn is_hidden_bar(&self, pane_id: &PaneId) -> bool {
+        self.hidden_bars.contains(pane_id)
+    }
+    pub fn is_collapsed(&self, pane_id: &PaneId) -> bool {
         self.covered.contains(pane_id)
     }
+    pub fn is_covered(&self, pane_id: &PaneId) -> bool {
+        self.covered.contains(pane_id) || self.hidden_bars.contains(pane_id)
+    }
     pub fn covered(&self) -> impl Iterator<Item = &PaneId> {
-        self.covered.iter()
+        self.covered.iter().chain(
+            self.hidden_bars
+                .iter()
+                .filter(|pane_id| !self.covered.contains(pane_id)),
+        )
     }
     /// Uncover every covered pane and return them, to be covered again with `restore_covered`.
-    pub fn take_covered(&mut self) -> HashSet<PaneId> {
-        std::mem::take(&mut self.covered)
+    pub fn take_covered(&mut self) -> CoveredPanes {
+        CoveredPanes {
+            collapsed: std::mem::take(&mut self.covered),
+            hidden_bars: std::mem::take(&mut self.hidden_bars),
+        }
     }
-    pub fn restore_covered(&mut self, covered: HashSet<PaneId>) {
-        self.covered.extend(covered);
+    pub fn restore_covered(&mut self, covered: CoveredPanes) {
+        self.covered.extend(covered.collapsed);
+        self.hidden_bars.extend(covered.hidden_bars);
     }
     /// Drop every trace of a pane that is leaving, so that a pane id that is handed out again
     /// does not arrive already hidden.
     pub fn forget(&mut self, pane_id: &PaneId) {
         self.beneath_fullscreen.remove(pane_id);
         self.covered.remove(pane_id);
+        self.hidden_bars.remove(pane_id);
     }
 }
 
@@ -112,10 +151,46 @@ mod tests {
     fn forgotten_pane_is_no_longer_hidden() {
         let mut panes_to_hide = PanesToHide::default();
         panes_to_hide.set_covered(PaneId::Plugin(1));
+        panes_to_hide.set_hidden_bar(PaneId::Plugin(3));
         panes_to_hide.set_fullscreen(PaneId::Terminal(1), HashSet::from([PaneId::Terminal(2)]));
         panes_to_hide.forget(&PaneId::Plugin(1));
+        panes_to_hide.forget(&PaneId::Plugin(3));
         panes_to_hide.forget(&PaneId::Terminal(2));
         assert_eq!(panes_to_hide.len(), 0);
         assert!(!panes_to_hide.is_covered(&PaneId::Plugin(1)));
+        assert!(!panes_to_hide.is_covered(&PaneId::Plugin(3)));
+    }
+
+    #[test]
+    fn showing_a_hidden_bar_does_not_expand_a_bar_that_collapsed_itself() {
+        let mut panes_to_hide = PanesToHide::default();
+        panes_to_hide.set_covered(PaneId::Plugin(1));
+        assert!(!panes_to_hide.set_hidden_bar(PaneId::Plugin(1)));
+        assert_eq!(panes_to_hide.len(), 1);
+        assert!(!panes_to_hide.unset_hidden_bar(&PaneId::Plugin(1)));
+        assert!(panes_to_hide.contains(&PaneId::Plugin(1)));
+    }
+
+    #[test]
+    fn a_hidden_bar_is_covered_until_it_is_shown() {
+        let mut panes_to_hide = PanesToHide::default();
+        assert!(panes_to_hide.set_hidden_bar(PaneId::Plugin(2)));
+        assert!(panes_to_hide.is_covered(&PaneId::Plugin(2)));
+        assert!(!panes_to_hide.is_collapsed(&PaneId::Plugin(2)));
+        assert!(panes_to_hide.unset_hidden_bar(&PaneId::Plugin(2)));
+        assert!(!panes_to_hide.contains(&PaneId::Plugin(2)));
+    }
+
+    #[test]
+    fn taking_and_restoring_covered_panes_keeps_them_apart() {
+        let mut panes_to_hide = PanesToHide::default();
+        panes_to_hide.set_covered(PaneId::Plugin(1));
+        panes_to_hide.set_hidden_bar(PaneId::Plugin(2));
+        let taken = panes_to_hide.take_covered();
+        assert_eq!(panes_to_hide.len(), 0);
+        panes_to_hide.restore_covered(taken);
+        assert!(panes_to_hide.is_collapsed(&PaneId::Plugin(1)));
+        assert!(panes_to_hide.is_hidden_bar(&PaneId::Plugin(2)));
+        assert!(!panes_to_hide.is_collapsed(&PaneId::Plugin(2)));
     }
 }

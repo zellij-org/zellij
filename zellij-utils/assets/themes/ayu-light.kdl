@@ -1,95 +1,95 @@
 themes {
     ayu-light {
         text_unselected {
-            base 252 252 252
+            base 85 85 85
             background 231 234 237
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            emphasis_0 167 82 0
+            emphasis_1 39 108 171
+            emphasis_2 85 115 0
+            emphasis_3 127 86 165
         }
         text_selected {
-            base 252 252 252
-            background 3 91 214
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            base 85 85 85
+            background 200 202 204
+            emphasis_0 136 65 0
+            emphasis_1 10 87 149
+            emphasis_2 68 93 0
+            emphasis_3 107 66 143
         }
         ribbon_selected {
-            base 231 234 237
+            base 57 59 61
             background 134 179 0
-            emphasis_0 240 113 113
+            emphasis_0 124 0 23
             emphasis_1 250 141 62
             emphasis_2 163 122 204
-            emphasis_3 57 158 230
+            emphasis_3 0 62 99
         }
         ribbon_unselected {
-            base 231 234 237
+            base 248 251 254
             background 92 97 102
-            emphasis_0 240 113 113
-            emphasis_1 252 252 252
+            emphasis_0 255 250 250
+            emphasis_1 112 116 120
             emphasis_2 57 158 230
-            emphasis_3 163 122 204
+            emphasis_3 231 211 255
         }
         table_title {
-            base 134 179 0
-            background 0
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            base 85 115 0
+            background 231 234 237
+            emphasis_0 167 82 0
+            emphasis_1 39 108 171
+            emphasis_2 85 115 0
+            emphasis_3 127 86 165
         }
         table_cell_selected {
-            base 252 252 252
-            background 3 91 214
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            base 85 85 85
+            background 200 202 204
+            emphasis_0 136 65 0
+            emphasis_1 10 87 149
+            emphasis_2 68 93 0
+            emphasis_3 107 66 143
         }
         table_cell_unselected {
-            base 252 252 252
+            base 105 105 105
             background 231 234 237
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            emphasis_0 167 82 0
+            emphasis_1 39 108 171
+            emphasis_2 85 115 0
+            emphasis_3 127 86 165
         }
         list_selected {
-            base 252 252 252
-            background 3 91 214
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            base 85 85 85
+            background 200 202 204
+            emphasis_0 136 65 0
+            emphasis_1 10 87 149
+            emphasis_2 68 93 0
+            emphasis_3 107 66 143
         }
         list_unselected {
-            base 252 252 252
+            base 105 105 105
             background 231 234 237
-            emphasis_0 250 141 62
-            emphasis_1 71 138 204
-            emphasis_2 134 179 0
-            emphasis_3 163 122 204
+            emphasis_0 167 82 0
+            emphasis_1 39 108 171
+            emphasis_2 85 115 0
+            emphasis_3 127 86 165
         }
         frame_selected {
-            base 134 179 0
+            base 90 122 0
             background 0
             emphasis_0 250 141 62
             emphasis_1 71 138 204
             emphasis_2 163 122 204
-            emphasis_3 0
+            emphasis_3 163 122 204
         }
         frame_highlight {
-            base 250 141 62
+            base 210 105 3
             background 0
-            emphasis_0 163 122 204
-            emphasis_1 250 141 62
+            emphasis_0 157 116 197
+            emphasis_1 210 105 3
             emphasis_2 250 141 62
             emphasis_3 250 141 62
         }
         exit_code_success {
-            base 134 179 0
+            base 108 146 0
             background 0
             emphasis_0 71 138 204
             emphasis_1 231 234 237
@@ -97,24 +97,24 @@ themes {
             emphasis_3 57 158 230
         }
         exit_code_error {
-            base 240 113 113
+            base 219 94 95
             background 0
             emphasis_0 255 170 51
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 250 141 62
+            emphasis_2 163 122 204
+            emphasis_3 71 138 204
         }
         multiplayer_user_colors {
-            player_1 163 122 204
-            player_2 57 158 230
-            player_3 0
-            player_4 255 170 51
+            player_1 157 116 197
+            player_2 32 139 210
+            player_3 69 151 10
+            player_4 188 119 0
             player_5 71 138 204
-            player_6 0
-            player_7 240 113 113
-            player_8 0
-            player_9 0
-            player_10 0
+            player_6 17 151 115
+            player_7 219 94 95
+            player_8 163 129 0
+            player_9 197 100 158
+            player_10 0 148 166
         }
         // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Ayu%20Light.toml
         terminal_colors {

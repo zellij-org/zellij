@@ -1287,6 +1287,29 @@ mod action_parts_tests {
         );
         assert_eq!(action_parts(""), None);
     }
+
+    #[test]
+    fn drawing_a_floating_pane_is_a_click_behaviour() {
+        assert!(is_behaviour("DrawFloatingPane"));
+        assert!(is_behaviour(
+            "DrawFloatingPane \"filepicker\" { key \"value\"; }"
+        ));
+        assert_eq!(
+            behaviour_of("DrawFloatingPane"),
+            Some(MouseBehaviour::DrawFloatingPane(None))
+        );
+        assert_eq!(
+            behaviour_of("DrawFloatingPane \"filepicker\""),
+            MouseBehaviour::from_name_and_arguments("DrawFloatingPane", &["filepicker".to_owned()])
+                .ok()
+        );
+        assert!(!default_app_first(&["DrawFloatingPane".to_owned()]));
+        let trigger = MouseTrigger::parse("Ctrl Left", MouseTarget::Content).unwrap();
+        assert_eq!(
+            mouse_category(&trigger, &["DrawFloatingPane".to_owned()]),
+            CLICKS
+        );
+    }
 }
 
 #[cfg(test)]

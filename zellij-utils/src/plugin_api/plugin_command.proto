@@ -16,7 +16,7 @@ import "prompt.proto";
 package api.plugin_command;
 
 enum CommandName {
-  reserved 216, 219, 222;
+  reserved 216, 219, 222, 275 to 278;
   Subscribe = 0;
   Unsubscribe = 1;
   SetSelectable = 2;
@@ -264,11 +264,17 @@ enum CommandName {
   ToggleSessionPaneIgnoreOutput = 270;
   ToggleSessionPaneWatch = 271;
   FocusSessionPane = 272;
-  OpenSessionWindow = 273;
+  OpenSessionTerminal = 273;
+  DesktopIntegration = 274;
+  SetLiveView = 279;
+  SetLiveViewInput = 280;
+  ToggleBars = 281;
+  HideBars = 282;
+  ShowBars = 283;
 }
 
 message PluginCommand {
-  reserved 165, 167;
+  reserved 165, 167, 218 to 221;
   CommandName name = 1;
   oneof payload {
     SubscribePayload subscribe_payload = 2;
@@ -469,7 +475,12 @@ message PluginCommand {
     SessionPanePayload toggle_session_pane_watch_payload = 213;
     SessionPanePayload focus_session_pane_payload = 214;
     SendKeyToSessionPanePayload send_key_to_session_pane_payload = 215;
-    OpenSessionWindowPayload open_session_window_payload = 216;
+    OpenSessionTerminalPayload open_session_terminal_payload = 216;
+    string desktop_integration_payload = 217;
+    SetLiveViewPayload set_live_view_payload = 222;
+    SetLiveViewInputPayload set_live_view_input_payload = 223;
+    BarNamesPayload toggle_bars_payload = 224;
+    BarNamesPayload hide_bars_payload = 225;
   }
 }
 
@@ -498,7 +509,7 @@ message MarkAllSeenPayload {
   optional string session_name = 1;
 }
 
-message OpenSessionWindowPayload {
+message OpenSessionTerminalPayload {
   optional string session_name = 1;
   bool new_window = 2;
   optional uint32 pane_id = 3;
@@ -737,6 +748,8 @@ message OpenPluginPopupPayload {
   uint32 height = 6;
   optional bool focused = 7;
   optional string corner = 8;
+  optional bool capture_all_keys = 9;
+  optional string outside_click = 10;
 }
 
 message SetPopupSizePayload {
@@ -1777,3 +1790,25 @@ message SetSoftKeyboardPayload {
   bool on = 1;
 }
 
+
+message LiveView {
+  event.PaneAddress target = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+  optional bool resize_allowed = 6;
+  bool view_only = 7;
+}
+
+message SetLiveViewPayload {
+  optional LiveView view = 1;
+}
+
+message SetLiveViewInputPayload {
+  bool capture = 1;
+}
+
+message BarNamesPayload {
+  repeated string bar_names = 1;
+}

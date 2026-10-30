@@ -213,7 +213,7 @@ fn alt_w_in_the_inbox_opens_the_items_pane_in_a_window() {
     });
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("Deploy now?")
+        grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Deploy now?")
     });
     zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
@@ -225,16 +225,20 @@ fn alt_w_in_the_inbox_opens_the_items_pane_in_a_window() {
 }
 
 #[test]
-fn without_the_desktop_app_the_window_keys_are_not_offered_and_do_nothing() {
+fn without_the_desktop_app_alt_w_is_still_offered_and_warns_before_starting_it() {
     let other = other_session();
     let mut zellij = main_session();
-    open_sessions_with(&zellij, other.session_name(), "<F1> all keys");
-    assert!(!zellij.snapshot().contains("<Alt w>"));
+    open_sessions_with(&zellij, other.session_name(), "<Alt w> open it in a window");
+    assert!(!zellij.snapshot().contains("<Alt d>"));
     zellij.send_stdin(&keys::alt('w'));
-    std::thread::sleep(QUIET);
-    assert!(!zellij
-        .snapshot()
-        .contains("You are connected from a terminal"));
+    zellij.wait_until("the warning is shown", |grid_snapshot| {
+        grid_snapshot.contains("You are connected from a terminal")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the list is back", |grid_snapshot| {
+        !grid_snapshot.contains("You are connected from a terminal")
+            && grid_snapshot.contains(other.session_name())
+    });
     zellij.quit();
 }
 
@@ -289,9 +293,9 @@ fn open_inbox_on(zellij: &TestSession, text: &str) {
     });
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
-        grid_snapshot.contains("NEEDS YOU")
+        grid_snapshot.contains("Inbox (1)")
             && grid_snapshot.contains(text)
-            && grid_snapshot.contains("<ENTER> go there")
+            && grid_snapshot.contains("<c> dismiss")
     });
 }
 
@@ -371,7 +375,7 @@ fn alt_x_in_the_inbox_on_this_session_goes_to_the_pane_and_disconnects_the_other
     zellij.send_stdin(&keys::alt('x'));
     wait_for_exit(&bystander, "the other client was not disconnected");
     let grid_snapshot = zellij.wait_until("this client is on the item's tab", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("<ENTER> go there")
+        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("<c> dismiss")
     });
     assert!(
         !zellij.main_client().has_exited(),

@@ -7,6 +7,7 @@ use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
 };
 use zellij_utils::session_index::layout_cwd;
+use zellij_utils::sessions::{validate_session_folder_name, validate_session_name};
 
 pub const REMOTE_PREVIEW_TIMEOUT: Duration = Duration::from_millis(1000);
 pub const LOCAL_PREVIEW_ANSWER_TIMEOUT: Duration = Duration::from_millis(800);
@@ -20,15 +21,26 @@ fn preview_error(session_name: &str, tab_index: Option<usize>, error: String) ->
     }
 }
 
+fn checked_session_id(session_name: &str) -> Result<String, String> {
+    validate_session_name(session_name)?;
+    validate_session_folder_name(session_name)?;
+    let session_id = zellij_utils::sessions::resolve_session_id(session_name)
+        .unwrap_or_else(|| session_name.to_owned());
+    validate_session_folder_name(&session_id)?;
+    Ok(session_id)
+}
+
 pub fn running_session_preview(
     session_name: &str,
     tab_index: Option<usize>,
     pane_id: Option<(u32, bool)>,
     anchor: Option<zellij_utils::data::PreviewAnchor>,
 ) -> SessionPreview {
-    // Sockets are named by session id; legacy sessions are named after the session.
-    let socket_path = zellij_utils::sessions::resolve_session_socket_path(session_name)
-        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
+    let session_id = match checked_session_id(session_name) {
+        Ok(session_id) => session_id,
+        Err(e) => return preview_error(session_name, tab_index, e),
+    };
+    let socket_path = ZELLIJ_SOCK_DIR.join(session_id);
     let stream = match zellij_utils::consts::ipc_connect(&socket_path) {
         Ok(stream) => stream,
         Err(e) => return preview_error(session_name, tab_index, e.to_string()),
@@ -230,9 +242,16 @@ pub fn saved_session_preview_from_layout(
 }
 
 pub fn saved_session_preview(session_name: &str) -> SavedSessionPreview {
-    // The layout cache is keyed by session id (== name for legacy sessions).
-    let session_id = zellij_utils::sessions::resolve_session_id(session_name)
-        .unwrap_or_else(|| session_name.to_owned());
+    let session_id = match checked_session_id(session_name) {
+        Ok(session_id) => session_id,
+        Err(e) => {
+            return SavedSessionPreview {
+                session_name: session_name.to_owned(),
+                error: Some(e),
+                ..Default::default()
+            }
+        },
+    };
     let layout_path = session_layout_cache_file_name(&session_id);
     match std::fs::read_to_string(&layout_path) {
         Ok(raw_layout) => {
@@ -290,6 +309,48 @@ layout {
     fn unreadable_layouts_report_an_error() {
         let preview = saved_session_preview_from_layout("broken", "layout {", None);
         assert!(preview.error.is_some());
+    }
+
+    #[test]
+    fn saved_previews_refuse_names_that_leave_the_cache_folder() {
+        for name in [
+            "/tmp/zellij-preview-test",
+            "../../etc",
+            "..",
+            ".",
+            "a/b",
+            "",
+        ] {
+            let preview = saved_session_preview(name);
+            assert!(
+                preview
+                    .error
+                    .as_deref()
+                    .map(|e| e.contains("ession name"))
+                    .unwrap_or(false),
+                "{:?} gave {:?}",
+                name,
+                preview.error
+            );
+            assert!(preview.tabs.is_empty());
+        }
+    }
+
+    #[test]
+    fn running_previews_refuse_names_that_leave_the_socket_folder() {
+        for name in ["/tmp/zellij-preview-test", "../x", "a/b"] {
+            let preview = running_session_preview(name, None, None, None);
+            assert!(
+                preview
+                    .error
+                    .as_deref()
+                    .map(|e| e.contains("ession name"))
+                    .unwrap_or(false),
+                "{:?} gave {:?}",
+                name,
+                preview.error
+            );
+        }
     }
 
     #[test]

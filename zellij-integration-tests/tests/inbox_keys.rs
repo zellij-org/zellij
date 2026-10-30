@@ -3,8 +3,9 @@
 use std::time::Duration;
 use zellij_integration_tests::attention::{counted, needs_you, session_counts, wait_for_counted};
 use zellij_integration_tests::inbox::{
-    background_session_with, inbox_shows, open_inbox_on, session_needing_you, ATTENTION_CONFIG,
-    INBOX_HELP, SESSIONS_HELP,
+    background_session_with, inbox_shows, open_inbox_on, press_esc, press_release_key,
+    press_type_key, session_needing_you, ATTENTION_CONFIG, GO_KEY, INBOX_HELP, RELEASE_KEY_HINT,
+    SESSIONS_HELP, TYPE_INTO_IT, TYPING_INTO,
 };
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
@@ -50,11 +51,30 @@ fn wait_for_indicator(zellij: &TestSession, what: &str, text: &str) -> GridSnaps
     })
 }
 
-fn is_selected(grid_snapshot: &GridSnapshot, text: &str) -> bool {
+fn is_highlighted(code: Option<zellij_integration_tests::client_screen::AnsiCode>) -> bool {
+    !matches!(
+        code,
+        None | Some(zellij_integration_tests::client_screen::AnsiCode::Reset)
+    )
+}
+
+fn is_selected(grid_snapshot: &GridSnapshot, row: &str) -> bool {
     grid_snapshot
+        .text
         .lines()
-        .iter()
-        .any(|line| line.contains(text) && line.contains('▌'))
+        .enumerate()
+        .filter_map(|(y, line)| {
+            line.find(row)
+                .map(|byte_index| (line[..byte_index].chars().count(), y))
+        })
+        .any(|(x, y)| {
+            (x..x + row.chars().count())
+                .all(|column| is_highlighted(grid_snapshot.cell_style(column, y).background))
+        })
+}
+
+fn row_of(symbol: &str, session: &str) -> String {
+    format!("{} {}  ", symbol, session)
 }
 
 fn click(zellij: &TestSession, grid_snapshot: &GridSnapshot, text: &str) {
@@ -123,14 +143,16 @@ fn one_counted_and_one_muted(
 fn c_dismisses_the_selected_item_and_selects_the_next() {
     let (mut zellij, _) = main_session();
     let (older, newer) = two_items(&zellij);
+    let older_row = row_of("●", older.session_name());
+    let newer_row = row_of("●", newer.session_name());
     open_inbox_on(&zellij, "Newer question?");
     zellij.wait_until("the newest item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "Newer question?")
+        is_selected(grid_snapshot, &newer_row) && !is_selected(grid_snapshot, &older_row)
     });
     zellij.send_stdin(&keys::key('c'));
     wait_for_counted(newer.session_name(), 0);
     zellij.wait_until("the other item is selected", |grid_snapshot| {
-        indicator(grid_snapshot).contains("● 1") && is_selected(grid_snapshot, "Older question?")
+        indicator(grid_snapshot).contains("● 1") && is_selected(grid_snapshot, &older_row)
     });
     assert_eq!(
         session_counts(older.session_name()).map(|counts| counted(&counts)),
@@ -161,7 +183,7 @@ fn m_mutes_the_selected_pane_and_m_again_unmutes_it() {
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     open_inbox_on(&zellij, "Mute me?");
     zellij.wait_until("the item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "Mute me?")
+        is_selected(grid_snapshot, &row_of("●", other.session_name()))
     });
     zellij.send_stdin(&keys::key('m'));
     zellij.wait_until("the item moved behind the line", |grid_snapshot| {
@@ -172,7 +194,8 @@ fn m_mutes_the_selected_pane_and_m_again_unmutes_it() {
     });
     zellij.send_stdin(&keys::key('a'));
     zellij.wait_until("the muted item is shown", |grid_snapshot| {
-        grid_snapshot.contains(SHOWN_LINE) && is_selected(grid_snapshot, "Mute me?")
+        grid_snapshot.contains(SHOWN_LINE)
+            && is_selected(grid_snapshot, &row_of("⊘", other.session_name()))
     });
     zellij.send_stdin(&keys::key('m'));
     wait_for_counted(other.session_name(), 1);
@@ -183,20 +206,14 @@ fn m_mutes_the_selected_pane_and_m_again_unmutes_it() {
 #[test]
 fn n_watches_the_selected_pane() {
     let (mut zellij, _) = main_session();
-    let (_other, terminal) = background_session_with(ATTENTION_CONFIG);
+    let (other, terminal) = background_session_with(ATTENTION_CONFIG);
     failed_command(&terminal, "cargo test", "1");
     wait_for_indicator(&zellij, "the failed command is counted", "✗ 1");
-    open_inbox_on(&zellij, "FAILED");
+    open_inbox_on(&zellij, "exited 1");
     zellij.wait_until("the item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "FAILED")
+        is_selected(grid_snapshot, &row_of("✗", other.session_name()))
     });
     zellij.send_stdin(&keys::key('n'));
-    zellij.wait_until("the item is watched", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .iter()
-            .any(|line| line.contains("FAILED") && line.contains("watched"))
-    });
     zellij.send_stdin(&keys::key('?'));
     zellij.wait_until("all keys offer to stop watching", |grid_snapshot| {
         grid_snapshot.contains("stop watching")
@@ -217,20 +234,21 @@ fn n_watches_the_selected_pane() {
 #[test]
 fn a_shows_and_hides_the_items_behind_the_line() {
     let (mut zellij, _) = main_session();
-    let (_counted, _muted) = one_counted_and_one_muted(&zellij);
+    let (_counted, muted) = one_counted_and_one_muted(&zellij);
+    let muted_row = row_of("⊘", muted.session_name());
     open_inbox_on(&zellij, "Counted question?");
-    let grid_snapshot =
-        zellij.wait_until("the muted item waits behind the line", |grid_snapshot| {
-            grid_snapshot.contains("1 more item with only new output, quiet or muted · <a> show")
+    let grid_snapshot = zellij
+        .wait_until("the muted item waits behind the line", |grid_snapshot| {
+            grid_snapshot.contains("1 more item with")
         });
-    assert!(!grid_snapshot.contains("Muted question?"));
+    assert!(!grid_snapshot.contains(&muted_row));
     zellij.send_stdin(&keys::key('a'));
     zellij.wait_until("a shows the muted item", |grid_snapshot| {
-        grid_snapshot.contains(SHOWN_LINE) && grid_snapshot.contains("Muted question?")
+        grid_snapshot.contains(SHOWN_LINE) && grid_snapshot.contains(&muted_row)
     });
     zellij.send_stdin(&keys::key('a'));
     zellij.wait_until("a hides it again", |grid_snapshot| {
-        grid_snapshot.contains(HIDDEN_LINE) && !grid_snapshot.contains("Muted question?")
+        grid_snapshot.contains(HIDDEN_LINE) && !grid_snapshot.contains(&muted_row)
     });
     zellij.quit();
 }
@@ -238,7 +256,8 @@ fn a_shows_and_hides_the_items_behind_the_line() {
 #[test]
 fn clicking_the_line_shows_the_hidden_items() {
     let (mut zellij, _) = main_session();
-    let (_counted, _muted) = one_counted_and_one_muted(&zellij);
+    let (_counted, muted) = one_counted_and_one_muted(&zellij);
+    let muted_row = row_of("⊘", muted.session_name());
     open_inbox_on(&zellij, "Counted question?");
     let grid_snapshot = zellij
         .wait_until("the muted item waits behind the line", |grid_snapshot| {
@@ -246,7 +265,7 @@ fn clicking_the_line_shows_the_hidden_items() {
         });
     click(&zellij, &grid_snapshot, HIDDEN_LINE);
     zellij.wait_until("the click shows the muted item", |grid_snapshot| {
-        grid_snapshot.contains(SHOWN_LINE) && grid_snapshot.contains("Muted question?")
+        grid_snapshot.contains(SHOWN_LINE) && grid_snapshot.contains(&muted_row)
     });
     zellij.quit();
 }
@@ -254,41 +273,52 @@ fn clicking_the_line_shows_the_hidden_items() {
 #[test]
 fn f_lists_only_this_session() {
     let (mut zellij, terminal) = main_session();
-    let (_other, _) = session_needing_you("Elsewhere?");
     terminal.output(&needs_you("Right here?"));
+    wait_for_indicator(&zellij, "the item here is counted", "● 1");
+    std::thread::sleep(Duration::from_millis(50));
+    let (other, _) = session_needing_you("Elsewhere?");
     wait_for_indicator(&zellij, "both items are counted", "● 2");
+    let other_row = row_of("●", other.session_name());
+    let here_row = row_of("●", "here");
     open_inbox_on(&zellij, "Elsewhere?");
     zellij.wait_until("both items are listed", |grid_snapshot| {
-        grid_snapshot.contains("Elsewhere?") && grid_snapshot.contains("Right here?")
+        grid_snapshot.contains(&other_row) && grid_snapshot.contains(&here_row)
     });
     zellij.send_stdin(&keys::key('f'));
     zellij.wait_until("only this session is listed", |grid_snapshot| {
         grid_snapshot.contains("Only this session")
-            && grid_snapshot.contains("Right here?")
-            && !grid_snapshot.contains("Elsewhere?")
+            && grid_snapshot.contains(&here_row)
+            && !grid_snapshot.contains(&other_row)
     });
     zellij.send_stdin(&keys::key('f'));
     zellij.wait_until("every session is listed again", |grid_snapshot| {
         !grid_snapshot.contains("Only this session")
-            && grid_snapshot.contains("Right here?")
-            && grid_snapshot.contains("Elsewhere?")
+            && grid_snapshot.contains(&here_row)
+            && grid_snapshot.contains(&other_row)
     });
     zellij.quit();
 }
 
 #[test]
-fn escape_in_reply_mode_leaves_reply_without_closing() {
+fn escape_while_typing_reaches_the_pane_and_the_release_key_returns_to_the_list() {
     let (mut zellij, _) = main_session();
-    let (_other, _) = session_needing_you("Reply?");
+    let (_other, terminal) = session_needing_you("Type here?");
     wait_for_indicator(&zellij, "the item is counted", "● 1");
-    open_inbox_on(&zellij, "Reply?");
-    zellij.send_stdin(&keys::key('r'));
-    zellij.wait_until("reply mode started", |grid_snapshot| {
-        grid_snapshot.contains("REPLYING TO")
+    open_inbox_on(&zellij, "Type here?");
+    press_type_key(&zellij);
+    zellij.wait_until("typing started", |grid_snapshot| {
+        grid_snapshot.contains(TYPING_INTO)
     });
-    zellij.send_stdin(&keys::ESC);
-    zellij.wait_until("reply mode ended with the inbox open", |grid_snapshot| {
-        !grid_snapshot.contains("REPLYING TO") && grid_snapshot.contains(INBOX_HELP)
+    press_esc(&zellij);
+    terminal.wait_for_stdin("escape reached the pane", |stdin| stdin.ends_with(b"\x1b"));
+    zellij.send_stdin(b"x");
+    terminal.wait_for_stdin("typing goes on after one escape", |stdin| {
+        stdin.ends_with(b"\x1bx")
+    });
+    assert!(zellij.snapshot().contains(TYPING_INTO));
+    press_release_key(&zellij);
+    zellij.wait_until("the release key returned to the list", |grid_snapshot| {
+        !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(INBOX_HELP)
     });
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("the inbox closed", |grid_snapshot| {
@@ -298,36 +328,40 @@ fn escape_in_reply_mode_leaves_reply_without_closing() {
 }
 
 #[test]
-fn clicking_the_preview_starts_a_reply() {
+fn clicking_the_live_view_starts_typing_into_the_pane() {
     let (mut zellij, _) = main_session();
-    let (_other, terminal) = session_needing_you("Click the output?");
+    let (_other, terminal) = session_needing_you("Click the view?");
     terminal.output(b"some output\r\n");
     wait_for_indicator(&zellij, "the item is counted", "● 1");
-    open_inbox_on(&zellij, "Click the output?");
-    zellij.send_stdin(&keys::key('p'));
-    let grid_snapshot = zellij.wait_until("the output is shown", |grid_snapshot| {
-        grid_snapshot.contains("Latest output")
+    open_inbox_on(&zellij, "Click the view?");
+    let grid_snapshot = zellij.wait_until("the live view shows the pane", |grid_snapshot| {
+        grid_snapshot.contains("some output")
     });
-    let (column, row) = grid_snapshot.position_of("Latest output").unwrap();
-    zellij.send_stdin(&keys::sgr_click(column + 2, row + 2));
-    zellij.wait_until("the click started a reply", |grid_snapshot| {
-        grid_snapshot.contains("REPLYING TO")
+    let (column, row) = grid_snapshot.position_of("some output").unwrap();
+    zellij.send_stdin(&keys::sgr_click(column + 2, row));
+    zellij.wait_until("the click started typing", |grid_snapshot| {
+        grid_snapshot.contains(TYPING_INTO)
     });
+    zellij.send_stdin(b"k");
+    terminal.wait_for_stdin("the key reached the pane", |stdin| stdin.ends_with(b"k"));
     zellij.quit();
 }
 
 #[test]
 fn clicking_an_unselected_item_only_selects_it() {
     let (mut zellij, _) = main_session();
-    let (_older, _newer) = two_items(&zellij);
+    let (older, newer) = two_items(&zellij);
+    let older_row = row_of("●", older.session_name());
+    let newer_row = row_of("●", newer.session_name());
     open_inbox_on(&zellij, "Newer question?");
     let grid_snapshot = zellij.wait_until("the newest item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "Newer question?") && grid_snapshot.contains("Older question?")
+        is_selected(grid_snapshot, &newer_row)
+            && grid_snapshot.contains(&older_row)
+            && !is_selected(grid_snapshot, &older_row)
     });
-    click(&zellij, &grid_snapshot, "Older question?");
+    click(&zellij, &grid_snapshot, &older_row);
     zellij.wait_until("the clicked item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "Older question?")
-            && !is_selected(grid_snapshot, "Newer question?")
+        is_selected(grid_snapshot, &older_row) && !is_selected(grid_snapshot, &newer_row)
     });
     std::thread::sleep(Duration::from_millis(500));
     assert!(
@@ -345,9 +379,9 @@ fn clicking_the_go_there_action_switches_to_the_item() {
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     open_inbox_on(&zellij, "Go there?");
     let grid_snapshot = zellij.wait_until("the action is offered", |grid_snapshot| {
-        grid_snapshot.contains("<ENTER> go there")
+        grid_snapshot.contains(GO_KEY) && grid_snapshot.contains(TYPE_INTO_IT)
     });
-    click(&zellij, &grid_snapshot, "<ENTER> go there");
+    click(&zellij, &grid_snapshot, GO_KEY);
     let (switch, _previous) = zellij.follow_switch_into(other);
     assert_eq!(switch.pane_id, Some((terminal.terminal_id(), false)));
     zellij.wait_until("the switched client is attached", |grid_snapshot| {
@@ -391,31 +425,38 @@ fn clicking_the_tab_headers_switches_between_inbox_and_sessions() {
 fn page_down_scrolls_the_list_by_whole_notifications() {
     let short = Size {
         cols: 120,
-        rows: 18,
+        rows: 17,
     };
     let (mut zellij, _) = main_session_sized(short);
     let mut sessions = vec![];
-    for index in 0..5 {
+    for index in 0..7 {
         let (session, terminal) = background_session_with(ATTENTION_CONFIG);
         terminal.output(&needs_you(&format!("Question number {}?", index)));
         wait_for_indicator(&zellij, "the item is counted", &format!("● {}", index + 1));
         std::thread::sleep(Duration::from_millis(30));
         sessions.push(session);
     }
+    let more_marker = |grid_snapshot: &GridSnapshot, arrow: &str| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains(&format!("{} ", arrow)) && line.contains(" more"))
+    };
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the list overflows", |grid_snapshot| {
-        grid_snapshot.contains("↓") && grid_snapshot.contains("more")
+        more_marker(grid_snapshot, "↓") && grid_snapshot.contains("Question number 6?")
     });
     for _ in 0..3 {
         zellij.send_stdin(&keys::PAGE_DOWN);
     }
-    let grid_snapshot = zellij.wait_until("the list scrolled down", |grid_snapshot| {
-        grid_snapshot.contains("↑") && grid_snapshot.contains("more")
-    });
-    assert!(
-        grid_snapshot.contains("▌"),
-        "the selected item stays in view:\n{}",
-        grid_snapshot.text
+    zellij.wait_until(
+        "the list scrolled down to the selected oldest item",
+        |grid_snapshot| {
+            more_marker(grid_snapshot, "↑")
+                && !more_marker(grid_snapshot, "↓")
+                && grid_snapshot.contains("Question number 0?")
+                && !grid_snapshot.contains("Question number 6?")
+        },
     );
     zellij.quit();
 }
@@ -423,17 +464,27 @@ fn page_down_scrolls_the_list_by_whole_notifications() {
 #[test]
 fn question_mark_opens_all_keys_from_the_inbox_and_escape_closes_it() {
     let (mut zellij, _) = main_session_sized(TALL);
-    let (_other, _) = session_needing_you("All keys?");
+    let (other, _) = session_needing_you("All keys?");
+    let other_row = row_of("●", other.session_name());
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     open_inbox_on(&zellij, "All keys?");
     zellij.wait_until("the item is selected", |grid_snapshot| {
-        is_selected(grid_snapshot, "All keys?")
+        is_selected(grid_snapshot, &other_row)
     });
     zellij.send_stdin(&keys::key('?'));
     let grid_snapshot = zellij.wait_until("the all keys screen is shown", |grid_snapshot| {
         grid_snapshot.contains("All keys") && grid_snapshot.contains("<C>")
     });
-    for key in ["<C>", "<f>", "<a>", "<Shift ←↓↑→>"] {
+    for key in [
+        "<C>",
+        "<f>",
+        "<a>",
+        "<s>",
+        "<ENTER>",
+        "<Alt ENTER>",
+        "<z>",
+        RELEASE_KEY_HINT,
+    ] {
         assert!(
             grid_snapshot.contains(key),
             "{} is missing from the list:\n{}",
@@ -441,9 +492,17 @@ fn question_mark_opens_all_keys_from_the_inbox_and_escape_closes_it() {
             grid_snapshot.text
         );
     }
+    assert!(
+        !grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains('│') && (line.contains("<g>") || line.contains("<→>"))),
+        "removed keys are still listed:\n{}",
+        grid_snapshot.text
+    );
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("escape returns to the inbox", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP) && is_selected(grid_snapshot, "All keys?")
+        grid_snapshot.contains(INBOX_HELP) && is_selected(grid_snapshot, &other_row)
     });
     zellij.quit();
 }

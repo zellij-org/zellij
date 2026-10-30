@@ -159,9 +159,6 @@ impl EntryKind for AliasKind {
     fn title(&self) -> String {
         "Plugin aliases".to_owned()
     }
-    fn heading_note(&self) -> Option<String> {
-        Some("⟳ applies after a restart".to_owned())
-    }
     fn noun(&self) -> &'static str {
         "plugin alias"
     }

@@ -4,6 +4,7 @@ use zellij_tile::prelude::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TreeNode {
     Exited,
+    Recent,
     Session,
     Tab(usize),
     Pane(usize, usize),
@@ -49,7 +50,10 @@ pub struct SessionTree {
     pub rows: Vec<TreeRow>,
     pub row_targets: Vec<(usize, std::ops::Range<usize>, usize)>,
     pub marker_targets: Vec<(usize, usize, usize)>,
+    pub hovered: Option<(String, TreeNode)>,
 }
+
+pub const RECENT_EXITED: usize = 3;
 
 impl Default for TreeNode {
     fn default() -> Self {
@@ -64,20 +68,37 @@ impl SessionTree {
             .iter()
             .map(|(index, name)| (*index, name.clone(), false))
             .collect();
-        self.flatten_grouped(&sessions, false)
+        self.flatten_grouped(&sessions, false, 0)
     }
 
     pub fn flatten_grouped(
         &self,
         sessions: &[(usize, String, bool)],
         expand_exited: bool,
+        recent: usize,
     ) -> Vec<TreeRow> {
         let mut rows = vec![];
         for (original_index, name, _) in sessions.iter().filter(|(_, _, exited)| !exited) {
             self.push_session(&mut rows, *original_index, name, 0);
         }
-        let exited: Vec<&(usize, String, bool)> =
+        let mut exited: Vec<&(usize, String, bool)> =
             sessions.iter().filter(|(_, _, exited)| *exited).collect();
+        let recent = recent.min(exited.len());
+        if recent > 0 {
+            let shown: Vec<&(usize, String, bool)> = exited.drain(..recent).collect();
+            rows.push(TreeRow {
+                original_index: shown[0].0,
+                session: String::new(),
+                node: TreeNode::Recent,
+                depth: 0,
+                expandable: false,
+                expanded: true,
+                covers: vec![],
+            });
+            for (original_index, name, _) in shown {
+                self.push_session(&mut rows, *original_index, name, 1);
+            }
+        }
         let Some(first) = exited.first() else {
             return rows;
         };
@@ -183,8 +204,21 @@ impl SessionTree {
                     self.expanded_tabs.insert(key);
                 }
             },
-            TreeNode::Pane(..) => {},
+            TreeNode::Recent | TreeNode::Pane(..) => {},
         }
+    }
+
+    pub fn is_heading(&self, index: usize) -> bool {
+        self.rows
+            .get(index)
+            .map(|row| row.node == TreeNode::Recent)
+            .unwrap_or(false)
+    }
+
+    pub fn identity(&self, index: usize) -> Option<(String, TreeNode)> {
+        self.rows
+            .get(index)
+            .map(|row| (row.session.clone(), row.node))
     }
 
     pub fn set_children_from_tabs(&mut self, session: &str, tabs: &[SessionPreviewTab]) -> bool {
@@ -236,6 +270,35 @@ impl SessionTree {
             })
             .collect();
         self.store_children(&preview.session_name, tabs)
+    }
+
+    pub fn live_pane(&self, session: &str, node: TreeNode) -> Option<(usize, usize, u32)> {
+        let tabs = self.children.get(session)?;
+        let (tab_index, pane_index) = match node {
+            TreeNode::Exited | TreeNode::Recent => return None,
+            TreeNode::Session => {
+                let tab_index = tabs
+                    .iter()
+                    .position(|tab| tab.active)
+                    .or_else(|| (!tabs.is_empty()).then_some(0))?;
+                let pane_index = tabs[tab_index].panes.iter().position(|pane| pane.focused)?;
+                (tab_index, pane_index)
+            },
+            TreeNode::Tab(tab_index) => {
+                let panes = &tabs.get(tab_index)?.panes;
+                let pane_index = panes
+                    .iter()
+                    .position(|pane| pane.focused && !pane.is_plugin)
+                    .or_else(|| panes.iter().position(|pane| !pane.is_plugin))?;
+                (tab_index, pane_index)
+            },
+            TreeNode::Pane(tab_index, pane_index) => (tab_index, pane_index),
+        };
+        let pane = tabs.get(tab_index)?.panes.get(pane_index)?;
+        if pane.is_plugin {
+            return None;
+        }
+        Some((tab_index, pane_index, pane.id))
     }
 
     fn store_children(&mut self, session: &str, tabs: Vec<TreeTab>) -> bool {
@@ -340,7 +403,7 @@ mod tests {
             (2, "web".to_owned(), false),
             (3, "older".to_owned(), true),
         ];
-        let rows = tree.flatten_grouped(&sessions, false);
+        let rows = tree.flatten_grouped(&sessions, false, 0);
         let shown: Vec<(TreeNode, &str, usize)> = rows
             .iter()
             .map(|r| (r.node, r.session.as_str(), r.depth))
@@ -359,7 +422,7 @@ mod tests {
         tree.node_session = "older".to_owned();
         assert_eq!(tree.cursor_position(&rows, Some(3)), Some(2));
         tree.toggle(&rows[2]);
-        let rows = tree.flatten_grouped(&sessions, false);
+        let rows = tree.flatten_grouped(&sessions, false, 0);
         let shown: Vec<(&str, usize)> =
             rows.iter().map(|r| (r.session.as_str(), r.depth)).collect();
         assert_eq!(
@@ -368,11 +431,53 @@ mod tests {
         );
         assert_eq!(tree.cursor_position(&rows, Some(3)), Some(4));
         tree.toggle(&rows[2]);
-        assert_eq!(tree.flatten_grouped(&sessions, true).len(), 5);
+        assert_eq!(tree.flatten_grouped(&sessions, true, 0).len(), 5);
         assert_eq!(
-            tree.flatten_grouped(&[(0, "api".to_owned(), false)], false)
+            tree.flatten_grouped(&[(0, "api".to_owned(), false)], false, 0)
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn the_most_recent_exited_sessions_show_above_the_folded_rest() {
+        let tree = SessionTree::default();
+        let sessions = vec![
+            (0, "api".to_owned(), false),
+            (1, "a".to_owned(), true),
+            (2, "b".to_owned(), true),
+            (3, "c".to_owned(), true),
+            (4, "d".to_owned(), true),
+            (5, "e".to_owned(), true),
+        ];
+        let rows = tree.flatten_grouped(&sessions, false, RECENT_EXITED);
+        let shown: Vec<(TreeNode, &str, usize)> = rows
+            .iter()
+            .map(|r| (r.node, r.session.as_str(), r.depth))
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                (TreeNode::Session, "api", 0),
+                (TreeNode::Recent, "", 0),
+                (TreeNode::Session, "a", 1),
+                (TreeNode::Session, "b", 1),
+                (TreeNode::Session, "c", 1),
+                (TreeNode::Exited, "", 0),
+            ]
+        );
+        assert_eq!(rows[5].covers, vec![4, 5]);
+        let few = tree.flatten_grouped(&sessions[..3], false, RECENT_EXITED);
+        let nodes: Vec<TreeNode> = few.iter().map(|r| r.node).collect();
+        assert_eq!(
+            nodes,
+            vec![
+                TreeNode::Session,
+                TreeNode::Recent,
+                TreeNode::Session,
+                TreeNode::Session
+            ],
+            "with three or fewer exited sessions there is no folded group"
         );
     }
 
@@ -435,5 +540,109 @@ mod tests {
             ..Default::default()
         };
         assert!(!tree.set_children_from_saved(&failed));
+    }
+
+    fn pane(id: u32, title: &str, focused: bool, is_plugin: bool) -> SessionPreviewPane {
+        SessionPreviewPane {
+            id,
+            title: title.to_owned(),
+            focused,
+            is_plugin,
+            ..Default::default()
+        }
+    }
+
+    fn mixed_tabs() -> Vec<SessionPreviewTab> {
+        vec![
+            SessionPreviewTab {
+                name: "work".to_owned(),
+                active: false,
+                panes: vec![
+                    pane(10, "status", false, true),
+                    pane(11, "shell", false, false),
+                    pane(12, "editor", true, false),
+                ],
+            },
+            SessionPreviewTab {
+                name: "tools".to_owned(),
+                active: true,
+                panes: vec![
+                    pane(20, "logs", false, false),
+                    pane(21, "picker", true, true),
+                ],
+            },
+            SessionPreviewTab {
+                name: "plain".to_owned(),
+                active: false,
+                panes: vec![
+                    pane(30, "bar", true, true),
+                    pane(31, "first", false, false),
+                    pane(32, "second", false, false),
+                ],
+            },
+        ]
+    }
+
+    #[test]
+    fn a_session_tab_or_pane_row_selects_the_pane_the_live_preview_shows() {
+        let mut tree = SessionTree::default();
+        tree.set_children_from_tabs("api", &tabs());
+        tree.set_children_from_tabs("web", &mixed_tabs());
+        assert_eq!(
+            tree.live_pane("api", TreeNode::Session),
+            Some((0, 0, 1)),
+            "a session row shows the focused pane of its active tab"
+        );
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Tab(0)),
+            Some((0, 2, 12)),
+            "a tab row shows its focused terminal pane"
+        );
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Tab(2)),
+            Some((2, 1, 31)),
+            "a tab whose focused pane is a plugin shows its first terminal pane"
+        );
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Pane(0, 1)),
+            Some((0, 1, 11))
+        );
+        assert_eq!(tree.live_pane("api", TreeNode::Pane(0, 1)), Some((0, 1, 2)));
+        let mut without_clients = mixed_tabs();
+        for tab in without_clients.iter_mut() {
+            tab.active = false;
+        }
+        tree.set_children_from_tabs("quiet", &without_clients);
+        assert_eq!(
+            tree.live_pane("quiet", TreeNode::Session),
+            Some((0, 2, 12)),
+            "a session without an active tab shows the focused pane of its first tab"
+        );
+    }
+
+    #[test]
+    fn plugin_panes_unknown_sessions_and_exited_sessions_have_no_live_pane() {
+        let mut tree = SessionTree::default();
+        tree.set_children_from_tabs("web", &mixed_tabs());
+        assert_eq!(
+            tree.live_pane("web", TreeNode::Session),
+            None,
+            "the focused pane of the active tab is a plugin"
+        );
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(0, 0)), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(1, 1)), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Pane(9, 0)), None);
+        assert_eq!(tree.live_pane("unknown", TreeNode::Session), None);
+        assert_eq!(tree.live_pane("web", TreeNode::Exited), None);
+        tree.set_children_from_tabs(
+            "empty",
+            &[SessionPreviewTab {
+                name: "only".to_owned(),
+                active: true,
+                panes: vec![pane(1, "plugin", false, true)],
+            }],
+        );
+        assert_eq!(tree.live_pane("empty", TreeNode::Session), None);
+        assert_eq!(tree.live_pane("empty", TreeNode::Tab(0)), None);
     }
 }

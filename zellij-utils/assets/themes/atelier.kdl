@@ -5,74 +5,74 @@ themes {
         text_unselected {
             base 245 247 255
             background 32 39 70
-            emphasis_0 199 107 41
+            emphasis_0 213 119 55
             emphasis_1 34 162 201
             emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            emphasis_3 186 127 150
         }
         text_selected {
             base 245 247 255
-            background 151 157 180
-            emphasis_0 199 107 41
-            emphasis_1 34 162 201
-            emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            background 55 62 90
+            emphasis_0 242 146 83
+            emphasis_1 64 183 222
+            emphasis_2 191 170 77
+            emphasis_3 214 153 177
         }
         ribbon_selected {
             base 32 39 70
             background 172 151 57
-            emphasis_0 201 73 34
+            emphasis_0 94 22 0
             emphasis_1 199 107 41
             emphasis_2 156 99 122
-            emphasis_3 61 143 209
+            emphasis_3 0 51 86
         }
         ribbon_unselected {
             base 32 39 70
             background 151 157 180
-            emphasis_0 201 73 34
+            emphasis_0 102 25 0
             emphasis_1 245 247 255
             emphasis_2 61 143 209
-            emphasis_3 156 99 122
+            emphasis_3 86 36 58
         }
         table_title {
             base 172 151 57
-            background 0
-            emphasis_0 199 107 41
+            background 32 39 70
+            emphasis_0 213 119 55
             emphasis_1 34 162 201
             emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            emphasis_3 186 127 150
         }
         table_cell_selected {
             base 245 247 255
-            background 41 50 86
-            emphasis_0 199 107 41
-            emphasis_1 34 162 201
-            emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            background 55 62 90
+            emphasis_0 242 146 83
+            emphasis_1 64 183 222
+            emphasis_2 191 170 77
+            emphasis_3 214 153 177
         }
         table_cell_unselected {
             base 245 247 255
             background 32 39 70
-            emphasis_0 199 107 41
+            emphasis_0 213 119 55
             emphasis_1 34 162 201
             emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            emphasis_3 186 127 150
         }
         list_selected {
             base 245 247 255
-            background 41 50 86
-            emphasis_0 199 107 41
-            emphasis_1 34 162 201
-            emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            background 55 62 90
+            emphasis_0 242 146 83
+            emphasis_1 64 183 222
+            emphasis_2 191 170 77
+            emphasis_3 214 153 177
         }
         list_unselected {
             base 245 247 255
             background 32 39 70
-            emphasis_0 199 107 41
+            emphasis_0 213 119 55
             emphasis_1 34 162 201
             emphasis_2 172 151 57
-            emphasis_3 156 99 122
+            emphasis_3 186 127 150
         }
         frame_selected {
             base 172 151 57
@@ -80,7 +80,7 @@ themes {
             emphasis_0 199 107 41
             emphasis_1 34 162 201
             emphasis_2 156 99 122
-            emphasis_3 0
+            emphasis_3 156 99 122
         }
         frame_highlight {
             base 199 107 41
@@ -102,21 +102,21 @@ themes {
             base 201 73 34
             background 0
             emphasis_0 192 139 48
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 199 107 41
+            emphasis_2 156 99 122
+            emphasis_3 34 162 201
         }
         multiplayer_user_colors {
             player_1 156 99 122
             player_2 61 143 209
-            player_3 0
+            player_3 101 112 153
             player_4 192 139 48
             player_5 34 162 201
-            player_6 0
+            player_6 104 112 146
             player_7 201 73 34
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 61 140 82
+            player_9 148 117 0
+            player_10 132 103 180
         }
         // terminal_colors: https://github.com/atelierbram/atelier-schemes-terminal/blob/master/schemes/base16-ateliersulphurpool.dark.terminal
         terminal_colors {

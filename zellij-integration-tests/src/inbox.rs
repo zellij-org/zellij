@@ -1,33 +1,44 @@
 use crate::attention::needs_you;
-use crate::{keys, BackgroundTestSession, FakePtyHandle, GridSnapshot, TestRunner, TestSession};
+use crate::{
+    keys, BackgroundTestSession, FakePtyHandle, GridSnapshot, TestClient, TestRunner, TestSession,
+};
 
-pub const INBOX_HELP: &str = "<?> all keys";
+pub const INBOX_HELP: &str = "<?> more";
+pub const INBOX_LIST_HELP: &str = "<?> all keys";
+pub const ITEM_ACTIONS: &str = "<c> dismiss";
+pub const GO_KEY: &str = "<ENTER> go";
+pub const TYPE_INTO_IT: &str = "<Alt ENTER> type";
+pub const TYPE_INTO_IT_HINT: &str = "<Alt ENTER> type into it";
+pub const TYPING_INTO: &str = "typing into";
+pub const RELEASE_KEY_HINT: &str = "<F9>";
 pub const SESSIONS_HELP: &str = "<F1> all keys";
 pub const ATTENTION_CONFIG: &str = "session_indicator true\nmouse_mode true";
 
 pub fn open_inbox(zellij: &TestSession) -> GridSnapshot {
     zellij.send_stdin(&keys::F9);
     let opened = zellij.wait_until("the session manager opens", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP) || grid_snapshot.contains(SESSIONS_HELP)
+        shows_inbox(grid_snapshot) || grid_snapshot.contains(SESSIONS_HELP)
     });
-    if opened.contains(INBOX_HELP) {
+    if shows_inbox(&opened) {
         return opened;
     }
     zellij.send_stdin(&keys::TAB);
-    zellij.wait_until("the inbox is shown", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP)
-    })
+    zellij.wait_until("the inbox is shown", shows_inbox)
 }
 
 pub fn open_inbox_on(zellij: &TestSession, text: &str) -> GridSnapshot {
     zellij.send_stdin(&keys::F9);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
-        inbox_shows(grid_snapshot, text) && grid_snapshot.contains("<ENTER> go there")
+        inbox_shows(grid_snapshot, text) && grid_snapshot.contains(ITEM_ACTIONS)
     })
 }
 
+pub fn shows_inbox(grid_snapshot: &GridSnapshot) -> bool {
+    grid_snapshot.contains(INBOX_HELP) || grid_snapshot.contains(INBOX_LIST_HELP)
+}
+
 pub fn inbox_shows(grid_snapshot: &GridSnapshot, text: &str) -> bool {
-    grid_snapshot.contains(INBOX_HELP) && grid_snapshot.contains(text)
+    shows_inbox(grid_snapshot) && grid_snapshot.contains(text)
 }
 
 pub fn background_session_with(config: &str) -> (BackgroundTestSession, FakePtyHandle) {
@@ -45,4 +56,56 @@ pub fn session_needing_you(text: &str) -> (BackgroundTestSession, FakePtyHandle)
     let (background, terminal) = background_session_with(ATTENTION_CONFIG);
     terminal.output(&needs_you(text));
     (background, terminal)
+}
+
+pub trait TypesKeys {
+    fn type_bytes(&self, bytes: &[u8]);
+}
+
+impl TypesKeys for TestSession {
+    fn type_bytes(&self, bytes: &[u8]) {
+        self.send_stdin(bytes);
+    }
+}
+
+impl TypesKeys for TestClient {
+    fn type_bytes(&self, bytes: &[u8]) {
+        self.send_stdin(bytes);
+    }
+}
+
+pub fn press_esc(client: &impl TypesKeys) {
+    client.type_bytes(&keys::ESC_KEY);
+}
+
+pub fn press_release_key(client: &impl TypesKeys) {
+    client.type_bytes(&keys::F9);
+}
+
+pub fn press_type_key(client: &impl TypesKeys) {
+    client.type_bytes(&keys::ALT_ENTER);
+}
+
+pub fn inbox_view_area(grid_snapshot: &GridSnapshot) -> Option<(usize, usize, usize, usize)> {
+    let lines = grid_snapshot.lines();
+    let is_separator = |c: Option<char>| matches!(c, Some('│') | Some('┃'));
+    let tab_row = lines
+        .iter()
+        .position(|line| line.contains("Inbox (") && line.contains("Sessions ("))?;
+    let tab_line: Vec<char> = lines[tab_row].chars().collect();
+    let column_of = |text: &str| -> Option<usize> {
+        Some(lines[tab_row][..lines[tab_row].find(text)?].chars().count())
+    };
+    let inbox_column = column_of("Inbox (")?;
+    let sessions_column = column_of("Sessions (")?;
+    let right = (sessions_column..tab_line.len())
+        .find(|x| tab_line[*x] == '│')
+        .unwrap_or(tab_line.len());
+    let top = tab_row + 1;
+    let row: Vec<char> = lines.get(top)?.chars().collect();
+    let separator = (inbox_column..right.min(row.len())).find(|x| is_separator(Some(row[*x])))?;
+    let bottom = (top..lines.len())
+        .find(|y| !is_separator(lines[*y].chars().nth(separator)))
+        .unwrap_or(lines.len());
+    Some((separator + 1, top, right - separator - 1, bottom - top))
 }

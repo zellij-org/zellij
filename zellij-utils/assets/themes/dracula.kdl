@@ -19,22 +19,22 @@ themes {
         ribbon_selected {
             base 0 0 0
             background 80 250 123
-            emphasis_0 255 85 85
+            emphasis_0 195 8 35
             emphasis_1 255 184 108
             emphasis_2 255 121 198
-            emphasis_3 98 114 164
+            emphasis_3 80 95 144
         }
         ribbon_unselected {
             base 0 0 0
             background 248 248 242
-            emphasis_0 255 85 85
+            emphasis_0 215 43 52
             emphasis_1 255 255 255
             emphasis_2 98 114 164
-            emphasis_3 255 121 198
+            emphasis_3 192 63 142
         }
         table_title {
             base 80 250 123
-            background 0
+            background 0 0 0
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 80 250 123
@@ -78,7 +78,7 @@ themes {
             emphasis_0 255 184 108
             emphasis_1 139 233 253
             emphasis_2 255 121 198
-            emphasis_3 0
+            emphasis_3 255 121 198
         }
         frame_highlight {
             base 255 184 108
@@ -100,21 +100,21 @@ themes {
             base 255 85 85
             background 0
             emphasis_0 241 250 140
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 255 184 108
+            emphasis_2 255 121 198
+            emphasis_3 139 233 253
         }
         multiplayer_user_colors {
             player_1 255 121 198
             player_2 98 114 164
-            player_3 0
+            player_3 80 250 123
             player_4 241 250 140
             player_5 139 233 253
-            player_6 0
+            player_6 255 184 108
             player_7 255 85 85
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 214 172 255
+            player_9 189 213 108
+            player_10 255 173 197
         }
         // terminal_colors: https://github.com/dracula/alacritty/blob/master/dracula.toml
         terminal_colors {

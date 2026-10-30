@@ -578,9 +578,34 @@ pub fn parse_iterm2_cwd(raw: &str, remote_host: Option<&str>) -> Option<Reported
     })
 }
 
+pub fn is_network_path(path: &str) -> bool {
+    let mut chars = path.trim_start().chars();
+    matches!(
+        (chars.next(), chars.next()),
+        (Some('/' | '\\'), Some('/' | '\\'))
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_paths_are_recognised_by_their_leading_separators() {
+        for path in [
+            "\\\\evil.host\\share",
+            "//evil.host/share",
+            "\\\\?\\UNC\\evil.host\\share",
+            "\\\\.\\pipe\\x",
+            "/\\evil.host\\share",
+            "  //evil.host/share",
+        ] {
+            assert!(is_network_path(path), "{:?}", path);
+        }
+        for path in ["/home/me", "C:\\Users\\me", "relative/dir", "", "/"] {
+            assert!(!is_network_path(path), "{:?}", path);
+        }
+    }
 
     fn params(body: &str) -> Vec<Vec<u8>> {
         body.split(';').map(|p| p.as_bytes().to_vec()).collect()

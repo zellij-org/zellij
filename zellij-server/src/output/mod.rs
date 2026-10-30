@@ -227,6 +227,23 @@ fn serialize_chunks_with_newlines(
     }
     Ok(vte_output)
 }
+fn write_private_media(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    if let Err(e) = std::io::Write::write_all(&mut file, bytes) {
+        drop(file);
+        let _ = fs::remove_file(path);
+        return Err(e);
+    }
+    Ok(())
+}
+
 fn write_shared_media(rgba: &[u8], host_state: &mut HostKittyState) -> Option<PathBuf> {
     let serial = NEXT_MEDIA_FILE.fetch_add(1, Ordering::Relaxed);
     let file_name = format!("{}-{}-{}", KITTY_MEDIA_PREFIX, std::process::id(), serial);
@@ -235,13 +252,12 @@ fn write_shared_media(rgba: &[u8], host_state: &mut HostKittyState) -> Option<Pa
         false => std::env::temp_dir(),
     };
     let path = directory.join(file_name);
-    if let Err(e) = fs::write(&path, rgba) {
+    if let Err(e) = write_private_media(&path, rgba) {
         log::warn!(
             "failed to write structured graphics media to {:?}, carrying it inline: {}",
             path,
             e
         );
-        let _ = fs::remove_file(&path);
         return None;
     }
     host_state.track_media(path.clone());
@@ -1180,13 +1196,12 @@ fn emit_kitty_local_media(
     host_state: &mut HostKittyState,
 ) -> Result<bool> {
     let (medium, name, path) = kitty_media_target();
-    if let Err(e) = fs::write(&path, rgba) {
+    if let Err(e) = write_private_media(&path, rgba) {
         log::warn!(
             "failed to write kitty media to {:?}, falling back to base64: {}",
             path,
             e
         );
-        let _ = fs::remove_file(&path);
         return Ok(false);
     }
     host_state.track_media_for_image(image_key, path);
@@ -1712,6 +1727,58 @@ fn frame_builder_for(
     Some(builder)
 }
 
+pub(crate) fn mirror_cursor_state(
+    x: usize,
+    y: usize,
+    visible: bool,
+    shape_csi: &str,
+) -> CursorState {
+    CursorState {
+        x: x.min(u16::MAX as usize) as u16,
+        y: y.min(u16::MAX as usize) as u16,
+        shape: wire_cursor_shape(shape_csi),
+        visible,
+    }
+}
+
+pub(crate) fn mirror_screen_from_chunks(
+    character_chunks: Vec<CharacterChunk>,
+    cols: usize,
+    rows: usize,
+    styled_underlines: bool,
+    link_handler: &LinkHandler,
+    cursor: CursorState,
+    wants_mouse: bool,
+) -> zellij_utils::pane_mirror::MirrorScreen {
+    use zellij_utils::pane_mirror::MirrorScreen;
+    let cols = cols.min(u16::MAX as usize) as u16;
+    let rows = rows.min(u16::MAX as usize) as u16;
+    let mut builder = FrameBuilder::new(cols, rows, 0);
+    builder.set_full_repaint(true);
+    let mut table = LinkTable::default();
+    let mut links = LinkFlatten {
+        handler: link_handler,
+        table: &mut table,
+    };
+    let flattened = flatten_chunks(
+        character_chunks,
+        None,
+        None,
+        styled_underlines,
+        None,
+        Some(&mut links),
+        &mut builder,
+    );
+    let mut screen = match flattened {
+        Ok(()) => MirrorScreen::from_frame(&builder.finish())
+            .unwrap_or_else(|_| MirrorScreen::blank(cols, rows)),
+        Err(_) => MirrorScreen::blank(cols, rows),
+    };
+    screen.cursor = cursor;
+    screen.wants_mouse = wants_mouse;
+    screen
+}
+
 fn link_flatten<'a>(
     handler: Option<&'a LinkHandler>,
     state: Option<&'a mut StructuredClientState>,
@@ -1855,6 +1922,9 @@ impl Output {
             self.client_character_chunks.insert(*client_id, vec![]);
             self.client_pane_rects.insert(*client_id, vec![]);
         }
+    }
+    pub fn link_handler(&self) -> Option<Rc<RefCell<LinkHandler>>> {
+        self.link_handler.clone()
     }
     pub fn add_pane_rect(&mut self, client_id: ClientId, pane_rect: PaneRect, scroll: PaneScroll) {
         if let Some(pane_rects) = self.client_pane_rects.get_mut(&client_id) {
@@ -2585,6 +2655,17 @@ impl Output {
             .as_ref()
             .map(|s| s.cursor_is_visible(cursor_x, cursor_y, z_index))
             .unwrap_or(true)
+    }
+    pub fn cursor_is_covered_by_popups(
+        &self,
+        client_id: ClientId,
+        cursor_x: usize,
+        cursor_y: usize,
+        z_index: Option<usize>,
+    ) -> bool {
+        self.popup_cover_for(client_id, z_index)
+            .map(|cover| !cover.cursor_is_visible(cursor_x, cursor_y, None))
+            .unwrap_or(false)
     }
     pub fn add_pane_contents(
         &mut self,
