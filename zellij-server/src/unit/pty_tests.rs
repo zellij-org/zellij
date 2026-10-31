@@ -539,6 +539,8 @@ fn serialized_run_and_cwd(pty: &mut Pty, terminal_id: u32) -> (Option<Run>, Opti
 fn run_command(command: &str, args: Vec<&str>) -> Option<Run> {
     let mut run_command = RunCommand::new(PathBuf::from(command));
     run_command.args = args.into_iter().map(|a| a.to_string()).collect();
+    // These fixtures discover commands in an ordinary shell pane.
+    run_command.drop_to_shell_on_exit = true;
     Some(Run::Command(run_command))
 }
 
@@ -646,4 +648,61 @@ fn resurrect_command_for_unknown_terminal_is_rejected() {
 
     assert!(result.is_err());
     assert!(pty.resurrect_commands.is_empty());
+}
+
+#[test]
+fn resurrect_command_override_preserves_the_panes_shell_return_policy() {
+    for explicit_command_pane in [false, true] {
+        let mock = MockOsApi::new();
+        let child_pid = 100;
+        mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+        let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+        set_active_terminal(&mut pty, 1, child_pid);
+        let mut meta = SessionLayoutMetadata::default();
+        let run =
+            explicit_command_pane.then(|| Run::Command(RunCommand::new(PathBuf::from("watch"))));
+        let pane = crate::session_layout_metadata::PaneLayoutMetadata::new(
+            PaneId::Terminal(1),
+            zellij_utils::pane_size::PaneGeom::default(),
+            false,
+            run,
+            None,
+            false,
+            None,
+            vec![],
+            None,
+            None,
+            Default::default(),
+        );
+        meta.add_tab("tab1".to_owned(), true, false, vec![pane], vec![]);
+        pty.set_resurrect_command(
+            1,
+            Some(resurrect_command("opencode", vec!["-s", "saved"], None)),
+        )
+        .unwrap();
+        // Repeated saves must retain the pane's origin, including after clearing the override.
+        for overridden in [true, true, false] {
+            if !overridden {
+                pty.set_resurrect_command(1, None).unwrap();
+            }
+            pty.populate_session_layout_metadata(&mut meta);
+            let manifest: session_serialization::GlobalLayoutManifest = meta.clone().into();
+            let Some(Run::Command(command)) = &manifest.tabs[0].1.tiled_panes[0].run else {
+                panic!("expected a command");
+            };
+            assert_eq!(
+                command.command,
+                PathBuf::from(if overridden { "opencode" } else { "htop" })
+            );
+            assert_eq!(
+                command.args,
+                if overridden {
+                    vec!["-s", "saved"]
+                } else {
+                    vec![]
+                }
+            );
+            assert_eq!(command.drop_to_shell_on_exit, !explicit_command_pane);
+        }
+    }
 }

@@ -2152,6 +2152,7 @@ fn test_client_messages() {
                     args: vec![],
                     cwd: None,
                     hold_on_close: false,
+                    drop_to_shell_on_exit: false,
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: true,
@@ -2180,6 +2181,7 @@ fn test_client_messages() {
                     args: vec!["arg1".to_owned(), "arg2".to_owned(), "arg3".to_owned()],
                     cwd: Some(PathBuf::from("/path/to/cwd")),
                     hold_on_close: true,
+                    drop_to_shell_on_exit: false,
                     hold_on_start: true,
                     originating_plugin: Some(OriginatingPlugin {
                         plugin_id: 11,
@@ -4945,4 +4947,37 @@ fn clear_resurrect_command_wire_roundtrip() {
         pane_id: PaneId::Terminal(3),
         resurrect: None,
     });
+}
+
+#[test]
+fn command_notification_and_shell_return_have_independent_wire_fields() {
+    use crate::client_server_contract::client_server_contract as proto;
+    use prost::Message;
+
+    for (notify, drop_to_shell_on_exit, bytes) in [
+        (false, false, vec![]),
+        (true, false, vec![0x48, 1]),
+        (false, true, vec![0x50, 1]),
+        (true, true, vec![0x48, 1, 0x50, 1]),
+    ] {
+        let command = proto::RunCommandAction::decode(bytes.as_slice()).unwrap();
+        assert_eq!(command.notify, notify);
+        assert_eq!(command.drop_to_shell_on_exit, drop_to_shell_on_exit);
+        assert_eq!(command.encode_to_vec(), bytes);
+        let run: Run = proto::Run {
+            run_type: Some(proto::run::RunType::Command(command)),
+        }
+        .try_into()
+        .unwrap();
+        let Run::Command(command) = &run else {
+            panic!("expected a command");
+        };
+        assert_eq!(command.notify, notify);
+        assert_eq!(command.drop_to_shell_on_exit, drop_to_shell_on_exit);
+        let encoded: proto::Run = run.into();
+        let Some(proto::run::RunType::Command(command)) = encoded.run_type else {
+            panic!("expected a command");
+        };
+        assert_eq!(command.encode_to_vec(), bytes);
+    }
 }

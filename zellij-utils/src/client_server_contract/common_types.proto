@@ -1069,6 +1069,7 @@ message RunCommandAction {
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
   bool notify = 9;
+  bool drop_to_shell_on_exit = 10;
 }
 
 message TiledPaneLayout {
