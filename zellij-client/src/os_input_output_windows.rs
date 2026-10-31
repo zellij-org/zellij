@@ -271,3 +271,113 @@ pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
     }
     Ok(())
 }
+
+
+/// Maximum chunk size for stdout writes on Windows (64 KB).
+///
+/// Windows Console and Named Pipes can fail with ERROR_NO_SYSTEM_RESOURCES (OS error 1450)
+/// if a single I/O operation attempts to write more than available non-paged pool memory,
+/// which typically manifests on buffers larger than 64 KB.
+pub const STDOUT_CHUNK_SIZE: usize = 65536;
+
+/// A wrapper around a writer that chunks all writes to at most 64 KB on Windows,
+/// avoiding ERROR_NO_SYSTEM_RESOURCES (1450).
+pub struct ChunkedStdoutWriter<W: io::Write> {
+    inner: W,
+}
+
+impl<W: io::Write> ChunkedStdoutWriter<W> {
+    pub fn new(inner: W) -> Self {
+        Self { inner }
+    }
+}
+
+impl<W: io::Write> io::Write for ChunkedStdoutWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let to_write = std::cmp::min(buf.len(), STDOUT_CHUNK_SIZE);
+        match self.inner.write(&buf[..to_write]) {
+            Ok(n) => Ok(n),
+            Err(e) if e.raw_os_error() == Some(1450) && to_write > 4096 => {
+                self.inner.write(&buf[..to_write / 2])
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    fn write_all(&mut self, mut buf: &[u8]) -> io::Result<()> {
+        while !buf.is_empty() {
+            let to_write = std::cmp::min(buf.len(), STDOUT_CHUNK_SIZE);
+            match self.inner.write_all(&buf[..to_write]) {
+                Ok(()) => {
+                    let _ = self.inner.flush();
+                    buf = &buf[to_write..];
+                },
+                Err(e) if e.raw_os_error() == Some(1450) && to_write > 4096 => {
+                    let half = to_write / 2;
+                    self.inner.write_all(&buf[..half])?;
+                    let _ = self.inner.flush();
+                    buf = &buf[half..];
+                },
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self.inner.flush() {
+            Ok(()) => Ok(()),
+            Err(e) if e.raw_os_error() == Some(1450) => {
+                std::thread::yield_now();
+                self.inner.flush()
+            },
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct RecordingWriter {
+        writes: Vec<usize>,
+        output: Vec<u8>,
+    }
+
+    impl RecordingWriter {
+        fn new() -> Self {
+            Self {
+                writes: Vec::new(),
+                output: Vec::new(),
+            }
+        }
+    }
+
+    impl io::Write for RecordingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.writes.push(buf.len());
+            self.output.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_chunked_stdout_writer_splits_large_writes() {
+        let recorder = RecordingWriter::new();
+        let mut chunked = ChunkedStdoutWriter::new(recorder);
+
+        let data = vec![b'a'; 150_000]; // 150 KB > 64 KB
+        chunked.write_all(&data).unwrap();
+
+        assert_eq!(chunked.inner.output, data);
+        assert!(chunked.inner.writes.len() >= 3);
+        for &write_len in &chunked.inner.writes {
+            assert!(write_len <= STDOUT_CHUNK_SIZE);
+        }
+    }
+}
