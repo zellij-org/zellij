@@ -5743,6 +5743,41 @@ pub fn close_tab_by_id_verifies_screen_state() {
 }
 
 #[test]
+pub fn focus_plugin_pane_stays_on_its_tab_after_tab_ids_and_positions_diverge() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    let run_plugin =
+        RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &None, None, None).unwrap();
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(5),
+            None,
+            Some(Run::Plugin(run_plugin.clone())),
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    screen.go_to_tab(1, 1).unwrap();
+    screen
+        .focus_plugin_pane(&run_plugin, false, true, false, 1, &mut None)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(1).unwrap().id, 1);
+}
+
+#[test]
 pub fn send_cli_close_tab_by_id_action() {
     let size = Size {
         cols: 121,
