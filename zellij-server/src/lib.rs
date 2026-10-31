@@ -10,6 +10,7 @@ pub mod os_input_output;
 pub mod output;
 pub mod panes;
 pub mod tab;
+pub mod vte;
 
 pub mod attention;
 pub mod background_jobs;

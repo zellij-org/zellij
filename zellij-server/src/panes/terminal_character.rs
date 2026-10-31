@@ -6,8 +6,8 @@ use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 
+use crate::vte::ParamsIter;
 use unicode_width::UnicodeWidthStr;
-use vte::ParamsIter;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
 use zellij_utils::input::command::RunCommand;
@@ -242,30 +242,130 @@ const STYLE_CACHE_CAPACITY: usize = 64;
 
 #[derive(Debug, Default, Clone)]
 pub struct StyleCache {
-    recent: Vec<Rc<CharacterStyles>>,
+    recent: Vec<(u64, Rc<CharacterStyles>)>,
+    sgr_memo: Vec<Option<SgrMemo>>,
+}
+
+const SGR_MEMO_SLOTS: usize = 64;
+const SGR_KEY_LEN: usize = 24;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SgrKey {
+    len: u8,
+    values: [u16; SGR_KEY_LEN],
+}
+
+impl SgrKey {
+    fn of(params: &crate::vte::Params) -> Option<Self> {
+        let mut key = SgrKey {
+            len: 0,
+            values: [0; SGR_KEY_LEN],
+        };
+        let mut at = 0;
+        for param in params.iter() {
+            if at + 1 + param.len() > SGR_KEY_LEN {
+                return None;
+            }
+            key.values[at] = param.len() as u16;
+            key.values[at + 1..at + 1 + param.len()].copy_from_slice(param);
+            at += 1 + param.len();
+        }
+        key.len = at as u8;
+        Some(key)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SgrMemo {
+    input: RcCharacterStyles,
+    key: SgrKey,
+    output: RcCharacterStyles,
+}
+
+fn styles_address(styles: &RcCharacterStyles) -> usize {
+    match styles {
+        RcCharacterStyles::Reset => 0,
+        RcCharacterStyles::Rc(rc) => Rc::as_ptr(rc) as usize,
+    }
+}
+
+fn sgr_slot(styles: &RcCharacterStyles, key: &SgrKey) -> usize {
+    let mut hash = (styles_address(styles) as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    for value in &key.values[..key.len as usize] {
+        hash = (hash ^ *value as u64).wrapping_mul(0x100_0000_01B3);
+    }
+    (hash >> 40) as usize % SGR_MEMO_SLOTS
+}
+
+fn code_key(code: Option<AnsiCode>) -> u64 {
+    match code {
+        None => 0,
+        Some(AnsiCode::On) => 1,
+        Some(AnsiCode::Reset) => 2,
+        Some(AnsiCode::NamedColor(color)) => 3 | (color as u64) << 8,
+        Some(AnsiCode::RgbCode((r, g, b))) => {
+            4 | (r as u64) << 8 | (g as u64) << 16 | (b as u64) << 24
+        },
+        Some(AnsiCode::ColorIndex(index)) => 5 | (index as u64) << 8,
+        Some(AnsiCode::Underline(None)) => 6,
+        Some(AnsiCode::Underline(Some(style))) => 7 | (style as u64) << 8,
+    }
+}
+
+fn style_fingerprint(styles: &CharacterStyles) -> u64 {
+    code_key(styles.foreground)
+        ^ code_key(styles.background).rotate_left(32)
+        ^ code_key(styles.bold).rotate_left(5)
+        ^ code_key(styles.underline).rotate_left(13)
 }
 
 impl StyleCache {
+    pub fn apply_sgr(&mut self, styles: &mut RcCharacterStyles, params: &crate::vte::Params) {
+        let Some(key) = SgrKey::of(params) else {
+            styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
+            return;
+        };
+        let slot = sgr_slot(styles, &key);
+        if let Some(Some(memo)) = self.sgr_memo.get(slot) {
+            if memo.key == key && memo.input.ptr_eq(styles) {
+                *styles = memo.output.clone();
+                return;
+            }
+        }
+        let input = styles.clone();
+        styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
+        if self.sgr_memo.is_empty() {
+            self.sgr_memo = vec![None; SGR_MEMO_SLOTS];
+        }
+        self.sgr_memo[slot] = Some(SgrMemo {
+            input,
+            key,
+            output: styles.clone(),
+        });
+    }
+
     pub fn share(&mut self, styles: CharacterStyles) -> RcCharacterStyles {
         if styles == RESET_STYLES {
             return RcCharacterStyles::Reset;
         }
-        if let Some(existing) = self
+        let fingerprint = style_fingerprint(&styles);
+        if let Some((_, existing)) = self
             .recent
             .iter()
-            .find(|existing| styles.is_identical_to(existing))
+            .rev()
+            .find(|(key, existing)| *key == fingerprint && styles.is_identical_to(existing))
         {
             return RcCharacterStyles::Rc(existing.clone());
         }
         if self.recent.len() >= STYLE_CACHE_CAPACITY {
             self.recent
-                .retain(|existing| Rc::strong_count(existing) > 1);
+                .retain(|(_, existing)| Rc::strong_count(existing) > 1);
             if self.recent.len() >= STYLE_CACHE_CAPACITY {
                 self.recent.remove(0);
             }
         }
         let shared = Rc::new(styles);
-        self.recent.push(shared.clone());
+        self.recent.push((fingerprint, shared.clone()));
         RcCharacterStyles::Rc(shared)
     }
 }
@@ -1062,6 +1162,38 @@ impl TerminalCharacter {
             character,
             styles,
             packed: character.width().unwrap_or(0) as u32 & 0xff,
+        }
+    }
+
+    #[inline]
+    pub fn append_plain_ascii(
+        columns: &mut Vec<TerminalCharacter>,
+        run: &[u8],
+        styles: &RcCharacterStyles,
+    ) {
+        let count = run.len();
+        if columns.capacity() - columns.len() < count {
+            columns.reserve(count);
+        }
+        let start = columns.len();
+        unsafe {
+            let destination = columns.as_mut_ptr().add(start);
+            let mut index = 0;
+            while index < count {
+                destination.add(index).write(TerminalCharacter {
+                    character: *run.get_unchecked(index) as char,
+                    styles: std::ptr::read(styles),
+                    packed: 1,
+                });
+                index += 1;
+            }
+            if let RcCharacterStyles::Rc(shared) = styles {
+                let pointer = Rc::as_ptr(shared);
+                for _ in 0..count {
+                    Rc::increment_strong_count(pointer);
+                }
+            }
+            columns.set_len(start + count);
         }
     }
 

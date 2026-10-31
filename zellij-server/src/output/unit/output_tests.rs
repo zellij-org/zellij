@@ -1268,7 +1268,7 @@ fn test_output_buffer_changed_chunks_in_viewport_when_all_dirty() {
     let row = Row::from_columns(columns);
     let viewport = vec![row];
 
-    let chunks = buffer.changed_chunks_in_viewport(&viewport, 10, 1, 0, 0);
+    let chunks = buffer.changed_chunks_in_viewport(&viewport, 10, 1, 0, 0, None);
 
     assert_eq!(
         chunks.len(),
@@ -1295,7 +1295,7 @@ fn test_output_buffer_changed_chunks_in_viewport_partial() {
         })
         .collect();
 
-    let chunks = buffer.changed_chunks_in_viewport(&rows, 10, 10, 0, 0);
+    let chunks = buffer.changed_chunks_in_viewport(&rows, 10, 10, 0, 0, None);
 
     assert_eq!(chunks.len(), 3, "Should return only changed lines");
     assert_eq!(chunks[0].y, 2, "First chunk should be at line 2");

@@ -200,7 +200,10 @@ pub fn open_at(
 
     let declarations = match opening {
         Opening::Participant(capabilities) => asserted_capabilities(geometry, capabilities),
-        Opening::Watcher => vec![ClientToServerMsg::StructuredRenderSupport { supported: true }],
+        Opening::Watcher => vec![ClientToServerMsg::StructuredRenderSupport {
+            supported: true,
+            row_shifts: false,
+        }],
     };
     for msg in declarations {
         sender
@@ -228,7 +231,10 @@ fn asserted_capabilities(geometry: Geometry, capabilities: Capabilities) -> Vec<
             local_media: capabilities.local_media,
         },
         ClientToServerMsg::SixelSupport { supported: true },
-        ClientToServerMsg::StructuredRenderSupport { supported: true },
+        ClientToServerMsg::StructuredRenderSupport {
+            supported: true,
+            row_shifts: true,
+        },
     ];
     msgs.extend(palette::seed_messages(&capabilities.paints));
     msgs
@@ -537,7 +543,10 @@ mod tests {
         assert_eq!(msgs[2], ClientToServerMsg::SixelSupport { supported: true });
         assert_eq!(
             msgs[3],
-            ClientToServerMsg::StructuredRenderSupport { supported: true }
+            ClientToServerMsg::StructuredRenderSupport {
+                supported: true,
+                row_shifts: true
+            }
         );
         assert!(matches!(msgs[4], ClientToServerMsg::ForegroundColor { .. }));
         assert!(matches!(msgs[5], ClientToServerMsg::BackgroundColor { .. }));
@@ -776,7 +785,10 @@ mod tests {
                     terminal_size: test_geometry().size(),
                     is_web_client: false,
                 },
-                ClientToServerMsg::StructuredRenderSupport { supported: true },
+                ClientToServerMsg::StructuredRenderSupport {
+                    supported: true,
+                    row_shifts: false
+                },
             ]
         );
     }

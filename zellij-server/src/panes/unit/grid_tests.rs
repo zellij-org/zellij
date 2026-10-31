@@ -2,13 +2,13 @@ use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
+use crate::vte;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use vte;
 use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
@@ -6171,7 +6171,8 @@ fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
     content.extend_from_slice(&[b'a'; 30]); // 50 chars: wraps at the region bottom
     content.extend_from_slice(b" ");
 
-    let grid = create_grid_with_size_and_raw(10, 40, &content);
+    let mut grid = create_grid_with_size_and_raw(10, 40, &content);
+    grid.link_urls_in_changed_lines();
 
     let start_anchors_per_row: Vec<usize> = grid
         .viewport
@@ -10984,4 +10985,136 @@ fn stored_scrollback_blanks_rewrap_like_cells_on_resize() {
     }
     let texts: Vec<usize> = grid.viewport.iter().map(|row| row.width()).collect();
     assert_eq!(texts, vec![30, 30, 20, 30, 30]);
+}
+
+struct OneCharAtATime<'a>(&'a mut Grid);
+
+impl<'a> vte::Perform for OneCharAtATime<'a> {
+    fn print(&mut self, c: char) {
+        self.0.print(c)
+    }
+    fn print_str(&mut self, text: &str) {
+        for c in text.chars() {
+            self.0.print(c)
+        }
+    }
+    fn execute(&mut self, byte: u8) {
+        self.0.execute(byte)
+    }
+    fn hook(&mut self, params: &vte::Params, intermediates: &[u8], ignore: bool, action: char) {
+        self.0.hook(params, intermediates, ignore, action)
+    }
+    fn put(&mut self, byte: u8) {
+        self.0.put(byte)
+    }
+    fn unhook(&mut self) {
+        self.0.unhook()
+    }
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        self.0.osc_dispatch(params, bell_terminated)
+    }
+    fn csi_dispatch(
+        &mut self,
+        params: &vte::Params,
+        intermediates: &[u8],
+        ignore: bool,
+        action: char,
+    ) {
+        self.0.csi_dispatch(params, intermediates, ignore, action)
+    }
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+        self.0.esc_dispatch(intermediates, ignore, byte)
+    }
+}
+
+fn empty_grid(rows: usize, cols: usize, grapheme_mode: bool) -> Grid {
+    let mut grid = Grid::new(
+        rows,
+        cols,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    grid.set_grapheme_mode_by_default(grapheme_mode);
+    grid
+}
+
+fn grid_state(grid: &Grid) -> String {
+    format!(
+        "{:?}\n{:?}\n{:?}",
+        grid,
+        grid.cursor_coordinates(),
+        grid.pane_contents_with_ansi(true, None)
+    )
+}
+
+#[test]
+fn bulk_text_path_matches_the_one_character_at_a_time_path() {
+    let mut inputs: Vec<(String, Vec<u8>)> = vec![];
+    let dir = std::path::Path::new("../src/tests/fixtures");
+    for entry in std::fs::read_dir(dir).expect("fixtures") {
+        let path = entry.expect("entry").path();
+        if path.is_file() {
+            inputs.push((
+                path.display().to_string(),
+                std::fs::read(&path).expect("read"),
+            ));
+        }
+    }
+    inputs.push((
+        "tab-bar".into(),
+        b"\x1b[1;38;2;0;0;0;48;2;180;180;180m Zellij (session) \x1b[0m\x1b[38;5;2;48;5;0m Tab #1 \x1b[m +    https://example.com/x hfm mailto:a@b.c\x1b[K\r\n".repeat(5),
+    ));
+    inputs.push((
+        "mixed".into(),
+        "abc漢字def\u{301}ghi👍🏽jk\tl\x1b[3Dxy\x1b[4hINS\x1b[4lzz\x1b(0qqq\x1b(Bend\r\n"
+            .repeat(40)
+            .into_bytes(),
+    ));
+    inputs.push((
+        "hangul".into(),
+        "한국어 테스트 각\u{11A8}가\u{1161}\u{11A8} \u{1100}\u{1161}한 漢字한글カナ abc한\r\n"
+            .repeat(30)
+            .into_bytes(),
+    ));
+    let mut failures = vec![];
+    for (name, bytes) in &inputs {
+        for grapheme_mode in [false, true] {
+            for (rows, cols) in [(20, 80), (7, 13)] {
+                for chunk in [bytes.len().max(1), 4096, 7] {
+                    let mut bulk = empty_grid(rows, cols, grapheme_mode);
+                    let mut single = empty_grid(rows, cols, grapheme_mode);
+                    let mut bulk_parser = vte::Parser::new();
+                    let mut single_parser = vte::Parser::new();
+                    for piece in bytes.chunks(chunk) {
+                        bulk_parser.advance(&mut bulk, piece);
+                        single_parser.advance(&mut OneCharAtATime(&mut single), piece);
+                    }
+                    let (b, o) = (grid_state(&bulk), grid_state(&single));
+                    if b != o {
+                        let line = b
+                            .lines()
+                            .zip(o.lines())
+                            .find(|(x, y)| x != y)
+                            .map(|(x, y)| format!("\n  bulk:   {}\n  single: {}", x, y))
+                            .unwrap_or_default();
+                        failures.push(format!(
+                            "{} grapheme={} size={}x{} chunk={}{}",
+                            name, grapheme_mode, rows, cols, chunk, line
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
 }

@@ -15,9 +15,9 @@ mod toggle;
 mod widget_common;
 
 use crate::panes::grid::Grid;
+use crate::vte;
 use lazy_static::lazy_static;
 use regex::Regex;
-use vte;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 

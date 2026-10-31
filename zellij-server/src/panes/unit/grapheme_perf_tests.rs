@@ -174,7 +174,7 @@ fn zalgo_block(rng: &mut Rng) -> String {
 }
 
 fn feed(grid: &mut Grid, block: &str) -> (Duration, usize) {
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     let bytes = block.as_bytes();
     let target_bytes = std::env::var("GRAPHEME_PERF_MB")
         .ok()
@@ -247,7 +247,7 @@ fn grapheme_cluster_throughput() {
 }
 
 fn table_stats_line(grid: &mut Grid, peak_table_bytes: usize) -> String {
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     parser.advance(grid, b"\x1b[2J\x1b[3Jx");
     let after_clear = cluster_table::bytes();
     assert!(peak_table_bytes <= cluster_table::DEFAULT_BYTE_LIMIT);

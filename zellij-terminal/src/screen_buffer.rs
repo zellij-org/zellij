@@ -313,6 +313,28 @@ impl ScreenBuffer {
         }
 
         let mut written = Vec::with_capacity(header.row_record_count as usize);
+        if !reshaped && !header.full_repaint() && !header.clear() {
+            for shift in frame.shifts().entries {
+                if !shift.fits(self.cols, self.rows) {
+                    continue;
+                }
+                shift.apply(&mut self.cells, self.cols, self.rows);
+                if !self.clusters.is_empty() {
+                    let cols = self.cols;
+                    self.clusters = std::mem::take(&mut self.clusters)
+                        .into_iter()
+                        .filter_map(|(at, text)| match shift.moved_position(at, cols) {
+                            None => Some((at, text)),
+                            Some(moved) => moved.map(|at| (at, text)),
+                        })
+                        .collect();
+                }
+                let last = shift.x as usize + shift.cols as usize;
+                for line in shift.y as usize..shift.y as usize + shift.rows as usize {
+                    written.push(Span::new(line, shift.x as usize, last.saturating_sub(1)));
+                }
+            }
+        }
         for index in 0..header.row_record_count as usize {
             if let Some(record) = frame.record(index) {
                 let last = record.x0 as usize + record.len as usize;

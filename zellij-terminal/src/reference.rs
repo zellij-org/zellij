@@ -69,7 +69,7 @@ impl Stores {
 
 fn feed(
     grid: &mut Grid,
-    parser: &mut vte::Parser,
+    parser: &mut zellij_server::vte::Parser,
     interceptor: &mut KittyApcInterceptor,
     bytes: &[u8],
 ) {
@@ -90,7 +90,7 @@ fn feed(
 
 pub struct Reference {
     grid: Grid,
-    parser: vte::Parser,
+    parser: zellij_server::vte::Parser,
     interceptor: KittyApcInterceptor,
     stores: Stores,
     rows: usize,
@@ -103,7 +103,7 @@ impl Reference {
         let grid = stores.grid(rows, cols);
         Self {
             grid,
-            parser: vte::Parser::new(),
+            parser: zellij_server::vte::Parser::new(),
             interceptor: KittyApcInterceptor::new(),
             stores,
             rows,
@@ -142,7 +142,7 @@ type KittyHostStates = Rc<RefCell<HashMap<ClientId, HostKittyState>>>;
 
 pub struct Emitter {
     grid: Grid,
-    parser: vte::Parser,
+    parser: zellij_server::vte::Parser,
     interceptor: KittyApcInterceptor,
     stores: Stores,
     cleared: bool,
@@ -160,7 +160,7 @@ impl Emitter {
         let grid = stores.grid(rows, cols);
         Self {
             grid,
-            parser: vte::Parser::new(),
+            parser: zellij_server::vte::Parser::new(),
             interceptor: KittyApcInterceptor::new(),
             stores,
             cleared: false,

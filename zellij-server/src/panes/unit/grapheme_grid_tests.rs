@@ -44,7 +44,7 @@ fn new_grid(rows: usize, cols: usize) -> Grid {
 }
 
 fn feed(grid: &mut Grid, content: &str) {
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     parser.advance(grid, content.as_bytes());
 }
 

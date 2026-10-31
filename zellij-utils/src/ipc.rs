@@ -269,6 +269,7 @@ pub enum ClientToServerMsg {
     },
     StructuredRenderSupport {
         supported: bool,
+        row_shifts: bool,
     },
     ClipboardPasteSupport {
         supported: bool,

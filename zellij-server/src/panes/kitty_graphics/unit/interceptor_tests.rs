@@ -16,14 +16,20 @@ struct RecordingPerformer {
     events: Vec<String>,
 }
 
-impl vte::Perform for RecordingPerformer {
+impl crate::vte::Perform for RecordingPerformer {
     fn print(&mut self, c: char) {
         self.events.push(format!("print({:?})", c));
     }
     fn execute(&mut self, byte: u8) {
         self.events.push(format!("execute({})", byte));
     }
-    fn hook(&mut self, params: &vte::Params, intermediates: &[u8], ignore: bool, action: char) {
+    fn hook(
+        &mut self,
+        params: &crate::vte::Params,
+        intermediates: &[u8],
+        ignore: bool,
+        action: char,
+    ) {
         let params: Vec<Vec<u16>> = params.iter().map(|p| p.to_vec()).collect();
         self.events.push(format!(
             "hook({:?},{:?},{},{:?})",
@@ -43,7 +49,7 @@ impl vte::Perform for RecordingPerformer {
     }
     fn csi_dispatch(
         &mut self,
-        params: &vte::Params,
+        params: &crate::vte::Params,
         intermediates: &[u8],
         ignore: bool,
         action: char,
@@ -62,7 +68,7 @@ impl vte::Perform for RecordingPerformer {
 
 fn feed(
     interceptor: &mut KittyApcInterceptor,
-    parser: &mut vte::Parser,
+    parser: &mut crate::vte::Parser,
     performer: &mut RecordingPerformer,
     captured: &mut Vec<Vec<u8>>,
     input: &[u8],
@@ -82,7 +88,7 @@ fn feed(
 
 fn run_through_interceptor(input: &[u8], chunk_size: usize) -> (Vec<Vec<u8>>, RecordingPerformer) {
     let mut interceptor = KittyApcInterceptor::new();
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     let mut performer = RecordingPerformer::default();
     let mut captured = Vec::new();
     for chunk in input.chunks(chunk_size) {
@@ -98,7 +104,7 @@ fn run_through_interceptor(input: &[u8], chunk_size: usize) -> (Vec<Vec<u8>>, Re
 }
 
 fn run_bare(input: &[u8]) -> RecordingPerformer {
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     let mut performer = RecordingPerformer::default();
     for byte in input {
         parser.advance(&mut performer, std::slice::from_ref(byte));
@@ -143,7 +149,7 @@ fn non_kitty_streams_pass_through_byte_identically() {
 #[test]
 fn lone_trailing_esc_is_held_across_calls() {
     let mut interceptor = KittyApcInterceptor::new();
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vte::Parser::new();
     let mut performer = RecordingPerformer::default();
     let mut captured = Vec::new();
     feed(

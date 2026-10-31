@@ -3,10 +3,10 @@ use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::terminal_character::{AnsiCode, TerminalCharacter};
+use crate::vte;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use vte;
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::graphemes;
 

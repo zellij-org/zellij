@@ -4520,6 +4520,8 @@ pub struct SetMobileRenderPreferencesMsg {
 pub struct StructuredRenderSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+    #[prost(bool, tag="2")]
+    pub row_shifts: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

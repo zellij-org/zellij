@@ -16,10 +16,10 @@ use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
 };
+use crate::vte;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
     BareKey, BorderStyleOverride, KeyModifier, KeyWithModifier, PermissionStatus, PermissionType,
