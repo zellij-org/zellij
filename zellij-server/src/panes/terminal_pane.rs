@@ -12,7 +12,7 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
-use crate::vte;
+use crate::vt_parser;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -138,7 +138,7 @@ pub struct TerminalPane {
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub style: Style,
-    vte_parser: vte::Parser,
+    vte_parser: vt_parser::SelectedParser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
@@ -248,16 +248,17 @@ impl Pane for TerminalPane {
             self.pending_pty_input.extend(bytes);
             return;
         }
-        if self.kitty_interceptor.is_ground() && memchr::memmem::find(&bytes, b"\x1b_").is_none() {
+        if crate::opt_flags::on(crate::opt_flags::PTY_FAST_PATH)
+            && self.kitty_interceptor.is_ground()
+            && memchr::memmem::find(&bytes, b"\x1b_").is_none()
+        {
             let ends_in_escape = bytes.last() == Some(&0x1b);
             let head = if ends_in_escape {
                 &bytes[..bytes.len() - 1]
             } else {
                 &bytes[..]
             };
-            let consumed = self
-                .vte_parser
-                .advance_until_terminated(&mut self.grid, head);
+            let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
             if consumed < head.len() {
                 self.pending_pty_input.extend(&bytes[consumed..]);
             } else if ends_in_escape {
@@ -298,7 +299,7 @@ impl Pane for TerminalPane {
                         if !forwarded.is_empty() {
                             let consumed = self
                                 .vte_parser
-                                .advance_until_terminated(&mut self.grid, &forwarded);
+                                .feed_until_paused(&mut self.grid, &forwarded);
                             if consumed < forwarded.len() {
                                 self.pending_pty_input.extend(&forwarded[consumed..]);
                                 self.pending_pty_input.extend(&bytes[index - 1..]);
@@ -314,7 +315,7 @@ impl Pane for TerminalPane {
                     if !forwarded.is_empty() {
                         let consumed = self
                             .vte_parser
-                            .advance_until_terminated(&mut self.grid, &forwarded);
+                            .feed_until_paused(&mut self.grid, &forwarded);
                         if consumed < forwarded.len() {
                             self.pending_pty_input.extend(&forwarded[consumed..]);
                             self.pending_pty_input.extend(b"\x1b_G");
@@ -338,7 +339,7 @@ impl Pane for TerminalPane {
         }
         let consumed = self
             .vte_parser
-            .advance_until_terminated(&mut self.grid, &forwarded);
+            .feed_until_paused(&mut self.grid, &forwarded);
         if consumed < forwarded.len() {
             self.pending_pty_input.extend(&forwarded[consumed..]);
         }
@@ -1677,7 +1678,7 @@ impl TerminalPane {
             selectable: true,
             geom: position_and_size,
             geom_override: None,
-            vte_parser: vte::Parser::new(),
+            vte_parser: vt_parser::SelectedParser::from_env(),
             active_at: Instant::now(),
             style,
             selection_scrolled_at: time::Instant::now(),

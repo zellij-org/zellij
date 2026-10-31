@@ -253,11 +253,13 @@ pub(crate) fn namespace_notification_id(
     parts.join(":")
 }
 
-use crate::vte::{Params, Perform};
+use crate::vt_parser::{Handler, Sequence};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
+use crate::opt_flags;
 use crate::output::{CharacterChunk, HighlightSelection, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::eager_hyperlink_tracker::HyperlinkTracker;
 use crate::panes::grapheme_join;
 use crate::panes::hyperlink_tracker;
 use crate::panes::link_handler::LinkHandler;
@@ -603,7 +605,10 @@ fn bounded_push(
     if value.columns.capacity() > value.columns.len() {
         let mut exact = Vec::with_capacity(value.columns.len());
         exact.append(&mut value.columns);
-        recycle_columns(std::mem::replace(&mut value.columns, exact));
+        let spare = std::mem::replace(&mut value.columns, exact);
+        if opt_flags::on(opt_flags::ROW_RECYCLE) {
+            recycle_columns(spare);
+        }
     }
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let mut evicted_row_width = None;
@@ -1051,6 +1056,7 @@ pub struct Grid {
     pub cached_hover_tooltip: Option<String>,
     osc133_markers_seen: bool,
     style_cache: StyleCache,
+    eager_links: HyperlinkTracker,
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
@@ -1435,6 +1441,7 @@ impl Grid {
             cached_hover_tooltip: None,
             osc133_markers_seen: false,
             style_cache: StyleCache::default(),
+            eager_links: HyperlinkTracker::new(),
             osc133_command_selection: true,
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
@@ -1715,7 +1722,10 @@ impl Grid {
         }
     }
     fn kitty_settle_placements_below_the_viewport(&mut self) -> bool {
-        if self.lines_below.is_empty() && !self.kitty_grid.tracks_rows_below_the_viewport() {
+        if opt_flags::on(opt_flags::ROW_RECYCLE)
+            && self.lines_below.is_empty()
+            && !self.kitty_grid.tracks_rows_below_the_viewport()
+        {
             return false;
         }
         let rows_below_the_viewport = self.kitty_rows_below_the_viewport();
@@ -2164,6 +2174,9 @@ impl Grid {
         )
     }
     pub fn link_urls_in_changed_lines(&mut self) {
+        if !opt_flags::on(opt_flags::LAZY_LINKS) {
+            return;
+        }
         let changed = self
             .output_buffer
             .changed_viewport_lines(self.viewport.len());
@@ -2574,6 +2587,9 @@ impl Grid {
         self.output_buffer.update_all_lines();
     }
     fn scroll_region_content_down(&mut self, at: usize, region_bottom: usize, new_row: Row) {
+        if at > self.viewport.len() {
+            self.pad_lines_until(at - 1, EMPTY_TERMINAL_CHARACTER);
+        }
         let before = self.kitty_row_snapshot();
         if region_bottom < self.viewport.len() {
             self.viewport.remove(region_bottom);
@@ -2661,7 +2677,8 @@ impl Grid {
             self.kitty_reanchor_all_from_pixels();
         }
     }
-    fn scroll_region_up_at_bottom(&mut self, new_row: Row) {
+    fn scroll_region_up_at_bottom(&mut self, new_row: Row, offset_hyperlinks: bool) {
+        let offset_hyperlinks = offset_hyperlinks && !opt_flags::on(opt_flags::LAZY_LINKS);
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         if scroll_region_top >= self.viewport.len() {
             return;
@@ -2669,18 +2686,32 @@ impl Grid {
         if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
+                if offset_hyperlinks {
+                    self.eager_links.offset_cursor_lines(1);
+                }
             } else if !self.viewport.is_empty() {
                 self.viewport.pop_front();
             }
             self.viewport.push_back(new_row);
             self.selection.move_up(1);
         } else {
-            self.scroll_region_content_up(
+            let outcome = self.scroll_region_content_up(
                 scroll_region_top,
                 scroll_region_top,
                 scroll_region_bottom,
                 new_row,
             );
+            if offset_hyperlinks {
+                match outcome {
+                    RegionRowsScrolled::IntoScrollback => self.eager_links.offset_cursor_lines(1),
+                    RegionRowsScrolled::Discarded => self.eager_links.offset_cursor_lines_in_range(
+                        scroll_region_top as isize,
+                        scroll_region_bottom as isize,
+                        1,
+                    ),
+                    RegionRowsScrolled::Nothing => {},
+                }
+            }
             self.output_buffer.update_all_lines();
             return;
         }
@@ -2692,6 +2723,15 @@ impl Grid {
     }
     pub fn add_canonical_line(&mut self) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        if !opt_flags::on(opt_flags::LAZY_LINKS) {
+            self.eager_links.update(
+                '\n',
+                &self.cursor,
+                &mut self.viewport,
+                &mut self.lines_above,
+                &self.link_handler,
+            );
+        }
         if self.cursor.y == scroll_region_bottom {
             if scroll_region_top >= self.viewport.len() {
                 return;
@@ -2700,7 +2740,7 @@ impl Grid {
             let new_row = Row::with_capacity(self.width)
                 .canonical()
                 .with_bg_color(scroll_bg);
-            self.scroll_region_up_at_bottom(new_row);
+            self.scroll_region_up_at_bottom(new_row, false);
             self.kitty_reanchor_all_from_pixels();
             return;
         }
@@ -2726,6 +2766,18 @@ impl Grid {
         terminal_character: TerminalCharacter,
         should_insert_character: bool,
     ) {
+        if !opt_flags::on(opt_flags::LAZY_LINKS)
+            && (!self.eager_links.is_idle()
+                || HyperlinkTracker::can_begin_a_url(terminal_character.character))
+        {
+            self.eager_links.update(
+                terminal_character.character,
+                &self.cursor,
+                &mut self.viewport,
+                &mut self.lines_above,
+                &self.link_handler,
+            );
+        }
         // this function assumes the current line has enough room for terminal_character (that its
         // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
@@ -2830,7 +2882,8 @@ impl Grid {
             return false;
         };
         let target = &row.columns[index];
-        if never_joins(target.last_char()) && never_joins(c) {
+        if opt_flags::on(opt_flags::BULK_TEXT) && never_joins(target.last_char()) && never_joins(c)
+        {
             return false;
         }
         if !grapheme_join::may_join(target.last_char(), c) {
@@ -2984,7 +3037,7 @@ impl Grid {
             if scroll_region_top >= self.viewport.len() {
                 return;
             }
-            self.scroll_region_up_at_bottom(Row::with_capacity(self.width));
+            self.scroll_region_up_at_bottom(Row::with_capacity(self.width), true);
         } else if self.cursor.y == self.height.saturating_sub(1) {
             // the cursor is on the last line of the screen but below the scroll region's
             // bottom margin: there is nowhere to scroll to, so we wrap onto the same line
@@ -5123,9 +5176,8 @@ fn printable_ascii_prefix(bytes: &[u8]) -> usize {
     const HIGHS: u64 = 0x8080_8080_8080_8080;
     let mut index = 0;
     while index + 8 <= bytes.len() {
-        let mut word = [0u8; 8];
-        word.copy_from_slice(&bytes[index..index + 8]);
-        let word = u64::from_le_bytes(word);
+        let chunk: &[u8; 8] = bytes[index..index + 8].try_into().unwrap_or(&[0; 8]);
+        let word = u64::from_le_bytes(*chunk);
         let below_space = word.wrapping_sub(ONES * 0x20) & !word;
         let delete = word ^ (ONES * 0x7f);
         let is_delete = delete.wrapping_sub(ONES) & !delete;
@@ -5175,6 +5227,7 @@ impl Grid {
             return 0;
         };
         if !is_bulk_wide(first)
+            || !self.eager_links.is_idle()
             || self.cursor.x + 2 > self.width
             || (self.grapheme_mode && self.grapheme_mode_joins(first))
         {
@@ -5224,7 +5277,7 @@ impl Grid {
     }
 
     #[inline]
-    fn print_ascii_run(&mut self, bytes: &[u8]) -> usize {
+    fn print_ascii_run(&mut self, bytes: &[u8], known_printable: bool) -> usize {
         let Some(&first) = bytes.first() else {
             return 0;
         };
@@ -5241,7 +5294,20 @@ impl Grid {
             None => 0,
         };
         let limit = bytes.len().min(self.width - x).min(room);
-        let printable = printable_ascii_prefix(&bytes[..limit]);
+        let mut printable = if known_printable {
+            limit
+        } else {
+            printable_ascii_prefix(&bytes[..limit])
+        };
+        if !opt_flags::on(opt_flags::LAZY_LINKS) {
+            if !self.eager_links.is_idle() {
+                return 0;
+            }
+            printable = bytes[..printable]
+                .iter()
+                .position(|byte| matches!(byte, b'h' | b'f' | b'm'))
+                .unwrap_or(printable);
+        }
         if printable == 0 {
             return 0;
         }
@@ -5267,16 +5333,17 @@ impl Grid {
     }
 }
 
-impl Perform for Grid {
-    fn print_str(&mut self, text: &str) {
+impl Grid {
+    fn print_text(&mut self, text: &str, known_printable: bool) {
         let bytes = text.as_bytes();
-        let bulk = !self.insert_mode
+        let bulk = opt_flags::on(opt_flags::BULK_TEXT)
+            && !self.insert_mode
             && self.cursor.charsets[self.active_charset] == StandardCharset::Ascii
             && !self.sixel_grid.has_images();
         let mut index = 0;
         while index < bytes.len() {
             if bulk {
-                let printed = self.print_ascii_run(&bytes[index..]);
+                let printed = self.print_ascii_run(&bytes[index..], known_printable);
                 if printed > 0 {
                     index += printed;
                     continue;
@@ -5293,6 +5360,21 @@ impl Perform for Grid {
             self.print(c);
             index += c.len_utf8();
         }
+    }
+}
+
+impl Handler for Grid {
+    fn print_str(&mut self, text: &str) {
+        self.print_text(text, false);
+    }
+
+    fn print_ascii(&mut self, text: &str) {
+        self.print_text(text, true);
+    }
+
+    fn sgr(&mut self, parameter_bytes: &[u8]) {
+        self.style_cache
+            .apply_sgr_bytes(&mut self.cursor.pending_styles, parameter_bytes);
     }
 
     fn print(&mut self, c: char) {
@@ -5360,7 +5442,12 @@ impl Perform for Grid {
         }
     }
 
-    fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
+    fn hook(&mut self, sequence: &Sequence) {
+        let (params, intermediates, c) = (
+            sequence.parameters(),
+            sequence.intermediates(),
+            sequence.final_char(),
+        );
         if c == 'q' && intermediates.get(0) == Some(&b'+') {
             self.xtgettcap_bytes = Some(vec![]);
         } else if c == 'q' && intermediates.is_empty() {
@@ -5384,7 +5471,7 @@ impl Perform for Grid {
             self.ui_component_bytes = Some(vec![]);
         } else if c == 'n'
             && intermediates.is_empty()
-            && params.len() == 1
+            && params.value_count() == 1
             && params.iter().next() == Some(&[nested_session::NESTED_DCS_PARAM][..])
         {
             self.nested_frame_bytes = Some(vec![]);
@@ -5428,7 +5515,7 @@ impl Perform for Grid {
         self.mark_for_rerender();
     }
 
-    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+    fn osc_end(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
 
         if params.is_empty() || params[0].is_empty() {
@@ -5835,7 +5922,12 @@ impl Perform for Grid {
         }
     }
 
-    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
+    fn csi_dispatch(&mut self, sequence: &Sequence) {
+        let (params, intermediates, c) = (
+            sequence.parameters(),
+            sequence.intermediates(),
+            sequence.final_char(),
+        );
         let mut params_iter = params.iter();
         let mut next_param_or = |default: u16| {
             params_iter
@@ -6175,7 +6267,7 @@ impl Perform for Grid {
                 }
             }
         } else if c == 'r' {
-            if params.len() > 1 {
+            if params.value_count() > 1 {
                 let top = (next_param_or(1) as usize).saturating_sub(1);
                 let bottom = params_iter
                     .next()
@@ -6449,7 +6541,7 @@ impl Perform for Grid {
                         let offset = self.scroll_region.0; // scroll_region_top
                         let position_report = format!(
                             "\u{1b}[{};{}R",
-                            self.cursor.y + 1 - offset,
+                            (self.cursor.y + 1).saturating_sub(offset).max(1),
                             self.cursor.x + 1
                         );
                         self.pending_messages_to_pty
@@ -6514,7 +6606,8 @@ impl Perform for Grid {
         }
     }
 
-    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
+    fn esc_dispatch(&mut self, sequence: &Sequence) {
+        let (intermediates, byte) = (sequence.intermediates(), sequence.final_byte());
         match (byte, intermediates.get(0)) {
             (b'A', charset_index_symbol) => {
                 let charset_index: CharsetIndex = match charset_index_symbol {
@@ -6601,7 +6694,7 @@ impl Perform for Grid {
         }
     }
 
-    fn terminated(&self) -> bool {
+    fn paused(&self) -> bool {
         !self.pending_forwarded_queries.is_empty()
     }
 }
@@ -6778,7 +6871,11 @@ impl Row {
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Row {
-            columns: columns_with_capacity(capacity),
+            columns: if opt_flags::on(opt_flags::ROW_RECYCLE) {
+                columns_with_capacity(capacity)
+            } else {
+                Vec::with_capacity(capacity)
+            },
             osc133_markers: Osc133Markers::default(),
             width: None,
             trailing_blanks: 0,

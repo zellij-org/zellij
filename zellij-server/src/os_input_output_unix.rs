@@ -88,7 +88,8 @@ fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
         return Err(io::Error::last_os_error());
     }
     unsafe { buf.set_len(ret as usize) };
-    while ret > 0 && buf.len() < buf.capacity() {
+    let big_reads = crate::opt_flags::on(crate::opt_flags::BIG_READS);
+    while big_reads && ret > 0 && buf.len() < buf.capacity() {
         let filled = buf.len();
         let more = unsafe {
             libc::read(

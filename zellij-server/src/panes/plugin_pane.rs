@@ -16,7 +16,7 @@ use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
 };
-use crate::vte;
+use crate::vt_parser;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -95,7 +95,7 @@ pub(crate) struct PluginPane {
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     link_handler: Rc<RefCell<LinkHandler>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    vte_parsers: HashMap<ClientId, vte::Parser>,
+    vte_parsers: HashMap<ClientId, vt_parser::Parser>,
     grids: HashMap<ClientId, Grid>,
     cursor_visibility: HashMap<ClientId, Option<(usize, usize)>>,
     prev_pane_name: String,
@@ -255,9 +255,9 @@ impl Pane for PluginPane {
         let vte_parser = self
             .vte_parsers
             .entry(client_id)
-            .or_insert_with(|| vte::Parser::new());
+            .or_insert_with(|| vt_parser::Parser::new());
 
-        vte_parser.advance(grid, &vte_bytes);
+        vte_parser.feed(grid, &vte_bytes);
 
         self.should_render.insert(client_id, true);
     }

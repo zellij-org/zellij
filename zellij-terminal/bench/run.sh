@@ -41,9 +41,22 @@ Options:
                           also run Zellij as a separate column named LABEL with an
                           environment variable set (repeatable), eg.
                           --zellij-variant zellij-async:ZELLIJ_PTY_READER=async
+  --ablate [GROUPS]       also run Zellij once per improvement group with that group
+                          turned off (columns "no-GROUP"), plus "no-all" with every
+                          group off, and print how much slower or faster each one is
+                          than the full build; GROUPS is a comma list, default every
+                          group: bulk_text parser_scan style_memo lazy_links
+                          pty_fast_path big_reads ack_wait row_shifts row_recycle
+                          frame_style_runs
+  --old-parser            also run Zellij with the previous terminal-output parser
+                          (column "old-parser") and print how much slower or faster
+                          it is than the new one; combine with --rounds to interleave
   --rounds N              repeat every terminal N times, interleaved, and report
-                          each terminal's mean over all rounds (default 1); this
-                          spreads slow-downs from heat or background load evenly
+                          each terminal's mean over all rounds (default 1); each
+                          round starts one terminal later in the list, so every
+                          terminal runs in every position equally often when N is
+                          a multiple of the number of terminals; this spreads
+                          slow-downs from heat or background load evenly
   --font-size N           give every built-in terminal this font size, so the
                           windows are about the same size in pixels (default:
                           each terminal's own default)
@@ -72,6 +85,9 @@ customs=()
 variants=()
 files=()
 rounds=1
+ablate=""
+old_parser=""
+all_groups="bulk_text,parser_scan,style_memo,lazy_links,pty_fast_path,big_reads,ack_wait,row_shifts,row_recycle,frame_style_runs"
 font_size=""
 font_family=""
 runs=10
@@ -99,6 +115,16 @@ while [[ $# -gt 0 ]]; do
         --zellij-bin) zellij_bin="$2"; shift 2 ;;
         --zellij-variant) variants+=("$2"); shift 2 ;;
         --rounds) rounds="$2"; shift 2 ;;
+        --old-parser) old_parser=1; shift ;;
+        --ablate)
+            if [[ $# -gt 1 && "$2" != -* ]]; then
+                ablate="$2"
+                shift 2
+            else
+                ablate="$all_groups"
+                shift
+            fi
+            ;;
         --font-size) font_size="$2"; shift 2 ;;
         --font-family) font_family="$2"; shift 2 ;;
         --zellij-bars) bars="$2"; shift 2 ;;
@@ -275,10 +301,22 @@ wait_for() {
     done
 }
 
+[[ -n "$ablate$old_parser" && -z "$targets" ]] && targets="zellij"
 if [[ -z "$targets" ]]; then
     for t in $known; do
         bin_for "$t" >/dev/null && targets="$targets $t"
     done
+fi
+if [[ -n "$ablate" ]]; then
+    [[ " $targets " == *" zellij "* ]] || targets="zellij $targets"
+    for group in ${ablate//,/ }; do
+        variants+=("no-$group:ZELLIJ_OPT_OFF=$group")
+    done
+    variants+=("no-all:ZELLIJ_OPT_OFF=all")
+fi
+if [[ -n "$old_parser" ]]; then
+    [[ " $targets " == *" zellij "* ]] || targets="zellij $targets"
+    variants+=("old-parser:ZELLIJ_VT_PARSER=old")
 fi
 for entry in ${variants[@]+"${variants[@]}"}; do
     name="${entry%%:*}"
@@ -376,8 +414,10 @@ run_target() {
 }
 
 failed=" "
+read -ra order <<<"$targets"
 for round in $(seq 1 "$rounds"); do
-    for t in $targets; do
+    shift_by=$(((round - 1) % ${#order[@]}))
+    for t in "${order[@]:shift_by}" "${order[@]:0:shift_by}"; do
         [[ "$failed" == *" $t "* ]] && continue
         run_target "$t" "$work/results/round-$round/$t" || failed="$failed$t "
     done
@@ -395,7 +435,8 @@ done
 
 [[ ${#report_args[@]} -gt 0 ]] || { echo "no terminal produced results" >&2; exit 1; }
 out="${out:-$work/report.md}"
-REPORT_META="$meta" REPORT_FIXTURES="$fixtures" EXPECT="$expect" \
+REPORT_BASE="$([[ -n "$ablate$old_parser" ]] && echo zellij)" \
+    REPORT_META="$meta" REPORT_FIXTURES="$fixtures" EXPECT="$expect" \
     python3 "$here/report.py" "${report_args[@]}" | tee "$out"
 echo >&2
 echo "report saved to $out" >&2

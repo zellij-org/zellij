@@ -70,6 +70,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+vte = { version = "0.15", default-features = false, features = ["std"] }
 insta = "1.48"
 tempfile = "3.2.0"
 wasmi = { version = "1.1.0", features = ["std"] }

@@ -15,9 +15,13 @@ def load(directory, name):
             result = json.load(f)["results"][0]
     except (ValueError, KeyError, IndexError):
         return None
+    if "measurements" in result:
+        count = len(result["measurements"])
+    else:
+        count = len(result.get("times", [])) or 1
     if "summary" in result:
         result = result["summary"]["time_wall_clock"]
-    return result["mean"] * 1000, (result.get("stddev") or 0.0) * 1000
+    return result["mean"] * 1000, (result.get("stddev") or 0.0) * 1000, count
 
 
 def read_text(directory, name):
@@ -60,7 +64,7 @@ def table(title, labels, dirs, cases, suffix, sizes):
             if not value:
                 cells.append("-")
                 continue
-            text = "%.0f ± %.0f ms" % value
+            text = "%.0f ± %.0f ms" % value[:2]
             if case in sizes and value[0] > 0:
                 text += " (%.0f MB/s)" % (sizes[case] / 1e6 / (value[0] / 1000))
             if len(means) > 1 and value[0] == best:
@@ -75,6 +79,42 @@ def table(title, labels, dirs, cases, suffix, sizes):
 
     out = ["### " + title, "", line(header), "|" + "|".join("-" * (w + 2) for w in widths) + "|"]
     out += [line(r) for r in rows]
+    return "\n".join(out)
+
+
+def difference_table(title, labels, dirs, cases, suffix, base):
+    base_dir = dirs[labels.index(base)]
+    others = [(l, d) for l, d in zip(labels, dirs) if l != base and l.startswith("no-")]
+    if not others:
+        return ""
+    header = ["file"] + [l for l, _ in others]
+    rows = []
+    for case in cases:
+        reference = load(base_dir, case + suffix)
+        row = [case]
+        for _, directory in others:
+            value = load(directory, case + suffix)
+            if not reference or not value:
+                row.append("-")
+                continue
+            change = (value[0] - reference[0]) / reference[0] * 100
+            noise = (value[1] ** 2 / value[2] + reference[1] ** 2 / reference[2]) ** 0.5
+            significant = abs(value[0] - reference[0]) > 2 * noise
+            row.append("%+.0f%%%s" % (change, "" if significant else " ~"))
+        rows.append(row)
+    widths = [max(len(r[i]) for r in rows + [header]) for i in range(len(header))]
+
+    def line(cells):
+        return "| " + " | ".join(c.ljust(w) for c, w in zip(cells, widths)) + " |"
+
+    out = ["### " + title, "", line(header), "|" + "|".join("-" * (w + 2) for w in widths) + "|"]
+    out += [line(r) for r in rows]
+    out += [
+        "",
+        "Time with that group turned off, compared with %s with everything on. "
+        "Positive means slower without it, so the group helps; \"~\" means the "
+        "difference is within the noise." % base,
+    ]
     return "\n".join(out)
 
 
@@ -110,6 +150,10 @@ def main():
     print(table("Until cat exits", labels, dirs, cases, "", sizes))
     print()
     print("Mean ± standard deviation; lower is better; the fastest in each row is in bold.")
+    base = os.environ.get("REPORT_BASE", "")
+    if base and base in labels:
+        print()
+        print(difference_table("Difference from zellij (until processed)", labels, dirs, cases, "+processed", base))
 
 
 if __name__ == "__main__":

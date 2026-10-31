@@ -6,7 +6,7 @@ use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 
-use crate::vte::ParamsIter;
+use crate::vt_parser::ParameterGroups;
 use unicode_width::UnicodeWidthStr;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
@@ -238,40 +238,57 @@ impl RcCharacterStyles {
     }
 }
 
-const STYLE_CACHE_CAPACITY: usize = 64;
+const SHARED_STYLE_SLOTS: usize = 512;
 
 #[derive(Debug, Default, Clone)]
 pub struct StyleCache {
-    recent: Vec<(u64, Rc<CharacterStyles>)>,
+    shared: Vec<Option<(u64, Rc<CharacterStyles>)>>,
     sgr_memo: Vec<Option<SgrMemo>>,
 }
 
 const SGR_MEMO_SLOTS: usize = 64;
 const SGR_KEY_LEN: usize = 24;
+const SGR_BYTES_KEY_LEN: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct SgrKey {
-    len: u8,
-    values: [u16; SGR_KEY_LEN],
+enum SgrKey {
+    Groups { len: u8, values: [u16; SGR_KEY_LEN] },
+    Bytes { len: u8, words: [u64; 2] },
 }
 
 impl SgrKey {
-    fn of(params: &crate::vte::Params) -> Option<Self> {
-        let mut key = SgrKey {
-            len: 0,
-            values: [0; SGR_KEY_LEN],
-        };
+    fn of(params: &crate::vt_parser::Parameters) -> Option<Self> {
+        let mut values = [0; SGR_KEY_LEN];
         let mut at = 0;
         for param in params.iter() {
             if at + 1 + param.len() > SGR_KEY_LEN {
                 return None;
             }
-            key.values[at] = param.len() as u16;
-            key.values[at + 1..at + 1 + param.len()].copy_from_slice(param);
+            values[at] = param.len() as u16;
+            values[at + 1..at + 1 + param.len()].copy_from_slice(param);
             at += 1 + param.len();
         }
-        key.len = at as u8;
-        Some(key)
+        Some(SgrKey::Groups {
+            len: at as u8,
+            values,
+        })
+    }
+
+    #[inline]
+    fn of_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() > SGR_BYTES_KEY_LEN {
+            return None;
+        }
+        let mut padded = [0u8; SGR_BYTES_KEY_LEN];
+        padded[..bytes.len()].copy_from_slice(bytes);
+        let (low, high) = padded.split_at(8);
+        Some(SgrKey::Bytes {
+            len: bytes.len() as u8,
+            words: [
+                u64::from_le_bytes(low.try_into().unwrap_or([0; 8])),
+                u64::from_le_bytes(high.try_into().unwrap_or([0; 8])),
+            ],
+        })
     }
 }
 
@@ -291,10 +308,19 @@ fn styles_address(styles: &RcCharacterStyles) -> usize {
 
 fn sgr_slot(styles: &RcCharacterStyles, key: &SgrKey) -> usize {
     let mut hash = (styles_address(styles) as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    for value in &key.values[..key.len as usize] {
-        hash = (hash ^ *value as u64).wrapping_mul(0x100_0000_01B3);
+    match key {
+        SgrKey::Groups { len, values } => {
+            for value in &values[..*len as usize] {
+                hash = (hash ^ *value as u64).wrapping_mul(0x100_0000_01B3);
+            }
+        },
+        SgrKey::Bytes { len, words } => {
+            hash ^= words[0].wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+                ^ words[1].rotate_left(29)
+                ^ *len as u64;
+        },
     }
-    (hash >> 40) as usize % SGR_MEMO_SLOTS
+    (hash.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize % SGR_MEMO_SLOTS
 }
 
 fn code_key(code: Option<AnsiCode>) -> u64 {
@@ -320,11 +346,42 @@ fn style_fingerprint(styles: &CharacterStyles) -> u64 {
 }
 
 impl StyleCache {
-    pub fn apply_sgr(&mut self, styles: &mut RcCharacterStyles, params: &crate::vte::Params) {
+    pub fn apply_sgr(
+        &mut self,
+        styles: &mut RcCharacterStyles,
+        params: &crate::vt_parser::Parameters,
+    ) {
+        if !crate::opt_flags::on(crate::opt_flags::STYLE_MEMO) {
+            styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
+            return;
+        }
         let Some(key) = SgrKey::of(params) else {
             styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
             return;
         };
+        self.apply_sgr_memoized(styles, key, || *params);
+    }
+
+    pub fn apply_sgr_bytes(&mut self, styles: &mut RcCharacterStyles, parameter_bytes: &[u8]) {
+        let key = match SgrKey::of_bytes(parameter_bytes) {
+            Some(key) if crate::opt_flags::on(crate::opt_flags::STYLE_MEMO) => key,
+            _ => {
+                let params = crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes);
+                return self.apply_sgr(styles, &params);
+            },
+        };
+        self.apply_sgr_memoized(styles, key, || {
+            crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes)
+        });
+    }
+
+    #[inline]
+    fn apply_sgr_memoized(
+        &mut self,
+        styles: &mut RcCharacterStyles,
+        key: SgrKey,
+        params: impl FnOnce() -> crate::vt_parser::Parameters,
+    ) {
         let slot = sgr_slot(styles, &key);
         if let Some(Some(memo)) = self.sgr_memo.get(slot) {
             if memo.key == key && memo.input.ptr_eq(styles) {
@@ -333,6 +390,7 @@ impl StyleCache {
             }
         }
         let input = styles.clone();
+        let params = params();
         styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
         if self.sgr_memo.is_empty() {
             self.sgr_memo = vec![None; SGR_MEMO_SLOTS];
@@ -349,23 +407,32 @@ impl StyleCache {
             return RcCharacterStyles::Reset;
         }
         let fingerprint = style_fingerprint(&styles);
-        if let Some((_, existing)) = self
-            .recent
-            .iter()
-            .rev()
-            .find(|(key, existing)| *key == fingerprint && styles.is_identical_to(existing))
-        {
-            return RcCharacterStyles::Rc(existing.clone());
-        }
-        if self.recent.len() >= STYLE_CACHE_CAPACITY {
-            self.recent
-                .retain(|(_, existing)| Rc::strong_count(existing) > 1);
-            if self.recent.len() >= STYLE_CACHE_CAPACITY {
-                self.recent.remove(0);
+        let first = (fingerprint.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize
+            % SHARED_STYLE_SLOTS
+            & !1;
+        for slot in [first, first + 1] {
+            if let Some(Some((key, existing))) = self.shared.get(slot) {
+                if *key == fingerprint && styles.is_identical_to(existing) {
+                    return RcCharacterStyles::Rc(existing.clone());
+                }
             }
         }
+        if self.shared.is_empty() {
+            self.shared = vec![None; SHARED_STYLE_SLOTS];
+        }
+        let in_use = |entry: &Option<(u64, Rc<CharacterStyles>)>| match entry {
+            Some((_, existing)) => Rc::strong_count(existing) > 1,
+            None => false,
+        };
+        let slot = if !in_use(&self.shared[first]) {
+            first
+        } else if !in_use(&self.shared[first + 1]) {
+            first + 1
+        } else {
+            first + (fingerprint >> 63) as usize
+        };
         let shared = Rc::new(styles);
-        self.recent.push((fingerprint, shared.clone()));
+        self.shared[slot] = Some((fingerprint, shared.clone()));
         RcCharacterStyles::Rc(shared)
     }
 }
@@ -570,7 +637,7 @@ impl CharacterStyles {
         self.strike = Some(AnsiCode::Reset);
         // Deliberately don't end link anchor
     }
-    pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
+    pub fn add_style_from_ansi_params(&mut self, params: &mut ParameterGroups) {
         while let Some(param) = params.next() {
             match param {
                 [] | [0] => self.reset_ansi(),

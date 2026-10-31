@@ -1,5 +1,6 @@
 pub mod alacritty_functions;
 pub mod cluster_table;
+pub mod eager_hyperlink_tracker;
 pub mod grapheme_join;
 pub mod grid;
 pub mod hyperlink_tracker;

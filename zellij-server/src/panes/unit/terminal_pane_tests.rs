@@ -863,11 +863,11 @@ pub fn osc7_payload_rejects_c0_control_characters() {
     // Test the Grid's osc_dispatch directly, since the VTE parser strips
     // control characters before they reach osc_dispatch. This validates
     // the defense-in-depth guard in the b"7" handler.
-    use crate::vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     let params: &[&[u8]] = &[b"7", b"file://host/path\x01bad"];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
     assert!(
         terminal_pane.osc7_payload().is_none(),
         "URIs with C0 control characters should be rejected"
@@ -878,12 +878,12 @@ pub fn osc7_payload_rejects_c0_control_characters() {
 pub fn osc7_payload_rejects_c1_control_characters() {
     // C1 control characters (U+0080..U+009F) include ST (U+009C) which
     // could terminate the OSC sequence in the parent terminal.
-    use crate::vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     // U+009C (ST) in UTF-8 is 0xC2 0x9C
     let params: &[&[u8]] = &[b"7", "file://host/path\u{9c}bad".as_bytes()];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
     assert!(
         terminal_pane.osc7_payload().is_none(),
         "URIs with C1 control characters should be rejected"
@@ -906,13 +906,13 @@ pub fn osc7_payload_rejects_an_empty_payload() {
 
 #[test]
 pub fn osc7_payload_rejects_invalid_utf8() {
-    use crate::vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
 
     let params: &[&[u8]] = &[b"7", b"file://localhost/\xff\xfe"];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
 
     assert_eq!(
         terminal_pane.osc7_payload(),
