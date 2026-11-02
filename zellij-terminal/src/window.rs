@@ -3838,7 +3838,7 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn a_destroyed_window_is_not_asked_about_itself_off_macos() {
-        let mut harness = Harness::new(1, true, "");
+        let mut harness = Harness::new(0, true, "");
         let dir = remembering(&mut harness);
         assert_eq!(
             harness.app.on_window_event(WindowEvent::Destroyed),
