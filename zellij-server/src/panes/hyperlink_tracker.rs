@@ -106,20 +106,25 @@ fn scheme_at(cells: &[Cell], at: usize) -> bool {
 pub fn link_urls_in_lines(
     lines_above: &mut VecDeque<Row>,
     viewport: &mut VecDeque<Row>,
-    changed_viewport_lines: &[usize],
+    lines: &[isize],
     cursor: Option<(usize, usize)>,
     link_handler: &mut LinkHandler,
 ) {
-    let mut starts: Vec<isize> = changed_viewport_lines
+    let mut starts: Vec<isize> = lines
         .iter()
-        .filter(|y| **y < viewport.len())
-        .map(|y| line_start(lines_above, viewport, *y as isize))
+        .filter(|y| **y < viewport.len() as isize && row_ref(lines_above, viewport, **y).is_some())
+        .map(|y| line_start(lines_above, viewport, *y))
         .collect();
     starts.sort_unstable();
     starts.dedup();
     let mut cells: Vec<Cell> = Vec::new();
     for start in starts {
         let end = line_rows(lines_above, viewport, start);
+        for y in start..end {
+            if let Some(row) = row_mut(lines_above, viewport, y) {
+                row.link_scan_pending = false;
+            }
+        }
         let has_colon = (start..end).any(|y| {
             row_ref(lines_above, viewport, y)
                 .map(|row| row.columns.iter().any(|cell| cell.character == ':'))
@@ -138,16 +143,20 @@ pub fn link_urls_in_lines(
                 }));
             }
         }
-        let cursor_ends_this_line = cursor
-            .map(|(_, cursor_y)| cursor_y as isize == end - 1)
-            .unwrap_or(false);
-        link_urls_in_line(
-            lines_above,
-            viewport,
-            &cells,
-            cursor_ends_this_line,
-            link_handler,
-        );
+        let cursor_cell = cursor
+            .filter(|(_, cursor_y)| (start..end).contains(&(*cursor_y as isize)))
+            .map(|(cursor_x, cursor_y)| {
+                cells
+                    .iter()
+                    .position(|cell| cell.y == cursor_y as isize && cell.index >= cursor_x)
+                    .unwrap_or(cells.len())
+            });
+        let deferred = link_urls_in_line(lines_above, viewport, &cells, cursor_cell, link_handler);
+        if deferred {
+            if let Some(row) = row_mut(lines_above, viewport, end - 1) {
+                row.link_scan_pending = true;
+            }
+        }
     }
 }
 
@@ -155,9 +164,10 @@ fn link_urls_in_line(
     lines_above: &mut VecDeque<Row>,
     viewport: &mut VecDeque<Row>,
     cells: &[Cell],
-    cursor_ends_this_line: bool,
+    cursor_cell: Option<usize>,
     link_handler: &mut LinkHandler,
-) {
+) -> bool {
+    let mut deferred = false;
     let mut at = 0;
     while at < cells.len() {
         if !matches!(cells[at].character, 'h' | 'f' | 'm') || !scheme_at(cells, at) {
@@ -167,27 +177,86 @@ fn link_urls_in_line(
         let end = cells[at..]
             .iter()
             .position(|cell| is_url_terminator(cell.character))
-            .map(|offset| at + offset);
-        let Some(end) = end.or((!cursor_ends_this_line).then_some(cells.len())) else {
-            return;
-        };
+            .map_or(cells.len(), |offset| at + offset);
+        if cursor_cell.is_some_and(|cursor| (at..=end).contains(&cursor)) {
+            deferred = true;
+            at = end + 1;
+            continue;
+        }
         let text: String = cells[at..end].iter().map(|cell| cell.character).collect();
         let url = trim_trailing_punctuation(&text);
         let kept = url.chars().count();
-        if is_valid_url(url) && !already_linked(lines_above, viewport, cells[at]) {
-            let anchor = link_handler.new_link_from_url(url.to_owned());
-            mark_link(lines_above, viewport, &cells[at..at + kept], anchor);
-            mark_end(lines_above, viewport, cells, at + kept);
+        if is_valid_url(url) {
+            let previous = start_anchor_at(lines_above, viewport, cells[at]);
+            if !linked_exactly(lines_above, viewport, &cells[at..], kept, previous) {
+                let anchor = link_handler.new_link_from_url(url.to_owned());
+                mark_link(lines_above, viewport, &cells[at..at + kept], anchor);
+                clear_stale_link(lines_above, viewport, &cells[at + kept..], previous);
+                mark_end(lines_above, viewport, cells, at + kept);
+            }
         }
         at = end + 1;
     }
+    deferred
 }
 
-fn already_linked(lines_above: &VecDeque<Row>, viewport: &VecDeque<Row>, cell: Cell) -> bool {
+fn start_anchor_at(
+    lines_above: &VecDeque<Row>,
+    viewport: &VecDeque<Row>,
+    cell: Cell,
+) -> Option<LinkAnchor> {
     row_ref(lines_above, viewport, cell.y)
         .and_then(|row| row.columns.get(cell.index))
-        .map(|character| matches!(character.styles.link_anchor, Some(LinkAnchor::Start(_))))
-        .unwrap_or(false)
+        .and_then(|character| character.styles.link_anchor)
+        .filter(|anchor| matches!(anchor, LinkAnchor::Start(_)))
+}
+
+fn linked_exactly(
+    lines_above: &VecDeque<Row>,
+    viewport: &VecDeque<Row>,
+    cells: &[Cell],
+    kept: usize,
+    previous: Option<LinkAnchor>,
+) -> bool {
+    let Some(previous) = previous else {
+        return false;
+    };
+    let anchor_of = |cell: &Cell| {
+        row_ref(lines_above, viewport, cell.y)
+            .and_then(|row| row.columns.get(cell.index))
+            .and_then(|character| character.styles.link_anchor)
+    };
+    cells[..kept]
+        .iter()
+        .all(|cell| anchor_of(cell) == Some(previous))
+        && cells
+            .get(kept)
+            .map_or(true, |cell| anchor_of(cell) != Some(previous))
+}
+
+fn clear_stale_link(
+    lines_above: &mut VecDeque<Row>,
+    viewport: &mut VecDeque<Row>,
+    cells: &[Cell],
+    previous: Option<LinkAnchor>,
+) {
+    let Some(previous) = previous else {
+        return;
+    };
+    for cell in cells {
+        let Some(character) =
+            row_mut(lines_above, viewport, cell.y).and_then(|row| row.columns.get_mut(cell.index))
+        else {
+            return;
+        };
+        let anchor = character.styles.link_anchor;
+        if anchor == Some(previous) || anchor == Some(LinkAnchor::End) {
+            character.styles.update(|styles| styles.link_anchor = None);
+        }
+        if anchor != Some(previous) {
+            return;
+        }
+    }
 }
 
 fn mark_link(
@@ -287,7 +356,7 @@ mod tests {
         cursor: Option<(usize, usize)>,
         link_handler: &mut LinkHandler,
     ) {
-        let changed: Vec<usize> = (0..viewport.len()).collect();
+        let changed: Vec<isize> = (0..viewport.len() as isize).collect();
         link_urls_in_lines(lines_above, viewport, &changed, cursor, link_handler);
     }
 
@@ -422,6 +491,64 @@ mod tests {
     }
 
     #[test]
+    fn a_url_the_cursor_sits_right_after_is_left_for_later() {
+        let mut viewport = screen(&[("> http://www.e", true)], 40);
+        let mut handler = LinkHandler::new();
+        link_all(
+            &mut VecDeque::new(),
+            &mut viewport,
+            Some((14, 0)),
+            &mut handler,
+        );
+        assert!(uris(&handler).is_empty());
+        assert!(viewport[0].link_scan_pending);
+        link_all(
+            &mut VecDeque::new(),
+            &mut viewport,
+            Some((0, 1)),
+            &mut handler,
+        );
+        assert_eq!(uris(&handler), vec!["http://www.e".to_owned()]);
+        assert!(!viewport[0].link_scan_pending);
+    }
+
+    #[test]
+    fn a_linked_url_that_grew_is_relinked_whole() {
+        let mut viewport = screen(&[("http://www.e", true)], 40);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        let first = anchors(&viewport[0])[0];
+        for (index, character) in "xample.com".chars().enumerate() {
+            viewport[0].columns[12 + index].character = character;
+        }
+        viewport[0].columns[12].styles = viewport[0].columns[0].styles.clone();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        let marked = anchors(&viewport[0]);
+        assert_ne!(marked[0], first);
+        assert!(marked[..22].iter().all(|anchor| *anchor == marked[0]));
+        assert_eq!(marked[22], Some(LinkAnchor::End));
+        assert!(handler
+            .links()
+            .values()
+            .any(|link| link.uri == "http://www.example.com"));
+    }
+
+    #[test]
+    fn a_linked_url_that_shrank_drops_its_stale_tail() {
+        let mut viewport = screen(&[("http://www.example.com", true)], 40);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        viewport[0].columns[15].character = ' ';
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        let marked = anchors(&viewport[0]);
+        assert!(marked[..15]
+            .iter()
+            .all(|anchor| *anchor == marked[0] && is_start(anchor)));
+        assert_eq!(marked[15], Some(LinkAnchor::End));
+        assert!(marked[16..].iter().all(|anchor| anchor.is_none()));
+    }
+
+    #[test]
     fn scanning_the_same_line_twice_creates_one_link() {
         let mut viewport = screen(&[("x https://example.com y", true)], 40);
         let mut handler = LinkHandler::new();
@@ -488,7 +615,7 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .collect();
-        link_urls_in_line(&mut lines_above, &mut viewport, &cells, false, &mut handler);
+        link_urls_in_line(&mut lines_above, &mut viewport, &cells, None, &mut handler);
         let expanded = lines_above[0].with_trailing_blanks();
         assert!(expanded.columns[..url.len()]
             .iter()

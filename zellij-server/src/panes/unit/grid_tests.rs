@@ -11378,3 +11378,49 @@ fn a_cursor_position_report_above_the_scroll_region_does_not_underflow() {
         Some(&b"\x1b[1;1R"[..])
     );
 }
+
+fn linked_uris(grid: &Grid) -> Vec<String> {
+    let mut uris: Vec<String> = grid
+        .link_handler
+        .borrow()
+        .links()
+        .values()
+        .map(|link| link.uri.clone())
+        .collect();
+    uris.sort();
+    uris
+}
+
+#[test]
+fn a_url_typed_at_a_shell_prompt_is_linked_whole_once_the_cursor_leaves_it() {
+    let url = "http://www.example.com";
+    let mut grid = create_grid_with_size_and_raw(10, 60, b"> ");
+    let mut parser = vt_parser::Parser::new();
+    for typed in 1..=url.len() {
+        let redraw = format!("\r\x1b[2K> \x1b[31m{}\x1b[0m", &url[..typed]);
+        parser.feed(&mut grid, redraw.as_bytes());
+        grid.read_changes(0, 0);
+    }
+    assert!(linked_uris(&grid).is_empty());
+    parser.feed(&mut grid, b"\r\n");
+    grid.read_changes(0, 0);
+    assert_eq!(linked_uris(&grid), vec![url.to_owned()]);
+}
+
+#[test]
+fn a_url_with_a_suggestion_after_the_cursor_waits_until_the_line_is_final() {
+    let mut grid = create_grid_with_size_and_raw(10, 60, b"> ");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(
+        &mut grid,
+        b"\r\x1b[2K> http://www.e\x1b[90mxample.com\x1b[0m\x1b[10D",
+    );
+    grid.read_changes(0, 0);
+    assert!(linked_uris(&grid).is_empty());
+    parser.feed(&mut grid, b"\r\x1b[2K> http://www.example.org\r\n");
+    grid.read_changes(0, 0);
+    assert_eq!(
+        linked_uris(&grid),
+        vec!["http://www.example.org".to_owned()]
+    );
+}

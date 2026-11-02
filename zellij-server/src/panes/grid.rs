@@ -2164,9 +2164,28 @@ impl Grid {
         )
     }
     pub fn link_urls_in_changed_lines(&mut self) {
-        let changed = self
+        let mut changed: Vec<isize> = self
             .output_buffer
-            .changed_viewport_lines(self.viewport.len());
+            .changed_viewport_lines(self.viewport.len())
+            .into_iter()
+            .map(|y| y as isize)
+            .collect();
+        changed.extend(
+            self.viewport
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row.link_scan_pending)
+                .map(|(y, _)| y as isize),
+        );
+        changed.extend(
+            self.lines_above
+                .iter()
+                .rev()
+                .take(self.height)
+                .enumerate()
+                .filter(|(_, row)| row.link_scan_pending)
+                .map(|(back, _)| -(back as isize) - 1),
+        );
         if changed.is_empty() {
             return;
         }
@@ -6696,6 +6715,7 @@ pub struct Row {
     pub is_canonical: bool,
     pub may_have_groups: bool,
     only_single_width: bool,
+    pub link_scan_pending: bool,
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -6806,6 +6826,7 @@ impl Row {
             is_canonical: false,
             may_have_groups: false,
             only_single_width: false,
+            link_scan_pending: false,
         }
     }
     pub fn with_capacity(capacity: usize) -> Self {
@@ -6818,6 +6839,7 @@ impl Row {
             is_canonical: false,
             may_have_groups: false,
             only_single_width: false,
+            link_scan_pending: false,
         }
     }
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
@@ -6830,6 +6852,7 @@ impl Row {
             is_canonical: false,
             may_have_groups: false,
             only_single_width: false,
+            link_scan_pending: false,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -7331,6 +7354,7 @@ impl Row {
             is_canonical: self.is_canonical,
             may_have_groups: false,
             only_single_width: false,
+            link_scan_pending: false,
         };
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }
