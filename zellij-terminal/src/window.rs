@@ -2045,10 +2045,10 @@ impl App {
             },
             WindowEvent::RedrawRequested => self.draw(),
             // Quitting from the Dock or at logout, macOS closes every window before the
-            // app hears of it, while each can still be asked about itself. Elsewhere a
-            // window is destroyed only once the app has let it go.
+            // app hears of it, while each can still be asked about itself. Elsewhere the
+            // native window may already be gone, and asking about it can panic.
             WindowEvent::Destroyed => {
-                if !self.leaving {
+                if cfg!(target_os = "macos") && !self.leaving {
                     self.leave();
                 }
                 return Verdict::Close;
