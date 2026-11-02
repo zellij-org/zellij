@@ -582,7 +582,10 @@ mod tests {
                 local_media: false,
             },
             ClientToServerMsg::SixelSupport { supported: true },
-            ClientToServerMsg::StructuredRenderSupport { supported: true },
+            ClientToServerMsg::StructuredRenderSupport {
+                supported: true,
+                row_shifts: false,
+            },
             ClientToServerMsg::ForegroundColor {
                 color: "rgb:0/0/0".to_owned(),
             },

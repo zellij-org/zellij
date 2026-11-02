@@ -3,10 +3,10 @@ use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::terminal_character::{AnsiCode, TerminalCharacter};
+use crate::vt_parser;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use vte;
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::graphemes;
 
@@ -43,10 +43,10 @@ fn encoded(text: &str) -> String {
 }
 
 fn render(component_name: &str, serialized_params: &str) -> Grid {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = grapheme_grid();
     let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
-    vte_parser.advance(&mut grid, dcs.as_bytes());
+    vte_parser.feed(&mut grid, dcs.as_bytes());
     grid
 }
 

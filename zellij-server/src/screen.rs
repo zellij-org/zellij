@@ -587,6 +587,7 @@ pub enum ScreenInstruction {
     SetStructuredRenderSupport {
         client_id: ClientId,
         supported: bool,
+        row_shifts: bool,
     },
     SetClipboardPasteSupport {
         client_id: ClientId,
@@ -2025,6 +2026,21 @@ fn format_guest_modal_shortcut(keys: &[KeyWithModifier]) -> Vec<String> {
 
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
+struct RowShiftsWhileRendering;
+
+impl RowShiftsWhileRendering {
+    fn new(enabled: bool) -> Self {
+        crate::output::set_row_shifts(enabled);
+        RowShiftsWhileRendering
+    }
+}
+
+impl Drop for RowShiftsWhileRendering {
+    fn drop(&mut self) {
+        crate::output::set_row_shifts(false);
+    }
+}
+
 pub(crate) struct Screen {
     /// A Bus for sending and receiving messages with the other threads.
     pub bus: Bus<ScreenInstruction>,
@@ -2044,6 +2060,7 @@ pub(crate) struct Screen {
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    render_waits_for_ack: bool,
     clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -2416,6 +2433,7 @@ impl Screen {
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
+            render_waits_for_ack: false,
             clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
@@ -3546,6 +3564,32 @@ impl Screen {
                 .push(vte_instruction.clone());
         }
     }
+    pub fn set_row_shift_support(&mut self, client_id: ClientId, row_shifts: bool) {
+        if let Some(state) = self
+            .structured_render_clients
+            .borrow_mut()
+            .get_mut(&client_id)
+        {
+            state.row_shifts = row_shifts;
+        }
+    }
+
+    fn row_shifts_possible(&self) -> bool {
+        if !self.watcher_clients.is_empty() {
+            return false;
+        }
+        let connected = self.connected_clients.borrow();
+        let mut clients = connected.keys();
+        let (Some(client_id), None) = (clients.next(), clients.next()) else {
+            return false;
+        };
+        self.structured_render_clients
+            .borrow()
+            .get(client_id)
+            .map(|state| state.enabled && state.row_shifts && state.in_flight.is_none())
+            .unwrap_or(false)
+    }
+
     pub fn update_structured_render_support(&mut self, client_id: ClientId, supported: bool) {
         if !supported {
             self.release_structured_render_state(client_id);
@@ -3627,6 +3671,17 @@ impl Screen {
         }
     }
 
+    fn pace_structured_payloads_shifted(&mut self, client_id: ClientId) {
+        if let Some(state) = self
+            .structured_render_clients
+            .borrow_mut()
+            .get_mut(&client_id)
+        {
+            let size = state.size;
+            state.reset_viewport(size);
+        }
+    }
+
     fn pace_structured_payloads(
         &mut self,
         payloads: &mut HashMap<ClientId, RenderPayload>,
@@ -3638,6 +3693,7 @@ impl Screen {
             .map(|(client_id, _)| *client_id)
             .collect();
         let mut abandoned = vec![];
+        let mut shifted = vec![];
         {
             let clients = self.structured_render_clients.clone();
             let mut clients = clients.borrow_mut();
@@ -3665,12 +3721,25 @@ impl Screen {
                 }
                 let view = structured_render::decode(frame)
                     .map_err(|e| anyhow!("{}: {}", err_context, e))?;
+                if !view.shifts().is_empty() {
+                    payloads.remove(&client_id);
+                    abandoned.push(client_id);
+                    shifted.push(client_id);
+                    continue;
+                }
                 state.overlay.merge_frame(&view);
                 payloads.remove(&client_id);
             }
         }
         if abandoned.is_empty() {
             return Ok(());
+        }
+        for client_id in shifted {
+            self.pace_structured_payloads_shifted(client_id);
+            abandoned.retain(|abandoned_id| *abandoned_id != client_id);
+            if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+                watcher_state.set_force_render();
+            }
         }
         for client_id in abandoned {
             log::warn!(
@@ -3698,19 +3767,43 @@ impl Screen {
             return Ok(());
         }
         state.disarm();
-        if !state.overlay.is_dirty() {
-            return Ok(());
+        if state.overlay.is_dirty() {
+            let next_seq = state.allocate_seq();
+            let frame = state.overlay.drain(next_seq);
+            state.arm(next_seq);
+            drop(clients);
+            let mut payloads = HashMap::new();
+            payloads.insert(client_id, RenderPayload::Frame(frame));
+            self.bus
+                .senders
+                .send_to_server(ServerInstruction::Render(Some(payloads)))
+                .context("failed to emit a paced render frame")?;
+        } else {
+            drop(clients);
         }
-        let next_seq = state.allocate_seq();
-        let frame = state.overlay.drain(next_seq);
-        state.arm(next_seq);
-        drop(clients);
-        let mut payloads = HashMap::new();
-        payloads.insert(client_id, RenderPayload::Frame(frame));
-        self.bus
-            .senders
-            .send_to_server(ServerInstruction::Render(Some(payloads)))
-            .context("failed to emit a paced render frame")
+        if std::mem::take(&mut self.render_waits_for_ack) {
+            self.render_to_clients()?;
+        }
+        Ok(())
+    }
+
+    fn every_client_awaits_a_frame_ack(&self) -> bool {
+        if !self.watcher_clients.is_empty() {
+            return false;
+        }
+        let connected = self.connected_clients.borrow();
+        if connected.is_empty() {
+            return false;
+        }
+        let structured = self.structured_render_clients.borrow();
+        connected.keys().all(|client_id| {
+            structured
+                .get(client_id)
+                .map(|state| {
+                    state.enabled && state.in_flight.is_some() && !state.delivery_deadline_expired()
+                })
+                .unwrap_or(false)
+        })
     }
 
     fn release_structured_render_state(&mut self, client_id: ClientId) {
@@ -5760,6 +5853,12 @@ impl Screen {
         let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
         self.sync_structured_client_viewports();
+        if self.every_client_awaits_a_frame_ack() {
+            self.render_waits_for_ack = true;
+            return Ok(());
+        }
+        self.render_waits_for_ack = false;
+        let _row_shifts = RowShiftsWhileRendering::new(self.row_shifts_possible());
         self.sync_attention_visibility();
         self.sync_plugin_visibility();
         self.sync_live_views();
@@ -12992,8 +13091,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetStructuredRenderSupport {
                 client_id,
                 supported,
+                row_shifts,
             } => {
                 screen.update_structured_render_support(client_id, supported);
+                screen.set_row_shift_support(client_id, row_shifts);
                 screen.render(None)?;
             },
             ScreenInstruction::SetClipboardPasteSupport {

@@ -45,7 +45,6 @@ insta = "1.48"
 ssh2 = "0.9.1"
 rand = { workspace = true }
 regex = { workspace = true }
-vte = { workspace = true }
 
 [workspace]
 members = [
@@ -131,7 +130,6 @@ unicode-segmentation = { version = "1.13.3", default-features = false }
 unicode-width = { version = "0.2.2", default-features = false }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 uuid = { version = "1.4.1", default-features = false, features = ["serde", "v4", "std"] }
-vte = { version = "0.15", default-features = false, features = ["std"] }
 windows-sys = { version = "0.59", default-features = false }
 winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"] }
 names = { version = "0.14.0", default-features = false }
@@ -168,6 +166,14 @@ opt-level = 3
 lto = true
 strip = true
 codegen-units = 1
+
+[profile.perf]
+inherits = "release"
+lto = "off"
+strip = false
+codegen-units = 16
+incremental = true
+debug = "line-tables-only"
 
 [package.metadata.deb]
 depends = "$auto"

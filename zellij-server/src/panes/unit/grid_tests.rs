@@ -2,13 +2,13 @@ use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
+use crate::vt_parser;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use vte;
 use zellij_utils::consts::SCROLL_BUFFER_SIZE;
 use zellij_utils::{
     data::{Palette, Style},
@@ -145,7 +145,7 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 
 #[test]
 fn vttest1_0() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -171,13 +171,13 @@ fn vttest1_0() {
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest1_1() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -203,13 +203,13 @@ fn vttest1_1() {
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest1_2() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -235,13 +235,13 @@ fn vttest1_2() {
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest1_3() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -267,13 +267,13 @@ fn vttest1_3() {
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest1_4() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -299,13 +299,13 @@ fn vttest1_4() {
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest1_5() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -331,13 +331,13 @@ fn vttest1_5() {
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_0() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -363,13 +363,13 @@ fn vttest2_0() {
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_1() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -395,13 +395,13 @@ fn vttest2_1() {
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_2() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -427,13 +427,13 @@ fn vttest2_2() {
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_3() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -459,13 +459,13 @@ fn vttest2_3() {
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_4() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -491,13 +491,13 @@ fn vttest2_4() {
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_5() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -523,13 +523,13 @@ fn vttest2_5() {
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_6() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -555,13 +555,13 @@ fn vttest2_6() {
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_7() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -587,13 +587,13 @@ fn vttest2_7() {
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_8() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -619,13 +619,13 @@ fn vttest2_8() {
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_9() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -651,13 +651,13 @@ fn vttest2_9() {
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_10() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -683,13 +683,13 @@ fn vttest2_10() {
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_11() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -715,13 +715,13 @@ fn vttest2_11() {
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_12() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -747,13 +747,13 @@ fn vttest2_12() {
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_13() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -779,13 +779,13 @@ fn vttest2_13() {
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest2_14() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -811,13 +811,13 @@ fn vttest2_14() {
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest3_0() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -843,13 +843,13 @@ fn vttest3_0() {
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_0() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -875,13 +875,13 @@ fn vttest8_0() {
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_1() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -907,13 +907,13 @@ fn vttest8_1() {
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_2() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -939,13 +939,13 @@ fn vttest8_2() {
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_3() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -971,13 +971,13 @@ fn vttest8_3() {
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_4() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1003,13 +1003,13 @@ fn vttest8_4() {
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn vttest8_5() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1035,13 +1035,13 @@ fn vttest8_5() {
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn csi_b() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1067,13 +1067,13 @@ fn csi_b() {
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn csi_capital_i() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1099,13 +1099,13 @@ fn csi_capital_i() {
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn csi_capital_z() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1131,13 +1131,13 @@ fn csi_capital_z() {
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn terminal_reports() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1163,13 +1163,13 @@ fn terminal_reports() {
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid.pending_messages_to_pty));
 }
 
 #[test]
 fn wide_characters() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1195,13 +1195,13 @@ fn wide_characters() {
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn wide_characters_line_wrap() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1227,13 +1227,13 @@ fn wide_characters_line_wrap() {
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn insert_character_in_line_with_wide_character() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1259,13 +1259,13 @@ fn insert_character_in_line_with_wide_character() {
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn delete_char_in_middle_of_line_with_widechar() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1291,13 +1291,13 @@ fn delete_char_in_middle_of_line_with_widechar() {
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn delete_char_in_middle_of_line_with_multiple_widechars() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1323,13 +1323,13 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn fish_wide_characters_override_clock() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1355,13 +1355,13 @@ fn fish_wide_characters_override_clock() {
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn bash_delete_wide_characters() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1387,13 +1387,13 @@ fn bash_delete_wide_characters() {
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn delete_wide_characters_before_cursor() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1419,13 +1419,13 @@ fn delete_wide_characters_before_cursor() {
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1451,13 +1451,13 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn delete_wide_character_under_cursor() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1483,13 +1483,13 @@ fn delete_wide_character_under_cursor() {
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn replace_wide_character_under_cursor() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1515,13 +1515,13 @@ fn replace_wide_character_under_cursor() {
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn wrap_wide_characters() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1547,13 +1547,13 @@ fn wrap_wide_characters() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn wrap_wide_characters_on_size_change() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1579,14 +1579,14 @@ fn wrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.change_size(21, 90);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn unwrap_wide_characters_on_size_change() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1612,7 +1612,7 @@ fn unwrap_wide_characters_on_size_change() {
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.change_size(21, 90);
     grid.change_size(21, 93);
     assert_snapshot!(format!("{:?}", grid));
@@ -1620,7 +1620,7 @@ fn unwrap_wide_characters_on_size_change() {
 
 #[test]
 fn wrap_wide_characters_in_the_middle_of_the_line() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1646,13 +1646,13 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn wrap_wide_characters_at_the_end_of_the_line() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1678,13 +1678,13 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn copy_selected_text_from_viewport() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1710,7 +1710,7 @@ fn copy_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1724,7 +1724,7 @@ fn copy_selected_text_from_viewport() {
 
 #[test]
 fn copy_wrapped_selected_text_from_viewport() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1750,7 +1750,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
 
     grid.start_selection(&Position::new(5, 0));
     grid.end_selection(&Position::new(8, 42));
@@ -1763,7 +1763,7 @@ fn copy_wrapped_selected_text_from_viewport() {
 
 #[test]
 fn copy_selected_text_from_lines_above() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1789,7 +1789,7 @@ fn copy_selected_text_from_lines_above() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
@@ -1803,7 +1803,7 @@ fn copy_selected_text_from_lines_above() {
 
 #[test]
 fn copy_selected_text_from_lines_below() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1829,7 +1829,7 @@ fn copy_selected_text_from_lines_below() {
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
 
     grid.move_viewport_up(40);
 
@@ -1851,7 +1851,7 @@ fn copy_selected_text_from_lines_below() {
 
 #[test]
 fn run_bandwhich_from_fish_shell() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1877,13 +1877,13 @@ fn run_bandwhich_from_fish_shell() {
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn fish_tab_completion_options() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1909,7 +1909,7 @@ fn fish_tab_completion_options() {
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1921,7 +1921,7 @@ pub fn fish_select_tab_completion_options() {
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
     // terminal_emulator_color_codes,
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1947,7 +1947,7 @@ pub fn fish_select_tab_completion_options() {
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -1963,7 +1963,7 @@ pub fn vim_scroll_region_down() {
     // this tests also has other steps afterwards that fills the line with the next line in the
     // sixel_image_store,
     // file
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -1989,7 +1989,7 @@ pub fn vim_scroll_region_down() {
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2002,7 +2002,7 @@ pub fn vim_ctrl_d() {
     // end of the scroll region
     // terminal_emulator_color_codes,
     // vim makes sure to fill these empty lines with the rest of the file
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2028,7 +2028,7 @@ pub fn vim_ctrl_d() {
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2040,7 +2040,7 @@ pub fn vim_ctrl_u() {
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
     // terminal_emulator_color_codes,
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2066,13 +2066,13 @@ pub fn vim_ctrl_u() {
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn htop() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2098,13 +2098,13 @@ pub fn htop() {
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn htop_scrolling() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2130,13 +2130,13 @@ pub fn htop_scrolling() {
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn htop_right_scrolling() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2162,7 +2162,7 @@ pub fn htop_right_scrolling() {
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2178,7 +2178,7 @@ pub fn vim_overwrite() {
     // * confirm you would like to change the file by pressing 'y' and then ENTER
     // sixel_image_store,
     // * if everything looks fine, this test passed :)
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2204,7 +2204,7 @@ pub fn vim_overwrite() {
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2212,7 +2212,7 @@ pub fn vim_overwrite() {
 pub fn clear_scroll_region() {
     // this is actually a test of 1049h/l (alternative buffer)
     // @imsnif - the name is a monument to the time I didn't fully understand this mechanism :)
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2238,13 +2238,13 @@ pub fn clear_scroll_region() {
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn display_tab_characters_properly() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2270,13 +2270,13 @@ pub fn display_tab_characters_properly() {
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn neovim_insert_mode() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2302,13 +2302,13 @@ pub fn neovim_insert_mode() {
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn bash_cursor_linewrap() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2334,7 +2334,7 @@ pub fn bash_cursor_linewrap() {
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2342,7 +2342,7 @@ pub fn bash_cursor_linewrap() {
 pub fn fish_paste_multiline() {
     // here we paste a multiline command in fish shell, making sure we support it
     // going up and changing the colors of our line-wrapped pasted text
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2368,13 +2368,13 @@ pub fn fish_paste_multiline() {
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn git_log() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2400,7 +2400,7 @@ pub fn git_log() {
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2408,7 +2408,7 @@ pub fn git_log() {
 pub fn git_diff_scrollup() {
     // this tests makes sure that when we have a git diff that exceeds the screen size
     // we are able to scroll up
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2434,13 +2434,13 @@ pub fn git_diff_scrollup() {
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn emacs_longbuf() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2466,13 +2466,13 @@ pub fn emacs_longbuf() {
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn top_and_quit() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2498,7 +2498,7 @@ pub fn top_and_quit() {
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2511,7 +2511,7 @@ pub fn exa_plus_omf_theme() {
     // over existing on-screen content without deleting it, so we must
     // terminal_emulator_color_codes,
     // convert it to spaces
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2537,13 +2537,13 @@ pub fn exa_plus_omf_theme() {
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn scroll_up() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2569,14 +2569,14 @@ pub fn scroll_up() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn scroll_down() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2602,7 +2602,7 @@ pub fn scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2610,7 +2610,7 @@ pub fn scroll_down() {
 
 #[test]
 pub fn scroll_up_with_line_wraps() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2636,14 +2636,14 @@ pub fn scroll_up_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.scroll_up_one_line();
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn scroll_down_with_line_wraps() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2669,7 +2669,7 @@ pub fn scroll_down_with_line_wraps() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
@@ -2677,7 +2677,7 @@ pub fn scroll_down_with_line_wraps() {
 
 #[test]
 pub fn scroll_up_decrease_width_and_scroll_down() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2703,7 +2703,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2716,7 +2716,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
 
 #[test]
 pub fn scroll_up_increase_width_and_scroll_down() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2742,7 +2742,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     for _ in 0..10 {
         grid.scroll_up_one_line();
     }
@@ -2755,7 +2755,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
 
 #[test]
 fn saved_cursor_across_resize() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2780,7 +2780,7 @@ fn saved_cursor_across_resize() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        vte_parser.advance(&mut *grid, &Vec::from(s));
+        vte_parser.feed(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill to 20_<
@@ -2803,7 +2803,7 @@ fn saved_cursor_across_resize() {
 
 #[test]
 fn saved_cursor_across_resize_longline() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2828,7 +2828,7 @@ fn saved_cursor_across_resize_longline() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        vte_parser.advance(&mut *grid, &Vec::from(s));
+        vte_parser.feed(&mut *grid, &Vec::from(s));
     };
     let content = "
 \rLine 1 >fill \u{1b}[sto 20_<";
@@ -2844,7 +2844,7 @@ fn saved_cursor_across_resize_longline() {
 
 #[test]
 fn saved_cursor_across_resize_rewrap() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2869,7 +2869,7 @@ fn saved_cursor_across_resize_rewrap() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
-        vte_parser.advance(&mut *grid, &Vec::from(s));
+        vte_parser.feed(&mut *grid, &Vec::from(s));
     };
     let content = "
 \r12345678123456781234567\u{1b}[s812345678"; // 4*8 chars
@@ -2885,7 +2885,7 @@ fn saved_cursor_across_resize_rewrap() {
 
 #[test]
 pub fn move_cursor_below_scroll_region() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2911,13 +2911,13 @@ pub fn move_cursor_below_scroll_region() {
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn insert_wide_characters_in_existing_line() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2943,7 +2943,7 @@ pub fn insert_wide_characters_in_existing_line() {
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -2955,7 +2955,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     // lines to get deleted from the viewport rather
     // than moving to "lines_above"
     // terminal_emulator_color_codes,
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -2981,7 +2981,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
     grid.scroll_up_one_line();
@@ -2990,7 +2990,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
 
 #[test]
 pub fn ring_bell() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3016,13 +3016,13 @@ pub fn ring_bell() {
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert!(grid.ring_bell);
 }
 
 #[test]
 pub fn alternate_screen_change_size() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3048,7 +3048,7 @@ pub fn alternate_screen_change_size() {
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     // no scrollback in alternate screen
     assert_eq!(grid.scrollback_position_and_length(), (0, 0));
     grid.change_size(10, 10);
@@ -3058,7 +3058,7 @@ pub fn alternate_screen_change_size() {
 
 #[test]
 pub fn fzf_fullscreen() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3084,7 +3084,7 @@ pub fn fzf_fullscreen() {
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3094,7 +3094,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     // properly pads the excess width in the proper place (either before the replaced non-wide
     // character if the cursor was "in the middle" of the wide character, or after the character if
     // it was "in the beginning" of the wide character)
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3120,7 +3120,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -3130,7 +3130,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     // properly pads the excess width in the proper place (either before the replaced non-wide
     // character if the cursor was "in the middle" of the wide character, or after the character if
     // it was "in the beginning" of the wide character)
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3156,13 +3156,13 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn scroll_down_ansi() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3188,13 +3188,13 @@ pub fn scroll_down_ansi() {
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn ansi_capital_t() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3219,13 +3219,13 @@ pub fn ansi_capital_t() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn ansi_capital_s() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3250,13 +3250,13 @@ pub fn ansi_capital_s() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn terminal_pixel_size_reports() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3285,7 +3285,7 @@ fn terminal_pixel_size_reports() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
     // synthesises local replies from character_cell_size for these.
     assert!(grid.pending_messages_to_pty.is_empty());
@@ -3301,7 +3301,7 @@ fn terminal_pixel_size_reports() {
 
 #[test]
 fn terminal_pixel_size_reports_in_unsupported_terminals() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3327,7 +3327,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     // Forwarding is independent of character_cell_size availability —
     // the host terminal is authoritative for these queries regardless
     // of what Zellij knows locally.
@@ -3344,7 +3344,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
 
 #[test]
 pub fn ansi_csi_at_sign() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3369,13 +3369,13 @@ pub fn ansi_csi_at_sign() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 pub fn sixel_images_are_reaped_when_scrolled_off() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3404,7 +3404,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    vte_parser.advance(&mut grid, &pane_content);
+    vte_parser.feed(&mut grid, &pane_content);
     for _ in 0..10_051 {
         // scrollbuffer limit + viewport height
         grid.add_canonical_line();
@@ -3420,11 +3420,11 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
 #[test]
 fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
     let (mut grid, _) = new_kitty_grid(10, 25);
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     for step in 0..18u8 {
         let width = if step < 12 { 20 } else { 10 + (step % 3) * 10 };
         if step >= 12 {
-            parser.advance(&mut grid, b"\x1b[3;4H   ");
+            parser.feed(&mut grid, b"\x1b[3;4H   ");
         }
         let bytes = format!(
             "\u{1b}[3;4H\u{1b}P9;1q\"1;1;{};12#1;2;{};0;0#1!{}~-!{}~\u{1b}\\",
@@ -3433,7 +3433,7 @@ fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
             width,
             width
         );
-        parser.advance(&mut grid, bytes.as_bytes());
+        parser.feed(&mut grid, bytes.as_bytes());
         grid.read_changes(0, 0);
         let coordinates: Vec<_> = grid.sixel_grid.image_coordinates().collect();
         assert_eq!(coordinates.len(), 1, "obsolete image at step {}", step);
@@ -3450,21 +3450,21 @@ fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
                     == sixel_image::SixelColor::Rgb(step * 5, 0, 0)
         }));
     }
-    parser.advance(&mut grid, b"\x1b[3;4H   ");
+    parser.feed(&mut grid, b"\x1b[3;4H   ");
     let (_, sixel_chunks, _) = grid.read_changes(0, 0);
     assert!(
         sixel_chunks.is_empty(),
         "erased rasters must not be replayed"
     );
     assert_eq!(grid.sixel_grid.sixel_image_store.borrow().image_count(), 0);
-    parser.advance(&mut grid, b"\x1b[3;4H\x1bP0;0q\"1;1;20;12?\x1b\\");
+    parser.feed(&mut grid, b"\x1b[3;4H\x1bP0;0q\"1;1;20;12?\x1b\\");
     let (_, sixel_chunks, _) = grid.read_changes(0, 0);
     assert_eq!(sixel_chunks.len(), 1);
 }
 
 #[test]
 pub fn sixel_images_are_reaped_when_resetting() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3493,7 +3493,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
-    vte_parser.advance(&mut grid, &pane_content);
+    vte_parser.feed(&mut grid, &pane_content);
     grid.reset_terminal_state();
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
     assert_eq!(
@@ -3505,7 +3505,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
 
 #[test]
 pub fn sixel_image_in_alternate_buffer() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3535,14 +3535,14 @@ pub fn sixel_image_in_alternate_buffer() {
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
+    vte_parser.feed(&mut grid, move_to_alternate_screen.as_bytes());
 
     let pane_content = read_fixture("sixel-image-500px.six");
-    vte_parser.advance(&mut grid, &pane_content);
+    vte_parser.feed(&mut grid, &pane_content);
     assert_snapshot!(format!("{:?}", grid)); // should include the image
                                              //
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
+    vte_parser.feed(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert_snapshot!(format!("{:?}", grid)); // should note include the image
     assert_eq!(
         sixel_image_store.borrow().image_count(),
@@ -3553,7 +3553,7 @@ pub fn sixel_image_in_alternate_buffer() {
 
 #[test]
 pub fn sixel_with_image_scrolling_decsdm() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3584,33 +3584,33 @@ pub fn sixel_with_image_scrolling_decsdm() {
 
     // enter DECSDM
     let move_to_decsdm = "\u{1b}[?80h";
-    vte_parser.advance(&mut grid, move_to_decsdm.as_bytes());
+    vte_parser.feed(&mut grid, move_to_decsdm.as_bytes());
 
     // write some text
     let mut text_to_fill_pane = String::new();
     for i in 0..10 {
         writeln!(&mut text_to_fill_pane, "\rline {}", i + 1).unwrap();
     }
-    vte_parser.advance(&mut grid, text_to_fill_pane.as_bytes());
+    vte_parser.feed(&mut grid, text_to_fill_pane.as_bytes());
 
     // render a sixel image (will appear on the top left and partially cover the text)
     let pane_content = read_fixture("sixel-image-100px.six");
-    vte_parser.advance(&mut grid, &pane_content);
+    vte_parser.feed(&mut grid, &pane_content);
     // image should be on the top left corner of the grid
     assert_snapshot!(format!("{:?}", grid));
 
     // leave DECSDM
     let move_away_from_decsdm = "\u{1b}[?80l";
-    vte_parser.advance(&mut grid, move_away_from_decsdm.as_bytes());
+    vte_parser.feed(&mut grid, move_away_from_decsdm.as_bytes());
 
     // Go down to the beginning of the next line
     let mut go_down_once = String::new();
     writeln!(&mut go_down_once, "\n\r").unwrap();
-    vte_parser.advance(&mut grid, go_down_once.as_bytes());
+    vte_parser.feed(&mut grid, go_down_once.as_bytes());
 
     // render another sixel image, should appear under the cursor
     let pane_content = read_fixture("sixel-image-100px.six");
-    vte_parser.advance(&mut grid, &pane_content);
+    vte_parser.feed(&mut grid, &pane_content);
 
     // image should appear in cursor position
     assert_snapshot!(format!("{:?}", grid));
@@ -3618,7 +3618,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
 
 #[test]
 pub fn osc_4_background_query() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3643,7 +3643,7 @@ pub fn osc_4_background_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     // Post-refactor: OSC 10;? is forwarded to the host, not answered
     // from Zellij's cached palette. pending_messages_to_pty must stay
     // empty.
@@ -3658,7 +3658,7 @@ pub fn osc_4_background_query() {
 
 #[test]
 pub fn osc_4_foreground_query() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3683,7 +3683,7 @@ pub fn osc_4_foreground_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
         .pending_forwarded_queries
@@ -3697,7 +3697,7 @@ pub fn osc_4_foreground_query() {
 pub fn osc_4_color_query() {
     let mut color_codes = HashMap::new();
     color_codes.insert(222, String::from("rgb:ffff/d7d7/8787"));
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(color_codes));
     let debug = false;
@@ -3722,7 +3722,7 @@ pub fn osc_4_color_query() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     // OSC 4;N;? is forwarded to the host for the real palette value.
     assert!(grid.pending_messages_to_pty.is_empty());
     let forwarded_string: String = grid
@@ -3735,7 +3735,7 @@ pub fn osc_4_color_query() {
 
 #[test]
 pub fn xtsmgraphics_color_register_count() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3760,7 +3760,7 @@ pub fn xtsmgraphics_color_register_count() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3774,7 +3774,7 @@ pub fn xtsmgraphics_color_register_count() {
 
 #[test]
 pub fn xtsmgraphics_pixel_graphics_geometry() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3803,7 +3803,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     let message_string = grid
         .pending_messages_to_pty
         .iter()
@@ -3817,7 +3817,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
 
 #[test]
 pub fn cursor_hide_persists_through_alternate_screen() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
@@ -3847,28 +3847,28 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     );
 
     let hide_cursor = "\u{1b}[?25l";
-    vte_parser.advance(&mut grid, hide_cursor.as_bytes());
+    vte_parser.feed(&mut grid, hide_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor hidden properly"
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
-    vte_parser.advance(&mut grid, move_to_alternate_screen.as_bytes());
+    vte_parser.feed(&mut grid, move_to_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, false))),
         "Cursor still hidden in alternate screen"
     );
 
     let show_cursor = "\u{1b}[?25h";
-    vte_parser.advance(&mut grid, show_cursor.as_bytes());
+    vte_parser.feed(&mut grid, show_cursor.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor shown"
     );
 
     let move_away_from_alternate_screen = "\u{1b}[?1049l";
-    vte_parser.advance(&mut grid, move_away_from_alternate_screen.as_bytes());
+    vte_parser.feed(&mut grid, move_away_from_alternate_screen.as_bytes());
     assert!(
         matches!(grid.cursor_coordinates(), Some((_, _, true))),
         "Cursor still shown away from alternate screen"
@@ -3877,7 +3877,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
 
 #[test]
 fn table_ui_component() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3903,13 +3903,13 @@ fn table_ui_component() {
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn table_ui_component_with_coordinates() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3935,13 +3935,13 @@ fn table_ui_component_with_coordinates() {
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn ribbon_ui_component() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3967,13 +3967,13 @@ fn ribbon_ui_component() {
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn ribbon_ui_component_with_coordinates() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -3999,13 +3999,13 @@ fn ribbon_ui_component_with_coordinates() {
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn nested_list_ui_component() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4031,13 +4031,13 @@ fn nested_list_ui_component() {
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn nested_list_ui_component_with_coordinates() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4063,13 +4063,13 @@ fn nested_list_ui_component_with_coordinates() {
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn text_ui_component() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4095,13 +4095,13 @@ fn text_ui_component() {
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
 #[test]
 fn text_ui_component_with_coordinates() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4127,7 +4127,7 @@ fn text_ui_component_with_coordinates() {
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4141,7 +4141,7 @@ fn cannot_escape_scroll_region() {
     // the terminal is just 41 lines high), and then issue a goto instruction to line 42, one line
     // beyond the pane and scroll region bounds (`<ESC>[42;1H`) and then print text `Hi there!`.
     // This should be printed on the last line (zero indexed 40) of the terminal and not beyond it.
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4166,7 +4166,7 @@ fn cannot_escape_scroll_region() {
         explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[1;42r\u{1b}[42;1HHi there!".as_bytes();
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     assert_snapshot!(format!("{:?}", grid));
 }
 
@@ -4174,7 +4174,7 @@ fn cannot_escape_scroll_region() {
 fn preserve_background_color_on_resize() {
     use crate::panes::terminal_character::{AnsiCode, EMPTY_TERMINAL_CHARACTER};
 
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
@@ -4200,7 +4200,7 @@ fn preserve_background_color_on_resize() {
     );
 
     let mut parse = |s, grid: &mut Grid| {
-        vte_parser.advance(&mut *grid, &Vec::from(s));
+        vte_parser.feed(&mut *grid, &Vec::from(s));
     };
 
     // Write text with red background that extends to end of line
@@ -4261,7 +4261,7 @@ fn preserve_background_color_on_resize() {
 }
 
 fn create_grid_with_content(content: &str) -> Grid {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -4280,7 +4280,7 @@ fn create_grid_with_content(content: &str) -> Grid {
         true,
         false,
     );
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     grid
 }
 
@@ -4390,8 +4390,8 @@ fn osc133_command_becomes_selectable_once_its_end_boundary_arrives() {
         create_grid_with_content("\x1b]133;A\x07$ \x1b]133;B\x07sleep\x1b]133;C\x07\r\npartial");
     let position = viewport_position_of(&grid, "partial");
 
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]133;D;0\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]133;D;0\x07");
 
     assert_eq!(
         select_with_click_count(&mut grid, position, 3),
@@ -4762,7 +4762,7 @@ fn single_click_drag_selection_preserved_after_scroll() {
 
 #[test]
 fn osc_11_set_and_query_pane_default_bg() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -4784,7 +4784,7 @@ fn osc_11_set_and_query_pane_default_bg() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    vte_parser.advance(&mut grid, set_bg);
+    vte_parser.feed(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -4795,7 +4795,7 @@ fn osc_11_set_and_query_pane_default_bg() {
     // `rgb:RRRR/GGGG/BBBB` form with each 8-bit channel widened by
     // repetition (0x00 → 0x0000, 0x1a → 0x1a1a, 0x3a → 0x3a3a).
     let query_bg = b"\x1b]11;?\x07";
-    vte_parser.advance(&mut grid, query_bg);
+    vte_parser.feed(&mut grid, query_bg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4808,7 +4808,7 @@ fn osc_11_set_and_query_pane_default_bg() {
 
 #[test]
 fn osc_10_set_and_query_pane_default_fg() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -4830,7 +4830,7 @@ fn osc_10_set_and_query_pane_default_fg() {
 
     // Set foreground via OSC 10
     let set_fg = b"\x1b]10;#00e000\x07";
-    vte_parser.advance(&mut grid, set_fg);
+    vte_parser.feed(&mut grid, set_fg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
 
@@ -4838,7 +4838,7 @@ fn osc_10_set_and_query_pane_default_fg() {
     // so the query is answered locally (see OSC 11 equivalent test for
     // the short-circuit rationale).
     let query_fg = b"\x1b]10;?\x07";
-    vte_parser.advance(&mut grid, query_fg);
+    vte_parser.feed(&mut grid, query_fg);
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -4851,7 +4851,7 @@ fn osc_10_set_and_query_pane_default_fg() {
 
 #[test]
 fn osc_110_111_reset_pane_default_colors() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -4873,22 +4873,22 @@ fn osc_110_111_reset_pane_default_colors() {
 
     // Set both fg and bg
     let set_fg = b"\x1b]10;#00e000\x07";
-    vte_parser.advance(&mut grid, set_fg);
+    vte_parser.feed(&mut grid, set_fg);
     let set_bg = b"\x1b]11;#001a3a\x07";
-    vte_parser.advance(&mut grid, set_bg);
+    vte_parser.feed(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_fg, Some((0, 224, 0)));
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset foreground via OSC 110
     let reset_fg = b"\x1b]110\x07";
-    vte_parser.advance(&mut grid, reset_fg);
+    vte_parser.feed(&mut grid, reset_fg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
     // Reset background via OSC 111
     let reset_bg = b"\x1b]111\x07";
-    vte_parser.advance(&mut grid, reset_bg);
+    vte_parser.feed(&mut grid, reset_bg);
     assert_eq!(grid.pane_default_fg, None);
     assert_eq!(grid.pane_default_bg, None);
 }
@@ -4897,7 +4897,7 @@ fn osc_110_111_reset_pane_default_colors() {
 fn osc_11_set_bg_produces_ansi_in_render_output() {
     use crate::panes::terminal_character::AnsiCode;
 
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -4919,7 +4919,7 @@ fn osc_11_set_bg_produces_ansi_in_render_output() {
 
     // Set background via OSC 11
     let set_bg = b"\x1b]11;#001a3a\x07";
-    vte_parser.advance(&mut grid, set_bg);
+    vte_parser.feed(&mut grid, set_bg);
 
     assert_eq!(grid.pane_default_bg, Some((0, 26, 58)));
 
@@ -5183,8 +5183,8 @@ fn plugin_highlight_at_wrapped_line() {
     );
     // Feed a long string that wraps: "abcdefghij" fills row 0, "klmnopqrst" fills row 1
     let content = "abcdefghijklmnopqrst";
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, content.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, content.as_bytes());
 
     // Set a highlight for "jklm" which spans the wrap boundary
     let highlights = vec![create_highlight(
@@ -5249,8 +5249,8 @@ fn combined_pattern_highlights_entries_on_wrapped_line() {
         true,
         false,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, "12345 abc.rs b.rs".as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, "12345 abc.rs b.rs".as_bytes());
 
     let highlights = vec![create_highlight(
         COMBINED_ENTRIES_PATTERN,
@@ -5402,10 +5402,10 @@ fn create_grid_with_scrollback() -> Grid {
         true,
         false,
     );
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     for i in 0..25 {
         let line = format!("scrollback line {}\r\n", i);
-        parser.advance(&mut grid, line.as_bytes());
+        parser.feed(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5493,10 +5493,10 @@ fn create_grid_with_colored_scrollback() -> Grid {
         true,
         false,
     );
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     for i in 0..25 {
         let line = format!("\x1b[31mred line {}\x1b[0m\r\n", i);
-        parser.advance(&mut grid, line.as_bytes());
+        parser.feed(&mut grid, line.as_bytes());
     }
     grid
 }
@@ -5828,7 +5828,7 @@ fn viewport_texts(grid: &Grid) -> Vec<String> {
 }
 
 fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Grid {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -5847,13 +5847,13 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         true,
         false,
     );
-    vte_parser.advance(&mut grid, &content);
+    vte_parser.feed(&mut grid, &content);
     grid
 }
 
 fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(grid, bytes);
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(grid, bytes);
 }
 
 // All tests below use a 10-row, 40-col grid with scroll region 1;8
@@ -6171,7 +6171,8 @@ fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
     content.extend_from_slice(&[b'a'; 30]); // 50 chars: wraps at the region bottom
     content.extend_from_slice(b" ");
 
-    let grid = create_grid_with_size_and_raw(10, 40, &content);
+    let mut grid = create_grid_with_size_and_raw(10, 40, &content);
+    grid.link_urls_in_changed_lines();
 
     let start_anchors_per_row: Vec<usize> = grid
         .viewport
@@ -6314,9 +6315,9 @@ fn csi_14t_forwards_to_host_not_local() {
     // CSI 14t used to synthesize a local "\x1b[4;H;Wt" reply; after the
     // refactor it must be forwarded to the host instead so apps observe
     // the terminal's real window pixel dimensions.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[14t");
+    parser.feed(&mut grid, b"\x1b[14t");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "local reply path must not fire for 14t"
@@ -6331,9 +6332,9 @@ fn csi_14t_forwards_to_host_not_local() {
 
 #[test]
 fn csi_16t_forwards_to_host_not_local() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[16t");
+    parser.feed(&mut grid, b"\x1b[16t");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
@@ -6346,9 +6347,9 @@ fn csi_16t_forwards_to_host_not_local() {
 fn csi_18t_still_answered_locally() {
     // 18 reports Zellij's own text-area size in cells — Zellij is
     // authoritative for this, do NOT forward.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[18t");
+    parser.feed(&mut grid, b"\x1b[18t");
     assert_eq!(grid.pending_messages_to_pty.len(), 1);
     assert!(grid.pending_forwarded_queries.is_empty());
 }
@@ -6357,9 +6358,9 @@ fn csi_18t_still_answered_locally() {
 fn osc_11_set_stays_local() {
     // OSC 11;<rgb> (set pane default bg) must stay local — Zellij needs
     // to track it for its own rendering.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b]11;rgb:ffff/ffff/ffff\x07");
+    parser.feed(&mut grid, b"\x1b]11;rgb:ffff/ffff/ffff\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -6372,10 +6373,10 @@ fn osc_11_set_stays_local() {
 fn osc_11_query_without_override_forwards_to_host() {
     // When no pane-local override is in place the query must still be
     // forwarded — the host's actual bg is what the app asked for.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_bg.is_none());
-    parser.advance(&mut grid, b"\x1b]11;?\x07");
+    parser.feed(&mut grid, b"\x1b]11;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "no override → no local reply"
@@ -6389,10 +6390,10 @@ fn osc_11_query_without_override_forwards_to_host() {
 
 #[test]
 fn osc_10_query_without_override_forwards_to_host() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(grid.pane_default_fg.is_none());
-    parser.advance(&mut grid, b"\x1b]10;?\x07");
+    parser.feed(&mut grid, b"\x1b]10;?\x07");
     assert!(grid.pending_messages_to_pty.is_empty());
     assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert!(matches!(
@@ -6408,12 +6409,12 @@ fn set_pane_default_colors_short_circuits_osc_queries() {
     // read that override, not be forwarded — the entire point of the
     // CLI override is that apps see the color Zellij is painting, not
     // the underlying host's.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     grid.set_pane_default_colors(Some("#ff8040".to_string()), Some("#102030".to_string()));
 
-    parser.advance(&mut grid, b"\x1b]10;?\x07");
-    parser.advance(&mut grid, b"\x1b]11;?\x07");
+    parser.feed(&mut grid, b"\x1b]10;?\x07");
+    parser.feed(&mut grid, b"\x1b]11;?\x07");
 
     assert!(
         grid.pending_forwarded_queries.is_empty(),
@@ -6431,13 +6432,13 @@ fn osc_11_override_short_circuits_only_the_overridden_channel() {
     // Setting only the bg must not short-circuit fg queries — each
     // channel's override is independent. If only `pane_default_bg` is
     // populated, an OSC 10 query (fg) still goes to the host.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b]11;rgb:1010/2020/3030\x07");
+    parser.feed(&mut grid, b"\x1b]11;rgb:1010/2020/3030\x07");
     assert!(grid.pane_default_bg.is_some());
     assert!(grid.pane_default_fg.is_none());
 
-    parser.advance(&mut grid, b"\x1b]10;?\x07");
+    parser.feed(&mut grid, b"\x1b]10;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "fg has no override → must forward"
@@ -6451,9 +6452,9 @@ fn csi_2026_dollar_p_stays_local() {
     // itself — never forwarded. The response is the DECRPM form
     // `\x1b[?2026;2$y` (2 = "reset but recognised"; Zellij brackets its
     // own frames, so individual panes are treated as "not enabled").
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?2026$p");
+    parser.feed(&mut grid, b"\x1b[?2026$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2026$p is emulated locally, must not forward"
@@ -6467,15 +6468,15 @@ fn csi_2026_dollar_p_stays_local() {
 
 #[test]
 fn a_synchronized_update_holds_renders_back_until_the_program_closes_it() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    parser.feed(&mut grid, b"\x1b[?2026hhello");
     assert!(grid.is_mid_frame());
     assert!(
         grid.render(0, 0, &Style::default()).unwrap().is_none(),
         "a paint inside a synchronized update must emit nothing for the pane"
     );
-    parser.advance(&mut grid, b"\x1b[?2026l");
+    parser.feed(&mut grid, b"\x1b[?2026l");
     assert!(!grid.is_mid_frame());
     assert!(
         grid.render(0, 0, &Style::default()).unwrap().is_some(),
@@ -6485,9 +6486,9 @@ fn a_synchronized_update_holds_renders_back_until_the_program_closes_it() {
 
 #[test]
 fn a_synchronized_update_held_past_the_cap_releases_on_the_next_paint() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    parser.feed(&mut grid, b"\x1b[?2026hhello");
     assert!(
         grid.render(0, 0, &Style::default()).unwrap().is_none(),
         "the update was opened and is still inside its cap"
@@ -6520,9 +6521,9 @@ fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
     // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode
     // is reset, so the DECRPM reply must report value=2.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?2031$p");
+    parser.feed(&mut grid, b"\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -6538,9 +6539,9 @@ fn csi_2031_dollar_p_when_disabled_replies_reset() {
 fn csi_2031_dollar_p_when_enabled_replies_set() {
     // After `CSI ? 2031 h` enables theme-change notifications on this
     // pane, a DECRQM probe must report value=1 (set).
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?2031h\x1b[?2031$p");
+    parser.feed(&mut grid, b"\x1b[?2031h\x1b[?2031$p");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "CSI ?2031$p is answered locally, must not forward"
@@ -6558,11 +6559,11 @@ fn csi_22t_and_23t_stay_local() {
     // that state, so forwarding would route an app's push/pop to the
     // host's unrelated title stack instead of the visible pane title.
     // They produce no reply; both queues must stay empty after each.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     grid.set_title("hello".to_string());
 
-    parser.advance(&mut grid, b"\x1b[22;0t");
+    parser.feed(&mut grid, b"\x1b[22;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "22t is a stack op, not a query"
@@ -6574,7 +6575,7 @@ fn csi_22t_and_23t_stay_local() {
 
     // The push actually landed on Zellij's per-pane stack: restore it.
     grid.set_title("different".to_string());
-    parser.advance(&mut grid, b"\x1b[23;0t");
+    parser.feed(&mut grid, b"\x1b[23;0t");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "23t is a stack op, not a query"
@@ -6594,9 +6595,9 @@ fn csi_22t_and_23t_stay_local() {
 fn osc_4_set_stays_local() {
     // OSC 4;<index>;<rgb> writes to Zellij's in-memory palette; only
     // the query form (`OSC 4;N;?`) ever forwards to the host.
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b]4;5;rgb:ffff/0000/0000\x07");
+    parser.feed(&mut grid, b"\x1b]4;5;rgb:ffff/0000/0000\x07");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "OSC 4 set must not forward"
@@ -6613,18 +6614,18 @@ fn osc_4_set_stays_local() {
 
 #[test]
 fn decset_2031_enables_color_palette_notification() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     assert!(
         !grid.color_palette_notification_enabled,
         "default state must be disabled"
     );
-    parser.advance(&mut grid, b"\x1b[?2031h");
+    parser.feed(&mut grid, b"\x1b[?2031h");
     assert!(
         grid.color_palette_notification_enabled,
         "DECSET 2031 must enable the flag"
     );
-    parser.advance(&mut grid, b"\x1b[?2031l");
+    parser.feed(&mut grid, b"\x1b[?2031l");
     assert!(
         !grid.color_palette_notification_enabled,
         "DECRST 2031 must disable the flag"
@@ -6665,9 +6666,9 @@ fn push_color_palette_dsr_noop_when_disabled() {
 #[test]
 fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
     use crate::host_query::HostQuery;
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b[?996n");
+    parser.feed(&mut grid, b"\x1b[?996n");
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![HostQuery::ColorPaletteMode],
@@ -6681,11 +6682,11 @@ fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
 
 #[test]
 fn csi_5n_status_query_still_handled_locally() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     // Plain DSR 5 (no `?` intermediate) is not the new theme query and
     // must continue to receive its `\e[0n` "all good" reply locally.
-    parser.advance(&mut grid, b"\x1b[5n");
+    parser.feed(&mut grid, b"\x1b[5n");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "DSR 5 is not a forwarded query"
@@ -6727,10 +6728,10 @@ fn nested_announce_message() -> zellij_utils::nested_session::NestedSessionMessa
 
 #[test]
 fn nested_session_frame_is_staged_for_dispatch() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let message = nested_announce_message();
-    vte_parser.advance(
+    vte_parser.feed(
         &mut grid,
         &zellij_utils::nested_session::encode_frame(&message),
     );
@@ -6739,46 +6740,46 @@ fn nested_session_frame_is_staged_for_dispatch() {
 
 #[test]
 fn nested_session_frame_split_across_feeds_is_staged() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let message = nested_announce_message();
     let frame = zellij_utils::nested_session::encode_frame(&message);
     let (first_half, second_half) = frame.split_at(frame.len() / 2);
-    vte_parser.advance(&mut grid, first_half);
+    vte_parser.feed(&mut grid, first_half);
     assert!(grid.pending_nested_session_messages.is_empty());
-    vte_parser.advance(&mut grid, second_half);
+    vte_parser.feed(&mut grid, second_half);
     assert_eq!(grid.pending_nested_session_messages, vec![message]);
 }
 
 #[test]
 fn dcs_with_wrong_magic_param_is_not_staged() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    vte_parser.advance(&mut grid, b"\x1bP26662nAAAA\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1bP26662nAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
 #[test]
 fn dcs_with_intermediates_is_not_staged() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    vte_parser.advance(&mut grid, b"\x1bP26661$nAAAA\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1bP26661$nAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
 #[test]
 fn dcs_n_without_params_is_not_staged() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    vte_parser.advance(&mut grid, b"\x1bPnAAAA\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1bPnAAAA\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
 #[test]
 fn nested_session_frame_with_garbage_payload_is_dropped() {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
-    vte_parser.advance(&mut grid, b"\x1bP26661n!!!not-base64!!!\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1bP26661n!!!not-base64!!!\x1b\\");
     assert!(grid.pending_nested_session_messages.is_empty());
 }
 
@@ -6791,10 +6792,10 @@ fn serialize_text_bytes(text: &str) -> String {
 }
 
 fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
     let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
-    vte_parser.advance(&mut grid, dcs.as_bytes());
+    vte_parser.feed(&mut grid, dcs.as_bytes());
     grid
 }
 
@@ -7207,14 +7208,14 @@ fn new_kitty_grid(rows: usize, columns: usize) -> (Grid, Rc<RefCell<KittyImageSt
 
 fn feed_kitty_bytes(
     grid: &mut Grid,
-    vte_parser: &mut vte::Parser,
+    vte_parser: &mut vt_parser::Parser,
     interceptor: &mut KittyApcInterceptor,
     bytes: &[u8],
 ) {
     for byte in bytes {
         match interceptor.advance(*byte) {
             InterceptorResult::Forward(fwd) => {
-                vte_parser.advance(grid, fwd.as_slice());
+                vte_parser.feed(grid, fwd.as_slice());
             },
             InterceptorResult::Swallow => {},
             InterceptorResult::Captured(cmd) => {
@@ -7256,7 +7257,7 @@ fn kitty_placement_id_set(grid: &Grid) -> Vec<(u32, u32)> {
 
 fn build_three_kitty_placements(
     grid: &mut Grid,
-    vte_parser: &mut vte::Parser,
+    vte_parser: &mut vt_parser::Parser,
     interceptor: &mut KittyApcInterceptor,
 ) {
     feed_kitty_bytes(
@@ -7285,7 +7286,7 @@ fn build_three_kitty_placements(
 #[test]
 fn kitty_transmit_and_display_raw_rgb() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7310,7 +7311,7 @@ fn kitty_transmit_and_display_raw_rgb() {
 #[test]
 fn kitty_transmit_and_display_png() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7335,7 +7336,7 @@ fn kitty_transmit_and_display_png() {
 #[test]
 fn kitty_cursor_advances_after_display() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7350,7 +7351,7 @@ fn kitty_cursor_advances_after_display() {
 #[test]
 fn kitty_cursor_unmoved_with_c1() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7365,7 +7366,7 @@ fn kitty_cursor_unmoved_with_c1() {
 #[test]
 fn kitty_placement_survives_text_overwrite_and_erase() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7390,7 +7391,7 @@ fn kitty_placement_survives_text_overwrite_and_erase() {
 #[test]
 fn kitty_replace_same_ids_moves_placement() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7422,7 +7423,7 @@ fn kitty_replace_same_ids_moves_placement() {
 #[test]
 fn kitty_delete_all_visible() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
@@ -7436,7 +7437,7 @@ fn kitty_delete_all_visible() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7453,7 +7454,7 @@ fn kitty_delete_all_visible() {
 #[test]
 fn kitty_delete_by_image_id() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7466,7 +7467,7 @@ fn kitty_delete_by_image_id() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7490,7 +7491,7 @@ fn kitty_delete_by_image_id() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 3200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7507,7 +7508,7 @@ fn kitty_delete_by_image_id() {
 #[test]
 fn kitty_delete_by_image_number() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
@@ -7540,7 +7541,7 @@ fn kitty_delete_by_image_number() {
 #[test]
 fn kitty_delete_cursor_intersecting() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7553,7 +7554,7 @@ fn kitty_delete_cursor_intersecting() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7570,7 +7571,7 @@ fn kitty_delete_cursor_intersecting() {
 #[test]
 fn kitty_delete_cell_intersecting() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7583,7 +7584,7 @@ fn kitty_delete_cell_intersecting() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7599,7 +7600,7 @@ fn kitty_delete_cell_intersecting() {
 #[test]
 fn kitty_delete_cell_with_z() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7619,7 +7620,7 @@ fn kitty_delete_cell_with_z() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7635,7 +7636,7 @@ fn kitty_delete_cell_with_z() {
 #[test]
 fn kitty_delete_column() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7648,7 +7649,7 @@ fn kitty_delete_column() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7664,7 +7665,7 @@ fn kitty_delete_column() {
 #[test]
 fn kitty_delete_row() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7677,7 +7678,7 @@ fn kitty_delete_row() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7693,7 +7694,7 @@ fn kitty_delete_row() {
 #[test]
 fn kitty_delete_by_z_index() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7706,7 +7707,7 @@ fn kitty_delete_by_z_index() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7722,7 +7723,7 @@ fn kitty_delete_by_z_index() {
 #[test]
 fn kitty_delete_image_id_range() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7735,7 +7736,7 @@ fn kitty_delete_image_id_range() {
     assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7752,7 +7753,7 @@ fn kitty_delete_image_id_range() {
 #[test]
 fn kitty_delete_image_id_range_with_omitted_lower_bound() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
     feed_kitty_bytes(
@@ -7777,7 +7778,7 @@ fn kitty_delete_image_id_range_with_omitted_lower_bound() {
 #[test]
 fn kitty_retransmit_to_existing_id_replaces_image() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7801,7 +7802,7 @@ fn kitty_retransmit_to_existing_id_replaces_image() {
 #[test]
 fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7836,7 +7837,7 @@ fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
 #[test]
 fn kitty_aspect_fit_single_axis() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7861,7 +7862,7 @@ fn kitty_aspect_fit_single_axis() {
 #[test]
 fn kitty_yazi_kgpold_stream_roundtrip() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let raster = rgb_raster(2, 2);
     let full_b64 = BASE64_ENCODER.encode(&raster);
@@ -7895,7 +7896,7 @@ fn kitty_yazi_kgpold_stream_roundtrip() {
 #[test]
 fn kitty_csi_2j_clears_placements() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7912,7 +7913,7 @@ fn kitty_csi_2j_clears_placements() {
 #[test]
 fn kitty_ris_clears_placements_and_store() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7929,7 +7930,7 @@ fn kitty_ris_clears_placements_and_store() {
 #[test]
 fn kitty_image_in_alternate_buffer() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7962,7 +7963,7 @@ fn kitty_image_in_alternate_buffer() {
 #[test]
 fn kitty_placements_are_reaped_when_scrolled_off() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -7981,7 +7982,7 @@ fn kitty_placements_are_reaped_when_scrolled_off() {
 #[test]
 fn kitty_scroll_region_moves_inside_placement_and_clips_straddler() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;5r");
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
@@ -8046,7 +8047,7 @@ fn kitty_scroll_region_moves_inside_placement_and_clips_straddler() {
 #[test]
 fn kitty_reply_query_probe_exact_bytes() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8065,7 +8066,7 @@ fn kitty_reply_query_probe_exact_bytes() {
 #[test]
 fn kitty_reply_display_unknown_id_enoent() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8082,7 +8083,7 @@ fn kitty_reply_display_unknown_id_enoent() {
 #[test]
 fn kitty_reply_quiet_one_suppresses_ok_not_errors() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8105,7 +8106,7 @@ fn kitty_reply_quiet_one_suppresses_ok_not_errors() {
 #[test]
 fn kitty_reply_quiet_two_suppresses_everything() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8125,7 +8126,7 @@ fn kitty_reply_quiet_two_suppresses_everything() {
 #[test]
 fn kitty_reply_transmit_with_image_number_echoes_assigned_id() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8144,7 +8145,7 @@ fn kitty_reply_transmit_with_image_number_echoes_assigned_id() {
 #[test]
 fn kitty_reply_anonymous_transmit_and_display_is_silent() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8159,7 +8160,7 @@ fn kitty_reply_anonymous_transmit_and_display_is_silent() {
 #[test]
 fn kitty_reply_malformed_control_einval_without_ids() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8176,7 +8177,7 @@ fn kitty_reply_malformed_control_einval_without_ids() {
 #[test]
 fn kitty_reply_icat_detection_sequence() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("icat-detect.bin");
@@ -8228,7 +8229,7 @@ fn kitty_reply_icat_detection_sequence() {
 #[test]
 fn kitty_reply_query_when_host_unsupported() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     grid.update_kitty_host_support(KittyHostSupport::Unsupported);
     feed_kitty_bytes(
@@ -8247,7 +8248,7 @@ fn kitty_reply_query_when_host_unsupported() {
 #[test]
 fn kitty_disabled_protocol_answers_queries_with_silence() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
     feed_kitty_bytes(
@@ -8266,7 +8267,7 @@ fn kitty_disabled_protocol_answers_queries_with_silence() {
 #[test]
 fn kitty_disabled_protocol_ignores_transmitted_images() {
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[3;1H");
@@ -8284,7 +8285,7 @@ fn kitty_disabled_protocol_ignores_transmitted_images() {
 #[test]
 fn kitty_disabled_protocol_does_not_leak_apc_bytes_into_the_grid() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     grid.update_kitty_host_support(KittyHostSupport::ProtocolDisabled);
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"a");
@@ -8301,7 +8302,7 @@ fn kitty_disabled_protocol_does_not_leak_apc_bytes_into_the_grid() {
 #[test]
 fn kitty_conformance_image_put_cursor_positions() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8318,7 +8319,7 @@ fn kitty_conformance_image_put_cursor_positions() {
 #[test]
 fn kitty_conformance_image_put_scaled_cursor() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8336,7 +8337,7 @@ fn kitty_conformance_image_put_scaled_cursor() {
 #[test]
 fn kitty_conformance_image_put_full_width_wraps() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8353,7 +8354,7 @@ fn kitty_conformance_image_put_full_width_wraps() {
 #[test]
 fn kitty_conformance_image_put_pixel_offsets_cursor() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8371,7 +8372,7 @@ fn kitty_conformance_image_put_pixel_offsets_cursor() {
 #[test]
 fn kitty_conformance_bottom_row_placement_scrolls() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
     assert_eq!(grid.lines_above.len(), 0);
@@ -8401,7 +8402,7 @@ fn kitty_conformance_bottom_row_placement_scrolls() {
 #[test]
 fn kitty_conformance_bottom_row_placement_c1_does_not_scroll() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[5;1H");
     feed_kitty_bytes(
@@ -8429,7 +8430,7 @@ fn kitty_conformance_bottom_row_placement_c1_does_not_scroll() {
 #[test]
 fn kitty_conformance_full_screen_index_scroll_reaps_image() {
     let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8450,7 +8451,7 @@ fn kitty_conformance_full_screen_index_scroll_reaps_image() {
 #[test]
 fn kitty_conformance_margin_scroll_leaves_outside_images_untouched() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
     feed_kitty_bytes(
@@ -8473,7 +8474,7 @@ fn kitty_conformance_margin_scroll_leaves_outside_images_untouched() {
 #[test]
 fn kitty_conformance_transmit_with_both_id_and_number_is_einval() {
     let (mut grid, kitty_image_store) = new_kitty_grid(5, 10);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8502,7 +8503,7 @@ fn kitty_image_px_below_canonical_line(grid: &Grid, canonical_index: usize) -> i
 #[test]
 fn kitty_placement_keeps_screen_row_across_width_reflow() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(6, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     for line in 0..5 {
         let text = format!("row{}-{}", line, "x".repeat(30));
@@ -8571,7 +8572,7 @@ fn buffer_cell_row_of_canonical_line(grid: &Grid, canonical_index: usize) -> isi
 #[test]
 fn kitty_placement_follows_text_across_width_reflow() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     for line in 0..3 {
         let text = format!("r{}-{}", line, "x".repeat(34));
@@ -8629,7 +8630,7 @@ fn kitty_placement_follows_text_across_width_reflow() {
 #[test]
 fn kitty_placement_moves_with_csi_insert_lines() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
     feed_kitty_bytes(
@@ -8656,7 +8657,7 @@ fn kitty_placement_moves_with_csi_insert_lines() {
 #[test]
 fn kitty_placement_moves_with_csi_delete_lines() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[6;1H");
     feed_kitty_bytes(
@@ -8683,7 +8684,7 @@ fn kitty_placement_moves_with_csi_delete_lines() {
 #[test]
 fn kitty_placement_in_deleted_range_is_removed() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[4;1H");
     feed_kitty_bytes(
@@ -8749,7 +8750,7 @@ fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
 #[test]
 fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(5, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(
         &mut grid,
@@ -8788,11 +8789,11 @@ fn kitty_wrapped_scrollback_setup(
 ) -> (
     Grid,
     Rc<RefCell<KittyImageStore>>,
-    vte::Parser,
+    vt_parser::Parser,
     KittyApcInterceptor,
 ) {
     let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let wrapped_line = format!("{}\r\n", "A".repeat(wrapped_line_width));
     feed_kitty_bytes(
@@ -8930,7 +8931,7 @@ fn kitty_marker_canonical_line_index(grid: &Grid) -> Option<usize> {
 #[test]
 fn kitty_placement_anchor_survives_scroll_buffer_front_eviction() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     for _ in 0..(scroll_buffer_size + grid.height) {
@@ -8992,11 +8993,11 @@ fn kitty_marker_with_image_on_first_row(
 ) -> (
     Grid,
     Rc<RefCell<KittyImageStore>>,
-    vte::Parser,
+    vt_parser::Parser,
     KittyApcInterceptor,
 ) {
     let (mut grid, kitty_image_store) = new_kitty_grid(rows, columns);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"MARKER");
@@ -9084,7 +9085,7 @@ fn kitty_top_anchored_delete_line_keeps_image_in_scrollback() {
 #[test]
 fn kitty_non_top_anchored_region_scroll_still_frees_image() {
     let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;5r");
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[2;1H");
@@ -9112,7 +9113,7 @@ fn kitty_non_top_anchored_region_scroll_still_frees_image() {
 #[test]
 fn kitty_alternate_screen_top_anchored_scroll_frees_image() {
     let (mut grid, kitty_image_store) = new_kitty_grid(5, 20);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[?1049h");
     feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[1;1H");
@@ -9140,7 +9141,7 @@ fn kitty_alternate_screen_top_anchored_scroll_frees_image() {
 #[test]
 fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(10, 40);
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     for line in 0..20 {
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\x1b[10;1H");
@@ -9214,9 +9215,9 @@ fn kitty_placement_rejoins_its_text_after_editing_while_scrolled_back() {
 #[test]
 fn primary_device_attributes_advertise_sixel_when_host_supports_it() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     grid.update_sixel_host_support(true);
-    vte_parser.advance(&mut grid, b"\x1b[c");
+    vte_parser.feed(&mut grid, b"\x1b[c");
     assert_eq!(
         grid.pending_messages_to_pty,
         vec![b"\x1b[?62;4;52c".to_vec()]
@@ -9226,35 +9227,35 @@ fn primary_device_attributes_advertise_sixel_when_host_supports_it() {
 #[test]
 fn primary_device_attributes_omit_sixel_when_host_does_not_support_it() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     grid.update_sixel_host_support(false);
-    vte_parser.advance(&mut grid, b"\x1b[c");
+    vte_parser.feed(&mut grid, b"\x1b[c");
     assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?62;52c".to_vec()]);
 }
 
 #[test]
 fn xtsmgraphics_color_registers_report_failure_when_host_does_not_support_sixel() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     grid.update_sixel_host_support(false);
-    vte_parser.advance(&mut grid, b"\x1b[?1;1S");
+    vte_parser.feed(&mut grid, b"\x1b[?1;1S");
     assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?1;3;0S".to_vec()]);
 }
 
 #[test]
 fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     grid.update_sixel_host_support(false);
-    vte_parser.advance(&mut grid, b"\x1b[?2;1S");
+    vte_parser.feed(&mut grid, b"\x1b[?2;1S");
     assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[?2;3;0S".to_vec()]);
 }
 
 #[test]
 fn osc_52_read_is_forwarded_to_the_host() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]52;c;?\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]52;c;?\x07");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "clipboard reads must never be answered locally"
@@ -9271,8 +9272,8 @@ fn osc_52_read_is_forwarded_to_the_host() {
 #[test]
 fn osc_52_read_keeps_the_selection_and_terminator_of_the_query() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]52;p;?\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]52;p;?\x1b\\");
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![crate::host_query::HostQuery::ClipboardContent {
@@ -9285,8 +9286,8 @@ fn osc_52_read_keeps_the_selection_and_terminator_of_the_query() {
 #[test]
 fn osc_52_write_is_not_forwarded() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]52;c;aGVsbG8=\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]52;c;aGVsbG8=\x07");
     assert!(
         grid.pending_forwarded_queries.is_empty(),
         "copying to the clipboard must not go through the forward path"
@@ -9297,8 +9298,8 @@ fn osc_52_write_is_not_forwarded() {
 #[test]
 fn xtgettcap_answers_the_ms_capability() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1bP+q4d73\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1bP+q4d73\x1b\\");
     assert_eq!(
         grid.pending_messages_to_pty,
         vec![b"\x1bP1+r4D73=1B5D35323B25703125733B257032257307\x1b\\".to_vec()]
@@ -9308,8 +9309,8 @@ fn xtgettcap_answers_the_ms_capability() {
 #[test]
 fn xtgettcap_rejects_unknown_capabilities() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1bP+q62656c\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1bP+q62656c\x1b\\");
     assert_eq!(
         grid.pending_messages_to_pty,
         vec![b"\x1bP0+r\x1b\\".to_vec()]
@@ -9319,8 +9320,8 @@ fn xtgettcap_rejects_unknown_capabilities() {
 #[test]
 fn xtgettcap_answers_each_requested_capability() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1bP+q62656c;4d73\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1bP+q62656c;4d73\x1b\\");
     assert_eq!(grid.pending_messages_to_pty.len(), 2);
     assert_eq!(grid.pending_messages_to_pty[0], b"\x1bP0+r\x1b\\".to_vec());
     assert!(String::from_utf8_lossy(&grid.pending_messages_to_pty[1]).starts_with("\x1bP1+r4D73="));
@@ -9329,8 +9330,8 @@ fn xtgettcap_answers_each_requested_capability() {
 #[test]
 fn xtgettcap_rejects_malformed_hex() {
     let mut grid = create_grid_with_content("");
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1bP+q4d7\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1bP+q4d7\x1b\\");
     assert_eq!(
         grid.pending_messages_to_pty,
         vec![b"\x1bP0+r\x1b\\".to_vec()]
@@ -9340,8 +9341,8 @@ fn xtgettcap_rejects_malformed_hex() {
 #[test]
 fn sixel_dcs_is_not_confused_with_xtgettcap() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1bPq#0;2;0;0;0\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1bPq#0;2;0;0;0\x1b\\");
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "a sixel image must not produce an XTGETTCAP reply"
@@ -9380,8 +9381,8 @@ fn ech_over_wide_character_preserves_background_on_padding_cell() {
 fn osc_9_notification_is_parsed() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;the build finished\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;the build finished\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc9 {
@@ -9394,8 +9395,8 @@ fn osc_9_notification_is_parsed() {
 fn osc_9_notification_with_semicolons_keeps_the_whole_body() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;done: 1;2;3\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;done: 1;2;3\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc9 {
@@ -9407,8 +9408,8 @@ fn osc_9_notification_with_semicolons_keeps_the_whole_body() {
 #[test]
 fn an_empty_osc_9_notification_is_ignored() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;\x07");
     assert!(grid.pending_desktop_notifications.is_empty());
 }
 
@@ -9416,8 +9417,8 @@ fn an_empty_osc_9_notification_is_ignored() {
 fn osc_777_notification_is_parsed() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]777;notify;the title;the body\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]777;notify;the title;the body\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc777 {
@@ -9431,8 +9432,8 @@ fn osc_777_notification_is_parsed() {
 fn an_osc_777_notification_body_may_contain_semicolons() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]777;notify;title;a;b;c\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]777;notify;title;a;b;c\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc777 {
@@ -9445,8 +9446,8 @@ fn an_osc_777_notification_body_may_contain_semicolons() {
 #[test]
 fn an_osc_777_non_notify_subcommand_is_ignored() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]777;precmd;something\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]777;precmd;something\x07");
     assert!(grid.pending_desktop_notifications.is_empty());
 }
 
@@ -9454,8 +9455,8 @@ fn an_osc_777_non_notify_subcommand_is_ignored() {
 fn an_osc_777_notification_without_a_body_is_kept() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]777;notify;just a title\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]777;notify;just a title\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc777 {
@@ -9506,9 +9507,9 @@ fn osc99_display(grid: &Grid, index: usize) -> Option<(String, String)> {
 #[test]
 fn an_osc_9_conemu_progress_report_is_not_a_notification() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;4;0;0\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]9;4;1;50\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;4;0;0\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]9;4;1;50\x07");
     assert!(
         grid.pending_desktop_notifications.is_empty(),
         "progress reports are not desktop notifications, got: {:?}",
@@ -9519,9 +9520,9 @@ fn an_osc_9_conemu_progress_report_is_not_a_notification() {
 #[test]
 fn other_osc_9_conemu_subcommands_are_not_notifications() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;9;/home/user\x07");
-    vte_parser.advance(&mut grid, b"\x1b]9;3;a tab title\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;9;/home/user\x07");
+    vte_parser.feed(&mut grid, b"\x1b]9;3;a tab title\x07");
     assert!(
         grid.pending_desktop_notifications.is_empty(),
         "ConEmu subcommands are not desktop notifications, got: {:?}",
@@ -9533,8 +9534,8 @@ fn other_osc_9_conemu_subcommands_are_not_notifications() {
 fn an_osc_9_notification_starting_with_a_number_is_still_a_notification() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]9;4 tests failed;in 2 crates\x07");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]9;4 tests failed;in 2 crates\x07");
     assert_eq!(
         grid.pending_desktop_notifications,
         vec![PendingNotification::Osc9 {
@@ -9546,9 +9547,9 @@ fn an_osc_9_notification_starting_with_a_number_is_still_a_notification() {
 #[test]
 fn an_osc_99_notification_is_assembled_from_its_chunks() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=0;Hello world\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=body;This is cool\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:d=0;Hello world\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:p=body;This is cool\x1b\\");
     assert_eq!(
         osc99_display(&grid, 0),
         None,
@@ -9564,8 +9565,8 @@ fn an_osc_99_notification_is_assembled_from_its_chunks() {
 #[test]
 fn an_osc_99_notification_payload_may_be_base64_encoded() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:e=1;dGhlIGJ1aWxkIGZpbmlzaGVk\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:e=1;dGhlIGJ1aWxkIGZpbmlzaGVk\x1b\\");
     assert_eq!(
         osc99_display(&grid, 0),
         Some(("the build finished".to_owned(), String::new()))
@@ -9575,10 +9576,10 @@ fn an_osc_99_notification_payload_may_be_base64_encoded() {
 #[test]
 fn osc_99_requests_that_display_nothing_are_not_downgraded() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=2:p=?;\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=3:p=alive;\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=2:p=?;\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=3:p=alive;\x1b\\");
     assert_eq!(osc99_display(&grid, 0), None, "a close shows nothing");
     assert_eq!(osc99_display(&grid, 1), None, "a query shows nothing");
     assert_eq!(
@@ -9592,9 +9593,9 @@ fn osc_99_requests_that_display_nothing_are_not_downgraded() {
 fn the_report_intent_of_an_osc_99_notification_is_remembered() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=report;the build finished\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:a=report;the build finished\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
     let wants_report: Vec<bool> = grid
         .pending_desktop_notifications
         .iter()
@@ -9614,10 +9615,10 @@ fn the_report_intent_of_an_osc_99_notification_is_remembered() {
 fn an_explicit_action_replaces_the_remembered_report_intent() {
     use crate::panes::grid::PendingNotification;
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=report;the build started\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:a=focus;the build finished\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:a=report;the build started\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:a=focus;the build finished\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:p=close;\x1b\\");
     let wants_report: Vec<bool> = grid
         .pending_desktop_notifications
         .iter()
@@ -9636,9 +9637,9 @@ fn an_explicit_action_replaces_the_remembered_report_intent() {
 #[test]
 fn an_osc_99_notification_is_finished_by_a_payload_it_cannot_show() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=0;the build finished\x1b\\");
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:p=buttons:d=1;retry\x1b\\");
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:d=0;the build finished\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:p=buttons:d=1;retry\x1b\\");
     assert_eq!(
         osc99_display(&grid, 1),
         Some(("the build finished".to_owned(), String::new())),
@@ -9649,9 +9650,9 @@ fn an_osc_99_notification_is_finished_by_a_payload_it_cannot_show() {
 #[test]
 fn the_notification_state_remembered_per_pane_is_bounded() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     for index in 0..1000 {
-        vte_parser.advance(
+        vte_parser.feed(
             &mut grid,
             format!("\x1b]99;i={}:a=report;notification\x1b\\", index).as_bytes(),
         );
@@ -9667,10 +9668,10 @@ fn the_notification_state_remembered_per_pane_is_bounded() {
 #[test]
 fn a_single_notification_being_assembled_is_bounded() {
     let mut grid = new_grid_for_forwarding_test();
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let chunk = "\u{5efa}".repeat(300);
     for _ in 0..100 {
-        vte_parser.advance(
+        vte_parser.feed(
             &mut grid,
             format!("\x1b]99;i=1:d=0;{}\x1b\\", chunk).as_bytes(),
         );
@@ -9689,7 +9690,7 @@ fn a_single_notification_being_assembled_is_bounded() {
         assembled_bytes
     );
 
-    vte_parser.advance(&mut grid, b"\x1b]99;i=1:d=1;\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1b]99;i=1:d=1;\x1b\\");
     let last_notification = grid.pending_desktop_notifications.len() - 1;
     let (title, _body) =
         osc99_display(&grid, last_notification).expect("the truncated notification is still shown");
@@ -9939,7 +9940,7 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
 }
 
 fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) -> Grid {
-    let mut vte_parser = vte::Parser::new();
+    let mut vte_parser = vt_parser::Parser::new();
     let mut grid = Grid::new(
         rows,
         columns,
@@ -9956,13 +9957,13 @@ fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) ->
         true,
         false,
     );
-    vte_parser.advance(&mut grid, content.as_bytes());
+    vte_parser.feed(&mut grid, content.as_bytes());
     grid
 }
 
 fn feed(grid: &mut Grid, content: &str) {
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(grid, content.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(grid, content.as_bytes());
 }
 
 #[test]
@@ -10984,4 +10985,442 @@ fn stored_scrollback_blanks_rewrap_like_cells_on_resize() {
     }
     let texts: Vec<usize> = grid.viewport.iter().map(|row| row.width()).collect();
     assert_eq!(texts, vec![30, 30, 20, 30, 30]);
+}
+
+struct OneCharAtATime<'a>(&'a mut Grid);
+
+impl<'a> vt_parser::Handler for OneCharAtATime<'a> {
+    fn print(&mut self, c: char) {
+        self.0.print(c)
+    }
+    fn print_str(&mut self, text: &str) {
+        for c in text.chars() {
+            self.0.print(c)
+        }
+    }
+    fn execute(&mut self, byte: u8) {
+        self.0.execute(byte)
+    }
+    fn hook(&mut self, sequence: &vt_parser::Sequence) {
+        self.0.hook(sequence)
+    }
+    fn put(&mut self, byte: u8) {
+        self.0.put(byte)
+    }
+    fn unhook(&mut self) {
+        self.0.unhook()
+    }
+    fn osc_end(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        self.0.osc_end(params, bell_terminated)
+    }
+    fn csi_dispatch(&mut self, sequence: &vt_parser::Sequence) {
+        self.0.csi_dispatch(sequence)
+    }
+    fn esc_dispatch(&mut self, sequence: &vt_parser::Sequence) {
+        self.0.esc_dispatch(sequence)
+    }
+}
+
+fn empty_grid(rows: usize, cols: usize, grapheme_mode: bool) -> Grid {
+    let mut grid = Grid::new(
+        rows,
+        cols,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    grid.set_grapheme_mode_by_default(grapheme_mode);
+    grid
+}
+
+fn grid_state(grid: &Grid) -> String {
+    format!(
+        "{:?}\n{:?}\n{:?}",
+        grid,
+        grid.cursor_coordinates(),
+        grid.pane_contents_with_ansi(true, None)
+    )
+}
+
+#[test]
+fn bulk_text_path_matches_the_one_character_at_a_time_path() {
+    let mut inputs: Vec<(String, Vec<u8>)> = vec![];
+    let dir = std::path::Path::new("../src/tests/fixtures");
+    for entry in std::fs::read_dir(dir).expect("fixtures") {
+        let path = entry.expect("entry").path();
+        if path.is_file() {
+            inputs.push((
+                path.display().to_string(),
+                std::fs::read(&path).expect("read"),
+            ));
+        }
+    }
+    inputs.push((
+        "tab-bar".into(),
+        b"\x1b[1;38;2;0;0;0;48;2;180;180;180m Zellij (session) \x1b[0m\x1b[38;5;2;48;5;0m Tab #1 \x1b[m +    https://example.com/x hfm mailto:a@b.c\x1b[K\r\n".repeat(5),
+    ));
+    inputs.push((
+        "mixed".into(),
+        "abc漢字def\u{301}ghi👍🏽jk\tl\x1b[3Dxy\x1b[4hINS\x1b[4lzz\x1b(0qqq\x1b(Bend\r\n"
+            .repeat(40)
+            .into_bytes(),
+    ));
+    inputs.push((
+        "hangul".into(),
+        "한국어 테스트 각\u{11A8}가\u{1161}\u{11A8} \u{1100}\u{1161}한 漢字한글カナ abc한\r\n"
+            .repeat(30)
+            .into_bytes(),
+    ));
+    let mut failures = vec![];
+    for (name, bytes) in &inputs {
+        for grapheme_mode in [false, true] {
+            for (rows, cols) in [(20, 80), (7, 13)] {
+                for chunk in [bytes.len().max(1), 4096, 7] {
+                    let mut bulk = empty_grid(rows, cols, grapheme_mode);
+                    let mut single = empty_grid(rows, cols, grapheme_mode);
+                    let mut bulk_parser = vt_parser::Parser::new();
+                    let mut single_parser = vt_parser::Parser::new();
+                    for piece in bytes.chunks(chunk) {
+                        bulk_parser.feed(&mut bulk, piece);
+                        single_parser.feed(&mut OneCharAtATime(&mut single), piece);
+                    }
+                    let (b, o) = (grid_state(&bulk), grid_state(&single));
+                    if b != o {
+                        let line = b
+                            .lines()
+                            .zip(o.lines())
+                            .find(|(x, y)| x != y)
+                            .map(|(x, y)| format!("\n  bulk:   {}\n  single: {}", x, y))
+                            .unwrap_or_default();
+                        failures.push(format!(
+                            "{} grapheme={} size={}x{} chunk={}{}",
+                            name, grapheme_mode, rows, cols, chunk, line
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
+}
+
+struct StreamRng(u64);
+
+impl StreamRng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
+
+fn random_terminal_stream(rng: &mut StreamRng, len: usize) -> Vec<u8> {
+    let texts: &[&str] = &[
+        "hello world ",
+        "x",
+        "漢字",
+        "한글",
+        "e\u{301}",
+        "👍🏽",
+        "\u{200d}",
+        "https://example.com/path?q=1 ",
+        "mailto:a@b.c ",
+        "\t",
+        "\r\n",
+        "\r",
+        "\n",
+        "\x08",
+        "\x07",
+        "\x0e",
+        "\x0f",
+        "\x7f",
+        "\u{85}",
+        "\u{fffd}",
+    ];
+    let mut out = Vec::new();
+    while out.len() < len {
+        let number = |rng: &mut StreamRng| match rng.below(4) {
+            0 => String::new(),
+            1 => "0".to_owned(),
+            2 => (1 + rng.below(9)).to_string(),
+            _ => rng.below(300).to_string(),
+        };
+        let piece = match rng.below(14) {
+            0..=4 => texts[rng.below(texts.len())].to_owned(),
+            5 => {
+                let codes = [
+                    "0",
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "4:3",
+                    "5",
+                    "7",
+                    "8",
+                    "9",
+                    "21",
+                    "22",
+                    "23",
+                    "24",
+                    "27",
+                    "31",
+                    "39",
+                    "42",
+                    "49",
+                    "53",
+                    "90",
+                    "107",
+                    "38;5;196",
+                    "48;5;17",
+                    "38;2;1;2;3",
+                    "48:2::10:20:30",
+                    "58:2::1:2:3",
+                    "59",
+                    "",
+                ];
+                let count = 1 + rng.below(4);
+                let list: Vec<&str> = (0..count).map(|_| codes[rng.below(codes.len())]).collect();
+                format!("\x1b[{}m", list.join(";"))
+            },
+            6 => {
+                let finals = [
+                    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'd', 'a', 'e', 'b', 'I', 'Z',
+                ];
+                format!("\x1b[{}{}", number(rng), finals[rng.below(finals.len())])
+            },
+            7 => format!("\x1b[{};{}H", number(rng), number(rng)),
+            8 => {
+                let finals = ['J', 'K', 'X', 'P', '@', 'L', 'M', 'S', 'T', 'g'];
+                format!("\x1b[{}{}", number(rng), finals[rng.below(finals.len())])
+            },
+            9 => {
+                let modes = [
+                    "?1049h", "?1049l", "?25l", "?25h", "?7l", "?7h", "4h", "4l", "?6h", "?6l",
+                    "?2026h", "?2026l", "?1h", "?1l", "20h", "20l", "?47h", "?47l",
+                ];
+                format!("\x1b[{}", modes[rng.below(modes.len())])
+            },
+            10 => format!("\x1b[{};{}r", number(rng), number(rng)),
+            11 => {
+                let escapes = [
+                    "\x1b7", "\x1b8", "\x1bM", "\x1bD", "\x1bE", "\x1bH", "\x1b(0", "\x1b(B",
+                    "\x1b)0", "\x1b=", "\x1b>", "\x1b#8", "\x1b[s", "\x1b[u", "\x1b[!p",
+                ];
+                escapes[rng.below(escapes.len())].to_owned()
+            },
+            12 => {
+                let strings = [
+                    "\x1b]8;;https://example.com\x07link\x1b]8;;\x07",
+                    "\x1b]0;title\x07",
+                    "\x1b]2;other\x1b\\",
+                    "\x1b]10;?\x07",
+                    "\x1bP+q544e\x1b\\",
+                    "\x1bP$qm\x1b\\",
+                    "\x1b_ignored\x1b\\",
+                    "\x1b[c",
+                    "\x1b[>c",
+                    "\x1b[6n",
+                ];
+                strings[rng.below(strings.len())].to_owned()
+            },
+            _ => {
+                let raw: Vec<u8> = (0..1 + rng.below(6)).map(|_| rng.next() as u8).collect();
+                out.extend_from_slice(&raw);
+                continue;
+            },
+        };
+        out.extend_from_slice(piece.as_bytes());
+    }
+    out
+}
+
+fn read_sessions(dir: &str) -> Vec<(String, Vec<u8>)> {
+    let mut sessions: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
+        .expect("session dir")
+        .map(|entry| entry.expect("entry").path())
+        .filter(|path| path.is_file())
+        .map(|path| {
+            (
+                path.file_name()
+                    .expect("file name")
+                    .to_string_lossy()
+                    .into_owned(),
+                std::fs::read(&path).expect("read"),
+            )
+        })
+        .collect();
+    sessions.sort();
+    sessions
+}
+
+fn screen_comparison_inputs(random_cases: usize, seed: u64) -> Vec<(String, Vec<u8>)> {
+    let mut inputs = read_sessions("../src/tests/fixtures");
+    let mut rng = StreamRng(seed);
+    for case in 0..random_cases {
+        let len = 200 + rng.below(4000);
+        inputs.push((
+            format!("random seed {} case {}", seed, case),
+            random_terminal_stream(&mut rng, len),
+        ));
+    }
+    inputs
+}
+
+fn screen_after(
+    bytes: &[u8],
+    grapheme_mode: bool,
+    (rows, cols): (usize, usize),
+    chunk: usize,
+    simple: bool,
+) -> String {
+    let mut grid = empty_grid(rows, cols, grapheme_mode);
+    if simple {
+        let mut parser = vt_parser::Parser::without_shortcuts();
+        for piece in bytes.chunks(chunk.max(1)) {
+            parser.feed(&mut OneCharAtATime(&mut grid), piece);
+        }
+    } else {
+        let mut parser = vt_parser::Parser::new();
+        for piece in bytes.chunks(chunk.max(1)) {
+            parser.feed(&mut grid, piece);
+        }
+    }
+    grid_state(&grid)
+}
+
+fn first_difference(
+    actual: &str,
+    expected: &str,
+    actual_label: &str,
+    expected_label: &str,
+) -> String {
+    actual
+        .lines()
+        .zip(expected.lines())
+        .find(|(x, y)| x != y)
+        .map(|(x, y)| format!("\n  {}: {}\n  {}: {}", actual_label, x, expected_label, y))
+        .unwrap_or_default()
+}
+
+fn check_screens(
+    name: &str,
+    bytes: &[u8],
+    failures: &mut Vec<String>,
+    golden_lines: &mut Vec<String>,
+) {
+    for grapheme_mode in [false, true] {
+        for size in [(20, 80), (7, 13)] {
+            let label = format!(
+                "{} grapheme={} size={}x{}",
+                name, grapheme_mode, size.0, size.1
+            );
+            let reference = screen_after(bytes, grapheme_mode, size, bytes.len(), false);
+            for (chunk, simple) in [(4096, false), (7, false), (bytes.len(), true), (7, true)] {
+                let actual = screen_after(bytes, grapheme_mode, size, chunk, simple);
+                if actual != reference {
+                    failures.push(format!(
+                        "{} chunk={} without shortcuts={}{}",
+                        label,
+                        chunk,
+                        simple,
+                        first_difference(&actual, &reference, "this", "whole")
+                    ));
+                }
+            }
+            let mut digest = crate::golden::Digest::new();
+            digest.bytes(reference.as_bytes());
+            golden_lines.push(format!("{} {}", label, digest.hex()));
+        }
+    }
+}
+
+#[test]
+fn whole_screens_match_their_golden() {
+    let mut failures = vec![];
+    let mut golden_lines = vec![];
+    for (name, bytes) in screen_comparison_inputs(150, 0x5eed) {
+        check_screens(&name, &bytes, &mut failures, &mut golden_lines);
+    }
+    assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
+    crate::golden::check("whole_screens", &golden_lines);
+}
+
+#[test]
+fn inserting_a_line_below_the_rows_of_a_fresh_alternate_screen_does_not_panic() {
+    let mut grid = empty_grid(20, 80, false);
+    vt_parser::Parser::new().feed(&mut grid, b"\x1b[8H\x1b[s\x1b[?1049h\x1b8\x1b[Lx");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((1, 7))
+    );
+}
+
+#[test]
+fn a_cursor_position_report_above_the_scroll_region_does_not_underflow() {
+    let mut grid = empty_grid(20, 80, false);
+    vt_parser::Parser::new().feed(&mut grid, b"\x1b[5;10r\x1b[1;1H\x1b[6n");
+    assert_eq!(
+        grid.pending_messages_to_pty.last().map(|m| m.as_slice()),
+        Some(&b"\x1b[1;1R"[..])
+    );
+}
+
+fn linked_uris(grid: &Grid) -> Vec<String> {
+    let mut uris: Vec<String> = grid
+        .link_handler
+        .borrow()
+        .links()
+        .values()
+        .map(|link| link.uri.clone())
+        .collect();
+    uris.sort();
+    uris
+}
+
+#[test]
+fn a_url_typed_at_a_shell_prompt_is_linked_whole_once_the_cursor_leaves_it() {
+    let url = "http://www.example.com";
+    let mut grid = create_grid_with_size_and_raw(10, 60, b"> ");
+    let mut parser = vt_parser::Parser::new();
+    for typed in 1..=url.len() {
+        let redraw = format!("\r\x1b[2K> \x1b[31m{}\x1b[0m", &url[..typed]);
+        parser.feed(&mut grid, redraw.as_bytes());
+        grid.read_changes(0, 0);
+    }
+    assert!(linked_uris(&grid).is_empty());
+    parser.feed(&mut grid, b"\r\n");
+    grid.read_changes(0, 0);
+    assert_eq!(linked_uris(&grid), vec![url.to_owned()]);
+}
+
+#[test]
+fn a_url_with_a_suggestion_after_the_cursor_waits_until_the_line_is_final() {
+    let mut grid = create_grid_with_size_and_raw(10, 60, b"> ");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(
+        &mut grid,
+        b"\r\x1b[2K> http://www.e\x1b[90mxample.com\x1b[0m\x1b[10D",
+    );
+    grid.read_changes(0, 0);
+    assert!(linked_uris(&grid).is_empty());
+    parser.feed(&mut grid, b"\r\x1b[2K> http://www.example.org\r\n");
+    grid.read_changes(0, 0);
+    assert_eq!(
+        linked_uris(&grid),
+        vec!["http://www.example.org".to_owned()]
+    );
 }

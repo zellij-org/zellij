@@ -221,9 +221,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     HostTerminalFocusChangedMsg { focused },
                 )
             },
-            ClientToServerMsg::StructuredRenderSupport { supported } => {
+            ClientToServerMsg::StructuredRenderSupport {
+                supported,
+                row_shifts,
+            } => {
                 client_to_server_msg::Message::StructuredRenderSupport(StructuredRenderSupportMsg {
                     supported,
+                    row_shifts,
                 })
             },
             ClientToServerMsg::ClipboardPasteSupport {
@@ -457,6 +461,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::StructuredRenderSupport(msg)) => {
                 Ok(ClientToServerMsg::StructuredRenderSupport {
                     supported: msg.supported,
+                    row_shifts: msg.row_shifts,
                 })
             },
             Some(client_to_server_msg::Message::ClipboardPasteSupport(msg)) => {

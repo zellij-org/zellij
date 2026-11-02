@@ -10,6 +10,7 @@ pub mod os_input_output;
 pub mod output;
 pub mod panes;
 pub mod tab;
+pub mod vt_parser;
 
 pub mod attention;
 pub mod background_jobs;
@@ -1812,6 +1813,10 @@ impl AppliedEnv {
         pane_env
     }
 }
+
+#[cfg(test)]
+#[path = "unit/golden.rs"]
+pub(crate) mod golden;
 
 #[cfg(test)]
 mod env_sync_tests {

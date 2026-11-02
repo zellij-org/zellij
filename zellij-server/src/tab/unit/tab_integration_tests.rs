@@ -1031,8 +1031,8 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
+use crate::vt_parser;
 use insta::assert_snapshot;
-use vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -1062,8 +1062,8 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1100,8 +1100,8 @@ fn take_snapshot_with_sixel(
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1135,8 +1135,8 @@ fn take_snapshot_and_cursor_position(
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -17168,8 +17168,8 @@ fn osc99_grid_parses_and_stores_notification() {
     );
 
     // Feed OSC 99 through vte parser
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(
         &mut grid,
         b"\x1b]99;i=gridtest:p=title;Grid notification\x07",
     );

@@ -69,7 +69,7 @@ impl Stores {
 
 fn feed(
     grid: &mut Grid,
-    parser: &mut vte::Parser,
+    parser: &mut zellij_server::vt_parser::Parser,
     interceptor: &mut KittyApcInterceptor,
     bytes: &[u8],
 ) {
@@ -79,18 +79,18 @@ fn feed(
             InterceptorResult::Forward(bytes) => forwarded.extend_from_slice(bytes.as_slice()),
             InterceptorResult::Swallow => {},
             InterceptorResult::Captured(command) => {
-                parser.advance(grid, &forwarded);
+                parser.feed(grid, &forwarded);
                 forwarded.clear();
                 grid.handle_kitty_apc(&command);
             },
         }
     }
-    parser.advance(grid, &forwarded);
+    parser.feed(grid, &forwarded);
 }
 
 pub struct Reference {
     grid: Grid,
-    parser: vte::Parser,
+    parser: zellij_server::vt_parser::Parser,
     interceptor: KittyApcInterceptor,
     stores: Stores,
     rows: usize,
@@ -103,7 +103,7 @@ impl Reference {
         let grid = stores.grid(rows, cols);
         Self {
             grid,
-            parser: vte::Parser::new(),
+            parser: zellij_server::vt_parser::Parser::new(),
             interceptor: KittyApcInterceptor::new(),
             stores,
             rows,
@@ -142,7 +142,7 @@ type KittyHostStates = Rc<RefCell<HashMap<ClientId, HostKittyState>>>;
 
 pub struct Emitter {
     grid: Grid,
-    parser: vte::Parser,
+    parser: zellij_server::vt_parser::Parser,
     interceptor: KittyApcInterceptor,
     stores: Stores,
     cleared: bool,
@@ -160,7 +160,7 @@ impl Emitter {
         let grid = stores.grid(rows, cols);
         Self {
             grid,
-            parser: vte::Parser::new(),
+            parser: zellij_server::vt_parser::Parser::new(),
             interceptor: KittyApcInterceptor::new(),
             stores,
             cleared: false,

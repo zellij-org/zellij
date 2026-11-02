@@ -10,7 +10,9 @@ use crate::{
         KittyHostCapability,
     },
     panes::sixel::SixelImageStore,
-    panes::terminal_character::{AnsiCode, AnsiStyledUnderline, CharacterStyles, NamedColor},
+    panes::terminal_character::{
+        AnsiCode, AnsiStyledUnderline, CharacterStyles, NamedColor, RcCharacterStyles,
+    },
     panes::{
         grapheme_join, LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES,
         EMPTY_TERMINAL_CHARACTER,
@@ -34,12 +36,13 @@ use zellij_utils::pane_size::SizeInPixels;
 use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::structured_render::{
     CursorState, FrameBuilder, GeometryRecord, GraphicsMedium, GraphicsRecord, LinkEntry,
-    LinkRecord, PaneRect, PendingOverlay, ScrollRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM,
-    ATTR_FAST_BLINK, ATTR_GROUP_CONTINUE, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK,
-    ATTR_STRIKE, CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
-    CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8, LINK_NONE, MAX_LINK_ID, MAX_LINK_URI_LEN,
-    UNDERLINE_CURLY, UNDERLINE_DASHED, UNDERLINE_DOTTED, UNDERLINE_DOUBLE, UNDERLINE_NONE,
-    UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
+    LinkRecord, PaneRect, PendingOverlay, ScrollRecord, ShiftEntry, ShiftRecord, WireCell,
+    WireColor, ATTR_BOLD, ATTR_DIM, ATTR_FAST_BLINK, ATTR_GROUP_CONTINUE, ATTR_HIDDEN, ATTR_ITALIC,
+    ATTR_REVERSE, ATTR_SLOW_BLINK, ATTR_STRIKE, CURSOR_BLINKING, CURSOR_SHAPE_BEAM,
+    CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT, CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8,
+    LINK_NONE, MAX_LINK_ID, MAX_LINK_URI_LEN, PANE_FLOATING, PANE_POPUP, UNDERLINE_CURLY,
+    UNDERLINE_DASHED, UNDERLINE_DOTTED, UNDERLINE_DOUBLE, UNDERLINE_NONE, UNDERLINE_SHIFT,
+    UNDERLINE_STRAIGHT,
 };
 
 const KITTY_MEDIA_PREFIX: &str = "zellij-tty-graphics-protocol";
@@ -518,7 +521,7 @@ fn named_color_index(named: NamedColor) -> u8 {
 
 fn substitute_changed_color(
     code: Option<AnsiCode>,
-    changed_colors: Option<[Option<AnsiCode>; 256]>,
+    changed_colors: Option<&[Option<AnsiCode>; 256]>,
 ) -> Option<AnsiCode> {
     match (code, changed_colors) {
         (Some(AnsiCode::ColorIndex(index)), Some(changed_colors)) => {
@@ -563,7 +566,7 @@ fn wire_attrs(styles: &CharacterStyles, styled_underlines: bool) -> u16 {
 fn wire_cell(
     t_character: &TerminalCharacter,
     styles: CharacterStyles,
-    chunk_changed_colors: Option<[Option<AnsiCode>; 256]>,
+    chunk_changed_colors: Option<&[Option<AnsiCode>; 256]>,
     styled_underlines: bool,
 ) -> WireCell {
     WireCell {
@@ -592,6 +595,35 @@ pub struct LinkFlatten<'a> {
     pub table: &'a mut LinkTable,
 }
 
+fn row_shifts_for(
+    character_chunks: &[CharacterChunk],
+    panes: &[(PaneRect, PaneScroll)],
+    cols: usize,
+    rows: usize,
+) -> ShiftRecord {
+    let mut shifts = ShiftRecord::default();
+    for shift in character_chunks.iter().filter_map(|chunk| chunk.row_shift) {
+        let entry = shift.entry();
+        if shift.x + shift.width > cols
+            || shift.top + shift.height > rows
+            || shifts.entries.contains(&entry)
+        {
+            continue;
+        }
+        let covered = panes.iter().any(|(rect, _)| {
+            rect.flags & (PANE_FLOATING | PANE_POPUP) != 0
+                && (rect.x as usize) < shift.x + shift.width
+                && shift.x < rect.x as usize + rect.cols as usize
+                && (rect.y as usize) < shift.top + shift.height
+                && shift.top < rect.y as usize + rect.rows as usize
+        });
+        if !covered {
+            shifts.entries.push(entry);
+        }
+    }
+    shifts
+}
+
 #[allow(clippy::too_many_arguments)]
 fn flatten_chunks(
     character_chunks: Vec<CharacterChunk>,
@@ -601,19 +633,38 @@ fn flatten_chunks(
     kitty_input: Option<KittyFrameInput>,
     mut links: Option<&mut LinkFlatten<'_>>,
     builder: &mut FrameBuilder,
+    shift_panes: Option<&[(PaneRect, PaneScroll)]>,
 ) -> Result<()> {
     let err_context = || "failed to flatten input chunks".to_string();
 
     let cols = builder.cols() as usize;
     let rows = builder.rows() as usize;
+    let shifts = shift_panes
+        .map(|panes| row_shifts_for(&character_chunks, panes, cols, rows))
+        .unwrap_or_default();
+    if !shifts.is_empty() {
+        if let Some(links) = links.as_deref_mut() {
+            for entry in &shifts.entries {
+                links.table.shift(entry);
+            }
+        }
+        builder.push_shifts(&shifts);
+    }
     let mut run: Vec<WireCell> = Vec::new();
     for character_chunk in character_chunks {
         if character_chunk.y >= rows || character_chunk.x >= cols {
             continue;
         }
-        let chunk_changed_colors = character_chunk.changed_colors();
+        if let Some(shift) = character_chunk.row_shift {
+            if shift.moved && shifts.entries.contains(&shift.entry()) {
+                continue;
+            }
+        }
+        let chunk_changed_colors = character_chunk.changed_colors.as_ref();
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
+        let styles_vary_by_column = !character_chunk.selection_and_colors().is_empty();
+        let mut last_styled: Option<(RcCharacterStyles, WireCell)> = None;
         run.clear();
         let cells = &character_chunk.terminal_characters;
         let styles_at = |cell: &TerminalCharacter, column: usize| {
@@ -652,12 +703,29 @@ fn flatten_chunks(
                 if chunk_width + t_character.width() > cols {
                     break;
                 }
-                let mut cell = wire_cell(
-                    t_character,
-                    styles_at(t_character, chunk_width),
-                    chunk_changed_colors,
-                    styled_underlines,
-                );
+                let mut cell = match &last_styled {
+                    Some((styles, template))
+                        if !styles_vary_by_column && styles.ptr_eq(&t_character.styles) =>
+                    {
+                        WireCell {
+                            ch: t_character.character as u32,
+                            width: t_character.width().min(u8::MAX as usize) as u8,
+                            ..*template
+                        }
+                    },
+                    _ => {
+                        let cell = wire_cell(
+                            t_character,
+                            styles_at(t_character, chunk_width),
+                            chunk_changed_colors,
+                            styled_underlines,
+                        );
+                        if !styles_vary_by_column {
+                            last_styled = Some((t_character.styles.clone(), cell));
+                        }
+                        cell
+                    },
+                };
                 if let Some(links) = links.as_deref_mut() {
                     if let Some(uri) = links.handler.uri(t_character.styles.link_anchor) {
                         cell.link = links.table.id_for(uri, cols, rows);
@@ -1476,6 +1544,7 @@ pub struct StructuredClientState {
     pub last_geometry: Option<GeometryRecord>,
     pub links: LinkTable,
     pub scroll_offsets: HashMap<PaneId, TrackedScroll>,
+    pub row_shifts: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1609,6 +1678,31 @@ impl LinkTable {
         }
     }
 
+    fn shift(&mut self, entry: &ShiftEntry) {
+        if self.shadow.is_empty() || self.cols == 0 {
+            return;
+        }
+        let rows = self.shadow.len() / self.cols;
+        let (x, y) = (entry.x as usize, entry.y as usize);
+        let (width, height, lines) = (
+            entry.cols as usize,
+            entry.rows as usize,
+            entry.lines as usize,
+        );
+        if x + width > self.cols || y + height > rows || lines == 0 {
+            return;
+        }
+        for row in y..y + height {
+            let target = row * self.cols + x;
+            if row + lines < y + height {
+                let source = (row + lines) * self.cols + x;
+                self.shadow.copy_within(source..source + width, target);
+            } else {
+                self.shadow[target..target + width].fill(LINK_NONE);
+            }
+        }
+    }
+
     fn take_fresh(&mut self) -> LinkRecord {
         LinkRecord {
             entries: std::mem::take(&mut self.fresh),
@@ -1648,6 +1742,7 @@ impl Default for StructuredClientState {
             last_geometry: None,
             links: LinkTable::default(),
             scroll_offsets: HashMap::new(),
+            row_shifts: false,
         }
     }
 }
@@ -1768,6 +1863,7 @@ pub(crate) fn mirror_screen_from_chunks(
         None,
         Some(&mut links),
         &mut builder,
+        None,
     );
     let mut screen = match flattened {
         Ok(()) => MirrorScreen::from_frame(&builder.finish())
@@ -2308,6 +2404,11 @@ impl Output {
                 }
                 let link_handler = self.link_handler.as_ref().map(|handler| handler.borrow());
                 let mut structured_clients = self.structured_render_clients.borrow_mut();
+                let shifts_allowed = row_shifts_enabled()
+                    && structured_clients
+                        .get(&client_id)
+                        .map(|state| state.row_shifts)
+                        .unwrap_or(false);
                 let mut links = link_flatten(
                     link_handler.as_deref(),
                     structured_clients.get_mut(&client_id),
@@ -2320,6 +2421,7 @@ impl Output {
                     kitty_input,
                     links.as_mut(),
                     &mut builder,
+                    shifts_allowed.then_some(&panes[..]),
                 )
                 .with_context(err_context)?;
                 drop(links);
@@ -2482,6 +2584,7 @@ impl Output {
             None,
             links.as_mut(),
             &mut builder,
+            None,
         )
         .with_context(err_context)?;
         drop(links);
@@ -3197,6 +3300,40 @@ impl FloatingPanesStack {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowShift {
+    pub x: usize,
+    pub top: usize,
+    pub width: usize,
+    pub height: usize,
+    pub lines: usize,
+    pub moved: bool,
+}
+
+impl RowShift {
+    fn entry(&self) -> ShiftEntry {
+        ShiftEntry {
+            x: self.x as u16,
+            y: self.top as u16,
+            cols: self.width as u16,
+            rows: self.height as u16,
+            lines: self.lines as u16,
+        }
+    }
+}
+
+thread_local! {
+    static ROW_SHIFTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub fn set_row_shifts(enabled: bool) {
+    ROW_SHIFTS.with(|flag| flag.set(enabled));
+}
+
+pub fn row_shifts_enabled() -> bool {
+    ROW_SHIFTS.with(|flag| flag.get())
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CharacterChunk {
     pub terminal_characters: Vec<TerminalCharacter>,
@@ -3210,6 +3347,7 @@ pub struct CharacterChunk {
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
     selection_and_colors: Vec<HighlightSelection>,
+    pub row_shift: Option<RowShift>,
 }
 
 pub use crate::panes::kitty_graphics::grid_state::KittyImageChunk;
@@ -3330,6 +3468,7 @@ pub struct OutputBuffer {
     pub should_update_all_lines: bool,
     styled_underlines: bool,
     last_changed_line: Option<usize>,
+    shifted_up: usize,
 }
 
 impl Default for OutputBuffer {
@@ -3339,12 +3478,34 @@ impl Default for OutputBuffer {
             should_update_all_lines: true, // first time we should do a full render
             styled_underlines: true,
             last_changed_line: None,
+            shifted_up: 0,
         }
+    }
+}
+
+fn spread_to_wrapped_lines(fresh: &mut [bool], viewport: &[Row]) {
+    let continues = |line: usize| {
+        viewport
+            .get(line)
+            .map(|row| !row.is_canonical)
+            .unwrap_or(false)
+    };
+    let mut line = 0;
+    while line < fresh.len() {
+        let mut end = line + 1;
+        while end < fresh.len() && continues(end) {
+            end += 1;
+        }
+        if fresh[line..end].iter().any(|slot| *slot) {
+            fresh[line..end].iter_mut().for_each(|slot| *slot = true);
+        }
+        line = end;
     }
 }
 
 impl OutputBuffer {
     pub fn update_line(&mut self, line_index: usize) {
+        let line_index = line_index + self.shifted_up;
         if self.should_update_all_lines || self.last_changed_line == Some(line_index) {
             return;
         }
@@ -3354,12 +3515,47 @@ impl OutputBuffer {
     pub fn update_lines(&mut self, start: usize, end: usize) {
         if !self.should_update_all_lines {
             for idx in start..=end {
-                if !self.changed_lines.contains(&idx) {
-                    self.changed_lines.insert(idx);
-                }
+                self.changed_lines.insert(idx + self.shifted_up);
             }
             self.last_changed_line = None;
         }
+    }
+    pub fn note_scroll_up(&mut self, viewport_height: usize) {
+        if self.should_update_all_lines {
+            return;
+        }
+        if self.shifted_up + 1 >= viewport_height {
+            self.update_all_lines();
+            return;
+        }
+        self.shifted_up += 1;
+        self.changed_lines
+            .insert(viewport_height - 1 + self.shifted_up);
+        self.last_changed_line = None;
+    }
+    pub fn renders_all_lines(&self) -> bool {
+        self.should_update_all_lines || self.shifted_up > 0
+    }
+    pub fn changed_viewport_lines(&self, viewport_height: usize) -> Vec<usize> {
+        if self.renders_all_lines() {
+            return (0..viewport_height).collect();
+        }
+        self.changed_lines
+            .iter()
+            .filter(|line| **line < viewport_height)
+            .copied()
+            .collect()
+    }
+    fn changed_since_shift(&self, viewport_height: usize) -> Vec<bool> {
+        let mut changed = vec![false; viewport_height];
+        for line in &self.changed_lines {
+            if let Some(line) = line.checked_sub(self.shifted_up) {
+                if let Some(slot) = changed.get_mut(line) {
+                    *slot = true;
+                }
+            }
+        }
+        changed
     }
     pub fn update_all_lines(&mut self) {
         self.clear();
@@ -3369,6 +3565,7 @@ impl OutputBuffer {
         self.changed_lines.clear();
         self.should_update_all_lines = false;
         self.last_changed_line = None;
+        self.shifted_up = 0;
     }
     pub fn serialize(
         &self,
@@ -3406,45 +3603,54 @@ impl OutputBuffer {
         viewport_height: usize,
         x_offset: usize,
         y_offset: usize,
+        row_shifts: Option<&[usize]>,
     ) -> Vec<CharacterChunk> {
+        let row_chunk = |line_index: usize| {
+            let terminal_characters =
+                self.extract_line_from_viewport(line_index, viewport, viewport_width);
+            let mut chunk =
+                CharacterChunk::new(terminal_characters, x_offset, line_index + y_offset);
+            chunk.may_have_groups = viewport
+                .get(line_index)
+                .map(|row| row.may_have_groups)
+                .unwrap_or(false);
+            chunk
+        };
         if self.should_update_all_lines {
-            let mut changed_chunks = Vec::new();
-            for line_index in 0..viewport_height {
-                let terminal_characters =
-                    self.extract_line_from_viewport(line_index, viewport, viewport_width);
-
-                let x = x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
-                let y = line_index + y_offset;
-                let mut chunk = CharacterChunk::new(terminal_characters, x, y);
-                chunk.may_have_groups = viewport
-                    .get(line_index)
-                    .map(|row| row.may_have_groups)
-                    .unwrap_or(false);
-                changed_chunks.push(chunk);
-            }
-            changed_chunks
+            (0..viewport_height).map(row_chunk).collect()
+        } else if self.shifted_up > 0 {
+            let fresh = row_shifts.map(|also_fresh| {
+                let mut fresh = self.changed_since_shift(viewport_height);
+                for line in also_fresh {
+                    for line in [Some(*line), line.checked_sub(self.shifted_up)] {
+                        if let Some(slot) = line.and_then(|line| fresh.get_mut(line)) {
+                            *slot = true;
+                        }
+                    }
+                }
+                spread_to_wrapped_lines(&mut fresh, viewport);
+                fresh
+            });
+            (0..viewport_height)
+                .map(|line_index| {
+                    let mut chunk = row_chunk(line_index);
+                    if let Some(fresh) = &fresh {
+                        chunk.row_shift = Some(RowShift {
+                            x: x_offset,
+                            top: y_offset,
+                            width: viewport_width,
+                            height: viewport_height,
+                            lines: self.shifted_up,
+                            moved: !fresh[line_index],
+                        });
+                    }
+                    chunk
+                })
+                .collect()
         } else {
-            let mut line_changes: Vec<_> = self
-                .changed_lines
-                .iter()
-                .filter(|i| *i < &viewport_height)
-                .copied()
-                .collect();
+            let mut line_changes = self.changed_viewport_lines(viewport_height);
             line_changes.sort_unstable();
-            let mut changed_chunks = Vec::new();
-            for line_index in line_changes {
-                let terminal_characters =
-                    self.extract_line_from_viewport(line_index, viewport, viewport_width);
-                let x = x_offset;
-                let y = line_index + y_offset;
-                let mut chunk = CharacterChunk::new(terminal_characters, x, y);
-                chunk.may_have_groups = viewport
-                    .get(line_index)
-                    .map(|row| row.may_have_groups)
-                    .unwrap_or(false);
-                changed_chunks.push(chunk);
-            }
-            changed_chunks
+            line_changes.into_iter().map(row_chunk).collect()
         }
     }
     fn extract_characters_from_row(
@@ -3518,15 +3724,10 @@ impl OutputBuffer {
         };
 
         // TODO: move this whole thing to output_buffer
-        if self.should_update_all_lines {
-            // for line_index in 0..self.viewport.len() {
-            for line_index in 0..viewport_height {
-                add_changed_line(line_index);
-            }
-        } else {
-            for line_index in self.changed_lines.iter().copied() {
-                add_changed_line(line_index);
-            }
+        let mut lines = self.changed_viewport_lines(viewport_height);
+        lines.sort_unstable();
+        for line_index in lines {
+            add_changed_line(line_index);
         }
         if let Some(changed_line_index) = last_changed_line_index {
             changed_rects.insert(changed_line_index, changed_line_count);

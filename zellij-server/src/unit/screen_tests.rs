@@ -65,8 +65,8 @@ fn take_snapshot_and_cursor_coordinates(
     ansi_instructions: &str,
     grid: &mut Grid,
 ) -> (Option<(usize, usize)>, String) {
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(grid, ansi_instructions.as_bytes());
+    let mut vte_parser = crate::vt_parser::Parser::new();
+    vte_parser.feed(grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -17669,8 +17669,8 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
         "a client that has not acknowledged must not be sent a second frame"
     );
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     expire_in_flight_frame(&screen, client_id);
@@ -17790,8 +17790,8 @@ fn a_resize_discards_the_pending_overlay_and_forces_a_full_repaint() {
     delivered_frame(&server_receiver, client_id).expect("the first frame must reach the client");
     render_with_pending_output(&mut screen, client_id);
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     let resized = Size {
@@ -18094,8 +18094,8 @@ fn a_pane_resize_releases_the_in_flight_frame() {
         "a client that has not acknowledged must not be sent a second frame"
     );
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(1));
@@ -20063,4 +20063,174 @@ mod session_rename {
         assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
         assert!(h.screen.session_rename_drafts.is_empty());
     }
+}
+
+struct ClientCells {
+    cols: usize,
+    rows: usize,
+    cells: Vec<zellij_utils::structured_render::WireCell>,
+    clusters: std::collections::HashMap<usize, String>,
+    links: std::collections::HashMap<u8, String>,
+}
+
+impl ClientCells {
+    fn new() -> Self {
+        ClientCells {
+            cols: 0,
+            rows: 0,
+            cells: vec![],
+            clusters: Default::default(),
+            links: Default::default(),
+        }
+    }
+
+    fn apply(&mut self, frame: &[u8]) -> (usize, usize) {
+        use zellij_utils::structured_render::WireCell;
+        let view = zellij_utils::structured_render::decode(frame).expect("TEST");
+        let header = view.header();
+        let (cols, rows) = (header.cols as usize, header.rows as usize);
+        if cols != self.cols || rows != self.rows || header.full_repaint() || header.clear() {
+            self.cols = cols;
+            self.rows = rows;
+            self.cells = vec![WireCell::BLANK; cols * rows];
+            self.clusters.clear();
+        }
+        let shifts = view.shifts();
+        for shift in &shifts.entries {
+            shift.apply(&mut self.cells, cols, rows);
+            self.clusters = std::mem::take(&mut self.clusters)
+                .into_iter()
+                .filter_map(|(at, text)| match shift.moved_position(at, cols) {
+                    None => Some((at, text)),
+                    Some(moved) => moved.map(|at| (at, text)),
+                })
+                .collect();
+        }
+        for entry in view.links().entries {
+            self.links.insert(entry.id, entry.uri);
+        }
+        let clusters = view.clusters();
+        let mut written = 0;
+        for (record, cells) in view.rows() {
+            written += 1;
+            for (offset, cell) in cells.iter().enumerate() {
+                let at = record.y as usize * cols + record.x0 as usize + offset;
+                match cell.cluster_id() {
+                    Some(id) => {
+                        self.clusters
+                            .insert(at, clusters.get(id).unwrap_or(" ").to_owned());
+                    },
+                    None => {
+                        self.clusters.remove(&at);
+                    },
+                }
+            }
+        }
+        view.apply(&mut self.cells, cols, rows);
+        (shifts.entries.len(), written)
+    }
+
+    fn screen(&self) -> Vec<String> {
+        (0..self.rows)
+            .map(|row| {
+                (0..self.cols)
+                    .map(|col| {
+                        let at = row * self.cols + col;
+                        let cell = self.cells[at];
+                        let text = match self.clusters.get(&at) {
+                            Some(text) => text.clone(),
+                            None => cell.character().to_string(),
+                        };
+                        let link = self.links.get(&cell.link).cloned().unwrap_or_default();
+                        format!(
+                            "{}|{:x}|{:x}|{:x}|{}|{}",
+                            text, cell.fg, cell.bg, cell.attrs, cell.width, link
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect()
+    }
+}
+
+fn frames_for(server_receiver: &ServerReceiver, client_id: ClientId) -> Vec<Vec<u8>> {
+    let mut frames = vec![];
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(payloads)) = instruction {
+            if let Some(frame) = payloads.get(&client_id).and_then(|p| p.frame()) {
+                frames.push(frame.to_vec());
+            }
+        }
+    }
+    frames
+}
+
+#[test]
+fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint() {
+    let size = Size { cols: 40, rows: 12 };
+    let client_id = 1;
+    let mut stream = String::new();
+    for i in 0..60 {
+        match i % 6 {
+            0 => stream.push_str(&format!("plain line {}\r\n", i)),
+            1 => stream.push_str(&format!(
+                "\u{1b}[31mred\u{1b}[0m and \u{1b}[1;44mbold {}\u{1b}[m\r\n",
+                i
+            )),
+            2 => stream.push_str(&format!("{} {}\r\n", "long ".repeat(12), i)),
+            3 => stream.push_str("漢字한국어カナ mixed 👍🏽 e\u{301}\r\n"),
+            4 => stream.push_str(&format!("see https://example.com/{} now\r\n", i)),
+            _ => stream.push_str("\u{1b}[42m\u{1b}[K\u{1b}[0mpartial"),
+        }
+    }
+    let bytes = stream.into_bytes();
+
+    let (mut shifting, _tty, shifting_receiver) = structured_screen_with_client(size, client_id);
+    shifting.set_row_shift_support(client_id, true);
+    let mut client = ClientCells::new();
+    shifting.render_to_clients().expect("TEST");
+    let mut shifted_frames = 0;
+    let mut smallest_frame = usize::MAX;
+    let mut pieces = bytes.chunks(97);
+    loop {
+        let piece = pieces.next();
+        if let Some(piece) = piece {
+            shifting.apply_pty_bytes(1, piece.to_vec()).expect("TEST");
+            shifting.render_to_clients().expect("TEST");
+        }
+        let frames = frames_for(&shifting_receiver, client_id);
+        if piece.is_none() && frames.is_empty() {
+            break;
+        }
+        for frame in frames {
+            let (shifts, rows) = client.apply(&frame);
+            if shifts > 0 {
+                shifted_frames += 1;
+                smallest_frame = smallest_frame.min(rows);
+            }
+            let seq = zellij_utils::structured_render::decode(&frame)
+                .expect("TEST")
+                .header()
+                .seq;
+            shifting
+                .handle_render_frame_ack(client_id, seq)
+                .expect("TEST");
+        }
+    }
+
+    let (mut reference, _tty, reference_receiver) = structured_screen_with_client(size, client_id);
+    reference.apply_pty_bytes(1, bytes.clone()).expect("TEST");
+    reference.render_to_clients().expect("TEST");
+    let mut expected = ClientCells::new();
+    for frame in frames_for(&reference_receiver, client_id) {
+        expected.apply(&frame);
+    }
+
+    assert!(shifted_frames > 0, "the client was never sent a row shift");
+    assert!(
+        smallest_frame < size.rows,
+        "a shifted frame must not resend every row"
+    );
+    assert_eq!(client.screen(), expected.screen());
 }

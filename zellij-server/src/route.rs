@@ -2999,12 +2999,16 @@ pub(crate) fn route_thread_main(
                                 )
                                 .with_context(err_context)?;
                             },
-                            ClientToServerMsg::StructuredRenderSupport { supported } => {
+                            ClientToServerMsg::StructuredRenderSupport {
+                                supported,
+                                row_shifts,
+                            } => {
                                 send_to_screen_or_retry_queue!(
                                     senders,
                                     ScreenInstruction::SetStructuredRenderSupport {
                                         client_id,
                                         supported: *supported,
+                                        row_shifts: *row_shifts,
                                     },
                                     instruction.clone(),
                                     retry_queue
@@ -3371,12 +3375,16 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
-                        ClientToServerMsg::StructuredRenderSupport { supported } => {
+                        ClientToServerMsg::StructuredRenderSupport {
+                                supported,
+                                row_shifts,
+                            } => {
                             send_to_screen_or_retry_queue!(
                                 senders,
                                 ScreenInstruction::SetStructuredRenderSupport {
                                     client_id,
-                                    supported
+                                    supported,
+                                    row_shifts,
                                 },
                                 instruction,
                                 retry_queue

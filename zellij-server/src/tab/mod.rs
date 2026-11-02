@@ -2518,7 +2518,10 @@ impl Tab {
         if !self.single_pane_titles() {
             return None;
         }
-        let (_, pane) = self.get_selectable_tiled_content_panes().next()?;
+        let (pane_id, pane) = self.get_selectable_tiled_content_panes().next()?;
+        if self.pane_is_stack_list_member(pane_id) {
+            return None;
+        }
         let (position, length) = pane.scroll_position();
         if position > 0 || length > 0 {
             Some((position, length))
