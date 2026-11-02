@@ -35,12 +35,14 @@ pub(crate) fn check(name: &str, lines: &[String]) {
         std::fs::write(&path, &actual).expect("write golden");
         return;
     }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!(
-            "missing golden file {}; create it with ZELLIJ_UPDATE_GOLDENS=1",
-            path.display()
-        )
-    });
+    let expected = std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| {
+            panic!(
+                "missing golden file {}; create it with ZELLIJ_UPDATE_GOLDENS=1",
+                path.display()
+            )
+        })
+        .replace("\r\n", "\n");
     if expected == actual {
         return;
     }
