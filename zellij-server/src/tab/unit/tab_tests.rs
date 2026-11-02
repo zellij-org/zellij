@@ -17504,6 +17504,29 @@ pub fn unnamed_pane_shows_osc_title() {
 }
 
 #[test]
+pub fn clearing_the_osc_title_restores_the_previous_pane_title_and_tab_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let title_before = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    let tab_name_before = tab.single_pane_tab_name();
+    let _ = tab.handle_pty_bytes(1, b"\x1b]2;hello\x07".to_vec());
+    assert_eq!(
+        tab.get_pane_with_id(pane_id).unwrap().current_title(),
+        "hello"
+    );
+    let _ = tab.handle_pty_bytes(1, b"\x1b]2;\x07".to_vec());
+    assert_eq!(
+        tab.get_pane_with_id(pane_id).unwrap().current_title(),
+        title_before
+    );
+    assert_eq!(tab.single_pane_tab_name(), tab_name_before);
+}
+
+#[test]
 pub fn undo_rename_clears_name() {
     let size = Size {
         cols: 121,

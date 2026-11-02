@@ -203,6 +203,7 @@ message GlobalAttentionUpdatePayload {
   string current_session = 1;
   repeated GlobalSessionAttention sessions = 2;
   repeated StatusColor badge_colors = 3;
+  bool attention_disabled = 4;
 }
 
 message StatusColor {

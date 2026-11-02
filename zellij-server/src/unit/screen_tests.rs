@@ -1030,6 +1030,46 @@ fn open_new_tab() {
 }
 
 #[test]
+fn first_client_gets_its_tab_when_later_cli_clients_leave_before_the_tab_is_laid_out() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    for cli_client_id in 2..=5 {
+        screen.remove_client(cli_client_id).expect("TEST");
+    }
+    new_tab(&mut screen, 1, 0);
+
+    assert!(
+        screen.get_active_tab(1).is_ok(),
+        "the client that started the session is attached to the first tab"
+    );
+    assert!(
+        screen.connected_clients.borrow().contains_key(&1),
+        "the client that started the session counts as connected"
+    );
+}
+
+#[test]
+fn first_client_is_not_attached_when_it_left_before_the_tab_is_laid_out() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    screen.remove_client(1).expect("TEST");
+    new_tab(&mut screen, 1, 0);
+
+    assert!(
+        screen.get_active_tab(1).is_err(),
+        "a client that already disconnected is not attached to the new tab"
+    );
+}
+
+#[test]
 pub fn switch_to_prev_tab() {
     let size = Size {
         cols: 121,
@@ -19527,6 +19567,54 @@ fn the_startup_session_card_is_unfocused_and_says_so() {
             Some("card_startup".to_owned())
         )]
     );
+}
+
+#[test]
+fn with_attention_off_the_session_card_does_not_open_and_plugins_get_no_attention() {
+    use zellij_utils::attention::{
+        AttentionItem, AttentionStatus, GlobalAttention, PaneAttention, SessionAttention,
+    };
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    let mut busy = SessionAttention::default();
+    let item = AttentionItem {
+        pane_id: zellij_utils::data::PaneId::Terminal(1),
+        tab_id: 0,
+        tab_name: "tab".to_owned(),
+        pane_title: "pane".to_owned(),
+        attention: PaneAttention {
+            status: AttentionStatus::NeedsYou,
+            ..Default::default()
+        },
+    };
+    busy.counts.add(&item.attention);
+    busy.items.push(item);
+    screen.set_global_attention(GlobalAttention::build(
+        "here",
+        vec![
+            ("here".to_owned(), Default::default()),
+            ("other".to_owned(), busy),
+        ],
+    ));
+    let told: Vec<GlobalAttention> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::GlobalAttentionUpdate(global) => Some(global),
+            _ => None,
+        })
+        .collect();
+    let global = told.last().expect("plugins are told");
+    assert!(global.attention_disabled);
+    assert!(global.items.is_empty());
+    assert_eq!(global.counts, Default::default());
+    assert_eq!(global.running(), 2);
+    screen.open_session_card(client_id);
+    assert!(loaded_popups(&plugin_receiver).is_empty());
+    assert_eq!(screen.pending_session_card, None);
 }
 
 fn loaded_popups(

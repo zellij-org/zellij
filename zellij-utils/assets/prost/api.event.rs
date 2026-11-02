@@ -201,6 +201,8 @@ pub struct GlobalAttentionUpdatePayload {
     pub sessions: ::prost::alloc::vec::Vec<GlobalSessionAttention>,
     #[prost(message, repeated, tag="3")]
     pub badge_colors: ::prost::alloc::vec::Vec<StatusColor>,
+    #[prost(bool, tag="4")]
+    pub attention_disabled: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

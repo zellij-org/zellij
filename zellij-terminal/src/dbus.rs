@@ -1227,6 +1227,7 @@ pub mod fake {
     #[derive(Clone)]
     pub struct FakeSessionBus {
         shared: Arc<Shared>,
+        #[cfg_attr(not(feature = "test-support"), allow(dead_code))]
         path: std::path::PathBuf,
     }
 
@@ -1261,10 +1262,12 @@ pub mod fake {
             bus
         }
 
+        #[cfg_attr(not(feature = "test-support"), allow(dead_code))]
         pub fn address(&self) -> String {
             format!("unix:path={}", self.path.display())
         }
 
+        #[cfg_attr(not(feature = "test-support"), allow(dead_code))]
         pub fn answer_with(
             &self,
             answer: impl Fn(&Message) -> Option<Vec<Value>> + Send + Sync + 'static,
@@ -1287,6 +1290,7 @@ pub mod fake {
             self.shared.connections.lock().unwrap().len()
         }
 
+        #[cfg_attr(not(feature = "test-support"), allow(dead_code))]
         pub fn signal(&self, mut message: Message) {
             message.sender = Some(BUS_SERVICE.to_owned());
             let writers: Vec<Arc<Mutex<UnixStream>>> = self

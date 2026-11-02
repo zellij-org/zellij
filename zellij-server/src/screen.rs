@@ -2067,7 +2067,7 @@ pub(crate) struct Screen {
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
     client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
-    highest_client_id_seen: ClientId,
+    recently_disconnected_clients: VecDeque<ClientId>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
@@ -2284,6 +2284,8 @@ const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
+const RECENTLY_DISCONNECTED_CLIENTS_LIMIT: usize = 256;
+
 pub(crate) const ECHO_WINDOW: Duration = Duration::from_millis(50);
 
 pub(crate) fn answers_typed_input(last_input: Option<Instant>, now: Instant) -> bool {
@@ -2439,7 +2441,7 @@ impl Screen {
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             client_display_slots: Rc::new(RefCell::new(HashMap::new())),
-            highest_client_id_seen: 0,
+            recently_disconnected_clients: VecDeque::new(),
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
@@ -6802,7 +6804,7 @@ impl Screen {
             })
             .with_context(err_context)?;
 
-        let client_has_since_disconnected = client_id <= self.highest_client_id_seen;
+        let client_has_since_disconnected = self.recently_disconnected_clients.contains(&client_id);
         if !self.active_tab_ids.contains_key(&client_id) && !client_has_since_disconnected {
             self.add_client(client_id, is_web_client)
                 .with_context(err_context)?;
@@ -6875,7 +6877,8 @@ impl Screen {
             bail!("Can't find a valid tab to attach client to!");
         };
 
-        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
+        self.recently_disconnected_clients
+            .retain(|disconnected| *disconnected != client_id);
         self.active_tab_ids.insert(client_id, tab_index);
         self.release_kitty_host_state(client_id);
         self.connected_clients
@@ -6937,7 +6940,12 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
-        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
+        if !self.recently_disconnected_clients.contains(&client_id) {
+            if self.recently_disconnected_clients.len() >= RECENTLY_DISCONNECTED_CLIENTS_LIMIT {
+                self.recently_disconnected_clients.pop_front();
+            }
+            self.recently_disconnected_clients.push_back(client_id);
+        }
 
         self.set_client_dimmed(client_id, false, None);
         self.close_popup_for_client(client_id);

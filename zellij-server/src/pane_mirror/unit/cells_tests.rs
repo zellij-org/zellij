@@ -254,10 +254,32 @@ fn a_visible_cursor_keeps_its_row_in_view() {
     let mut screen = screen_of(&["a", "b", "c", "d", "e", "f"], 6, 3);
     screen.cursor.visible = true;
     screen.cursor.y = 1;
-    assert_eq!(anchor_row(&screen), 1);
-    assert_eq!(screen_offset(&screen, 3), 0);
+    assert_eq!(anchor_row(&screen), 5);
+    assert_eq!(screen_offset(&screen, 3), 1);
     screen.cursor.y = 4;
-    assert_eq!(screen_offset(&screen, 3), 2);
+    assert_eq!(screen_offset(&screen, 3), 3);
+}
+
+#[test]
+fn a_visible_cursor_above_a_footer_still_shows_the_last_rows() {
+    let mut screen = screen_of(
+        &["", "", "", "", "", "", "input", "footer one", "footer two"],
+        9,
+        10,
+    );
+    screen.cursor.visible = true;
+    screen.cursor.y = 6;
+    assert_eq!(anchor_row(&screen), 8);
+    assert_eq!(screen_offset(&screen, 4), 5);
+}
+
+#[test]
+fn a_visible_cursor_below_the_content_keeps_its_row_in_view() {
+    let mut screen = screen_of(&["a", "b", "c"], 10, 3);
+    screen.cursor.visible = true;
+    screen.cursor.y = 7;
+    assert_eq!(anchor_row(&screen), 7);
+    assert_eq!(screen_offset(&screen, 4), 4);
 }
 
 #[test]

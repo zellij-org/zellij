@@ -319,6 +319,36 @@ pub fn context_menu_statements_against(
     Some(statements)
 }
 
+fn is_attention_action(action: &ContextMenuAction) -> bool {
+    matches!(
+        action,
+        ContextMenuAction::Action(
+            Action::MutePane
+                | Action::MutePaneByPaneId { .. }
+                | Action::IgnorePaneOutput
+                | Action::IgnorePaneOutputByPaneId { .. }
+                | Action::WatchPane
+                | Action::WatchPaneByPaneId { .. }
+                | Action::MuteTab
+                | Action::MuteTabByTabId { .. }
+                | Action::MuteSession
+                | Action::GoToNextAttention
+                | Action::MarkPaneSeen { .. }
+                | Action::MarkAllSeen { .. }
+        )
+    )
+}
+
+pub fn entries_without_attention(entries: Vec<ContextMenuEntry>) -> Vec<ContextMenuEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| match entry {
+            ContextMenuEntry::Item { actions, .. } => !actions.iter().any(is_attention_action),
+            ContextMenuEntry::Separator => true,
+        })
+        .collect()
+}
+
 pub fn normalize_separators(entries: Vec<ContextMenuEntry>) -> Vec<ContextMenuEntry> {
     let mut normalized: Vec<ContextMenuEntry> = vec![];
     for entry in entries {
@@ -342,6 +372,48 @@ pub fn normalize_separators(entries: Vec<ContextMenuEntry>) -> Vec<ContextMenuEn
 mod tests {
     use super::*;
     use crate::input::actions::Action;
+
+    #[test]
+    fn without_attention_the_watch_and_mute_entries_are_dropped() {
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Rename",
+                vec![Action::StartRenamePaneByPaneId {
+                    pane_id: crate::data::PaneId::Terminal(1),
+                }
+                .into()],
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item(
+                "Watch pane",
+                vec![Action::WatchPaneByPaneId {
+                    pane_id: crate::data::PaneId::Terminal(1),
+                }
+                .into()],
+            ),
+            ContextMenuEntry::item(
+                "Mute pane",
+                vec![Action::MutePaneByPaneId {
+                    pane_id: crate::data::PaneId::Terminal(1),
+                }
+                .into()],
+            ),
+            ContextMenuEntry::item("Mute tab", vec![Action::MuteTabByTabId { id: 1 }.into()]),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Close", vec![Action::CloseFocus.into()]),
+        ];
+        let labels: Vec<Option<String>> = normalize_separators(entries_without_attention(entries))
+            .into_iter()
+            .map(|entry| match entry {
+                ContextMenuEntry::Item { label, .. } => Some(label),
+                ContextMenuEntry::Separator => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            vec![Some("Rename".to_owned()), None, Some("Close".to_owned())]
+        );
+    }
 
     #[test]
     fn showing_and_hiding_every_bar_show_the_bar_toggle_key() {

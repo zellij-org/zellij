@@ -710,6 +710,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
+        SettingKey::AttentionEnabled => info(
+            "Pane status",
+            "Track what panes need (approval, failures, finished commands) and show it: markers, the inbox, the session card, the session indicator, the tray badge and desktop notifications",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::AttentionPopupNeedsYou => info(
             "Needs you pop-ups",
             "Show a desktop notification when something needs you",
@@ -1772,7 +1779,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 42] = [
+pub const SECTION_ORDER: [&str; 43] = [
     "Startup",
     "Quitting",
     "Starting points",
@@ -1794,6 +1801,7 @@ pub const SECTION_ORDER: [&str; 42] = [
     "Layouts",
     "Scrollback",
     "Mirrors",
+    "Pane status",
     "Inside Zellij",
     "Outside Zellij",
     "Desktop pop-ups",
@@ -1864,6 +1872,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         },
         ScrollBufferSize | ScrollbackEditor => (C::PanesAndLayouts, "Scrollback"),
         MirrorResizesSourcePane | LiveViewReleaseKey => (C::PanesAndLayouts, "Mirrors"),
+        AttentionEnabled => (C::Notifications, "Pane status"),
         AttentionFrameMarkers | AttentionTabMarkers | AttentionStartupCard => {
             (C::Notifications, "Inside Zellij")
         },

@@ -319,6 +319,29 @@ impl Background {
             paused: self.paused(),
             popups: self.config.desktop_notifications(),
             badge: BadgeSettings::of(&self.config),
+            attention: self.config.enabled(),
+        }
+    }
+
+    pub fn adjust_intent(&self, intent: Intent) -> Intent {
+        if self.config.enabled() {
+            return intent;
+        }
+        let without_inbox = |view: PopupView| match view {
+            PopupView::Inbox => PopupView::Sessions,
+            view => view,
+        };
+        match intent {
+            Intent::Popup { view, at, token } => Intent::Popup {
+                view: view.map(without_inbox),
+                at,
+                token,
+            },
+            Intent::TogglePanel { view, token } => Intent::TogglePanel {
+                view: without_inbox(view),
+                token,
+            },
+            intent => intent,
         }
     }
 
@@ -397,7 +420,11 @@ impl Background {
             self.apply_tray_visibility();
             return vec![];
         }
-        request_intents(request).1
+        request_intents(request)
+            .1
+            .into_iter()
+            .map(|intent| self.adjust_intent(intent))
+            .collect()
     }
 
     pub fn on_tray(&mut self, event: TrayEvent, now: Instant) -> Vec<Intent> {
@@ -407,7 +434,11 @@ impl Background {
                 at,
                 token,
             }],
-            TrayEvent::Menu(action) => self.on_menu(action, now),
+            TrayEvent::Menu(action) => self
+                .on_menu(action, now)
+                .into_iter()
+                .map(|intent| self.adjust_intent(intent))
+                .collect(),
         }
     }
 
@@ -676,6 +707,69 @@ mod tests {
             global: global(vec![("b", items)]),
             last_used: Default::default(),
         }
+    }
+
+    #[test]
+    fn with_attention_off_every_way_to_the_inbox_shows_the_sessions() {
+        let (mut background, _) = background();
+        let attention_off = AttentionConfig {
+            enabled: Some(false),
+            ..Default::default()
+        };
+        background.on_config(attention_off, Instant::now());
+        assert_eq!(
+            background.on_request(AppRequest::TogglePanel {
+                view: PopupView::Inbox,
+                token: None
+            }),
+            vec![Intent::TogglePanel {
+                view: PopupView::Sessions,
+                token: None
+            }]
+        );
+        assert_eq!(
+            background.on_request(AppRequest::ShowPopup(PopupView::Inbox)),
+            vec![Intent::Popup {
+                view: Some(PopupView::Sessions),
+                at: None,
+                token: None
+            }]
+        );
+        assert_eq!(
+            background.on_tray(TrayEvent::Menu(MenuAction::ShowInbox), Instant::now()),
+            vec![Intent::Popup {
+                view: Some(PopupView::Sessions),
+                at: None,
+                token: None
+            }]
+        );
+        assert_eq!(
+            background.adjust_intent(Intent::Popup {
+                view: Some(PopupView::Quit),
+                at: None,
+                token: None
+            }),
+            Intent::Popup {
+                view: Some(PopupView::Quit),
+                at: None,
+                token: None
+            }
+        );
+        assert!(!background.menu_state().attention);
+    }
+
+    #[test]
+    fn with_attention_on_the_inbox_is_shown() {
+        let (mut background, _) = background();
+        assert_eq!(
+            background.on_request(AppRequest::ShowPopup(PopupView::Inbox)),
+            vec![Intent::Popup {
+                view: Some(PopupView::Inbox),
+                at: None,
+                token: None
+            }]
+        );
+        assert!(background.menu_state().attention);
     }
 
     #[test]

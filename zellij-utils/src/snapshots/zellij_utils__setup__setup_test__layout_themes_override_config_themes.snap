@@ -13847,6 +13847,7 @@ Config {
         idle_silence_secs: None,
         startup_card: None,
         tray_icon: None,
+        enabled: None,
         desktop_notifications: StatusMap {
             needs_you: None,
             failed: None,

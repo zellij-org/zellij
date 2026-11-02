@@ -188,8 +188,11 @@ pub fn menu(state: &MenuState) -> Vec<MenuEntry> {
         enabled,
         checked: None,
     };
-    vec![
-        item(1, "Show inbox", MenuAction::ShowInbox, true),
+    let mut entries = vec![];
+    if state.attention {
+        entries.push(item(1, "Show inbox", MenuAction::ShowInbox, true));
+    }
+    entries.extend([
         item(2, "Show sessions", MenuAction::ShowSessions, true),
         MenuEntry::Separator { id: 3 },
         item(4, "New window", MenuAction::NewWindow, true),
@@ -206,17 +209,23 @@ pub fn menu(state: &MenuState) -> Vec<MenuEntry> {
                 ),
             ],
         },
-        item(9, "Clear all notifications", MenuAction::ClearAll, true),
-        MenuEntry::Submenu {
-            id: 5,
-            label: "Pause notifications",
-            items: vec![
-                item(51, "1 hour", MenuAction::PauseHour, true),
-                item(52, "Until tomorrow", MenuAction::PauseUntilTomorrow, true),
-                item(53, "Resume", MenuAction::Resume, paused),
-            ],
-        },
-        notifications_menu(state),
+    ]);
+    if state.attention {
+        entries.extend([
+            item(9, "Clear all notifications", MenuAction::ClearAll, true),
+            MenuEntry::Submenu {
+                id: 5,
+                label: "Pause notifications",
+                items: vec![
+                    item(51, "1 hour", MenuAction::PauseHour, true),
+                    item(52, "Until tomorrow", MenuAction::PauseUntilTomorrow, true),
+                    item(53, "Resume", MenuAction::Resume, paused),
+                ],
+            },
+            notifications_menu(state),
+        ]);
+    }
+    entries.extend([
         MenuEntry::Submenu {
             id: 6,
             label: "Hide icon",
@@ -232,7 +241,8 @@ pub fn menu(state: &MenuState) -> Vec<MenuEntry> {
             MenuAction::QuitAll,
             true,
         ),
-    ]
+    ]);
+    entries
 }
 
 pub fn find_action(entries: &[MenuEntry], wanted: i32) -> Option<MenuAction> {
@@ -297,6 +307,33 @@ pub fn open(_events: TrayEvents, _state: &TrayState) -> Option<Box<dyn Tray>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_attention_off_the_menu_keeps_only_the_sessions_windows_and_icon_entries() {
+        let without_attention = MenuState {
+            attention: false,
+            ..MenuState::default()
+        };
+        let labels: Vec<&str> = menu(&without_attention)
+            .iter()
+            .map(|entry| match entry {
+                MenuEntry::Item { label, .. } | MenuEntry::Submenu { label, .. } => *label,
+                MenuEntry::Separator { .. } => "─",
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                "Show sessions",
+                "─",
+                "New window",
+                "Detach all",
+                "Hide icon",
+                "─",
+                "Quit Zellij and stop all sessions…",
+            ]
+        );
+    }
 
     #[test]
     fn the_menu_reads_like_the_plan_and_resume_needs_a_pause() {

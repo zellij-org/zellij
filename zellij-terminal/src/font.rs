@@ -373,6 +373,7 @@ impl FontStack {
         Self::new(size, false)
     }
 
+    #[cfg(test)]
     pub fn new(size: f32, system_fonts: bool) -> Result<Self> {
         Self::build(&FontOptions {
             family: None,

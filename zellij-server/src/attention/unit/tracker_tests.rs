@@ -765,3 +765,32 @@ fn a_watch_alert_clears_once_seen_without_being_focused() {
     assert!(!tracker.attention(&PANE).unwrap().from_watch);
     assert!(tracker.pane_is_watched(&PANE));
 }
+
+#[test]
+fn with_attention_off_panes_report_nothing_until_it_is_turned_back_on() {
+    let off = AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    };
+    let mut tracker = tracker();
+    tracker.set_config(off.clone(), 1_500);
+    tracker.set_pane_muted(OTHER, true, 1_600);
+    tracker.on_signals(
+        PANE,
+        vec![report("state=blocked:kind=permission:msg=QWxsb3c=")],
+        2_000,
+    );
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(frame(&tracker), None);
+    assert_eq!(tracker.attention(&OTHER).unwrap().muted, None);
+    assert!(tracker.frame_marker(&OTHER).is_none());
+
+    tracker.set_config(AttentionConfig::default(), 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    assert!(frame(&tracker).is_some());
+    assert!(tracker.attention(&OTHER).unwrap().muted.is_some());
+
+    tracker.set_config(off, 4_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(frame(&tracker), None);
+}

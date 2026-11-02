@@ -370,6 +370,7 @@ impl TryFrom<GlobalAttention> for GlobalAttentionUpdatePayload {
                     rgb: (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32,
                 })
                 .collect(),
+            attention_disabled: global.attention_disabled,
         })
     }
 }
@@ -400,6 +401,7 @@ impl TryFrom<GlobalAttentionUpdatePayload> for GlobalAttention {
                 Some((status, [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]))
             })
             .collect();
+        global.attention_disabled = payload.attention_disabled;
         Ok(global)
     }
 }

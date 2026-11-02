@@ -44,6 +44,7 @@ use zellij_utils::data::{
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::plugin_api::event::{event_to_protobuf_with_keybinds, ProtobufEvent};
+use zellij_utils::plugin_api::released_contract;
 
 use prost::Message;
 
@@ -3623,6 +3624,15 @@ pub fn apply_event_to_plugin(
             }
             let is_permission_request_result = matches!(event, Event::PermissionRequestResult(..));
             let protobuf_event = event_to_protobuf_with_keybinds(event, keybinds.as_deref());
+            let protobuf_event = match protobuf_event {
+                Ok(protobuf_event) if running_plugin.built_against_0_45 => {
+                    match released_contract::event_for_0_45_plugin(protobuf_event) {
+                        Some(protobuf_event) => Ok(protobuf_event),
+                        None => return Ok(()),
+                    }
+                },
+                other => other,
+            };
             match protobuf_event {
                 Ok(protobuf_event) => {
                     let update = instance

@@ -182,33 +182,31 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() -> bool {
-            let err_context = "Failed to deserialize event";
-            use std::convert::TryInto;
-            use zellij_tile::shim::plugin_api::event::ProtobufEvent;
-            use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
-                let protobuf_event: ProtobufEvent =
-                    ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
-                $crate::shim::set_mouse_modifiers(
-                    zellij_tile::shim::plugin_api::event::mouse_modifiers(&protobuf_event),
-                );
-                let event = protobuf_event.try_into().unwrap();
+                let Some((event, mouse_modifiers)) =
+                    $crate::shim::plugin_api::event::plugin_event_from_protobuf_bytes(
+                        &protobuf_bytes,
+                    )
+                else {
+                    return false;
+                };
+                $crate::shim::set_mouse_modifiers(mouse_modifiers);
                 state.borrow_mut().update(event)
             })
         }
 
         #[no_mangle]
         pub fn pipe() -> bool {
-            let err_context = "Failed to deserialize pipe message";
-            use std::convert::TryInto;
-            use zellij_tile::shim::plugin_api::pipe_message::ProtobufPipeMessage;
-            use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
-                let protobuf_pipe_message: ProtobufPipeMessage =
-                    ProtobufPipeMessage::decode(protobuf_bytes.as_slice()).unwrap();
-                let pipe_message = protobuf_pipe_message.try_into().unwrap();
+                let Some(pipe_message) =
+                    $crate::shim::plugin_api::pipe_message::pipe_message_from_protobuf_bytes(
+                        &protobuf_bytes,
+                    )
+                else {
+                    return false;
+                };
                 state.borrow_mut().pipe(pipe_message)
             })
         }
@@ -224,6 +222,9 @@ macro_rules! register_plugin {
         pub fn plugin_version() {
             println!("{}", $crate::prelude::VERSION);
         }
+
+        #[no_mangle]
+        pub fn zellij_plugin_contract() {}
     };
 }
 
@@ -315,7 +316,13 @@ macro_rules! register_shared_plugin {
             let context = $crate::read_shared_context();
             let event = {
                 let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
-                $crate::shim::plugin_api::event::event_from_protobuf_bytes(&protobuf_bytes).unwrap()
+                match $crate::shim::plugin_api::event::event_from_protobuf_bytes(&protobuf_bytes) {
+                    Ok(event) => event,
+                    Err(e) => {
+                        eprintln!("Skipping an event this plugin cannot read: {}", e);
+                        return $crate::write_render_request(Default::default());
+                    },
+                }
             };
             let render = STATE.with(|state| {
                 <$t as $crate::ZellijSharedPlugin>::update(&mut *state.borrow_mut(), event, context)
@@ -325,15 +332,15 @@ macro_rules! register_shared_plugin {
 
         #[no_mangle]
         pub fn shared_pipe() -> i32 {
-            use std::convert::TryInto;
-            use $crate::shim::plugin_api::pipe_message::ProtobufPipeMessage;
-            use $crate::shim::prost::Message;
             let context = $crate::read_shared_context();
-            let protobuf_pipe_message: ProtobufPipeMessage = {
-                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
-                ProtobufPipeMessage::decode(protobuf_bytes.as_slice()).unwrap()
+            let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
+            let Some(pipe_message) =
+                $crate::shim::plugin_api::pipe_message::pipe_message_from_protobuf_bytes(
+                    &protobuf_bytes,
+                )
+            else {
+                return $crate::write_render_request(Default::default());
             };
-            let pipe_message = protobuf_pipe_message.try_into().unwrap();
             let render = STATE.with(|state| {
                 <$t as $crate::ZellijSharedPlugin>::pipe(
                     &mut *state.borrow_mut(),
@@ -399,5 +406,8 @@ macro_rules! register_shared_plugin {
         pub fn plugin_version() {
             println!("{}", $crate::prelude::VERSION);
         }
+
+        #[no_mangle]
+        pub fn zellij_plugin_contract() {}
     };
 }
