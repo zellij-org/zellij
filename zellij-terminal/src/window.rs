@@ -3802,6 +3802,7 @@ mod tests {
         window_state::load_from(&dir.path().join("window-state.json"))
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_window_the_system_destroys_still_remembers_its_size() {
         let mut harness = Harness::new(2, true, "");
@@ -3822,6 +3823,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_window_the_system_destroys_lets_its_session_go() {
         let mut harness = Harness::new(1, true, "");
@@ -3831,6 +3833,19 @@ mod tests {
             vec![Action::Detach],
             "quitting from the Dock lets every session go, as Cmd+Q does"
         );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_destroyed_window_is_not_asked_about_itself_off_macos() {
+        let mut harness = Harness::new(1, true, "");
+        let dir = remembering(&mut harness);
+        assert_eq!(
+            harness.app.on_window_event(WindowEvent::Destroyed),
+            Verdict::Close
+        );
+        assert_eq!(remembered(&dir), None);
+        assert_eq!(harness.actions(), vec![]);
     }
 
     #[test]
