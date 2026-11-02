@@ -6592,6 +6592,19 @@ fn csi_22t_and_23t_stay_local() {
 }
 
 #[test]
+fn an_empty_osc_title_clears_the_title_instead_of_setting_an_empty_one() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b]2;hello\x07");
+    assert_eq!(grid.title.as_deref(), Some("hello"));
+    parser.advance(&mut grid, b"\x1b]2;\x07");
+    assert_eq!(grid.title, None);
+    parser.advance(&mut grid, b"\x1b]0;again\x07");
+    parser.advance(&mut grid, b"\x1b]0;   \x07");
+    assert_eq!(grid.title, None);
+}
+
+#[test]
 fn osc_4_set_stays_local() {
     // OSC 4;<index>;<rgb> writes to Zellij's in-memory palette; only
     // the query form (`OSC 4;N;?`) ever forwards to the host.

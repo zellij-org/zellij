@@ -4154,46 +4154,20 @@ fn delete_dead_session(session_name: String) -> Result<()> {
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    use zellij_utils::consts::is_ipc_socket;
-    let mut live_sessions = vec![];
-    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if !zellij_utils::consts::is_app_socket_name(&file_name)
-                        && is_ipc_socket(&file.file_type().unwrap())
-                    {
-                        live_sessions.push(file_name);
-                    }
-                }
-            }
-        });
-    }
-    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
-                    if live_sessions.contains(&session_name) {
-                        // this is not a dead session...
-                        return None;
-                    }
-                    Some(session_name)
-                })
-                .collect()
-        },
+    let index = match zellij_utils::session_index::SessionIndex::open_default() {
+        Ok(index) => Some(index),
         Err(e) => {
-            log::error!("Failed to read session info cache dir: {:?}", e);
-            vec![]
+            log::error!("Failed to open the session index: {}", e);
+            None
         },
     };
-    for session in dead_sessions {
-        delete_dead_session(session)?;
-    }
-    Ok(())
+    zellij_utils::session_index::delete_dead_sessions_in(
+        &ZELLIJ_SOCK_DIR,
+        &ZELLIJ_SESSION_INFO_CACHE_DIR,
+        index.as_ref(),
+    )
+    .map(|_| ())
+    .map_err(|e| anyhow!(e))
 }
 
 fn edit_scrollback(env: &PluginEnv) {
