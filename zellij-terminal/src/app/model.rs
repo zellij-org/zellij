@@ -87,6 +87,7 @@ pub struct MenuState {
     pub paused: bool,
     pub popups: StatusSet,
     pub badge: BadgeSettings,
+    pub attention: bool,
 }
 
 impl Default for MenuState {
@@ -95,6 +96,7 @@ impl Default for MenuState {
             paused: false,
             popups: StatusSet::of(&POPUP_STATUSES),
             badge: BadgeSettings::default(),
+            attention: true,
         }
     }
 }
@@ -112,7 +114,11 @@ pub fn tray_state(global: &GlobalAttention, menu: MenuState) -> TrayState {
             pill: pill(global, &menu.badge),
             dimmed: menu.paused,
         },
-        tooltip: tooltip(global, menu.paused, menu.badge.statuses),
+        tooltip: if menu.attention {
+            tooltip(global, menu.paused, menu.badge.statuses)
+        } else {
+            "Zellij".to_owned()
+        },
         menu,
     }
 }
@@ -332,6 +338,23 @@ mod tests {
         assert_eq!(label(9), "9");
         assert_eq!(label(10), "9+");
         assert_eq!(label(250), "9+");
+    }
+
+    #[test]
+    fn with_attention_off_the_icon_has_no_badge_and_the_tooltip_no_counts() {
+        let global = global(vec![("a", vec![item(1, AttentionStatus::NeedsYou, "", 1)])]);
+        let config = AttentionConfig {
+            enabled: Some(false),
+            ..Default::default()
+        };
+        let menu = MenuState {
+            attention: false,
+            badge: BadgeSettings::of(&config),
+            ..MenuState::default()
+        };
+        let state = tray_state(&global, menu);
+        assert_eq!(state.look.pill, None);
+        assert_eq!(state.tooltip, "Zellij");
     }
 
     #[test]

@@ -289,7 +289,7 @@ pub fn opener() -> Option<&'static str> {
     None
 }
 
-#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+#[cfg(windows)]
 const SHELL_EXECUTE: &str = "ShellExecuteW";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

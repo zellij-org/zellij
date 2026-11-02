@@ -748,6 +748,10 @@ fn attention_values(
         attention.tray_icon.map(|v| v.to_string()),
     );
     values.insert(
+        SettingKey::AttentionEnabled,
+        attention.enabled.map(|v| v.to_string()),
+    );
+    values.insert(
         SettingKey::AttentionNotificationDetails,
         attention.notification_details.map(|v| v.to_string()),
     );
@@ -880,6 +884,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::AttentionTrayIcon => {
             target.attention.tray_icon = source.attention.tray_icon;
+            return;
+        },
+        SettingKey::AttentionEnabled => {
+            target.attention.enabled = source.attention.enabled;
             return;
         },
         SettingKey::AttentionNotificationDetails => {

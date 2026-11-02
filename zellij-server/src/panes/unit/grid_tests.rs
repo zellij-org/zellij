@@ -6593,14 +6593,14 @@ fn csi_22t_and_23t_stay_local() {
 
 #[test]
 fn an_empty_osc_title_clears_the_title_instead_of_setting_an_empty_one() {
-    let mut parser = vte::Parser::new();
+    let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.advance(&mut grid, b"\x1b]2;hello\x07");
+    parser.feed(&mut grid, b"\x1b]2;hello\x07");
     assert_eq!(grid.title.as_deref(), Some("hello"));
-    parser.advance(&mut grid, b"\x1b]2;\x07");
+    parser.feed(&mut grid, b"\x1b]2;\x07");
     assert_eq!(grid.title, None);
-    parser.advance(&mut grid, b"\x1b]0;again\x07");
-    parser.advance(&mut grid, b"\x1b]0;   \x07");
+    parser.feed(&mut grid, b"\x1b]0;again\x07");
+    parser.feed(&mut grid, b"\x1b]0;   \x07");
     assert_eq!(grid.title, None);
 }
 
@@ -10676,9 +10676,9 @@ fn only_main_prompts_count_as_prompt_returns() {
     let mut grid = create_grid_with_content("\x1b]133;A;k=s\x07> \x1b]133;P;k=r\x07");
     assert!(!grid.pending_prompt_return);
     assert_eq!(prompt_count(&grid.shell_reports.drain()), 0);
-    let mut grid = create_grid_with_content("\x1b]133;P;k=c\x07");
+    let grid = create_grid_with_content("\x1b]133;P;k=c\x07");
     assert!(!grid.pending_prompt_return);
-    let mut grid = create_grid_with_content("\x1b]133;D;0\x07");
+    let grid = create_grid_with_content("\x1b]133;D;0\x07");
     assert!(!grid.pending_prompt_return);
     let mut grid = create_grid_with_content("\x1b]133;A\x07$ ");
     assert!(grid.pending_prompt_return);

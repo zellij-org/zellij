@@ -236,6 +236,21 @@ fn initial_keybinds_from_protobuf_bytes(bytes: &[u8]) -> Option<Result<Event, &'
     Some(Ok(Event::InitialKeybinds(keybinds)))
 }
 
+pub fn plugin_event_from_protobuf_bytes(
+    bytes: &[u8],
+) -> Option<(Event, std::collections::BTreeSet<KeyModifier>)> {
+    use prost::Message;
+    let protobuf_event = ProtobufEvent::decode(bytes).ok()?;
+    let modifiers = mouse_modifiers(&protobuf_event);
+    match Event::try_from(protobuf_event) {
+        Ok(event) => Some((event, modifiers)),
+        Err(e) => {
+            eprintln!("Skipping an event this plugin cannot read: {}", e);
+            None
+        },
+    }
+}
+
 pub fn event_from_protobuf_bytes(bytes: &[u8]) -> Result<Event, &'static str> {
     use prost::Message;
     if let Some(event) = initial_keybinds_from_protobuf_bytes(bytes) {
@@ -5570,6 +5585,48 @@ mod plugin_settings_entries_tests {
         assert_eq!(
             EventType::try_from(protobuf).unwrap(),
             EventType::PluginSettingsEntries
+        );
+    }
+}
+
+#[cfg(test)]
+mod unreadable_event_tests {
+    use super::*;
+    use crate::data::{InputMode, ModeInfo, Mouse};
+    use prost::Message;
+
+    #[test]
+    fn a_plugin_skips_an_event_it_cannot_read_instead_of_failing() {
+        let mut protobuf_event = ProtobufEvent::try_from(Event::ModeUpdate(ModeInfo {
+            mode: InputMode::Locked,
+            ..Default::default()
+        }))
+        .unwrap();
+        if let Some(event::Payload::ModeUpdatePayload(payload)) = protobuf_event.payload.as_mut() {
+            payload.current_mode = 999;
+        }
+        assert!(plugin_event_from_protobuf_bytes(&protobuf_event.encode_to_vec()).is_none());
+        let unknown_event = ProtobufEvent {
+            name: 999,
+            payload: None,
+        };
+        assert!(plugin_event_from_protobuf_bytes(&unknown_event.encode_to_vec()).is_none());
+        assert!(plugin_event_from_protobuf_bytes(b"\xff\xff\xff").is_none());
+    }
+
+    #[test]
+    fn a_plugin_still_reads_events_it_knows_with_their_mouse_modifiers() {
+        let protobuf_event = ProtobufEvent::try_from(Event::MouseWithModifiers(
+            Mouse::LeftClick(1, 2),
+            std::collections::BTreeSet::from([KeyModifier::Ctrl]),
+        ))
+        .unwrap();
+        let (event, modifiers) =
+            plugin_event_from_protobuf_bytes(&protobuf_event.encode_to_vec()).unwrap();
+        assert_eq!(event, Event::Mouse(Mouse::LeftClick(1, 2)));
+        assert_eq!(
+            modifiers,
+            std::collections::BTreeSet::from([KeyModifier::Ctrl])
         );
     }
 }

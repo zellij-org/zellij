@@ -323,6 +323,9 @@ impl Screen {
             .iter()
             .filter_map(|status| colors.get(*status).map(|rgb| (*status, rgb)))
             .collect();
+        if !self.attention.config().enabled() {
+            global = global.without_attention();
+        }
         if self.global_attention.as_ref() == Some(&global) {
             return;
         }

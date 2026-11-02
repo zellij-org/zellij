@@ -19569,6 +19569,54 @@ fn the_startup_session_card_is_unfocused_and_says_so() {
     );
 }
 
+#[test]
+fn with_attention_off_the_session_card_does_not_open_and_plugins_get_no_attention() {
+    use zellij_utils::attention::{
+        AttentionItem, AttentionStatus, GlobalAttention, PaneAttention, SessionAttention,
+    };
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    let mut busy = SessionAttention::default();
+    let item = AttentionItem {
+        pane_id: zellij_utils::data::PaneId::Terminal(1),
+        tab_id: 0,
+        tab_name: "tab".to_owned(),
+        pane_title: "pane".to_owned(),
+        attention: PaneAttention {
+            status: AttentionStatus::NeedsYou,
+            ..Default::default()
+        },
+    };
+    busy.counts.add(&item.attention);
+    busy.items.push(item);
+    screen.set_global_attention(GlobalAttention::build(
+        "here",
+        vec![
+            ("here".to_owned(), Default::default()),
+            ("other".to_owned(), busy),
+        ],
+    ));
+    let told: Vec<GlobalAttention> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::GlobalAttentionUpdate(global) => Some(global),
+            _ => None,
+        })
+        .collect();
+    let global = told.last().expect("plugins are told");
+    assert!(global.attention_disabled);
+    assert!(global.items.is_empty());
+    assert_eq!(global.counts, Default::default());
+    assert_eq!(global.running(), 2);
+    screen.open_session_card(client_id);
+    assert!(loaded_popups(&plugin_receiver).is_empty());
+    assert_eq!(screen.pending_session_card, None);
+}
+
 fn loaded_popups(
     plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
 ) -> Vec<(crate::tab::PopupBehavior, Option<String>)> {

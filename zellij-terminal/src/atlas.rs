@@ -100,9 +100,16 @@ pub struct GlyphAtlas {
     shelf_top: u32,
     shelf_height: u32,
     shelf_cursor: u32,
+    identity: u64,
     revision: u64,
     reshaped_at: u64,
     dirty_log: Vec<(u64, u32, u32)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AtlasStamp {
+    pub identity: u64,
+    pub revision: u64,
 }
 
 fn next_revision() -> u64 {
@@ -137,6 +144,7 @@ impl GlyphAtlas {
             shelf_top: PADDING,
             shelf_height: 0,
             shelf_cursor: PADDING,
+            identity: revision,
             revision,
             reshaped_at: revision,
             dirty_log: Vec::new(),
@@ -199,6 +207,13 @@ impl GlyphAtlas {
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn stamp(&self) -> AtlasStamp {
+        AtlasStamp {
+            identity: self.identity,
+            revision: self.revision,
+        }
     }
 
     #[cfg(test)]
@@ -488,6 +503,7 @@ impl GlyphCache {
         self.rendered(Glyph { font, glyph }, budget)
     }
 
+    #[cfg(test)]
     pub fn glyph(&mut self, style: FaceStyle, character: char, budget: u32) -> Lookup {
         self.glyph_with_room(style, character, budget, 0)
     }

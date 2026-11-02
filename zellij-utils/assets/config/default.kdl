@@ -946,9 +946,7 @@ web_client {
 
 // Status of panes, tabs and sessions: the symbols on frames and tabs, the inbox,
 // and the desktop app's tray icon and notifications. Every key is optional.
-// To turn all of this off, set the first four keys below to false, startup_card
-// to "never", every desktop_notifications type to false (and session_indicator
-// false).
+// To turn all of this off, set `enabled false`.
 //
 // Each pane can also be set apart from this, from its right-click menu, the
 // pane mode keys or `zellij action`:
@@ -962,6 +960,13 @@ web_client {
 //     unmuting shows its current state.
 //
 // attention {
+//     // Track what panes need and show it anywhere. When false, panes report
+//     // nothing: no markers, inbox, session card, counts in the session
+//     // indicator, tray badge or desktop notifications, and the watch and
+//     // mute entries leave the right-click menu. The other keys below only
+//     // apply when this is true.
+//     enabled true
+//
 //     // Show what a pane needs (approval, a failure, a finished command) in
 //     // its frame title.
 //     frame_markers true

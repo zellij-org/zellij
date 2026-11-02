@@ -538,7 +538,6 @@ mod tests {
     use crate::connection::{test_attach_at as attach_at, Capabilities, Geometry};
     use crate::test_server::FakeServer;
     use tempfile::TempDir;
-    use zellij_utils::input::actions::Action;
     use zellij_utils::pane_size::Size;
 
     const HANDSHAKE_MESSAGES: usize = 8;

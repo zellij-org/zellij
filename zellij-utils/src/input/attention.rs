@@ -264,6 +264,7 @@ pub struct AttentionConfig {
     pub idle_silence_secs: Option<u64>,
     pub startup_card: Option<StartupCard>,
     pub tray_icon: Option<bool>,
+    pub enabled: Option<bool>,
     pub desktop_notifications: StatusMap<bool>,
     pub tray_badge: StatusMap<bool>,
     pub tray_badge_colors: StatusMap<[u8; 3]>,
@@ -301,14 +302,17 @@ fn secs_value(node: &KdlNode) -> Result<u64, ConfigError> {
 }
 
 impl AttentionConfig {
+    pub fn enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
     pub fn frame_markers(&self) -> bool {
-        self.frame_markers.unwrap_or(true)
+        self.enabled() && self.frame_markers.unwrap_or(true)
     }
     pub fn host_status(&self) -> bool {
-        self.host_status.unwrap_or(true)
+        self.enabled() && self.host_status.unwrap_or(true)
     }
     pub fn tab_markers(&self) -> bool {
-        self.tab_markers.unwrap_or(true)
+        self.enabled() && self.tab_markers.unwrap_or(true)
     }
     pub fn idle_rule(&self) -> IdleRuleScope {
         self.idle_rule.unwrap_or_default()
@@ -325,12 +329,19 @@ impl AttentionConfig {
         self.idle_silence_secs.unwrap_or(DEFAULT_IDLE_SILENCE_SECS)
     }
     pub fn startup_card(&self) -> StartupCard {
-        self.startup_card.unwrap_or_default()
+        if self.enabled() {
+            self.startup_card.unwrap_or_default()
+        } else {
+            StartupCard::Never
+        }
     }
     pub fn tray_icon(&self) -> bool {
         self.tray_icon.unwrap_or(true)
     }
     pub fn desktop_notifications(&self) -> StatusSet {
+        if !self.enabled() {
+            return StatusSet::default();
+        }
         POPUP_STATUSES
             .iter()
             .fold(StatusSet::default(), |set, status| {
@@ -341,6 +352,9 @@ impl AttentionConfig {
             })
     }
     pub fn tray_badge(&self) -> StatusSet {
+        if !self.enabled() {
+            return StatusSet::default();
+        }
         BADGE_STATUSES
             .iter()
             .fold(StatusSet::default(), |set, status| {
@@ -387,6 +401,7 @@ impl AttentionConfig {
                         })?);
                 },
                 "tray_icon" => config.tray_icon = Some(bool_value(node)?),
+                "enabled" => config.enabled = Some(bool_value(node)?),
                 "notification_details" => config.notification_details = Some(bool_value(node)?),
                 "desktop_notifications" => {
                     config.desktop_notifications =
@@ -448,6 +463,9 @@ impl AttentionConfig {
         if let Some(v) = self.tray_icon {
             push("tray_icon", KdlValue::Bool(v));
         }
+        if let Some(v) = self.enabled {
+            push("enabled", KdlValue::Bool(v));
+        }
         if let Some(v) = self.notification_details {
             push("notification_details", KdlValue::Bool(v));
         }
@@ -478,6 +496,7 @@ impl AttentionConfig {
             idle_silence_secs: other.idle_silence_secs.or(self.idle_silence_secs),
             startup_card: other.startup_card.or(self.startup_card),
             tray_icon: other.tray_icon.or(self.tray_icon),
+            enabled: other.enabled.or(self.enabled),
             desktop_notifications: self
                 .desktop_notifications
                 .merge(&other.desktop_notifications),
@@ -509,6 +528,7 @@ mod tests {
         assert_eq!(config.idle_silence_secs(), 3);
         assert_eq!(config.startup_card(), StartupCard::Attention);
         assert!(config.tray_icon());
+        assert!(config.enabled());
         assert_eq!(
             config.desktop_notifications(),
             StatusSet::of(&POPUP_STATUSES)
@@ -533,6 +553,7 @@ mod tests {
                 idle_silence_secs 4
                 startup_card "never"
                 tray_icon false
+                enabled false
                 desktop_notifications {
                     needs_you true
                     done false
@@ -556,18 +577,16 @@ mod tests {
         assert_eq!(config.done_threshold_secs(), 5);
         assert_eq!(config.startup_card(), StartupCard::Never);
         assert!(!config.tray_icon());
+        assert!(!config.enabled());
+        assert_eq!(config.desktop_notifications(), StatusSet::default());
+        assert_eq!(config.tray_badge(), StatusSet::default());
         assert_eq!(
-            config.desktop_notifications(),
-            StatusSet::of(&[AttentionStatus::NeedsYou, AttentionStatus::Failed])
-        );
-        assert_eq!(
-            config.tray_badge(),
-            StatusSet::of(&[
-                AttentionStatus::NeedsYou,
-                AttentionStatus::Failed,
-                AttentionStatus::Done,
-                AttentionStatus::Quiet
-            ])
+            config.desktop_notifications,
+            StatusMap {
+                needs_you: Some(true),
+                done: Some(false),
+                ..Default::default()
+            }
         );
         assert_eq!(
             config.tray_badge_color(AttentionStatus::Failed),
@@ -590,6 +609,30 @@ mod tests {
         assert!(parse("attention {\n tray_badge {\n idle true\n }\n}").is_err());
         assert!(parse("attention {\n tray_badge_colors {\n done \"red\"\n }\n}").is_err());
         assert!(parse("attention {\n tray_icon \"no\"\n}").is_err());
+        assert!(parse("attention {\n enabled \"off\"\n}").is_err());
+    }
+
+    #[test]
+    fn turning_attention_off_turns_every_attention_feature_off() {
+        let config = parse(
+            "attention {\n enabled false\n frame_markers true\n tab_markers true\n host_status true\n startup_card \"always\"\n}",
+        )
+        .unwrap();
+        assert!(!config.enabled());
+        assert!(!config.frame_markers());
+        assert!(!config.tab_markers());
+        assert!(!config.host_status());
+        assert_eq!(config.startup_card(), StartupCard::Never);
+        assert!(config.desktop_notifications().is_empty());
+        assert!(config.tray_badge().is_empty());
+        let merged = config.merge(parse("attention {\n enabled true\n}").unwrap());
+        assert!(merged.enabled());
+        assert!(merged.frame_markers());
+        assert_eq!(merged.startup_card(), StartupCard::Always);
+        assert_eq!(
+            merged.desktop_notifications(),
+            StatusSet::of(&POPUP_STATUSES)
+        );
     }
 
     #[test]

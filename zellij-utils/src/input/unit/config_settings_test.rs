@@ -267,6 +267,7 @@ pub(crate) fn every_setting_set() -> Config {
             idle_silence_secs: Some(5),
             startup_card: Some(crate::input::attention::StartupCard::Never),
             tray_icon: Some(false),
+            enabled: Some(false),
             desktop_notifications: crate::input::attention::StatusMap {
                 needs_you: Some(true),
                 failed: Some(false),

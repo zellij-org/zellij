@@ -133,7 +133,7 @@ struct Pass {
 struct AtlasTexture {
     texture: glow::Texture,
     size: (u32, u32),
-    revision: Option<u64>,
+    uploaded: Option<crate::atlas::AtlasStamp>,
     format: u32,
     internal_format: i32,
 }
@@ -936,7 +936,7 @@ unsafe fn atlas_texture(
     Ok(AtlasTexture {
         texture,
         size: (0, 0),
-        revision: None,
+        uploaded: None,
         format,
         internal_format,
     })
@@ -952,8 +952,8 @@ impl Renderer {
         for (_, image) in self.images.drain() {
             unsafe { self.gl.delete_texture(image.texture) };
         }
-        self.mask_atlas.revision = None;
-        self.color_atlas.revision = None;
+        self.mask_atlas.uploaded = None;
+        self.color_atlas.uploaded = None;
         self.retained = None;
         self.image_batches.clear();
     }
@@ -967,7 +967,7 @@ enum AtlasUpload {
 }
 
 fn plan_atlas_upload(
-    uploaded_revision: Option<u64>,
+    uploaded: Option<crate::atlas::AtlasStamp>,
     uploaded_size: (u32, u32),
     atlas: &GlyphAtlas,
 ) -> AtlasUpload {
@@ -975,12 +975,13 @@ fn plan_atlas_upload(
     if size.1 == 0 {
         return AtlasUpload::Nothing;
     }
-    let Some(revision) = uploaded_revision else {
+    let Some(uploaded) = uploaded else {
         return AtlasUpload::Whole;
     };
-    if size != uploaded_size {
+    if size != uploaded_size || uploaded.identity != atlas.stamp().identity {
         return AtlasUpload::Whole;
     }
+    let revision = uploaded.revision;
     if revision == atlas.revision() {
         return AtlasUpload::Nothing;
     }
@@ -996,7 +997,7 @@ fn plan_atlas_upload(
 
 fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtlas) {
     let size = (atlas.width(), atlas.height());
-    let plan = plan_atlas_upload(target.revision, target.size, atlas);
+    let plan = plan_atlas_upload(target.uploaded, target.size, atlas);
     unsafe {
         match plan {
             AtlasUpload::Nothing => {},
@@ -1033,7 +1034,7 @@ fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtla
         }
     }
     target.size = size;
-    target.revision = Some(atlas.revision());
+    target.uploaded = Some(atlas.stamp());
 }
 
 unsafe fn draw_pass(
@@ -1197,18 +1198,19 @@ mod tests {
         let mut atlas = GlyphAtlas::new(1);
         let size = (atlas.width(), atlas.height());
         assert_eq!(plan_atlas_upload(None, (0, 0), &atlas), AtlasUpload::Whole);
-        let revision = atlas.revision();
+        let stamp = atlas.stamp();
         while atlas.height() == size.1 {
             atlas.insert(&glyph(64, 64)).unwrap();
         }
         assert_eq!(
-            plan_atlas_upload(Some(revision), size, &atlas),
+            plan_atlas_upload(Some(stamp), size, &atlas),
             AtlasUpload::Whole
         );
     }
 
     #[test]
     fn an_atlas_with_nothing_in_it_is_never_uploaded() {
+        let other = GlyphAtlas::new(1).stamp();
         let empty = GlyphAtlas::new(4);
         assert_eq!(empty.height(), 0);
         assert_eq!(
@@ -1216,11 +1218,11 @@ mod tests {
             AtlasUpload::Nothing
         );
         assert_eq!(
-            plan_atlas_upload(Some(1), (4096, 256), &empty),
+            plan_atlas_upload(Some(other), (4096, 256), &empty),
             AtlasUpload::Nothing
         );
         assert_eq!(
-            plan_atlas_upload(Some(1), (empty.width(), 0), &empty),
+            plan_atlas_upload(Some(other), (empty.width(), 0), &empty),
             AtlasUpload::Nothing,
             "another cache's empty atlas must not ask for a sub-upload of zero rows"
         );
@@ -1232,7 +1234,7 @@ mod tests {
         atlas.insert(&glyph(8, 16)).unwrap();
         let size = (atlas.width(), atlas.height());
         assert_eq!(
-            plan_atlas_upload(Some(atlas.revision()), size, &atlas),
+            plan_atlas_upload(Some(atlas.stamp()), size, &atlas),
             AtlasUpload::Nothing
         );
     }
@@ -1244,10 +1246,10 @@ mod tests {
             atlas.insert(&glyph(8, 16)).unwrap();
         }
         let size = (atlas.width(), atlas.height());
-        let revision = atlas.revision();
+        let stamp = atlas.stamp();
         let entry = atlas.insert(&glyph(8, 16)).unwrap();
         assert_eq!(
-            plan_atlas_upload(Some(revision), size, &atlas),
+            plan_atlas_upload(Some(stamp), size, &atlas),
             AtlasUpload::Rows {
                 top: entry.y,
                 bottom: entry.y + 16
@@ -1259,7 +1261,7 @@ mod tests {
     fn a_screenful_of_new_glyphs_uploads_a_small_part_of_the_atlas() {
         let mut atlas = GlyphAtlas::new(1);
         let size = (atlas.width(), atlas.height());
-        let revision = atlas.revision();
+        let stamp = atlas.stamp();
         for _ in 0..300 {
             atlas.insert(&glyph(8, 20)).unwrap();
         }
@@ -1268,8 +1270,7 @@ mod tests {
             size.1,
             "the atlas grew, pick a smaller batch"
         );
-        let AtlasUpload::Rows { top, bottom } = plan_atlas_upload(Some(revision), size, &atlas)
-        else {
+        let AtlasUpload::Rows { top, bottom } = plan_atlas_upload(Some(stamp), size, &atlas) else {
             panic!("new glyphs must be uploaded as a band of rows");
         };
         assert!(
@@ -1277,6 +1278,23 @@ mod tests {
             "{} of {} rows were uploaded for one screenful",
             bottom - top,
             size.1
+        );
+    }
+
+    #[test]
+    fn a_texture_last_filled_by_another_atlas_is_uploaded_whole_even_if_that_atlas_changed_later() {
+        let mut ours = GlyphAtlas::new(1);
+        let mut theirs = GlyphAtlas::new(1);
+        ours.insert(&glyph(8, 16)).unwrap();
+        theirs.insert(&glyph(8, 16)).unwrap();
+        theirs.insert(&glyph(8, 16)).unwrap();
+        assert!(theirs.revision() > ours.revision());
+        let size = (ours.width(), ours.height());
+        assert_eq!((theirs.width(), theirs.height()), size);
+        assert_eq!(
+            plan_atlas_upload(Some(theirs.stamp()), size, &ours),
+            AtlasUpload::Whole,
+            "a texture holding another cache's atlas must not be patched with our rows only"
         );
     }
 

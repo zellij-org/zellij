@@ -986,7 +986,8 @@ impl Desktop {
         let first = match self.hosting() {
             Some(hosting) => {
                 hosting.background.start_on_main_thread();
-                hosting.first.take()
+                let first = hosting.first.take();
+                first.map(|intent| hosting.background.adjust_intent(intent))
             },
             None => None,
         };

@@ -5688,6 +5688,7 @@ setting_keys! {
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
     AttentionStartupCard => (Attention, "startup_card", false, Text),
     AttentionTrayIcon => (Attention, "tray_icon", false, Flag),
+    AttentionEnabled => (Attention, "enabled", false, Flag),
     AttentionNotificationDetails => (Attention, "notification_details", false, Flag),
     AttentionPopupNeedsYou => (AttentionPopups, "needs_you", false, Flag),
     AttentionPopupFailed => (AttentionPopups, "failed", false, Flag),

@@ -579,6 +579,11 @@ impl Screen {
         let entries = self.resolve_toggled_context_menu_labels(entries, &context);
         let entries = self.resolve_session_history_context_menu_entries(entries, client_id);
         let entries = self.resolve_hidden_bars_context_menu_entries(entries, &context);
+        let entries = if self.attention.config().enabled() {
+            entries
+        } else {
+            zellij_utils::input::context_menu::entries_without_attention(entries)
+        };
         let entries = entries_available_here(
             entries,
             self.client_can_paste_from_clipboard(client_id),
@@ -1106,6 +1111,10 @@ impl Screen {
             });
     }
     pub fn open_session_card(&mut self, client_id: ClientId) {
+        if !self.attention.config().enabled() {
+            self.pending_session_card = None;
+            return;
+        }
         if self.get_active_tab(client_id).is_err() {
             self.pending_session_card = Some(client_id);
             return;

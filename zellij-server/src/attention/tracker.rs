@@ -988,8 +988,16 @@ impl AttentionTracker {
         let Some(track) = self.panes.get(&pane_id) else {
             return;
         };
-        let candidates = self.candidates(track);
-        let muted = self.mute_scope(&pane_id, track);
+        let candidates = if self.config.enabled() {
+            self.candidates(track)
+        } else {
+            vec![]
+        };
+        let muted = if self.config.enabled() {
+            self.mute_scope(&pane_id, track)
+        } else {
+            None
+        };
         let best = Self::pick(&candidates, |c| c.past && track.seen(c.since_ms));
         let previous = track.resolved.clone();
         let mut resolved = match best {
@@ -1005,6 +1013,10 @@ impl AttentionTracker {
                 ignore_output: track.ignore_output,
                 watched: track.watch_armed_ms.is_some(),
                 from_watch: c.from_watch,
+            },
+            None if !self.config.enabled() => PaneAttention {
+                changed_ms: previous.changed_ms,
+                ..Default::default()
             },
             None => PaneAttention {
                 muted,
