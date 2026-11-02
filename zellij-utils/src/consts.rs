@@ -227,11 +227,12 @@ pub fn ipc_bind_reply(
     ListenerOptions::new().name(ns_name).create_sync()
 }
 
-pub const APP_DIR_NAME: &str = ".desktop-app";
+// Kept short: macOS limits socket paths to 104 bytes, and the temp dir already uses about half.
+pub const APP_DIR_NAME: &str = ".desk";
 pub const APP_CONTROL_SOCKET_NAME: &str = "control";
 pub const APP_ATTENTION_SOCKET_NAME: &str = "attention";
 pub const APP_LOCK_FILE_NAME: &str = "lock";
-pub const APP_PANEL_SESSION: &str = ".zellij-app-panel";
+pub const APP_PANEL_SESSION: &str = ".zj-panel";
 pub const APP_QUIT_REQUEST: &str = ".zellij-app-quit";
 
 pub fn is_app_socket_name(name: &str) -> bool {
@@ -386,6 +387,30 @@ mod not_unix {
 mod app_dir_tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn every_desktop_app_socket_fits_the_macos_limit_with_room_to_spare() {
+        const MACOS_SOCKET_PATH_LIMIT: usize = 104;
+        // Leaves room for a longer uid and contract version than we have today.
+        let sock_dir = Path::new(
+            "/var/folders/g_/w_mkp3kj0jnbzm398bln58rm0000gn/T/zellij-50100/contract_version_100",
+        );
+        let app = app_dir_in(sock_dir);
+        for path in [
+            session_socket_path_in(sock_dir, APP_PANEL_SESSION),
+            app.join(APP_CONTROL_SOCKET_NAME),
+            app.join(APP_ATTENTION_SOCKET_NAME),
+            app.join("windows").join("99999"),
+        ] {
+            let length = path.as_os_str().len();
+            assert!(
+                length < MACOS_SOCKET_PATH_LIMIT,
+                "{:?} is {} bytes",
+                path,
+                length
+            );
+        }
+    }
 
     #[test]
     fn the_desktop_app_files_and_its_panel_session_live_in_their_own_folder() {
