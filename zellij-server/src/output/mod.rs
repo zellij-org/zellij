@@ -663,8 +663,7 @@ fn flatten_chunks(
         let chunk_changed_colors = character_chunk.changed_colors.as_ref();
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
-        let styles_vary_by_column = !character_chunk.selection_and_colors().is_empty()
-            || !crate::opt_flags::on(crate::opt_flags::FRAME_STYLE_RUNS);
+        let styles_vary_by_column = !character_chunk.selection_and_colors().is_empty();
         let mut last_styled: Option<(RcCharacterStyles, WireCell)> = None;
         run.clear();
         let cells = &character_chunk.terminal_characters;

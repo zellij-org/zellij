@@ -14,8 +14,6 @@ enum Event {
 
 #[derive(Default)]
 struct Ours(Vec<Event>);
-#[derive(Default)]
-struct Theirs(Vec<Event>);
 
 fn groups_of(parameters: &crate::vt_parser::Parameters) -> Vec<Vec<u16>> {
     parameters.iter().map(|group| group.to_vec()).collect()
@@ -62,46 +60,6 @@ impl crate::vt_parser::Handler for Ours {
             sequence.overflowed(),
             sequence.final_byte(),
         ));
-    }
-}
-
-impl ::vte::Perform for Theirs {
-    fn print(&mut self, c: char) {
-        self.0.push(Event::Print(c));
-    }
-    fn execute(&mut self, b: u8) {
-        self.0.push(Event::Execute(b));
-    }
-    fn hook(&mut self, p: &::vte::Params, i: &[u8], ig: bool, a: char) {
-        self.0.push(Event::Hook(
-            p.iter().map(|x| x.to_vec()).collect(),
-            p.len(),
-            i.to_vec(),
-            ig,
-            a,
-        ));
-    }
-    fn put(&mut self, b: u8) {
-        self.0.push(Event::Put(b));
-    }
-    fn unhook(&mut self) {
-        self.0.push(Event::Unhook);
-    }
-    fn osc_dispatch(&mut self, p: &[&[u8]], bell: bool) {
-        self.0
-            .push(Event::Osc(p.iter().map(|x| x.to_vec()).collect(), bell));
-    }
-    fn csi_dispatch(&mut self, p: &::vte::Params, i: &[u8], ig: bool, a: char) {
-        self.0.push(Event::Csi(
-            p.iter().map(|x| x.to_vec()).collect(),
-            p.len(),
-            i.to_vec(),
-            ig,
-            a,
-        ));
-    }
-    fn esc_dispatch(&mut self, i: &[u8], ig: bool, b: u8) {
-        self.0.push(Event::Esc(i.to_vec(), ig, b));
     }
 }
 
@@ -282,52 +240,8 @@ fn check_self_consistent(bytes: &[u8], rng: &mut Rng, label: &str) -> Vec<Event>
     whole
 }
 
-fn compare(bytes: &[u8], rng: &mut Rng, label: &str) -> Vec<Event> {
-    let whole = check_self_consistent(bytes, rng, label);
-    check_against_vte(bytes, rng, label);
-    whole
-}
-
-fn check_against_vte(bytes: &[u8], rng: &mut Rng, label: &str) {
-    let mut ours = Ours::default();
-    let mut theirs = Theirs::default();
-    let mut our_parser = crate::vt_parser::Parser::new();
-    let mut their_parser = ::vte::Parser::new();
-    let mut at = 0;
-    while at < bytes.len() {
-        let size = match rng.below(4) {
-            0 => 1 + rng.below(3),
-            1 => 1 + rng.below(64),
-            _ => 1 + rng.below(4096),
-        };
-        let mut end = (at + size).min(bytes.len());
-        while end < bytes.len() && bytes[end - 1] >= 0x80 {
-            end += 1;
-        }
-        our_parser.feed(&mut ours, &bytes[at..end]);
-        their_parser.advance(&mut theirs, &bytes[at..end]);
-        at = end;
-    }
-    if ours.0 != theirs.0 {
-        let first = ours
-            .0
-            .iter()
-            .zip(&theirs.0)
-            .position(|(a, b)| a != b)
-            .unwrap_or(ours.0.len().min(theirs.0.len()));
-        let from = first.saturating_sub(3);
-        panic!(
-            "{}: first difference at event {}\n ours:   {:?}\n theirs: {:?}",
-            label,
-            first,
-            &ours.0[from..(first + 3).min(ours.0.len())],
-            &theirs.0[from..(first + 3).min(theirs.0.len())]
-        );
-    }
-}
-
 #[test]
-fn random_streams_parse_identically() {
+fn random_streams_match_their_golden() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     let mut lines = vec![];
     let mut digest = Digest::new();
@@ -335,7 +249,7 @@ fn random_streams_parse_identically() {
         let len = 1 + rng.below(400);
         let bytes = random_stream(&mut rng, len);
         let mut split = Rng(case as u64 * 7919 + 1);
-        let events = compare(
+        let events = check_self_consistent(
             &bytes,
             &mut split,
             &format!("random case {} {:?}", case, bytes),
@@ -350,7 +264,7 @@ fn random_streams_parse_identically() {
 }
 
 #[test]
-fn every_single_byte_after_every_state_parses_identically() {
+fn every_single_byte_after_each_state_matches_its_golden() {
     let prefixes: &[&[u8]] = &[
         b"",
         b"\x1b",
@@ -380,7 +294,8 @@ fn every_single_byte_after_every_state_parses_identically() {
             let mut bytes = prefix.to_vec();
             bytes.push(byte);
             bytes.extend_from_slice(b"Z\x1b\\x");
-            let events = compare(&bytes, &mut rng, &format!("{:?} + {:#04x}", prefix, byte));
+            let events =
+                check_self_consistent(&bytes, &mut rng, &format!("{:?} + {:#04x}", prefix, byte));
             add_events(&mut digest, &events);
         }
         lines.push(format!("{} {}", golden::hex(prefix), digest.hex()));
@@ -389,7 +304,7 @@ fn every_single_byte_after_every_state_parses_identically() {
 }
 
 #[test]
-fn limits_parse_identically() {
+fn limits_match_their_golden() {
     let mut rng = Rng(7);
     let many_params = format!(
         "\x1b[{}m",
@@ -412,18 +327,18 @@ fn limits_parse_identically() {
         ("long osc", long_osc),
         ("many intermediates", "\x1b[  !p\x1b(((B".to_owned()),
     ] {
-        let events = compare(text.as_bytes(), &mut rng, &text[..text.len().min(60)]);
+        let events = check_self_consistent(text.as_bytes(), &mut rng, &text[..text.len().min(60)]);
         lines.push(format!("{} {}", name, digest_of(&events)));
     }
     golden::check("vt_parser_limits", &lines);
 }
 
 #[test]
-fn recorded_terminal_sessions_parse_identically() {
+fn recorded_terminal_sessions_match_their_golden() {
     let mut rng = Rng(99);
     let mut lines = vec![];
     for (name, bytes) in recorded_sessions() {
-        let events = compare(&bytes, &mut rng, &name);
+        let events = check_self_consistent(&bytes, &mut rng, &name);
         lines.push(format!("{} {}", name, digest_of(&events)));
     }
     assert!(lines.len() > 50);
@@ -447,7 +362,6 @@ fn recorded_sessions() -> Vec<(String, Vec<u8>)> {
 }
 
 struct StopOurs(Ours, usize);
-struct StopTheirs(Theirs, usize);
 impl crate::vt_parser::Handler for StopOurs {
     fn print(&mut self, c: char) {
         crate::vt_parser::Handler::print(&mut self.0, c)
@@ -473,34 +387,8 @@ impl crate::vt_parser::Handler for StopOurs {
             >= self.1
     }
 }
-impl ::vte::Perform for StopTheirs {
-    fn print(&mut self, c: char) {
-        ::vte::Perform::print(&mut self.0, c)
-    }
-    fn execute(&mut self, b: u8) {
-        ::vte::Perform::execute(&mut self.0, b)
-    }
-    fn csi_dispatch(&mut self, p: &::vte::Params, i: &[u8], ig: bool, a: char) {
-        ::vte::Perform::csi_dispatch(&mut self.0, p, i, ig, a)
-    }
-    fn osc_dispatch(&mut self, p: &[&[u8]], bell: bool) {
-        ::vte::Perform::osc_dispatch(&mut self.0, p, bell)
-    }
-    fn esc_dispatch(&mut self, i: &[u8], ig: bool, b: u8) {
-        ::vte::Perform::esc_dispatch(&mut self.0, i, ig, b)
-    }
-    fn terminated(&self) -> bool {
-        self.0
-             .0
-            .iter()
-            .filter(|e| matches!(e, Event::Csi(..) | Event::Osc(..) | Event::Esc(..)))
-            .count()
-            >= self.1
-    }
-}
-
 #[test]
-fn stopping_early_consumes_the_same_bytes() {
+fn stopping_early_matches_its_golden() {
     let mut rng = Rng(1234);
     let mut lines = vec![];
     let mut digest = Digest::new();
@@ -509,11 +397,7 @@ fn stopping_early_consumes_the_same_bytes() {
         let bytes = random_stream(&mut rng, len);
         let stop_after = rng.below(6);
         let mut ours = StopOurs(Ours::default(), stop_after);
-        let mut theirs = StopTheirs(Theirs::default(), stop_after);
         let ours_used = crate::vt_parser::Parser::new().feed_until_paused(&mut ours, &bytes);
-        let theirs_used = ::vte::Parser::new().advance_until_terminated(&mut theirs, &bytes);
-        assert_eq!(ours_used, theirs_used, "case {} {:?}", case, bytes);
-        assert_eq!(ours.0 .0, theirs.0 .0, "case {} {:?}", case, bytes);
         let mut simple = StopOurs(Ours::default(), stop_after);
         let simple_used =
             crate::vt_parser::Parser::without_shortcuts().feed_until_paused(&mut simple, &bytes);
@@ -532,39 +416,6 @@ fn stopping_early_consumes_the_same_bytes() {
         }
     }
     golden::check("vt_parser_stopping_early", &lines);
-}
-
-#[test]
-fn the_previous_parser_selected_by_env_parses_like_the_new_one() {
-    let feed_old = |bytes: &[u8]| {
-        let mut ours = Ours::default();
-        crate::old_vt_parser::Parser::new().advance(&mut ours, bytes);
-        ours.0
-    };
-    let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-    for case in 0..10000 {
-        let len = 1 + rng.below(400);
-        let bytes = random_stream(&mut rng, len);
-        assert_eq!(
-            feed_old(&bytes),
-            feed_ours(&bytes, &[]),
-            "random case {} {:?}",
-            case,
-            bytes
-        );
-    }
-    for entry in std::fs::read_dir("../src/tests/fixtures").unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_file() {
-            let bytes = std::fs::read(&path).unwrap();
-            assert_eq!(
-                feed_old(&bytes),
-                feed_ours(&bytes, &[]),
-                "{}",
-                path.display()
-            );
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -627,17 +478,8 @@ fn situation_of(parser: &super::Parser) -> Option<Situation> {
     Some(situation)
 }
 
-fn their_events(chunks: &[&[u8]]) -> Vec<Event> {
-    let mut theirs = Theirs::default();
-    let mut parser = ::vte::Parser::new();
-    for chunk in chunks {
-        parser.advance(&mut theirs, chunk);
-    }
-    theirs.0
-}
-
 #[test]
-fn every_byte_in_every_reachable_situation_parses_identically() {
+fn every_byte_in_every_reachable_situation_matches_its_golden() {
     struct Node {
         path: Vec<u8>,
         parser: super::Parser,
@@ -665,13 +507,6 @@ fn every_byte_in_every_reachable_situation_parses_identically() {
                 let mut parser = node.parser.clone();
                 let mut ours = Ours(node.events.clone());
                 parser.feed(&mut ours, &input);
-                let theirs = their_events(&[&node.path, &input]);
-                if ours.0 != theirs {
-                    panic!(
-                        "after {:?} then byte {:#04x} and {:?}:\n ours:   {:?}\n theirs: {:?}",
-                        node.path, byte, probe, ours.0, theirs
-                    );
-                }
                 let mut simple = Ours(node.events.clone());
                 node.simple.clone().feed(&mut simple, &input);
                 assert_eq!(
@@ -715,7 +550,6 @@ fn every_byte_in_every_reachable_situation_parses_identically() {
         .iter()
         .any(|s| s.intermediates == super::COLLECT_LIMIT && s.ignoring));
     assert!(seen.iter().any(|s| s.osc_fields == super::OSC_FIELD_LIMIT));
-    eprintln!("{} situations, {} comparisons", seen.len(), edges);
     golden::check("vt_parser_situations", &lines);
 }
 
@@ -754,7 +588,7 @@ fn utf8_sequences() -> Vec<Vec<u8>> {
 }
 
 #[test]
-fn every_utf8_lead_and_continuation_parses_identically_whole_and_split() {
+fn every_utf8_lead_and_continuation_matches_its_golden_whole_and_split() {
     let mut digests: std::collections::BTreeMap<u8, Digest> = Default::default();
     for sequence in utf8_sequences() {
         for after in [&b"b"[..], &b"\x1b[1mb"[..]] {
@@ -762,8 +596,6 @@ fn every_utf8_lead_and_continuation_parses_identically_whole_and_split() {
             bytes.extend_from_slice(&sequence);
             bytes.extend_from_slice(after);
             let whole = feed_ours(&bytes, &[]);
-            let theirs = their_events(&[&bytes]);
-            assert_eq!(whole, theirs, "{:x?}", bytes);
             assert_eq!(
                 feed_with(crate::vt_parser::Parser::without_shortcuts(), &bytes, &[]),
                 whole,
@@ -793,7 +625,7 @@ fn every_utf8_lead_and_continuation_parses_identically_whole_and_split() {
 }
 
 #[test]
-fn every_short_colour_sequence_parses_identically() {
+fn every_short_colour_sequence_matches_its_golden() {
     let alphabet = [b'0', b'1', b'9', b';', b':'];
     let mut rng = Rng(5);
     let mut lines = vec![];
@@ -807,7 +639,7 @@ fn every_short_colour_sequence_parses_identically() {
             bytes.extend_from_slice(b"mb\x1b[");
             bytes.extend_from_slice(parameters);
             bytes.extend_from_slice(b"m");
-            let events = compare(
+            let events = check_self_consistent(
                 &bytes,
                 &mut rng,
                 &format!("{:?}", String::from_utf8_lossy(&bytes)),
@@ -837,7 +669,7 @@ fn every_short_colour_sequence_parses_identically() {
                 let mut bytes = b"a\x1b[".to_vec();
                 bytes.extend_from_slice(&parameters);
                 bytes.extend_from_slice(tail);
-                let events = compare(
+                let events = check_self_consistent(
                     &bytes,
                     &mut rng,
                     &format!("{:?}", String::from_utf8_lossy(&bytes)),
@@ -855,112 +687,8 @@ fn every_short_colour_sequence_parses_identically() {
     golden::check("vt_parser_colour_sequences", &lines);
 }
 
-fn mutate(rng: &mut Rng, bytes: &mut Vec<u8>, donors: &[Vec<u8>]) {
-    let interesting: &[u8] =
-        b"\x1b[];:0123456789m?<>=\x07\x18\x1a\x7f\x9b\x9c\x90\xc2\xe6\xf0\xff \"!$";
-    for _ in 0..1 + rng.below(16) {
-        let at = rng.below(bytes.len() + 1);
-        match rng.below(6) {
-            0 if at < bytes.len() => bytes[at] = rng.next() as u8,
-            1 if at < bytes.len() => bytes[at] = interesting[rng.below(interesting.len())],
-            2 => bytes.insert(at, interesting[rng.below(interesting.len())]),
-            3 if at < bytes.len() => {
-                let end = (at + 1 + rng.below(32)).min(bytes.len());
-                bytes.drain(at..end);
-            },
-            4 => {
-                let donor = &donors[rng.below(donors.len())];
-                if !donor.is_empty() {
-                    let from = rng.below(donor.len());
-                    let to = (from + 1 + rng.below(256)).min(donor.len());
-                    bytes.splice(at..at, donor[from..to].iter().copied());
-                }
-            },
-            _ => {
-                let len = 1 + rng.below(40);
-                let piece = random_stream(rng, len);
-                bytes.splice(at..at, piece);
-            },
-        }
-    }
-}
-
-fn fixture_inputs() -> Vec<Vec<u8>> {
-    let mut inputs = vec![];
-    for entry in std::fs::read_dir("../src/tests/fixtures").unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_file() {
-            inputs.push(std::fs::read(&path).unwrap());
-        }
-    }
-    if let Ok(dir) = std::env::var("ZELLIJ_PARSER_CORPUS") {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_file() {
-                inputs.push(std::fs::read(&path).unwrap());
-            }
-        }
-    }
-    inputs
-}
-
-#[test]
-#[ignore]
-fn long_random_and_mutated_streams_parse_identically() {
-    let seconds: u64 = std::env::var("ZELLIJ_PARSER_FUZZ_SECONDS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(300);
-    let seed: u64 = std::env::var("ZELLIJ_PARSER_FUZZ_SEED")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_nanos() as u64)
-                .unwrap_or(1)
-                | 1
-        });
-    let donors = fixture_inputs();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
-    let mut rng = Rng(seed);
-    let mut case = 0u64;
-    while std::time::Instant::now() < deadline {
-        let mut bytes = match rng.below(3) {
-            0 => {
-                let len = 1 + rng.below(2000);
-                random_stream(&mut rng, len)
-            },
-            1 => {
-                let len = 1 + rng.below(500);
-                (0..len).map(|_| rng.next() as u8).collect()
-            },
-            _ => {
-                let donor = &donors[rng.below(donors.len())];
-                let from = rng.below(donor.len().max(1));
-                donor[from..(from + 1 + rng.below(4000)).min(donor.len())].to_vec()
-            },
-        };
-        mutate(&mut rng, &mut bytes, &donors);
-        let mut split = Rng(rng.next() | 1);
-        compare(
-            &bytes,
-            &mut split,
-            &format!("seed {} case {} {:?}", seed, case, bytes),
-        );
-        case += 1;
-    }
-    eprintln!("seed {}: {} streams compared", seed, case);
-}
-
 fn expect(bytes: &[u8], expected: &[Event]) {
     let label = String::from_utf8_lossy(bytes).into_owned();
-    assert_eq!(
-        their_events(&[bytes]),
-        expected,
-        "{:?} according to vte",
-        label
-    );
     assert_eq!(feed_ours(bytes, &[]), expected, "{:?}", label);
     for split in 1..bytes.len() {
         assert_eq!(

@@ -351,10 +351,6 @@ impl StyleCache {
         styles: &mut RcCharacterStyles,
         params: &crate::vt_parser::Parameters,
     ) {
-        if !crate::opt_flags::on(crate::opt_flags::STYLE_MEMO) {
-            styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
-            return;
-        }
         let Some(key) = SgrKey::of(params) else {
             styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
             return;
@@ -363,12 +359,9 @@ impl StyleCache {
     }
 
     pub fn apply_sgr_bytes(&mut self, styles: &mut RcCharacterStyles, parameter_bytes: &[u8]) {
-        let key = match SgrKey::of_bytes(parameter_bytes) {
-            Some(key) if crate::opt_flags::on(crate::opt_flags::STYLE_MEMO) => key,
-            _ => {
-                let params = crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes);
-                return self.apply_sgr(styles, &params);
-            },
+        let Some(key) = SgrKey::of_bytes(parameter_bytes) else {
+            let params = crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes);
+            return self.apply_sgr(styles, &params);
         };
         self.apply_sgr_memoized(styles, key, || {
             crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes)

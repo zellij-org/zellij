@@ -138,7 +138,7 @@ pub struct TerminalPane {
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub style: Style,
-    vte_parser: vt_parser::SelectedParser,
+    vte_parser: vt_parser::Parser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
@@ -248,10 +248,7 @@ impl Pane for TerminalPane {
             self.pending_pty_input.extend(bytes);
             return;
         }
-        if crate::opt_flags::on(crate::opt_flags::PTY_FAST_PATH)
-            && self.kitty_interceptor.is_ground()
-            && memchr::memmem::find(&bytes, b"\x1b_").is_none()
-        {
+        if self.kitty_interceptor.is_ground() && memchr::memmem::find(&bytes, b"\x1b_").is_none() {
             let ends_in_escape = bytes.last() == Some(&0x1b);
             let head = if ends_in_escape {
                 &bytes[..bytes.len() - 1]
@@ -1678,7 +1675,7 @@ impl TerminalPane {
             selectable: true,
             geom: position_and_size,
             geom_override: None,
-            vte_parser: vt_parser::SelectedParser::from_env(),
+            vte_parser: vt_parser::Parser::new(),
             active_at: Instant::now(),
             style,
             selection_scrolled_at: time::Instant::now(),

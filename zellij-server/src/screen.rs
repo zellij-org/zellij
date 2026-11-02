@@ -3575,9 +3575,6 @@ impl Screen {
     }
 
     fn row_shifts_possible(&self) -> bool {
-        if !crate::opt_flags::on(crate::opt_flags::ROW_SHIFTS) {
-            return false;
-        }
         if !self.watcher_clients.is_empty() {
             return false;
         }
@@ -3791,9 +3788,6 @@ impl Screen {
     }
 
     fn every_client_awaits_a_frame_ack(&self) -> bool {
-        if !crate::opt_flags::on(crate::opt_flags::ACK_WAIT) {
-            return false;
-        }
         if !self.watcher_clients.is_empty() {
             return false;
         }

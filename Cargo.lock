@@ -6612,7 +6612,6 @@ dependencies = [
  "unicode-width 0.2.2",
  "url",
  "uuid",
- "vte 0.15.0",
  "wasmi",
  "wasmi_wasi",
  "windows-sys 0.59.0",

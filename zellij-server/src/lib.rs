@@ -6,8 +6,6 @@ mod os_input_output_unix;
 mod os_input_output_windows;
 
 pub mod host_query;
-pub mod old_vt_parser;
-pub mod opt_flags;
 pub mod os_input_output;
 pub mod output;
 pub mod panes;

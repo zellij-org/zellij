@@ -6,10 +6,6 @@ const OSC_FIELD_LIMIT: usize = 16;
 const FAST_SGR_LIMIT: usize = 31;
 const ESC: u8 = 0x1b;
 
-fn parser_scan_on() -> bool {
-    crate::opt_flags::on(crate::opt_flags::PARSER_SCAN)
-}
-
 pub struct Sequence<'a> {
     parameters: &'a Parameters,
     intermediates: &'a [u8],
@@ -119,19 +115,6 @@ impl Parameters {
             }
         }
         parameters.finish(number);
-        parameters
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_groups<'a>(groups: impl IntoIterator<Item = &'a [u16]>) -> Parameters {
-        let mut parameters = Parameters::default();
-        for group in groups {
-            if let Some((last, rest)) = group.split_last() {
-                rest.iter()
-                    .for_each(|value| parameters.continue_group(*value));
-                parameters.end_group(*last);
-            }
-        }
         parameters
     }
 
@@ -274,28 +257,6 @@ pub struct Parser {
     without_shortcuts: bool,
 }
 
-pub enum SelectedParser {
-    New(Parser),
-    Old(crate::old_vt_parser::Parser),
-}
-
-impl SelectedParser {
-    pub fn from_env() -> Self {
-        match std::env::var("ZELLIJ_VT_PARSER").as_deref() {
-            Ok("old") => SelectedParser::Old(crate::old_vt_parser::Parser::new()),
-            _ => SelectedParser::New(Parser::new()),
-        }
-    }
-
-    #[inline]
-    pub fn feed_until_paused<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) -> usize {
-        match self {
-            SelectedParser::New(parser) => parser.feed_until_paused(handler, bytes),
-            SelectedParser::Old(parser) => parser.advance_until_terminated(handler, bytes),
-        }
-    }
-}
-
 impl Parser {
     pub fn new() -> Self {
         Self::default()
@@ -318,7 +279,7 @@ impl Parser {
     }
 
     fn run<H: Handler>(&mut self, handler: &mut H, bytes: &[u8], stop: bool) -> usize {
-        let scan = !self.without_shortcuts && parser_scan_on();
+        let scan = !self.without_shortcuts;
         let mut at = match self.carry_len {
             0 => 0,
             _ => self.resume_character(handler, bytes, scan),

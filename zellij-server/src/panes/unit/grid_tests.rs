@@ -11113,47 +11113,6 @@ fn bulk_text_path_matches_the_one_character_at_a_time_path() {
     assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
 }
 
-struct DrivenByVte<'a>(&'a mut Grid);
-
-impl<'a> ::vte::Perform for DrivenByVte<'a> {
-    fn print(&mut self, c: char) {
-        vt_parser::Handler::print(&mut *self.0, c)
-    }
-    fn execute(&mut self, byte: u8) {
-        vt_parser::Handler::execute(&mut *self.0, byte)
-    }
-    fn hook(&mut self, params: &::vte::Params, intermediates: &[u8], ignore: bool, action: char) {
-        let params = vt_parser::Parameters::from_groups(params.iter());
-        let sequence = vt_parser::Sequence::new(&params, intermediates, ignore, action as u8);
-        vt_parser::Handler::hook(&mut *self.0, &sequence)
-    }
-    fn put(&mut self, byte: u8) {
-        vt_parser::Handler::put(&mut *self.0, byte)
-    }
-    fn unhook(&mut self) {
-        vt_parser::Handler::unhook(&mut *self.0)
-    }
-    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-        vt_parser::Handler::osc_end(&mut *self.0, params, bell_terminated)
-    }
-    fn csi_dispatch(
-        &mut self,
-        params: &::vte::Params,
-        intermediates: &[u8],
-        ignore: bool,
-        action: char,
-    ) {
-        let params = vt_parser::Parameters::from_groups(params.iter());
-        let sequence = vt_parser::Sequence::new(&params, intermediates, ignore, action as u8);
-        vt_parser::Handler::csi_dispatch(&mut *self.0, &sequence)
-    }
-    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
-        let params = vt_parser::Parameters::default();
-        let sequence = vt_parser::Sequence::new(&params, intermediates, ignore, byte);
-        vt_parser::Handler::esc_dispatch(&mut *self.0, &sequence)
-    }
-}
-
 struct StreamRng(u64);
 
 impl StreamRng {
@@ -11308,7 +11267,7 @@ fn read_sessions(dir: &str) -> Vec<(String, Vec<u8>)> {
     sessions
 }
 
-fn parser_comparison_inputs(random_cases: usize, seed: u64) -> Vec<(String, Vec<u8>)> {
+fn screen_comparison_inputs(random_cases: usize, seed: u64) -> Vec<(String, Vec<u8>)> {
     let mut inputs = read_sessions("../src/tests/fixtures");
     let mut rng = StreamRng(seed);
     for case in 0..random_cases {
@@ -11382,16 +11341,6 @@ fn check_screens(
                     ));
                 }
             }
-            let mut by_vte = empty_grid(size.0, size.1, grapheme_mode);
-            ::vte::Parser::new().advance(&mut DrivenByVte(&mut by_vte), bytes);
-            let by_vte = grid_state(&by_vte);
-            if by_vte != reference {
-                failures.push(format!(
-                    "{}{}",
-                    label,
-                    first_difference(&reference, &by_vte, "ours", "vte")
-                ));
-            }
             let mut digest = crate::golden::Digest::new();
             digest.bytes(reference.as_bytes());
             golden_lines.push(format!("{} {}", label, digest.hex()));
@@ -11400,60 +11349,14 @@ fn check_screens(
 }
 
 #[test]
-fn whole_screens_match_vte_and_the_recorded_goldens() {
+fn whole_screens_match_their_golden() {
     let mut failures = vec![];
     let mut golden_lines = vec![];
-    for (name, bytes) in parser_comparison_inputs(150, 0x5eed) {
+    for (name, bytes) in screen_comparison_inputs(150, 0x5eed) {
         check_screens(&name, &bytes, &mut failures, &mut golden_lines);
     }
     assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
     crate::golden::check("whole_screens", &golden_lines);
-}
-
-#[test]
-#[ignore]
-fn long_random_whole_screens_match_a_grid_driven_by_vte() {
-    let seconds: u64 = std::env::var("ZELLIJ_PARSER_FUZZ_SECONDS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(300);
-    let mut seed: u64 = std::env::var("ZELLIJ_PARSER_FUZZ_SEED")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_nanos() as u64)
-                .unwrap_or(1)
-                | 1
-        });
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
-    let mut compared = 0;
-    let mut failures = vec![];
-    if let Ok(dir) = std::env::var("ZELLIJ_PARSER_CORPUS") {
-        for (name, bytes) in read_sessions(&dir) {
-            check_screens(&name, &bytes, &mut failures, &mut vec![]);
-        }
-    }
-    while std::time::Instant::now() < deadline && failures.is_empty() {
-        let mut rng = StreamRng(seed);
-        let len = 200 + rng.below(8000);
-        let bytes = random_terminal_stream(&mut rng, len);
-        let name = format!("seed {}", seed);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut found = vec![];
-            check_screens(&name, &bytes, &mut found, &mut vec![]);
-            found
-        }));
-        match outcome {
-            Ok(found) => failures.extend(found),
-            Err(_) => failures.push(format!("{} panicked", name)),
-        }
-        compared += 1;
-        seed = rng.next() | 1;
-    }
-    assert!(failures.is_empty(), "differences:\n{}", failures.join("\n"));
-    eprintln!("{} streams compared", compared);
 }
 
 #[test]
