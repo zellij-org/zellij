@@ -62,8 +62,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{
-        LinkHandler, PaneId, PluginPane, TerminalCharacter, TerminalPane,
-        EMPTY_TERMINAL_CHARACTER,
+        LinkHandler, PaneId, PluginPane, TerminalCharacter, TerminalPane, EMPTY_TERMINAL_CHARACTER,
     },
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
@@ -304,10 +303,7 @@ fn layout_stack_list_row(
                 entry
             })
             .collect();
-        return StackListRowLayout {
-            entries,
-            ..empty
-        };
+        return StackListRowLayout { entries, ..empty };
     }
     let count = members.len();
     let selected = selected.min(count - 1);
@@ -352,7 +348,10 @@ fn layout_stack_list_row(
     let fill_left = |budget: usize| -> (usize, usize) {
         let (shown, used) = fit(&mut (0..selected).rev(), budget);
         if shown < selected {
-            fit(&mut (0..selected).rev(), budget.saturating_sub(before_marker))
+            fit(
+                &mut (0..selected).rev(),
+                budget.saturating_sub(before_marker),
+            )
         } else {
             (shown, used)
         }
@@ -361,7 +360,10 @@ fn layout_stack_list_row(
         let after_count = count - 1 - selected;
         let (shown, used) = fit(&mut (selected + 1..count), budget);
         if shown < after_count {
-            fit(&mut (selected + 1..count), budget.saturating_sub(after_marker))
+            fit(
+                &mut (selected + 1..count),
+                budget.saturating_sub(after_marker),
+            )
         } else {
             (shown, used)
         }
@@ -2259,11 +2261,8 @@ impl Tab {
                     .collect(),
                 StackListOrientation::Horizontal => {
                     let row_layout = self.stack_list_row_layout(&list, entry_cols);
-                    let filler = self.stack_list_row_filler(
-                        &row_layout,
-                        entry_cols,
-                        stack_is_focused,
-                    );
+                    let filler =
+                        self.stack_list_row_filler(&row_layout, entry_cols, stack_is_focused);
                     let mut covered = vec![false; entry_cols];
                     for entry in &row_layout.entries {
                         for column in entry.x..(entry.x + entry.width).min(entry_cols) {
@@ -2416,7 +2415,8 @@ impl Tab {
             client_id,
         ) {
             Ok((should_show_floating_panes, stack_orientations)) => {
-                self.stack_list_orientation_memory.extend(stack_orientations);
+                self.stack_list_orientation_memory
+                    .extend(stack_orientations);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2512,7 +2512,8 @@ impl Tab {
             client_id,
         ) {
             Ok((should_show_floating_panes, stack_orientations)) => {
-                self.stack_list_orientation_memory.extend(stack_orientations);
+                self.stack_list_orientation_memory
+                    .extend(stack_orientations);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2681,7 +2682,8 @@ impl Tab {
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             match application_res {
                 Ok((panes_were_floated, stack_orientations)) => {
-                    self.stack_list_orientation_memory.extend(stack_orientations);
+                    self.stack_list_orientation_memory
+                        .extend(stack_orientations);
                     if panes_were_floated {
                         self.swap_layouts.set_is_floating_damaged();
                         self.floating_panes.set_force_render();

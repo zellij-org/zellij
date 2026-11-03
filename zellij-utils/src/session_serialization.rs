@@ -449,9 +449,10 @@ fn serialize_tiled_layout_attributes(
             .entries_mut()
             .push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
         if let Some(direction) = layout.stack_orientation {
-            kdl_node
-                .entries_mut()
-                .push(KdlEntry::new_prop("stack_orientation", direction.to_string()));
+            kdl_node.entries_mut().push(KdlEntry::new_prop(
+                "stack_orientation",
+                direction.to_string(),
+            ));
         }
     }
     if layout.is_expanded_in_stack && is_in_stack {

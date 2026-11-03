@@ -1885,9 +1885,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | StackedResize
         | StackedPaneList
         | StackedPaneListOrientation
-        | SwapLayoutNotification => {
-            (C::PanesAndLayouts, "Layouts")
-        },
+        | SwapLayoutNotification => (C::PanesAndLayouts, "Layouts"),
         ScrollBufferSize | ScrollbackEditor => (C::PanesAndLayouts, "Scrollback"),
         MirrorResizesSourcePane | LiveViewReleaseKey => (C::PanesAndLayouts, "Mirrors"),
         AttentionEnabled => (C::Notifications, "Pane status"),

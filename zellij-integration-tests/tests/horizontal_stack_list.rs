@@ -82,8 +82,7 @@ fn title_is_underlined(grid_snapshot: &GridSnapshot, title: &str) -> bool {
     let Some((column, row)) = grid_snapshot.position_of(title) else {
         return false;
     };
-    (column..column + title.chars().count())
-        .all(|x| grid_snapshot.cell_style(x, row).underline)
+    (column..column + title.chars().count()).all(|x| grid_snapshot.cell_style(x, row).underline)
 }
 
 fn title_is_selected_in_row(grid_snapshot: &GridSnapshot, title: &str) -> bool {
@@ -268,13 +267,7 @@ fn right_clicking_the_pane_content_does_not_offer_the_title_toggle() {
 #[test]
 fn a_row_that_does_not_fit_keeps_the_selected_title_in_the_middle() {
     let narrow = Size { cols: 50, rows: 24 };
-    let mut zellij = start_with_stack(
-        narrow,
-        "",
-        r#"stack_orientation="horizontal""#,
-        9,
-        5,
-    );
+    let mut zellij = start_with_stack(narrow, "", r#"stack_orientation="horizontal""#, 9, 5);
 
     let grid_snapshot = zellij.wait_until("selected title shown between hidden ones", |g| {
         g.contains("member-5-content")
@@ -300,18 +293,10 @@ fn a_row_that_does_not_fit_keeps_the_selected_title_in_the_middle() {
 #[test]
 fn a_row_scrolled_to_its_first_title_starts_at_the_left_edge() {
     let narrow = Size { cols: 50, rows: 24 };
-    let mut zellij = start_with_stack(
-        narrow,
-        "",
-        r#"stack_orientation="horizontal""#,
-        9,
-        1,
-    );
+    let mut zellij = start_with_stack(narrow, "", r#"stack_orientation="horizontal""#, 9, 1);
 
     let grid_snapshot = zellij.wait_until("first title selected in a long row", |g| {
-        g.contains("member-1-content")
-            && title_is_underlined(g, "Pane #1")
-            && g.contains("›")
+        g.contains("member-1-content") && title_is_underlined(g, "Pane #1") && g.contains("›")
     });
     assert!(!grid_snapshot.contains("‹"));
     let (column, row) = grid_snapshot.position_of("Pane #1").unwrap();

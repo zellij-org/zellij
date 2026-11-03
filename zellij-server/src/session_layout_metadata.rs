@@ -637,7 +637,10 @@ impl PaneLayoutMetadata {
             ignore_output: false,
         }
     }
-    pub fn with_stack_orientation(mut self, stack_orientation: Option<StackListOrientation>) -> Self {
+    pub fn with_stack_orientation(
+        mut self,
+        stack_orientation: Option<StackListOrientation>,
+    ) -> Self {
         self.stack_orientation = stack_orientation;
         self
     }

@@ -15091,7 +15091,11 @@ fn stack_titles_are_found_and_toggled_through_any_member() {
     tab.render(&mut output, None).unwrap();
     let list = tab.stack_lists.values().next().unwrap().clone();
     let hidden = *list.members.iter().find(|m| **m != list.visible).unwrap();
-    let geom = tab.tiled_panes.get_pane(list.visible).unwrap().current_geom();
+    let geom = tab
+        .tiled_panes
+        .get_pane(list.visible)
+        .unwrap()
+        .current_geom();
     let on_titles = Position::new(geom.y as i32, (geom.x + 2) as u16);
     let below_titles = Position::new(geom.y as i32 + 1, (geom.x + 2) as u16);
     assert!(tab.position_is_on_stack_list_titles(list.visible, &on_titles));
@@ -15130,7 +15134,11 @@ fn stack_list_row_layout_counts_hidden_entries_on_each_side() {
     for selected in 0..members.len() {
         let layout = super::layout_stack_list_row(&members, selected, 30);
         let shown: Vec<PaneId> = layout.entries.iter().map(|entry| entry.member).collect();
-        assert!(shown.contains(&members[selected].0), "selected={}", selected);
+        assert!(
+            shown.contains(&members[selected].0),
+            "selected={}",
+            selected
+        );
         assert_eq!(
             layout.hidden_before + shown.len() + layout.hidden_after,
             members.len()
