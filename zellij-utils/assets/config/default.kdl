@@ -540,6 +540,13 @@ context_menu {
 //
 // stacked_pane_list false
 
+// Default direction of the title list for new stacked panes
+// Options:
+//   - vertical (Default)
+//   - horizontal
+//
+// stacked_pane_list_orientation "horizontal"
+
 // Whether to show release notes on first version run
 // (Requires restart)
 // Default: true
