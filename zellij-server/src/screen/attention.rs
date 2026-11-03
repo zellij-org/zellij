@@ -160,11 +160,32 @@ impl Screen {
     pub(super) fn process_attention(&mut self) {
         let now = now_ms();
         let mut signals = vec![];
+        let mut typed = vec![];
         for tab in self.tabs.values_mut() {
             signals.extend(tab.pending_pane_signals.drain(..));
+            typed.extend(tab.take_typed_into());
+        }
+        for pane_id in typed {
+            self.attention.on_user_input(pane_id.into(), now);
         }
         for (pane_id, pane_signals) in signals {
             self.attention.on_signals(pane_id.into(), pane_signals, now);
+        }
+        self.flush_attention(true);
+    }
+
+    pub(crate) fn note_attention_input(&mut self) {
+        let typed: Vec<PaneId> = self
+            .tabs
+            .values_mut()
+            .flat_map(|tab| tab.take_typed_into())
+            .collect();
+        if typed.is_empty() {
+            return;
+        }
+        let now = now_ms();
+        for pane_id in typed {
+            self.attention.on_user_input(pane_id.into(), now);
         }
         self.flush_attention(true);
     }

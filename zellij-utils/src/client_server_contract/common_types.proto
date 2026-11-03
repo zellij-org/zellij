@@ -1564,6 +1564,13 @@ message PaneAttention {
   bool ignore_output = 9;
   bool watched = 10;
   bool from_watch = 11;
+  RememberedStatus remembered = 12;
+}
+
+message RememberedStatus {
+  AttentionStatus status = 1;
+  string text = 2;
+  uint64 since_ms = 3;
 }
 
 message AttentionCounts {

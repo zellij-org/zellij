@@ -989,6 +989,11 @@ web_client {
 //     // Seconds a successful command must run before it is reported as done.
 //     done_threshold_secs 10
 //
+//     // List commands as working once they run longer than
+//     // done_threshold_secs. Commands that use the full screen (vim, less,
+//     // htop) or that you type into are left out.
+//     track_commands true
+//
 //     // Seconds of steady output before quiet detection applies.
 //     idle_activity_secs 10
 //

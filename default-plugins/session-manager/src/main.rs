@@ -3062,13 +3062,28 @@ impl State {
                     self.inbox.release_key_text(),
                     "stop typing (or click outside the view)",
                 ),
+                hint(
+                    "<w>",
+                    if self.inbox.wide_list {
+                        "narrow the list"
+                    } else {
+                        "widen the list"
+                    },
+                ),
             ]
         } else {
             vec![hint("<ENTER>", "go to the pane")]
         };
         hints.extend([
             hint("<↓↑>", "select"),
-            hint("<c>", "dismiss (mark seen)"),
+            hint(
+                "<c>",
+                if self.inbox.selected_is_recalled() {
+                    "forget (until the pane reports again)"
+                } else {
+                    "dismiss (mark seen)"
+                },
+            ),
             hint("<ESC>", "close"),
             hint("<m>", if muted { "unmute" } else { "mute" }),
             hint(
@@ -4022,6 +4037,7 @@ impl State {
             },
             BareKey::Enter if plain => self.go_to_selected_inbox_item(),
             BareKey::Char('z') if plain && live => self.inbox.toggle_resize(),
+            BareKey::Char('w') if plain && live => self.inbox.toggle_wide_list(),
             BareKey::Char('c') if plain => self.inbox.dismiss_selected(),
             BareKey::Char('C') if plain || shift => self.inbox.dismiss_all(),
             BareKey::Char('m') if plain => self.inbox.cycle_selected_mute(),

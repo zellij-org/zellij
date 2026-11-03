@@ -260,6 +260,7 @@ pub struct AttentionConfig {
     pub tab_markers: Option<bool>,
     pub idle_rule: Option<IdleRuleScope>,
     pub done_threshold_secs: Option<u64>,
+    pub track_commands: Option<bool>,
     pub idle_activity_secs: Option<u64>,
     pub idle_silence_secs: Option<u64>,
     pub startup_card: Option<StartupCard>,
@@ -320,6 +321,9 @@ impl AttentionConfig {
     pub fn done_threshold_secs(&self) -> u64 {
         self.done_threshold_secs
             .unwrap_or(DEFAULT_DONE_THRESHOLD_SECS)
+    }
+    pub fn track_commands(&self) -> bool {
+        self.enabled() && self.track_commands.unwrap_or(true)
     }
     pub fn idle_activity_secs(&self) -> u64 {
         self.idle_activity_secs
@@ -387,6 +391,7 @@ impl AttentionConfig {
                         })?);
                 },
                 "done_threshold_secs" => config.done_threshold_secs = Some(secs_value(node)?),
+                "track_commands" => config.track_commands = Some(bool_value(node)?),
                 "idle_activity_secs" => config.idle_activity_secs = Some(secs_value(node)?),
                 "idle_silence_secs" => config.idle_silence_secs = Some(secs_value(node)?),
                 "startup_card" => {
@@ -451,6 +456,9 @@ impl AttentionConfig {
         if let Some(v) = self.done_threshold_secs {
             push("done_threshold_secs", KdlValue::Base10(v as i64));
         }
+        if let Some(v) = self.track_commands {
+            push("track_commands", KdlValue::Bool(v));
+        }
         if let Some(v) = self.idle_activity_secs {
             push("idle_activity_secs", KdlValue::Base10(v as i64));
         }
@@ -492,6 +500,7 @@ impl AttentionConfig {
             tab_markers: other.tab_markers.or(self.tab_markers),
             idle_rule: other.idle_rule.or(self.idle_rule),
             done_threshold_secs: other.done_threshold_secs.or(self.done_threshold_secs),
+            track_commands: other.track_commands.or(self.track_commands),
             idle_activity_secs: other.idle_activity_secs.or(self.idle_activity_secs),
             idle_silence_secs: other.idle_silence_secs.or(self.idle_silence_secs),
             startup_card: other.startup_card.or(self.startup_card),
@@ -524,6 +533,7 @@ mod tests {
         assert!(config.tab_markers());
         assert_eq!(config.idle_rule(), IdleRuleScope::All);
         assert_eq!(config.done_threshold_secs(), 10);
+        assert!(config.track_commands());
         assert_eq!(config.idle_activity_secs(), 10);
         assert_eq!(config.idle_silence_secs(), 3);
         assert_eq!(config.startup_card(), StartupCard::Attention);
@@ -549,6 +559,7 @@ mod tests {
                 tab_markers false
                 idle_rule "watched"
                 done_threshold_secs 5
+                track_commands false
                 idle_activity_secs 20
                 idle_silence_secs 4
                 startup_card "never"
@@ -575,6 +586,7 @@ mod tests {
         assert!(!config.tab_markers());
         assert_eq!(config.idle_rule(), IdleRuleScope::Watched);
         assert_eq!(config.done_threshold_secs(), 5);
+        assert!(!config.track_commands());
         assert_eq!(config.startup_card(), StartupCard::Never);
         assert!(!config.tray_icon());
         assert!(!config.enabled());
@@ -615,19 +627,21 @@ mod tests {
     #[test]
     fn turning_attention_off_turns_every_attention_feature_off() {
         let config = parse(
-            "attention {\n enabled false\n frame_markers true\n tab_markers true\n host_status true\n startup_card \"always\"\n}",
+            "attention {\n enabled false\n frame_markers true\n tab_markers true\n host_status true\n track_commands true\n startup_card \"always\"\n}",
         )
         .unwrap();
         assert!(!config.enabled());
         assert!(!config.frame_markers());
         assert!(!config.tab_markers());
         assert!(!config.host_status());
+        assert!(!config.track_commands());
         assert_eq!(config.startup_card(), StartupCard::Never);
         assert!(config.desktop_notifications().is_empty());
         assert!(config.tray_badge().is_empty());
         let merged = config.merge(parse("attention {\n enabled true\n}").unwrap());
         assert!(merged.enabled());
         assert!(merged.frame_markers());
+        assert!(merged.track_commands());
         assert_eq!(merged.startup_card(), StartupCard::Always);
         assert_eq!(
             merged.desktop_notifications(),

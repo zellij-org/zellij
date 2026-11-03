@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 895
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -12069,6 +12070,7 @@ Config {
         tab_markers: None,
         idle_rule: None,
         done_threshold_secs: None,
+        track_commands: None,
         idle_activity_secs: None,
         idle_silence_secs: None,
         startup_card: None,

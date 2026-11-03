@@ -453,6 +453,13 @@ impl MuteScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct RememberedStatus {
+    pub status: AttentionStatus,
+    pub text: String,
+    pub since_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct PaneAttention {
     pub status: AttentionStatus,
     pub source: Option<AttentionSource>,
@@ -465,11 +472,15 @@ pub struct PaneAttention {
     pub ignore_output: bool,
     pub watched: bool,
     pub from_watch: bool,
+    pub remembered: Option<RememberedStatus>,
 }
 
 impl PaneAttention {
     pub fn is_muted(&self) -> bool {
         self.muted.is_some()
+    }
+    pub fn is_remembered(&self) -> bool {
+        self.remembered.is_some()
     }
     pub fn effective_status(&self) -> AttentionStatus {
         if self.is_muted() {

@@ -732,6 +732,10 @@ fn attention_values(
         attention.done_threshold_secs.map(|v| v.to_string()),
     );
     values.insert(
+        SettingKey::AttentionTrackCommands,
+        attention.track_commands.map(|v| v.to_string()),
+    );
+    values.insert(
         SettingKey::AttentionIdleActivitySecs,
         attention.idle_activity_secs.map(|v| v.to_string()),
     );
@@ -868,6 +872,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::AttentionDoneThresholdSecs => {
             target.attention.done_threshold_secs = source.attention.done_threshold_secs;
+            return;
+        },
+        SettingKey::AttentionTrackCommands => {
+            target.attention.track_commands = source.attention.track_commands;
             return;
         },
         SettingKey::AttentionIdleActivitySecs => {

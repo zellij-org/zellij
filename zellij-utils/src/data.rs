@@ -5684,6 +5684,7 @@ setting_keys! {
     AttentionTabMarkers => (Attention, "tab_markers", false, Flag),
     AttentionIdleRule => (Attention, "idle_rule", false, Text),
     AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
+    AttentionTrackCommands => (Attention, "track_commands", false, Flag),
     AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
     AttentionStartupCard => (Attention, "startup_card", false, Text),

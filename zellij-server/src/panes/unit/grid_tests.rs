@@ -10664,6 +10664,22 @@ fn program_status_reports_are_not_shown_on_screen() {
 }
 
 #[test]
+fn entering_and_leaving_the_alternate_screen_is_reported() {
+    let switches: Vec<crate::attention::PaneSignal> =
+        attention_signals("a\x1b[?1049hb\x1b[?1049lc")
+            .into_iter()
+            .filter(|s| matches!(s, crate::attention::PaneSignal::AlternateScreen(_)))
+            .collect();
+    assert_eq!(
+        switches,
+        vec![
+            crate::attention::PaneSignal::AlternateScreen(true),
+            crate::attention::PaneSignal::AlternateScreen(false),
+        ]
+    );
+}
+
+#[test]
 fn full_reset_resets_program_status() {
     let signals = attention_signals("\x1b]7501;state=working\x1b\\\x1bc");
     assert!(signals.contains(&crate::attention::PaneSignal::Reset));
