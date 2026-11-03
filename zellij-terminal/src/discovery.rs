@@ -503,8 +503,16 @@ mod fontconfig {
                 index = 0;
             }
 
-            Some((PathBuf::from(path), index.max(0) as u32))
+            Some((PathBuf::from(path), face_index(index)))
         }
+    }
+
+    /// fontconfig packs a variable font's named instance into the upper 16
+    /// bits of FC_INDEX (`instance << 16 | face`). Only the lower 16 bits
+    /// address a face in the file; the weight is applied separately through
+    /// the variation axes, so the instance number is dropped here.
+    pub(super) fn face_index(index: c_int) -> u32 {
+        (index.max(0) as u32) & 0xffff
     }
 
     unsafe fn load(name: &str) -> Result<Api, libloading::Error> {
@@ -581,6 +589,18 @@ mod tests {
             !fonts.has_discovery() && fonts.lookup(FaceStyle::Regular, 'A').is_some(),
             "the embedded fonts stopped covering 'A' without system discovery"
         );
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn a_named_instance_index_addresses_its_face_not_the_instance() {
+        use fontconfig::face_index;
+        assert_eq!(face_index(0), 0);
+        assert_eq!(face_index(3), 3);
+        // second named instance of face 0, as fontconfig reports for a variable font
+        assert_eq!(face_index(2 << 16), 0);
+        assert_eq!(face_index((5 << 16) | 1), 1);
+        assert_eq!(face_index(-1), 0);
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]
