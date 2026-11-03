@@ -512,7 +512,7 @@ mod fontconfig {
     /// address a face in the file; the weight is applied separately through
     /// the variation axes, so the instance number is dropped here.
     pub(super) fn face_index(index: c_int) -> u32 {
-        (index.max(0) as u32) & 0xffff
+        (index as u32) & 0xffff
     }
 
     unsafe fn load(name: &str) -> Result<Api, libloading::Error> {
@@ -600,7 +600,8 @@ mod tests {
         // second named instance of face 0, as fontconfig reports for a variable font
         assert_eq!(face_index(2 << 16), 0);
         assert_eq!(face_index((5 << 16) | 1), 1);
-        assert_eq!(face_index(-1), 0);
+        assert_eq!(face_index(0x8000_0000_u32 as std::ffi::c_int), 0);
+        assert_eq!(face_index(0x8000_0001_u32 as std::ffi::c_int), 1);
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]
