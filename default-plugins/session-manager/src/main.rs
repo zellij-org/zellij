@@ -1677,6 +1677,12 @@ impl State {
             return should_render;
         }
 
+        let is_tab_key = key.bare_key == BareKey::Tab
+            && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]));
+        if !is_tab_key {
+            self.single_screen_state.reset_tab_cycle();
+        }
+
         match key.bare_key {
             BareKey::Char(character) if key.has_no_modifiers() => {
                 if character == '\n' {
@@ -1712,6 +1718,13 @@ impl State {
             },
             BareKey::Tab if key.has_no_modifiers() => {
                 self.single_screen_state.tab_complete(
+                    &self.sessions.session_ui_infos,
+                    &self.resurrectable_sessions.all_resurrectable_sessions,
+                );
+                should_render = true;
+            },
+            BareKey::Tab if key.has_only_modifiers(&[KeyModifier::Shift]) => {
+                self.single_screen_state.tab_complete_backwards(
                     &self.sessions.session_ui_infos,
                     &self.resurrectable_sessions.all_resurrectable_sessions,
                 );
