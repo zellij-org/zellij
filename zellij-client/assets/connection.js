@@ -109,6 +109,11 @@ export function initConnectionHandlers() {
     window.addEventListener("pagehide", () => {
         isPageUnloading = true;
     });
+
+    window.addEventListener("pageshow", () => {
+        // A cached page is active again and can handle socket close events.
+        isPageUnloading = false;
+    });
 }
 
 /**
