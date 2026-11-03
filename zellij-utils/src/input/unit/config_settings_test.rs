@@ -263,6 +263,7 @@ pub(crate) fn every_setting_set() -> Config {
             tab_markers: Some(false),
             idle_rule: Some(crate::input::attention::IdleRuleScope::Watched),
             done_threshold_secs: Some(30),
+            track_commands: Some(false),
             idle_activity_secs: Some(20),
             idle_silence_secs: Some(5),
             startup_card: Some(crate::input::attention::StartupCard::Never),

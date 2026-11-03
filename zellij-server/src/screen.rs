@@ -11550,6 +11550,7 @@ pub(crate) fn screen_thread_main(
                         );
                     },
                 };
+                screen.note_attention_input();
                 if state_changed {
                     screen.log_and_report_session_state()?;
                 }

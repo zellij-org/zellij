@@ -401,6 +401,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "10",
             Everyone,
         ),
+        SettingKey::AttentionTrackCommands => info(
+            "Show long-running commands",
+            "List commands as working once they run longer than the done threshold (interactive programs are skipped)",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::AttentionIdleActivitySecs => info(
             "Busy output for (seconds)",
             "Seconds of steady output before quiet detection applies",
@@ -1897,6 +1904,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | AttentionBadgeColorNewOutput => (C::Notifications, "Tray badge colours"),
         AttentionIdleRule
         | AttentionDoneThresholdSecs
+        | AttentionTrackCommands
         | AttentionIdleActivitySecs
         | AttentionIdleSilenceSecs => (C::Notifications, "Timing"),
         SessionName | AttachToSession => (C::Sessions, "Session name"),

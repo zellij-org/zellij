@@ -6010,6 +6010,9 @@ impl Handler for Grid {
                                 );
                             }
                             self.alternate_screen_state = None;
+                            self.shell_reports.push(
+                                crate::attention::signals::PaneSignal::AlternateScreen(false),
+                            );
                             self.invalidate_scroll_offset();
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
@@ -6132,6 +6135,8 @@ impl Handler for Grid {
                                 alternate_kittygrid,
                                 current_supports_kitty_keyboard_protocol,
                             ));
+                            self.shell_reports
+                                .push(crate::attention::signals::PaneSignal::AlternateScreen(true));
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_display_rows = 0;
                             self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render

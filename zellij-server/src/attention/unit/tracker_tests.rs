@@ -794,3 +794,281 @@ fn with_attention_off_panes_report_nothing_until_it_is_turned_back_on() {
     assert_eq!(status(&tracker), AttentionStatus::Idle);
     assert_eq!(frame(&tracker), None);
 }
+
+fn remembered(tracker: &AttentionTracker) -> Option<AttentionStatus> {
+    tracker
+        .attention(&PANE)
+        .unwrap()
+        .remembered
+        .as_ref()
+        .map(|r| r.status)
+}
+
+fn listed(tracker: &AttentionTracker) -> bool {
+    tracker
+        .session_attention(&[(0, "t".to_owned(), vec![(PANE, "p".to_owned())])])
+        .items
+        .iter()
+        .any(|item| item.pane_id == PANE)
+}
+
+#[test]
+fn a_long_command_is_working_once_it_passes_the_threshold() {
+    let mut tracker = tracker();
+    tracker.take_idle_checks();
+    run_command(&mut tracker, "cargo build", 2_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(
+        tracker.take_idle_checks(),
+        vec![(PANE, 10_000 + COMMAND_CHECK_SLACK_MS)]
+    );
+    tracker.idle_check(PANE, 12_050);
+    let attention = tracker.attention(&PANE).unwrap();
+    assert_eq!(attention.status, AttentionStatus::Working);
+    assert_eq!(attention.source, Some(AttentionSource::ShellCommand));
+    assert_eq!(attention.text, "running: cargo build");
+    assert_eq!(attention.remembered, None);
+    assert!(frame(&tracker).is_none());
+    finish(&mut tracker, Some(0), None, 20_000);
+    assert_eq!(status(&tracker), AttentionStatus::Done);
+    visible(&mut tracker, 21_000);
+    assert!(!listed(&tracker), "a finished command is not remembered");
+}
+
+#[test]
+fn output_shows_a_due_command_as_working_instead_of_new_output() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "make", 2_000);
+    steady_output(&mut tracker, 5_000, 11_500);
+    assert_eq!(status(&tracker), AttentionStatus::NewOutput);
+    tracker.on_output(PANE, 12_500);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+}
+
+#[test]
+fn an_idle_check_rearms_the_command_check_it_replaced() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "make", 2_000);
+    tracker.take_idle_checks();
+    tracker.idle_check(PANE, 5_000);
+    assert_eq!(
+        tracker.take_idle_checks(),
+        vec![(PANE, 7_000 + COMMAND_CHECK_SLACK_MS)]
+    );
+}
+
+#[test]
+fn idle_checks_keep_the_soonest_per_pane() {
+    let mut tracker = tracker();
+    tracker.take_idle_checks();
+    run_command(&mut tracker, "make", 2_000);
+    steady_output(&mut tracker, 2_000, 9_000);
+    let checks = tracker.take_idle_checks();
+    assert_eq!(checks.len(), 1);
+    assert!(checks[0].1 < 10_000);
+}
+
+#[test]
+fn a_command_on_the_alternate_screen_is_never_working_or_done() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "vim notes", 2_000);
+    tracker.on_signals(PANE, vec![PaneSignal::AlternateScreen(true)], 2_500);
+    tracker.idle_check(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    tracker.on_signals(PANE, vec![PaneSignal::AlternateScreen(false)], 25_000);
+    finish(&mut tracker, Some(1), None, 25_100);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    run_command(&mut tracker, "make", 30_000);
+    tracker.idle_check(PANE, 40_100);
+    assert_eq!(
+        status(&tracker),
+        AttentionStatus::Working,
+        "the next command is tracked again"
+    );
+}
+
+#[test]
+fn the_alternate_screen_counts_when_it_was_entered_before_the_process_was_seen() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![PaneSignal::AlternateScreen(true)], 1_500);
+    tracker.foreground_changed(PANE, Some("htop".to_owned()), 2_000);
+    tracker.idle_check(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    tracker.on_signals(PANE, vec![PaneSignal::AlternateScreen(false)], 19_000);
+    tracker.foreground_changed(PANE, None, 20_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+}
+
+#[test]
+fn typing_into_a_running_command_makes_it_interactive() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "python", 2_000);
+    tracker.on_user_input(PANE, 5_000);
+    tracker.idle_check(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    finish(&mut tracker, Some(1), None, 20_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+}
+
+#[test]
+fn typing_into_a_command_that_already_shows_as_working_hides_it() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "ssh host", 2_000);
+    tracker.idle_check(PANE, 12_100);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+    tracker.on_user_input(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+}
+
+#[test]
+fn typing_at_the_prompt_does_not_count() {
+    let mut tracker = tracker();
+    tracker.on_signals(
+        PANE,
+        vec![
+            PaneSignal::PromptShown { aid: None },
+            PaneSignal::InputStarted,
+        ],
+        1_500,
+    );
+    tracker.on_user_input(PANE, 1_800);
+    run_command(&mut tracker, "make", 2_000);
+    tracker.idle_check(PANE, 12_100);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+}
+
+#[test]
+fn panes_that_report_status_are_not_tracked_as_commands() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "claude", 2_000);
+    tracker.on_signals(PANE, vec![report("state=working")], 2_100);
+    tracker.on_signals(PANE, vec![report("state=done")], 3_000);
+    visible(&mut tracker, 3_500);
+    hidden(&mut tracker, 3_600);
+    tracker.idle_check(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(remembered(&tracker), Some(AttentionStatus::Done));
+}
+
+#[test]
+fn command_tracking_can_be_turned_off() {
+    let mut tracker = tracker();
+    tracker.set_config(
+        AttentionConfig {
+            track_commands: Some(false),
+            ..Default::default()
+        },
+        1_500,
+    );
+    run_command(&mut tracker, "make", 2_000);
+    tracker.idle_check(PANE, 13_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    finish(&mut tracker, Some(0), None, 20_000);
+    assert_eq!(status(&tracker), AttentionStatus::Done);
+}
+
+#[test]
+fn a_pane_that_reported_status_is_remembered_after_it_is_seen() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=working:msg=cmVmYWN0b3I=")], 2_000);
+    tracker.on_signals(PANE, vec![report("state=done")], 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::Done);
+    visible(&mut tracker, 4_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    let attention = tracker.attention(&PANE).unwrap().clone();
+    let remembered = attention.remembered.unwrap();
+    assert_eq!(remembered.status, AttentionStatus::Done);
+    assert_eq!(remembered.text, "done");
+    assert_eq!(remembered.since_ms, 3_000);
+    assert!(listed(&tracker));
+    let session = tracker.session_attention(&[(0, "t".to_owned(), vec![(PANE, "p".to_owned())])]);
+    assert_eq!(session.counts.done, 0, "a remembered pane is not counted");
+    assert_eq!(session.top, None);
+}
+
+#[test]
+fn a_pane_that_only_reports_idle_is_not_remembered() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=idle")], 2_000);
+    assert_eq!(remembered(&tracker), None);
+    assert!(!listed(&tracker));
+}
+
+#[test]
+fn a_remembered_pane_is_forgotten_when_the_prompt_returns() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "claude", 1_500);
+    tracker.on_signals(PANE, vec![report("state=working")], 2_000);
+    tracker.on_signals(PANE, vec![report("state=idle")], 3_000);
+    assert_eq!(remembered(&tracker), Some(AttentionStatus::Idle));
+    assert!(listed(&tracker));
+    tracker.on_signals(PANE, vec![PaneSignal::PromptShown { aid: None }], 4_000);
+    assert_eq!(remembered(&tracker), None);
+    assert!(!listed(&tracker));
+}
+
+#[test]
+fn a_remembered_pane_is_forgotten_when_its_program_leaves_the_foreground() {
+    let mut tracker = tracker();
+    tracker.foreground_changed(PANE, Some("claude".to_owned()), 1_500);
+    tracker.on_signals(PANE, vec![report("state=working")], 2_000);
+    assert!(remembered(&tracker).is_some());
+    tracker.foreground_changed(PANE, None, 3_000);
+    assert_eq!(remembered(&tracker), None);
+}
+
+#[test]
+fn a_remembered_pane_is_forgotten_on_exit_reset_and_clear() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=done")], 2_000);
+    tracker.pane_exited(PANE, Some(0), 3_000);
+    assert_eq!(remembered(&tracker), None);
+
+    tracker.on_signals(PANE, vec![report("state=working")], 4_000);
+    tracker.on_signals(PANE, vec![PaneSignal::Reset], 5_000);
+    assert_eq!(remembered(&tracker), None);
+
+    tracker.on_signals(PANE, vec![report("state=working")], 6_000);
+    tracker.on_signals(PANE, vec![report("state=clear")], 7_000);
+    assert_eq!(remembered(&tracker), None);
+}
+
+#[test]
+fn closing_a_remembered_pane_refreshes_the_summary() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=idle:msg=d2FpdGluZw==")], 1_500);
+    tracker.on_signals(PANE, vec![report("state=done")], 2_000);
+    visible(&mut tracker, 3_000);
+    tracker.take_summary_stale();
+    tracker.remove_pane(PANE);
+    assert!(tracker.take_summary_stale());
+}
+
+#[test]
+fn marking_an_idle_remembered_pane_seen_forgets_it_until_it_reports_again() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=done")], 2_000);
+    tracker.mark_seen(PANE, 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(
+        remembered(&tracker),
+        Some(AttentionStatus::Done),
+        "the first dismissal only marks it seen"
+    );
+    tracker.mark_all_seen(4_000);
+    assert_eq!(remembered(&tracker), Some(AttentionStatus::Done));
+    tracker.mark_seen(PANE, 5_000);
+    assert_eq!(remembered(&tracker), None);
+    assert!(!listed(&tracker));
+    tracker.on_signals(PANE, vec![report("state=working")], 6_000);
+    assert_eq!(remembered(&tracker), Some(AttentionStatus::Working));
+}
+
+#[test]
+fn a_shell_in_the_foreground_does_not_forget_a_reporting_pane() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=blocked")], 2_000);
+    tracker.foreground_changed(PANE, None, 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    assert_eq!(remembered(&tracker), Some(AttentionStatus::NeedsYou));
+}

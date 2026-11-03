@@ -18,9 +18,10 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    bar_role_label, bar_shows_mode, BorderStyle, BorderStyleOverride, Direction, HiddenBars,
-    KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
+    bar_role_label, bar_shows_mode, BareKey, BorderStyle, BorderStyleOverride, Direction,
+    HiddenBars, KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus,
+    PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText,
+    WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -331,6 +332,7 @@ pub(crate) struct Tab {
     last_mouse_activity_time: HashMap<ClientId, Instant>,
     typed_input: TypedInput,
     local_input: HashSet<PaneId>,
+    typed_into: HashSet<PaneId>,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -1193,6 +1195,7 @@ impl Tab {
             last_mouse_activity_time: HashMap::new(),
             typed_input: TypedInput::default(),
             local_input: HashSet::new(),
+            typed_into: HashSet::new(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -5097,7 +5100,12 @@ impl Tab {
     pub fn note_typed_input(&mut self, pane_id: PaneId) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             self.typed_input.record(terminal_id, Instant::now());
+            self.typed_into.insert(pane_id);
         }
+    }
+
+    pub fn take_typed_into(&mut self) -> HashSet<PaneId> {
+        std::mem::take(&mut self.typed_into)
     }
 
     pub fn paste_to_active_terminal(
@@ -5119,6 +5127,7 @@ impl Tab {
             .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
             .with_context(err_context)?;
         self.local_input.insert(active_pane_id);
+        self.typed_into.insert(active_pane_id);
         self.paste_to_pane_id(bytes, active_pane_id, completion)
     }
 
@@ -5171,6 +5180,13 @@ impl Tab {
             }
         }
 
+        let more_than_enter = !key_with_modifier
+            .as_ref()
+            .map(|key| key.bare_key == BareKey::Enter && key.has_no_modifiers())
+            .unwrap_or(false)
+            && raw_input_bytes
+                .iter()
+                .any(|byte| *byte != b'\r' && *byte != b'\n');
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 match active_pane.adjust_input_to_terminal(
@@ -5183,6 +5199,9 @@ impl Tab {
                         if client_id.is_some() {
                             self.typed_input.record(active_terminal_id, Instant::now());
                             self.local_input.insert(pane_id);
+                            if more_than_enter {
+                                self.typed_into.insert(pane_id);
+                            }
                         }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(

@@ -358,6 +358,18 @@ pub struct PaneAttention {
     pub watched: bool,
     #[prost(bool, tag="11")]
     pub from_watch: bool,
+    #[prost(message, optional, tag="12")]
+    pub remembered: ::core::option::Option<RememberedStatus>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RememberedStatus {
+    #[prost(string, tag="1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(uint64, tag="3")]
+    pub since_ms: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

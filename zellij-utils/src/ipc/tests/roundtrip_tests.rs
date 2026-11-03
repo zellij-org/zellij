@@ -4595,6 +4595,11 @@ fn test_server_messages() {
             ignore_output: true,
             watched: true,
             from_watch: true,
+            remembered: Some(crate::attention::RememberedStatus {
+                status: crate::attention::AttentionStatus::Failed,
+                text: "failed: tests".to_owned(),
+                since_ms: 15,
+            }),
         },
     };
     test_server_roundtrip!(ServerToClientMsg::SessionAttention {

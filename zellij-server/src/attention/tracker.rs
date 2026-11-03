@@ -4,7 +4,7 @@ use zellij_utils::attention::{
     format_duration_ms, sanitize_display_text, AttentionCounts, AttentionDetail, AttentionItem,
     AttentionSource, AttentionStatus, CommandOutcome, CommandPhase, CommandResult, CommandState,
     CommandText, CommandTextSource, MuteScope, PaneAttention, ProgramState, ProgramStatusRecord,
-    RunningCommand, SessionAttention, TabAttention,
+    RememberedStatus, RunningCommand, SessionAttention, TabAttention,
 };
 use zellij_utils::data::PaneId;
 use zellij_utils::input::attention::{AttentionConfig, IdleRuleScope};
@@ -16,6 +16,7 @@ pub const STARTUP_OUTPUT_GRACE_MS: u64 = 3000;
 pub const RESIZE_OUTPUT_GRACE_MS: u64 = 1500;
 pub const IDLE_CHECK_THROTTLE_MS: u64 = 250;
 pub const STEADY_ACTIVITY_PERCENT: u64 = 60;
+pub const COMMAND_CHECK_SLACK_MS: u64 = 50;
 const MAX_TEXT_CHARS: usize = 200;
 
 pub fn now_ms() -> u64 {
@@ -51,6 +52,7 @@ struct Notification {
 struct Finished {
     source: AttentionSource,
     outcome: CommandOutcome,
+    interactive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +129,9 @@ struct PaneTrack {
     dismissed_ms: Option<u64>,
     resolved: PaneAttention,
     frame: Option<FrameMarker>,
+    reported_ms: Option<u64>,
+    alternate_screen: bool,
+    interactive: bool,
 }
 
 impl PaneTrack {
@@ -144,6 +149,39 @@ impl PaneTrack {
     }
     fn acknowledged(&self, at_ms: u64) -> bool {
         self.focused || self.last_focused_ms.map(|f| f >= at_ms).unwrap_or(false)
+    }
+    fn reports_status(&self) -> bool {
+        self.reported_ms.is_some() || self.records.iter().any(|r| r.state().is_transient())
+    }
+    fn running_source(&self) -> AttentionSource {
+        if self.command_pane_running.is_some() && !self.command.reports_markers {
+            AttentionSource::CommandPane
+        } else if self.foreground.is_some() {
+            AttentionSource::ForegroundProcess
+        } else {
+            AttentionSource::ShellCommand
+        }
+    }
+    fn start_command(&mut self) {
+        self.interactive = self.alternate_screen;
+    }
+    fn forget_reported(&mut self) {
+        self.reported_ms = None;
+    }
+    fn remembered(&self) -> Option<RememberedStatus> {
+        let reported_ms = self.reported_ms?;
+        Some(match self.records.deciding_record() {
+            Some((status, record)) => RememberedStatus {
+                status,
+                text: record_text(status, &record),
+                since_ms: record.updated_ms,
+            },
+            None => RememberedStatus {
+                status: AttentionStatus::Idle,
+                text: "idle".to_owned(),
+                since_ms: reported_ms,
+            },
+        })
     }
 }
 
@@ -287,7 +325,11 @@ impl AttentionTracker {
     pub fn remove_pane(&mut self, pane_id: PaneId) {
         if let Some(track) = self.panes.remove(&pane_id) {
             let resolved = &track.resolved;
-            if !resolved.status.is_idle() || resolved.watched || resolved.is_muted() {
+            if !resolved.status.is_idle()
+                || resolved.watched
+                || resolved.is_muted()
+                || resolved.is_remembered()
+            {
                 self.summary_stale = true;
             }
         }
@@ -304,7 +346,14 @@ impl AttentionTracker {
         std::mem::take(&mut self.events)
     }
     pub fn take_idle_checks(&mut self) -> Vec<(PaneId, u64)> {
-        std::mem::take(&mut self.idle_checks)
+        let mut soonest: Vec<(PaneId, u64)> = vec![];
+        for (pane_id, delay_ms) in std::mem::take(&mut self.idle_checks) {
+            match soonest.iter_mut().find(|(p, _)| *p == pane_id) {
+                Some((_, existing)) => *existing = (*existing).min(delay_ms),
+                None => soonest.push((pane_id, delay_ms)),
+            }
+        }
+        soonest
     }
     pub fn take_changed(&mut self) -> BTreeSet<PaneId> {
         std::mem::take(&mut self.changed)
@@ -355,6 +404,14 @@ impl AttentionTracker {
             .and_then(|t| t.first_unseen_output_ms)
     }
     pub fn mark_seen(&mut self, pane_id: PaneId, now: u64) -> bool {
+        if let Some(track) = self.panes.get_mut(&pane_id) {
+            if track.resolved.status.is_idle() && track.reported_ms.is_some() {
+                track.forget_reported();
+            }
+        }
+        self.mark_seen_keeping_remembered(pane_id, now)
+    }
+    fn mark_seen_keeping_remembered(&mut self, pane_id: PaneId, now: u64) -> bool {
         let Some(track) = self.panes.get_mut(&pane_id) else {
             return false;
         };
@@ -368,7 +425,7 @@ impl AttentionTracker {
     pub fn mark_all_seen(&mut self, now: u64) {
         let panes: Vec<PaneId> = self.panes.keys().copied().collect();
         for pane_id in panes {
-            self.mark_seen(pane_id, now);
+            self.mark_seen_keeping_remembered(pane_id, now);
         }
     }
     pub fn set_pane_muted(&mut self, pane_id: PaneId, muted: bool, now: u64) {
@@ -510,9 +567,57 @@ impl AttentionTracker {
         if schedule_check {
             self.idle_checks.push((pane_id, silence_ms));
         }
-        if needs_resolve {
+        if needs_resolve || self.command_working_is_due_but_hidden(pane_id, now) {
             self.resolve(pane_id, now);
         }
+    }
+
+    fn tracked_command_start(&self, track: &PaneTrack) -> Option<u64> {
+        if !self.config.enabled()
+            || !self.config.track_commands()
+            || track.interactive
+            || track.reports_status()
+            || track.command.phase != CommandPhase::Running
+        {
+            return None;
+        }
+        track.command.running.as_ref().map(|r| r.started_ms)
+    }
+
+    fn command_working_is_due_but_hidden(&self, pane_id: PaneId, now: u64) -> bool {
+        let Some(track) = self.panes.get(&pane_id) else {
+            return false;
+        };
+        let due = self
+            .tracked_command_start(track)
+            .map(|started| now >= started.saturating_add(self.done_threshold_ms()))
+            .unwrap_or(false);
+        due && track.resolved.status != AttentionStatus::Working
+    }
+
+    fn arm_command_check(&mut self, pane_id: PaneId, now: u64) {
+        let Some(track) = self.panes.get(&pane_id) else {
+            return;
+        };
+        let Some(started) = self.tracked_command_start(track) else {
+            return;
+        };
+        let due = started.saturating_add(self.done_threshold_ms());
+        if due > now {
+            self.idle_checks
+                .push((pane_id, due - now + COMMAND_CHECK_SLACK_MS));
+        }
+    }
+
+    pub fn on_user_input(&mut self, pane_id: PaneId, now: u64) {
+        let Some(track) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
+        if track.command.phase != CommandPhase::Running || track.interactive {
+            return;
+        }
+        track.interactive = true;
+        self.resolve(pane_id, now);
     }
 
     fn idle_rule_applies(track: &PaneTrack, scope: IdleRuleScope) -> bool {
@@ -526,6 +631,10 @@ impl AttentionTracker {
     }
 
     pub fn idle_check(&mut self, pane_id: PaneId, now: u64) {
+        if self.command_working_is_due_but_hidden(pane_id, now) {
+            self.resolve(pane_id, now);
+        }
+        self.arm_command_check(pane_id, now);
         let silence_ms = self.silence_ms();
         let activity_ms = self.activity_ms();
         let scope = self.config.idle_rule();
@@ -587,6 +696,7 @@ impl AttentionTracker {
             self.on_signal(pane_id, signal, now);
         }
         self.resolve(pane_id, now);
+        self.arm_command_check(pane_id, now);
     }
 
     fn finish_command(
@@ -608,10 +718,12 @@ impl AttentionTracker {
             command: running.and_then(|r| r.command),
         };
         let track = self.track(pane_id, now);
+        let interactive = std::mem::take(&mut track.interactive);
         track.command.last = Some(outcome.clone());
         track.finished = Some(Finished {
             source,
             outcome: outcome.clone(),
+            interactive,
         });
         self.events
             .push(AttentionEvent::CommandFinished(pane_id, outcome.clone()));
@@ -622,18 +734,35 @@ impl AttentionTracker {
     fn on_signal(&mut self, pane_id: PaneId, signal: PaneSignal, now: u64) {
         match signal {
             PaneSignal::ProgramStatus(message) => {
-                if let ProgramStatusMessage::Query = message {
-                    return;
+                let track = self.track(pane_id, now);
+                match &message {
+                    ProgramStatusMessage::Query => return,
+                    ProgramStatusMessage::Clear { id: None } => track.forget_reported(),
+                    ProgramStatusMessage::Set(record) if record.state() != ProgramState::Idle => {
+                        track.reported_ms = Some(now);
+                    },
+                    _ => {},
                 }
-                self.track(pane_id, now).records.apply(message, now);
+                track.records.apply(message, now);
             },
             PaneSignal::Reset => {
-                self.track(pane_id, now).records.clear_all();
+                let track = self.track(pane_id, now);
+                track.records.clear_all();
+                track.forget_reported();
+                track.alternate_screen = false;
+            },
+            PaneSignal::AlternateScreen(active) => {
+                let track = self.track(pane_id, now);
+                track.alternate_screen = active;
+                if active && track.command.phase == CommandPhase::Running {
+                    track.interactive = true;
+                }
             },
             PaneSignal::PromptShown { .. } => {
                 let track = self.track(pane_id, now);
                 track.command.reports_markers = true;
                 track.records.drop_transient();
+                track.forget_reported();
                 track.foreground = None;
                 let unfinished = if track.command.phase == CommandPhase::Running {
                     track.command.running.take()
@@ -672,6 +801,7 @@ impl AttentionTracker {
                 track.finished = None;
                 track.foreground = None;
                 track.burst = Burst::default();
+                track.start_command();
                 self.events
                     .push(AttentionEvent::CommandStarted(pane_id, command));
             },
@@ -706,6 +836,10 @@ impl AttentionTracker {
         if track.command.reports_markers || track.command_pane_started_ms.is_some() {
             return;
         }
+        if command.is_none() && track.foreground.is_some() && track.reported_ms.is_some() {
+            track.records.drop_transient();
+            track.forget_reported();
+        }
         match (command, track.foreground.take()) {
             (Some(text), None) => {
                 let command = super::shell::clean_command_text(&text).map(|text| CommandText {
@@ -719,6 +853,7 @@ impl AttentionTracker {
                 track.command.phase = CommandPhase::Running;
                 track.command.running = track.foreground.clone();
                 track.finished = None;
+                track.start_command();
                 self.events
                     .push(AttentionEvent::CommandStarted(pane_id, command));
             },
@@ -740,6 +875,7 @@ impl AttentionTracker {
             (None, None) => {},
         }
         self.resolve(pane_id, now);
+        self.arm_command_check(pane_id, now);
     }
 
     pub fn command_pane_started(&mut self, pane_id: PaneId, command: Option<String>, now: u64) {
@@ -756,11 +892,14 @@ impl AttentionTracker {
             started_ms: now,
         });
         track.finished = None;
+        track.forget_reported();
         if !track.command.reports_markers {
             track.command.phase = CommandPhase::Running;
             track.command.running = track.command_pane_running.clone();
+            track.start_command();
         }
         self.resolve(pane_id, now);
+        self.arm_command_check(pane_id, now);
     }
 
     pub fn pane_exited(&mut self, pane_id: PaneId, exit_status: Option<i32>, now: u64) {
@@ -768,6 +907,7 @@ impl AttentionTracker {
             return;
         };
         track.records.drop_transient();
+        track.forget_reported();
         let running = track.command_pane_running.take();
         if running.is_some() || track.command_pane_started_ms.is_some() {
             track.command.phase = CommandPhase::Finished;
@@ -825,9 +965,29 @@ impl AttentionTracker {
         }
     }
 
-    fn candidates(&self, track: &PaneTrack) -> Vec<Candidate> {
+    fn candidates(&self, track: &PaneTrack, now: u64) -> Vec<Candidate> {
         let mut candidates = vec![];
         let has_records = !track.records.is_empty();
+        let command_working = self
+            .tracked_command_start(track)
+            .filter(|started| now >= started.saturating_add(self.done_threshold_ms()))
+            .and(track.command.running.as_ref());
+        if let Some(running) = command_working {
+            candidates.push(Candidate {
+                status: AttentionStatus::Working,
+                source: track.running_source(),
+                text: with_command("running".to_owned(), &running.command),
+                detail: AttentionDetail {
+                    command: running.command.clone(),
+                    ..Default::default()
+                },
+                since_ms: running.started_ms,
+                past: false,
+                on_frame: false,
+                from_watch: false,
+            });
+        }
+        let quiet_allowed = !has_records && command_working.is_none();
         if let Some((status, record)) = track.records.deciding_record() {
             if !status.is_idle() {
                 let past = matches!(record.state(), ProgramState::Done | ProgramState::Error);
@@ -899,7 +1059,7 @@ impl AttentionTracker {
                 from_watch: false,
             });
         }
-        if let Some(finished) = &track.finished {
+        if let Some(finished) = track.finished.as_ref().filter(|f| !f.interactive) {
             let outcome = &finished.outcome;
             let long_enough = outcome
                 .duration_ms
@@ -926,7 +1086,7 @@ impl AttentionTracker {
             }
         }
         if let Some(quiet_ms) = track.quiet_ms {
-            if !has_records {
+            if quiet_allowed {
                 candidates.push(Candidate {
                     status: AttentionStatus::Quiet,
                     source: AttentionSource::IdleRule,
@@ -941,7 +1101,7 @@ impl AttentionTracker {
         }
         if let Some(first_unseen) = track.first_unseen_output_ms {
             let watched = track.watch_armed_ms.is_some();
-            if !track.ignore_output && !watched && !track.is_looked_at() && !has_records {
+            if !track.ignore_output && !watched && !track.is_looked_at() && quiet_allowed {
                 candidates.push(Candidate {
                     status: AttentionStatus::NewOutput,
                     source: AttentionSource::UnseenOutput,
@@ -989,9 +1149,14 @@ impl AttentionTracker {
             return;
         };
         let candidates = if self.config.enabled() {
-            self.candidates(track)
+            self.candidates(track, now)
         } else {
             vec![]
+        };
+        let remembered = if self.config.enabled() {
+            track.remembered()
+        } else {
+            None
         };
         let muted = if self.config.enabled() {
             self.mute_scope(&pane_id, track)
@@ -1013,6 +1178,7 @@ impl AttentionTracker {
                 ignore_output: track.ignore_output,
                 watched: track.watch_armed_ms.is_some(),
                 from_watch: c.from_watch,
+                remembered: remembered.clone(),
             },
             None if !self.config.enabled() => PaneAttention {
                 changed_ms: previous.changed_ms,
@@ -1023,6 +1189,7 @@ impl AttentionTracker {
                 ignore_output: track.ignore_output,
                 watched: track.watch_armed_ms.is_some(),
                 changed_ms: previous.changed_ms,
+                remembered,
                 ..Default::default()
             },
         };
@@ -1058,7 +1225,9 @@ impl AttentionTracker {
                 || resolved.ignore_output != previous.ignore_output
                 || resolved.watched != previous.watched
                 || resolved.seen != previous.seen
-                || resolved.detail != previous.detail;
+                || resolved.detail != previous.detail
+                || resolved.remembered.as_ref().map(|r| (r.status, &r.text))
+                    != previous.remembered.as_ref().map(|r| (r.status, &r.text));
             if meaningful {
                 self.events
                     .push(AttentionEvent::StatusChanged(pane_id, resolved));
@@ -1127,7 +1296,10 @@ impl AttentionTracker {
                     continue;
                 };
                 counts.add(&track.resolved);
-                if !track.resolved.status.is_idle() || track.resolved.watched {
+                if !track.resolved.status.is_idle()
+                    || track.resolved.watched
+                    || track.resolved.is_remembered()
+                {
                     items.push(AttentionItem {
                         pane_id: *pane_id,
                         tab_id: *tab_id,
