@@ -798,6 +798,9 @@ fn typing_through_the_live_view_makes_a_running_command_interactive() {
         working_count(background.session_name()) == Some(0)
     });
     press_release_key(&zellij);
+    zellij.wait_until("the release key ended typing", |grid_snapshot| {
+        !grid_snapshot.contains("typing into")
+    });
     zellij.quit();
 }
 
