@@ -358,6 +358,7 @@ message Action {
     HideBarByPaneIdAction hide_bar_by_pane_id = 192;
     PasteFromClipboardByPaneIdAction paste_from_clipboard_by_pane_id = 193;
     ToggleStackListOrientationAction toggle_stack_list_orientation = 194;
+    ToggleStackListOrientationByPaneIdAction toggle_stack_list_orientation_by_pane_id = 195;
   }
 }
 
@@ -1092,7 +1093,7 @@ message TiledPaneLayout {
   optional BorderStyleOverride border_style = 16;
   optional bool attention_muted = 17;
   optional bool ignore_output = 18;
-  optional string stack_direction = 19;
+  optional string stack_orientation = 19;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -1358,7 +1359,6 @@ message Options {
   optional string word_separators = 57;
   optional bool dangerously_enable_paste_buffer_read = 58;
   optional bool mouse_hover_tips = 59;
-  optional string stacked_pane_list_orientation = 60;
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
@@ -1380,6 +1380,7 @@ message Options {
   optional string bars_hidden_on_start = 85;
   optional bool hidden_bars_notification = 86;
   optional bool mode_hints_when_bars_hidden = 87;
+  optional string stacked_pane_list_orientation = 88;
 }
 
 enum OnForceClose {
@@ -1480,6 +1481,7 @@ message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
 message OpenSessionInTerminalAction {}
 message PasteFromClipboardByPaneIdAction { PaneId pane_id = 1; }
+message ToggleStackListOrientationByPaneIdAction { PaneId pane_id = 1; }
 message WaitForPaneExitAction { PaneId pane_id = 1; }
 message ToggleMirrorResizeAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }

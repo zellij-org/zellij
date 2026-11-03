@@ -128,6 +128,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Toggle Floating"), s("Floating"),
             action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
         (s("Toggle Embed"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
+        (s("Stack titles in a row/column"), s("Stack titles"), action_key(&km, &[A::ToggleStackListOrientation, TO_NORMAL])),
         (s("Mute"), s("Mute"), action_key(&km, &[A::MutePane, TO_NORMAL])),
         (s("Ignore output"), s("Ignore"), action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
         (s("Watch"), s("Watch"), action_key(&km, &[A::WatchPane, TO_NORMAL])),

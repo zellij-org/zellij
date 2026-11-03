@@ -915,7 +915,22 @@ impl Screen {
                 self.attention.tab_is_muted(*id as usize)
             },
             ContextMenuAction::Action(Action::MuteSession) => self.attention.session_is_muted(),
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleStackListOrientation) => {
+                clicked_any_pane
+                    .map(|pane_id| self.stack_titles_are_in_a_row(pane_id))
+                    .unwrap_or(false)
+            },
+            ContextMenuAction::Action(Action::ToggleStackListOrientationByPaneId { pane_id }) => {
+                self.stack_titles_are_in_a_row((*pane_id).into())
+            },
             _ => false,
+        })
+    }
+
+    fn stack_titles_are_in_a_row(&self, pane_id: PaneId) -> bool {
+        self.tabs.values().any(|tab| {
+            tab.stack_list_orientation_of_member(&pane_id)
+                == Some(zellij_utils::input::options::StackListOrientation::Horizontal)
         })
     }
 

@@ -1642,7 +1642,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedByPaneIdAction,
             ToggleSessionAction,
             ToggleSessionCardAction,
-            ToggleStackListOrientationAction,
+            ToggleStackListOrientationAction, ToggleStackListOrientationByPaneIdAction,
             ToggleTabAction,
             ToggleThemeAction,
             ToggleTrayIconAction,
@@ -1829,6 +1829,13 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleStackListOrientation => {
                 ActionType::ToggleStackListOrientation(ToggleStackListOrientationAction {})
+            },
+            crate::input::actions::Action::ToggleStackListOrientationByPaneId { pane_id } => {
+                ActionType::ToggleStackListOrientationByPaneId(
+                    ToggleStackListOrientationByPaneIdAction {
+                        pane_id: Some(pane_id.into()),
+                    },
+                )
             },
             crate::input::actions::Action::SetPaneFrameStyle(style) => {
                 let style = match style {
@@ -2921,6 +2928,16 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::ToggleStackListOrientation(_) => {
                 Ok(crate::input::actions::Action::ToggleStackListOrientation)
             },
+            ActionType::ToggleStackListOrientationByPaneId(a) => Ok(
+                crate::input::actions::Action::ToggleStackListOrientationByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| {
+                            anyhow!("ToggleStackListOrientationByPaneId missing pane_id")
+                        })?
+                        .try_into()?,
+                },
+            ),
             ActionType::SetPaneFrameStyle(set_pane_frame_style_action) => {
                 let style = crate::input::options::PaneFrameStyle::from_str(
                     &set_pane_frame_style_action.style,
@@ -5083,7 +5100,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
-            stack_direction: layout.stack_direction.map(|d| d.to_string()),
+            stack_orientation: layout.stack_orientation.map(|d| d.to_string()),
         }
     }
 }
@@ -5529,8 +5546,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
-            stack_direction: layout
-                .stack_direction
+            stack_orientation: layout
+                .stack_orientation
                 .as_deref()
                 .and_then(|s| s.parse().ok()),
         })

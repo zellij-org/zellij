@@ -33,7 +33,7 @@ pub struct TabLayoutManifest {
 #[derive(Default, Debug, Clone)]
 pub struct PaneLayoutManifest {
     pub geom: PaneGeom,
-    pub stack_direction: Option<StackListOrientation>,
+    pub stack_orientation: Option<StackListOrientation>,
     pub run: Option<Run>,
     pub cwd: Option<PathBuf>,
     pub is_borderless: bool,
@@ -160,7 +160,7 @@ fn flatten_nested_stacks(mut layout: TiledPaneLayout) -> TiledPaneLayout {
         let only_child = layout.children.remove(0);
         layout.children = only_child.children;
         layout.external_children_index = only_child.external_children_index;
-        layout.stack_direction = layout.stack_direction.or(only_child.stack_direction);
+        layout.stack_orientation = layout.stack_orientation.or(only_child.stack_orientation);
     }
     if layout.children_are_stacked && layout.children.iter().any(|c| !c.children.is_empty()) {
         layout.children_are_stacked = false;
@@ -448,10 +448,10 @@ fn serialize_tiled_layout_attributes(
         kdl_node
             .entries_mut()
             .push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
-        if let Some(direction) = layout.stack_direction {
+        if let Some(direction) = layout.stack_orientation {
             kdl_node
                 .entries_mut()
-                .push(KdlEntry::new_prop("stack_direction", direction.to_string()));
+                .push(KdlEntry::new_prop("stack_orientation", direction.to_string()));
         }
     }
     if layout.is_expanded_in_stack && is_in_stack {
@@ -812,7 +812,7 @@ fn stack_layout_from_manifest(
                 .map(|p| tiled_pane_layout_from_manifest(Some(p), None))
                 .collect(),
             children_are_stacked: true,
-            stack_direction: stacked_panes.iter().find_map(|pane| pane.stack_direction),
+            stack_orientation: stacked_panes.iter().find_map(|pane| pane.stack_orientation),
             ..Default::default()
         })
     }
@@ -971,8 +971,8 @@ fn get_tiled_panes_layout_from_panegeoms(
         split_size,
         children,
         children_are_stacked,
-        stack_direction: if children_are_stacked {
-            geoms.iter().find_map(|pane| pane.stack_direction)
+        stack_orientation: if children_are_stacked {
+            geoms.iter().find_map(|pane| pane.stack_orientation)
         } else {
             None
         },
@@ -2657,7 +2657,7 @@ mod tests {
     }
 
     #[test]
-    fn stack_directions_survive_a_round_trip() {
+    fn stack_orientations_survive_a_round_trip() {
         for direction in [
             StackListOrientation::Horizontal,
             StackListOrientation::Vertical,
@@ -2671,7 +2671,7 @@ mod tests {
                 geom.stacked = Some(0);
                 PaneLayoutManifest {
                     geom,
-                    stack_direction: Some(direction),
+                    stack_orientation: Some(direction),
                     ..Default::default()
                 }
             })
@@ -2688,7 +2688,7 @@ mod tests {
             };
             let (kdl, layout) = serialize_and_parse(manifest);
             assert!(
-                kdl.contains(&format!("stack_direction=\"{}\"", direction)),
+                kdl.contains(&format!("stack_orientation=\"{}\"", direction)),
                 "{}",
                 kdl
             );
@@ -2752,7 +2752,7 @@ mod tests {
         let default_layout = crate::input::layout::Layout::from_kdl(
             r#"
             layout {
-                pane_template name="stack" stacked=true stack_direction="horizontal" {
+                pane_template name="stack" stacked=true stack_orientation="horizontal" {
                     children
                 }
                 stack {
@@ -2784,11 +2784,11 @@ mod tests {
         let stack = &template_tiled.children[0];
         assert!(stack.children_are_stacked, "{}", kdl);
         assert_eq!(
-            stack.stack_direction,
+            stack.stack_orientation,
             Some(StackListOrientation::Horizontal)
         );
         assert_eq!(
-            kdl.matches("stack_direction=\"horizontal\"").count(),
+            kdl.matches("stack_orientation=\"horizontal\"").count(),
             2,
             "{}",
             kdl

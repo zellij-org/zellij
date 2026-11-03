@@ -1445,6 +1445,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleStackListOrientation,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     't',
                 ),
                 key_modifiers: {
@@ -7078,6 +7091,17 @@ Config {
                 ],
                 toggled_label: Some(
                     "Make tiled",
+                ),
+            },
+            Item {
+                label: "Show titles in a row",
+                actions: [
+                    ClickedPane(
+                        ToggleStackListOrientation,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Show titles in a column",
                 ),
             },
             Separator,

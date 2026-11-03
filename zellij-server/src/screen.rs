@@ -494,6 +494,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
     ToggleStackListOrientation(ClientId, Option<NotificationEnd>),
+    ToggleStackListOrientationWithPaneId(PaneId, Option<NotificationEnd>),
     SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
@@ -1355,6 +1356,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneFrames(..) => ScreenContext::TogglePaneFrames,
             ScreenInstruction::ToggleStackListOrientation(..) => {
                 ScreenContext::ToggleStackListOrientation
+            },
+            ScreenInstruction::ToggleStackListOrientationWithPaneId(..) => {
+                ScreenContext::ToggleStackListOrientationWithPaneId
             },
             ScreenInstruction::SetPaneFrameStyle(..) => ScreenContext::SetPaneFrameStyle,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
@@ -10194,7 +10198,7 @@ impl Screen {
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
                     let geom_override = serialization_geoms.get(pane_id).copied();
-                    let stack_direction = tab.stack_list_orientation_for_serialization(pane_id);
+                    let stack_orientation = tab.stack_list_orientation_for_serialization(pane_id);
                     let (pane_id, p) = match suppressed_panes.remove(pane_id) {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
@@ -10205,11 +10209,11 @@ impl Screen {
                         pane_id,
                         p,
                         geom_override.unwrap_or_else(|| p.position_and_size()),
-                        stack_direction,
+                        stack_orientation,
                     )
                 })
                 .chain(tab.hidden_stack_list_members_for_serialization())
-                .map(|(pane_id, p, geom, stack_direction)| {
+                .map(|(pane_id, p, geom, stack_orientation)| {
                     let focused_clients: Vec<ClientId> = active_pane_ids
                         .iter()
                         .filter_map(|(c_id, p_id)| {
@@ -10234,7 +10238,7 @@ impl Screen {
                         default_bg,
                         p.border_style_override(),
                     )
-                    .with_stack_direction(stack_direction)
+                    .with_stack_orientation(stack_orientation)
                     .with_attention_flags(
                         self.attention.pane_is_muted(&pane_id.into()),
                         self.attention.pane_ignores_output(&pane_id.into()),
@@ -12733,6 +12737,22 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ToggleStackListOrientationWithPaneId(
+                pane_id,
+                mut _completion_tx,
+            ) => {
+                let toggled = screen
+                    .tabs
+                    .values_mut()
+                    .any(|tab| tab.toggle_stack_list_orientation_of_pane(pane_id));
+                if toggled {
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                } else if let Some(ref mut c) = _completion_tx {
+                    c.set_exit_status(1);
+                    c.set_error_message(format!("Pane {:?} is not in a stack", pane_id));
+                }
             },
             ScreenInstruction::SetPaneFrameStyle(pane_frame_style, _completion_tx) => {
                 screen.pane_frame_style = pane_frame_style;

@@ -114,7 +114,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "children"
             || property_name == "stacked"
             || property_name == "expanded"
-            || property_name == "stack_direction"
+            || property_name == "stack_orientation"
             || property_name == "exclude_from_sync"
             || property_name == "contents_file"
             || property_name == "default_fg"
@@ -575,17 +575,17 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(run)
     }
-    fn parse_stack_direction(
+    fn parse_stack_orientation(
         &self,
         kdl_node: &KdlNode,
     ) -> Result<Option<StackListOrientation>, ConfigError> {
-        match kdl_get_string_property_or_child_value_with_error!(kdl_node, "stack_direction") {
+        match kdl_get_string_property_or_child_value_with_error!(kdl_node, "stack_orientation") {
             None => Ok(None),
             Some("vertical") => Ok(Some(StackListOrientation::Vertical)),
             Some("horizontal") => Ok(Some(StackListOrientation::Horizontal)),
             Some(other) => Err(ConfigError::new_layout_kdl_error(
                 format!(
-                    "Invalid stack_direction: '{}' (expected \"vertical\" or \"horizontal\")",
+                    "Invalid stack_orientation: '{}' (expected \"vertical\" or \"horizontal\")",
                     other
                 ),
                 kdl_node.span().offset(),
@@ -601,7 +601,7 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_pane_properties(kdl_node)?;
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
-        let stack_direction = self.parse_stack_direction(kdl_node)?;
+        let stack_orientation = self.parse_stack_orientation(kdl_node)?;
         let is_expanded_in_stack =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded").unwrap_or(false);
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
@@ -634,9 +634,9 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ));
-        } else if stack_direction.is_some() && !children_are_stacked {
+        } else if stack_orientation.is_some() && !children_are_stacked {
             return Err(ConfigError::new_layout_kdl_error(
-                format!("stack_direction can only be set on a stacked pane"),
+                format!("stack_orientation can only be set on a stacked pane"),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ));
@@ -680,7 +680,7 @@ impl<'a> KdlLayoutParser<'a> {
             children,
             children_are_stacked,
             is_expanded_in_stack,
-            stack_direction,
+            stack_orientation,
             pane_initial_contents,
             default_fg,
             default_bg,
@@ -750,12 +750,12 @@ impl<'a> KdlLayoutParser<'a> {
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                 .unwrap_or(pane_template.children_are_stacked);
-        let stack_direction = self
-            .parse_stack_direction(kdl_node)?
-            .or(pane_template.stack_direction);
-        if stack_direction.is_some() && !children_are_stacked {
+        let stack_orientation = self
+            .parse_stack_orientation(kdl_node)?
+            .or(pane_template.stack_orientation);
+        if stack_orientation.is_some() && !children_are_stacked {
             return Err(ConfigError::new_layout_kdl_error(
-                "stack_direction can only be set on a stacked pane".into(),
+                "stack_orientation can only be set on a stacked pane".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ));
@@ -777,7 +777,7 @@ impl<'a> KdlLayoutParser<'a> {
                 external_children_index,
                 children_are_stacked,
                 is_expanded_in_stack,
-                stack_direction,
+                stack_orientation,
                 ..Default::default()
             };
             self.assert_one_children_block(&pane_template, pane_template_kdl_node)?;
@@ -834,7 +834,7 @@ impl<'a> KdlLayoutParser<'a> {
                     .map(|name| name.to_string());
                 let children_are_stacked =
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
-                let stack_direction = self.parse_stack_direction(kdl_node)?;
+                let stack_orientation = self.parse_stack_orientation(kdl_node)?;
                 let is_expanded_in_stack =
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded");
                 let args = self.parse_args(kdl_node)?;
@@ -908,8 +908,8 @@ impl<'a> KdlLayoutParser<'a> {
                 if let Some(children_are_stacked) = children_are_stacked {
                     pane_template.children_are_stacked = children_are_stacked;
                 }
-                if let Some(stack_direction) = stack_direction {
-                    pane_template.stack_direction = Some(stack_direction);
+                if let Some(stack_orientation) = stack_orientation {
+                    pane_template.stack_orientation = Some(stack_orientation);
                 }
                 if let Some(is_expanded_in_stack) = is_expanded_in_stack {
                     pane_template.is_expanded_in_stack = is_expanded_in_stack;
@@ -1269,16 +1269,16 @@ impl<'a> KdlLayoutParser<'a> {
             );
         } else {
             self.assert_valid_pane_properties(kdl_node)?;
-            let stack_direction = self.parse_stack_direction(kdl_node)?;
+            let stack_orientation = self.parse_stack_orientation(kdl_node)?;
             let borderless =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
             let border_style = self.parse_border_style(kdl_node)?;
             let children_are_stacked =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                     .unwrap_or(false);
-            if stack_direction.is_some() && !children_are_stacked {
+            if stack_orientation.is_some() && !children_are_stacked {
                 return Err(ConfigError::new_layout_kdl_error(
-                    "stack_direction can only be set on a stacked pane".into(),
+                    "stack_orientation can only be set on a stacked pane".into(),
                     kdl_node.span().offset(),
                     kdl_node.span().len(),
                 ));
@@ -1309,7 +1309,7 @@ impl<'a> KdlLayoutParser<'a> {
                         children: pane_parts,
                         children_are_stacked,
                         is_expanded_in_stack,
-                        stack_direction,
+                        stack_orientation,
                         ..Default::default()
                     }),
                     kdl_node.clone(),

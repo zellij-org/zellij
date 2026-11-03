@@ -274,8 +274,12 @@ pub enum Action {
     ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
-    /// Flip the focused stacked-list between vertical (title list) and horizontal (IDE tab bar)
+    /// Switch the focused stack between showing its titles in a column (vertical) and in a row
+    /// (horizontal)
     ToggleStackListOrientation,
+    ToggleStackListOrientationByPaneId {
+        pane_id: PaneId,
+    },
     SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
@@ -1304,7 +1308,16 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
-            CliAction::ToggleStackListOrientation => Ok(vec![Action::ToggleStackListOrientation]),
+            CliAction::ToggleStackListOrientation { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ToggleStackListOrientationByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ToggleStackListOrientation]),
+            },
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleBars { bars } => Ok(vec![Action::ToggleBars { bars }]),
             CliAction::HideBars { bars } => Ok(vec![Action::HideBars { bars }]),

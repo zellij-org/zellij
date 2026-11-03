@@ -292,6 +292,7 @@ pub enum ScreenContext {
     ToggleActiveTerminalNoUiFullscreen,
     TogglePaneFrames,
     ToggleStackListOrientation,
+    ToggleStackListOrientationWithPaneId,
     SetPaneFrameStyle,
     SetSelectable,
     ShowPluginCursor,

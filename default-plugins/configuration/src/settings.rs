@@ -950,7 +950,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::StackedPaneListOrientation => info(
             "Stacked pane list orientation",
-            "Default title-list direction for new stacks",
+            "Show the titles of new stacks in a column or in a row",
             Choice(&["vertical", "horizontal"]),
             "vertical",
             Everyone,

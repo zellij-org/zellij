@@ -56,11 +56,11 @@ fn singleton_stacks_keep_command_slots_when_repositioned() {
             pane split_direction="vertical" {
                 pane {
                     pane command="editor"
-                    pane stacked=true stack_direction="horizontal" size="30%" {
+                    pane stacked=true stack_orientation="horizontal" size="30%" {
                         pane
                     }
                 }
-                pane stacked=true stack_direction="vertical" size="40%" {
+                pane stacked=true stack_orientation="vertical" size="40%" {
                     pane command="agent"
                 }
             }
@@ -2092,10 +2092,10 @@ fn can_define_a_stack_with_an_expanded_pane() {
 }
 
 #[test]
-fn cannot_define_a_stack_direction_for_a_non_stacked_pane() {
+fn cannot_define_a_stack_orientation_for_a_non_stacked_pane() {
     let kdl_layout = r#"
         layout {
-           pane stack_direction="horizontal" {
+           pane stack_orientation="horizontal" {
                pane
                pane
            }
@@ -2106,10 +2106,10 @@ fn cannot_define_a_stack_direction_for_a_non_stacked_pane() {
 }
 
 #[test]
-fn cannot_define_a_stack_direction_for_a_non_stacked_template() {
+fn cannot_define_a_stack_orientation_for_a_non_stacked_template() {
     for kdl_layout in [
         r#"layout {
-            pane_template name="plain" stack_direction="horizontal" {
+            pane_template name="plain" stack_orientation="horizontal" {
                 children
             }
             plain {
@@ -2121,13 +2121,13 @@ fn cannot_define_a_stack_direction_for_a_non_stacked_template() {
             pane_template name="plain" {
                 children
             }
-            plain stack_direction="horizontal" {
+            plain stack_orientation="horizontal" {
                 pane
                 pane
             }
         }"#,
         r#"layout {
-            pane_template name="stack" stacked=true stack_direction="horizontal" {
+            pane_template name="stack" stacked=true stack_orientation="horizontal" {
                 children
             }
             stack stacked=false {
@@ -2139,17 +2139,17 @@ fn cannot_define_a_stack_direction_for_a_non_stacked_template() {
         let error =
             Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
         assert!(
-            format!("{error:?}").contains("stack_direction can only be set on a stacked pane"),
+            format!("{error:?}").contains("stack_orientation can only be set on a stacked pane"),
             "{kdl_layout}: {error:?}"
         );
     }
 }
 
 #[test]
-fn cannot_define_an_invalid_stack_direction() {
+fn cannot_define_an_invalid_stack_orientation() {
     let kdl_layout = r#"
         layout {
-           pane stacked=true stack_direction="diagonal" {
+           pane stacked=true stack_orientation="diagonal" {
                pane
                pane
            }

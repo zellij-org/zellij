@@ -322,6 +322,7 @@ pub struct CellStyle {
     pub dim: bool,
     pub italic: bool,
     pub bold: bool,
+    pub underline: bool,
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
 }
@@ -463,6 +464,7 @@ pub fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
                 dim: matches!(character_style.dim, Some(AnsiCode::On)),
                 italic: matches!(character_style.italic, Some(AnsiCode::On)),
                 bold: matches!(character_style.bold, Some(AnsiCode::On)),
+                underline: matches!(character_style.underline, Some(AnsiCode::Underline(_))),
                 foreground: character_style.foreground,
                 background: character_style.background,
             });

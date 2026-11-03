@@ -132,7 +132,7 @@ impl SessionLayoutMetadata {
             || self.tabs.iter().any(|tab| {
                 tab.tiled_panes
                     .iter()
-                    .any(|pane| pane.stack_direction.is_some())
+                    .any(|pane| pane.stack_orientation.is_some())
             })
         {
             return true;
@@ -560,7 +560,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
     fn into(self) -> PaneLayoutManifest {
         PaneLayoutManifest {
             geom: self.geom,
-            stack_direction: self.stack_direction,
+            stack_orientation: self.stack_orientation,
             run: self.run,
             cwd: self.cwd,
             is_borderless: self.is_borderless,
@@ -590,7 +590,7 @@ pub struct TabLayoutMetadata {
 pub struct PaneLayoutMetadata {
     id: PaneId,
     geom: PaneGeom,
-    stack_direction: Option<StackListOrientation>,
+    stack_orientation: Option<StackListOrientation>,
     run: Option<Run>,
     cwd: Option<PathBuf>,
     is_borderless: bool,
@@ -622,7 +622,7 @@ impl PaneLayoutMetadata {
         PaneLayoutMetadata {
             id,
             geom,
-            stack_direction: None,
+            stack_orientation: None,
             run,
             cwd: None,
             is_borderless,
@@ -637,8 +637,8 @@ impl PaneLayoutMetadata {
             ignore_output: false,
         }
     }
-    pub fn with_stack_direction(mut self, stack_direction: Option<StackListOrientation>) -> Self {
-        self.stack_direction = stack_direction;
+    pub fn with_stack_orientation(mut self, stack_orientation: Option<StackListOrientation>) -> Self {
+        self.stack_orientation = stack_orientation;
         self
     }
     pub fn with_attention_flags(mut self, attention_muted: bool, ignore_output: bool) -> Self {

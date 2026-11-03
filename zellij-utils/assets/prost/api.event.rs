@@ -1941,6 +1941,7 @@ pub enum ClickedPaneAction {
     ToggleWatch = 8,
     HideBar = 9,
     PasteFromClipboard = 10,
+    ToggleStackListOrientation = 11,
 }
 impl ClickedPaneAction {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1960,6 +1961,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleWatch => "ClickedPaneActionToggleWatch",
             ClickedPaneAction::HideBar => "ClickedPaneActionHideBar",
             ClickedPaneAction::PasteFromClipboard => "ClickedPaneActionPasteFromClipboard",
+            ClickedPaneAction::ToggleStackListOrientation => "ClickedPaneActionToggleStackListOrientation",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1976,6 +1978,7 @@ impl ClickedPaneAction {
             "ClickedPaneActionToggleWatch" => Some(Self::ToggleWatch),
             "ClickedPaneActionHideBar" => Some(Self::HideBar),
             "ClickedPaneActionPasteFromClipboard" => Some(Self::PasteFromClipboard),
+            "ClickedPaneActionToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
             _ => None,
         }
     }

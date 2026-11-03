@@ -14607,14 +14607,14 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 }
 
 #[test]
-fn stack_direction_from_layout_is_applied_to_new_stack_list() {
+fn stack_orientation_from_layout_is_applied_to_new_stack_list() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
     let base_layout = r#"
         layout {
-            pane stacked=true stack_direction="horizontal" {
+            pane stacked=true stack_orientation="horizontal" {
                 pane focus=true
                 pane
                 pane
@@ -14651,7 +14651,7 @@ fn adding_pane_to_one_member_layout_stack_keeps_horizontal_orientation() {
     };
     let base_layout = r#"
         layout {
-            pane stacked=true stack_direction="horizontal" {
+            pane stacked=true stack_orientation="horizontal" {
                 pane focus=true
             }
         }
@@ -14706,19 +14706,19 @@ fn two_singleton_stacks_render_and_resize_like_plain_panes() {
             pane split_direction="vertical" {
                 pane {
                     pane focus=true
-                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                    pane stacked=true stack_orientation="horizontal" size="30%" { pane; }
                 }
-                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+                pane stacked=true stack_orientation="vertical" size="40%" { pane; }
             }
         }
     "#;
     let plain = stacked
         .replace(
-            "pane stacked=true stack_direction=\"horizontal\" size=\"30%\" { pane; }",
+            "pane stacked=true stack_orientation=\"horizontal\" size=\"30%\" { pane; }",
             "pane size=\"30%\"",
         )
         .replace(
-            "pane stacked=true stack_direction=\"vertical\" size=\"40%\" { pane; }",
+            "pane stacked=true stack_orientation=\"vertical\" size=\"40%\" { pane; }",
             "pane size=\"40%\"",
         );
     let mut outputs = Vec::new();
@@ -14770,9 +14770,9 @@ fn two_singleton_stacks_keep_independent_orientations_when_extended() {
             pane split_direction="vertical" {
                 pane {
                     pane focus=true
-                    pane stacked=true stack_direction="horizontal" size="30%" { pane; }
+                    pane stacked=true stack_orientation="horizontal" size="30%" { pane; }
                 }
-                pane stacked=true stack_direction="vertical" size="40%" { pane; }
+                pane stacked=true stack_orientation="vertical" size="40%" { pane; }
             }
         }
     "#,
@@ -14829,7 +14829,7 @@ fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
     };
     let base_layout = r#"
         layout {
-            pane stacked=true stack_direction="horizontal" {
+            pane stacked=true stack_orientation="horizontal" {
                 pane focus=true
                 pane
                 pane
@@ -14861,7 +14861,7 @@ fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
     assert_eq!(
         tab.reserved_top_rows.borrow().get(&visible),
         Some(&1),
-        "horizontal tab bar reserves a single row"
+        "a row of titles takes a single line"
     );
 
     assert!(tab.toggle_stack_list_orientation(client_id));
@@ -14891,7 +14891,7 @@ fn stack_list_orientation_survives_degroupify_groupify_cycle() {
     };
     let base_layout = r#"
         layout {
-            pane stacked=true stack_direction="horizontal" {
+            pane stacked=true stack_orientation="horizontal" {
                 pane focus=true
                 pane
                 pane
@@ -14932,14 +14932,14 @@ fn stack_list_orientation_survives_degroupify_groupify_cycle() {
 }
 
 #[test]
-fn horizontal_stack_list_member_at_point_follows_tab_widths() {
+fn horizontal_stack_list_member_at_point_follows_entry_widths() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
     let base_layout = r#"
         layout {
-            pane stacked=true stack_direction="horizontal" {
+            pane stacked=true stack_orientation="horizontal" {
                 pane name="foo" focus=true
                 pane name="terminal"
                 pane name="界"
@@ -14972,12 +14972,16 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         .cols
         .as_usize()
         .saturating_sub(offset.left + offset.right);
-    let entry_layout = tab.stack_list_horizontal_entry_layout(list, entry_cols);
-    let tab_widths: Vec<usize> = entry_layout.iter().map(|entry| entry.width).collect();
-    assert_eq!(tab_widths, vec![9, 14, 8]);
+    let row_layout = tab.stack_list_row_layout(list, entry_cols);
+    let entry_widths: Vec<usize> = row_layout.entries.iter().map(|entry| entry.width).collect();
+    assert_eq!(entry_widths, vec![5, 10, 4]);
+    assert_eq!((row_layout.hidden_before, row_layout.hidden_after), (0, 0));
+    let row_width = 5 + 1 + 10 + 1 + 4;
+    let first_entry_start = (entry_cols - row_width) / 2;
+    assert_eq!(row_layout.entries[0].x, first_entry_start);
     let members = list.members.clone();
 
-    let second_tab_start = entry_x + 9;
+    let second_tab_start = entry_x + first_entry_start + 6;
     let second_member = list.members[1];
     assert_eq!(
         tab.stack_list_member_at_point(
@@ -15007,9 +15011,8 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         instructions.push_str(payload.ansi());
     }
     let rendered = take_snapshot(&instructions, size.rows, size.cols, Palette::default());
-    for label in ["foo", "terminal", "界"] {
-        assert!(rendered.contains(label), "{}", rendered);
-    }
+    assert!(rendered.contains(" foo │ terminal │ 界"), "{}", rendered);
+    assert!(!rendered.contains('>'), "{}", rendered);
 
     for member in &members[1..] {
         assert!(tab.move_focus_right(1).unwrap());
@@ -15023,7 +15026,7 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         tab.focus_pane_with_id(member, false, false, 1).unwrap();
         let list = tab.stack_lists.values().next().unwrap();
         for cols in [0, 1, 20] {
-            let entries = tab.stack_list_horizontal_entry_layout(list, cols);
+            let entries = tab.stack_list_row_layout(list, cols).entries;
             assert_eq!(entries.iter().any(|entry| entry.member == member), cols > 0);
         }
     }
@@ -15039,14 +15042,14 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         20,
         Palette::default(),
     );
-    assert!(rendered.contains('‹'), "{}", rendered);
+    assert!(rendered.contains("‹1 "), "{}", rendered);
     assert!(rendered.contains('界'), "{}", rendered);
     let list = tab.stack_lists.values().next().unwrap();
     let pane = tab.tiled_panes.get_pane(list.visible).unwrap();
     let geom = pane.current_geom();
     let offset = pane.get_content_offset();
     let cols = geom.cols.as_usize() - offset.left - offset.right;
-    for entry in tab.stack_list_horizontal_entry_layout(list, cols) {
+    for entry in tab.stack_list_row_layout(list, cols).entries {
         for x in entry.x..entry.x + entry.width {
             assert_eq!(
                 tab.stack_list_member_at_point(
@@ -15055,6 +15058,98 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
                 ),
                 entry.member
             );
+        }
+    }
+}
+
+#[test]
+fn stack_titles_are_found_and_toggled_through_any_member() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane name="foo" focus=true
+                pane name="bar"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, vec![(1, None), (2, None)])),
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let list = tab.stack_lists.values().next().unwrap().clone();
+    let hidden = *list.members.iter().find(|m| **m != list.visible).unwrap();
+    let geom = tab.tiled_panes.get_pane(list.visible).unwrap().current_geom();
+    let on_titles = Position::new(geom.y as i32, (geom.x + 2) as u16);
+    let below_titles = Position::new(geom.y as i32 + 1, (geom.x + 2) as u16);
+    assert!(tab.position_is_on_stack_list_titles(list.visible, &on_titles));
+    assert!(tab.position_is_on_stack_list_titles(hidden, &on_titles));
+    assert!(!tab.position_is_on_stack_list_titles(list.visible, &below_titles));
+
+    assert!(tab.toggle_stack_list_orientation_of_pane(hidden));
+    assert_eq!(
+        tab.stack_list_orientation_of_member(&list.visible),
+        Some(StackListOrientation::Vertical)
+    );
+    assert!(tab.position_is_on_stack_list_titles(list.visible, &below_titles));
+    assert!(!tab.toggle_stack_list_orientation_of_pane(PaneId::Terminal(99)));
+}
+
+#[test]
+fn stack_list_row_layout_centers_entries_that_fit() {
+    let members = [
+        (PaneId::Terminal(1), 3),
+        (PaneId::Terminal(2), 8),
+        (PaneId::Terminal(3), 2),
+    ];
+    let layout = super::layout_stack_list_row(&members, 1, 31);
+    let positions: Vec<(usize, usize)> = layout
+        .entries
+        .iter()
+        .map(|entry| (entry.x, entry.width))
+        .collect();
+    assert_eq!(positions, vec![(5, 5), (11, 10), (22, 4)]);
+    assert_eq!((layout.hidden_before, layout.hidden_after), (0, 0));
+}
+
+#[test]
+fn stack_list_row_layout_counts_hidden_entries_on_each_side() {
+    let members: Vec<(PaneId, usize)> = (1..=10).map(|id| (PaneId::Terminal(id), 4)).collect();
+    for selected in 0..members.len() {
+        let layout = super::layout_stack_list_row(&members, selected, 30);
+        let shown: Vec<PaneId> = layout.entries.iter().map(|entry| entry.member).collect();
+        assert!(shown.contains(&members[selected].0), "selected={}", selected);
+        assert_eq!(
+            layout.hidden_before + shown.len() + layout.hidden_after,
+            members.len()
+        );
+        let before = super::stack_list_row_overflow_width(layout.hidden_before);
+        let after = super::stack_list_row_overflow_width(layout.hidden_after);
+        let first = layout.entries.first().unwrap();
+        let last = layout.entries.last().unwrap();
+        assert!(first.x >= before, "selected={}", selected);
+        assert!(last.x + last.width + after <= 30, "selected={}", selected);
+        let selected_entry = layout
+            .entries
+            .iter()
+            .find(|entry| entry.member == members[selected].0)
+            .unwrap();
+        match (layout.hidden_before, layout.hidden_after) {
+            (0, _) => assert_eq!(first.x, 0, "selected={}", selected),
+            (_, 0) => assert_eq!(last.x + last.width, 30, "selected={}", selected),
+            _ => assert_eq!(selected_entry.x, (30 - 6) / 2, "selected={}", selected),
         }
     }
 }

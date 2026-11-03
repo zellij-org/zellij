@@ -304,8 +304,9 @@ web_sharing "disabled"
 // 
 // stacked_pane_list false
  
-// Default orientation for new tabbed stacked-pane lists
-//   - vertical (default)
+// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
+// Options:
+//   - vertical (Default)
 //   - horizontal
 // 
 // stacked_pane_list_orientation "vertical"

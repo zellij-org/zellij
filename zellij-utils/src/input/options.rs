@@ -169,7 +169,7 @@ impl FromStr for PaneFrameStyle {
     }
 }
 
-/// Orientation of stacked-pane titles.
+/// Whether a stack shows its titles in a column (vertical) or in a row (horizontal)
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StackListOrientation {
@@ -470,8 +470,8 @@ pub struct Options {
     #[serde(default)]
     pub stacked_pane_list: Option<bool>,
 
-    /// Default orientation for new tabbed stacked-pane lists
-    /// ("vertical" or "horizontal"), default is vertical
+    /// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
+    /// default is vertical
     #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     #[serde(default)]
     pub stacked_pane_list_orientation: Option<StackListOrientation>,

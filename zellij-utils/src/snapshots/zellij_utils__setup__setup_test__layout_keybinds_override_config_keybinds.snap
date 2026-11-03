@@ -451,6 +451,17 @@ Config {
                     "Make tiled",
                 ),
             },
+            Item {
+                label: "Show titles in a row",
+                actions: [
+                    ClickedPane(
+                        ToggleStackListOrientation,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Show titles in a column",
+                ),
+            },
             Separator,
             Item {
                 label: "Watch pane",

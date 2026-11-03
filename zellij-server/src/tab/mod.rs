@@ -42,8 +42,9 @@ use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
+    boundaries::boundary_type,
     loading_indication::LoadingIndication,
-    pane_boundaries_frame::{FrameParams, StackListEntry},
+    pane_boundaries_frame::{stack_list_row_filler, FrameParams, StackListEntry},
     pane_contents_and_ui::PaneContentsAndUi,
 };
 use layout_applier::LayoutApplier;
@@ -60,7 +61,10 @@ use crate::{
     panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
+    panes::{
+        LinkHandler, PaneId, PluginPane, TerminalCharacter, TerminalPane,
+        EMPTY_TERMINAL_CHARACTER,
+    },
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -244,6 +248,165 @@ struct StackListEntryLayout {
     x: usize,
     label_width: usize,
     width: usize,
+}
+
+struct StackListRowLayout {
+    entries: Vec<StackListEntryLayout>,
+    hidden_before: usize,
+    hidden_after: usize,
+}
+
+fn stack_list_row_overflow_marker(hidden: usize, before: bool) -> String {
+    match (hidden, before) {
+        (0, _) => String::new(),
+        (hidden, true) => format!("‹{} ", hidden),
+        (hidden, false) => format!(" {}›", hidden),
+    }
+}
+
+fn stack_list_row_overflow_width(hidden: usize) -> usize {
+    stack_list_row_overflow_marker(hidden, true).chars().count()
+}
+
+fn layout_stack_list_row(
+    members: &[(PaneId, usize)],
+    selected: usize,
+    cols: usize,
+) -> StackListRowLayout {
+    let empty = StackListRowLayout {
+        entries: vec![],
+        hidden_before: 0,
+        hidden_after: 0,
+    };
+    if members.is_empty() || cols == 0 {
+        return empty;
+    }
+    let natural_width = |label_width: usize| label_width + StackListEntry::ROW_OVERHEAD;
+    let total_width: usize = members
+        .iter()
+        .map(|(_, label_width)| natural_width(*label_width))
+        .sum::<usize>()
+        + members.len()
+        - 1;
+    if total_width <= cols {
+        let mut x = (cols - total_width) / 2;
+        let entries = members
+            .iter()
+            .map(|(member, label_width)| {
+                let width = natural_width(*label_width);
+                let entry = StackListEntryLayout {
+                    member: *member,
+                    x,
+                    label_width: *label_width,
+                    width,
+                };
+                x += width + 1;
+                entry
+            })
+            .collect();
+        return StackListRowLayout {
+            entries,
+            ..empty
+        };
+    }
+    let count = members.len();
+    let selected = selected.min(count - 1);
+    let widths: Vec<usize> = members
+        .iter()
+        .map(|(_, label_width)| natural_width(*label_width))
+        .collect();
+    let before_marker = stack_list_row_overflow_width(selected);
+    let after_marker = stack_list_row_overflow_width(count - 1 - selected);
+    let selected_room = cols.saturating_sub(before_marker + after_marker);
+    if widths[selected] > selected_room {
+        let (member, label_width) = members[selected];
+        let (x, width) = if selected_room == 0 {
+            (0, cols)
+        } else {
+            (before_marker, selected_room)
+        };
+        return StackListRowLayout {
+            entries: vec![StackListEntryLayout {
+                member,
+                x,
+                label_width,
+                width,
+            }],
+            hidden_before: selected,
+            hidden_after: count - 1 - selected,
+        };
+    }
+    let fit = |indices: &mut dyn Iterator<Item = usize>, budget: usize| -> (usize, usize) {
+        let mut used = 0;
+        let mut shown = 0;
+        for index in indices {
+            let needed = widths[index] + 1;
+            if used + needed > budget {
+                break;
+            }
+            used += needed;
+            shown += 1;
+        }
+        (shown, used)
+    };
+    let fill_left = |budget: usize| -> (usize, usize) {
+        let (shown, used) = fit(&mut (0..selected).rev(), budget);
+        if shown < selected {
+            fit(&mut (0..selected).rev(), budget.saturating_sub(before_marker))
+        } else {
+            (shown, used)
+        }
+    };
+    let fill_right = |budget: usize| -> (usize, usize) {
+        let after_count = count - 1 - selected;
+        let (shown, used) = fit(&mut (selected + 1..count), budget);
+        if shown < after_count {
+            fit(&mut (selected + 1..count), budget.saturating_sub(after_marker))
+        } else {
+            (shown, used)
+        }
+    };
+    let left_half = (cols - widths[selected]) / 2;
+    let right_half = cols - widths[selected] - left_half;
+    let (mut shown_left, used_left) = fill_left(left_half);
+    let (mut shown_right, used_right) = fill_right(right_half);
+    let mut selected_x = left_half;
+    if shown_left == selected && shown_right < count - 1 - selected {
+        let slack = left_half - used_left;
+        (shown_right, _) = fill_right(right_half + slack);
+        selected_x = used_left;
+    } else if shown_right == count - 1 - selected && shown_left < selected {
+        let slack = right_half - used_right;
+        (shown_left, _) = fill_left(left_half + slack);
+        selected_x = cols - widths[selected] - used_right;
+    }
+    let first = selected - shown_left;
+    let last = selected + shown_right;
+    let mut x = selected_x;
+    let mut entries = vec![];
+    for index in (first..selected).rev() {
+        x -= widths[index] + 1;
+        entries.push((index, x));
+    }
+    entries.reverse();
+    let mut x = selected_x;
+    for index in selected..=last {
+        entries.push((index, x));
+        x += widths[index] + 1;
+    }
+    StackListRowLayout {
+        entries: entries
+            .into_iter()
+            .map(|(index, x)| StackListEntryLayout {
+                member: members[index].0,
+                x,
+                label_width: members[index].1,
+                width: widths[index],
+            })
+            .collect(),
+        hidden_before: first,
+        hidden_after: count - 1 - last,
+    }
 }
 
 impl StackList {
@@ -1286,6 +1449,39 @@ impl Tab {
             None => false,
         }
     }
+    pub fn stack_list_orientation_of_member(
+        &self,
+        pane_id: &PaneId,
+    ) -> Option<StackListOrientation> {
+        self.stack_list_id_of_member(pane_id)
+            .and_then(|stack_list_id| self.stack_lists.get(&stack_list_id))
+            .map(|list| list.orientation)
+    }
+    pub fn position_is_on_stack_list_titles(&self, pane_id: PaneId, point: &Position) -> bool {
+        if self.tiled_panes.fullscreen_is_active() {
+            return false;
+        }
+        let Some(list) = self
+            .stack_list_id_of_member(&pane_id)
+            .and_then(|stack_list_id| self.stack_lists.get(&stack_list_id))
+        else {
+            return false;
+        };
+        let Some(pane) = self.tiled_panes.get_pane(list.visible) else {
+            return false;
+        };
+        let geom = pane.current_geom();
+        let title_rows = match list.orientation {
+            StackListOrientation::Vertical => list.members.len(),
+            StackListOrientation::Horizontal => 1,
+        };
+        let line = point.line();
+        let column = point.column();
+        line >= geom.y as isize
+            && line < (geom.y + title_rows) as isize
+            && column >= geom.x
+            && column < geom.x + geom.cols.as_usize()
+    }
     fn stack_list_member_at_point(&self, pane_id: PaneId, point: &Position) -> PaneId {
         let Some(stack_list_id) = self.stack_list_id_of_member(&pane_id) else {
             return pane_id;
@@ -1319,7 +1515,7 @@ impl Tab {
                 if column < entry_x {
                     return pane_id;
                 }
-                for entry in self.stack_list_horizontal_entry_layout(list, entry_cols) {
+                for entry in self.stack_list_row_layout(list, entry_cols).entries {
                     if (entry_x + entry.x..entry_x + entry.x + entry.width).contains(&column) {
                         return entry.member;
                     }
@@ -1337,54 +1533,14 @@ impl Tab {
         pane.map(|p| zellij_utils::graphemes::display_width(&p.stack_list_entry_label()))
             .unwrap_or(0)
     }
-    fn stack_list_horizontal_entry_layout(
-        &self,
-        list: &StackList,
-        entry_cols: usize,
-    ) -> Vec<StackListEntryLayout> {
-        let label_widths: Vec<usize> = list
+    fn stack_list_row_layout(&self, list: &StackList, entry_cols: usize) -> StackListRowLayout {
+        let members: Vec<(PaneId, usize)> = list
             .members
             .iter()
-            .map(|member| self.stack_list_member_label_width(list, member))
+            .map(|member| (*member, self.stack_list_member_label_width(list, member)))
             .collect();
-        let total_width: usize = label_widths
-            .iter()
-            .map(|width| width + StackListEntry::OVERHEAD)
-            .sum();
-        let gutter = usize::from(total_width > entry_cols && entry_cols > 2);
-        let available = entry_cols - 2 * gutter;
         let selected = list.rank_of(&list.visible).unwrap_or(0);
-        let mut start = 0;
-        let mut used: usize = label_widths
-            .iter()
-            .take(selected + 1)
-            .map(|width| (width + StackListEntry::OVERHEAD).min(available))
-            .sum();
-        while used > available && start < selected {
-            used -= (label_widths[start] + StackListEntry::OVERHEAD).min(available);
-            start += 1;
-        }
-        let mut x = gutter;
-        list.members
-            .iter()
-            .zip(label_widths)
-            .skip(start)
-            .map_while(|(member, label_width)| {
-                let remaining = entry_cols - gutter - x;
-                if remaining == 0 {
-                    return None;
-                }
-                let width = (label_width + StackListEntry::OVERHEAD).min(remaining);
-                let entry = StackListEntryLayout {
-                    member: *member,
-                    x,
-                    label_width,
-                    width,
-                };
-                x += width;
-                Some(entry)
-            })
-            .collect()
+        layout_stack_list_row(&members, selected, entry_cols)
     }
     pub fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.suppressed_panes
@@ -1656,11 +1812,13 @@ impl Tab {
         self.select_stack_list_member(stack_list_id, target_member, Some(client_id))
     }
     pub fn toggle_stack_list_orientation(&mut self, client_id: ClientId) -> bool {
-        let active_pane_id = match self.tiled_panes.get_active_pane_id(client_id) {
-            Some(id) => id,
-            None => return false,
-        };
-        let stack_list_id = match self.stack_list_id_of_member(&active_pane_id) {
+        match self.tiled_panes.get_active_pane_id(client_id) {
+            Some(active_pane_id) => self.toggle_stack_list_orientation_of_pane(active_pane_id),
+            None => false,
+        }
+    }
+    pub fn toggle_stack_list_orientation_of_pane(&mut self, pane_id: PaneId) -> bool {
+        let stack_list_id = match self.stack_list_id_of_member(&pane_id) {
             Some(id) => id,
             None => return false,
         };
@@ -2006,6 +2164,35 @@ impl Tab {
             }
         }
     }
+    fn stack_list_row_filler(
+        &self,
+        row_layout: &StackListRowLayout,
+        entry_cols: usize,
+        stack_is_focused: bool,
+    ) -> Vec<TerminalCharacter> {
+        let mut row = vec![EMPTY_TERMINAL_CHARACTER; entry_cols];
+        let mut place = |text: &str, x: usize| {
+            for (offset, character) in stack_list_row_filler(text, &self.style, stack_is_focused)
+                .into_iter()
+                .enumerate()
+            {
+                if let Some(cell) = row.get_mut(x + offset) {
+                    *cell = character;
+                }
+            }
+        };
+        for entry in row_layout.entries.iter().skip(1) {
+            place(boundary_type::VERTICAL, entry.x - 1);
+        }
+        let before = stack_list_row_overflow_marker(row_layout.hidden_before, true);
+        let after = stack_list_row_overflow_marker(row_layout.hidden_after, false);
+        let after_width = after.chars().count();
+        if before.chars().count() + after_width <= entry_cols {
+            place(&before, 0);
+            place(&after, entry_cols - after_width);
+        }
+        row
+    }
     fn render_stack_list_headers(
         &mut self,
         output: &mut Output,
@@ -2071,36 +2258,41 @@ impl Tab {
                     })
                     .collect(),
                 StackListOrientation::Horizontal => {
-                    self.stack_list_horizontal_entry_layout(&list, entry_cols)
+                    let row_layout = self.stack_list_row_layout(&list, entry_cols);
+                    let filler = self.stack_list_row_filler(
+                        &row_layout,
+                        entry_cols,
+                        stack_is_focused,
+                    );
+                    let mut covered = vec![false; entry_cols];
+                    for entry in &row_layout.entries {
+                        for column in entry.x..(entry.x + entry.width).min(entry_cols) {
+                            covered[column] = true;
+                        }
+                    }
+                    let mut column = 0;
+                    while column < entry_cols {
+                        if covered[column] {
+                            column += 1;
+                            continue;
+                        }
+                        let gap_start = column;
+                        while column < entry_cols && !covered[column] {
+                            column += 1;
+                        }
+                        output.add_character_chunks_to_multiple_clients(
+                            vec![CharacterChunk::new(
+                                filler[gap_start..column].to_vec(),
+                                entry_x + gap_start,
+                                rect.y,
+                            )],
+                            connected_clients.iter().copied(),
+                            None,
+                        )?;
+                    }
+                    row_layout.entries
                 },
             };
-            if list.orientation == StackListOrientation::Horizontal {
-                let start = entries.first().map(|entry| entry.x).unwrap_or(0);
-                let end = entries
-                    .last()
-                    .map(|entry| entry.x + entry.width)
-                    .unwrap_or(0);
-                for (x, width) in [(0, start), (end, entry_cols - end)] {
-                    if width == 0 {
-                        continue;
-                    }
-                    let mut row = vec![EMPTY_TERMINAL_CHARACTER; width];
-                    if x == 0 && entries.first().map(|entry| &entry.member) != list.members.first()
-                    {
-                        row[0] = crate::panes::TerminalCharacter::new('‹');
-                    }
-                    if x + width == entry_cols
-                        && entries.last().map(|entry| &entry.member) != list.members.last()
-                    {
-                        row[width - 1] = crate::panes::TerminalCharacter::new('›');
-                    }
-                    output.add_character_chunks_to_multiple_clients(
-                        vec![CharacterChunk::new(row, entry_x + x, rect.y)],
-                        connected_clients.iter().copied(),
-                        None,
-                    )?;
-                }
-            }
             for (rank, entry) in entries.iter().enumerate() {
                 let mut header_geom = rect;
                 header_geom.x = entry_x + entry.x;
@@ -2146,6 +2338,7 @@ impl Tab {
                     Some(entry.label_width),
                     entry.member == list.visible,
                     stack_is_focused,
+                    list.orientation == StackListOrientation::Horizontal,
                 );
                 for (client_id, client_mode) in &client_modes {
                     pane_contents_and_ui.render_pane_frame(
@@ -2222,8 +2415,8 @@ impl Tab {
             new_plugin_ids,
             client_id,
         ) {
-            Ok((should_show_floating_panes, stack_directions)) => {
-                self.stack_list_orientation_memory.extend(stack_directions);
+            Ok((should_show_floating_panes, stack_orientations)) => {
+                self.stack_list_orientation_memory.extend(stack_orientations);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2318,8 +2511,8 @@ impl Tab {
             retain_existing_plugin_panes,
             client_id,
         ) {
-            Ok((should_show_floating_panes, stack_directions)) => {
-                self.stack_list_orientation_memory.extend(stack_directions);
+            Ok((should_show_floating_panes, stack_orientations)) => {
+                self.stack_list_orientation_memory.extend(stack_orientations);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2487,8 +2680,8 @@ impl Tab {
             .with_grapheme_clusters(self.grapheme_clusters)
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             match application_res {
-                Ok((panes_were_floated, stack_directions)) => {
-                    self.stack_list_orientation_memory.extend(stack_directions);
+                Ok((panes_were_floated, stack_orientations)) => {
+                    self.stack_list_orientation_memory.extend(stack_orientations);
                     if panes_were_floated {
                         self.swap_layouts.set_is_floating_damaged();
                         self.floating_panes.set_force_render();

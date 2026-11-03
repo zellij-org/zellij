@@ -17562,7 +17562,7 @@ fn stack_orientation_toggles_survive_session_serialization() {
         let (kdl, _) =
             zellij_utils::session_serialization::serialize_session_layout(metadata.into()).unwrap();
         assert!(
-            kdl.contains(&format!("stack_direction=\"{}\"", direction)),
+            kdl.contains(&format!("stack_orientation=\"{}\"", direction)),
             "{}",
             kdl
         );

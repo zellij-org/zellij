@@ -1530,6 +1530,7 @@ impl Action {
             | Action::WatchPaneByPaneId { pane_id }
             | Action::HideBarByPaneId { pane_id }
             | Action::PasteFromClipboardByPaneId { pane_id }
+            | Action::ToggleStackListOrientationByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1544,6 +1545,9 @@ impl Action {
                     Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
                     Action::HideBarByPaneId { .. } => "HideBarByPaneId",
                     Action::PasteFromClipboardByPaneId { .. } => "PasteFromClipboardByPaneId",
+                    Action::ToggleStackListOrientationByPaneId { .. } => {
+                        "ToggleStackListOrientationByPaneId"
+                    },
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
@@ -2739,6 +2743,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "WatchPaneByPaneId"
             | "HideBarByPaneId"
             | "PasteFromClipboardByPaneId"
+            | "ToggleStackListOrientationByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2774,6 +2779,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
                     "HideBarByPaneId" => Action::HideBarByPaneId { pane_id },
                     "PasteFromClipboardByPaneId" => Action::PasteFromClipboardByPaneId { pane_id },
+                    "ToggleStackListOrientationByPaneId" => {
+                        Action::ToggleStackListOrientationByPaneId { pane_id }
+                    },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
@@ -4999,10 +5007,11 @@ impl Options {
     }
     fn stacked_pane_list_orientation_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
-            "// Default orientation for new tabbed stacked-pane lists",
-            "//   - vertical (default)",
+            "// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)",
+            "// Options:",
+            "//   - vertical (Default)",
             "//   - horizontal",
             "// ",
         );

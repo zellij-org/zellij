@@ -1616,10 +1616,11 @@ pub enum ClickedPaneAction {
     ToggleWatch,
     HideBar,
     PasteFromClipboard,
+    ToggleStackListOrientation,
 }
 
 impl ClickedPaneAction {
-    pub const ALL: [ClickedPaneAction; 11] = [
+    pub const ALL: [ClickedPaneAction; 12] = [
         ClickedPaneAction::CloseFocus,
         ClickedPaneAction::ToggleFocusFullscreen,
         ClickedPaneAction::ToggleEmbedOrFloating,
@@ -1631,6 +1632,7 @@ impl ClickedPaneAction {
         ClickedPaneAction::ToggleWatch,
         ClickedPaneAction::HideBar,
         ClickedPaneAction::PasteFromClipboard,
+        ClickedPaneAction::ToggleStackListOrientation,
     ];
     pub fn kdl_name(&self) -> &'static str {
         match self {
@@ -1645,6 +1647,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleWatch => "WatchPaneByPaneId",
             ClickedPaneAction::HideBar => "HideBarByPaneId",
             ClickedPaneAction::PasteFromClipboard => "PasteFromClipboardByPaneId",
+            ClickedPaneAction::ToggleStackListOrientation => "ToggleStackListOrientationByPaneId",
         }
     }
     pub fn from_kdl_name(name: &str) -> Option<Self> {
@@ -1669,6 +1672,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleWatch => Action::WatchPaneByPaneId { pane_id },
             ClickedPaneAction::HideBar => Action::HideBarByPaneId { pane_id },
             ClickedPaneAction::PasteFromClipboard => Action::PasteFromClipboardByPaneId { pane_id },
+            ClickedPaneAction::ToggleStackListOrientation => {
+                Action::ToggleStackListOrientationByPaneId { pane_id }
+            },
         }
     }
 }

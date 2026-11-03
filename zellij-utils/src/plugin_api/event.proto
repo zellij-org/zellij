@@ -424,6 +424,7 @@ enum ClickedPaneAction {
   ClickedPaneActionToggleWatch = 8;
   ClickedPaneActionHideBar = 9;
   ClickedPaneActionPasteFromClipboard = 10;
+  ClickedPaneActionToggleStackListOrientation = 11;
 }
 
 enum ClickedTabAction {

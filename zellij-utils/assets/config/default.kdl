@@ -76,6 +76,7 @@ context_menu {
         item "Rename pane…" { StartRenamePaneByPaneId; }
         item "Fullscreen" toggled_label="Exit fullscreen" { ToggleFocusFullscreenByPaneId; }
         item "Make floating" toggled_label="Make tiled" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Show titles in a row" toggled_label="Show titles in a column" { ToggleStackListOrientationByPaneId; }
         separator
         item "Watch pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
         item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
@@ -540,7 +541,7 @@ context_menu {
 //
 // stacked_pane_list false
 
-// Default direction of the title list for new stacked panes
+// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
 // Options:
 //   - vertical (Default)
 //   - horizontal
