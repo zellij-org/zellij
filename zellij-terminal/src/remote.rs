@@ -14,12 +14,16 @@ use zellij_client::web_client::control_message::{
     TerminalMetricsPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
 };
-use zellij_utils::cli::AttachArgs;
+use zellij_utils::cli::{AttachArgs, CliArgs, TerminalArgs};
 use zellij_utils::input::actions::Action;
+use zellij_utils::input::config::Config;
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiveError, ServerToClientMsg};
 use zellij_utils::remote_session_tokens;
 
-use crate::connection::{Connection, Geometry, GeometryHandle, MessageSink, MessageSource, Role};
+use crate::launch::{Reach, Refusal, Target};
+use crate::session::connection::{
+    Capabilities, Connection, Geometry, GeometryHandle, MessageSink, MessageSource, Opening, Role,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
@@ -212,6 +216,40 @@ impl Drop for WebSocketSource {
             runtime.shutdown_background();
         }
     }
+}
+
+pub type LocalConfig = Option<WatchedConfig>;
+
+pub fn watched_config(opts: &CliArgs) -> LocalConfig {
+    Config::config_file_path(opts).map(|path| WatchedConfig {
+        path,
+        dir: opts.config_dir.clone(),
+    })
+}
+
+pub fn target(args: &TerminalArgs, capabilities: Capabilities) -> Result<Target, Refusal> {
+    if args.watch {
+        return Err(Refusal::new(
+            "A remote session cannot be watched: watching follows a session's first client, and \
+             the web server attaches one of its own. Open the session itself instead.",
+        ));
+    }
+    Ok(Target {
+        reach: Reach::Remote(Box::new(args.attach.clone())),
+        opening: Opening::Participant(capabilities),
+    })
+}
+
+pub fn connect(
+    attach: &AttachArgs,
+    geometry: Geometry,
+    local_config: LocalConfig,
+) -> Result<Connection> {
+    let url = attach
+        .remote_url()
+        .ok_or_else(|| anyhow!("a remote target without a URL"))?
+        .to_owned();
+    open(&url, attach, geometry, local_config)
 }
 
 #[derive(Debug, Clone, PartialEq)]

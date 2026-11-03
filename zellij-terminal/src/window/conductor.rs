@@ -8,7 +8,7 @@ use zellij_utils::input::actions::Action;
 use zellij_utils::session_history::SessionHistory;
 
 use super::Handover;
-use crate::app::route::{pane_focus, route, AttachedWindow, Route};
+use crate::app::policy::route::{pane_focus, route, AttachedWindow, Route};
 use crate::app::{panel_toggle, Intent, PanelToggle};
 
 pub(crate) const POPUP_REOPEN_GUARD: Duration = Duration::from_millis(400);
