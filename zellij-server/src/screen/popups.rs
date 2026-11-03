@@ -125,6 +125,7 @@ pub fn entries_available_here(
     entries: Vec<ContextMenuEntry>,
     can_paste: bool,
     can_open_window: bool,
+    on_stack_titles: bool,
 ) -> Vec<ContextMenuEntry> {
     entries
         .into_iter()
@@ -134,6 +135,10 @@ pub fn entries_available_here(
                 ContextMenuAction::ClickedPane(ClickedPaneAction::PasteFromClipboard)
                 | ContextMenuAction::Action(Action::PasteFromClipboardByPaneId { .. }) => can_paste,
                 ContextMenuAction::Action(Action::OpenSessionInTerminal) => can_open_window,
+                ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleStackListOrientation)
+                | ContextMenuAction::Action(Action::ToggleStackListOrientationByPaneId {
+                    ..
+                }) => on_stack_titles,
                 _ => true,
             }),
         })
@@ -483,7 +488,7 @@ impl Screen {
             client_id,
             paste_shortcut: None,
         };
-        self.open_context_menu(context);
+        self.open_context_menu(context, request.on_stack_titles);
     }
     pub fn open_context_menu_for_focused_pane(&mut self, client_id: ClientId) {
         let client_id = match self.get_active_tab(client_id) {
@@ -504,6 +509,7 @@ impl Screen {
             pane_id: pane.pid(),
             is_floating: tab.pane_id_is_floating(&pane.pid()),
             position: Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16),
+            on_stack_titles: false,
         };
         self.open_context_menu_for_pane(request, client_id);
     }
@@ -545,7 +551,7 @@ impl Screen {
             client_id,
             paste_shortcut: None,
         };
-        self.open_context_menu(context);
+        self.open_context_menu(context, false);
     }
     fn plugin_relative_to_screen(
         &self,
@@ -569,7 +575,7 @@ impl Screen {
             None => (line, column),
         }
     }
-    fn open_context_menu(&mut self, mut context: ContextMenuContext) {
+    fn open_context_menu(&mut self, mut context: ContextMenuContext, on_stack_titles: bool) {
         let client_id = context.client_id;
         context.paste_shortcut = self.client_paste_shortcut(client_id);
         let entries = entries_available_to_plugins(
@@ -588,6 +594,7 @@ impl Screen {
             entries,
             self.client_can_paste_from_clipboard(client_id),
             crate::desktop_app::can_open_window(),
+            on_stack_titles,
         );
         let entries = zellij_utils::input::context_menu::normalize_separators(entries);
         if entries.is_empty() {
@@ -1538,16 +1545,43 @@ mod tests {
                 .collect()
         };
         assert_eq!(
-            labels(entries_available_here(entries.clone(), false, false)),
+            labels(entries_available_here(entries.clone(), false, false, false)),
             vec!["Detach".to_owned()]
         );
         assert_eq!(
-            labels(entries_available_here(entries, true, true)),
+            labels(entries_available_here(entries, true, true, false)),
             vec![
                 "Paste".to_owned(),
                 "Open in a Zellij terminal".to_owned(),
                 "Detach".to_owned()
             ]
+        );
+    }
+
+    #[test]
+    fn the_stack_title_item_is_only_offered_on_stack_titles() {
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Show titles in a row",
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::ToggleStackListOrientation,
+                )],
+            ),
+            ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
+        ];
+        let labels = |entries: Vec<ContextMenuEntry>| -> Vec<String> {
+            entries
+                .iter()
+                .filter_map(|entry| entry.label().map(|label| label.to_owned()))
+                .collect()
+        };
+        assert_eq!(
+            labels(entries_available_here(entries.clone(), true, true, false)),
+            vec!["Detach".to_owned()]
+        );
+        assert_eq!(
+            labels(entries_available_here(entries, true, true, true)),
+            vec!["Show titles in a row".to_owned(), "Detach".to_owned()]
         );
     }
 

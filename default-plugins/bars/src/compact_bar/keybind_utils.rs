@@ -419,6 +419,7 @@ impl KeybindProcessor {
                             }
                         )
                     },
+                    |action: &Action| matches!(action, Action::ToggleStackListOrientation),
                     |action: &Action| {
                         matches!(
                             action,

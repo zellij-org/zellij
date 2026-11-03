@@ -1566,6 +1566,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Split Right"), s("Right"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Right), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Split Down"), s("Down"), single_action_key(&km, &[A::NewPane{direction: Some(Direction::Down), pane_name: None, start_suppressed: false}, TO_NORMAL])),
         (s("Stack"), s("Stack"), single_action_key(&km, &[A::NewStackedPane{command: None, pane_name: None, near_current_pane: false, no_focus: false, tab_id: None}, TO_NORMAL])),
+        (s("Stack titles in a row/column"), s("Stack titles"), single_action_key(&km, &[A::ToggleStackListOrientation, TO_NORMAL])),
         (s("Mute"), s("Mute"), single_action_key(&km, &[A::MutePane, TO_NORMAL])),
         (s("Ignore output"), s("Ignore"), single_action_key(&km, &[A::IgnorePaneOutput, TO_NORMAL])),
         (s("Watch"), s("Watch"), single_action_key(&km, &[A::WatchPane, TO_NORMAL])),

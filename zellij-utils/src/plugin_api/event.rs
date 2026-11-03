@@ -4604,6 +4604,9 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                     Ok(ProtobufClickedPaneAction::PasteFromClipboard) => {
                         ClickedPaneAction::PasteFromClipboard
                     },
+                    Ok(ProtobufClickedPaneAction::ToggleStackListOrientation) => {
+                        ClickedPaneAction::ToggleStackListOrientation
+                    },
                     Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedPane(action))
@@ -4658,6 +4661,9 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedPaneAction::HideBar => ProtobufClickedPaneAction::HideBar,
                     ClickedPaneAction::PasteFromClipboard => {
                         ProtobufClickedPaneAction::PasteFromClipboard
+                    },
+                    ClickedPaneAction::ToggleStackListOrientation => {
+                        ProtobufClickedPaneAction::ToggleStackListOrientation
                     },
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
