@@ -29,6 +29,7 @@ mod protobuf_conversion;
 mod tests;
 
 type SessionId = u64;
+const MAX_FRAME_BYTES: usize = 256 * 1024 * 1024;
 
 /// A bidirectional byte stream that supports cloning for simultaneous read/write.
 pub trait IpcStream: Read + Write + Send + 'static {
@@ -574,6 +575,10 @@ fn read_protobuf_message<T: Message + Default>(
         .read_exact(&mut len_bytes)
         .map_err(|_| IpcReceiveError::Disconnected)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > MAX_FRAME_BYTES {
+        // The payload is left unread, so the stream cannot be resynchronized.
+        return Err(IpcReceiveError::Disconnected);
+    }
 
     let mut buf = vec![0u8; len];
     reader
@@ -585,6 +590,7 @@ fn read_protobuf_message<T: Message + Default>(
 
 fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
     let encoded = msg.encode_to_vec();
+    validate_frame_length(encoded.len())?;
     let len = encoded.len() as u32;
 
     // we measure the length of the message and transmit it first so that the reader will be able
@@ -593,6 +599,16 @@ fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Resul
     // stream
     writer.write_all(&len.to_le_bytes())?;
     writer.write_all(&encoded)?;
+    Ok(())
+}
+
+fn validate_frame_length(len: usize) -> Result<()> {
+    if len > MAX_FRAME_BYTES {
+        return Err(anyhow::anyhow!(
+            "encoded IPC frame exceeds the maximum frame size"
+        ));
+    }
+    u32::try_from(len).map_err(|_| anyhow::anyhow!("encoded IPC frame exceeds the u32 prefix"))?;
     Ok(())
 }
 

@@ -49,6 +49,37 @@ fn send_reports_flush_failure() {
     );
 }
 
+#[test]
+fn oversized_advertised_frames_are_rejected_before_allocation() {
+    // The unread payload would otherwise be parsed as the next frames, so
+    // the stream is treated as disconnected rather than skipped over.
+    let advertised_len = (crate::ipc::MAX_FRAME_BYTES + 1) as u32;
+    let mut bytes = advertised_len.to_le_bytes().to_vec();
+    // Bytes that a reader attempting the allocation-and-read would consume.
+    bytes.extend_from_slice(&[0u8; 64]);
+    let mut frame = std::io::Cursor::new(bytes);
+
+    assert!(matches!(
+        crate::ipc::read_protobuf_message::<crate::ipc::ProtoClientToServerMsg>(&mut frame),
+        Err(IpcReceiveError::Disconnected)
+    ));
+    // Without the limit check the reader would allocate the advertised
+    // buffer and read (part of) the payload before failing with the same
+    // error, so the error alone cannot show the limit was applied. The
+    // reader must have stopped right after the length prefix.
+    assert_eq!(
+        frame.position(),
+        4,
+        "the oversized payload must not be read"
+    );
+}
+
+#[test]
+fn outgoing_frames_enforce_the_same_size_limit() {
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES).is_ok());
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES + 1).is_err());
+}
+
 // --- Cross-platform IPC helpers ---
 // On Unix: use filesystem-based sockets (TempDir + PathBuf + GenericFilePath)
 // On Windows: use named pipes (no guard needed, String name + GenericNamespaced)
