@@ -513,7 +513,7 @@ impl Grid {
         }
     }
 
-    fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
+    pub(super) fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
         // We need to move the viewport
         let mut rows = 0;
         let mut found_something = false;
@@ -521,11 +521,15 @@ impl Grid {
         // We might loose the current selection, if we can't find anything
         let current_active_selection = self.search_results.active;
         while !found_something && !self.search_reached_opposite_end(dir) {
-            rows += 1;
-            found_something = match dir {
-                SearchDirection::Up => self.scroll_up_one_line(),
-                SearchDirection::Down => self.scroll_down_one_line(),
+            let scroll_result = match dir {
+                SearchDirection::Up => self.scroll_up_one_line_with_progress(),
+                SearchDirection::Down => self.scroll_down_one_line_with_progress(),
             };
+            if !scroll_result.moved {
+                break;
+            }
+            rows += 1;
+            found_something = scroll_result.found_something;
         }
 
         if found_something {
@@ -555,7 +559,9 @@ impl Grid {
                     let distance = (last.end.line() - last.start.line()) as usize;
                     if distance < self.height {
                         for _ in 0..distance {
-                            self.scroll_down_one_line();
+                            if !self.scroll_down_one_line_with_progress().moved {
+                                break;
+                            }
                         }
                     }
                 }
@@ -583,10 +589,14 @@ impl Grid {
         if !found_something {
             while rows >= 0 && !found_something {
                 rows -= 1;
-                found_something = match dir {
-                    SearchDirection::Up => self.scroll_up_one_line(),
-                    SearchDirection::Down => self.scroll_down_one_line(),
+                let scroll_result = match dir {
+                    SearchDirection::Up => self.scroll_up_one_line_with_progress(),
+                    SearchDirection::Down => self.scroll_down_one_line_with_progress(),
                 };
+                if !scroll_result.moved {
+                    break;
+                }
+                found_something = scroll_result.found_something;
             }
         }
         if found_something {
@@ -596,7 +606,9 @@ impl Grid {
                     // We need to scroll until the found item is at the top
                     if let Some(first) = self.search_results.selections.first() {
                         for _ in 0..first.start.line() {
-                            self.scroll_down_one_line();
+                            if !self.scroll_down_one_line_with_progress().moved {
+                                break;
+                            }
                         }
                     }
                     self.search_results.selections.first().cloned()
@@ -615,15 +627,19 @@ impl Grid {
             SearchDirection::Up => {
                 // Go to the bottom
                 while !self.lines_below.is_empty() {
+                    if !self.scroll_down_one_line_with_progress().moved {
+                        break;
+                    }
                     rows += 1;
-                    self.scroll_down_one_line();
                 }
             },
             SearchDirection::Down => {
                 // Go to the top
                 while !self.lines_above.is_empty() {
+                    if !self.scroll_up_one_line_with_progress().moved {
+                        break;
+                    }
                     rows += 1;
-                    self.scroll_up_one_line();
                 }
             },
         }

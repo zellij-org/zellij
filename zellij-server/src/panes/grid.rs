@@ -952,6 +952,12 @@ struct KittyRowSnapshot {
     split_rows: u64,
 }
 
+#[derive(Clone, Copy, Default)]
+pub(super) struct ScrollResult {
+    pub(super) moved: bool,
+    pub(super) found_something: bool,
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -1764,10 +1770,12 @@ impl Grid {
         }
     }
 
-    pub fn scroll_up_one_line(&mut self) -> bool {
+    pub(super) fn scroll_up_one_line_with_progress(&mut self) -> ScrollResult {
+        let mut result = ScrollResult::default();
         let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
+            result.moved = true;
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
 
@@ -1792,14 +1800,20 @@ impl Grid {
                 .move_down(1, &self.viewport, self.height);
         }
         self.output_buffer.update_all_lines();
-        found_something
+        result.found_something = found_something;
+        result
     }
-    pub fn scroll_down_one_line(&mut self) -> bool {
+    pub fn scroll_up_one_line(&mut self) -> bool {
+        self.scroll_up_one_line_with_progress().found_something
+    }
+    pub(super) fn scroll_down_one_line_with_progress(&mut self) -> ScrollResult {
+        let mut result = ScrollResult::default();
         let mut found_something = false;
         if !self.lines_below.is_empty()
             && self.viewport.len() == self.height
             && !self.viewport.is_empty()
         {
+            result.moved = true;
             let line_to_push_up = self.viewport.pop_front().unwrap();
 
             let line_to_push_up = if line_to_push_up.is_canonical || !self.lines_above.is_empty() {
@@ -1845,7 +1859,11 @@ impl Grid {
             self.is_scrolled = false;
             self.lines_below.shrink_to_fit();
         }
-        found_something
+        result.found_something = found_something;
+        result
+    }
+    pub fn scroll_down_one_line(&mut self) -> bool {
+        self.scroll_down_one_line_with_progress().found_something
     }
     pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, true);
@@ -2523,23 +2541,26 @@ impl Grid {
     }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {
-            self.scroll_up_one_line();
+            if !self.scroll_up_one_line_with_progress().moved {
+                break;
+            }
         }
         self.output_buffer.update_all_lines();
     }
     pub fn move_viewport_down(&mut self, count: usize) {
         for _ in 0..count {
-            self.scroll_down_one_line();
+            if !self.scroll_down_one_line_with_progress().moved {
+                break;
+            }
         }
         self.output_buffer.update_all_lines();
     }
     pub fn reset_viewport(&mut self) {
-        let max_lines_to_scroll = *SCROLL_BUFFER_SIZE.get().unwrap() * 2; // while not very elegant, this can prevent minor bugs from becoming showstoppers by sticking the whole app display in an endless loop
-        let mut lines_scrolled = 0;
         let should_clear_output_buffer = self.is_scrolled;
-        while self.is_scrolled && lines_scrolled < max_lines_to_scroll {
-            self.scroll_down_one_line();
-            lines_scrolled += 1;
+        while self.is_scrolled {
+            if !self.scroll_down_one_line_with_progress().moved {
+                break;
+            }
         }
         if should_clear_output_buffer {
             self.output_buffer.update_all_lines();
