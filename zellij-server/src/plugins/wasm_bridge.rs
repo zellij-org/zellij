@@ -763,7 +763,7 @@ impl WasmBridge {
 
         Ok(())
     }
-    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+    fn prepare_plugin_reload(&mut self, plugin_id: PluginId) {
         let _ = self
             .senders
             .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
@@ -771,7 +771,10 @@ impl WasmBridge {
         self.apply_prompt_actions(prompt_actions);
         // the reloaded plugin registers again if it still wants an entry
         self.unregister_settings_entry(plugin_id);
+    }
+    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
+            self.prepare_plugin_reload(plugin_id);
             self.reload_shared_instance(instance_id);
             return Ok(());
         }
@@ -779,18 +782,6 @@ impl WasmBridge {
             log::error!("Failed to find plugin with id: {}", plugin_id);
             return Ok(());
         };
-
-        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-        self.cached_events_for_pending_plugins
-            .insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (rows, columns));
-
-        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
-        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
-        let plugin_executor = self.plugin_executor.clone();
 
         let Some(first_client_id) = self.get_first_client_id() else {
             log::error!("No connected clients, cannot reload plugin.");
@@ -813,8 +804,18 @@ impl WasmBridge {
             cols: size.1,
         };
 
-        let cwd = self.cwd_of_plugin_id(plugin_id);
+        self.prepare_plugin_reload(plugin_id);
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (size.rows, size.cols));
 
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+        let plugin_executor = self.plugin_executor.clone();
+
+        let cwd = self.cwd_of_plugin_id(plugin_id);
         let loading_context = LoadingContext::new(
             &self,
             cwd,
