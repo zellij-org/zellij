@@ -192,6 +192,31 @@ fn make_test_bus(
     (bus, sender_with_ctx)
 }
 
+#[test]
+fn pending_queue_tracks_remaining_bytes_incrementally() {
+    let mut queue = PendingQueue::default();
+    queue.push_back(PendingWrite {
+        bytes: b"hello".to_vec(),
+        offset: 0,
+        _completion: None,
+    });
+    queue.push_back(PendingWrite {
+        bytes: b" world".to_vec(),
+        offset: 2,
+        _completion: None,
+    });
+
+    assert_eq!(queue.remaining_bytes, 9);
+    queue.advance(2);
+    assert_eq!(queue.remaining_bytes, 7);
+    queue.advance(3);
+    assert_eq!(queue.remaining_bytes, 4);
+    queue.advance(4);
+
+    assert!(queue.is_empty());
+    assert_eq!(queue.remaining_bytes, 0);
+}
+
 /// Helper: send instructions and then Exit, run pty_writer_main, return when done.
 fn run_pty_writer(
     bus: Bus<PtyWriteInstruction>,
