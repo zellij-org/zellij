@@ -3486,12 +3486,18 @@ mod web_client_tests {
         wait_until(Duration::from_secs(10), || {
             client
                 .sent_to_session()
-                .contains(&ClientToServerMsg::StructuredRenderSupport { supported: true })
+                .contains(&ClientToServerMsg::StructuredRenderSupport {
+                    supported: true,
+                    row_shifts: false,
+                })
         })
         .await;
         let declarations = client.sent_to_session();
         assert!(
-            declarations.contains(&ClientToServerMsg::StructuredRenderSupport { supported: true }),
+            declarations.contains(&ClientToServerMsg::StructuredRenderSupport {
+                supported: true,
+                row_shifts: false
+            }),
             "a structured client must be declared to the session, got {:?}",
             declarations
         );

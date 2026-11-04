@@ -1,9 +1,10 @@
 pub use crate::shim::*;
 pub use crate::*;
 pub use zellij_utils::attention::{
-    sanitize_display_text, AttentionCounts, AttentionItem, AttentionStatus, BlockedKind,
-    CommandOutcome, CommandResult, GlobalAttention, GlobalAttentionItem, GlobalSessionAttention,
-    MuteScope, PaneAttention, SessionAttention, TabAttention, CURRENT_SESSION_LABEL,
+    sanitize_display_text, AttentionCounts, AttentionItem, AttentionSource, AttentionStatus,
+    BlockedKind, CommandOutcome, CommandResult, GlobalAttention, GlobalAttentionItem,
+    GlobalSessionAttention, MuteScope, PaneAttention, RememberedStatus, SessionAttention,
+    TabAttention, CURRENT_SESSION_LABEL,
 };
 pub use zellij_utils::consts::VERSION;
 pub use zellij_utils::data::*;

@@ -81,26 +81,38 @@ impl RawFdAsyncReader {
     }
 }
 
+fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
+    let mut buf: Vec<u8> = Vec::with_capacity(max);
+    let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity()) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    unsafe { buf.set_len(ret as usize) };
+    while ret > 0 && buf.len() < buf.capacity() {
+        let filled = buf.len();
+        let more = unsafe {
+            libc::read(
+                fd,
+                buf.as_mut_ptr().add(filled) as *mut libc::c_void,
+                buf.capacity() - filled,
+            )
+        };
+        if more <= 0 {
+            break;
+        }
+        unsafe { buf.set_len(filled + more as usize) };
+    }
+    buf.shrink_to_fit();
+    Ok(buf)
+}
+
 #[async_trait]
 impl AsyncReader for RawFdAsyncReader {
     async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
         let async_fd = self.get_async_fd()?;
         loop {
             let mut guard = async_fd.readable().await?;
-            match guard.try_io(|inner| {
-                let mut buf: Vec<u8> = Vec::with_capacity(max);
-                let fd = inner.get_ref().as_raw_fd();
-                let ret = unsafe {
-                    libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity())
-                };
-                if ret < 0 {
-                    Err(io::Error::last_os_error())
-                } else {
-                    unsafe { buf.set_len(ret as usize) };
-                    buf.shrink_to_fit();
-                    Ok(buf)
-                }
-            }) {
+            match guard.try_io(|inner| read_available(inner.get_ref().as_raw_fd(), max)) {
                 Ok(result) => return result,
                 Err(_would_block) => continue,
             }

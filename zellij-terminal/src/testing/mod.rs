@@ -1,0 +1,13 @@
+pub mod adversarial;
+pub mod differential;
+pub mod dump;
+pub mod equivalence;
+pub mod fixture;
+pub mod goldens;
+pub mod headless;
+pub mod painter;
+pub mod projection;
+pub mod reference;
+pub mod replay;
+pub mod test_server;
+pub mod vte_terminal;

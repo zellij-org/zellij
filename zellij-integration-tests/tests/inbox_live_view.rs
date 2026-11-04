@@ -1626,7 +1626,7 @@ fn a_configured_release_key_beats_the_inbox_binding() {
 }
 
 #[test]
-fn browsing_over_a_working_item_that_goes_idle_does_not_keep_a_working_row() {
+fn browsing_over_a_working_agent_that_goes_idle_keeps_it_listed_as_idle_not_working() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = background_session_with(ATTENTION_CONFIG);
     terminal.output(b"$ the working pane\r\n");
@@ -1641,12 +1641,16 @@ fn browsing_over_a_working_item_that_goes_idle_does_not_keep_a_working_row() {
     assert!(working_row.contains("Inbox (1)"), "{}", working_row.text);
     terminal.output(&program_status("state=idle:app=claude"));
     zellij_integration_tests::attention::wait_for_counted(other.session_name(), 0);
-    zellij.wait_until("the working row goes at once", |grid_snapshot| {
-        shows_inbox(grid_snapshot)
-            && grid_snapshot.contains("Inbox (0)")
-            && !grid_snapshot.contains("Working")
-            && grid_snapshot.contains("Nothing in the inbox")
-    });
+    zellij.wait_until(
+        "the working row goes at once and the agent stays listed as idle",
+        |grid_snapshot| {
+            shows_inbox(grid_snapshot)
+                && grid_snapshot.contains("Inbox (0)")
+                && !grid_snapshot.contains("Working")
+                && grid_snapshot.contains("Idle")
+                && grid_snapshot.contains(other.session_name())
+        },
+    );
     zellij.quit();
 }
 

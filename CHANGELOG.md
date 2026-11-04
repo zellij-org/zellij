@@ -44,6 +44,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: ctrl-mouse-drag to create a floating pane (https://github.com/zellij-org/zellij/pull/5766)
 * feat: allow programs to set their own resurrection command with zellij action set-resurrection-command (https://github.com/zellij-org/zellij/pull/5769)
 * feat: allow hiding tab-bar + status-bar at runtime (https://github.com/zellij-org/zellij/pull/5781)
+* feat: plugins can register a settings screen entry that opens their own settings (https://github.com/zellij-org/zellij/pull/5779)
+* performance: improve output/stdout/scrolling speed (https://github.com/zellij-org/zellij/pull/5815)
+* feat: standard macOS menu for the desktop window and save window state when quitting from the Dock (https://github.com/zellij-org/zellij/pull/5782)
+* fix: allow cycling with tab/shift-tab in session-manager/welcome-screen (https://github.com/zellij-org/zellij/pull/5818)
+* feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
 
 
 ## [0.45.1] - 2026-08-28

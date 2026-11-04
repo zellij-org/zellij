@@ -26,7 +26,7 @@ use crate::input::layout::{
 };
 use crate::input::mousebinds::{MouseBehaviour, MouseBinding, MouseBindingKind};
 use crate::input::options::{
-    Clipboard, OnForceClose, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
+    Clipboard, OnForceClose, Options, PaneFrameStyle, StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
@@ -102,6 +102,7 @@ pub fn action_without_arguments(
         "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
         "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
         "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
+        "ToggleStackListOrientation" => Ok(Action::ToggleStackListOrientation),
         "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
         "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
         "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
@@ -820,6 +821,7 @@ impl Action {
             Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
             Action::ToggleFocusNoUiFullscreen => Some(KdlNode::new("ToggleFocusNoUiFullscreen")),
             Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
+            Action::ToggleStackListOrientation => Some(KdlNode::new("ToggleStackListOrientation")),
             Action::SetPaneFrameStyle(style) => {
                 let mut node = KdlNode::new("SetPaneFrameStyle");
                 let style = match style {
@@ -1528,6 +1530,7 @@ impl Action {
             | Action::WatchPaneByPaneId { pane_id }
             | Action::HideBarByPaneId { pane_id }
             | Action::PasteFromClipboardByPaneId { pane_id }
+            | Action::ToggleStackListOrientationByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1542,6 +1545,9 @@ impl Action {
                     Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
                     Action::HideBarByPaneId { .. } => "HideBarByPaneId",
                     Action::PasteFromClipboardByPaneId { .. } => "PasteFromClipboardByPaneId",
+                    Action::ToggleStackListOrientationByPaneId { .. } => {
+                        "ToggleStackListOrientationByPaneId"
+                    },
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
@@ -1910,6 +1916,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "TogglePaneFrames" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleStackListOrientation" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleActiveSyncTab" => {
@@ -2734,6 +2743,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "WatchPaneByPaneId"
             | "HideBarByPaneId"
             | "PasteFromClipboardByPaneId"
+            | "ToggleStackListOrientationByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2769,6 +2779,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
                     "HideBarByPaneId" => Action::HideBarByPaneId { pane_id },
                     "PasteFromClipboardByPaneId" => Action::PasteFromClipboardByPaneId { pane_id },
+                    "ToggleStackListOrientationByPaneId" => {
+                        Action::ToggleStackListOrientationByPaneId { pane_id }
+                    },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
@@ -3401,6 +3414,23 @@ impl Options {
         let stacked_pane_list =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "stacked_pane_list")
                 .map(|(v, _)| v);
+        let stacked_pane_list_orientation = match kdl_property_first_arg_as_string_or_error!(
+            kdl_options,
+            "stacked_pane_list_orientation"
+        ) {
+            Some((string, entry)) => {
+                Some(StackListOrientation::from_str(string).map_err(|_| {
+                    kdl_parsing_error!(
+                        format!(
+                            "Invalid value for stacked_pane_list_orientation: '{}'",
+                            string
+                        ),
+                        entry
+                    )
+                })?)
+            },
+            None => None,
+        };
         let show_startup_tips =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_startup_tips")
                 .map(|(v, _)| v);
@@ -3599,6 +3629,7 @@ impl Options {
             web_sharing,
             stacked_resize,
             stacked_pane_list,
+            stacked_pane_list_orientation,
             show_startup_tips,
             show_release_notes,
             advanced_mouse_actions,
@@ -4974,6 +5005,36 @@ impl Options {
             None
         }
     }
+    fn stacked_pane_list_orientation_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)",
+            "// Options:",
+            "//   - vertical (Default)",
+            "//   - horizontal",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("stacked_pane_list_orientation");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(orientation) = &self.stacked_pane_list_orientation {
+            let mut node = create_node(&orientation.to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("vertical");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn show_startup_tips_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
@@ -5831,6 +5892,11 @@ impl Options {
         }
         if let Some(stacked_pane_list) = self.stacked_pane_list_to_kdl(add_comments) {
             nodes.push(stacked_pane_list);
+        }
+        if let Some(stacked_pane_list_orientation) =
+            self.stacked_pane_list_orientation_to_kdl(add_comments)
+        {
+            nodes.push(stacked_pane_list_orientation);
         }
         if let Some(show_startup_tips) = self.show_startup_tips_to_kdl(add_comments) {
             nodes.push(show_startup_tips);

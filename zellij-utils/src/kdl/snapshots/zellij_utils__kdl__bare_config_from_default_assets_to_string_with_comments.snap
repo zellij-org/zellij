@@ -343,6 +343,13 @@ web_client {
 // 
 // stacked_pane_list false
  
+// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
+// Options:
+//   - vertical (Default)
+//   - horizontal
+// 
+// stacked_pane_list_orientation "vertical"
+ 
 // Whether to show tips on startup
 // Default: true
 // 

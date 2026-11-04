@@ -453,6 +453,13 @@ impl MuteScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct RememberedStatus {
+    pub status: AttentionStatus,
+    pub text: String,
+    pub since_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct PaneAttention {
     pub status: AttentionStatus,
     pub source: Option<AttentionSource>,
@@ -465,11 +472,15 @@ pub struct PaneAttention {
     pub ignore_output: bool,
     pub watched: bool,
     pub from_watch: bool,
+    pub remembered: Option<RememberedStatus>,
 }
 
 impl PaneAttention {
     pub fn is_muted(&self) -> bool {
         self.muted.is_some()
+    }
+    pub fn is_remembered(&self) -> bool {
+        self.remembered.is_some()
     }
     pub fn effective_status(&self) -> AttentionStatus {
         if self.is_muted() {
@@ -688,6 +699,7 @@ pub struct GlobalAttention {
     pub counts: AttentionCounts,
     pub status: AttentionStatus,
     pub badge_colors: Vec<(AttentionStatus, [u8; 3])>,
+    pub attention_disabled: bool,
 }
 
 impl GlobalAttention {
@@ -730,10 +742,23 @@ impl GlobalAttention {
             status: counts.highest_counted(),
             counts,
             badge_colors: vec![],
+            attention_disabled: false,
         }
     }
     pub fn running(&self) -> usize {
         self.sessions.len()
+    }
+    pub fn without_attention(self) -> Self {
+        let sessions = self
+            .sessions
+            .into_iter()
+            .map(|session| (session.name, SessionAttention::default()))
+            .collect();
+        GlobalAttention {
+            badge_colors: self.badge_colors,
+            attention_disabled: true,
+            ..GlobalAttention::build(&self.current_session, sessions)
+        }
     }
     pub fn has_session(&self, name: &str) -> bool {
         self.sessions.iter().any(|s| s.name == name)

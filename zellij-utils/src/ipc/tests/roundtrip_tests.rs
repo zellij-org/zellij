@@ -16,7 +16,7 @@ use crate::input::layout::{
 use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::input::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
-    PaneFrameStyle,
+    PaneFrameStyle, StackListOrientation,
 };
 use crate::ipc::{
     ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
@@ -545,6 +545,7 @@ fn test_client_messages() {
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
                 stacked_pane_list: Some(true),
+                stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
@@ -4595,6 +4596,11 @@ fn test_server_messages() {
             ignore_output: true,
             watched: true,
             from_watch: true,
+            remembered: Some(crate::attention::RememberedStatus {
+                status: crate::attention::AttentionStatus::Failed,
+                text: "failed: tests".to_owned(),
+                since_ms: 15,
+            }),
         },
     };
     test_server_roundtrip!(ServerToClientMsg::SessionAttention {
