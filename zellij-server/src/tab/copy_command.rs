@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::process::{Child, Command, Stdio};
 use std::thread::JoinHandle;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 pub struct CopyCommand {
     command: String,
@@ -11,14 +11,20 @@ pub struct CopyCommand {
 
 impl CopyCommand {
     pub fn new(command: String) -> Self {
-        let mut command_with_args = command.split(' ').map(String::from);
+        let mut command_with_args = split_command_line(&command)
+            .filter(|parts| !parts.is_empty())
+            .unwrap_or_else(|| command.split_ascii_whitespace().map(String::from).collect())
+            .into_iter();
 
         Self {
-            command: command_with_args.next().expect("missing command"),
+            command: command_with_args.next().unwrap_or_default(),
             args: command_with_args.collect(),
         }
     }
     pub fn set(&self, value: String) -> Result<()> {
+        if self.command.is_empty() {
+            bail!("copy_command is empty");
+        }
         let mut process = Command::new(self.command.clone())
             .args(self.args.clone())
             .stdin(Stdio::piped())
@@ -33,6 +39,63 @@ impl CopyCommand {
 
         Ok(())
     }
+}
+
+/// Split a `copy_command` value into a program and its arguments.
+///
+/// ASCII whitespace separates words. Single or double quotes group a word that
+/// contains whitespace and are removed; nothing is special inside single
+/// quotes. A backslash escapes only whitespace or a quote character and is
+/// literal everywhere else, so Windows paths such as
+/// `C:\Windows\System32\clip.exe` and UNC paths survive intact (a POSIX
+/// shell tokenizer would treat their backslashes as escapes). Returns `None`
+/// for an unterminated quote, so the caller can fall back to plain
+/// whitespace splitting.
+fn split_command_line(command: &str) -> Option<Vec<String>> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut in_word = false;
+    let mut quote: Option<char> = None;
+    let mut characters = command.chars().peekable();
+    while let Some(character) = characters.next() {
+        let escapes_next = |next: Option<&char>, quote: Option<char>| match (next, quote) {
+            (Some(next), None) => next.is_ascii_whitespace() || *next == '"' || *next == '\'',
+            (Some('"'), Some('"')) => true,
+            _ => false,
+        };
+        match quote {
+            Some(open) if character == open => quote = None,
+            Some(_) if character == '\\' && escapes_next(characters.peek(), quote) => {
+                current.extend(characters.next());
+            },
+            Some(_) => current.push(character),
+            None if character == '\\' && escapes_next(characters.peek(), quote) => {
+                current.extend(characters.next());
+                in_word = true;
+            },
+            None if character == '"' || character == '\'' => {
+                quote = Some(character);
+                in_word = true;
+            },
+            None if character.is_ascii_whitespace() => {
+                if in_word {
+                    words.push(std::mem::take(&mut current));
+                    in_word = false;
+                }
+            },
+            None => {
+                current.push(character);
+                in_word = true;
+            },
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    if in_word {
+        words.push(current);
+    }
+    Some(words)
 }
 
 /// Wait for the copy command's process in the background, so that it does not linger as a zombie
@@ -75,6 +138,49 @@ mod tests {
         // run it through `sh` rather than making it executable, so that a concurrent fork/exec
         // elsewhere in the test binary can't make this spawn fail with ETXTBSY
         format!("sh {}", script.display())
+    }
+
+    #[test]
+    fn copy_command_preserves_quoted_and_empty_arguments() {
+        let copy_command =
+            CopyCommand::new("sh '/tmp/path with spaces' --flag '' trailing\\ value".to_owned());
+
+        assert_eq!(copy_command.command, "sh");
+        assert_eq!(
+            copy_command.args,
+            vec![
+                "/tmp/path with spaces".to_owned(),
+                "--flag".to_owned(),
+                String::new(),
+                "trailing value".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_command_falls_back_for_malformed_quotes() {
+        let copy_command = CopyCommand::new("helper 'unterminated".to_owned());
+
+        assert_eq!(copy_command.command, "helper");
+        assert_eq!(copy_command.args, vec!["'unterminated".to_owned()]);
+    }
+
+    #[test]
+    fn copy_command_collapses_repeated_whitespace_without_creating_arguments() {
+        let copy_command = CopyCommand::new("helper   --flag\t\tvalue".to_owned());
+
+        assert_eq!(copy_command.command, "helper");
+        assert_eq!(
+            copy_command.args,
+            vec!["--flag".to_owned(), "value".to_owned()]
+        );
+    }
+
+    #[test]
+    fn an_empty_copy_command_is_an_error_not_a_panic() {
+        let copy_command = CopyCommand::new("   ".to_owned());
+
+        assert!(copy_command.set("text".to_owned()).is_err());
     }
 
     #[test]
@@ -123,5 +229,57 @@ mod tests {
             Some(Errno::ECHILD),
             "the copy command's process should have been reaped"
         );
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::{split_command_line, CopyCommand};
+
+    fn split(command: &str) -> Vec<String> {
+        let copy_command = CopyCommand::new(command.to_owned());
+        std::iter::once(copy_command.command)
+            .chain(copy_command.args)
+            .collect()
+    }
+
+    #[test]
+    fn only_ascii_whitespace_separates_words() {
+        assert_eq!(split("copy\u{a0}tool --flag"), ["copy\u{a0}tool", "--flag"]);
+        assert_eq!(split("xclip\t-sel\nclip"), ["xclip", "-sel", "clip"]);
+    }
+
+    #[test]
+    fn windows_paths_keep_their_backslashes() {
+        assert_eq!(
+            split(r"C:\Windows\System32\clip.exe"),
+            [r"C:\Windows\System32\clip.exe"]
+        );
+        assert_eq!(
+            split(r#""C:\Program Files\Tool\copy.exe" /q"#),
+            [r"C:\Program Files\Tool\copy.exe", "/q"]
+        );
+        assert_eq!(
+            split(r#""\\server\share\clip.exe""#),
+            [r"\\server\share\clip.exe"]
+        );
+        assert_eq!(
+            split(r"\\server\share\clip.exe"),
+            [r"\\server\share\clip.exe"]
+        );
+    }
+
+    #[test]
+    fn hash_is_an_ordinary_character() {
+        assert_eq!(split("copy #tag --x"), ["copy", "#tag", "--x"]);
+    }
+
+    #[test]
+    fn escapes_apply_to_whitespace_and_quotes_only() {
+        assert_eq!(
+            split(r#"say a\ b \"q\" "in \"quotes\"" 'single \ kept'"#),
+            ["say", "a b", "\"q\"", "in \"quotes\"", r"single \ kept"]
+        );
+        assert_eq!(split_command_line(r#"x "open"#), None);
     }
 }
