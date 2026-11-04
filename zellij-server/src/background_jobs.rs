@@ -488,10 +488,10 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::AnimatePluginLoading(pid) => {
-                let loading_plugin = Arc::new(AtomicBool::new(true));
-                if job_already_running(job, &mut running_jobs) {
+                if loading_plugins.contains_key(&pid) {
                     continue;
                 }
+                let loading_plugin = Arc::new(AtomicBool::new(true));
                 runtime.spawn({
                     let senders = bus.senders.clone();
                     let loading_plugin = loading_plugin.clone();
