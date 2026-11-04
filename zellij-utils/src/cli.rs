@@ -1402,6 +1402,17 @@ pub enum CliAction {
     },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Switch the focused stack between showing its titles in a column (vertical) and in a row
+    /// (horizontal)
+    ToggleStackListOrientation {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target the stack holding a specific pane by ID (eg. terminal_1, plugin_2, or 3)"
+        )]
+        pane_id: Option<String>,
+    },
     SetPaneFrameStyle {
         #[clap(value_enum, value_parser)]
         style: PaneFrameStyle,

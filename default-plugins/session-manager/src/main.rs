@@ -493,6 +493,16 @@ impl State {
                 badge_colors::set(&global.badge_colors);
                 self.panel.attention = Some(global.clone());
                 should_render = self.inbox.update_global(global);
+                if self.attention_disabled() {
+                    if self.panel.size == Some(PanelSize::Card) {
+                        close_self();
+                        return false;
+                    }
+                    if self.inbox.tab == BrowserTab::Inbox {
+                        self.switch_browser_tab(BrowserTab::Sessions);
+                        should_render = true;
+                    }
+                }
                 if self.away_card_is_empty() {
                     close_self();
                     return false;
@@ -1667,6 +1677,12 @@ impl State {
             return should_render;
         }
 
+        let is_tab_key = key.bare_key == BareKey::Tab
+            && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]));
+        if !is_tab_key {
+            self.single_screen_state.reset_tab_cycle();
+        }
+
         match key.bare_key {
             BareKey::Char(character) if key.has_no_modifiers() => {
                 if character == '\n' {
@@ -1702,6 +1718,13 @@ impl State {
             },
             BareKey::Tab if key.has_no_modifiers() => {
                 self.single_screen_state.tab_complete(
+                    &self.sessions.session_ui_infos,
+                    &self.resurrectable_sessions.all_resurrectable_sessions,
+                );
+                should_render = true;
+            },
+            BareKey::Tab if key.has_only_modifiers(&[KeyModifier::Shift]) => {
+                self.single_screen_state.tab_complete_backwards(
                     &self.sessions.session_ui_infos,
                     &self.resurrectable_sessions.all_resurrectable_sessions,
                 );
@@ -3039,13 +3062,28 @@ impl State {
                     self.inbox.release_key_text(),
                     "stop typing (or click outside the view)",
                 ),
+                hint(
+                    "<w>",
+                    if self.inbox.wide_list {
+                        "narrow the list"
+                    } else {
+                        "widen the list"
+                    },
+                ),
             ]
         } else {
             vec![hint("<ENTER>", "go to the pane")]
         };
         hints.extend([
             hint("<↓↑>", "select"),
-            hint("<c>", "dismiss (mark seen)"),
+            hint(
+                "<c>",
+                if self.inbox.selected_is_recalled() {
+                    "forget (until the pane reports again)"
+                } else {
+                    "dismiss (mark seen)"
+                },
+            ),
             hint("<ESC>", "close"),
             hint("<m>", if muted { "unmute" } else { "mute" }),
             hint(
@@ -3679,7 +3717,14 @@ impl State {
         }
     }
     fn shows_browser_tabs(&self) -> bool {
-        !self.is_welcome_screen
+        !self.is_welcome_screen && !self.attention_disabled()
+    }
+    fn attention_disabled(&self) -> bool {
+        self.inbox
+            .global
+            .as_ref()
+            .map(|global| global.attention_disabled)
+            .unwrap_or(false)
     }
     fn shows_ages(&self) -> bool {
         self.panel.size == Some(PanelSize::Card) || self.inbox_is_shown()
@@ -3765,6 +3810,7 @@ impl State {
 
     fn show_app_panel_view(&mut self, view: Option<&str>) {
         let keeps_the_inbox = self.app_panel_view_shown
+            && !self.attention_disabled()
             && !self.app_quit
             && self.panel.size == Some(PanelSize::Manager)
             && self.inbox.tab == BrowserTab::Inbox
@@ -3784,6 +3830,7 @@ impl State {
         self.single_screen_state.search_term.clear();
         self.single_screen_state.selected_index = None;
         let tab = match view {
+            _ if self.attention_disabled() => BrowserTab::Sessions,
             Some("sessions") => BrowserTab::Sessions,
             _ if !self.inbox.has_rows() => BrowserTab::Sessions,
             _ => BrowserTab::Inbox,
@@ -3797,8 +3844,8 @@ impl State {
     fn follow_app_panel_title(&self) {
         if app_panel::is_enabled() && !self.app_quit {
             self.set_app_panel_title(match self.inbox.tab {
-                BrowserTab::Inbox => "Inbox",
-                BrowserTab::Sessions => "Sessions",
+                BrowserTab::Inbox if !self.attention_disabled() => "Inbox",
+                _ => "Sessions",
             });
         }
     }
@@ -3990,6 +4037,7 @@ impl State {
             },
             BareKey::Enter if plain => self.go_to_selected_inbox_item(),
             BareKey::Char('z') if plain && live => self.inbox.toggle_resize(),
+            BareKey::Char('w') if plain && live => self.inbox.toggle_wide_list(),
             BareKey::Char('c') if plain => self.inbox.dismiss_selected(),
             BareKey::Char('C') if plain || shift => self.inbox.dismiss_all(),
             BareKey::Char('m') if plain => self.inbox.cycle_selected_mute(),
@@ -4381,6 +4429,39 @@ mod live_view_state_tests {
             BrowserTab::Sessions,
             "a fresh open with nothing left shows the sessions"
         );
+    }
+
+    fn with_attention_off(mut global: GlobalAttention) -> GlobalAttention {
+        global.attention_disabled = true;
+        global
+    }
+
+    #[test]
+    fn turning_attention_off_shows_only_the_sessions() {
+        let mut state = browser();
+        assert!(state.inbox_is_shown());
+        let global = with_attention_off(only_web_is_left());
+        state.update(Event::GlobalAttentionUpdate(global));
+        assert_eq!(state.inbox.tab, BrowserTab::Sessions);
+        assert!(!state.shows_browser_tabs());
+        assert!(!state.inbox_is_shown());
+        state.render_plugin(16, 88);
+        assert_eq!(state.inbox.live_view_sent, None);
+        state.show_app_panel_view(Some("inbox"));
+        assert_eq!(state.inbox.tab, BrowserTab::Sessions);
+        assert!(!state.inbox_is_shown());
+    }
+
+    #[test]
+    fn turning_attention_back_on_brings_the_inbox_back() {
+        let mut state = browser();
+        state.update(Event::GlobalAttentionUpdate(with_attention_off(
+            only_web_is_left(),
+        )));
+        state.update(Event::GlobalAttentionUpdate(only_web_is_left()));
+        assert!(state.shows_browser_tabs());
+        state.show_app_panel_view(Some("inbox"));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
     }
 
     #[test]

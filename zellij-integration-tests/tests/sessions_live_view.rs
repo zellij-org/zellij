@@ -524,6 +524,12 @@ fn a_nested_session_does_not_show_or_resize_the_pane_of_its_parent_that_runs_it(
     let guest_terminal = nested.guest.expect_pty_spawn();
     guest_terminal.output(PROMPT);
     nested.wait_for_host_to_acknowledge_guest();
+    nested.guest.wait_for_app_load();
+    nested
+        .guest
+        .wait_until("the guest is ready for keys", |grid_snapshot| {
+            grid_snapshot.contains("Descend:") && grid_snapshot.contains(" running ")
+        });
     let host_name = nested.host.session_name().to_owned();
     let host_pane_sizes = nested.host_pane.size_history();
     open_the_sessions(&nested.guest, &[&host_name]);

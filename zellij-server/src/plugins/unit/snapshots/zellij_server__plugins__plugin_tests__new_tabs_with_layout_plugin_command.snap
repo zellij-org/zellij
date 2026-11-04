@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 1367
+assertion_line: 1414
 expression: "format!(\"{:#?}\", first_new_tab_event)"
 ---
 Some(
@@ -24,6 +24,7 @@ Some(
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_orientation: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -45,6 +46,7 @@ Some(
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_orientation: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -63,6 +65,7 @@ Some(
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                stack_orientation: None,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,

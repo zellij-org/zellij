@@ -13,6 +13,7 @@ struct State {
     disconnected_clients: Vec<ClientId>,
     key_events: Vec<(Option<SlotId>, Option<ClientId>)>,
     self_command_results: Vec<String>,
+    permission_result: Option<String>,
 }
 
 #[cfg(target_family = "wasm")]
@@ -34,7 +35,7 @@ fn render_line(
         .and_then(|slot| slot.configuration.get("label").cloned())
         .unwrap_or_default();
     format!(
-        "instance:{} loads:{} slot:{} label:{} client:{} rows:{} cols:{} slots:{:?} removed:{:?} clients:{:?} disconnected:{:?} keys:{:?} self_commands:{:?}",
+        "instance:{} loads:{} slot:{} label:{} client:{} rows:{} cols:{} slots:{:?} removed:{:?} clients:{:?} disconnected:{:?} keys:{:?} self_commands:{:?} permissions:{}",
         state.instance_id,
         state.load_count,
         slot_id,
@@ -48,6 +49,7 @@ fn render_line(
         state.disconnected_clients,
         state.key_events,
         state.self_command_results,
+        state.permission_result.as_deref().unwrap_or("none"),
     )
 }
 
@@ -58,6 +60,15 @@ impl ZellijSharedPlugin for State {
         self.configuration = configuration;
         self.instance_id = get_plugin_ids().plugin_id;
         subscribe(&[EventType::Key]);
+        if self
+            .configuration
+            .get("settings_entries")
+            .map(|v| v == "true")
+            == Some(true)
+        {
+            subscribe(&[EventType::PermissionRequestResult]);
+            request_permission(&[PermissionType::ChangeApplicationState]);
+        }
     }
     fn slot_added(&mut self, slot: Slot) {
         if slot.kind == SlotKind::Pane {
@@ -84,6 +95,10 @@ impl ZellijSharedPlugin for State {
                     Some(client_id) => RenderResponse::Client(client_id),
                     None => RenderResponse::All,
                 }
+            },
+            Event::PermissionRequestResult(status) => {
+                self.permission_result = Some(format!("{:?}", status));
+                RenderResponse::All
             },
             _ => RenderResponse::Nothing,
         }
@@ -123,6 +138,11 @@ impl ZellijSharedPlugin for State {
                     .push(format!("{:?}", set_collapsed_slot(u32::MAX, true)));
                 RenderResponse::All
             },
+            "register_settings_entry" => {
+                register_settings_entry("Shared settings");
+                RenderResponse::Nothing
+            },
+            "panic" => panic!("the shared fixture was asked to panic"),
             "close_first_slot" => {
                 if let Some(slot_id) = self.slots.keys().next().copied() {
                     let result = close_slot(slot_id);

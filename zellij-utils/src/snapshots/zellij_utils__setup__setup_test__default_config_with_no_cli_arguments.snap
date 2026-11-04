@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 895
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -1440,6 +1441,19 @@ Config {
             }: [
                 SwitchToMode {
                     input_mode: Scroll,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleStackListOrientation,
+                SwitchToMode {
+                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -6764,6 +6778,7 @@ Config {
         web_sharing: None,
         stacked_resize: None,
         stacked_pane_list: None,
+        stacked_pane_list_orientation: None,
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
@@ -7076,6 +7091,17 @@ Config {
                 ],
                 toggled_label: Some(
                     "Make tiled",
+                ),
+            },
+            Item {
+                label: "Show titles in a row",
+                actions: [
+                    ClickedPane(
+                        ToggleStackListOrientation,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Show titles in a column",
                 ),
             },
             Separator,
@@ -12069,10 +12095,12 @@ Config {
         tab_markers: None,
         idle_rule: None,
         done_threshold_secs: None,
+        track_commands: None,
         idle_activity_secs: None,
         idle_silence_secs: None,
         startup_card: None,
         tray_icon: None,
+        enabled: None,
         desktop_notifications: StatusMap {
             needs_you: None,
             failed: None,

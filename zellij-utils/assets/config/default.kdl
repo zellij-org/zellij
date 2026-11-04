@@ -76,6 +76,7 @@ context_menu {
         item "Rename pane…" { StartRenamePaneByPaneId; }
         item "Fullscreen" toggled_label="Exit fullscreen" { ToggleFocusFullscreenByPaneId; }
         item "Make floating" toggled_label="Make tiled" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Show titles in a row" toggled_label="Show titles in a column" { ToggleStackListOrientationByPaneId; }
         separator
         item "Watch pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
         item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
@@ -540,6 +541,13 @@ context_menu {
 //
 // stacked_pane_list false
 
+// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
+// Options:
+//   - vertical (Default)
+//   - horizontal
+//
+// stacked_pane_list_orientation "horizontal"
+
 // Whether to show release notes on first version run
 // (Requires restart)
 // Default: true
@@ -946,9 +954,7 @@ web_client {
 
 // Status of panes, tabs and sessions: the symbols on frames and tabs, the inbox,
 // and the desktop app's tray icon and notifications. Every key is optional.
-// To turn all of this off, set the first four keys below to false, startup_card
-// to "never", every desktop_notifications type to false (and session_indicator
-// false).
+// To turn all of this off, set `enabled false`.
 //
 // Each pane can also be set apart from this, from its right-click menu, the
 // pane mode keys or `zellij action`:
@@ -962,6 +968,13 @@ web_client {
 //     unmuting shows its current state.
 //
 // attention {
+//     // Track what panes need and show it anywhere. When false, panes report
+//     // nothing: no markers, inbox, session card, counts in the session
+//     // indicator, tray badge or desktop notifications, and the watch and
+//     // mute entries leave the right-click menu. The other keys below only
+//     // apply when this is true.
+//     enabled true
+//
 //     // Show what a pane needs (approval, a failure, a finished command) in
 //     // its frame title.
 //     frame_markers true
@@ -983,6 +996,11 @@ web_client {
 //
 //     // Seconds a successful command must run before it is reported as done.
 //     done_threshold_secs 10
+//
+//     // List commands as working once they run longer than
+//     // done_threshold_secs. Commands that use the full screen (vim, less,
+//     // htop) or that you type into are left out.
+//     track_commands true
 //
 //     // Seconds of steady output before quiet detection applies.
 //     idle_activity_secs 10

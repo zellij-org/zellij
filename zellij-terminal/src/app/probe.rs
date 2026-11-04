@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use zellij_utils::input::attention::{StatusSet, POPUP_STATUSES};
 
-use crate::app::engine::{Command, Engine, Policy};
-use crate::app::watcher::{Snapshot, Watcher};
+use crate::app::control::watcher::{Snapshot, Watcher};
+use crate::app::policy::engine::{Command, Engine, Policy};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeEvent {

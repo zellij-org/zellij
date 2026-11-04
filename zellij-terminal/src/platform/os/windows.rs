@@ -1,0 +1,35 @@
+use anyhow::Result;
+
+use crate::window::AppPoster;
+use crate::windows_shell::unattended::{self, Unattended};
+
+pub struct Run(Option<Unattended>);
+
+impl Run {
+    pub fn prepare() -> Self {
+        Run(unattended::prepare())
+    }
+
+    pub fn finish(&self, result: &Result<()>) {
+        if let (Some(unattended), Err(error)) = (&self.0, result) {
+            unattended.report(error);
+        }
+    }
+}
+
+pub fn claim_app_identity() {
+    crate::app::desktop::platform_windows::set_process_app_id();
+    crate::app::desktop::platform_windows::register_app_id();
+    crate::windows_shell::jump_list::install();
+}
+
+pub fn terminate_on_signal(poster: AppPoster) {
+    let _ = poster;
+}
+
+pub fn detach_from_terminal(command: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+}

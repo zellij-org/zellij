@@ -160,6 +160,8 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="14")]
     pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
+    #[prost(string, optional, tag="15")]
+    pub stack_orientation: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1274,6 +1276,8 @@ pub enum ActionName {
     ShowBars = 152,
     HideBarByPaneId = 153,
     PasteFromClipboardByPaneId = 154,
+    ToggleStackListOrientation = 155,
+    ToggleStackListOrientationByPaneId = 156,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1434,6 +1438,8 @@ impl ActionName {
             ActionName::ShowBars => "ShowBars",
             ActionName::HideBarByPaneId => "HideBarByPaneId",
             ActionName::PasteFromClipboardByPaneId => "PasteFromClipboardByPaneId",
+            ActionName::ToggleStackListOrientation => "ToggleStackListOrientation",
+            ActionName::ToggleStackListOrientationByPaneId => "ToggleStackListOrientationByPaneId",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1591,6 +1597,8 @@ impl ActionName {
             "ShowBars" => Some(Self::ShowBars),
             "HideBarByPaneId" => Some(Self::HideBarByPaneId),
             "PasteFromClipboardByPaneId" => Some(Self::PasteFromClipboardByPaneId),
+            "ToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
+            "ToggleStackListOrientationByPaneId" => Some(Self::ToggleStackListOrientationByPaneId),
             _ => None,
         }
     }
