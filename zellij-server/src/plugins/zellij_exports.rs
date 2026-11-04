@@ -58,7 +58,10 @@ use zellij_utils::web_authentication_tokens::{
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
-use crate::{panes::PaneId, screen::ScreenInstruction};
+use crate::{
+    panes::PaneId,
+    screen::{ClosePaneSource, ScreenInstruction},
+};
 use kdl::KdlDocument;
 
 use prost::Message;
@@ -338,6 +341,7 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
                 None,
                 None,
                 None,
+                ClosePaneSource::External,
             ))
             .map_err(|e| e.to_string())?;
         env.senders
@@ -3563,6 +3567,7 @@ fn close_self(env: &PluginEnv) {
             None,
             None,
             None,
+            ClosePaneSource::External,
         ))
         .with_context(|| format!("failed to close self"))
         .non_fatal();

@@ -365,6 +365,12 @@ pub struct TabOverrideResult {
     pub plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClosePaneSource {
+    External,
+    ChildExit,
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -503,6 +509,7 @@ pub enum ScreenInstruction {
         Option<ClientId>,
         Option<NotificationEnd>,
         Option<i32>,
+        ClosePaneSource,
     ), // i32 -> optional exit
     // status
     HoldPane(PaneId, Option<i32>, RunCommand),
@@ -12568,6 +12575,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                 // waiting for it
                 exit_status,
+                close_pane_source,
             ) => {
                 if let PaneId::Plugin(plugin_id) = id {
                     if screen.close_popup_with_plugin_id(plugin_id) {
@@ -12597,10 +12605,30 @@ pub(crate) fn screen_thread_main(
                             if screen.pane_ids_never_created.remove(&id) {
                                 pending_events_waiting_for_pane.remove(&id);
                                 closed_pane_was_never_created = true;
-                            } else {
+                            } else if close_pane_source == ClosePaneSource::ChildExit {
+                                // Replayed once the pane exists, which also
+                                // cleans up its PTY. Cleaning up now would stop
+                                // reading output the command printed before it
+                                // exited.
                                 pending_events_waiting_for_pane.entry(id).or_default().push(
-                                    ScreenInstruction::ClosePane(id, None, None, exit_status),
+                                    ScreenInstruction::ClosePane(
+                                        id,
+                                        None,
+                                        None,
+                                        exit_status,
+                                        ClosePaneSource::ChildExit,
+                                    ),
                                 );
+                                continue;
+                            } else if let PaneId::Plugin(_) = id {
+                                // A headless plugin has no pane, but closing it
+                                // must still unload it (via the PTY cleanup).
+                            } else {
+                                log::warn!(
+                                    "ignoring external close for pane {:?} because it does not exist",
+                                    id
+                                );
+                                continue;
                             }
                         }
                     },
