@@ -1,0 +1,141 @@
+// Claude Light — a Zellij theme matching the Claude desktop app palette.
+// Warm cream background, near-black ink, terracotta accent.
+//
+// Uses the granular styling spec (Zellij 0.41+) instead of the legacy
+// 8-color palette so tabs render as soft cream chips rather than
+// pure-black blocks, and the focused pane frame is terracotta.
+//
+// Palette reference:
+//   ink        #141413   muted ink   #5E5D59   faint    #87867F
+//   cream      #FAF9F5   panel       #F0EEE6   chip     #E8E6DC
+//   border     #87867F   terracotta  #D97757   clay     #C15F3C
+//   sage       #788C5D   amber       #B16803   blue     #6A9BCC
+//   purple     #8B6CB0   teal        #2E8B8B
+themes {
+    claude-light {
+        text_unselected {
+            base 94 93 89
+            background 240 238 230
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        text_selected {
+            base 20 20 19
+            background 232 230 220
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        ribbon_unselected {
+            base 94 93 89
+            background 232 230 220
+            emphasis_0 193 95 60
+            emphasis_1 177 104 3
+            emphasis_2 139 108 176
+            emphasis_3 106 155 204
+        }
+        ribbon_selected {
+            base 250 249 245
+            background 217 119 87
+            emphasis_0 177 104 3
+            emphasis_1 120 140 93
+            emphasis_2 139 108 176
+            emphasis_3 106 155 204
+        }
+        table_title {
+            base 20 20 19
+            background 240 238 230
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        table_cell_unselected {
+            base 94 93 89
+            background 250 249 245
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        table_cell_selected {
+            base 20 20 19
+            background 232 230 220
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        list_unselected {
+            base 94 93 89
+            background 250 249 245
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        list_selected {
+            base 20 20 19
+            background 232 230 220
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        frame_unselected {
+            base 214 211 199
+            background 250 249 245
+            emphasis_0 217 119 87
+            emphasis_1 46 139 139
+            emphasis_2 120 140 93
+            emphasis_3 139 108 176
+        }
+        frame_selected {
+            base 193 95 60
+            background 250 249 245
+            emphasis_0 177 104 3
+            emphasis_1 46 139 139
+            emphasis_2 139 108 176
+            emphasis_3 106 155 204
+        }
+        frame_highlight {
+            base 177 104 3
+            background 250 249 245
+            emphasis_0 217 119 87
+            emphasis_1 217 119 87
+            emphasis_2 217 119 87
+            emphasis_3 217 119 87
+        }
+        exit_code_success {
+            base 120 140 93
+            background 250 249 245
+            emphasis_0 46 139 139
+            emphasis_1 240 238 230
+            emphasis_2 139 108 176
+            emphasis_3 106 155 204
+        }
+        exit_code_error {
+            base 193 95 60
+            background 250 249 245
+            emphasis_0 177 104 3
+            emphasis_1 240 238 230
+            emphasis_2 139 108 176
+            emphasis_3 106 155 204
+        }
+        multiplayer_user_colors {
+            player_1 139 108 176
+            player_2 46 139 139
+            player_3 0 0 0
+            player_4 177 104 3
+            player_5 106 155 204
+            player_6 0 0 0
+            player_7 193 95 60
+            player_8 0 0 0
+            player_9 0 0 0
+            player_10 120 140 93
+        }
+    }
+}
