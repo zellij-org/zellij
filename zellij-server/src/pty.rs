@@ -2137,7 +2137,12 @@ impl Pty {
                 if let Some(originating_plugins) = self.originating_plugins.get(&id) {
                     run_command.originating_plugin = Some(originating_plugins.clone());
                 }
-                let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
+                // The old reader task must be stopped, not just detached:
+                // a detached task keeps streaming the previous run's
+                // PtyBytes into the rerun pane under the same terminal id.
+                if let Some(task) = self.task_handles.remove(&id) {
+                    task.abort();
+                }
                 let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
                 let run_generation = self.mint_run_generation();
 
