@@ -1,5 +1,6 @@
 use super::{
-    screen_thread_main, CopyOptions, Screen, ScreenInstruction, MAX_REMEMBERED_PANES_NEVER_CREATED,
+    screen_thread_main, ClosePaneSource, CopyOptions, Screen, ScreenInstruction,
+    MAX_REMEMBERED_PANES_NEVER_CREATED,
 };
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
@@ -20408,4 +20409,113 @@ fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint(
         "a shifted frame must not resend every row"
     );
     assert_eq!(client.screen(), expected.screen());
+}
+
+/// Send `close` for a pane that does not exist yet, then create the pane, and
+/// count the PTY cleanups the screen requested for it.
+fn close_then_create_pane_cleanups(close: ScreenInstruction, pid: u32) -> usize {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(close);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(pid),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        ClientTabIndexOrPaneId::ClientId(1),
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let cleanups = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| {
+            matches!(instruction, PtyInstruction::ClosePane(PaneId::Terminal(id), _) if *id == pid)
+        })
+        .count();
+    cleanups
+}
+
+#[test]
+pub fn an_external_close_for_a_pane_that_does_not_exist_yet_is_ignored() {
+    // A stale or speculative close (CLI, plugin) must not be replayed onto a
+    // pane that is created later with the same id.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            None,
+            ClosePaneSource::External,
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 0);
+}
+
+#[test]
+pub fn a_child_exit_before_its_pane_exists_closes_the_pane_once_created() {
+    // A command that exits before its pane is laid out must still close it.
+    // The only cleanup comes from closing the created pane: none is sent
+    // while the pane does not exist yet.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            Some(0),
+            ClosePaneSource::ChildExit,
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 1);
+}
+
+#[test]
+pub fn an_external_close_for_a_headless_plugin_still_unloads_it() {
+    // Background plugins have no pane; the close must still reach the PTY
+    // thread, which unloads the plugin.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ClosePane(
+        PaneId::Plugin(9),
+        None,
+        None,
+        None,
+        ClosePaneSource::External,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    assert!(received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|instruction| matches!(instruction, PtyInstruction::ClosePane(PaneId::Plugin(9), _))));
 }

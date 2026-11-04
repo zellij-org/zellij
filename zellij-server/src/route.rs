@@ -10,7 +10,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
-    screen::ScreenInstruction,
+    screen::{ClosePaneSource, ScreenInstruction},
     ServerInstruction, SessionMetaData, SessionState,
 };
 use std::thread;
@@ -2075,6 +2075,7 @@ fn route_action_with_origin(
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
                     None,
+                    ClosePaneSource::External,
                 ))
                 .with_context(err_context)?;
         },
@@ -2088,6 +2089,7 @@ fn route_action_with_origin(
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
                     None,
+                    ClosePaneSource::External,
                 ))
                 .with_context(err_context)?;
         },

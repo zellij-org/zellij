@@ -50,9 +50,12 @@ use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
-    background_jobs::BackgroundJob, route::NotificationEnd, screen::ScreenInstruction,
-    thread_bus::ThreadSenders, ui::loading_indication::LoadingIndication, ClientId,
-    ServerInstruction,
+    background_jobs::BackgroundJob,
+    route::NotificationEnd,
+    screen::{ClosePaneSource, ScreenInstruction},
+    thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication,
+    ClientId, ServerInstruction,
 };
 use zellij_utils::{
     data::{Event, EventContext, EventType, SlotKind},
@@ -2623,6 +2626,7 @@ impl WasmBridge {
                         None,
                         None,
                         None,
+                        ClosePaneSource::External,
                     ));
                     let _ = self
                         .senders

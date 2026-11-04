@@ -8,7 +8,7 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
-    screen::{ScreenInstruction, TabOverrideResult},
+    screen::{ClosePaneSource, ScreenInstruction, TabOverrideResult},
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
@@ -1268,6 +1268,7 @@ impl Pty {
                         None,
                         None,
                         exit_status,
+                        ClosePaneSource::ChildExit,
                     ));
                 }
             }
@@ -1767,6 +1768,7 @@ impl Pty {
                     None,
                     None,
                     exit_status,
+                    ClosePaneSource::ChildExit,
                 ));
             }
         });
@@ -1813,6 +1815,7 @@ impl Pty {
                                 None,
                                 None,
                                 exit_status,
+                                ClosePaneSource::ChildExit,
                             ));
                         }
                     }
@@ -2109,6 +2112,7 @@ impl Pty {
                                 None,
                                 None,
                                 exit_status,
+                                ClosePaneSource::ChildExit,
                             ));
                         }
                     }
