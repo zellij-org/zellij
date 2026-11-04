@@ -3,7 +3,11 @@ use std::str;
 const PARAMETER_LIMIT: usize = 32;
 const COLLECT_LIMIT: usize = 2;
 const OSC_FIELD_LIMIT: usize = 16;
-const OSC_BYTE_LIMIT: usize = 100 * 1024 * 1024;
+/// Longest OSC payload assembled. Large enough for an OSC 52 clipboard
+/// copy of roughly 3 MiB of text; longer sequences are discarded.
+const MAX_OSC_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+/// OSC buffers that grew past this are released rather than kept for reuse.
+const RETAINED_OSC_CAPACITY: usize = 64 * 1024;
 const FAST_SGR_LIMIT: usize = 31;
 const ESC: u8 = 0x1b;
 
@@ -510,9 +514,22 @@ impl Parser {
     }
 
     fn osc_start(&mut self) {
-        self.osc.clear();
-        self.osc_overflowed = false;
+        self.reset_osc();
         self.state = State::OscString;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn osc_capacity(&self) -> usize {
+        self.osc.capacity()
+    }
+
+    fn reset_osc(&mut self) {
+        if self.osc.capacity() > RETAINED_OSC_CAPACITY {
+            self.osc = Vec::new();
+        } else {
+            self.osc.clear();
+        }
+        self.osc_overflowed = false;
     }
 
     fn osc_finish<H: Handler>(&self, handler: &mut H, ended_by_bell: bool) {
@@ -670,25 +687,37 @@ impl Parser {
     fn osc_byte<H: Handler>(&mut self, handler: &mut H, byte: u8) {
         match byte {
             0x07 => {
-                self.osc_finish(handler, true);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, true);
+                }
+                self.reset_osc();
                 self.state = State::Ground;
             },
             0x18 | 0x1a => {
-                self.osc_finish(handler, false);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, false);
+                }
+                self.reset_osc();
                 handler.execute(byte);
                 self.state = State::Ground;
             },
             ESC => {
-                self.osc_finish(handler, false);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, false);
+                }
+                self.reset_osc();
                 self.enter_escape();
             },
             0x00..=0x1f => {},
-            _ if self.osc_overflowed => {},
-            _ if self.osc.len() >= OSC_BYTE_LIMIT => {
+            _ if self.osc.len() < MAX_OSC_PAYLOAD_BYTES => self.osc.push(byte),
+            _ => {
+                if !self.osc_overflowed {
+                    log::warn!(
+                        "discarding an OSC sequence longer than {MAX_OSC_PAYLOAD_BYTES} bytes"
+                    );
+                }
                 self.osc_overflowed = true;
-                self.osc = Vec::new();
             },
-            _ => self.osc.push(byte),
         }
     }
 

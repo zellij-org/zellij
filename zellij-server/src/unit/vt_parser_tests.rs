@@ -859,6 +859,45 @@ fn an_osc_string_keeps_at_most_sixteen_fields() {
 }
 
 #[test]
+fn oversized_osc_payload_is_dropped_and_parser_recovers() {
+    let mut bytes = b"\x1b]0;".to_vec();
+    bytes.extend(std::iter::repeat(b'x').take(super::MAX_OSC_PAYLOAD_BYTES + 1));
+    bytes.push(0x07);
+    bytes.extend_from_slice(b"ok");
+
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    for chunk in bytes.chunks(4096) {
+        parser.feed(&mut ours, chunk);
+    }
+    assert_eq!(ours.0, text("ok"));
+    assert!(parser.osc_capacity() <= super::RETAINED_OSC_CAPACITY);
+}
+
+#[test]
+fn a_large_osc_payload_within_the_limit_is_dispatched_and_released() {
+    // e.g. an OSC 52 clipboard copy of a few hundred KiB of text
+    let payload = vec![b'Q'; 1024 * 1024];
+    let mut bytes = b"\x1b]52;c;".to_vec();
+    bytes.extend_from_slice(&payload);
+    bytes.push(0x07);
+
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    for chunk in bytes.chunks(4096) {
+        parser.feed(&mut ours, chunk);
+    }
+    assert_eq!(
+        ours.0,
+        vec![osc(
+            &[b"52".as_slice(), b"c".as_slice(), payload.as_slice()],
+            true
+        )]
+    );
+    assert!(parser.osc_capacity() <= super::RETAINED_OSC_CAPACITY);
+}
+
+#[test]
 fn an_osc_string_drops_controls_and_keeps_other_bytes() {
     expect(
         b"\x1b]0;a\x01b\xc3\xa9\x7f\x07",
