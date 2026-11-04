@@ -1258,20 +1258,28 @@ impl Pane for TerminalPane {
     fn get_bell_notification(&self) -> bool {
         self.has_bell_notification
     }
-    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
+    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) -> bool {
+        let new_override = Some((self.style.colors.exit_code_error.base, error_text));
+        let changed = self.pane_frame_color_override != new_override;
+        self.pane_frame_color_override = new_override;
+        changed
     }
     fn add_highlight_pane_frame_color_override(
         &mut self,
         text: Option<String>,
         _client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         // TODO: if we have a client_id, we should only highlight the frame for this client
-        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.emphasis_0, text));
+        let new_override = Some((self.style.colors.frame_highlight.emphasis_0, text));
+        let changed = self.pane_frame_color_override != new_override;
+        self.pane_frame_color_override = new_override;
+        changed
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool {
         // TODO: if we have a client_id, we should only clear the highlight for this client
+        let changed = self.pane_frame_color_override.is_some();
         self.pane_frame_color_override = None;
+        changed
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
         self.pane_frame_color_override

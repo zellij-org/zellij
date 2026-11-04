@@ -1024,14 +1024,15 @@ pub trait Pane {
     fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
         None
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool;
     fn add_highlight_pane_frame_color_override(
         &mut self,
         _text: Option<String>,
         _client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
+        false
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>);
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool;
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
@@ -8282,7 +8283,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8294,15 +8295,16 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_red_pane_frame_color_override(error_text);
+            return pane.add_red_pane_frame_color_override(error_text);
         }
+        false
     }
     pub fn add_highlight_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8314,14 +8316,15 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_highlight_pane_frame_color_override(error_text, client_id);
+            return pane.add_highlight_pane_frame_color_override(error_text, client_id);
         }
+        false
     }
     pub fn clear_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8333,8 +8336,9 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.clear_pane_frame_color_override(client_id);
+            return pane.clear_pane_frame_color_override(client_id);
         }
+        false
     }
     pub fn set_plugin_regex_highlights_for_pane(
         &mut self,

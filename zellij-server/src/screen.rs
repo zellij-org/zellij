@@ -13476,22 +13476,27 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            any_changed |=
+                                tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_highlight_pane_frame_color_override(
+                            any_changed |= tab.add_highlight_pane_frame_color_override(
                                 pane_id,
                                 error_text.clone(),
                                 None,
@@ -13500,19 +13505,24 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.clear_pane_frame_color_override(pane_id, None);
+                            any_changed |= tab.clear_pane_frame_color_override(pane_id, None);
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::SetTabBellFlash(tab_id, is_flashing) => {
                 if let Some(tab) = screen.tabs.values_mut().find(|t| t.id == tab_id) {
