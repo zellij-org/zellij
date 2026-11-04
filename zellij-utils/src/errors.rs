@@ -574,6 +574,7 @@ pub enum PtyContext {
     OverrideLayout,
     ClosePane,
     ClosePaneThatWasNotCreated,
+    ClearPaneProcessIdentity,
     CloseTab,
     ReRunCommandInPane,
     DropToShellInPane,
