@@ -630,11 +630,12 @@ pub(crate) fn subscribe_to_session(
         },
     };
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
-    zellij_client::cli_client::start_subscribe_client(
+    let exit_code = zellij_client::cli_client::start_subscribe_client(
         Box::new(os_input),
         &session_name,
         subscribe_cli,
     );
+    std::process::exit(exit_code);
 }
 
 pub(crate) fn prompt_in_session(
