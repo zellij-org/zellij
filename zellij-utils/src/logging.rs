@@ -3,7 +3,7 @@
 use std::{
     fs,
     io::{self, prelude::*},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use log::LevelFilter;
@@ -120,9 +120,22 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
     result
 }
 
-pub fn debug_to_file(message: &[u8], terminal_id: i32) -> io::Result<()> {
-    let mut path = PathBuf::new();
-    path.push(&*ZELLIJ_TMP_LOG_DIR);
+pub fn debug_to_file(message: &[u8], terminal_id: i32, session_id: &str) -> io::Result<()> {
+    debug_to_file_in(&ZELLIJ_TMP_LOG_DIR, message, terminal_id, session_id)
+}
+
+fn debug_to_file_in(
+    log_dir: &Path,
+    message: &[u8],
+    terminal_id: i32,
+    session_id: &str,
+) -> io::Result<()> {
+    let mut path = log_dir.join("terminal-logs");
+    // Each level is created (owner-only) on its own: the per-session
+    // directory's parent does not exist until the first capture.
+    atomic_create_dir(&path)?;
+    path.push(encode_path_component(session_id));
+    atomic_create_dir(&path)?;
     path.push(format!(
         "{}-{}.log",
         crate::distribution::name(),
@@ -135,4 +148,63 @@ pub fn debug_to_file(message: &[u8], terminal_id: i32) -> io::Result<()> {
         .open(&path)?;
     set_permissions(&path, 0o600)?;
     file.write_all(message)
+}
+
+fn encode_path_component(component: &str) -> String {
+    let mut encoded = String::new();
+    for byte in component.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod debug_log_tests {
+    use super::{debug_to_file_in, encode_path_component};
+
+    #[test]
+    fn terminal_captures_are_written_under_a_fresh_log_directory() {
+        let log_dir = tempfile::tempdir().expect("temp log dir");
+        debug_to_file_in(log_dir.path(), b"first ", 7, "my session").expect("first capture");
+        debug_to_file_in(log_dir.path(), b"second", 7, "my session").expect("second capture");
+        let session_dir = log_dir
+            .path()
+            .join("terminal-logs")
+            .join(encode_path_component("my session"));
+        let capture = std::fs::read_dir(&session_dir)
+            .expect("session capture directory")
+            .map(|entry| entry.expect("entry").path())
+            .find(|path| path.to_string_lossy().ends_with("-7.log"))
+            .expect("terminal 7 capture file");
+        assert_eq!(std::fs::read(capture).unwrap(), b"first second");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for dir in [log_dir.path().join("terminal-logs"), session_dir] {
+                let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+                assert_eq!(mode & 0o777, 0o700, "{dir:?} must be owner-only");
+            }
+        }
+    }
+
+    #[test]
+    fn session_log_directories_cannot_escape_their_parent() {
+        assert_eq!(
+            encode_path_component("../session/one"),
+            "%2E%2E%2Fsession%2Fone"
+        );
+        assert_eq!(encode_path_component("session-1_ok"), "session-1_ok");
+    }
+
+    #[test]
+    fn distinct_session_ids_cannot_encode_to_the_same_directory() {
+        assert_ne!(
+            encode_path_component("session/one"),
+            encode_path_component("session_one")
+        );
+    }
 }
