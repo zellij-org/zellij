@@ -358,7 +358,7 @@ impl LiveViewSlot {
             if let Some(anchor) = links.get(uri) {
                 return Some(*anchor);
             }
-            let anchor = handler.borrow_mut().new_link_from_url(uri.to_owned());
+            let anchor = handler.borrow_mut().new_link_from_url(uri.to_owned())?;
             links.insert(uri.to_owned(), anchor);
             Some(anchor)
         };
