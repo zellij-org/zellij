@@ -2676,6 +2676,30 @@ pub fn scroll_down_with_line_wraps() {
 }
 
 #[test]
+fn scroll_progress_stops_when_viewport_height_is_invalid() {
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert!(!grid.scroll_down_one_line_with_progress().moved);
+}
+
+#[test]
+fn search_stops_when_viewport_cannot_scroll() {
+    use zellij_utils::input::actions::SearchDirection;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert!(!grid.search_viewport_move(SearchDirection::Down));
+}
+
+#[test]
 pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
