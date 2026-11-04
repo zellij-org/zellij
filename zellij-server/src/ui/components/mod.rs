@@ -220,10 +220,7 @@ fn parse_disabled(stringified: &mut String) -> bool {
 
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
     stringified
-        .chars()
-        .collect::<Vec<_>>()
-        .iter()
-        .rposition(|c| c == &'$')
+        .rfind('$')
         .map(|last_position| stringified.drain(0..=last_position).collect::<String>())
         .map(|indices_string| {
             let mut all_indices = vec![];
@@ -238,4 +235,28 @@ fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
             all_indices
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_indices_multibyte_utf8_does_not_panic() {
+        let mut stringified = "中$1,2".to_string();
+        let _ = parse_indices(&mut stringified);
+    }
+
+    #[test]
+    fn parse_indices_multibyte_utf8_drains_correctly() {
+        let mut stringified = "1,2$3,4$text_with_ünicöde".to_string();
+        let indices = parse_indices(&mut stringified);
+        assert_eq!(indices, vec![vec![1, 2], vec![3, 4], vec![]]);
+        assert_eq!(stringified, "text_with_ünicöde");
+
+        let mut with_prefix = "ünicöde$1,2$rest".to_string();
+        let indices_prefix = parse_indices(&mut with_prefix);
+        assert_eq!(indices_prefix, vec![vec![], vec![1, 2], vec![]]);
+        assert_eq!(with_prefix, "rest");
+    }
 }
