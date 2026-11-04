@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 895
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -45,14 +44,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -435,14 +426,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -952,14 +935,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1621,14 +1596,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     ' ',
                 ),
@@ -2280,14 +2247,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -2760,14 +2719,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -3154,14 +3105,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3647,14 +3590,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -4006,14 +3941,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4387,14 +4314,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -4612,6 +4531,17 @@ Config {
             }: [
                 MoveFocusOrTab {
                     direction: Left,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+                SwitchToMode {
+                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -5048,14 +4978,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5470,14 +5392,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5860,14 +5774,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6410,14 +6316,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(

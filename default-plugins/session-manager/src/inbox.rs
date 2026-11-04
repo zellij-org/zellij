@@ -14,7 +14,6 @@ pub const AGE_CLOCK_MAX_MS: u64 = 60_000;
 pub const AGE_CLOCK_SLACK_SECONDS: f64 = 0.05;
 pub const CARD_ITEM_LIMIT: usize = 5;
 pub const CARD_WIDTH: usize = 56;
-pub const INBOX_SHORTCUT: &str = "<F9>";
 pub const OPEN_INBOX_TEXT: &str = "Open inbox ›";
 pub const DONT_SHOW_AGAIN_TEXT: &str = " Don't show again ";
 pub const SESSION_MAX_WIDTH: usize = 16;
@@ -332,6 +331,20 @@ pub struct CardContent {
     pub back_to: Option<String>,
 }
 
+pub fn inbox_shortcut(mode_info: &ModeInfo) -> Option<String> {
+    let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
+    shortcut_for_action(&mode_info.keybinds, base_mode, |action| {
+        matches!(action, actions::Action::ToggleSessionCard)
+    })
+    .filter(|keys| !keys.is_empty())
+    .map(|keys| {
+        keys.iter()
+            .map(|key| format!("<{}>", key))
+            .collect::<Vec<String>>()
+            .join(" ")
+    })
+}
+
 #[derive(Default)]
 pub struct Inbox {
     pub global: Option<GlobalAttention>,
@@ -356,6 +369,7 @@ pub struct Inbox {
     pub offer_hints: Vec<crate::help::Hint>,
     pub select_newest_on_arrival: bool,
     pub live: Option<LiveViewStatus>,
+    pub shortcut: Option<String>,
     pub resize_allowed: Option<bool>,
     pub own_resize_allowed: bool,
     pub current_session: Option<String>,
@@ -1452,14 +1466,16 @@ impl Inbox {
         }
     }
 
-    pub fn release_key_text(&self) -> String {
-        let text = self
-            .live
+    pub fn release_key_text(&self) -> Option<String> {
+        self.live
             .as_ref()
             .map(|live| live.release_key.clone())
-            .filter(|key| !key.is_empty())
-            .unwrap_or_else(|| DEFAULT_LIVE_VIEW_RELEASE_KEY.to_owned());
-        LiveViewReleaseGesture::display(&text)
+            .filter(|key| !key.trim().is_empty())
+            .map(|key| LiveViewReleaseGesture::display(&key))
+    }
+
+    pub fn stop_typing_key_text(&self) -> Option<String> {
+        self.release_key_text().or_else(|| self.shortcut.clone())
     }
 
     pub fn live_view_target(&self) -> Option<ItemKey> {
@@ -1799,12 +1815,13 @@ impl Inbox {
                 .capture_labels
                 .clone()
                 .unwrap_or_else(|| ("?".to_owned(), "?".to_owned()));
+            let keys = match self.release_key_text() {
+                Some(release_key) => format!("{}, {}", TYPE_KEY, release_key),
+                None => TYPE_KEY.to_owned(),
+            };
             return format!(
-                "typing into {} › {} · {}, {} or click outside to return",
-                session,
-                pane,
-                TYPE_KEY,
-                self.release_key_text()
+                "typing into {} › {} · {} or click outside to return",
+                session, pane, keys
             );
         }
         if let Some(notice) = self.live_notice.as_ref() {
@@ -2562,7 +2579,10 @@ impl Inbox {
         let inner = width.saturating_sub(2);
         let content_x = 2;
         let content_width = width.saturating_sub(4);
-        let title = format!(" {} {} ", content.title, INBOX_SHORTCUT);
+        let title = match self.shortcut.as_ref() {
+            Some(shortcut) => format!(" {} {} ", content.title, shortcut),
+            None => format!(" {} ", content.title),
+        };
         let title = truncate_plain(&title, inner.saturating_sub(4));
         let top = format!(
             "┌{}{} × ─┐",
@@ -2571,9 +2591,17 @@ impl Inbox {
         );
         let title_main_len = content.title.chars().count();
         let close_index = top.chars().count().saturating_sub(4);
-        let top_text = Text::from(top.as_str())
+        let mut top_text = Text::from(top.as_str())
             .color_range(2, 2..2 + title_main_len)
             .color_range(3, close_index..close_index + 1);
+        if let Some(shortcut) = self.shortcut.as_ref() {
+            let shortcut_start = 3 + title_main_len;
+            let shortcut_end =
+                (shortcut_start + shortcut.chars().count()).min(1 + title.chars().count());
+            if shortcut_start < shortcut_end {
+                top_text = top_text.dim_range(shortcut_start..shortcut_end);
+            }
+        }
         print_text_with_coordinates(top_text, 0, 0, Some(width), None);
         let close_x = width.saturating_sub(4);
         self.card_targets
@@ -3715,7 +3743,7 @@ mod tests {
             resize_allowed: true,
             pinned: captured,
             source_size: None,
-            release_key: "F9".to_owned(),
+            release_key: String::new(),
         }
     }
 
@@ -3755,7 +3783,7 @@ mod tests {
         );
         assert_eq!(
             inbox.live_view_hint_text(),
-            "typing into here › pane2 · <Alt ENTER>, <F9> or click outside to return"
+            "typing into here › pane2 · <Alt ENTER> or click outside to return"
         );
         let mut released = live_status(Some(key("here", 2)), false);
         released.input_released_by = Some(LiveViewRelease::Key);
@@ -5056,5 +5084,39 @@ mod tests {
         ]));
         assert!(inbox.is_held(&key("api", 1)));
         assert_eq!(inbox.selection, Some(key("web", 2)));
+    }
+
+    #[test]
+    fn the_inbox_shortcut_is_the_key_path_from_the_base_mode() {
+        let ctrl_o = KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier();
+        let i = KeyWithModifier::new(BareKey::Char('i'));
+        let mut mode_info = ModeInfo::default();
+        assert_eq!(inbox_shortcut(&mode_info), None);
+        mode_info.keybinds = vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    ctrl_o,
+                    vec![actions::Action::SwitchToMode {
+                        input_mode: InputMode::Session,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Session,
+                vec![(
+                    i,
+                    vec![
+                        actions::Action::ToggleSessionCard,
+                        actions::Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        },
+                    ],
+                )],
+            ),
+        ];
+        assert_eq!(inbox_shortcut(&mode_info), Some("<Ctrl o> <i>".to_owned()));
+        mode_info.base_mode = Some(InputMode::Locked);
+        assert_eq!(inbox_shortcut(&mode_info), None);
     }
 }

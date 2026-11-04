@@ -3071,9 +3071,7 @@ pub(crate) fn route_thread_main(
                                     s.live_view_captures
                                         .lock()
                                         .ok()?
-                                        .key_pressed(client_id, &key, || {
-                                            s.live_view_release_keys(&client_id)
-                                        })
+                                        .key_pressed(client_id, &key)
                                         .then(|| s.senders.clone())
                                 });
                             if let Some(senders) = live_view_release {

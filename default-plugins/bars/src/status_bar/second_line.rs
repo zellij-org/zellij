@@ -231,6 +231,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Next item"), s("Next"), action_key(&km, &[A::GoToNextAttention, TO_NORMAL])),
+        (s("Inbox"), s("Inbox"), action_key(&km, &[A::ToggleSessionCard, TO_NORMAL])),
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameSession}, A::SessionNameInput{input: vec![0]}])),

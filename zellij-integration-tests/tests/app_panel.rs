@@ -896,7 +896,7 @@ fn alt_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
     zellij.wait_until("the session is drawn", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
     });
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the sessions are shown", |grid_snapshot| {
         grid_snapshot.contains("<F1> all keys")
     });

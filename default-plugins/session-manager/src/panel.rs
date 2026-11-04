@@ -13,7 +13,7 @@ pub const PANEL_SIZE_PIPE: &str = "session_panel_size";
 pub const SHOW_ALL_TEXT: &str = "Show all and previews ›";
 pub const SHOW_ALL_SHORTCUT: &str = "<Ctrl f>";
 pub const CARD_TITLE: &str = "Running Sessions";
-pub const CARD_SHORTCUT: &str = "<F9>";
+pub const CARD_SHORTCUT_WIDTH: usize = 4;
 pub const CARD_MIN_LIST_ROWS: usize = 5;
 pub const CARD_SCROLL_MARGIN: usize = 2;
 pub const NO_OTHER_SESSIONS_TEXT: &str = "No other sessions.";
@@ -390,7 +390,7 @@ impl Panel {
             .max(footer_width + 2)
             .max(
                 graphemes::display_width(&CARD_TITLE)
-                    + graphemes::display_width(&CARD_SHORTCUT)
+                    + CARD_SHORTCUT_WIDTH
                     + 3
                     + graphemes::display_width(&" × "),
             );

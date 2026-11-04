@@ -306,12 +306,12 @@ pub fn expected_binds() -> Vec<ExpectedBind> {
         },
         ExpectedBind {
             feature: Feature::Inbox,
-            mode: InputMode::Normal,
-            key: KeyWithModifier::new(BareKey::F(9)),
+            mode: InputMode::Session,
+            key: KeyWithModifier::new(BareKey::Char('i')),
             action: Action::ToggleSessionCard,
             description: "Open or close the inbox",
-            returns_to_base_mode: false,
-            in_base_mode: true,
+            returns_to_base_mode: true,
+            in_base_mode: false,
         },
         ExpectedBind {
             feature: Feature::Inbox,
