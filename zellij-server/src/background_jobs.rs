@@ -1303,32 +1303,56 @@ pub fn write_session_state_to_disk(
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
     if file_content_changed(&metadata_cache_file_name, new_metadata.as_bytes()) {
-        let _wrote_metadata_file =
-            std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
-                .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
-                .and_then(|mut f| write!(f, "{}", new_metadata));
+        if let Err(error) =
+            write_file_atomically(&metadata_cache_file_name, new_metadata.as_bytes())
+        {
+            log::error!("Failed to write session metadata file: {:?}", error);
+        }
     }
 
     if !current_session_layout.is_empty() {
         let layout_cache_file_name = session_layout_cache_file_name(&session_id);
         if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
-            let _wrote_layout_file =
-                std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
-                    .and_then(|_| std::fs::File::create(&layout_cache_file_name))
-                    .and_then(|mut f| write!(f, "{}", current_session_layout));
+            // replacing the file gives it a new creation time; keep the
+            // session's own
+            zellij_utils::sessions::record_session_layout_creation_time(&layout_cache_file_name);
+            if let Err(error) =
+                write_file_atomically(&layout_cache_file_name, current_session_layout.as_bytes())
+            {
+                log::error!("Failed to write session layout file: {:?}", error);
+            }
         }
         let session_info_folder = session_info_folder_for_session(&session_id);
         for (external_file_name, external_file_contents) in layout_files_to_write {
             let external_file_path = session_info_folder.join(&external_file_name);
             if file_content_changed(&external_file_path, external_file_contents.as_bytes()) {
-                std::fs::File::create(&external_file_path)
-                    .and_then(|mut f| write!(f, "{}", external_file_contents))
-                    .unwrap_or_else(|e| {
-                        log::error!("Failed to write layout metadata file: {:?}", e);
-                    });
+                if let Err(error) =
+                    write_file_atomically(&external_file_path, external_file_contents.as_bytes())
+                {
+                    log::error!("Failed to write layout metadata file: {:?}", error);
+                }
             }
         }
     }
+}
+
+fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "file path has no parent directory",
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+    let mut temporary_file = tempfile::Builder::new()
+        .prefix(".zellij-session-")
+        .tempfile_in(parent)?;
+    temporary_file.write_all(contents)?;
+    temporary_file.as_file().sync_all()?;
+    temporary_file
+        .persist(path)
+        .map(|_| ())
+        .map_err(|error| error.error)
 }
 
 pub fn scan_session_list(
@@ -1392,9 +1416,9 @@ fn find_resurrectable_sessions(
                         return None;
                     }
                     let layout_file_name = folder_name.join("session-layout.kdl");
-                    let ctime = match std::fs::metadata(&layout_file_name)
-                        .and_then(|metadata| metadata.created())
-                    {
+                    let ctime = match zellij_utils::sessions::session_layout_creation_time(
+                        &layout_file_name,
+                    ) {
                         Ok(created) => Some(created),
                         Err(e) => {
                             if e.kind() == std::io::ErrorKind::NotFound {
@@ -1543,6 +1567,46 @@ mod tests {
     }
 
     #[test]
+    fn atomic_file_write_replaces_contents_without_leaving_a_temporary_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("session-state");
+        std::fs::write(&path, b"old").unwrap();
+
+        write_file_atomically(&path, b"new").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        let entries = std::fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(entries, 1);
+    }
+
+    #[test]
+    fn concurrent_atomic_writes_never_expose_mixed_contents() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("session-state");
+        let barrier = Arc::new(std::sync::Barrier::new(9));
+        let handles = (0..8)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let contents = vec![b'a' + index; 4096];
+                    barrier.wait();
+                    write_file_atomically(&path, &contents).unwrap();
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents.len(), 4096);
+        assert!(contents.windows(2).all(|window| window[0] == window[1]));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
     fn scan_session_list_returns_empty_when_no_peers() {
         let sock_dir = tempdir().unwrap();
         let info_dir = tempdir().unwrap();
@@ -1593,6 +1657,38 @@ mod tests {
         assert!(live.is_empty());
         assert_eq!(resurrectable.len(), 1);
         assert!(resurrectable.contains_key("dead-beta"));
+    }
+
+    #[test]
+    fn a_dead_sessions_age_survives_replacing_its_layout_file() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        write_layout(info_dir.path(), "long-running");
+        let layout = info_dir.path().join("long-running/session-layout.kdl");
+        // the session started two hours ago
+        let started = std::time::SystemTime::now() - Duration::from_secs(2 * 3600);
+        let started_secs = started
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        std::fs::write(
+            layout.with_file_name("session-layout-created"),
+            started_secs.to_string(),
+        )
+        .unwrap();
+
+        // every later save replaces the file, which gets a fresh timestamp
+        write_file_atomically(&layout, b"layout { pane }").unwrap();
+        zellij_utils::sessions::record_session_layout_creation_time(&layout);
+
+        let (_, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert!(resurrectable["long-running"] >= Duration::from_secs(2 * 3600 - 10));
     }
 
     #[test]
