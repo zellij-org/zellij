@@ -345,11 +345,11 @@ impl Pane for MockPane {
     fn exclude_from_sync(&self) -> bool {
         unimplemented!()
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) {
-        unimplemented!()
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool {
+        false
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
-        unimplemented!()
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool {
+        false
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
         unimplemented!()

@@ -1468,3 +1468,16 @@ fn output_split_at_any_byte_renders_the_same_as_output_in_one_piece() {
         );
     }
 }
+
+#[test]
+fn pane_frame_color_override_reports_change_only_on_real_delta() {
+    let mut pane = pane_for_split_test();
+    assert!(pane.add_red_pane_frame_color_override(Some("err".into())));
+    // the same request applied again is a no-op and must not render
+    assert!(!pane.add_red_pane_frame_color_override(Some("err".into())));
+    assert!(pane.add_highlight_pane_frame_color_override(Some("hi".into()), None));
+    assert!(!pane.add_highlight_pane_frame_color_override(Some("hi".into()), None));
+    assert!(pane.clear_pane_frame_color_override(None));
+    // clearing an already-clear pane is also a no-op
+    assert!(!pane.clear_pane_frame_color_override(None));
+}
