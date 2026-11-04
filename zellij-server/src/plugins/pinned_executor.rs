@@ -332,8 +332,8 @@ impl PinnedExecutor {
     }
 
     fn try_shrink_pool(&self) {
-        let mut threads = self.execution_threads.lock().unwrap();
         let thread_plugins = self.thread_plugins.lock().unwrap();
+        let mut threads = self.execution_threads.lock().unwrap();
 
         // Find threads with no assigned plugins (except thread 0, always keep it)
         let threads_to_remove: Vec<usize> = threads
