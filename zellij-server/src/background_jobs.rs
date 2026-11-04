@@ -462,10 +462,12 @@ pub(crate) fn background_jobs_main(
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
         err_ctx.add_call(ContextType::BackgroundJob((&event).into()));
-        let job = event.clone();
         match event {
             BackgroundJob::DisplayPaneError(pane_ids, text) => {
-                if job_already_running(job, &mut running_jobs) {
+                if job_already_running(
+                    BackgroundJob::DisplayPaneError(pane_ids.clone(), text.clone()),
+                    &mut running_jobs,
+                ) {
                     continue;
                 }
                 runtime.spawn({
@@ -701,7 +703,10 @@ pub(crate) fn background_jobs_main(
                 wake.notify_one();
             },
             BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
-                if job_already_running(job, &mut running_jobs) {
+                if job_already_running(
+                    BackgroundJob::HighlightPanesWithMessage(pane_ids.clone(), text.clone()),
+                    &mut running_jobs,
+                ) {
                     continue;
                 }
                 runtime.spawn({
