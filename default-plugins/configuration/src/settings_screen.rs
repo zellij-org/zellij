@@ -12,9 +12,9 @@ use crate::page::{
 };
 use crate::settings::{
     check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value,
-    page_matches, parse_hex_colour, placement, search_settings, section,
-    settings_in, value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck,
-    BUNDLED_FONT, CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
+    page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
+    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
+    CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;

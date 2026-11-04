@@ -4,8 +4,8 @@ use std::time::Duration;
 use zellij_integration_tests::attention::{needs_you, program_status};
 use zellij_integration_tests::inbox::{
     background_session_with, inbox_shows, inbox_view_area, open_inbox, open_inbox_on, press_esc,
-    press_release_key, press_type_key, shows_inbox, ATTENTION_CONFIG,
-    SESSIONS_HELP, TYPE_INTO_IT, TYPING_INTO,
+    press_release_key, press_type_key, shows_inbox, ATTENTION_CONFIG, SESSIONS_HELP, TYPE_INTO_IT,
+    TYPING_INTO,
 };
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
@@ -544,9 +544,10 @@ fn closing_the_browser_sessions_all_keys_and_hiding_each_clear_the_view_and_give
     );
     start_typing(&zellij);
     zellij.main_client().send_action(Action::ToggleSessionCard);
-    zellij.wait_until("the inbox action while typing stops typing", |grid_snapshot| {
-        !grid_snapshot.contains(TYPING_INTO) && shows_inbox(grid_snapshot)
-    });
+    zellij.wait_until(
+        "the inbox action while typing stops typing",
+        |grid_snapshot| !grid_snapshot.contains(TYPING_INTO) && shows_inbox(grid_snapshot),
+    );
     zellij.main_client().send_action(Action::ToggleSessionCard);
     wait_until_cleared(
         &zellij,
@@ -726,9 +727,10 @@ fn the_desktop_panel_shows_the_list_and_the_live_view_and_types_into_it() {
     });
     assert!(reused.snapshot().contains(TYPING_INTO));
     press_type_key(&reused);
-    reused.wait_until("alt enter stops typing in the reused panel", |grid_snapshot| {
-        !grid_snapshot.contains(TYPING_INTO)
-    });
+    reused.wait_until(
+        "alt enter stops typing in the reused panel",
+        |grid_snapshot| !grid_snapshot.contains(TYPING_INTO),
+    );
     reused.send_stdin(&keys::ESC);
     reused.wait_for_client_to_exit();
 }
