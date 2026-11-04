@@ -12,9 +12,9 @@ use crate::page::{
 };
 use crate::settings::{
     check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value,
-    page_matches, parse_hex_colour, placement, release_key_placeholder, search_settings, section,
-    settings_in, value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck,
-    BUNDLED_FONT, CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
+    page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
+    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
+    CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -852,16 +852,6 @@ impl SettingsScreen {
             })
             .unwrap_or(0)
     }
-    fn text_placeholder(&self, key: SettingKey, info: &SettingInfo) -> String {
-        if key != SettingKey::LiveViewReleaseKey {
-            return info.default.to_owned();
-        }
-        let mode = self
-            .current_value(SettingKey::DefaultMode)
-            .and_then(|mode| mode.parse().ok())
-            .unwrap_or(InputMode::Normal);
-        release_key_placeholder(&self.snapshot.keybindings, mode)
-    }
     fn toggle_value(&self, key: SettingKey) -> bool {
         self.current_value(key)
             .unwrap_or_else(|| describe(key).default.to_owned())
@@ -920,7 +910,7 @@ impl SettingsScreen {
             SettingKind::Text(_) => TextInput::new(self.current_value(key).unwrap_or_default())
                 .label(info.name)
                 .label_width(label_width)
-                .placeholder(self.text_placeholder(key, &info))
+                .placeholder(info.default.to_owned())
                 .into(),
             SettingKind::Number { min, max, step } => {
                 NumberStepper::new(info.name, self.number_value(key, min))

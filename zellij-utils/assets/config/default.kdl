@@ -172,10 +172,11 @@ context_menu {
 //
 // mode_hints_when_bars_hidden false
 
-// The key that stops typing into a live view of a pane (in the inbox or a
-// mirror) and gives the keys back to the plugin showing it. A key repeated,
-// eg. "Esc Esc", must be pressed twice in a row.
-// Default: the key that opens the inbox, F9 if there is none
+// An extra key that stops typing into a live view of a pane (in the inbox or a
+// mirror) and gives the keys back to the plugin showing it. Alt Enter, the
+// inbox key or a click outside always do it. A key repeated, eg. "Esc Esc",
+// must be pressed twice in a row.
+// Default: not set
 //
 // live_view_release_key "Ctrl Alt Home"
 

@@ -12,6 +12,7 @@ pub use zellij_utils::desktop_integration;
 pub use zellij_utils::errors::prelude::*;
 pub use zellij_utils::input::actions;
 pub use zellij_utils::input::attention::StartupCard;
+pub use zellij_utils::input::keybinds::shortcut_for_action;
 pub use zellij_utils::pane_size::Size;
 pub use zellij_utils::prompt::{
     ChoiceItem, FormField, FormFieldKind, FormSpec, PromptElement, PromptPlacement, PromptRequest,

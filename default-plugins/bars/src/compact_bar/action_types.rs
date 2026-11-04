@@ -33,6 +33,7 @@ pub enum ActionType {
     EditScrollback,
     NewTab,
     Detach,
+    Inbox,
     Quit,
     NewStackedPane,
     ToggleStackListOrientation,
@@ -93,6 +94,7 @@ impl ActionType {
             ActionType::EditScrollback => "Open pane scrollback in editor".to_string(),
             ActionType::NewTab => "New tab".to_string(),
             ActionType::Detach => "Detach".to_string(),
+            ActionType::Inbox => "Inbox".to_string(),
             ActionType::Quit => "Quit".to_string(),
             ActionType::ToggleStackListOrientation => {
                 "Show stack titles in a row/column".to_string()
@@ -144,6 +146,7 @@ impl ActionType {
             Action::BreakPane => ActionType::BreakPane,
             Action::EditScrollback { .. } => ActionType::EditScrollback,
             Action::Detach => ActionType::Detach,
+            Action::ToggleSessionCard => ActionType::Inbox,
             Action::Quit => ActionType::Quit,
             Action::ToggleStackListOrientation => ActionType::ToggleStackListOrientation,
             Action::ToggleBars { .. } => ActionType::ToggleBars,
