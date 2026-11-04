@@ -164,6 +164,7 @@ pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
+const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneNotCreatedReason {
     NoRoom,
@@ -467,6 +468,7 @@ pub(crate) struct Tab {
     hidden_bars: HiddenBars,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
+    pending_vte_event_bytes: HashMap<u32, usize>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
     link_handler: Rc<RefCell<LinkHandler>>,
@@ -1338,6 +1340,7 @@ impl Tab {
             hidden_bars: HiddenBars::default(),
             auto_layout,
             pending_vte_events: HashMap::new(),
+            pending_vte_event_bytes: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
             pane_being_resized_with_mouse: None,
@@ -5126,6 +5129,7 @@ impl Tab {
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
+        let bytes_len = bytes.len();
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -5140,13 +5144,20 @@ impl Tab {
             // If the pane is scrolled buffer the vte events
             if terminal_output.is_scrolled() {
                 self.pending_vte_events.entry(pid).or_default().push(bytes);
-                if let Some(evs) = self.pending_vte_events.get(&pid) {
-                    // Reset scroll - and process all pending events for this pane
-                    if evs.len() >= MAX_PENDING_VTE_EVENTS {
-                        terminal_output.clear_scroll();
-                        self.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
+                let pending_bytes = self.pending_vte_event_bytes.entry(pid).or_default();
+                *pending_bytes = pending_bytes.saturating_add(bytes_len);
+                let pending_event_count = self
+                    .pending_vte_events
+                    .get(&pid)
+                    .map(|events| events.len())
+                    .unwrap_or_default();
+                // Reset scroll - and process all pending events for this pane
+                if pending_event_count >= MAX_PENDING_VTE_EVENTS
+                    || *pending_bytes >= MAX_PENDING_VTE_BYTES
+                {
+                    terminal_output.clear_scroll();
+                    self.process_pending_vte_events(pid)
+                        .with_context(err_context)?;
                 }
                 return Ok(());
             }
@@ -5183,12 +5194,11 @@ impl Tab {
         Ok(())
     }
     pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
-        if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
-            let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
-            for vte_event in vte_events {
-                self.process_pty_bytes(pid, vte_event)
-                    .context("failed to process pending vte events")?;
-            }
+        let vte_events = self.pending_vte_events.remove(&pid).unwrap_or_default();
+        self.pending_vte_event_bytes.remove(&pid);
+        for vte_event in vte_events {
+            self.process_pty_bytes(pid, vte_event)
+                .context("failed to process pending vte events")?;
         }
         Ok(())
     }

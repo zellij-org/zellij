@@ -17162,6 +17162,26 @@ pub fn scroll_up_by_pane_id() {
 }
 
 #[test]
+pub fn pending_vte_bytes_are_bounded_while_scrolled() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    for line in 0..30 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.scroll_up_by_pane_id(pane_id);
+    assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+
+    tab.handle_pty_bytes(1, vec![b'\n'; super::MAX_PENDING_VTE_BYTES])
+        .unwrap();
+
+    assert!(!tab.pending_vte_events.contains_key(&1));
+    assert!(!tab.pending_vte_event_bytes.contains_key(&1));
+    assert!(!tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+}
+
+#[test]
 pub fn scroll_down_by_pane_id() {
     let size = Size {
         cols: 121,
