@@ -244,6 +244,7 @@ pub(crate) struct Pty {
     // terminal_id => run generation of the child in id_to_child_pid
     child_run_generations: HashMap<u32, u64>,
     next_run_generation: u64,
+    session_id: String,
     originating_plugins: HashMap<u32, OriginatingPlugin>,
     origin_pane_ids: HashMap<u32, PaneId>,
     debug_to_file: bool,
@@ -263,6 +264,7 @@ pub(crate) struct Pty {
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
+    pty.session_id = session_id.clone();
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -1025,6 +1027,7 @@ impl Pty {
             id_to_child_pid: HashMap::new(),
             child_run_generations: HashMap::new(),
             next_run_generation: 0,
+            session_id: String::new(),
             debug_to_file,
             task_handles: HashMap::new(),
             default_editor,
@@ -1349,12 +1352,20 @@ impl Pty {
             let senders = self.bus.senders.clone();
             let debug_to_file = self.debug_to_file;
             let activity_flag = activity_flag.clone();
+            let session_id = self.session_id.clone();
             async move {
-                TerminalBytes::new(terminal_id, reader, senders, debug_to_file, activity_flag)
-                    .listen()
-                    .await
-                    .with_context(|| err_context(terminal_id))
-                    .fatal();
+                TerminalBytes::new(
+                    terminal_id,
+                    session_id,
+                    reader,
+                    senders,
+                    debug_to_file,
+                    activity_flag,
+                )
+                .listen()
+                .await
+                .with_context(|| err_context(terminal_id))
+                .fatal();
             }
         });
 
@@ -1551,9 +1562,11 @@ impl Pty {
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
                         let activity_flag = activity_flag.clone();
+                        let session_id = self.session_id.clone();
                         async move {
                             TerminalBytes::new(
                                 terminal_id,
+                                session_id,
                                 reader,
                                 senders,
                                 debug_to_file,
@@ -1729,9 +1742,11 @@ impl Pty {
                         let senders = self.bus.senders.clone();
                         let debug_to_file = self.debug_to_file;
                         let activity_flag = activity_flag.clone();
+                        let session_id = self.session_id.clone();
                         async move {
                             TerminalBytes::new(
                                 terminal_id,
+                                session_id,
                                 reader,
                                 senders,
                                 debug_to_file,
@@ -2185,12 +2200,20 @@ impl Pty {
                     let senders = self.bus.senders.clone();
                     let debug_to_file = self.debug_to_file;
                     let activity_flag = activity_flag.clone();
+                    let session_id = self.session_id.clone();
                     async move {
-                        TerminalBytes::new(id, reader, senders, debug_to_file, activity_flag)
-                            .listen()
-                            .await
-                            .with_context(|| err_context(pane_id))
-                            .fatal();
+                        TerminalBytes::new(
+                            id,
+                            session_id,
+                            reader,
+                            senders,
+                            debug_to_file,
+                            activity_flag,
+                        )
+                        .listen()
+                        .await
+                        .with_context(|| err_context(pane_id))
+                        .fatal();
                     }
                 });
 
