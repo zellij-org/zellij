@@ -19,7 +19,7 @@ use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrat
 use zellij_utils::errors::prelude::*;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, StackListOrientation};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -210,6 +210,7 @@ fn create_new_tab_with_plugin_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -302,6 +303,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -400,6 +402,7 @@ fn create_new_tab_with_cell_size(
         character_cell_size,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -17504,6 +17507,29 @@ pub fn unnamed_pane_shows_osc_title() {
 }
 
 #[test]
+pub fn clearing_the_osc_title_restores_the_previous_pane_title_and_tab_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    let title_before = tab.get_pane_with_id(pane_id).unwrap().current_title();
+    let tab_name_before = tab.single_pane_tab_name();
+    let _ = tab.handle_pty_bytes(1, b"\x1b]2;hello\x07".to_vec());
+    assert_eq!(
+        tab.get_pane_with_id(pane_id).unwrap().current_title(),
+        "hello"
+    );
+    let _ = tab.handle_pty_bytes(1, b"\x1b]2;\x07".to_vec());
+    assert_eq!(
+        tab.get_pane_with_id(pane_id).unwrap().current_title(),
+        title_before
+    );
+    assert_eq!(tab.single_pane_tab_name(), tab_name_before);
+}
+
+#[test]
 pub fn undo_rename_clears_name() {
     let size = Size {
         cols: 121,
@@ -18287,6 +18313,7 @@ fn create_tab_with_receivers_without_layout(
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(true)),
         Rc::new(RefCell::new(stacked_pane_list)),
+        Default::default(),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),
         Box::new(FakeInputOutput {}),

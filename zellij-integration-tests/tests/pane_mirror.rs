@@ -267,6 +267,18 @@ fn border_of(grid_snapshot: &GridSnapshot) -> Option<Area> {
     })
 }
 
+fn wait_for_text_inside_a_drawn_border(
+    zellij: &TestSession,
+    what: &str,
+    text: &str,
+) -> (GridSnapshot, Area) {
+    let grid_snapshot = zellij.wait_until(what, |grid_snapshot| {
+        grid_snapshot.contains(text) && border_of(grid_snapshot).is_some()
+    });
+    let area = border_of(&grid_snapshot).unwrap();
+    (grid_snapshot, area)
+}
+
 fn assert_inside_the_view(grid_snapshot: &GridSnapshot, text: &str) -> (usize, usize) {
     let area = border_of(grid_snapshot)
         .unwrap_or_else(|| panic!("the fixture draws no border:\n{}", grid_snapshot.text));
@@ -1885,7 +1897,8 @@ fn a_live_view_inside_a_popup_plugin_pane_shows_the_source_and_takes_keys() {
         zellij.send_stdin(b"y");
     }
     opened.wait_for_exit();
-    let grid_snapshot = status_shows(&zellij, "the popup live view is live", "in a popup");
+    let (grid_snapshot, _) =
+        wait_for_text_inside_a_drawn_border(&zellij, "the popup live view is live", "in a popup");
     assert_inside_the_view(&grid_snapshot, "in a popup");
     zellij.send_stdin(b"C");
     status_shows(
@@ -2463,8 +2476,8 @@ fn a_popup_starts_capture_through_the_api_shows_the_cursor_over_a_pinned_pane_an
         zellij.send_stdin(b"y");
     }
     opened.wait_for_exit();
-    let grid_snapshot = status_shows(&zellij, "the popup live view is live", "in a popup");
-    let area = border_of(&grid_snapshot).expect("the fixture draws its border");
+    let (_, area) =
+        wait_for_text_inside_a_drawn_border(&zellij, "the popup live view is live", "in a popup");
     status_shows(
         &zellij,
         "the popup plugin starts capture through the API",

@@ -74,6 +74,7 @@ pub struct ContextMenuRequest {
     pub pane_id: PaneId,
     pub is_floating: bool,
     pub position: Position,
+    pub on_stack_titles: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -382,6 +383,7 @@ enum MouseAction {
         pane_id: PaneId,
         is_floating: bool,
         position: Position,
+        on_stack_titles: bool,
     },
     ForwardRightClickToPlugin {
         pane_id: PaneId,
@@ -415,6 +417,7 @@ pub struct PaneResizeState {
 struct ClickedPaneDetails {
     pane_id: PaneId,
     on_frame: bool,
+    on_stack_titles: bool,
     frame_intercepted: bool,
     edge: Option<PaneEdge>,
     is_floating: bool,
@@ -908,6 +911,7 @@ impl MouseHandler {
     ) -> Option<ClickedPaneDetails> {
         let is_floating = tab.floating_panes.panes_contain(&pane_id);
         let is_hidden_stack_list_member = tab.pane_is_hidden_stack_list_member(&pane_id);
+        let on_stack_titles = tab.position_is_on_stack_list_titles(pane_id, position);
         let pane = Self::get_pane_at(tab, position, false).ok()??;
 
         let on_frame = !is_hidden_stack_list_member && pane.position_is_on_frame(position);
@@ -932,6 +936,7 @@ impl MouseHandler {
         Some(ClickedPaneDetails {
             pane_id,
             on_frame,
+            on_stack_titles,
             frame_intercepted,
             edge,
             is_floating,
@@ -1451,11 +1456,13 @@ impl MouseHandler {
                 pane_id,
                 is_floating,
                 position,
+                on_stack_titles,
             } => Ok(MouseEffect::open_context_menu(ContextMenuRequest {
                 kind,
                 pane_id,
                 is_floating,
                 position,
+                on_stack_titles,
             })),
             MouseAction::ForwardRightClickToPlugin { pane_id, position } => {
                 if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
@@ -2636,6 +2643,7 @@ impl MouseHandler {
             pane_id: details.pane_id,
             is_floating: details.is_floating,
             position: event.position,
+            on_stack_titles: details.on_stack_titles,
         }
     }
 
@@ -3238,6 +3246,7 @@ mod tests {
         ClickedPaneDetails {
             pane_id,
             on_frame: false,
+            on_stack_titles: false,
             frame_intercepted: false,
             edge: None,
             is_floating: false,
@@ -3259,6 +3268,7 @@ mod tests {
             pane_id,
             is_floating: false,
             position,
+            on_stack_titles: false,
         }
     }
 
@@ -3350,6 +3360,7 @@ mod tests {
                 pane_id: PaneId::Terminal(1),
                 is_floating: true,
                 position,
+                on_stack_titles: false,
             }
         );
     }

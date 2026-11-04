@@ -210,10 +210,7 @@ fn shows_something(cell: &MirrorCell) -> bool {
         || cell.cell.bg != WireCell::BLANK.bg
 }
 
-pub fn anchor_row(screen: &MirrorScreen) -> usize {
-    if screen.cursor.visible {
-        return screen.cursor.y as usize;
-    }
+fn last_row_with_content(screen: &MirrorScreen) -> usize {
     (0..screen.rows)
         .rev()
         .find(|row| screen.row(*row).iter().any(shows_something))
@@ -221,8 +218,27 @@ pub fn anchor_row(screen: &MirrorScreen) -> usize {
         .unwrap_or(0)
 }
 
+fn visible_cursor_row(screen: &MirrorScreen) -> Option<usize> {
+    screen
+        .cursor
+        .visible
+        .then(|| (screen.cursor.y as usize).min((screen.rows as usize).saturating_sub(1)))
+}
+
+pub fn anchor_row(screen: &MirrorScreen) -> usize {
+    let content = last_row_with_content(screen);
+    match visible_cursor_row(screen) {
+        Some(cursor) => cursor.max(content),
+        None => content,
+    }
+}
+
 pub fn screen_offset(screen: &MirrorScreen, view_rows: usize) -> usize {
-    row_offset(screen.rows as usize, anchor_row(screen), view_rows)
+    let offset = row_offset(screen.rows as usize, anchor_row(screen), view_rows);
+    match visible_cursor_row(screen) {
+        Some(cursor) if cursor < offset => cursor,
+        _ => offset,
+    }
 }
 
 pub fn screen_chunks(

@@ -205,6 +205,9 @@ impl SessionIndicator {
             return vec![];
         }
         match self.global.as_ref() {
+            Some(global) if global.attention_disabled => {
+                indicator_variants(None, 0, global.running(), simplified_ui)
+            },
             Some(global) => indicator_variants(
                 global.top(),
                 watch_results(global),
@@ -320,6 +323,13 @@ mod tests {
     #[test]
     fn calm_shows_only_the_running_count_including_this_session() {
         assert_eq!(texts(indicator(None, 5).variants()), vec!["5 running", "5"]);
+    }
+
+    #[test]
+    fn with_attention_off_only_the_running_count_is_shown() {
+        let mut indicator = indicator(Some((AttentionStatus::NeedsYou, 2)), 5);
+        indicator.global.as_mut().unwrap().attention_disabled = true;
+        assert_eq!(texts(indicator.variants()), vec!["5 running", "5"]);
     }
 
     #[test]

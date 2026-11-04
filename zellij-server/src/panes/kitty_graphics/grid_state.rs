@@ -614,6 +614,9 @@ impl KittyGrid {
         }
         Ok(())
     }
+    pub fn tracks_rows_below_the_viewport(&self) -> bool {
+        self.rows_below_the_viewport.is_some()
+    }
     pub fn note_rows_below_the_viewport(&mut self, frame: Option<KittyRowsBelowTheViewport>) {
         self.rows_below_the_viewport = frame;
     }

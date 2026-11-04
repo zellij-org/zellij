@@ -15,9 +15,9 @@ mod toggle;
 mod widget_common;
 
 use crate::panes::grid::Grid;
+use crate::vt_parser;
 use lazy_static::lazy_static;
 use regex::Regex;
-use vte;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 
@@ -53,8 +53,8 @@ macro_rules! parse_next_param {
 
 macro_rules! parse_vte_bytes {
     ($self:expr, $encoded_component:expr) => {{
-        let mut vte_parser = vte::Parser::new();
-        vte_parser.advance($self.grid, &$encoded_component);
+        let mut vte_parser = vt_parser::Parser::new();
+        vte_parser.feed($self.grid, &$encoded_component);
     }};
 }
 
