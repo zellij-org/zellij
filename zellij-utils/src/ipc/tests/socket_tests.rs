@@ -1,14 +1,53 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext, IpcStream,
     ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+struct FlushFailureStream;
+
+impl Read for FlushFailureStream {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("read not supported"))
+    }
+}
+
+impl Write for FlushFailureStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("flush failed"))
+    }
+}
+
+impl IpcStream for FlushFailureStream {
+    fn try_clone_stream(&self) -> std::io::Result<Box<dyn IpcStream>> {
+        Err(std::io::Error::other("clone not supported"))
+    }
+    fn set_read_timeout(&self, _timeout: Option<std::time::Duration>) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn send_reports_flush_failure() {
+    let mut sender =
+        IpcSenderWithContext::<ClientToServerMsg>::from_boxed(Box::new(FlushFailureStream));
+
+    assert!(
+        sender
+            .send_client_msg(ClientToServerMsg::ConnStatus)
+            .is_err(),
+        "a failed flush must not be reported as a successful send"
+    );
+}
 
 // --- Cross-platform IPC helpers ---
 // On Unix: use filesystem-based sockets (TempDir + PathBuf + GenericFilePath)
