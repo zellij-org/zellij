@@ -1918,6 +1918,9 @@ impl Grid {
                 .saved_cursor_position
                 .as_ref()
                 .map(|saved_cursor| self.canonical_line_index_of_row(saved_cursor.y));
+            let first_canonical_row = self.viewport.iter().position(|row| row.is_canonical);
+            let cursor_y = self.cursor.y;
+            let saved_cursor_y = self.saved_cursor_position.as_ref().map(|saved| saved.y);
             let mut viewport_canonical_lines = vec![];
             for mut row in self.viewport.drain(..) {
                 if !row.is_canonical
@@ -1941,11 +1944,23 @@ impl Grid {
                             last_line.append(&mut row);
                         },
                         None => {
-                            // the state is corrupted somehow
-                            // this is a bug and I'm not yet sure why it happens
-                            // usually it fixes itself and is a result of some race
-                            // TODO: investigate why this happens and solve it
-                            return;
+                            log::warn!(
+                                "viewport began with a continuation row and no scrollback; normalizing it as canonical"
+                            );
+                            viewport_canonical_lines.push(row.canonical());
+                            // The canonical line indices above only counted
+                            // rows that were already canonical. Lines at or
+                            // after the first of them now come one later.
+                            if first_canonical_row.is_some_and(|first| cursor_y >= first) {
+                                cursor_canonical_line_index += 1;
+                            }
+                            if let (Some(index), Some(saved_y)) =
+                                (saved_cursor_canonical_line_index.as_mut(), saved_cursor_y)
+                            {
+                                if first_canonical_row.is_some_and(|first| saved_y >= first) {
+                                    *index += 1;
+                                }
+                            }
                         },
                     }
                 }

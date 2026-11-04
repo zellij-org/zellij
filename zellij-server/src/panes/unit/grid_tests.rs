@@ -10026,6 +10026,69 @@ fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
 }
 
 #[test]
+fn forced_reflow_normalizes_an_orphaned_continuation_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(grid.viewport.len(), 1);
+    assert!(grid.viewport[0].is_canonical);
+    assert_eq!(row_to_string(&grid.viewport[0]), "orphan");
+}
+
+#[test]
+fn orphan_row_recovery_keeps_the_cursor_on_its_line() {
+    // [orphan continuation, "first", "second"]: the orphan becomes its own
+    // canonical line, so the cursor (and saved cursor) on "first" must stay
+    // on "first" rather than moving up onto the orphan.
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.viewport.push_back(row_from_str("second").canonical());
+    grid.move_cursor_to(
+        2,
+        1,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.save_cursor_position();
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(row_to_string(&grid.viewport[1]), "first");
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+    grid.move_cursor_to(
+        0,
+        2,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.restore_cursor_position();
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+}
+
+#[test]
+fn orphan_row_recovery_keeps_a_cursor_on_the_orphan_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.move_cursor_to(
+        3,
+        0,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
+}
+
+#[test]
 fn height_only_resize_keeps_cursor_at_start_of_wrapped_row() {
     let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
 
