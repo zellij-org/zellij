@@ -64,6 +64,16 @@ fn row_to_string(row: &crate::panes::grid::Row) -> String {
 }
 
 #[test]
+fn a_wide_character_in_a_one_column_row_does_not_create_an_empty_leading_row() {
+    use crate::panes::grid::Row;
+
+    let rows = Row::rewrap_rows(vec![row_from_str("你")], 1);
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(row_to_string(&rows[0]), "你");
+}
+
+#[test]
 fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
     use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
 

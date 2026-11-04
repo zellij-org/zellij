@@ -7419,7 +7419,9 @@ impl Row {
             for character in &row.columns {
                 let character_width = character.width();
                 if current_part_width + character_width > max_row_length {
-                    part_lengths.push(current_part_len);
+                    if current_part_len > 0 {
+                        part_lengths.push(current_part_len);
+                    }
                     current_part_len = 0;
                     current_part_width = 0;
                 }
