@@ -24,14 +24,12 @@ impl CopyCommand {
             .stdin(Stdio::piped())
             .spawn()
             .with_context(|| format!("couldn't spawn {}", self.command))?;
-        process
-            .stdin
-            .take()
+        let stdin = process.stdin.take();
+        reap(process);
+        stdin
             .context("could not get stdin")?
             .write_all(value.as_bytes())
             .with_context(|| format!("couldn't write to {} stdin", self.command))?;
-
-        reap(process);
 
         Ok(())
     }
