@@ -107,6 +107,10 @@ pub enum PtyInstruction {
     ),
     ClosePane(PaneId, Option<NotificationEnd>),
     ClosePaneThatWasNotCreated(PaneId, Option<NotificationEnd>),
+    /// Forget the child process of a held pane whose command exited. The
+    /// generation names the run that exited, so a late notification from a
+    /// replaced run cannot erase the process of the run that replaced it.
+    ClearPaneProcessIdentity(PaneId, u64),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
     DropToShellInPane {
@@ -202,6 +206,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePaneThatWasNotCreated(..) => {
                 PtyContext::ClosePaneThatWasNotCreated
             },
+            PtyInstruction::ClearPaneProcessIdentity(..) => PtyContext::ClearPaneProcessIdentity,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::OverrideLayout(..) => PtyContext::OverrideLayout,
@@ -236,6 +241,9 @@ pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<u32, u32>, // terminal_id => child pid
+    // terminal_id => run generation of the child in id_to_child_pid
+    child_run_generations: HashMap<u32, u64>,
+    next_run_generation: u64,
     originating_plugins: HashMap<u32, OriginatingPlugin>,
     origin_pane_ids: HashMap<u32, PaneId>,
     debug_to_file: bool,
@@ -648,6 +656,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 drop(completion_tx);
                 close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
+            PtyInstruction::ClearPaneProcessIdentity(PaneId::Terminal(id), run_generation) => {
+                pty.clear_exited_process_identity(id, run_generation);
+            },
+            PtyInstruction::ClearPaneProcessIdentity(PaneId::Plugin(_), _) => {},
             PtyInstruction::CloseTab(ids) => {
                 pty.close_tab(ids)
                     .and_then(|_| {
@@ -1011,6 +1023,8 @@ impl Pty {
             active_panes: HashMap::new(),
             bus,
             id_to_child_pid: HashMap::new(),
+            child_run_generations: HashMap::new(),
+            next_run_generation: 0,
             debug_to_file,
             task_handles: HashMap::new(),
             default_editor,
@@ -1162,6 +1176,27 @@ impl Pty {
             };
         };
     }
+    fn mint_run_generation(&mut self) -> u64 {
+        let run_generation = self.next_run_generation;
+        self.next_run_generation = self.next_run_generation.wrapping_add(1);
+        run_generation
+    }
+    fn record_child_pid(&mut self, terminal_id: u32, child_pid: u32, run_generation: u64) {
+        self.id_to_child_pid.insert(terminal_id, child_pid);
+        self.child_run_generations
+            .insert(terminal_id, run_generation);
+    }
+    fn forget_child_pid(&mut self, terminal_id: u32) -> Option<u32> {
+        self.child_run_generations.remove(&terminal_id);
+        self.id_to_child_pid.remove(&terminal_id)
+    }
+    /// A held pane's command exited: forget its process, unless the pane has
+    /// since started another run whose process must stay addressable.
+    fn clear_exited_process_identity(&mut self, terminal_id: u32, run_generation: u64) {
+        if self.child_run_generations.get(&terminal_id) == Some(&run_generation) {
+            self.forget_child_pid(terminal_id);
+        }
+    }
     pub fn spawn_terminal(
         &mut self,
         terminal_action: Option<TerminalAction>,
@@ -1170,6 +1205,7 @@ impl Pty {
     ) -> Result<(u32, bool)> {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+        let run_generation = self.mint_run_generation();
 
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
@@ -1257,6 +1293,10 @@ impl Pty {
                 }
 
                 if hold_on_close {
+                    let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                        pane_id,
+                        run_generation,
+                    ));
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,
                         exit_status,
@@ -1321,7 +1361,7 @@ impl Pty {
         self.task_handles.insert(terminal_id, terminal_bytes);
         self.pane_activity_flags.insert(terminal_id, activity_flag);
         if let Some(child_pid) = child_pid {
-            self.id_to_child_pid.insert(terminal_id, child_pid);
+            self.record_child_pid(terminal_id, child_pid, run_generation);
             self.capture_initial_cwd(terminal_id, child_pid);
         }
 
@@ -1760,6 +1800,7 @@ impl Pty {
         // command
         // successfully opened
         let err_context = || format!("failed to apply run instruction");
+        let run_generation = self.mint_run_generation();
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, _command| {
@@ -1804,6 +1845,10 @@ impl Pty {
                         }
 
                         if hold_on_close {
+                            let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                                pane_id,
+                                run_generation,
+                            ));
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
                                 exit_status,
@@ -1863,7 +1908,7 @@ impl Pty {
                     {
                         Ok((terminal_id, reader, child_pid)) => {
                             if let Some(child_pid) = child_pid {
-                                self.id_to_child_pid.insert(terminal_id, child_pid);
+                                self.record_child_pid(terminal_id, child_pid, run_generation);
                                 self.capture_initial_cwd(terminal_id, child_pid);
                             }
                             Ok(Some((
@@ -1903,7 +1948,7 @@ impl Pty {
                 {
                     Ok((terminal_id, reader, child_pid)) => {
                         if let Some(child_pid) = child_pid {
-                            self.id_to_child_pid.insert(terminal_id, child_pid);
+                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -1938,7 +1983,7 @@ impl Pty {
                 {
                     Ok((terminal_id, reader, child_pid)) => {
                         if let Some(child_pid) = child_pid {
-                            self.id_to_child_pid.insert(terminal_id, child_pid);
+                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -1969,7 +2014,7 @@ impl Pty {
                 {
                     Ok((terminal_id, reader, child_pid)) => {
                         if let Some(child_pid) = child_pid {
-                            self.id_to_child_pid.insert(terminal_id, child_pid);
+                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -1993,7 +2038,7 @@ impl Pty {
                 if let Some(handle) = self.task_handles.remove(&id) {
                     handle.abort();
                 }
-                if let Some(child_pid) = self.id_to_child_pid.remove(&id) {
+                if let Some(child_pid) = self.forget_child_pid(id) {
                     let err_context = || format!("failed to kill child processes for pane {id}");
                     self.bus
                         .os_input
@@ -2078,7 +2123,8 @@ impl Pty {
                     run_command.originating_plugin = Some(originating_plugins.clone());
                 }
                 let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
-                let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
+                let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
+                let run_generation = self.mint_run_generation();
 
                 let hold_on_close = run_command.hold_on_close;
                 let command_text = run_command.to_string();
@@ -2101,6 +2147,10 @@ impl Pty {
                             }
                         }
                         if hold_on_close {
+                            let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                                pane_id,
+                                run_generation,
+                            ));
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
                                 exit_status,
@@ -2147,7 +2197,7 @@ impl Pty {
                 self.task_handles.insert(id, terminal_bytes);
                 self.pane_activity_flags.insert(id, activity_flag);
                 if let Some(child_pid) = child_pid {
-                    self.id_to_child_pid.insert(id, child_pid);
+                    self.record_child_pid(id, child_pid, run_generation);
                     self.capture_initial_cwd(id, child_pid);
                 }
                 let _ = self.bus.senders.send_to_screen(
@@ -2176,7 +2226,11 @@ impl Pty {
         terminal_id: u32,
         resurrect: Option<ResurrectCommand>,
     ) -> std::result::Result<(), String> {
-        if !self.id_to_child_pid.contains_key(&terminal_id) {
+        // A held pane's exited process is forgotten, but its terminal (and
+        // reader task) lives until the pane is closed.
+        if !self.id_to_child_pid.contains_key(&terminal_id)
+            && !self.task_handles.contains_key(&terminal_id)
+        {
             return Err(format!("Terminal pane terminal_{} not found", terminal_id));
         }
         match resurrect {

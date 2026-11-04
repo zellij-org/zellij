@@ -647,3 +647,54 @@ fn resurrect_command_for_unknown_terminal_is_rejected() {
     assert!(result.is_err());
     assert!(pty.resurrect_commands.is_empty());
 }
+
+#[test]
+fn a_late_exit_from_a_replaced_run_does_not_erase_the_new_process() {
+    // A running command pane is re-run: the old process is replaced by a new
+    // one before the old run's hold-on-close notification is processed.
+    let (mut pty, _plugin_rx) = make_pty_with_plugin_receiver(MockOsApi::new());
+    let old_run = pty.mint_run_generation();
+    pty.record_child_pid(3, 100, old_run);
+    let new_run = pty.mint_run_generation();
+    pty.record_child_pid(3, 200, new_run);
+
+    pty.clear_exited_process_identity(3, old_run);
+    assert_eq!(
+        pty.id_to_child_pid.get(&3),
+        Some(&200),
+        "the replacement run's process must stay addressable"
+    );
+
+    pty.clear_exited_process_identity(3, new_run);
+    assert_eq!(pty.id_to_child_pid.get(&3), None);
+    assert!(pty.child_run_generations.is_empty());
+}
+
+#[test]
+fn a_held_pane_still_accepts_a_resurrect_command() {
+    // Forgetting the exited process must not make the held pane itself
+    // unknown: its terminal lives until the pane is closed.
+    let (mut pty, _plugin_rx) = make_pty_with_plugin_receiver(MockOsApi::new());
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    pty.task_handles.insert(5, runtime.spawn(async {}));
+    let run = pty.mint_run_generation();
+    pty.record_child_pid(5, 500, run);
+    pty.clear_exited_process_identity(5, run);
+    assert_eq!(pty.id_to_child_pid.get(&5), None);
+    assert!(pty.set_resurrect_command(5, None).is_ok());
+    assert!(pty.set_resurrect_command(6, None).is_err());
+}
+
+#[test]
+fn forgetting_a_child_drops_its_run_generation() {
+    let (mut pty, _plugin_rx) = make_pty_with_plugin_receiver(MockOsApi::new());
+    let run = pty.mint_run_generation();
+    pty.record_child_pid(4, 400, run);
+    assert_eq!(pty.forget_child_pid(4), Some(400));
+    assert!(pty.child_run_generations.is_empty());
+    // A notification for the forgotten run is a no-op.
+    pty.clear_exited_process_identity(4, run);
+    assert_eq!(pty.id_to_child_pid.get(&4), None);
+}
