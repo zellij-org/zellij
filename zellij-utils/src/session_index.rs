@@ -670,6 +670,21 @@ impl SessionIndex {
         }
     }
 
+    pub fn delete_by_ids(&self, ids: &[String]) -> Result<usize> {
+        let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let mut deleted = 0;
+        {
+            let mut statement = transaction.prepare_cached(
+                "DELETE FROM sessions WHERE id = ?1 OR (id IS NULL AND name = ?1)",
+            )?;
+            for id in ids {
+                deleted += statement.execute(params![id])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(deleted)
+    }
+
     pub fn delete(&self, name: &str) -> Result<bool> {
         let changed = self
             .conn
@@ -1022,6 +1037,79 @@ fn open_existing_default_index() -> Option<Connection> {
     Some(conn)
 }
 
+pub fn dead_session_ids_in(sock_dir: &Path, cache_dir: &Path) -> Vec<String> {
+    use crate::consts::{is_app_socket_name, is_ipc_socket};
+    let live_sessions: HashSet<String> = std::fs::read_dir(sock_dir)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    entry
+                        .file_type()
+                        .map(|file_type| is_ipc_socket(&file_type))
+                        .unwrap_or(false)
+                })
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .filter(|name| !is_app_socket_name(name))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut dead: Vec<String> = match std::fs::read_dir(cache_dir) {
+        Ok(entries) => entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().is_dir())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|id| {
+                !live_sessions.contains(id)
+                    && !is_app_socket_name(id)
+                    && crate::sessions::validate_session_folder_name(id).is_ok()
+            })
+            .collect(),
+        Err(e) => {
+            log::error!("Failed to read session info cache dir: {:?}", e);
+            vec![]
+        },
+    };
+    dead.sort();
+    dead
+}
+
+pub fn delete_dead_sessions_in(
+    sock_dir: &Path,
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+) -> std::result::Result<usize, String> {
+    let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
+    if dead_sessions.is_empty() {
+        return Ok(0);
+    }
+    if let Some(index) = index {
+        if let Err(e) = index.delete_by_ids(&dead_sessions) {
+            log::error!(
+                "Failed to remove dead sessions from the session index: {}",
+                e
+            );
+        }
+    }
+    let mut first_error = None;
+    let mut deleted = 0;
+    for session_id in &dead_sessions {
+        match std::fs::remove_dir_all(cache_dir.join(session_id)) {
+            Ok(()) => deleted += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            Err(e) => {
+                first_error.get_or_insert_with(|| {
+                    format!("Failed to delete dead session {:?}: {}", session_id, e)
+                });
+            },
+        }
+    }
+    match first_error {
+        Some(e) => Err(e),
+        None => Ok(deleted),
+    }
+}
+
 pub fn session_id_for_name(name: &str) -> Option<String> {
     query_session_id(&open_existing_default_index()?, name)
         .ok()
@@ -1172,6 +1260,57 @@ mod tests {
         assert!(test.index.get("new").unwrap().is_some());
         assert!(test.index.delete("new").unwrap());
         assert!(test.index.get("new").unwrap().is_none());
+    }
+
+    #[test]
+    fn deleting_by_ids_removes_sessions_by_id_or_by_name_without_an_id_in_one_go() {
+        let test = TestIndex::new();
+        test.index.rename_by_id("abc123", "renamed", 1).unwrap();
+        test.add("plain", context("/a", None, None), 1);
+        test.add("kept", context("/a", None, None), 1);
+        let deleted = test
+            .index
+            .delete_by_ids(&[
+                "abc123".to_owned(),
+                "plain".to_owned(),
+                "missing".to_owned(),
+            ])
+            .unwrap();
+        assert_eq!(deleted, 2);
+        assert!(test.index.get("renamed").unwrap().is_none());
+        assert!(test.index.get("plain").unwrap().is_none());
+        assert!(test.index.get("kept").unwrap().is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deleting_hundreds_of_dead_sessions_keeps_live_and_app_sessions() {
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        for i in 0..450 {
+            let id = format!("dead-{}", i);
+            test.add(&id, context("/a", None, None), 1);
+            test.mark_resumable(&id);
+        }
+        test.add("live", context("/a", None, None), 1);
+        test.mark_resumable("live");
+        let _live_socket = std::os::unix::net::UnixListener::bind(sock_dir.join("live")).unwrap();
+        std::fs::create_dir_all(cache_dir.join(".zellij-app-panel")).unwrap();
+
+        let deleted = delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap();
+
+        assert_eq!(deleted, 450);
+        assert!(test.index.get("dead-0").unwrap().is_none());
+        assert!(test.index.get("dead-449").unwrap().is_none());
+        assert!(!cache_dir.join("dead-0").exists());
+        assert!(test.index.get("live").unwrap().is_some());
+        assert!(cache_dir.join("live").exists());
+        assert!(cache_dir.join(".zellij-app-panel").exists());
+        assert_eq!(
+            delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap(),
+            0
+        );
     }
 
     #[test]

@@ -42,6 +42,7 @@ keybinds {
         bind "d" { NewPane "Down"; SwitchToMode "Locked"; }
         bind "r" { NewPane "Right"; SwitchToMode "Locked"; }
         bind "s" { NewPane "stacked"; SwitchToMode "Locked"; }
+        bind "Shift s" { ToggleStackListOrientation; SwitchToMode "Locked"; }
         bind "x" { CloseFocus; SwitchToMode "Locked"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Locked"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Locked"; }
@@ -149,6 +150,7 @@ keybinds {
     session {
         bind "o" { SwitchToMode "Normal"; }
         bind "d" { Detach; }
+        bind "i" { ToggleSessionCard; SwitchToMode "Locked"; }
         bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         bind "]" { FocusHostSession; SwitchToMode "Locked"; }
         bind "[" { FocusGuestSession; SwitchToMode "Locked"; }
@@ -200,9 +202,6 @@ keybinds {
             };
             SwitchToMode "Locked"
         }
-    }
-    shared_except "renametab" "renamepane" "renamesession" "entersearch" {
-        bind "F9" { ToggleSessionCard; }
     }
     shared_except "locked" "renametab" "renamepane" "renamesession" {
         bind "{unlock}" { SwitchToMode "Locked"; }

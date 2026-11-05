@@ -24,6 +24,7 @@ message PromptRequest {
     InfoSpec info = 17;
   }
   bool capture_all_keys = 16;
+  optional string outside_click = 18;
 }
 
 enum PromptPlacementKind {

@@ -64,7 +64,7 @@ fn shows_bottom(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> bool
 }
 
 fn open_sessions_and_select(zellij: &TestSession, name: &str) {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until(
         "the sessions tab lists the other session",
         |grid_snapshot| {
@@ -191,13 +191,13 @@ fn the_sessions_preview_of_a_running_session_shows_the_end_of_its_output_live_an
 fn the_tab_switch_hint_is_shortened_on_a_narrow_panel() {
     let (_background, _terminal) = background_session_with(ATTENTION_CONFIG);
     let (mut wide, _) = main_session_sized(TERMINAL_SIZE);
-    wide.send_stdin(&keys::F9);
+    wide.send_stdin(&keys::INBOX_KEY);
     wide.wait_until("the wide panel shows the full hint", |grid_snapshot| {
         tab_line(grid_snapshot).contains("<TAB> switch")
     });
     wide.quit();
     let (mut narrow, _) = main_session_sized(Size { cols: 38, rows: 24 });
-    narrow.send_stdin(&keys::F9);
+    narrow.send_stdin(&keys::INBOX_KEY);
     narrow.wait_until("the narrow panel shows the short hint", |grid_snapshot| {
         let line = tab_line(grid_snapshot);
         line.contains("<TAB>") && !line.contains("<TAB> switch")
@@ -209,7 +209,7 @@ fn the_tab_switch_hint_is_shortened_on_a_narrow_panel() {
 fn the_sessions_help_has_an_empty_row_above_and_below_it() {
     let (background, _terminal) = background_session_with(ATTENTION_CONFIG);
     let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until(
         "the sessions help has empty rows around it",
         |grid_snapshot| {
@@ -263,7 +263,7 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
     terminal.output(&needs_you(&word));
     let (mut zellij, _) = main_session_sized(size);
     wait_for_indicator(&zellij, "the item is counted", "● 1");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     let grid_snapshot =
         zellij.wait_until("the inbox shows the item and its help", |grid_snapshot| {
             grid_snapshot.contains(INBOX_LIST_HELP)
@@ -352,7 +352,7 @@ fn more_markers_count_the_notifications_out_of_view_and_follow_scrolling() {
         wait_for_indicator(&zellij, "the item is counted", &format!("● {}", index + 1));
         sessions.push((session, terminal));
     }
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox opens", |grid_snapshot| {
         shows_inbox(grid_snapshot)
     });

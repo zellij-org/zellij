@@ -490,6 +490,21 @@ pub enum AtomicEvent {
     Resize,
 }
 
+fn built_against_0_45(store: &Store<PluginEnv>, instance: &Instance) -> bool {
+    lacks_contract_marker(&store.data().plugin.location, store, instance)
+}
+
+pub(crate) fn lacks_contract_marker<T>(
+    location: &zellij_utils::input::layout::RunPluginLocation,
+    store: &Store<T>,
+    instance: &Instance,
+) -> bool {
+    use zellij_utils::input::layout::RunPluginLocation;
+    use zellij_utils::plugin_api::released_contract::CONTRACT_MARKER_EXPORT;
+    let built_in = matches!(location, RunPluginLocation::Zellij(_));
+    !built_in && instance.get_export(store, CONTRACT_MARKER_EXPORT).is_none()
+}
+
 pub struct RunningPlugin {
     pub store: Store<PluginEnv>,
     pub instance: Instance,
@@ -497,10 +512,12 @@ pub struct RunningPlugin {
     pub columns: usize,
     next_event_ids: HashMap<AtomicEvent, usize>,
     last_applied_event_ids: HashMap<AtomicEvent, usize>,
+    pub built_against_0_45: bool,
 }
 
 impl RunningPlugin {
     pub fn new(store: Store<PluginEnv>, instance: Instance, rows: usize, columns: usize) -> Self {
+        let built_against_0_45 = built_against_0_45(&store, &instance);
         RunningPlugin {
             store,
             instance,
@@ -508,6 +525,7 @@ impl RunningPlugin {
             columns,
             next_event_ids: HashMap::new(),
             last_applied_event_ids: HashMap::new(),
+            built_against_0_45,
         }
     }
     pub fn next_event_id(&mut self, atomic_event: AtomicEvent) -> usize {
@@ -546,5 +564,67 @@ impl RunningPlugin {
     }
     pub fn intercepting_key_presses(&self) -> bool {
         self.store.data().intercepting_key_presses
+    }
+}
+
+#[cfg(test)]
+mod released_contract_detection_tests {
+    use super::lacks_contract_marker;
+    use std::path::PathBuf;
+    use wasmi::{Engine, Linker, Module, Store};
+    use zellij_utils::data::PluginTag;
+    use zellij_utils::input::layout::RunPluginLocation;
+    use zellij_utils::plugin_api::released_contract::CONTRACT_MARKER_EXPORT;
+
+    fn module_exporting(names: &[&str]) -> Vec<u8> {
+        let mut exports = vec![names.len() as u8];
+        for name in names {
+            exports.push(name.len() as u8);
+            exports.extend_from_slice(name.as_bytes());
+            exports.extend_from_slice(&[0, 0]);
+        }
+        let mut bytes = b"\0asm\x01\0\0\0".to_vec();
+        bytes.extend_from_slice(&[1, 4, 1, 0x60, 0, 0]);
+        bytes.extend_from_slice(&[3, 2, 1, 0]);
+        bytes.push(7);
+        bytes.push(exports.len() as u8);
+        bytes.extend(exports);
+        bytes.extend_from_slice(&[10, 4, 1, 2, 0, 0x0b]);
+        bytes
+    }
+
+    fn lacks_marker(location: RunPluginLocation, exports: &[&str]) -> bool {
+        let engine = Engine::default();
+        let module = Module::new(&engine, &module_exporting(exports)[..]).expect("valid module");
+        let mut store = Store::new(&engine, ());
+        let instance = Linker::<()>::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .expect("instantiates");
+        lacks_contract_marker(&location, &store, &instance)
+    }
+
+    #[test]
+    fn a_plugin_without_the_contract_marker_is_treated_as_built_against_0_45() {
+        let file = RunPluginLocation::File(PathBuf::from("/plugins/old.wasm"));
+        assert!(lacks_marker(
+            file.clone(),
+            &["load", "update", "render", "plugin_version"]
+        ));
+        assert!(!lacks_marker(
+            file,
+            &[
+                "load",
+                "update",
+                "render",
+                "plugin_version",
+                CONTRACT_MARKER_EXPORT
+            ]
+        ));
+    }
+
+    #[test]
+    fn built_in_plugins_are_never_treated_as_built_against_0_45() {
+        let built_in = RunPluginLocation::Zellij(PluginTag::new("status-bar"));
+        assert!(!lacks_marker(built_in, &["load", "update", "render"]));
     }
 }

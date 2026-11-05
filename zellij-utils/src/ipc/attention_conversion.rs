@@ -1,7 +1,8 @@
 use crate::{
     attention::{
         AttentionCounts, AttentionDetail, AttentionItem, AttentionSource, AttentionStatus,
-        BlockedKind, CommandText, CommandTextSource, MuteScope, PaneAttention, SessionAttention,
+        BlockedKind, CommandText, CommandTextSource, MuteScope, PaneAttention, RememberedStatus,
+        SessionAttention,
     },
     client_server_contract::client_server_contract::{
         session_arrival::Arrival as ProtoArrival, AttentionArrival as ProtoAttentionArrival,
@@ -12,11 +13,12 @@ use crate::{
         CommandTextSource as ProtoCommandTextSource, ForwardArrival as ProtoForwardArrival,
         MuteScope as ProtoMuteScope, PaneAttention as ProtoPaneAttention,
         PaneIdWithPlugin as ProtoPaneIdWithPlugin, PreviewAnchor as ProtoPreviewAnchor,
-        SessionArrival as ProtoSessionArrival, SessionAttention as ProtoSessionAttention,
-        SessionHistory as ProtoSessionHistory, SessionPreview as ProtoSessionPreview,
-        SessionPreviewPane as ProtoSessionPreviewPane, SessionPreviewTab as ProtoSessionPreviewTab,
-        StartupCard as ProtoStartupCard, SwitchArrival as ProtoSwitchArrival,
-        SwitchContext as ProtoSwitchContext, ToggleArrival as ProtoToggleArrival,
+        RememberedStatus as ProtoRememberedStatus, SessionArrival as ProtoSessionArrival,
+        SessionAttention as ProtoSessionAttention, SessionHistory as ProtoSessionHistory,
+        SessionPreview as ProtoSessionPreview, SessionPreviewPane as ProtoSessionPreviewPane,
+        SessionPreviewTab as ProtoSessionPreviewTab, StartupCard as ProtoStartupCard,
+        SwitchArrival as ProtoSwitchArrival, SwitchContext as ProtoSwitchContext,
+        ToggleArrival as ProtoToggleArrival,
     },
     data::{PreviewAnchor, SessionPreview, SessionPreviewPane, SessionPreviewTab},
     errors::prelude::*,
@@ -234,6 +236,11 @@ impl From<PaneAttention> for ProtoPaneAttention {
             ignore_output: attention.ignore_output,
             watched: attention.watched,
             from_watch: attention.from_watch,
+            remembered: attention.remembered.map(|r| ProtoRememberedStatus {
+                status: attention_status_to_proto(r.status),
+                text: r.text,
+                since_ms: r.since_ms,
+            }),
         }
     }
 }
@@ -260,6 +267,16 @@ impl TryFrom<ProtoPaneAttention> for PaneAttention {
             ignore_output: attention.ignore_output,
             watched: attention.watched,
             from_watch: attention.from_watch,
+            remembered: attention
+                .remembered
+                .map(|r| -> Result<RememberedStatus> {
+                    Ok(RememberedStatus {
+                        status: attention_status_from_proto(r.status)?,
+                        text: r.text,
+                        since_ms: r.since_ms,
+                    })
+                })
+                .transpose()?,
         })
     }
 }

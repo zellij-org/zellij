@@ -417,17 +417,28 @@ fn focus_changes_and_renewals_send_resize() {
         Some(&(size(10, 2), false, true))
     );
     assert!(view.set_resize_allowed(false));
+    assert!(
+        view.next_deadline().is_some(),
+        "a pane that was typed into keeps its pin"
+    );
+    view.set_target(Some(target(2)), size(10, 2));
+    view.handle_event(
+        2,
+        MirrorTransportEvent::Message(SourceMessage::Frame {
+            frame: frame_of(&["x"], 10, 2),
+            alternate_screen: false,
+        }),
+    );
     assert_eq!(view.next_deadline(), None);
 }
 
 #[test]
 fn turning_resizing_off_is_sent_and_kept_across_targets() {
     let (mut view, recorded) = live_view(false);
-    view.set_focused(true);
     assert!(view.set_resize_allowed(false));
     assert_eq!(
         resizes_sent(&recorded).last(),
-        Some(&(size(10, 2), true, false))
+        Some(&(size(10, 2), false, false))
     );
     view.set_target(
         Some(PaneAddress::local("api", PaneId::Terminal(2))),
@@ -607,6 +618,44 @@ fn a_shown_view_asks_for_the_resize_only_once_its_target_has_settled() {
         size(10, 2),
     );
     assert!(recorded.lock().unwrap().connects[2].1.resize_allowed);
+}
+
+#[test]
+fn with_resizing_off_typing_asks_for_the_resize_until_the_target_changes() {
+    let (mut view, recorded) = live_view(false);
+    view.set_resize_allowed(false);
+    assert!(!view.wants_pin());
+    view.tick(Instant::now() + PIN_SETTLE);
+    assert!(resizes_sent(&recorded)
+        .iter()
+        .all(|(_, _, resize_allowed)| !resize_allowed));
+    view.set_focused(true);
+    assert_eq!(
+        resizes_sent(&recorded).last(),
+        Some(&(size(10, 2), true, true)),
+        "typing asks for the resize"
+    );
+    view.set_focused(false);
+    assert_eq!(
+        resizes_sent(&recorded).last(),
+        Some(&(size(10, 2), false, true)),
+        "the resize stays after typing ends"
+    );
+    assert!(view.wants_pin());
+    let renewal_at = view.next_deadline().expect("the pin is renewed");
+    view.tick(renewal_at);
+    assert_eq!(
+        resizes_sent(&recorded).last(),
+        Some(&(size(10, 2), false, true))
+    );
+    recorded.lock().unwrap().sent.clear();
+    view.set_target(Some(target(2)), size(10, 2));
+    assert!(!view.wants_pin());
+    assert!(!recorded.lock().unwrap().connects[1].1.resize_allowed);
+    view.set_target(Some(target(1)), size(10, 2));
+    assert!(sent_of(&recorded).contains(&ViewerMessage::Unpark {
+        resize_allowed: false
+    }));
 }
 
 #[test]

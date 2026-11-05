@@ -30,7 +30,9 @@ fn pane_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
 }
 
 fn session_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {
-    last_line_contains(grid_snapshot, "SESSION") && last_line_contains(grid_snapshot, "Detach")
+    last_line_contains(grid_snapshot, "SESSION")
+        && (last_line_contains(grid_snapshot, "Next")
+            || last_line_contains(grid_snapshot, "next item"))
 }
 
 fn scroll_mode_bar_settled(grid_snapshot: &GridSnapshot) -> bool {

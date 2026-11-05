@@ -44,6 +44,7 @@ pub struct MirrorView {
     view_only: bool,
     resize_allowed: bool,
     focused: bool,
+    typed_into: bool,
     pinned: bool,
     source_size: Option<Size>,
     connecting_since: Option<Instant>,
@@ -103,6 +104,7 @@ impl MirrorView {
             view_only,
             resize_allowed,
             focused: false,
+            typed_into: false,
             pinned: false,
             source_size: None,
             connecting_since: None,
@@ -153,7 +155,7 @@ impl MirrorView {
     }
 
     pub fn wants_pin(&self) -> bool {
-        self.resize_allowed && !self.view_only
+        !self.view_only && (self.resize_allowed || self.typed_into)
     }
 
     pub fn alternate_screen_active(&self) -> bool {
@@ -166,9 +168,12 @@ impl MirrorView {
     }
 
     fn asks_for_resize(&self, now: Instant) -> bool {
-        self.resize_allowed
-            && !self.view_only
-            && (self.focused || self.pin_ready_at.map(|at| now >= at).unwrap_or(true))
+        if self.view_only {
+            return false;
+        }
+        self.typed_into
+            || (self.resize_allowed
+                && (self.focused || self.pin_ready_at.map(|at| now >= at).unwrap_or(true)))
     }
 
     fn send_resize(&mut self, now: Instant) {
@@ -205,6 +210,9 @@ impl MirrorView {
             return false;
         }
         self.focused = focused;
+        if focused {
+            self.typed_into = true;
+        }
         self.send_resize(Instant::now());
         true
     }
@@ -408,6 +416,7 @@ impl MirrorView {
             self.held_screen.take()
         };
         self.park_current();
+        self.typed_into = false;
         self.held_screen = held;
         self.pin_ready_at = Some(Instant::now() + PIN_SETTLE);
         self.viewer_size = viewer_size;

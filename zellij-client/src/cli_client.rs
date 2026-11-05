@@ -10,7 +10,7 @@ use crate::os_input_output::ClientOsApi;
 use uuid::Uuid;
 use zellij_utils::{
     cli::{PromptCli, PromptElementCli, SubscribeCli, SubscribeFormat},
-    data::{PaneId, PipePopupPlacement},
+    data::{OutsideClick, PaneId, PipePopupPlacement},
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
@@ -52,6 +52,8 @@ pub fn start_cli_client(
                 pane_title,
                 popup,
                 popup_no_focus,
+                popup_capture_all_keys,
+                popup_outside_click,
             } => {
                 let exit_status = pipe_client(
                     &mut os_input,
@@ -70,6 +72,8 @@ pub fn start_cli_client(
                         pane_title,
                         popup,
                         popup_no_focus,
+                        popup_capture_all_keys,
+                        popup_outside_click,
                     },
                     payload,
                 );
@@ -106,6 +110,8 @@ struct PipeRequest {
     pane_title: Option<String>,
     popup: Option<PipePopupPlacement>,
     popup_no_focus: bool,
+    popup_capture_all_keys: bool,
+    popup_outside_click: Option<OutsideClick>,
 }
 
 impl PipeRequest {
@@ -139,6 +145,8 @@ impl PipeRequest {
                 pane_title: self.pane_title.clone(),
                 popup: self.popup,
                 popup_no_focus: self.popup_no_focus,
+                popup_capture_all_keys: self.popup_capture_all_keys,
+                popup_outside_click: self.popup_outside_click,
             },
             terminal_id: self.pane_id,
             client_id: None,
@@ -437,6 +445,8 @@ pub fn start_prompt_client(
         pane_title: Some(format!("prompt: {}", plan.element.name())),
         popup: Some(prompt_cli.placement()),
         popup_no_focus: !prompt_cli.takes_focus(),
+        popup_capture_all_keys: prompt_cli.answer_args().capture_all_keys,
+        popup_outside_click: prompt_cli.answer_args().outside_click,
     }
     .prepare();
     let exit_status = match plan.input {

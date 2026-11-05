@@ -1365,6 +1365,7 @@ pub enum Event {
     GlobalAttentionUpdate(crate::attention::GlobalAttention),
     SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
     DesktopIntegration(String),
+    PluginSettingsEntries(Vec<PluginSettingsEntry>),
     LiveViewStateChanged {
         target: Option<PaneAddress>,
         state: MirrorState,
@@ -1548,6 +1549,16 @@ pub struct SavedTabPreview {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct PluginSettingsEntry {
+    pub plugin_id: u32,
+    pub title: String,
+}
+
+pub const OPEN_PLUGIN_SETTINGS_MESSAGE: &str = "zellij:open_plugin_settings";
+
+pub const OPEN_PLUGIN_SETTINGS_CLIENT_ID_ARG: &str = "client_id";
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SavedSessionPreview {
     pub session_name: String,
     pub folder: Option<String>,
@@ -1605,10 +1616,11 @@ pub enum ClickedPaneAction {
     ToggleWatch,
     HideBar,
     PasteFromClipboard,
+    ToggleStackListOrientation,
 }
 
 impl ClickedPaneAction {
-    pub const ALL: [ClickedPaneAction; 11] = [
+    pub const ALL: [ClickedPaneAction; 12] = [
         ClickedPaneAction::CloseFocus,
         ClickedPaneAction::ToggleFocusFullscreen,
         ClickedPaneAction::ToggleEmbedOrFloating,
@@ -1620,6 +1632,7 @@ impl ClickedPaneAction {
         ClickedPaneAction::ToggleWatch,
         ClickedPaneAction::HideBar,
         ClickedPaneAction::PasteFromClipboard,
+        ClickedPaneAction::ToggleStackListOrientation,
     ];
     pub fn kdl_name(&self) -> &'static str {
         match self {
@@ -1634,6 +1647,7 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleWatch => "WatchPaneByPaneId",
             ClickedPaneAction::HideBar => "HideBarByPaneId",
             ClickedPaneAction::PasteFromClipboard => "PasteFromClipboardByPaneId",
+            ClickedPaneAction::ToggleStackListOrientation => "ToggleStackListOrientationByPaneId",
         }
     }
     pub fn from_kdl_name(name: &str) -> Option<Self> {
@@ -1658,6 +1672,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::ToggleWatch => Action::WatchPaneByPaneId { pane_id },
             ClickedPaneAction::HideBar => Action::HideBarByPaneId { pane_id },
             ClickedPaneAction::PasteFromClipboard => Action::PasteFromClipboardByPaneId { pane_id },
+            ClickedPaneAction::ToggleStackListOrientation => {
+                Action::ToggleStackListOrientationByPaneId { pane_id }
+            },
         }
     }
 }
@@ -4143,7 +4160,6 @@ impl LiveView {
     }
 }
 
-pub const DEFAULT_LIVE_VIEW_RELEASE_KEY: &str = "F9";
 pub const LIVE_VIEW_DOUBLE_PRESS_MS: u64 = 400;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4454,10 +4470,43 @@ impl fmt::Display for PopupCorner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum OutsideClick {
+    #[default]
+    Block,
+    Close,
+}
+
+impl FromStr for OutsideClick {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "block" => Ok(OutsideClick::Block),
+            "close" => Ok(OutsideClick::Close),
+            other => Err(format!(
+                "invalid outside click behavior '{}', expected one of: block, close",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for OutsideClick {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutsideClick::Block => write!(f, "block"),
+            OutsideClick::Close => write!(f, "close"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct PopupOptions {
     pub focused: bool,
     pub corner: Option<PopupCorner>,
+    pub capture_all_keys: bool,
+    pub outside_click: Option<OutsideClick>,
 }
 
 impl Default for PopupOptions {
@@ -4465,7 +4514,28 @@ impl Default for PopupOptions {
         PopupOptions {
             focused: true,
             corner: None,
+            capture_all_keys: false,
+            outside_click: None,
         }
+    }
+}
+
+impl PopupOptions {
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
+    pub fn corner(mut self, corner: PopupCorner) -> Self {
+        self.corner = Some(corner);
+        self
+    }
+    pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
+        self.capture_all_keys = capture_all_keys;
+        self
+    }
+    pub fn outside_click(mut self, outside_click: OutsideClick) -> Self {
+        self.outside_click = Some(outside_click);
+        self
     }
 }
 
@@ -5114,7 +5184,7 @@ pub enum PluginCommand {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
-    TogglePaneEmbedOrEjectForPaneId(PaneId),
+    TogglePaneEmbedOrEjectForPaneId(PaneId, bool),
     CloseTabWithIndex(usize), // usize - tab_index
     BreakPanesToNewTab(Vec<PaneId>, Option<String>, bool), // bool -
     // should_change_focus_to_new_tab,
@@ -5367,6 +5437,8 @@ pub enum PluginCommand {
     ToggleBars(Vec<String>),
     HideBars(Vec<String>),
     ShowBars,
+    RegisterSettingsEntry(String),
+    UnregisterSettingsEntry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5379,6 +5451,9 @@ pub enum SettingSection {
     Keybinds,
     Blocks,
     Attention,
+    AttentionPopups,
+    AttentionBadge,
+    AttentionBadgeColors,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5484,6 +5559,7 @@ setting_keys! {
     WebSharing => (TopLevel, "web_sharing", true, Text),
     StackedResize => (TopLevel, "stacked_resize", false, Flag),
     StackedPaneList => (TopLevel, "stacked_pane_list", false, Flag),
+    StackedPaneListOrientation => (TopLevel, "stacked_pane_list_orientation", false, Text),
     ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
     ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
     AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
@@ -5614,12 +5690,28 @@ setting_keys! {
     AttentionTabMarkers => (Attention, "tab_markers", false, Flag),
     AttentionIdleRule => (Attention, "idle_rule", false, Text),
     AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
+    AttentionTrackCommands => (Attention, "track_commands", false, Flag),
     AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
     AttentionStartupCard => (Attention, "startup_card", false, Text),
     AttentionTrayIcon => (Attention, "tray_icon", false, Flag),
-    AttentionDesktopNotifications => (Attention, "desktop_notifications", false, Text),
+    AttentionEnabled => (Attention, "enabled", false, Flag),
     AttentionNotificationDetails => (Attention, "notification_details", false, Flag),
+    AttentionPopupNeedsYou => (AttentionPopups, "needs_you", false, Flag),
+    AttentionPopupFailed => (AttentionPopups, "failed", false, Flag),
+    AttentionPopupDone => (AttentionPopups, "done", false, Flag),
+    AttentionBadgeNeedsYou => (AttentionBadge, "needs_you", false, Flag),
+    AttentionBadgeFailed => (AttentionBadge, "failed", false, Flag),
+    AttentionBadgeDone => (AttentionBadge, "done", false, Flag),
+    AttentionBadgeWorking => (AttentionBadge, "working", false, Flag),
+    AttentionBadgeQuiet => (AttentionBadge, "quiet", false, Flag),
+    AttentionBadgeNewOutput => (AttentionBadge, "new_output", false, Flag),
+    AttentionBadgeColorNeedsYou => (AttentionBadgeColors, "needs_you", false, Colour),
+    AttentionBadgeColorFailed => (AttentionBadgeColors, "failed", false, Colour),
+    AttentionBadgeColorDone => (AttentionBadgeColors, "done", false, Colour),
+    AttentionBadgeColorWorking => (AttentionBadgeColors, "working", false, Colour),
+    AttentionBadgeColorQuiet => (AttentionBadgeColors, "quiet", false, Colour),
+    AttentionBadgeColorNewOutput => (AttentionBadgeColors, "new_output", false, Colour),
 }
 
 impl SettingKey {
@@ -5637,6 +5729,13 @@ impl SettingKey {
             SettingSection::Terminal => format!("terminal.{}", self.kdl_name()),
             SettingSection::TerminalTheme => format!("terminal.theme.{}", self.kdl_name()),
             SettingSection::Attention => format!("attention.{}", self.kdl_name()),
+            SettingSection::AttentionPopups => {
+                format!("attention.desktop_notifications.{}", self.kdl_name())
+            },
+            SettingSection::AttentionBadge => format!("attention.tray_badge.{}", self.kdl_name()),
+            SettingSection::AttentionBadgeColors => {
+                format!("attention.tray_badge_colors.{}", self.kdl_name())
+            },
         }
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
@@ -5650,6 +5749,9 @@ impl SettingKey {
             SettingSection::Terminal => &["terminal"],
             SettingSection::TerminalTheme => &["terminal", "theme"],
             SettingSection::Attention => &["attention"],
+            SettingSection::AttentionPopups => &["attention", "desktop_notifications"],
+            SettingSection::AttentionBadge => &["attention", "tray_badge"],
+            SettingSection::AttentionBadgeColors => &["attention", "tray_badge_colors"],
         }
     }
     pub fn is_terminal(&self) -> bool {
@@ -6207,8 +6309,36 @@ mod popup_placement_tests {
             PopupOptions {
                 focused: true,
                 corner: None,
+                capture_all_keys: false,
+                outside_click: None,
             }
         );
+    }
+
+    #[test]
+    fn popup_options_builders_set_each_option() {
+        assert_eq!(
+            PopupOptions::default()
+                .focused(false)
+                .corner(PopupCorner::BottomLeft)
+                .capture_all_keys(true)
+                .outside_click(OutsideClick::Close),
+            PopupOptions {
+                focused: false,
+                corner: Some(PopupCorner::BottomLeft),
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Close),
+            }
+        );
+    }
+
+    #[test]
+    fn outside_click_parses_its_own_display_form() {
+        for outside_click in [OutsideClick::Block, OutsideClick::Close] {
+            assert_eq!(outside_click.to_string().parse(), Ok(outside_click));
+        }
+        assert_eq!(" Close ".parse::<OutsideClick>(), Ok(OutsideClick::Close));
+        assert!("unfocus".parse::<OutsideClick>().is_err());
     }
 }
 
@@ -6377,7 +6507,7 @@ mod live_view_release_gesture_tests {
         assert_eq!(LiveViewReleaseGesture::parse("Esc Tab"), None);
         assert_eq!(LiveViewReleaseGesture::parse("not a key"), None);
         assert_eq!(
-            LiveViewReleaseGesture::parse(DEFAULT_LIVE_VIEW_RELEASE_KEY),
+            LiveViewReleaseGesture::parse("F9"),
             Some(LiveViewReleaseGesture {
                 key: KeyWithModifier::new(BareKey::F(9)),
                 double: false,
@@ -6388,10 +6518,7 @@ mod live_view_release_gesture_tests {
     #[test]
     fn the_gesture_is_shown_as_a_key_hint() {
         assert_eq!(LiveViewReleaseGesture::display("Esc Esc"), "<ESC> twice");
-        assert_eq!(
-            LiveViewReleaseGesture::display(DEFAULT_LIVE_VIEW_RELEASE_KEY),
-            "<F9>"
-        );
+        assert_eq!(LiveViewReleaseGesture::display("F9"), "<F9>");
         assert_eq!(
             LiveViewReleaseGesture::display("Ctrl Alt Home"),
             "<Ctrl Alt HOME>"

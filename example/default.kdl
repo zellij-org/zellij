@@ -41,6 +41,7 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
         bind "s" { NewPane "stacked"; SwitchToMode "Normal"; }
+        bind "Shift s" { ToggleStackListOrientation; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
@@ -136,6 +137,7 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "i" { ToggleSessionCard; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
@@ -204,7 +206,6 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
     }
     shared_except "locked" {
-        bind "F9" { ToggleSessionCard; }
         bind "Ctrl g" { SwitchToMode "Locked"; }
         bind "Ctrl q" { Quit; }
         bind "Alt f" { ToggleFloatingPanes; }

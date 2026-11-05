@@ -1145,6 +1145,21 @@ pub fn request_desktop_integration(request: &zellij_utils::desktop_integration::
     run_plugin_command(PluginCommand::DesktopIntegration(request.to_json()));
 }
 
+/// List this plugin in the settings screen. Selecting it sends an [`OPEN_PLUGIN_SETTINGS_MESSAGE`]
+/// pipe message, with the selecting client in [`OPEN_PLUGIN_SETTINGS_CLIENT_ID_ARG`].
+///
+/// # Permissions Required
+/// * `ChangeApplicationState`
+pub fn register_settings_entry(title: &str) {
+    run_plugin_command(PluginCommand::RegisterSettingsEntry(title.to_owned()));
+}
+
+/// # Permissions Required
+/// * `ChangeApplicationState`
+pub fn unregister_settings_entry() {
+    run_plugin_command(PluginCommand::UnregisterSettingsEntry);
+}
+
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -2881,7 +2896,11 @@ pub fn toggle_pane_id_fullscreen(pane_id: PaneId) {
 
 /// Embed the specified pane (make it stop floating) or turn it to a float pane if it is not
 pub fn toggle_pane_embed_or_eject_for_pane_id(pane_id: PaneId) {
-    let plugin_command = PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id);
+    toggle_pane_embed_or_eject_for_pane_id_with_focus(pane_id, false);
+}
+
+pub fn toggle_pane_embed_or_eject_for_pane_id_with_focus(pane_id: PaneId, show_and_focus: bool) {
+    let plugin_command = PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, show_and_focus);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

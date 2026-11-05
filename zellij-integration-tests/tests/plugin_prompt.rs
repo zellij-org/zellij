@@ -79,6 +79,8 @@ fn send_to_the_fixture(zellij: &TestSession, name: &str, args: &[(&str, &str)]) 
         plugin_title: None,
         popup: None,
         popup_no_focus: false,
+        popup_capture_all_keys: false,
+        popup_outside_click: None,
     };
     let caller = CliCaller {
         pane_id: None,

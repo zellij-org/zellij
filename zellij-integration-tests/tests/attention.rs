@@ -1166,3 +1166,206 @@ fn the_marker_is_dropped_on_a_very_narrow_pane_title() {
     );
     zellij.quit();
 }
+
+const FAST_DONE: &str = "attention {\n    done_threshold_secs 1\n}";
+
+fn start_command(terminal: &FakePtyHandle, command: &str) {
+    terminal.output(
+        format!(
+            "\u{1b}]133;A\u{1b}\\$ \u{1b}]133;B\u{1b}\\{}\u{1b}]133;C\u{1b}\\\r\n",
+            command
+        )
+        .as_bytes(),
+    );
+}
+
+fn end_command(terminal: &FakePtyHandle, exit_code: i32) {
+    terminal.output(format!("\u{1b}]133;D;{}\u{1b}\\", exit_code).as_bytes());
+}
+
+fn pane_item(
+    attention: &zellij_utils::attention::SessionAttention,
+    terminal: &FakePtyHandle,
+) -> Option<zellij_utils::attention::AttentionItem> {
+    let pane_id = zellij_utils::data::PaneId::Terminal(terminal.terminal_id());
+    attention
+        .items
+        .iter()
+        .find(|item| item.pane_id == pane_id)
+        .cloned()
+}
+
+fn pane_status(
+    attention: &zellij_utils::attention::SessionAttention,
+    terminal: &FakePtyHandle,
+) -> zellij_utils::attention::AttentionStatus {
+    pane_item(attention, terminal)
+        .map(|item| item.attention.status)
+        .unwrap_or_default()
+}
+
+fn wait_for_pane_status(
+    zellij: &TestSession,
+    terminal: &FakePtyHandle,
+    what: &str,
+    expected: zellij_utils::attention::AttentionStatus,
+) {
+    wait_for_session_attention(zellij, what, |attention| {
+        pane_status(attention, terminal) == expected
+    });
+}
+
+fn assert_pane_stays_idle(zellij: &TestSession, terminal: &FakePtyHandle, why: &str) {
+    std::thread::sleep(Duration::from_millis(1500));
+    let attention = session_attention(zellij);
+    assert_eq!(
+        pane_item(&attention, terminal),
+        None,
+        "{}: {:?}",
+        why,
+        attention.items
+    );
+}
+
+#[test]
+fn a_long_command_shows_as_working_without_more_output_and_then_as_done() {
+    use zellij_utils::attention::AttentionStatus;
+    let (mut zellij, left, _right) = start_with_two_panes(runner().with_config(FAST_DONE));
+    start_command(&left, "make");
+    wait_for_pane_status(
+        &zellij,
+        &left,
+        "the silent command shows as working",
+        AttentionStatus::Working,
+    );
+    let item = pane_item(&session_attention(&zellij), &left).unwrap();
+    assert_eq!(item.attention.text, "running: make");
+    assert_eq!(item.attention.remembered, None);
+    end_command(&left, 0);
+    wait_for_markers(&zellij, "✓");
+    zellij.quit();
+}
+
+#[test]
+fn a_command_on_the_alternate_screen_is_never_working_or_done() {
+    use zellij_utils::attention::AttentionStatus;
+    let (mut zellij, left, _right) = start_with_two_panes(runner().with_config(FAST_DONE));
+    start_command(&left, "vim notes");
+    left.output(b"\x1b[?1049hediting");
+    zellij.wait_until("the full screen program drew", |grid_snapshot| {
+        grid_snapshot.contains("editing")
+    });
+    assert_pane_stays_idle(&zellij, &left, "a full screen program counted as working");
+    left.output(b"\x1b[?1049l");
+    end_command(&left, 0);
+    assert_pane_stays_idle(&zellij, &left, "a full screen program counted as done");
+    start_command(&left, "make");
+    wait_for_pane_status(
+        &zellij,
+        &left,
+        "the next plain command is tracked again",
+        AttentionStatus::Working,
+    );
+    zellij.quit();
+}
+
+#[test]
+fn typing_into_a_running_command_drops_it_but_pressing_enter_does_not() {
+    use zellij_utils::attention::AttentionStatus;
+    let (mut zellij, _left, right) = start_with_two_panes(runner().with_config(FAST_DONE));
+    start_command(&right, "python");
+    wait_for_pane_status(
+        &zellij,
+        &right,
+        "the command shows as working",
+        AttentionStatus::Working,
+    );
+    zellij.send_stdin(&keys::key('x'));
+    right.wait_for_stdin("the key reached the pane", |stdin| stdin.ends_with(b"x"));
+    wait_for_pane_status(
+        &zellij,
+        &right,
+        "typing made the command interactive",
+        AttentionStatus::Idle,
+    );
+    end_command(&right, 1);
+    assert_pane_stays_idle(&zellij, &right, "an interactive command counted as failed");
+    start_command(&right, "cargo build");
+    wait_for_pane_status(
+        &zellij,
+        &right,
+        "the next command shows as working",
+        AttentionStatus::Working,
+    );
+    let before = right.stdin_bytes().len();
+    zellij.send_stdin(&keys::ENTER);
+    right.wait_for_stdin("enter reached the pane", |stdin| stdin.len() > before);
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(
+        pane_status(&session_attention(&zellij), &right),
+        AttentionStatus::Working,
+        "pressing enter made the command interactive"
+    );
+    zellij.quit();
+}
+
+#[test]
+fn with_track_commands_off_a_long_command_is_only_reported_when_it_ends() {
+    let (mut zellij, left, _right) = start_with_two_panes(
+        runner().with_config("attention {\n    done_threshold_secs 1\n    track_commands false\n}"),
+    );
+    start_command(&left, "make");
+    assert_pane_stays_idle(&zellij, &left, "a command was tracked while turned off");
+    end_command(&left, 0);
+    wait_for_markers(&zellij, "✓");
+    zellij.quit();
+}
+
+#[test]
+fn a_seen_agent_stays_in_the_inbox_until_its_shell_prompt_returns() {
+    use zellij_utils::attention::AttentionStatus;
+    let (mut zellij, left, _right) =
+        start_with_two_panes(runner().with_config(SESSION_INDICATOR_ON));
+    start_command(&left, "claude");
+    left.output(&program_status("state=working:app=claude"));
+    left.output(&program_status("state=done:app=claude"));
+    wait_for_session_attention(&zellij, "the seen agent is remembered", |attention| {
+        pane_item(attention, &left)
+            .map(|item| {
+                item.attention.status.is_idle()
+                    && item.attention.remembered.as_ref().map(|r| r.status)
+                        == Some(AttentionStatus::Done)
+            })
+            .unwrap_or(false)
+    });
+    for opening in ["first", "second"] {
+        open_inbox(&zellij);
+        zellij.wait_until(
+            &format!("the {} opening lists the agent under done", opening),
+            |grid_snapshot| {
+                zellij_integration_tests::inbox::inbox_shows(grid_snapshot, "Inbox (0)")
+                    && grid_snapshot.contains("Done")
+                    && !grid_snapshot.contains("Nothing in the inbox")
+            },
+        );
+        zellij.send_stdin(&keys::ESC_KEY);
+        zellij.wait_until("the inbox closed", |grid_snapshot| {
+            !zellij_integration_tests::inbox::shows_inbox(grid_snapshot)
+        });
+    }
+    left.output(b"\x1b]133;D;0\x1b\\\x1b]133;A\x1b\\$ ");
+    wait_for_session_attention(&zellij, "the agent is forgotten", |attention| {
+        pane_item(attention, &left).is_none()
+    });
+    zellij.send_stdin(&keys::INBOX_KEY);
+    zellij.wait_until(
+        "the browser opens without the agent on either tab",
+        |grid_snapshot| {
+            grid_snapshot.contains("Inbox (0)")
+                && !grid_snapshot.contains("Done")
+                && (grid_snapshot.contains("Nothing in the inbox")
+                    || grid_snapshot.contains(zellij_integration_tests::inbox::SESSIONS_HELP))
+        },
+    );
+    zellij.quit();
+}
