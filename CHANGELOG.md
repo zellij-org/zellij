@@ -49,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: standard macOS menu for the desktop window and save window state when quitting from the Dock (https://github.com/zellij-org/zellij/pull/5782)
 * fix: allow cycling with tab/shift-tab in session-manager/welcome-screen (https://github.com/zellij-org/zellij/pull/5818)
 * feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
+* fix: `delete-session --force` no longer brings the killed session back as EXITED (https://github.com/zellij-org/zellij/pull/5709)
 
 
 ## [0.45.1] - 2026-08-28

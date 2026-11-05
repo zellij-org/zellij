@@ -37,7 +37,7 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
-use background_jobs::{background_jobs_main, BackgroundJob};
+use background_jobs::{background_jobs_main, BackgroundJob, SessionStateWrites};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1099,6 +1099,7 @@ pub(crate) struct SessionMetaData {
     sent_terminal_settings: HashMap<ClientId, TerminalSettings>,
     font_families: HashMap<ClientId, Vec<String>>,
     pub live_sessions: crate::attention::peers::LiveSessions,
+    session_state_writes: SessionStateWrites,
 }
 
 impl SessionMetaData {
@@ -2739,6 +2740,7 @@ mod session_state_tests {
             sent_terminal_settings: HashMap::new(),
             font_families: HashMap::new(),
             live_sessions: Default::default(),
+            session_state_writes: SessionStateWrites::default(),
         };
         (
             Arc::new(RwLock::new(Some(session))),
@@ -4482,6 +4484,9 @@ pub fn start_server_impl(
                 remove_client!(client_id, os_input, session_state, session_data);
             },
             ServerInstruction::KillSession => {
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    session_data.session_state_writes.stop();
+                }
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
                     let _ = os_input.send_to_client(
@@ -5466,6 +5471,7 @@ fn init_session(
     let to_plugin = SenderWithContext::new(to_plugin);
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
     let to_pty = SenderWithContext::new(to_pty);
+    let session_state_writes = SessionStateWrites::default();
 
     let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
         channels::unbounded();
@@ -5527,6 +5533,7 @@ fn init_session(
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
                 applied_env.pane_env(),
+                session_state_writes.clone(),
             );
 
             let session_id = session_id.clone();
@@ -5649,6 +5656,7 @@ fn init_session(
         .name("background_jobs".to_string())
         .spawn({
             let live_sessions = live_sessions.clone();
+            let session_state_writes = session_state_writes.clone();
             let background_jobs_bus = Bus::new(
                 vec![background_jobs_receiver],
                 Some(&to_screen),
@@ -5675,6 +5683,7 @@ fn init_session(
                     web_server_base_url,
                     session_id,
                     live_sessions,
+                    session_state_writes,
                 )
                 .fatal()
             }
@@ -5752,6 +5761,7 @@ fn init_session(
         sent_terminal_settings: HashMap::new(),
         font_families: HashMap::new(),
         live_sessions,
+        session_state_writes,
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path
