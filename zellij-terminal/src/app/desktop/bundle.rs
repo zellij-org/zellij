@@ -1,5 +1,3 @@
-#[cfg(target_os = "macos")]
-pub const BUNDLE_IDENTIFIER: &str = "org.zellij.Zellij";
 #[cfg(windows)]
 pub const WINDOWS_APP_ID: &str = "Zellij.Zellij";
 
@@ -16,7 +14,20 @@ pub fn notifications_need_a_bundle() -> Option<String> {
         None => Some(format!(
             "macOS shows notifications only for a bundled, signed app (Zellij.app with the \
              bundle identifier {}); this zellij runs outside a bundle",
-            BUNDLE_IDENTIFIER
+            zellij_utils::distribution::app_id()
         )),
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn an_unbundled_zellij_names_the_app_id_it_needs() {
+        let reason = super::notifications_need_a_bundle().expect("tests run outside a bundle");
+        assert!(
+            reason.contains(zellij_utils::distribution::app_id()),
+            "{}",
+            reason
+        );
     }
 }
