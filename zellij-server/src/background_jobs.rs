@@ -1761,6 +1761,10 @@ mod tests {
     }
 }
 
+/// Bytes of stderr retained from a background command for error
+/// logging. The pipe is drained fully but only this much is kept.
+const BACKGROUND_COMMAND_STDERR_RETAINED: usize = 8 * 1024;
+
 async fn run_in_background(
     command: PathBuf,
     args: Vec<String>,
@@ -1790,19 +1794,55 @@ async fn run_in_background(
             );
         }
     }
-    match process.output().await {
-        Ok(output) if !output.status.success() => {
+    let mut child = match process.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            log::error!(
+                "Failed to start background command '{}': {}",
+                command.display(),
+                e
+            );
+            return;
+        },
+    };
+    // stderr is piped only so a failing command's tail can be logged.
+    // Capture is bounded: the pipe is drained fully (a chatty child
+    // must not deadlock on a full pipe) but only the last
+    // BACKGROUND_COMMAND_STDERR_RETAINED bytes are retained.
+    let mut stderr_pipe = child.stderr.take().expect("stderr is piped");
+    let drain = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut retained: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match stderr_pipe.read(&mut chunk).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    retained.extend_from_slice(&chunk[..n]);
+                    if retained.len() > BACKGROUND_COMMAND_STDERR_RETAINED {
+                        let overflow = retained.len() - BACKGROUND_COMMAND_STDERR_RETAINED;
+                        retained.drain(..overflow);
+                    }
+                },
+            }
+        }
+        retained
+    });
+    let status = child.wait().await;
+    let stderr = drain.await.unwrap_or_default();
+    match status {
+        Ok(status) if !status.success() => {
             log::error!(
                 "Background command '{}' exited with {}: {}",
                 command.display(),
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim_end()
+                status,
+                String::from_utf8_lossy(&stderr).trim_end()
             );
         },
         Ok(_) => {},
         Err(e) => {
             log::error!(
-                "Failed to start background command '{}': {}",
+                "Failed to wait for background command '{}': {}",
                 command.display(),
                 e
             );
