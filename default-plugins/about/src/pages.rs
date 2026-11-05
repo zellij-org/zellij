@@ -141,9 +141,11 @@ impl Page {
                     link_executable.clone(),
                 )),
         ])])
-        .with_help(Box::new(move |hovering_over_link, menu_item_is_selected| {
-            main_screen_help_text(hovering_over_link, menu_item_is_selected, has_missing_binds)
-        }))
+        .with_help(Box::new(
+            move |hovering_over_link, menu_item_is_selected| {
+                main_screen_help_text(hovering_over_link, menu_item_is_selected, has_missing_binds)
+            },
+        ))
     }
     pub fn new_update_keybindings(shared: &Shared) -> Page {
         let keybinding_state = &shared.keybinding_state;

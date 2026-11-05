@@ -239,7 +239,9 @@ impl Page {
             )
             .with_paragraph(vec![
                 line("Zellij now includes a configurable right-click menu, allowing quick actions"),
-                line("with a mouse click. The menu is contextual on terminal panes, tabs and stack"),
+                line(
+                    "with a mouse click. The menu is contextual on terminal panes, tabs and stack",
+                ),
                 line("titles."),
             ])
             .with_paragraph(vec![styled(

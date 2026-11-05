@@ -12,8 +12,7 @@ use crate::page::{
 };
 use crate::settings::{
     check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, needs_attention,
-    option_value,
-    page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
+    option_value, page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
     value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
     CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
@@ -2981,13 +2980,7 @@ impl SettingsScreen {
                         } else {
                             heading.color_all(2)
                         };
-                        print_text_with_coordinates(
-                            heading,
-                            x,
-                            screen_y,
-                            None,
-                            None,
-                        );
+                        print_text_with_coordinates(heading, x, screen_y, None, None);
                     }
                 },
                 Row::LabelledHeading(title, value) => {

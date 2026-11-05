@@ -2320,10 +2320,7 @@ mod tests {
             Category::from_slug("mouse_bindings"),
             Some(Category::MouseBindings)
         );
-        assert_eq!(
-            Category::from_slug("attention"),
-            Some(Category::Attention)
-        );
+        assert_eq!(Category::from_slug("attention"), Some(Category::Attention));
         assert_eq!(Category::from_slug("nonsense"), None);
     }
 

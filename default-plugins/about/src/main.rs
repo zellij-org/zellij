@@ -550,8 +550,7 @@ impl App {
                 self.active_page = self.main_screen();
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('?') && !self.is_startup_tip
-        {
+        } else if key.bare_key == BareKey::Char('?') && !self.is_startup_tip {
             self.is_startup_tip = true;
             self.active_page = Page::new_tip_screen(
                 self.link_executable.clone(),
