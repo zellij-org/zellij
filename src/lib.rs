@@ -1,4 +1,5 @@
 pub mod commands;
+mod double_click;
 #[cfg(test)]
 mod tests;
 
@@ -49,7 +50,7 @@ pub(crate) fn socket_dir_override(opts: &CliArgs) -> Option<&std::path::Path> {
 fn main() {
     configure_logger();
     create_config_and_cache_folders();
-    let opts = CliArgs::parse_for_distribution();
+    let opts = double_click::reroute(CliArgs::parse_for_distribution());
     if let Some(socket_dir) = socket_dir_override(&opts) {
         std::env::set_var(zellij_utils::envs::SOCKET_DIR_ENV_KEY, socket_dir);
     }
