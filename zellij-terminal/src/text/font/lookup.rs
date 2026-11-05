@@ -4,10 +4,12 @@ use crate::text::font::is_color_capable;
 use crate::text::font::weight_coords;
 use crate::text::font::FaceStyle;
 use crate::text::font::FontId;
+use crate::text::font::FontOptions;
 use crate::text::font::FontStack;
 use crate::text::font::Glyph;
 use crate::text::font::STATIC_FACE;
 use crate::text::font::SYMBOLS_FONT;
+use crate::text::font::{derive_metrics, CellAdjust, StyleFace};
 use std::path::PathBuf;
 use swash::FontRef;
 
@@ -40,13 +42,28 @@ impl FontStack {
         found
     }
 
+    /// Whether `font` is drawn as-is in the cell rather than fitted into it.
+    /// The faces chosen for `style`, in the order they are tried before any
+    /// fallback: the style's own family, then the main family.
+    pub(super) fn faces_for(&self, style: FaceStyle) -> impl Iterator<Item = FontId> {
+        let styled = self.styled[style.index()].map(|styled| styled.font);
+        styled.into_iter().chain([self.primary[style.index()]])
+    }
+
     pub fn is_primary(&self, font: FontId) -> bool {
         self.primary.contains(&font)
+            || self
+                .styled
+                .iter()
+                .flatten()
+                .any(|styled| styled.in_cell && styled.font == font)
     }
 
     pub(super) fn search(&mut self, style: FaceStyle, character: char) -> Option<Glyph> {
-        if let Some(glyph) = self.map(self.primary[style.index()], character) {
-            return Some(glyph);
+        for font in self.faces_for(style) {
+            if let Some(glyph) = self.map(font, character) {
+                return Some(glyph);
+            }
         }
         if is_private_use(character) {
             if let Some(glyph) = self.map(SYMBOLS_FONT, character) {
@@ -90,20 +107,71 @@ impl FontStack {
     }
 
     pub(super) fn requested_family(&mut self, family: &str) -> Option<[FontId; 4]> {
-        let discovery = self.discovery?;
-        let resolve = |stack: &mut Self, style: FaceStyle| {
-            let request = stack.request(style);
-            let (path, index) = discovery.match_family(family, request)?;
-            stack.adopt(path, index, request.weight)
-        };
-
-        let regular = resolve(self, FaceStyle::Regular)?;
+        let regular = self.requested_style(family, FaceStyle::Regular)?;
         Some([
             regular,
-            resolve(self, FaceStyle::Bold).unwrap_or(regular),
-            resolve(self, FaceStyle::Italic).unwrap_or(regular),
-            resolve(self, FaceStyle::BoldItalic).unwrap_or(regular),
+            self.requested_style(family, FaceStyle::Bold)
+                .unwrap_or(regular),
+            self.requested_style(family, FaceStyle::Italic)
+                .unwrap_or(regular),
+            self.requested_style(family, FaceStyle::BoldItalic)
+                .unwrap_or(regular),
         ])
+    }
+
+    /// The faces of the families `options` set for one style each.
+    pub(super) fn requested_styles(&mut self, options: &FontOptions) -> [Option<StyleFace>; 4] {
+        let mut styled = [None; 4];
+        for style in [FaceStyle::Bold, FaceStyle::Italic, FaceStyle::BoldItalic] {
+            let Some(family) = options.style_family(style) else {
+                continue;
+            };
+            if self.discovery.is_none() {
+                report!(
+                    "system_fonts is off, so the family {:?} set for {:?} text \
+                     is not looked up",
+                    family,
+                    style
+                );
+                continue;
+            }
+            match self.requested_style(family, style) {
+                Some(font) => {
+                    let in_cell = self.shares_cell(font, &options.cell);
+                    styled[style.index()] = Some(StyleFace { font, in_cell });
+                },
+                None => report!(
+                    "no font family named {:?} resolved for {:?} text; \
+                     using the main font's {:?} face",
+                    family,
+                    style,
+                    style
+                ),
+            }
+        }
+        styled
+    }
+
+    /// Whether `font` measures the same cell as the regular face, so that its
+    /// glyphs can be drawn as-is. Only the cell's size and baseline matter
+    /// here; underline and strikeout placement stay the regular face's.
+    fn shares_cell(&self, font: FontId, cell: &CellAdjust) -> bool {
+        let (metrics, _) =
+            derive_metrics(&self.faces[font.0], &self.coords[font.0], self.size, cell);
+        (metrics.width, metrics.height, metrics.baseline)
+            == (
+                self.metrics.width,
+                self.metrics.height,
+                self.metrics.baseline,
+            )
+    }
+
+    /// The face of `family` closest to `style`, loaded into the stack.
+    pub(super) fn requested_style(&mut self, family: &str, style: FaceStyle) -> Option<FontId> {
+        let discovery = self.discovery?;
+        let request = self.request(style);
+        let (path, index) = discovery.match_family(family, request)?;
+        self.adopt(path, index, request.weight)
     }
 
     pub(super) fn adopt(&mut self, path: PathBuf, index: u32, weight: u16) -> Option<FontId> {

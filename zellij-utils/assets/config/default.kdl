@@ -724,6 +724,13 @@ web_client {
 //     // configuration. An unresolvable family falls back to the built-in font.
 //     font "Iosevka Term"
 //
+//     // Families for bold, italic and bold italic text, each in place of the
+//     // font family's own face for that style. A style without one keeps the
+//     // font family's face, and so does one whose family does not resolve.
+//     font_bold "Iosevka Term"
+//     font_italic "Iosevka Term"
+//     font_bold_italic "Iosevka Term"
+//
 //     // Font size in points, as other terminals measure it
 //     font_size 12
 //
