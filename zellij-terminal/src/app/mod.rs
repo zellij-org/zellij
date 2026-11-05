@@ -280,6 +280,8 @@ impl Background {
 
     pub fn start_on_main_thread(&mut self) {
         if let Some(events) = self.tray_events.clone() {
+            #[cfg(target_os = "macos")]
+            tray::install_reopen_handler(events.clone());
             self._main_menu = tray::install_main_menu(events);
         }
         self.apply_tray_visibility();
