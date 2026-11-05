@@ -2431,6 +2431,94 @@ fn mouse_focus_clears_bell_on_focused_pane() {
     );
 }
 
+fn screen_with_an_unselectable_plugin_pane_in_the_first_of_two_tabs(
+    size: Size,
+    client_id: ClientId,
+) -> (
+    Screen,
+    Receiver<(PluginInstruction, ErrorContext)>,
+    Position,
+) {
+    let (mut screen, _tty_stdin_bytes, _server_receiver) =
+        create_new_screen_with_capture(size, true, true, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen.bus.senders.to_plugin = Some(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let tab = screen.get_indexed_tab_mut(0).unwrap();
+    tab.new_pane(
+        PaneId::Plugin(7),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_selectable(PaneId::Plugin(7), false);
+    let plugin_pane = tab.get_pane_with_id(PaneId::Plugin(7)).unwrap();
+    let plugin_point = Position::new(
+        (plugin_pane.y() + plugin_pane.rows() / 2) as i32,
+        (plugin_pane.x() + plugin_pane.cols() / 2) as u16,
+    );
+    screen.go_to_tab(1, client_id).expect("TEST");
+    while plugin_receiver.try_recv().is_ok() {}
+    (screen, plugin_receiver, plugin_point)
+}
+
+fn left_clicks_sent_to_plugin(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    plugin_id: u32,
+) -> usize {
+    let mut left_clicks = 0;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            left_clicks += updates
+                .iter()
+                .filter(|(pid, _, event)| {
+                    *pid == Some(plugin_id)
+                        && matches!(
+                            event,
+                            Event::Mouse(zellij_utils::data::Mouse::LeftClick(..))
+                                | Event::MouseWithModifiers(
+                                    zellij_utils::data::Mouse::LeftClick(..),
+                                    _
+                                )
+                        )
+                })
+                .count();
+        }
+    }
+    left_clicks
+}
+
+#[test]
+fn a_plugin_that_switches_tabs_on_press_gets_the_next_click_after_returning() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, plugin_receiver, plugin_point) =
+        screen_with_an_unselectable_plugin_pane_in_the_first_of_two_tabs(size, client_id);
+
+    // A tab bar switching tabs on press: the release goes to the tab it switched to
+    screen.handle_mouse_event(MouseEvent::new_left_press_event(plugin_point), client_id);
+    assert_eq!(left_clicks_sent_to_plugin(&plugin_receiver, 7), 1);
+    screen.go_to_tab(2, client_id).expect("TEST");
+    screen.handle_mouse_event(MouseEvent::new_left_release_event(plugin_point), client_id);
+
+    screen.go_to_tab(1, client_id).expect("TEST");
+    screen.handle_mouse_event(MouseEvent::new_left_press_event(plugin_point), client_id);
+    assert_eq!(
+        left_clicks_sent_to_plugin(&plugin_receiver, 7),
+        1,
+        "the first press after coming back to the tab must reach the plugin"
+    );
+}
+
 #[test]
 fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
     let size = Size {

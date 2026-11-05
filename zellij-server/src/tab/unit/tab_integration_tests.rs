@@ -19529,6 +19529,96 @@ fn a_middle_click_on_an_unselectable_plugin_pane_does_not_start_a_drag() {
     assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
 }
 
+fn mouse_event_kinds(events: &[zellij_utils::data::Mouse]) -> Vec<&'static str> {
+    use zellij_utils::data::Mouse;
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Mouse::LeftClick(..) => Some("click"),
+            Mouse::Hold(..) => Some("hold"),
+            Mouse::Release(..) => Some("release"),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_client_leaving_mid_press_does_not_swallow_the_next_click_of_a_client_that_stays() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let leaving_client_id = 1;
+    let staying_client_id = 2;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, leaving_client_id);
+    tab.add_client(staying_client_id, None).unwrap();
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        leaving_client_id,
+    )
+    .unwrap();
+    assert!(tab.mouse_gesture_is_held());
+
+    // e.g. the plugin is a tab bar that switched this client to another tab, where its release goes
+    let drained = tab.drain_connected_clients(Some(vec![leaving_client_id]));
+    assert_eq!(drained.len(), 1);
+    assert!(!tab.mouse_gesture_is_held());
+
+    while plugin_receiver.try_recv().is_ok() {}
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        staying_client_id,
+    )
+    .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert_eq!(mouse_event_kinds(&events), vec!["click"], "{:?}", events);
+}
+
+#[test]
+fn a_drag_carries_on_when_another_client_leaves_the_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let dragging_client_id = 1;
+    let leaving_client_id = 2;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, dragging_client_id);
+    tab.add_client(leaving_client_id, None).unwrap();
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    let moved_point = Position::new(
+        plugin_point.line() as i32,
+        (plugin_point.column() + 3) as u16,
+    );
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        dragging_client_id,
+    )
+    .unwrap();
+
+    tab.drain_connected_clients(Some(vec![leaving_client_id]));
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(moved_point),
+        dragging_client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(moved_point),
+        dragging_client_id,
+    )
+    .unwrap();
+    assert!(!tab.mouse_gesture_is_held());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert_eq!(
+        mouse_event_kinds(&events),
+        vec!["click", "hold", "release"],
+        "{:?}",
+        events
+    );
+}
+
 #[test]
 fn clicking_a_pinned_unselectable_plugin_pane_sends_it_the_click_without_moving_focus() {
     use zellij_utils::data::Mouse;
