@@ -1032,6 +1032,12 @@ pub trait Pane {
     fn set_title(&mut self, title: String);
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
+    fn start_loading_indication_for_client(
+        &mut self,
+        _client_id: ClientId,
+        _loading_indication: LoadingIndication,
+    ) {
+    }
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
     fn stack_list_entry_label(&self) -> String {
@@ -3172,6 +3178,31 @@ impl Tab {
         } else if self.pane_is_hidden_stack_list_member(&pane_id) {
             if let Some(hidden_member_to_float) = self.extract_pane(pane_id, true) {
                 self.add_floating_pane(hidden_member_to_float, pane_id, None, true, client_id)?;
+            }
+        }
+        Ok(())
+    }
+    pub fn move_pane_between_layers(
+        &mut self,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
+        let client_id =
+            client_id.filter(|client_id| self.connected_clients.borrow().contains(client_id));
+        let was_floating = self.floating_panes.panes_contain(&pane_id);
+        self.toggle_pane_embed_or_floating_for_pane_id(pane_id, client_id)?;
+        let is_floating = self.floating_panes.panes_contain(&pane_id);
+        if was_floating && !is_floating && self.tiled_panes.panes_contain(&pane_id) {
+            self.hide_floating_panes();
+            match client_id {
+                Some(client_id) => self.tiled_panes.focus_pane(pane_id, client_id),
+                None => self.tiled_panes.focus_pane_for_all_clients(pane_id),
+            }
+        } else if !was_floating && is_floating {
+            self.show_floating_panes();
+            match client_id {
+                Some(client_id) => self.floating_panes.focus_pane(pane_id, client_id),
+                None => self.floating_panes.focus_pane_for_all_clients(pane_id),
             }
         }
         Ok(())
@@ -8348,6 +8379,7 @@ impl Tab {
         &mut self,
         pid: u32,
         loading_indication: LoadingIndication,
+        client_id: Option<ClientId>,
     ) {
         if let Some(plugin_pane) = self
             .tiled_panes
@@ -8360,7 +8392,12 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            plugin_pane.start_loading_indication(loading_indication);
+            match client_id {
+                Some(client_id) => {
+                    plugin_pane.start_loading_indication_for_client(client_id, loading_indication)
+                },
+                None => plugin_pane.start_loading_indication(loading_indication),
+            }
         }
     }
     pub fn progress_plugin_loading_offset(&mut self, pid: u32) {

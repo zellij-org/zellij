@@ -4,16 +4,20 @@ use std::rc::Rc;
 
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::desktop_integration::{
-    opt_out_kdl, window_welcome_points, Platform, REMOTE_WARNING, WINDOW_WELCOME_EMPHASIS,
+    window_welcome_points, REMOTE_WARNING, WINDOW_WELCOME_EMPHASIS,
 };
 use zellij_tile::prelude::*;
 
-use crate::active_component::ActiveComponent;
-use crate::keybindings::{Feature, KeybindingState};
-use crate::pages::{ComponentLine, Page, PageKind, TextOrCustomRender};
+use crate::active_component::{ActiveComponent, ClickAction};
+use crate::keybindings::Feature;
+use crate::pages::{
+    feature_page_help, link, missing_binds_note, ComponentLine, Page, PageKind, Shared,
+    TextOrCustomRender,
+};
 
 pub const DESKTOP_TIP_INDEX: usize = 12;
 pub const LAST_ONBOARDING_TIP_INDEX: usize = 16;
+pub const INTEGRATIONS_URL: &str = "https://zellij.dev/PLACEHOLDER-integrations";
 pub const HOME_MANAGER_NOTE: &str =
     "If your config file comes from home-manager, set this through programs.zellij.settings.";
 
@@ -21,7 +25,6 @@ pub const HOME_MANAGER_NOTE: &str =
 pub struct DesktopFacts {
     pub launcher_installable: bool,
     pub in_desktop_terminal: bool,
-    pub platform: Platform,
     pub session_name: Option<String>,
 }
 
@@ -58,24 +61,54 @@ fn esc_help() -> Text {
     Text::from("Help: <ESC> - Go back").color_range(1, 6..=10)
 }
 
-fn platform_shortcuts(platform: Platform) -> &'static str {
-    match platform {
-        Platform::Windows => "Right-click its taskbar icon for Show Inbox and Show Sessions.",
-        Platform::MacOs => "Its Dock menu will offer Show Inbox and Show Sessions.",
-        _ => "Right-click its launcher for Show Inbox and Show Sessions.",
-    }
+fn command_line(command: &str) -> ComponentLine {
+    styled(Text::from(format!("$ {}", command)).color_substring(3, command))
 }
 
-fn new_window_keys(platform: Platform) -> &'static str {
-    match platform {
-        Platform::MacOs => "Cmd+N",
-        _ => "Ctrl+Shift+N",
+fn text_piece(text: &str) -> ActiveComponent {
+    ActiveComponent::new(TextOrCustomRender::Text(Text::from(text)))
+}
+
+fn settings_link_line(prefix: &str, targets: &[(&'static str, &'static str)]) -> ComponentLine {
+    let mut components = vec![text_piece(prefix)];
+    for (index, (label, page)) in targets.iter().enumerate() {
+        if index > 0 {
+            components.push(text_piece(" · "));
+        }
+        let page = *page;
+        components.push(link(
+            format!("Settings → {}", label),
+            ClickAction::new_run(move || open_settings(Some(page))),
+        ));
     }
+    ComponentLine::new(components)
+}
+
+fn try_it_out_line(keys: Option<String>, fallback: &str, action: ClickAction) -> ComponentLine {
+    ComponentLine::new(vec![
+        text_piece("Try it out: "),
+        link(keys.unwrap_or_else(|| fallback.to_owned()), action),
+    ])
+}
+
+fn terminal_page_action(shared: &Shared) -> ClickAction {
+    let shared = shared.clone();
+    ClickAction::new_change_page(move || Page::new_desktop_app(&shared))
+}
+
+fn open_inbox_action(shared: &Shared) -> ClickAction {
+    let keybinding_state = shared.keybinding_state.clone();
+    ClickAction::new_run(move || keybinding_state.borrow().open_inbox())
+}
+
+fn open_session_manager_action(shared: &Shared) -> ClickAction {
+    let keybinding_state = shared.keybinding_state.clone();
+    ClickAction::new_run(move || keybinding_state.borrow().open_session_manager())
 }
 
 impl Page {
-    pub fn new_desktop_app(facts: Rc<RefCell<DesktopFacts>>) -> Page {
-        let facts = facts.borrow().clone();
+    pub fn new_desktop_app(shared: &Shared) -> Page {
+        let facts = shared.facts.borrow().clone();
         let mut keys = vec![];
         if !facts.in_desktop_terminal {
             keys.push(key_line("<w>", "open this session in a window"));
@@ -85,7 +118,7 @@ impl Page {
         }
         keys.push(key_line(
             "<s>",
-            "Setup Zellij: launcher, default terminal and more",
+            "Setup Zellij: tray icon, default terminal and more",
         ));
         let mut help = String::from("Help:");
         if !facts.in_desktop_terminal {
@@ -97,25 +130,22 @@ impl Page {
         help.push_str(" <s> - Setup Zellij, <ESC> - Go back");
         Page::new()
             .with_kind(PageKind::DesktopApp)
-            .with_title(Text::from("Zellij as your terminal").color_range(0, ..))
+            .with_title(Text::from("Zellij Can Now be Your Terminal").color_range(0, ..))
             .with_paragraph(vec![
-                line("Zellij can now run as its own app: a window with your tabs, panes and"),
-                line("sessions, a tray icon, and desktop notifications. Closing a window keeps"),
-                line("its session running."),
+                line("Zellij can now also be your terminal, giving you a native multiplexer"),
+                line("experience inside a desktop application. Zellij can still run inside"),
+                line("another terminal, and sessions can be shared between the two and remotely."),
             ])
+            .with_paragraph(vec![line("Try it out:"), command_line("zellij terminal")])
             .with_paragraph(vec![
-                styled(
-                    Text::from(format!(
-                        "Start it with `zellij terminal`, from the app menu, or with {} in a window.",
-                        new_window_keys(facts.platform)
-                    ))
-                    .color_substring(3, "zellij terminal")
-                    .color_substring(3, new_window_keys(facts.platform)),
-                ),
-                line(platform_shortcuts(facts.platform)),
-                line("It can also become your default terminal app; Setup Zellij offers this."),
+                line("Install it on your desktop and tray:"),
+                command_line("zellij setup --install-desktop-entry"),
             ])
             .with_paragraph(keys)
+            .with_paragraph(vec![settings_link_line(
+                "Configure it: ",
+                &[("Zellij terminal", "zellij_terminal")],
+            )])
             .with_paragraph(vec![styled(Text::from(REMOTE_WARNING).color_range(1, ..))])
             .with_help(Box::new(
                 move |_hovering_over_link, _menu_item_is_selected| {
@@ -128,75 +158,122 @@ impl Page {
             ))
     }
 
-    pub fn new_inbox(
-        keybinding_state: Rc<RefCell<KeybindingState>>,
-        main_screen_builder: Rc<dyn Fn() -> Page>,
-    ) -> Page {
-        let base_mode = keybinding_state.borrow().base_mode();
+    pub fn new_inbox(shared: &Shared) -> Page {
+        let terminal = link("terminal", terminal_page_action(shared));
+        let inbox_keys = shared.keybinding_state.borrow().inbox_keys();
         let mut page = Page::new()
             .with_kind(PageKind::Inbox)
             .with_title(Text::from("Inbox").color_range(0, ..))
             .with_paragraph(vec![
-                line("Panes now show what they need: approval, a failure, or a finished"),
-                line("command, as symbols on pane frames and tabs. The indicator in the tab"),
-                line("bar (or compact bar) sums up every session."),
+                line("Zellij now includes a built-in attention system managed inside a new Inbox."),
+                line("Programs and shells can request your attention, and you can follow running"),
+                line("programs to find out when they are done or have errored."),
             ])
             .with_paragraph(vec![
-                styled(
-                    Text::from(format!(
-                        "{} opens the inbox (or click the indicator):",
-                        session_mode_keys(base_mode, "i")
-                    ))
-                    .color_substring(3, &session_mode_keys(base_mode, "i")),
-                ),
-                line("preview output, reply into a pane, go to it, or mark items seen."),
-                styled(
-                    Text::from(format!(
-                        "{} jumps to the next item that needs you, in any session.",
-                        session_mode_keys(base_mode, "n")
-                    ))
-                    .color_substring(3, &session_mode_keys(base_mode, "n")),
-                ),
+                ComponentLine::new(vec![
+                    text_piece("The inbox integrates natively with the desktop "),
+                    terminal,
+                    text_piece(" and system tray."),
+                ]),
+                ComponentLine::new(vec![
+                    text_piece("Many programs will work out of the box. For others, see "),
+                    link(
+                        "our integrations",
+                        ClickAction::new_open_link(
+                            INTEGRATIONS_URL.to_owned(),
+                            shared.link_executable.clone(),
+                        ),
+                    ),
+                    text_piece("."),
+                ]),
             ])
-            .with_paragraph(vec![
-                styled(
-                    Text::from(format!(
-                        "{} / {} / {} mute, ignore the output of, or watch a pane.",
-                        pane_mode_keys(base_mode, "u"),
-                        pane_mode_keys(base_mode, "g"),
-                        pane_mode_keys(base_mode, "v")
-                    ))
-                    .color_substring(3, &pane_mode_keys(base_mode, "u"))
-                    .color_substring(3, &pane_mode_keys(base_mode, "g"))
-                    .color_substring(3, &pane_mode_keys(base_mode, "v")),
-                ),
-                styled(
-                    Text::from(format!(
-                        "{} returns to the previous session; {} / {} step through recent ones.",
-                        session_mode_keys(base_mode, "Tab"),
-                        session_mode_keys(base_mode, "Left"),
-                        session_mode_keys(base_mode, "Right")
-                    ))
-                    .color_substring(3, &session_mode_keys(base_mode, "Tab"))
-                    .color_substring(3, &session_mode_keys(base_mode, "Left"))
-                    .color_substring(3, &session_mode_keys(base_mode, "Right")),
-                ),
-                styled(
-                    Text::from("zellij run --notify -- <command> tells you when it finishes.")
-                        .color_substring(3, "zellij run --notify"),
-                ),
-            ]);
+            .with_paragraph(vec![try_it_out_line(
+                inbox_keys,
+                "open the inbox",
+                open_inbox_action(shared),
+            )]);
         for feature in [Feature::Inbox, Feature::SessionHistory] {
-            if let Some(note) =
-                crate::pages::missing_binds_note(&keybinding_state, &main_screen_builder, feature)
-            {
+            if let Some(note) = missing_binds_note(shared, feature) {
                 page = page.with_paragraph(note);
                 break;
             }
         }
-        page.with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
-            esc_help()
-        }))
+        page.with_paragraph(vec![settings_link_line(
+            "Don't want this? ",
+            &[("Attention", "attention")],
+        )])
+        .with_help(Box::new(feature_page_help))
+    }
+
+    pub fn new_session_previews(shared: &Shared) -> Page {
+        let session_manager_keys = shared.keybinding_state.borrow().session_manager_keys();
+        Page::new()
+            .with_kind(PageKind::SessionPreviews)
+            .with_title(Text::from("Session Previews").color_range(0, ..))
+            .with_paragraph(vec![
+                ComponentLine::new(vec![
+                    text_piece("The "),
+                    link("session manager", open_session_manager_action(shared)),
+                    text_piece(" now includes session previews, allowing you to"),
+                ]),
+                line("both view all sessions running on the machine and type into them for quick"),
+                line("commands without switching. This also integrates with the"),
+                ComponentLine::new(vec![
+                    link("desktop client and tray icon", terminal_page_action(shared)),
+                    text_piece(", allowing you to browse sessions at a glance"),
+                ]),
+                line("without opening a terminal."),
+            ])
+            .with_paragraph(vec![try_it_out_line(
+                session_manager_keys,
+                "open the session manager",
+                open_session_manager_action(shared),
+            )])
+            .with_help(Box::new(feature_page_help))
+    }
+
+    pub fn new_mouse_control(_shared: &Shared) -> Page {
+        Page::new()
+            .with_title(
+                Text::from("Right-click Menu and Improved Mouse Control").color_range(0, ..),
+            )
+            .with_paragraph(vec![
+                line("Zellij now includes a configurable right-click menu, allowing quick actions"),
+                line(
+                    "with a mouse click. The menu is contextual on terminal panes, tabs and stack",
+                ),
+                line("titles."),
+            ])
+            .with_paragraph(vec![styled(
+                Text::from(
+                    "It's now also possible to create a floating pane by Ctrl+dragging the mouse.",
+                )
+                .color_substring(3, "Ctrl+dragging"),
+            )])
+            .with_paragraph(vec![settings_link_line(
+                "Don't want this? ",
+                &[
+                    ("Right-click menu", "right_click_menu"),
+                    ("Mouse bindings", "mouse_bindings"),
+                ],
+            )])
+            .with_help(Box::new(feature_page_help))
+    }
+
+    pub fn new_settings_screen(_shared: &Shared) -> Page {
+        Page::new()
+            .with_title(Text::from("Settings Screen").color_range(0, ..))
+            .with_paragraph(vec![
+                line("Zellij now includes a settings screen to change its behavior and appearance"),
+                line("in a straightforward way, without hunting through configuration files."),
+                line("Configuration files still work as before, with the settings screen acting"),
+                line("as their user interface."),
+            ])
+            .with_paragraph(vec![ComponentLine::new(vec![
+                text_piece("Open it: "),
+                link("Settings", ClickAction::new_run(|| open_settings(None))),
+            ])])
+            .with_help(Box::new(feature_page_help))
     }
 
     pub fn new_window_welcome(missing_services: &[String], only_missing: bool) -> Page {
@@ -392,31 +469,16 @@ fn tip_page(index: usize, lines: Vec<ComponentLine>) -> Page {
         }))
 }
 
-pub fn opt_out_lines() -> Vec<String> {
-    opt_out_kdl().lines().map(str::to_owned).collect()
-}
-
-pub fn opt_out_done_lines() -> Vec<String> {
-    vec![
-        "Done. The status symbols on panes and tabs, the session indicator, the tray icon and"
-            .to_owned(),
-        "desktop notifications are off.".to_owned(),
-        "Turn any of them back on in Settings → Attention.".to_owned(),
-    ]
-}
-
-pub fn opt_out_failed_lines(path: Option<String>) -> Vec<String> {
-    let mut lines = vec![format!(
-        "{} could not be written. Add these lines to it yourself:",
-        path.unwrap_or_else(|| "Your config file".to_owned())
-    )];
-    lines.extend(opt_out_lines().into_iter().map(|l| format!("    {}", l)));
-    lines.push(HOME_MANAGER_NOTE.to_owned());
-    lines
-}
-
 pub fn open_setup() {
     let configuration = BTreeMap::from([("rerun_setup".to_owned(), "true".to_owned())]);
+    open_plugin_pane_floating("zellij:configuration", configuration, None, BTreeMap::new());
+}
+
+pub fn open_settings(page: Option<&str>) {
+    let mut configuration = BTreeMap::new();
+    if let Some(page) = page {
+        configuration.insert("page".to_owned(), page.to_owned());
+    }
     open_plugin_pane_floating("zellij:configuration", configuration, None, BTreeMap::new());
 }
 

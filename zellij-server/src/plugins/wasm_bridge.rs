@@ -924,7 +924,11 @@ impl WasmBridge {
                 .insert(plugin_id, (rows, columns));
 
             let loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-            self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+            self.start_plugin_loading_indication_for_client(
+                plugin_id,
+                client_id,
+                &loading_indication,
+            );
             self.loading_plugins.insert((plugin_id, run_plugin.clone()));
 
             let plugin_executor = self.plugin_executor.clone();
@@ -2199,11 +2203,29 @@ impl WasmBridge {
                 .send_to_screen(ScreenInstruction::StartPluginLoadingIndication(
                     *plugin_id,
                     loading_indication.clone(),
+                    None,
                 ));
             let _ = self
                 .senders
                 .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(*plugin_id));
         }
+    }
+    fn start_plugin_loading_indication_for_client(
+        &self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        loading_indication: &LoadingIndication,
+    ) {
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::StartPluginLoadingIndication(
+                plugin_id,
+                loading_indication.clone(),
+                Some(client_id),
+            ));
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
     }
     pub fn post_messages_to_plugin_worker(
         &mut self,

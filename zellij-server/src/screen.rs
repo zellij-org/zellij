@@ -785,7 +785,7 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>, // completion signal
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
-    StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
+    StartPluginLoadingIndication(u32, LoadingIndication, Option<ClientId>), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(
@@ -936,6 +936,7 @@ pub enum ScreenInstruction {
         fit: bool,
     },
     TogglePaneEmbedOrEjectForPaneId(PaneId),
+    MovePaneBetweenLayersForPaneId(PaneId, Option<ClientId>),
     CloseTabWithIndex(usize),
     BreakPanesToNewTab {
         pane_ids: Vec<PaneId>,
@@ -1203,7 +1204,7 @@ pub enum ScreenInstruction {
     EditScrollbackWithPaneId(PaneId, bool, Option<NotificationEnd>),
     ToggleFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
     ToggleNoUiFullscreenWithPaneId(PaneId, Option<NotificationEnd>),
-    TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<NotificationEnd>),
+    TogglePaneEmbedOrFloatingWithPaneId(PaneId, Option<ClientId>, Option<NotificationEnd>),
     CloseFocusWithPaneId(PaneId, Option<NotificationEnd>),
     RenamePaneWithPaneId(PaneId, Vec<u8>, Option<NotificationEnd>),
     UndoRenamePaneWithPaneId(PaneId, Option<NotificationEnd>),
@@ -1550,7 +1551,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetMobileRenderPreferences { .. } => {
                 ScreenContext::SetMobileRenderPreferences
             },
-            ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
+            ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..)
+            | ScreenInstruction::MovePaneBetweenLayersForPaneId(..) => {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
             ScreenInstruction::CloseTabWithIndex(..) => ScreenContext::CloseTabWithIndex,
@@ -14130,11 +14132,11 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::StartPluginLoadingIndication(pid, loading_indication) => {
+            ScreenInstruction::StartPluginLoadingIndication(pid, loading_indication, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_plugin(pid) {
-                        tab.start_plugin_loading_indication(pid, loading_indication);
+                        tab.start_plugin_loading_indication(pid, loading_indication, client_id);
                         break;
                     }
                 }
@@ -15113,6 +15115,16 @@ pub(crate) fn screen_thread_main(
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
                             .non_fatal();
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::MovePaneBetweenLayersForPaneId(pane_id, client_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.move_pane_between_layers(pane_id, client_id).non_fatal();
                         break;
                     }
                 }
@@ -16218,13 +16230,16 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
+                pane_id,
+                client_id,
+                mut _completion_tx,
+            ) => {
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
-                            .non_fatal();
+                        tab.move_pane_between_layers(pane_id, client_id).non_fatal();
                         found = true;
                         break;
                     }
