@@ -2308,6 +2308,19 @@ const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 /// entries beyond the cap evict the oldest.
 const MAX_PANE_HISTORY_ENTRIES: usize = 64;
 
+/// Tab focus-history depth retained per client, same recency
+/// semantics as `MAX_PANE_HISTORY_ENTRIES`.
+const MAX_TAB_HISTORY_ENTRIES: usize = 64;
+
+/// Only recent tab focus is meaningful; without a bound, repeated tab
+/// switching grows the history for the session's lifetime.
+fn cap_tab_history(history: &mut Vec<usize>) {
+    if history.len() > MAX_TAB_HISTORY_ENTRIES {
+        let overflow = history.len() - MAX_TAB_HISTORY_ENTRIES;
+        history.drain(..overflow);
+    }
+}
+
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
 const RECENTLY_DISCONNECTED_CLIENTS_LIMIT: usize = 256;
@@ -2831,6 +2844,7 @@ impl Screen {
                 let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
                 client_tab_history.retain(|&e| e != new_tab_index);
                 client_tab_history.push(old_active_index);
+                cap_tab_history(client_tab_history);
             },
             None => {
                 self.active_tab_ids.insert(client_id, new_tab_index);
@@ -14577,11 +14591,9 @@ pub(crate) fn screen_thread_main(
                         screen.switch_active_tab(tab_position, None, true, client_id)?;
                         screen.render(None)?;
 
-                        screen
-                            .tab_history
-                            .entry(client_id)
-                            .or_insert_with(Vec::new)
-                            .push(tab_id);
+                        let client_tab_history = screen.tab_history.entry(client_id).or_default();
+                        client_tab_history.push(tab_id);
+                        cap_tab_history(client_tab_history);
                     } else {
                         log::error!("Tab with ID {} not found", tab_id);
                     }
