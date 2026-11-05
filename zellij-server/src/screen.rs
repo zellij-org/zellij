@@ -2304,6 +2304,10 @@ const STARTUP_SENTINEL_TOKEN: u32 = 0;
 /// network-pathological cases ever see this fire.
 const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
+/// Focus-history depth retained per client. Ordered oldest→newest;
+/// entries beyond the cap evict the oldest.
+const MAX_PANE_HISTORY_ENTRIES: usize = 64;
+
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
 const RECENTLY_DISCONNECTED_CLIENTS_LIMIT: usize = 256;
@@ -10522,6 +10526,13 @@ impl Screen {
                 let history = self.pane_history.entry(client_id).or_insert_with(|| vec![]);
                 history.retain(|e| e != &active_pane_id);
                 history.push(active_pane_id.into());
+                // Focus history is only meaningful for recency; without
+                // a cap it accrues one entry per distinct focus for the
+                // session's lifetime.
+                if history.len() > MAX_PANE_HISTORY_ENTRIES {
+                    let overflow = history.len() - MAX_PANE_HISTORY_ENTRIES;
+                    history.drain(..overflow);
+                }
             }
         }
     }
