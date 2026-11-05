@@ -1699,6 +1699,9 @@ impl FloatingPanes {
             .ok()?
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
+    pub fn forget_pane_being_moved_with_mouse(&mut self) {
+        self.pane_being_moved_with_mouse = None;
+    }
     pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, last_position: Position) {
         if let Some((last_pane_id, initial_position)) = self
             .pane_being_moved_with_mouse

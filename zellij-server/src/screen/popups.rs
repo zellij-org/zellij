@@ -3,7 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
 use crate::route::PopupScroll;
-use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement, Tab};
+use crate::tab::{ContextMenuRequest, PopupBehavior, PopupMouseOutcome, PopupPlacement, Tab};
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
 
@@ -11,8 +11,8 @@ const PREVIEW_SCROLLBACK_LINES: usize = 300;
 use std::time::Instant;
 use zellij_utils::data::{
     ClickedPaneAction, ContextMenuAction, ContextMenuContext, ContextMenuEntry, ContextMenuKind,
-    ContextMenuTarget, Event, InputMode, KeybindsVec, PipePopupPlacement, PopupCorner,
-    PopupOptions,
+    ContextMenuTarget, Event, InputMode, KeybindsVec, OutsideClick, PipePopupPlacement,
+    PopupCorner, PopupOptions,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -31,6 +31,46 @@ pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
 pub const SESSION_MANAGER_PLUGIN_ALIAS: &str = "session-manager";
 pub const SESSION_CARD_COLS: usize = 72;
 pub const SESSION_CARD_ROWS: usize = 13;
+
+pub const SESSION_MANAGER_ROLE: &str = "manager_focused";
+
+pub fn session_manager_coordinates(
+    tab: &Tab,
+) -> (zellij_utils::data::FloatingPaneCoordinates, Size) {
+    let display_area = tab.get_display_area();
+    let viewport = tab.get_viewport();
+    let (x, y, width, height) =
+        session_manager_geometry(display_area.cols, viewport.rows.max(display_area.rows));
+    let coordinates = zellij_utils::data::FloatingPaneCoordinates::default()
+        .with_x_fixed(x)
+        .with_y_fixed(y)
+        .with_width_fixed(width)
+        .with_height_fixed(height);
+    let content = Size {
+        rows: height.saturating_sub(2),
+        cols: width.saturating_sub(2),
+    };
+    (coordinates, content)
+}
+
+pub fn is_session_manager(run_plugin_or_alias: &RunPluginOrAlias) -> bool {
+    run_plugin_or_alias
+        .location_string()
+        .contains(SESSION_MANAGER_PLUGIN_ALIAS)
+}
+
+pub fn session_manager_geometry(
+    display_cols: usize,
+    display_rows: usize,
+) -> (usize, usize, usize, usize) {
+    let columns = display_cols.max(20);
+    let rows = display_rows.max(10);
+    let width = (columns * 3 / 4).max(40).min(columns);
+    let height = (rows * 3 / 4).max(10).min(rows);
+    let x = columns.saturating_sub(width) / 2;
+    let y = rows.saturating_sub(height) / 2;
+    (x, y, width, height)
+}
 pub const SWAP_LAYOUT_NOTIFICATION_MS: u64 = 2000;
 pub const SESSION_RENAME_ERROR_REQUEST_ID: u64 = 1;
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
@@ -85,6 +125,7 @@ pub fn entries_available_here(
     entries: Vec<ContextMenuEntry>,
     can_paste: bool,
     can_open_window: bool,
+    on_stack_titles: bool,
 ) -> Vec<ContextMenuEntry> {
     entries
         .into_iter()
@@ -94,6 +135,10 @@ pub fn entries_available_here(
                 ContextMenuAction::ClickedPane(ClickedPaneAction::PasteFromClipboard)
                 | ContextMenuAction::Action(Action::PasteFromClipboardByPaneId { .. }) => can_paste,
                 ContextMenuAction::Action(Action::OpenSessionInTerminal) => can_open_window,
+                ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleStackListOrientation)
+                | ContextMenuAction::Action(Action::ToggleStackListOrientationByPaneId {
+                    ..
+                }) => on_stack_titles,
                 _ => true,
             }),
         })
@@ -218,8 +263,9 @@ impl Screen {
             .map(|_| {
                 self.tabs.values().any(|tab| {
                     tab.popup_plugin_id(client_id)
-                        .and_then(|plugin_id| tab.popup_kind_of_plugin(plugin_id))
-                        == Some(PopupKind::Menu)
+                        .and_then(|plugin_id| tab.popup_behavior_of_plugin(plugin_id))
+                        .map(|behavior| behavior.menu)
+                        .unwrap_or(false)
                 })
             })
             .unwrap_or(false);
@@ -297,6 +343,7 @@ impl Screen {
         new_tab_id: usize,
     ) {
         self.open_context_menus.remove(&client_id);
+        let had_focused_popup = self.client_has_focused_popup(client_id);
         let mut closed_plugin_ids = vec![];
         for tab in self.tabs.values_mut() {
             closed_plugin_ids.append(&mut tab.close_focused_popups(client_id));
@@ -319,7 +366,9 @@ impl Screen {
                 .collect();
             self.unload_popups(&plugin_ids);
         }
-        if !closed_plugin_ids.is_empty() {
+        if !closed_plugin_ids.is_empty()
+            || self.client_has_focused_popup(client_id) != had_focused_popup
+        {
             self.report_popup_state(client_id);
         }
     }
@@ -398,7 +447,8 @@ impl Screen {
         raw_bytes: Vec<u8>,
         is_kitty_keyboard_protocol: bool,
     ) -> bool {
-        match self.get_active_tab_mut(client_id) {
+        let had_focused_popup = self.client_has_focused_popup(client_id);
+        let sent = match self.get_active_tab_mut(client_id) {
             Ok(tab) => tab.send_key_to_popup(
                 client_id,
                 key_with_modifier,
@@ -406,6 +456,19 @@ impl Screen {
                 is_kitty_keyboard_protocol,
             ),
             Err(_) => false,
+        };
+        if self.client_has_focused_popup(client_id) != had_focused_popup {
+            self.report_popup_state(client_id);
+        }
+        sent
+    }
+    pub fn report_popup_state_for_plugin(&self, plugin_id: u32) {
+        if let Some(client_id) = self
+            .tabs
+            .values()
+            .find_map(|tab| tab.popup_client_for_plugin(plugin_id))
+        {
+            self.report_popup_state(client_id);
         }
     }
     pub fn open_context_menu_for_pane(&mut self, request: ContextMenuRequest, client_id: ClientId) {
@@ -425,7 +488,7 @@ impl Screen {
             client_id,
             paste_shortcut: None,
         };
-        self.open_context_menu(context);
+        self.open_context_menu(context, request.on_stack_titles);
     }
     pub fn open_context_menu_for_focused_pane(&mut self, client_id: ClientId) {
         let client_id = match self.get_active_tab(client_id) {
@@ -446,6 +509,7 @@ impl Screen {
             pane_id: pane.pid(),
             is_floating: tab.pane_id_is_floating(&pane.pid()),
             position: Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16),
+            on_stack_titles: false,
         };
         self.open_context_menu_for_pane(request, client_id);
     }
@@ -487,7 +551,7 @@ impl Screen {
             client_id,
             paste_shortcut: None,
         };
-        self.open_context_menu(context);
+        self.open_context_menu(context, false);
     }
     fn plugin_relative_to_screen(
         &self,
@@ -511,7 +575,7 @@ impl Screen {
             None => (line, column),
         }
     }
-    fn open_context_menu(&mut self, mut context: ContextMenuContext) {
+    fn open_context_menu(&mut self, mut context: ContextMenuContext, on_stack_titles: bool) {
         let client_id = context.client_id;
         context.paste_shortcut = self.client_paste_shortcut(client_id);
         let entries = entries_available_to_plugins(
@@ -521,10 +585,16 @@ impl Screen {
         let entries = self.resolve_toggled_context_menu_labels(entries, &context);
         let entries = self.resolve_session_history_context_menu_entries(entries, client_id);
         let entries = self.resolve_hidden_bars_context_menu_entries(entries, &context);
+        let entries = if self.attention.config().enabled() {
+            entries
+        } else {
+            zellij_utils::input::context_menu::entries_without_attention(entries)
+        };
         let entries = entries_available_here(
             entries,
             self.client_can_paste_from_clipboard(client_id),
             crate::desktop_app::can_open_window(),
+            on_stack_titles,
         );
         let entries = zellij_utils::input::context_menu::normalize_separators(entries);
         if entries.is_empty() {
@@ -553,7 +623,7 @@ impl Screen {
             client_id,
             run_plugin_or_alias,
             PopupPlacement::At(anchor),
-            PopupKind::Menu,
+            PopupBehavior::menu(),
             anchor_pane,
             width,
             height,
@@ -582,16 +652,21 @@ impl Screen {
             Some(corner) => PopupPlacement::Corner(corner),
             None => PopupPlacement::At(Position::new(line as i32, column as u16)),
         };
-        let kind = if options.focused {
-            PopupKind::Menu
+        let behavior = if options.focused {
+            PopupBehavior::menu()
         } else {
-            PopupKind::Info
+            PopupBehavior::info()
+        }
+        .capturing_all_keys(options.capture_all_keys);
+        let behavior = match options.outside_click {
+            Some(outside_click) => behavior.on_outside_click(outside_click),
+            None => behavior,
         };
         self.request_popup(
             client_id,
             run_plugin_or_alias,
             placement,
-            kind,
+            behavior,
             None,
             width,
             height,
@@ -603,13 +678,13 @@ impl Screen {
         client_id: ClientId,
         run_plugin_or_alias: RunPluginOrAlias,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         anchor_pane: Option<PaneId>,
         width: usize,
         height: usize,
         initial_events: Vec<Event>,
     ) {
-        if kind == PopupKind::Menu {
+        if behavior.menu {
             self.close_menu_popups_for_client(client_id);
         }
         let Ok(tab) = self.get_active_tab(client_id) else {
@@ -625,7 +700,7 @@ impl Screen {
                 tab_index,
                 client_id,
                 placement,
-                kind,
+                behavior,
                 anchor_pane,
                 size: Size {
                     rows: height,
@@ -685,6 +760,8 @@ impl Screen {
         caller_pane_id: Option<PaneId>,
         placement: PipePopupPlacement,
         focused: bool,
+        capture_all_keys: bool,
+        outside_click: OutsideClick,
     ) {
         let Some((client_id, tab_id, pane_in_tab)) = self.pipe_popup_owner(caller_pane_id) else {
             let _ = self
@@ -705,8 +782,8 @@ impl Screen {
             caller_pane_id,
             placement,
             focused,
-            false,
-            false,
+            capture_all_keys,
+            outside_click,
         );
     }
     pub fn open_prompt_popup(
@@ -718,7 +795,7 @@ impl Screen {
         placement: Option<PromptPlacement>,
         focused: bool,
         capture_all_keys: bool,
-        closes_on_outside_click: bool,
+        outside_click: OutsideClick,
     ) {
         let tab_id = match self.active_tab_ids.get(&owner_client_id) {
             Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
@@ -772,7 +849,7 @@ impl Screen {
             pipe_placement,
             focused,
             capture_all_keys,
-            closes_on_outside_click,
+            outside_click,
         );
     }
     fn load_answer_popup(
@@ -786,7 +863,7 @@ impl Screen {
         placement: PipePopupPlacement,
         focused: bool,
         capture_all_keys: bool,
-        closes_on_outside_click: bool,
+        outside_click: OutsideClick,
     ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
@@ -853,12 +930,13 @@ impl Screen {
                 None => PopupPlacement::CenteredIn(bounds),
             },
         };
-        let kind = match (focused, capture_all_keys) {
-            (true, _) if closes_on_outside_click => PopupKind::Explanation,
-            (true, true) => PopupKind::Modal,
-            (true, false) => PopupKind::Prompt,
-            (false, _) => PopupKind::Info,
-        };
+        let behavior = if focused {
+            PopupBehavior::prompt()
+        } else {
+            PopupBehavior::info()
+        }
+        .capturing_all_keys(capture_all_keys)
+        .on_outside_click(outside_click);
         let mut caller_args = BTreeMap::new();
         if let Some(pane_id) = caller_pane_id {
             let pane_id: zellij_utils::data::PaneId = pane_id.into();
@@ -886,7 +964,7 @@ impl Screen {
                 tab_index: tab.position,
                 client_id,
                 placement: popup_placement,
-                kind,
+                behavior,
                 anchor_pane: if focused { pane_in_tab } else { None },
                 size: Size {
                     rows: PIPE_POPUP_INITIAL_ROWS,
@@ -903,7 +981,7 @@ impl Screen {
         tab_id: usize,
         run_plugin_or_alias: RunPluginOrAlias,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         width: usize,
         height: usize,
         anchor_pane: Option<PaneId>,
@@ -924,7 +1002,7 @@ impl Screen {
             })
             .unwrap_or(true);
         let tab_id = match self.active_tab_ids.get(&client_id) {
-            Some(current_tab_id) if kind == PopupKind::Info => *current_tab_id,
+            Some(current_tab_id) if !behavior.focused => *current_tab_id,
             _ => tab_id,
         };
         let client_is_still_on_tab =
@@ -946,7 +1024,7 @@ impl Screen {
                     client_id,
                     plugin_id,
                     placement,
-                    kind,
+                    behavior,
                     width,
                     height,
                     invoked_with,
@@ -989,10 +1067,14 @@ impl Screen {
         Ok(())
     }
     pub fn toggle_session_card(&mut self, client_id: ClientId) {
+        if self.release_live_view_for_the_inbox_key(client_id) {
+            return;
+        }
         let Ok(tab) = self.get_active_tab(client_id) else {
             return;
         };
         let open_browser = tab.floating_plugin_for_location(SESSION_MANAGER_PLUGIN_ALIAS);
+        let browser_hidden = !tab.are_floating_panes_visible();
         match tab.popup_for_location(client_id, SESSION_MANAGER_PLUGIN_ALIAS) {
             Some((plugin_id, true)) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
             Some((plugin_id, false)) => {
@@ -1000,10 +1082,23 @@ impl Screen {
                 self.pipe_to_popup_plugin(plugin_id, client_id, "focus_card");
             },
             None => match open_browser {
+                Some(plugin_id) if browser_hidden => {
+                    self.reveal_session_manager(plugin_id, client_id)
+                },
                 Some(plugin_id) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
                 None => self.request_session_card(client_id, true),
             },
         }
+    }
+    fn reveal_session_manager(&mut self, plugin_id: u32, client_id: ClientId) {
+        let Ok(tab) = self.get_active_tab_mut(client_id) else {
+            return;
+        };
+        if let Err(e) = tab.focus_pane_with_id(PaneId::Plugin(plugin_id), true, false, client_id) {
+            log::error!("Failed to show the session manager: {}", e);
+            return;
+        }
+        self.render(None).non_fatal();
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
         let _ = self
@@ -1026,6 +1121,10 @@ impl Screen {
             });
     }
     pub fn open_session_card(&mut self, client_id: ClientId) {
+        if !self.attention.config().enabled() {
+            self.pending_session_card = None;
+            return;
+        }
         if self.get_active_tab(client_id).is_err() {
             self.pending_session_card = Some(client_id);
             return;
@@ -1034,16 +1133,13 @@ impl Screen {
         self.request_session_card(client_id, false);
     }
     fn request_session_card(&mut self, client_id: ClientId, focused: bool) {
-        let role = if focused {
-            "card_focused"
-        } else {
-            "card_startup"
-        };
-        let mut configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
-        if !focused {
-            if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
-                configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
-            }
+        if focused {
+            self.open_session_manager(client_id);
+            return;
+        }
+        let mut configuration = BTreeMap::from([("role".to_owned(), "card_startup".to_owned())]);
+        if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
+            configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
         }
         let run_plugin_or_alias = match RunPluginOrAlias::from_url(
             SESSION_MANAGER_PLUGIN_ALIAS,
@@ -1057,20 +1153,59 @@ impl Screen {
                 return;
             },
         };
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .clone();
+        mode_info.base_mode = Some(mode_info.base_mode.unwrap_or(self.default_mode_info.mode));
         self.request_popup(
             client_id,
             run_plugin_or_alias,
             PopupPlacement::Corner(PopupCorner::TopRight),
-            if focused {
-                PopupKind::Prompt
-            } else {
-                PopupKind::Info
-            },
+            PopupBehavior::info(),
             None,
             SESSION_CARD_COLS,
             SESSION_CARD_ROWS,
-            vec![],
+            vec![Event::ModeUpdate(mode_info)],
         );
+    }
+    fn open_session_manager(&mut self, client_id: ClientId) {
+        let Ok(tab) = self.get_active_tab(client_id) else {
+            return;
+        };
+        let (coordinates, content) = session_manager_coordinates(tab);
+        let tab_index = tab.position;
+        let configuration = BTreeMap::from([("role".to_owned(), SESSION_MANAGER_ROLE.to_owned())]);
+        let run_plugin_or_alias = match RunPluginOrAlias::from_url(
+            SESSION_MANAGER_PLUGIN_ALIAS,
+            &Some(configuration),
+            None,
+            None,
+        ) {
+            Ok(run_plugin_or_alias) => run_plugin_or_alias,
+            Err(e) => {
+                log::error!("Failed to open the session manager: {}", e);
+                return;
+            },
+        };
+        let _ = self.bus.senders.send_to_plugin(PluginInstruction::Load(
+            Some(true),
+            false,
+            false,
+            None,
+            run_plugin_or_alias,
+            Some(tab_index),
+            None,
+            client_id,
+            content,
+            None,
+            None,
+            false,
+            Some(true),
+            Some(coordinates),
+            None,
+        ));
     }
     pub fn terminal_input_submitted(&mut self, client_id: ClientId) {
         if self.terminal_command_submitted {
@@ -1119,14 +1254,9 @@ impl Screen {
         }
     }
     pub fn set_popup_focused(&mut self, plugin_id: u32, focused: bool) {
-        let kind = if focused {
-            PopupKind::Prompt
-        } else {
-            PopupKind::Info
-        };
         let mut changed_client = None;
         for tab in self.tabs.values_mut() {
-            if let Some(client_id) = tab.set_popup_kind(plugin_id, kind) {
+            if let Some(client_id) = tab.set_popup_focused(plugin_id, focused) {
                 changed_client = Some(client_id);
                 break;
             }
@@ -1424,16 +1554,43 @@ mod tests {
                 .collect()
         };
         assert_eq!(
-            labels(entries_available_here(entries.clone(), false, false)),
+            labels(entries_available_here(entries.clone(), false, false, false)),
             vec!["Detach".to_owned()]
         );
         assert_eq!(
-            labels(entries_available_here(entries, true, true)),
+            labels(entries_available_here(entries, true, true, false)),
             vec![
                 "Paste".to_owned(),
                 "Open in a Zellij terminal".to_owned(),
                 "Detach".to_owned()
             ]
+        );
+    }
+
+    #[test]
+    fn the_stack_title_item_is_only_offered_on_stack_titles() {
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Show titles in a row",
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::ToggleStackListOrientation,
+                )],
+            ),
+            ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
+        ];
+        let labels = |entries: Vec<ContextMenuEntry>| -> Vec<String> {
+            entries
+                .iter()
+                .filter_map(|entry| entry.label().map(|label| label.to_owned()))
+                .collect()
+        };
+        assert_eq!(
+            labels(entries_available_here(entries.clone(), true, true, false)),
+            vec!["Detach".to_owned()]
+        );
+        assert_eq!(
+            labels(entries_available_here(entries, true, true, true)),
+            vec!["Show titles in a row".to_owned(), "Detach".to_owned()]
         );
     }
 

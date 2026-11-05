@@ -61,6 +61,11 @@ fn main() {
         }
     }
 
+    if let Some(Command::Terminal(terminal_args)) = opts.command.clone() {
+        commands::start_terminal(terminal_args, opts);
+        std::process::exit(0);
+    }
+
     {
         let config = Config::try_from(&opts).ok();
         if let Some(Command::Action(cli_action)) = opts.command {
@@ -73,10 +78,6 @@ fn main() {
         }
         if let Some(Command::Prompt(prompt_cli)) = opts.command {
             commands::prompt_in_session(prompt_cli, opts.session, config);
-        }
-        if let Some(Command::Terminal(terminal_args)) = opts.command.clone() {
-            commands::start_terminal(terminal_args, opts);
-            std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Run {
             command,
@@ -284,6 +285,8 @@ fn main() {
                 plugin_title: None,
                 popup: None,
                 popup_no_focus: false,
+                popup_capture_all_keys: false,
+                popup_outside_click: None,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

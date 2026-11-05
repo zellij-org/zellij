@@ -239,7 +239,7 @@ fn a_shows_and_hides_the_items_behind_the_line() {
     open_inbox_on(&zellij, "Counted question?");
     let grid_snapshot = zellij
         .wait_until("the muted item waits behind the line", |grid_snapshot| {
-            grid_snapshot.contains("1 more item with only")
+            grid_snapshot.contains("1 more item with")
         });
     assert!(!grid_snapshot.contains(&muted_row));
     zellij.send_stdin(&keys::key('a'));
@@ -429,7 +429,7 @@ fn page_down_scrolls_the_list_by_whole_notifications() {
     };
     let (mut zellij, _) = main_session_sized(short);
     let mut sessions = vec![];
-    for index in 0..5 {
+    for index in 0..7 {
         let (session, terminal) = background_session_with(ATTENTION_CONFIG);
         terminal.output(&needs_you(&format!("Question number {}?", index)));
         wait_for_indicator(&zellij, "the item is counted", &format!("● {}", index + 1));
@@ -442,9 +442,9 @@ fn page_down_scrolls_the_list_by_whole_notifications() {
             .iter()
             .any(|line| line.contains(&format!("{} ", arrow)) && line.contains(" more"))
     };
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the list overflows", |grid_snapshot| {
-        more_marker(grid_snapshot, "↓") && grid_snapshot.contains("Question number 4?")
+        more_marker(grid_snapshot, "↓") && grid_snapshot.contains("Question number 6?")
     });
     for _ in 0..3 {
         zellij.send_stdin(&keys::PAGE_DOWN);
@@ -455,7 +455,7 @@ fn page_down_scrolls_the_list_by_whole_notifications() {
             more_marker(grid_snapshot, "↑")
                 && !more_marker(grid_snapshot, "↓")
                 && grid_snapshot.contains("Question number 0?")
-                && !grid_snapshot.contains("Question number 4?")
+                && !grid_snapshot.contains("Question number 6?")
         },
     );
     zellij.quit();
@@ -512,7 +512,7 @@ fn f1_opens_all_keys_from_the_sessions_tab() {
     let (mut zellij, _) = main_session_sized(TALL);
     let (other, _) = background_session_with(ATTENTION_CONFIG);
     wait_for_indicator(&zellij, "both sessions are known", "2 running");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the sessions tab is shown", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(other.session_name())
     });

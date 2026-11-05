@@ -650,6 +650,20 @@ impl TiledPanes {
         // same as set_pane_frames except it reapplies the current situation
         self.set_pane_frames(self.pane_frame_style);
     }
+    fn multi_member_stack_ids(&self) -> HashSet<usize> {
+        let mut counts = HashMap::new();
+        for (id, pane) in &self.panes {
+            if !self.panes_to_hide.contains(id) {
+                if let Some(stack_id) = pane.current_geom().stacked {
+                    *counts.entry(stack_id).or_insert(0) += 1;
+                }
+            }
+        }
+        counts
+            .into_iter()
+            .filter_map(|(id, count)| (count > 1).then_some(id))
+            .collect()
+    }
     pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
         self.pane_frame_style = pane_frame_style;
         let draws_full_frames = pane_frame_style.draws_full_frames();
@@ -671,6 +685,7 @@ impl TiledPanes {
                 .positions_and_sizes_of_all_stacks()
                 .unwrap_or_else(|| Default::default())
         };
+        let multi_member_stack_ids = self.multi_member_stack_ids();
         let reserved_top_rows = if self.fullscreen_is_active.is_some() {
             HashMap::new()
         } else {
@@ -734,7 +749,12 @@ impl TiledPanes {
                 let reserve_title_row = if draws_titles {
                     !pane_is_borderless && !single_selectable_tiled_pane && !is_one_liner_in_stack
                 } else {
-                    is_stacked && is_flexible
+                    is_stacked
+                        && is_flexible
+                        && pane
+                            .current_geom()
+                            .stacked
+                            .is_some_and(|id| multi_member_stack_ids.contains(&id))
                 };
                 if reserve_title_row {
                     pane.set_content_offset(Offset::shift_right_top_and_bottom(
@@ -1263,6 +1283,7 @@ impl TiledPanes {
                 .stacked_pane_ids_on_top_and_bottom_of_stacks()
                 .with_context(err_context)?
         };
+        let multi_member_stack_ids = self.multi_member_stack_ids();
         let selectable_pane_count = self.panes.iter().filter(|(_, p)| p.selectable()).count();
         let content_pane_count = self
             .panes
@@ -1328,7 +1349,10 @@ impl TiledPanes {
                     && self.fullscreen_is_active == Some(pane.pid());
                 let should_draw_pane_frames =
                     self.pane_frame_style.draws_full_frames() && !pane_is_no_ui_fullscreen;
-                let pane_is_stacked = pane.current_geom().is_stacked();
+                let pane_is_stacked = pane
+                    .current_geom()
+                    .stacked
+                    .is_some_and(|id| multi_member_stack_ids.contains(&id));
                 let pane_is_one_liner_in_stack =
                     pane_is_stacked && pane.current_geom().rows.is_fixed();
                 let pane_is_selectable = pane.selectable();
@@ -1379,6 +1403,7 @@ impl TiledPanes {
                     &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(visible_member_frame_override);
+                pane_contents_and_ui.set_stacked_render_override(pane_is_stacked);
                 if client_id_override.is_none() {
                     pane_contents_and_ui.set_live_views(self.live_views.clone());
                 }

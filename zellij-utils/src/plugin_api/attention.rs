@@ -8,19 +8,21 @@ use super::generated_api::api::event::{
     AttentionCounts as ProtobufAttentionCounts, AttentionDetail as ProtobufAttentionDetail,
     CommandOutcome as ProtobufCommandOutcome, CommandState as ProtobufCommandState,
     CommandText as ProtobufCommandText, PaneAttention as ProtobufPaneAttention,
-    ProgramStatusRecord as ProtobufProgramStatusRecord, ReportedCwd as ProtobufReportedCwd,
+    ProgramStatusRecord as ProtobufProgramStatusRecord,
+    RememberedStatus as ProtobufRememberedStatus, ReportedCwd as ProtobufReportedCwd,
     RunningCommand as ProtobufRunningCommand, TabAttention as ProtobufTabAttention,
 };
 use super::generated_api::api::event::{
     AttentionItem as ProtobufAttentionItem, GlobalAttentionUpdatePayload,
     GlobalSessionAttention as ProtobufGlobalSessionAttention, PaneId as ProtobufPaneId,
     SessionAttention as ProtobufSessionAttention, SessionHistoryUpdatePayload,
+    StatusColor as ProtobufStatusColor,
 };
 use crate::attention::{
     AttentionCounts, AttentionDetail, AttentionSource, AttentionStatus, BlockedKind,
     CommandOutcome, CommandPhase, CommandResult, CommandState, CommandText, CommandTextSource,
-    CwdSource, MuteScope, PaneAttention, ProgramState, ProgramStatusRecord, ReportedCwd,
-    RunningCommand, TabAttention,
+    CwdSource, MuteScope, PaneAttention, ProgramState, ProgramStatusRecord, RememberedStatus,
+    ReportedCwd, RunningCommand, TabAttention,
 };
 use crate::attention::{AttentionItem, GlobalAttention, SessionAttention};
 use crate::session_history::{SessionArrival, SessionHistoryInfo};
@@ -88,6 +90,11 @@ impl From<PaneAttention> for ProtobufPaneAttention {
             ignore_output: attention.ignore_output,
             watched: attention.watched,
             from_watch: attention.from_watch,
+            remembered: attention.remembered.map(|r| ProtobufRememberedStatus {
+                status: r.status.as_str().to_owned(),
+                text: r.text,
+                since_ms: r.since_ms,
+            }),
         }
     }
 }
@@ -109,6 +116,11 @@ impl From<ProtobufPaneAttention> for PaneAttention {
             ignore_output: attention.ignore_output,
             watched: attention.watched,
             from_watch: attention.from_watch,
+            remembered: attention.remembered.map(|r| RememberedStatus {
+                status: AttentionStatus::from_str(&r.status).unwrap_or_default(),
+                text: r.text,
+                since_ms: r.since_ms,
+            }),
         }
     }
 }
@@ -361,6 +373,15 @@ impl TryFrom<GlobalAttention> for GlobalAttentionUpdatePayload {
                     })
                 })
                 .collect::<Result<Vec<_>, &'static str>>()?,
+            badge_colors: global
+                .badge_colors
+                .iter()
+                .map(|(status, rgb)| ProtobufStatusColor {
+                    status: status.as_str().to_owned(),
+                    rgb: (rgb[0] as u32) << 16 | (rgb[1] as u32) << 8 | rgb[2] as u32,
+                })
+                .collect(),
+            attention_disabled: global.attention_disabled,
         })
     }
 }
@@ -381,7 +402,18 @@ impl TryFrom<GlobalAttentionUpdatePayload> for GlobalAttention {
                 ))
             })
             .collect::<Result<Vec<(String, SessionAttention)>, &'static str>>()?;
-        Ok(GlobalAttention::build(&payload.current_session, sessions))
+        let mut global = GlobalAttention::build(&payload.current_session, sessions);
+        global.badge_colors = payload
+            .badge_colors
+            .iter()
+            .filter_map(|color| {
+                let status = AttentionStatus::from_str(&color.status)?;
+                let rgb = color.rgb;
+                Some((status, [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]))
+            })
+            .collect();
+        global.attention_disabled = payload.attention_disabled;
+        Ok(global)
     }
 }
 
@@ -539,6 +571,11 @@ mod tests {
             ignore_output: true,
             watched: true,
             from_watch: false,
+            remembered: Some(RememberedStatus {
+                status: AttentionStatus::Done,
+                text: "done: refactor".to_owned(),
+                since_ms: 3,
+            }),
         };
         let protobuf: ProtobufPaneAttention = attention.clone().into();
         assert_eq!(PaneAttention::from(protobuf), attention);

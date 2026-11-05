@@ -5,6 +5,18 @@ use crate::data::{PipeMessage, PipeSource};
 
 use std::convert::TryFrom;
 
+pub fn pipe_message_from_protobuf_bytes(bytes: &[u8]) -> Option<PipeMessage> {
+    use prost::Message;
+    let protobuf_pipe_message = ProtobufPipeMessage::decode(bytes).ok()?;
+    match PipeMessage::try_from(protobuf_pipe_message) {
+        Ok(pipe_message) => Some(pipe_message),
+        Err(e) => {
+            eprintln!("Skipping a pipe message this plugin cannot read: {}", e);
+            None
+        },
+    }
+}
+
 impl TryFrom<ProtobufPipeMessage> for PipeMessage {
     type Error = &'static str;
     fn try_from(protobuf_pipe_message: ProtobufPipeMessage) -> Result<Self, &'static str> {
@@ -98,6 +110,25 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_plugin_skips_a_pipe_message_it_cannot_read_instead_of_failing() {
+        use prost::Message;
+        let unknown_source = ProtobufPipeMessage {
+            source: 999,
+            name: "x".to_owned(),
+            ..Default::default()
+        };
+        assert!(pipe_message_from_protobuf_bytes(&unknown_source.encode_to_vec()).is_none());
+        let keybind = ProtobufPipeMessage {
+            source: ProtobufPipeSource::Keybind as i32,
+            name: "x".to_owned(),
+            ..Default::default()
+        };
+        let read = pipe_message_from_protobuf_bytes(&keybind.encode_to_vec()).unwrap();
+        assert_eq!(read.source, PipeSource::Keybind);
+        assert_eq!(read.name, "x");
+    }
 
     #[test]
     fn every_pipe_source_survives_protobuf() {

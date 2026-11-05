@@ -3,7 +3,7 @@ use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::{CopyOptions, ScreenInstruction};
 use crate::Arc;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, StackListOrientation};
 
 use crate::{
     os_input_output::ServerOsApi, pane_groups::PaneGroups, panes::PaneId,
@@ -250,6 +250,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -349,6 +350,7 @@ fn create_new_tab_with_stacked_pane_list(
         character_cell_info,
         stacked_resize,
         stacked_pane_list,
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -444,6 +446,7 @@ fn create_new_tab_without_pane_frames(size: Size, default_mode: ModeInfo) -> Tab
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -552,6 +555,7 @@ fn create_new_tab_with_swap_layouts(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -665,6 +669,7 @@ fn create_new_tab_with_os_api(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -760,6 +765,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -869,6 +875,7 @@ fn create_new_tab_with_mock_pty_writer(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -969,6 +976,7 @@ fn create_new_tab_with_sixel_support(
         character_cell_size,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -1031,8 +1039,8 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
+use crate::vt_parser;
 use insta::assert_snapshot;
-use vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -1062,8 +1070,8 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1100,8 +1108,8 @@ fn take_snapshot_with_sixel(
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     format!("{:?}", grid)
 }
 
@@ -1135,8 +1143,8 @@ fn take_snapshot_and_cursor_position(
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(&mut grid, ansi_instructions.as_bytes());
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(&mut grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -13291,7 +13299,7 @@ fn open_test_popup(tab: &mut Tab, client_id: ClientId, plugin_id: u32) {
         client_id,
         plugin_id,
         crate::tab::PopupPlacement::At(Position::new(3, 3)),
-        crate::tab::PopupKind::Menu,
+        crate::tab::PopupBehavior::menu(),
         20,
         6,
         None,
@@ -13305,7 +13313,7 @@ fn open_test_prompt_popup(tab: &mut Tab, client_id: ClientId, plugin_id: u32, li
         client_id,
         plugin_id,
         crate::tab::PopupPlacement::At(Position::new(line, 3)),
-        crate::tab::PopupKind::Prompt,
+        crate::tab::PopupBehavior::prompt(),
         20,
         4,
         None,
@@ -13411,7 +13419,7 @@ fn popup_is_placed_inside_the_screen_and_resized_on_request() {
         client_id,
         42,
         crate::tab::PopupPlacement::At(Position::new(18, 115)),
-        crate::tab::PopupKind::Menu,
+        crate::tab::PopupBehavior::menu(),
         20,
         6,
         None,
@@ -13459,7 +13467,7 @@ fn click_outside_popup_requests_close_and_click_inside_is_consumed() {
 }
 
 #[test]
-fn a_click_outside_an_explanation_popup_closes_it_but_not_outside_a_prompt() {
+fn a_click_outside_closes_a_popup_set_to_close_but_not_one_set_to_block() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -13469,15 +13477,16 @@ fn a_click_outside_an_explanation_popup_closes_it_but_not_outside_a_prompt() {
     let (plugin_sender, _plugin_receiver) = channels::unbounded();
     tab.senders
         .replace_to_plugin(SenderWithContext::new(plugin_sender));
-    for (plugin_id, kind, expected) in [
+    for (plugin_id, behavior, expected) in [
         (
             42,
-            crate::tab::PopupKind::Explanation,
+            crate::tab::PopupBehavior::prompt()
+                .on_outside_click(zellij_utils::data::OutsideClick::Close),
             crate::tab::PopupMouseOutcome::CloseRequested,
         ),
         (
             43,
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             crate::tab::PopupMouseOutcome::Consumed,
         ),
     ] {
@@ -13485,7 +13494,7 @@ fn a_click_outside_an_explanation_popup_closes_it_but_not_outside_a_prompt() {
             client_id,
             plugin_id,
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            kind,
+            behavior,
             20,
             6,
             None,
@@ -13595,7 +13604,7 @@ fn a_menu_popup_replaces_only_menus_and_never_a_prompt() {
             client_id,
             44,
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            crate::tab::PopupKind::Menu,
+            crate::tab::PopupBehavior::menu(),
             20,
             6,
             None,
@@ -13652,7 +13661,7 @@ fn prompt_popup_centered_in_a_pane_stays_centered_when_resized() {
         client_id,
         42,
         crate::tab::PopupPlacement::CenteredIn(area),
-        crate::tab::PopupKind::Prompt,
+        crate::tab::PopupBehavior::prompt(),
         20,
         6,
         None,
@@ -14598,6 +14607,562 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 }
 
 #[test]
+fn stack_orientation_from_layout_is_applied_to_new_stack_list() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 3);
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(orientations, vec![StackListOrientation::Horizontal]);
+}
+
+#[test]
+fn adding_pane_to_one_member_layout_stack_keeps_horizontal_orientation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane focus=true
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, vec![(1, None)])),
+    );
+    let client_id = 1;
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 2);
+    assert_eq!(tab.stack_lists.len(), 1);
+    assert_eq!(
+        tab.stack_lists.values().next().unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+}
+
+#[test]
+fn two_singleton_stacks_render_and_resize_like_plain_panes() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let stacked = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_orientation="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_orientation="vertical" size="40%" { pane; }
+            }
+        }
+    "#;
+    let plain = stacked
+        .replace(
+            "pane stacked=true stack_orientation=\"horizontal\" size=\"30%\" { pane; }",
+            "pane size=\"30%\"",
+        )
+        .replace(
+            "pane stacked=true stack_orientation=\"vertical\" size=\"40%\" { pane; }",
+            "pane size=\"40%\"",
+        );
+    let mut outputs = Vec::new();
+    for layout in [stacked, &plain] {
+        let (layout, _) = Layout::from_kdl(layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+        let mut tab = create_new_tab_with_stacked_pane_list(
+            size,
+            ModeInfo::default(),
+            false,
+            Some((layout, vec![(1, None), (2, None), (3, None)])),
+        );
+        tab.set_pane_frames(PaneFrameStyle::Titles);
+        tab.resize_whole_tab(size).unwrap();
+        for (id, x, y) in [(1, 0, 0), (2, 72, 0), (3, 0, 27)] {
+            let geom = tab
+                .tiled_panes
+                .get_pane(PaneId::Terminal(id))
+                .unwrap()
+                .position_and_size();
+            assert_eq!((geom.x, geom.y), (x, y), "pane {id} after resize");
+        }
+        let mut output = Output::default();
+        tab.render(&mut output, None).unwrap();
+        outputs.push(take_snapshot(
+            output.serialize().unwrap().get(&1).unwrap().ansi(),
+            size.rows,
+            size.cols,
+            Palette::default(),
+        ));
+    }
+    assert_eq!(
+        outputs[0], outputs[1],
+        "singleton stack titles and boundaries must render like plain panes"
+    );
+}
+
+#[test]
+fn two_singleton_stacks_keep_independent_orientations_when_extended() {
+    let size = Size {
+        cols: 120,
+        rows: 38,
+    };
+    let (layout, _) = Layout::from_kdl(
+        r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane focus=true
+                    pane stacked=true stack_orientation="horizontal" size="30%" { pane; }
+                }
+                pane stacked=true stack_orientation="vertical" size="40%" { pane; }
+            }
+        }
+    "#,
+        Some("file_name.kdl".into()),
+        None,
+        None,
+    )
+    .unwrap()
+    .template
+    .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((layout, vec![(1, None), (2, None), (3, None)])),
+    );
+    for (root, added, orientation) in [
+        (3, 4, StackListOrientation::Horizontal),
+        (2, 5, StackListOrientation::Vertical),
+    ] {
+        tab.focus_pane_with_id(PaneId::Terminal(root), false, false, 1)
+            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(added),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+                border_style: None,
+            },
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let list = tab
+            .stack_lists
+            .values()
+            .find(|list| list.members.contains(&PaneId::Terminal(root)))
+            .unwrap();
+        assert_eq!(list.orientation, orientation);
+        assert!(list.members.contains(&PaneId::Terminal(added)));
+    }
+    assert_eq!(tab.stack_lists.len(), 2);
+}
+
+#[test]
+fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let client_id = 1;
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let (stack_list_id, list) = tab.stack_lists.iter().next().unwrap();
+    let stack_list_id = *stack_list_id;
+    let visible = list.visible;
+    let member_count = list.members.len();
+    assert_eq!(list.orientation, StackListOrientation::Horizontal);
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&1),
+        "a row of titles takes a single line"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Vertical
+    );
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&(member_count + 1)),
+        "vertical list reserves one row per member plus a padding row"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+    assert_eq!(tab.reserved_top_rows.borrow().get(&visible), Some(&1));
+}
+
+#[test]
+fn stack_list_orientation_survives_degroupify_groupify_cycle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    assert_eq!(stack_member_pane_count(&tab), 3);
+
+    tab.degroupify_all();
+    assert!(
+        tab.stack_lists.is_empty(),
+        "degroupify dissolves the stack list into a classic in-grid stack"
+    );
+
+    tab.groupify_all();
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(
+        orientations,
+        vec![StackListOrientation::Horizontal],
+        "groupify restores the remembered orientation instead of defaulting"
+    );
+}
+
+#[test]
+fn horizontal_stack_list_member_at_point_follows_entry_widths() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane name="foo" focus=true
+                pane name="terminal"
+                pane name="界"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let list = tab.stack_lists.values().next().unwrap();
+    let visible = list.visible;
+    let pane = tab.tiled_panes.get_pane(visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let entry_x = geom.x + offset.left;
+    let entry_cols = geom
+        .cols
+        .as_usize()
+        .saturating_sub(offset.left + offset.right);
+    let row_layout = tab.stack_list_row_layout(list, entry_cols);
+    let entry_widths: Vec<usize> = row_layout.entries.iter().map(|entry| entry.width).collect();
+    assert_eq!(entry_widths, vec![5, 10, 4]);
+    assert_eq!((row_layout.hidden_before, row_layout.hidden_after), (0, 0));
+    let row_width = 5 + 1 + 10 + 1 + 4;
+    let first_entry_start = (entry_cols - row_width) / 2;
+    assert_eq!(row_layout.entries[0].x, first_entry_start);
+    let members = list.members.clone();
+
+    let second_tab_start = entry_x + first_entry_start + 6;
+    let second_member = list.members[1];
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32, second_tab_start as u16)
+        ),
+        second_member
+    );
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32 + 1, second_tab_start as u16)
+        ),
+        visible
+    );
+
+    let mut instructions = output
+        .serialize()
+        .unwrap()
+        .get(&1)
+        .unwrap()
+        .ansi()
+        .to_owned();
+    let mut redraw = Output::default();
+    tab.render(&mut redraw, None).unwrap();
+    if let Some(payload) = redraw.serialize().unwrap().get(&1) {
+        instructions.push_str(payload.ansi());
+    }
+    let rendered = take_snapshot(&instructions, size.rows, size.cols, Palette::default());
+    assert!(rendered.contains(" foo │ terminal │ 界"), "{}", rendered);
+    assert!(!rendered.contains('>'), "{}", rendered);
+
+    for member in &members[1..] {
+        assert!(tab.move_focus_right(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+    for member in members[..members.len() - 1].iter().rev() {
+        assert!(tab.move_focus_left(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+    for member in members {
+        tab.focus_pane_with_id(member, false, false, 1).unwrap();
+        let list = tab.stack_lists.values().next().unwrap();
+        for cols in [0, 1, 20] {
+            let entries = tab.stack_list_row_layout(list, cols).entries;
+            assert_eq!(entries.iter().any(|entry| entry.member == member), cols > 0);
+        }
+    }
+
+    tab.resize_whole_tab(Size { cols: 20, rows: 20 }).unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(3), false, false, 1)
+        .unwrap();
+    let mut resized = Output::default();
+    tab.render(&mut resized, None).unwrap();
+    let rendered = take_snapshot(
+        resized.serialize().unwrap().get(&1).unwrap().ansi(),
+        20,
+        20,
+        Palette::default(),
+    );
+    assert!(rendered.contains("‹1 "), "{}", rendered);
+    assert!(rendered.contains('界'), "{}", rendered);
+    let list = tab.stack_lists.values().next().unwrap();
+    let pane = tab.tiled_panes.get_pane(list.visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let cols = geom.cols.as_usize() - offset.left - offset.right;
+    for entry in tab.stack_list_row_layout(list, cols).entries {
+        for x in entry.x..entry.x + entry.width {
+            assert_eq!(
+                tab.stack_list_member_at_point(
+                    list.visible,
+                    &Position::new(geom.y as i32, (geom.x + offset.left + x) as u16)
+                ),
+                entry.member
+            );
+        }
+    }
+}
+
+#[test]
+fn stack_titles_are_found_and_toggled_through_any_member() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane name="foo" focus=true
+                pane name="bar"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, vec![(1, None), (2, None)])),
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let list = tab.stack_lists.values().next().unwrap().clone();
+    let hidden = *list.members.iter().find(|m| **m != list.visible).unwrap();
+    let geom = tab
+        .tiled_panes
+        .get_pane(list.visible)
+        .unwrap()
+        .current_geom();
+    let on_titles = Position::new(geom.y as i32, (geom.x + 2) as u16);
+    let below_titles = Position::new(geom.y as i32 + 1, (geom.x + 2) as u16);
+    assert!(tab.position_is_on_stack_list_titles(list.visible, &on_titles));
+    assert!(tab.position_is_on_stack_list_titles(hidden, &on_titles));
+    assert!(!tab.position_is_on_stack_list_titles(list.visible, &below_titles));
+
+    assert!(tab.toggle_stack_list_orientation_of_pane(hidden));
+    assert_eq!(
+        tab.stack_list_orientation_of_member(&list.visible),
+        Some(StackListOrientation::Vertical)
+    );
+    assert!(tab.position_is_on_stack_list_titles(list.visible, &below_titles));
+    assert!(!tab.toggle_stack_list_orientation_of_pane(PaneId::Terminal(99)));
+}
+
+#[test]
+fn stack_list_row_layout_centers_entries_that_fit() {
+    let members = [
+        (PaneId::Terminal(1), 3),
+        (PaneId::Terminal(2), 8),
+        (PaneId::Terminal(3), 2),
+    ];
+    let layout = super::layout_stack_list_row(&members, 1, 31);
+    let positions: Vec<(usize, usize)> = layout
+        .entries
+        .iter()
+        .map(|entry| (entry.x, entry.width))
+        .collect();
+    assert_eq!(positions, vec![(5, 5), (11, 10), (22, 4)]);
+    assert_eq!((layout.hidden_before, layout.hidden_after), (0, 0));
+}
+
+#[test]
+fn stack_list_row_layout_counts_hidden_entries_on_each_side() {
+    let members: Vec<(PaneId, usize)> = (1..=10).map(|id| (PaneId::Terminal(id), 4)).collect();
+    for selected in 0..members.len() {
+        let layout = super::layout_stack_list_row(&members, selected, 30);
+        let shown: Vec<PaneId> = layout.entries.iter().map(|entry| entry.member).collect();
+        assert!(
+            shown.contains(&members[selected].0),
+            "selected={}",
+            selected
+        );
+        assert_eq!(
+            layout.hidden_before + shown.len() + layout.hidden_after,
+            members.len()
+        );
+        let before = super::stack_list_row_overflow_width(layout.hidden_before);
+        let after = super::stack_list_row_overflow_width(layout.hidden_after);
+        let first = layout.entries.first().unwrap();
+        let last = layout.entries.last().unwrap();
+        assert!(first.x >= before, "selected={}", selected);
+        assert!(last.x + last.width + after <= 30, "selected={}", selected);
+        let selected_entry = layout
+            .entries
+            .iter()
+            .find(|entry| entry.member == members[selected].0)
+            .unwrap();
+        match (layout.hidden_before, layout.hidden_after) {
+            (0, _) => assert_eq!(first.x, 0, "selected={}", selected),
+            (_, 0) => assert_eq!(last.x + last.width, 30, "selected={}", selected),
+            _ => assert_eq!(selected_entry.x, (30 - 6) / 2, "selected={}", selected),
+        }
+    }
+}
+
+#[test]
 fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
     let size = Size {
         cols: 150,
@@ -15064,6 +15629,7 @@ fn create_new_tab_with_plugin_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -16855,6 +17421,7 @@ fn create_new_tab_with_server_receiver(
         character_cell_info,
         stacked_resize,
         Rc::new(RefCell::new(false)),
+        StackListOrientation::default(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
@@ -17167,8 +17734,8 @@ fn osc99_grid_parses_and_stores_notification() {
     );
 
     // Feed OSC 99 through vte parser
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(
+    let mut vte_parser = vt_parser::Parser::new();
+    vte_parser.feed(
         &mut grid,
         b"\x1b]99;i=gridtest:p=title;Grid notification\x07",
     );
@@ -17759,7 +18326,7 @@ fn open_test_info_popup(
         client_id,
         plugin_id,
         crate::tab::PopupPlacement::Corner(corner),
-        crate::tab::PopupKind::Info,
+        crate::tab::PopupBehavior::info(),
         30,
         rows,
         None,
@@ -17946,7 +18513,7 @@ fn a_held_back_popup_asking_for_permissions_is_shown() {
         client_id,
         42,
         crate::tab::PopupPlacement::At(Position::new(3, 3)),
-        crate::tab::PopupKind::Prompt,
+        crate::tab::PopupBehavior::prompt(),
         60,
         8,
         None,
@@ -18078,7 +18645,7 @@ fn a_popup_plugin_shows_its_permission_request_and_takes_the_answer() {
         client_id,
         42,
         crate::tab::PopupPlacement::At(Position::new(3, 3)),
-        crate::tab::PopupKind::Prompt,
+        crate::tab::PopupBehavior::prompt(),
         60,
         8,
         None,
@@ -18119,6 +18686,108 @@ fn a_popup_plugin_shows_its_permission_request_and_takes_the_answer() {
     assert!(tab.send_key_to_popup(client_id, key('a'), vec![b'a'], false));
     let (keys, _) = keys_sent_to_plugin(&plugin_receiver, 42);
     assert_eq!(keys, vec![key('a')]);
+}
+
+fn ask_popup_for_read_permission(tab: &mut Tab, plugin_id: u32) {
+    tab.request_plugin_permissions(
+        plugin_id,
+        Some(zellij_utils::data::PluginPermission::new(
+            "my-plugin".to_owned(),
+            vec![zellij_utils::data::PermissionType::ReadApplicationState],
+        )),
+    );
+}
+
+#[test]
+fn an_unfocused_popup_takes_focus_while_it_asks_for_permissions() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    open_test_prompt_popup(&mut tab, client_id, 42, 8);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    assert_eq!(tab.popup_plugin_id(client_id), Some(42));
+    ask_popup_for_read_permission(&mut tab, 50);
+    assert_eq!(tab.popup_plugin_id(client_id), Some(50));
+    keys_sent_to_plugin(&plugin_receiver, 50);
+    let key =
+        |c: char| zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c));
+    assert!(tab.send_key_to_popup(client_id, key('y'), vec![b'y'], false));
+    let (_, results) = keys_sent_to_plugin(&plugin_receiver, 50);
+    assert_eq!(results.len(), 1);
+    assert_eq!(tab.popup_plugin_id(client_id), Some(42));
+    assert_eq!(tab.unfocused_popup_plugin_ids(client_id), vec![50]);
+}
+
+#[test]
+fn dismissing_info_popups_keeps_a_popup_asking_for_permissions() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    ask_popup_for_read_permission(&mut tab, 50);
+    assert!(tab.close_info_popups(client_id).is_empty());
+    assert_eq!(tab.popup_plugin_id(client_id), Some(50));
+    keys_sent_to_plugin(&plugin_receiver, 50);
+    let key =
+        |c: char| zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c));
+    assert!(tab.send_key_to_popup(client_id, key('y'), vec![b'y'], false));
+    assert_eq!(tab.close_info_popups(client_id), vec![50]);
+}
+
+#[test]
+fn a_popup_set_to_close_blocks_outside_clicks_while_it_asks_for_permissions() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    tab.open_popup(
+        client_id,
+        42,
+        crate::tab::PopupPlacement::At(Position::new(3, 3)),
+        crate::tab::PopupBehavior::prompt()
+            .on_outside_click(zellij_utils::data::OutsideClick::Close),
+        60,
+        8,
+        None,
+        String::from("prompt"),
+    )
+    .unwrap();
+    ask_popup_for_read_permission(&mut tab, 42);
+    let outside = MouseEvent::new_left_press_event(Position::new(15, 100));
+    assert_eq!(
+        tab.handle_popup_mouse_event(&outside, client_id),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    keys_sent_to_plugin(&plugin_receiver, 42);
+    let key =
+        |c: char| zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c));
+    assert!(tab.send_key_to_popup(client_id, key('n'), vec![b'n'], false));
+    let (_, results) = keys_sent_to_plugin(&plugin_receiver, 42);
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        tab.handle_popup_mouse_event(&outside, client_id),
+        Some(crate::tab::PopupMouseOutcome::CloseRequested)
+    );
 }
 
 fn center_of_pane(tab: &Tab, pane_id: PaneId) -> Position {
@@ -18962,7 +19631,7 @@ fn open_test_session_card(
     tab: &mut Tab,
     client_id: ClientId,
     plugin_id: u32,
-    kind: crate::tab::PopupKind,
+    kind: crate::tab::PopupBehavior,
 ) {
     let run = RunPluginOrAlias::from_url("session-manager", &None, None, None).unwrap();
     tab.open_popup(
@@ -19074,7 +19743,7 @@ fn the_session_card_popup_is_found_by_its_location_and_focus() {
         zellij_utils::data::PopupCorner::TopLeft,
         4,
     );
-    open_test_session_card(&mut tab, client_id, 70, crate::tab::PopupKind::Info);
+    open_test_session_card(&mut tab, client_id, 70, crate::tab::PopupBehavior::info());
     assert_eq!(
         tab.popup_for_location(client_id, "session-manager"),
         Some((70, false))
@@ -19082,7 +19751,7 @@ fn the_session_card_popup_is_found_by_its_location_and_focus() {
     let mut unfocused = tab.unfocused_popup_plugin_ids(client_id);
     unfocused.sort();
     assert_eq!(unfocused, vec![50, 70]);
-    tab.set_popup_kind(70, crate::tab::PopupKind::Prompt);
+    tab.set_popup_focused(70, true);
     assert_eq!(
         tab.popup_for_location(client_id, "session-manager"),
         Some((70, true))
@@ -19102,7 +19771,7 @@ fn a_plugin_pane_can_be_dumped_with_its_colours_for_previews() {
     let (plugin_sender, _plugin_receiver) = channels::unbounded();
     tab.senders
         .replace_to_plugin(SenderWithContext::new(plugin_sender));
-    open_test_session_card(&mut tab, client_id, 80, crate::tab::PopupKind::Info);
+    open_test_session_card(&mut tab, client_id, 80, crate::tab::PopupBehavior::info());
     tab.handle_plugin_bytes(80, client_id, "\u{1b}[31mplugin text".as_bytes().to_vec())
         .unwrap();
     let popup = &tab.popups.get(&client_id).unwrap()[0];

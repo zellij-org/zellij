@@ -2659,6 +2659,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 .corner
                                 .as_deref()
                                 .and_then(|corner| corner.parse().ok()),
+                            capture_all_keys: payload.capture_all_keys.unwrap_or(false),
+                            outside_click: payload
+                                .outside_click
+                                .as_deref()
+                                .and_then(|outside_click| outside_click.parse().ok()),
                         },
                     })
                 },
@@ -2939,6 +2944,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::DesktopIntegration(request))
                 },
                 _ => Err("Mismatched payload for DesktopIntegration"),
+            },
+            Some(CommandName::RegisterSettingsEntry) => match protobuf_plugin_command.payload {
+                Some(Payload::RegisterSettingsEntryPayload(title)) => {
+                    Ok(PluginCommand::RegisterSettingsEntry(title))
+                },
+                _ => Err("Mismatched payload for RegisterSettingsEntry"),
+            },
+            Some(CommandName::UnregisterSettingsEntry) => {
+                if protobuf_plugin_command.payload.is_some() {
+                    return Err("UnregisterSettingsEntry should not have a payload");
+                }
+                Ok(PluginCommand::UnregisterSettingsEntry)
             },
             Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
                 Some(Payload::DeleteThemeFilePayload(name)) => {
@@ -4902,6 +4919,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     height: height as u32,
                     focused: Some(options.focused),
                     corner: options.corner.map(|corner| corner.to_string()),
+                    capture_all_keys: Some(options.capture_all_keys),
+                    outside_click: options
+                        .outside_click
+                        .map(|outside_click| outside_click.to_string()),
                 })),
             }),
             PluginCommand::ReadConfig => Ok(ProtobufPluginCommand {
@@ -5161,6 +5182,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSavedSessionPreview as i32,
                 payload: Some(Payload::GetSavedSessionPreviewPayload(name)),
+            }),
+            PluginCommand::RegisterSettingsEntry(title) => Ok(ProtobufPluginCommand {
+                name: CommandName::RegisterSettingsEntry as i32,
+                payload: Some(Payload::RegisterSettingsEntryPayload(title)),
+            }),
+            PluginCommand::UnregisterSettingsEntry => Ok(ProtobufPluginCommand {
+                name: CommandName::UnregisterSettingsEntry as i32,
+                payload: None,
             }),
             PluginCommand::DesktopIntegration(request) => Ok(ProtobufPluginCommand {
                 name: CommandName::DesktopIntegration as i32,
@@ -6201,6 +6230,39 @@ mod tests {
     }
 
     #[test]
+    fn open_plugin_popup_keeps_its_options_through_protobuf() {
+        use crate::data::{OutsideClick, PopupCorner};
+        for options in [
+            PopupOptions::default(),
+            PopupOptions {
+                focused: true,
+                corner: Some(PopupCorner::BottomLeft),
+                capture_all_keys: true,
+                outside_click: Some(OutsideClick::Block),
+            },
+        ] {
+            let original = PluginCommand::OpenPluginPopup {
+                plugin_url: "zellij:session-manager".to_owned(),
+                configuration: BTreeMap::new(),
+                line: 2,
+                column: 4,
+                width: 30,
+                height: 8,
+                options: options.clone(),
+            };
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::OpenPluginPopup {
+                    options: decoded_options,
+                    ..
+                } => assert_eq!(decoded_options, options),
+                other => panic!("expected OpenPluginPopup, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
     fn set_pane_border_style_protobuf_round_trip() {
         use crate::data::{BorderStyleOverride, LineStyle, PaneId};
         let border_style = BorderStyleOverride {
@@ -6549,6 +6611,18 @@ mod tests {
             PluginCommand::SetLiveViewInput(false),
         ];
         for original in commands {
+            let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            assert_eq!(format!("{:?}", decoded), format!("{:?}", original));
+        }
+    }
+
+    #[test]
+    fn settings_entry_commands_protobuf_round_trip() {
+        for original in [
+            PluginCommand::RegisterSettingsEntry("Status bar".to_owned()),
+            PluginCommand::UnregisterSettingsEntry,
+        ] {
             let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
             let decoded: PluginCommand = protobuf.try_into().expect("decode");
             assert_eq!(format!("{:?}", decoded), format!("{:?}", original));

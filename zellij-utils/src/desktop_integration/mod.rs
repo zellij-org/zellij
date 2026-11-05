@@ -36,7 +36,10 @@ pub const OPT_OUT_ATTENTION: [(&str, &str); 6] = [
     ("tab_markers", "false"),
     ("startup_card", "\"never\""),
     ("tray_icon", "false"),
-    ("desktop_notifications", "\"none\""),
+    (
+        "desktop_notifications",
+        "{ needs_you false; failed false; done false; }",
+    ),
 ];
 
 pub const OPT_OUT_TOP_LEVEL: [(&str, &str); 1] = [("session_indicator", "false")];

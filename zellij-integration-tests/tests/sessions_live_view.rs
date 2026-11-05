@@ -10,6 +10,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
     GridSnapshot, LayoutInfo, NestedHarness, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
+use zellij_utils::input::actions::Action;
 
 const BROWSER_TABS: &str = "│ Sessions (";
 const CLICK_TO_TYPE: &str = zellij_integration_tests::inbox::TYPE_INTO_IT_HINT;
@@ -71,6 +72,16 @@ fn layout_size_of(terminal: &FakePtyHandle) -> (u16, u16) {
 }
 
 fn view_area(grid_snapshot: &GridSnapshot, session: &str) -> Option<Area> {
+    framed_view_area(grid_snapshot, session).or_else(|| {
+        if !shows_inbox(grid_snapshot) && !grid_snapshot.contains("typing into") {
+            return None;
+        }
+        let (x, y, cols, rows) = zellij_integration_tests::inbox::inbox_view_area(grid_snapshot)?;
+        Some(Area { x, y, cols, rows })
+    })
+}
+
+fn framed_view_area(grid_snapshot: &GridSnapshot, session: &str) -> Option<Area> {
     let place = format!(" {} › ", session);
     let lines = grid_snapshot.lines();
     let row = lines
@@ -165,7 +176,7 @@ fn select_session(zellij: &TestSession, name: &str) {
 }
 
 fn open_the_sessions(zellij: &TestSession, names: &[&str]) {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the browser opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(BROWSER_TABS) && grid_snapshot.contains(SESSIONS_HELP)
     });
@@ -184,6 +195,16 @@ fn wait_for_the_settled_view(
         (cols, rows) == view_size
     });
     view_size
+}
+
+fn turn_browse_resizing_on(zellij: &TestSession) {
+    zellij.wait_until("browsing does not resize by default", |grid_snapshot| {
+        grid_snapshot.contains("resize off")
+    });
+    zellij.main_client().send_action(Action::ToggleMirrorResize);
+    zellij.wait_until("the action turns resizing on", |grid_snapshot| {
+        !grid_snapshot.contains("resize off")
+    });
 }
 
 fn close_the_browser(zellij: &TestSession) {
@@ -266,16 +287,11 @@ fn selecting_a_tab_row_and_a_pane_row_switches_the_view_to_that_pane() {
 fn an_exited_session_shows_its_saved_preview() {
     let (mut zellij, _) = main_session();
     leave_exited_sessions(&["gone-one"]);
-    zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the exited group is listed", |grid_snapshot| {
-        grid_snapshot.contains("▸ Exited (1)")
+    zellij.send_stdin(&keys::INBOX_KEY);
+    zellij.wait_until("the exited session is listed as recent", |grid_snapshot| {
+        grid_snapshot.contains("Recent") && grid_snapshot.contains("gone-one")
     });
     zellij.send_stdin(END);
-    zellij.send_stdin(&keys::ENTER);
-    zellij.wait_until("the exited group opens", |grid_snapshot| {
-        grid_snapshot.contains("▾ Exited (1)")
-    });
-    zellij.send_stdin(&keys::DOWN);
     let grid_snapshot = zellij.wait_until("the saved preview is shown", |grid_snapshot| {
         grid_snapshot.contains("┌ gone-one ") && grid_snapshot.contains("Folder:")
     });
@@ -356,7 +372,7 @@ fn clicking_a_session_and_clicking_it_again_attaches_instead_of_typing() {
 }
 
 #[test]
-fn a_click_on_the_view_types_into_the_pane_and_f9_stops_typing() {
+fn a_click_on_the_view_types_into_the_pane_and_the_inbox_key_stops_typing() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = source_session("$ type in here");
     let name = other.session_name();
@@ -373,7 +389,7 @@ fn a_click_on_the_view_types_into_the_pane_and_f9_stops_typing() {
         stdin.ends_with(b"hello")
     });
     press_release_key(&zellij);
-    zellij.wait_until("F9 stops typing", |grid_snapshot| {
+    zellij.wait_until("the inbox key stops typing", |grid_snapshot| {
         !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(CLICK_TO_TYPE)
     });
     zellij.send_stdin(b"x");
@@ -382,14 +398,14 @@ fn a_click_on_the_view_types_into_the_pane_and_f9_stops_typing() {
     });
     assert!(
         terminal.stdin_bytes().ends_with(b"hello"),
-        "F9 reached the pane: {:?}",
+        "the inbox key reached the pane: {:?}",
         String::from_utf8_lossy(&terminal.stdin_bytes())
     );
     zellij.quit();
 }
 
 #[test]
-fn browsing_sessions_resizes_each_pane_once_it_settles_going_back_does_not_and_closing_restores_all(
+fn browsing_sessions_with_resizing_on_resizes_each_pane_once_it_settles_going_back_does_not_and_closing_restores_all(
 ) {
     let (mut zellij, _) = main_session();
     let sources: Vec<(BackgroundTestSession, FakePtyHandle, String)> = (0..3)
@@ -408,6 +424,9 @@ fn browsing_sessions_resizes_each_pane_once_it_settles_going_back_does_not_and_c
         .map(|(session, _, _)| session.session_name())
         .collect();
     open_the_sessions(&zellij, &names);
+    select_session(&zellij, sources[0].0.session_name());
+    wait_for_the_view_of(&zellij, sources[0].0.session_name(), &sources[0].2);
+    turn_browse_resizing_on(&zellij);
     let mut view_size = None;
     for (session, terminal, text) in &sources {
         select_session(&zellij, session.session_name());
@@ -458,6 +477,7 @@ fn switching_between_the_inbox_and_the_sessions_keeps_the_browsed_panes_until_th
         shown_inside_the_view(grid_snapshot, item.session_name(), "the inbox item pane")
     });
     let inbox_view_size = view_size_of(&inbox_view, item.session_name());
+    turn_browse_resizing_on(&zellij);
     item_terminal.wait_for_size("the item pane is resized", |cols, rows| {
         (cols, rows) == inbox_view_size
     });
@@ -504,6 +524,12 @@ fn a_nested_session_does_not_show_or_resize_the_pane_of_its_parent_that_runs_it(
     let guest_terminal = nested.guest.expect_pty_spawn();
     guest_terminal.output(PROMPT);
     nested.wait_for_host_to_acknowledge_guest();
+    nested.guest.wait_for_app_load();
+    nested
+        .guest
+        .wait_until("the guest is ready for keys", |grid_snapshot| {
+            grid_snapshot.contains("Descend:") && grid_snapshot.contains(" running ")
+        });
     let host_name = nested.host.session_name().to_owned();
     let host_pane_sizes = nested.host_pane.size_history();
     open_the_sessions(&nested.guest, &[&host_name]);
@@ -524,7 +550,7 @@ fn a_nested_session_does_not_show_or_resize_the_pane_of_its_parent_that_runs_it(
 }
 
 #[test]
-fn alt_enter_types_into_the_shown_pane_with_or_without_kitty_encoding() {
+fn alt_enter_types_into_the_shown_pane_and_stops_typing_with_or_without_kitty_encoding() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = source_session("$ alt enter here");
     let name = other.session_name();
@@ -543,8 +569,8 @@ fn alt_enter_types_into_the_shown_pane_with_or_without_kitty_encoding() {
         terminal.wait_for_stdin("the typed text reached the pane", |stdin| {
             stdin.ends_with(typed.as_bytes())
         });
-        press_release_key(&zellij);
-        zellij.wait_until("F9 stops typing", |grid_snapshot| {
+        zellij.send_stdin(&alt_enter);
+        zellij.wait_until("alt enter again stops typing", |grid_snapshot| {
             !grid_snapshot.contains(TYPING_INTO) && grid_snapshot.contains(CLICK_TO_TYPE)
         });
     }
@@ -568,6 +594,8 @@ fn a_selection_without_a_live_pane_keeps_the_browsed_pane_at_its_size_until_the_
     let name = other.session_name();
     open_the_sessions(&zellij, &[name]);
     select_session(&zellij, name);
+    wait_for_the_view_of(&zellij, name, "the browsed pane");
+    turn_browse_resizing_on(&zellij);
     let view_size = wait_for_the_settled_view(&zellij, &other, &terminals[0], "the browsed pane");
     let settled_sizes = terminals[0].size_history();
     zellij.send_stdin(&keys::RIGHT);

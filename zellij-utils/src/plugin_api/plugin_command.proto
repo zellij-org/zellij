@@ -271,6 +271,8 @@ enum CommandName {
   ToggleBars = 281;
   HideBars = 282;
   ShowBars = 283;
+  RegisterSettingsEntry = 284;
+  UnregisterSettingsEntry = 285;
 }
 
 message PluginCommand {
@@ -481,6 +483,7 @@ message PluginCommand {
     SetLiveViewInputPayload set_live_view_input_payload = 223;
     BarNamesPayload toggle_bars_payload = 224;
     BarNamesPayload hide_bars_payload = 225;
+    string register_settings_entry_payload = 226;
   }
 }
 
@@ -748,6 +751,8 @@ message OpenPluginPopupPayload {
   uint32 height = 6;
   optional bool focused = 7;
   optional string corner = 8;
+  optional bool capture_all_keys = 9;
+  optional string outside_click = 10;
 }
 
 message SetPopupSizePayload {

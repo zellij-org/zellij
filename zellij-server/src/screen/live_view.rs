@@ -1,5 +1,5 @@
 use super::Screen;
-use crate::pane_mirror::live_view::{parse_release_key, release_key_text_for, DragButton};
+use crate::pane_mirror::live_view::{parse_release_key, DragButton};
 use crate::pane_mirror::{
     LiveViewKeyOutcome, LiveViewRect, LiveViewReport, LiveViewSlot, MirrorEventRoute, MirrorView,
 };
@@ -91,17 +91,12 @@ impl Screen {
         }
     }
 
-    fn live_view_release_key_text(&self, client_id: ClientId) -> String {
-        let live_views = self.live_views.borrow();
-        if let Some(text) = live_views.release_key_text.clone() {
-            return text;
-        }
-        let bound = live_views
-            .captures
-            .lock()
-            .map(|captures| captures.bound_keys_of(client_id))
-            .unwrap_or_default();
-        release_key_text_for(bound)
+    fn live_view_release_key_text(&self) -> String {
+        self.live_views
+            .borrow()
+            .release_key_text
+            .clone()
+            .unwrap_or_default()
     }
 
     fn send_live_view_report(
@@ -110,7 +105,7 @@ impl Screen {
         client_id: ClientId,
         report: LiveViewReport,
     ) {
-        let release_key = self.live_view_release_key_text(client_id);
+        let release_key = self.live_view_release_key_text();
         let _ = self
             .bus
             .senders
@@ -136,7 +131,7 @@ impl Screen {
         let clients = self.live_views.borrow().clients();
         let release_keys: BTreeMap<ClientId, String> = clients
             .into_iter()
-            .map(|client_id| (client_id, self.live_view_release_key_text(client_id)))
+            .map(|client_id| (client_id, self.live_view_release_key_text()))
             .collect();
         self.live_views.borrow_mut().note_release_keys(release_keys);
     }
@@ -273,6 +268,14 @@ impl Screen {
                 .release(&key, LiveViewRelease::Plugin);
         }
         self.after_live_view_capture_change();
+    }
+
+    pub(crate) fn release_live_view_for_the_inbox_key(&mut self, client_id: ClientId) -> bool {
+        if self.live_views.borrow().captured_by(client_id).is_none() {
+            return false;
+        }
+        self.release_live_view_input(client_id, LiveViewRelease::Key);
+        true
     }
 
     pub(crate) fn release_live_view_input(&mut self, client_id: ClientId, reason: LiveViewRelease) {

@@ -143,10 +143,11 @@ impl Page {
             ])
             .with_paragraph(vec![
                 styled(
-                    Text::from(
-                        "<F9> opens the inbox (or click the indicator, or w in Session mode):",
-                    )
-                    .color_substring(3, "<F9>"),
+                    Text::from(format!(
+                        "{} opens the inbox (or click the indicator):",
+                        session_mode_keys(base_mode, "i")
+                    ))
+                    .color_substring(3, &session_mode_keys(base_mode, "i")),
                 ),
                 line("preview output, reply into a pane, go to it, or mark items seen."),
                 styled(
@@ -289,8 +290,11 @@ impl Page {
             DESKTOP_TIP_INDEX + 1,
             vec![
                 styled(
-                    Text::from("Press <F9> to open the inbox: everything that needs you, in every")
-                        .color_substring(3, "<F9>"),
+                    Text::from(format!(
+                        "Press {} to open the inbox: everything that needs you, in every",
+                        session_mode_keys(base_mode, "i")
+                    ))
+                    .color_substring(3, &session_mode_keys(base_mode, "i")),
                 ),
                 line("session. Preview a pane's output, reply to it, or go straight there."),
                 styled(

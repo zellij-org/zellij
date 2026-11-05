@@ -44,8 +44,8 @@ fn new_grid(rows: usize, cols: usize) -> Grid {
 }
 
 fn feed(grid: &mut Grid, content: &str) {
-    let mut parser = vte::Parser::new();
-    parser.advance(grid, content.as_bytes());
+    let mut parser = crate::vt_parser::Parser::new();
+    parser.feed(grid, content.as_bytes());
 }
 
 fn grid_with(content: &str, grapheme_mode: bool) -> Grid {

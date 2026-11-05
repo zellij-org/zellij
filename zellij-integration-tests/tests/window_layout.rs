@@ -53,7 +53,10 @@ impl WindowClient {
             .send_client_msg(handshake.message)
             .expect("failed to send the attach message");
         sender
-            .send_client_msg(ClientToServerMsg::StructuredRenderSupport { supported: true })
+            .send_client_msg(ClientToServerMsg::StructuredRenderSupport {
+                supported: true,
+                row_shifts: false,
+            })
             .expect("failed to declare structured rendering");
 
         let (messages_tx, messages) = mpsc::channel();
