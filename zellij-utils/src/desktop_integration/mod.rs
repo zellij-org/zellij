@@ -6,6 +6,10 @@ use std::path::PathBuf;
 pub mod com;
 #[cfg(not(target_family = "wasm"))]
 pub mod desktop_entry;
+#[cfg(target_os = "macos")]
+pub mod icns;
+#[cfg(target_os = "macos")]
+pub mod macos_bundle;
 #[cfg(not(target_family = "wasm"))]
 pub mod platform;
 #[cfg(windows)]
