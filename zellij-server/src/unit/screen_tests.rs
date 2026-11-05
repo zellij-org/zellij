@@ -6353,6 +6353,74 @@ fn subscriber_removed_on_remove_client() {
 }
 
 #[test]
+fn per_client_state_does_not_outlive_the_connection() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let client_id = 1;
+
+    // Black-box: focusing panes records per-client history.
+    screen
+        .focus_pane_with_id(PaneId::Terminal(1), true, false, client_id)
+        .expect("TEST");
+    assert!(screen.pane_history.contains_key(&client_id));
+
+    // White-box: the remaining client-keyed maps have no other
+    // disconnect cleanup path, so seed them directly.
+    screen
+        .pending_client_vte_instructions
+        .insert(client_id, vec!["stale".to_string()]);
+    screen.clipboard_paste_clients.insert(client_id, None);
+    screen
+        .client_kitty_host_state
+        .borrow_mut()
+        .insert(client_id, crate::output::HostKittyState::default());
+    screen.open_context_menus.insert(
+        client_id,
+        (
+            zellij_utils::data::ContextMenuContext {
+                kind: zellij_utils::data::ContextMenuKind::Pane,
+                pane_id: None,
+                pane_is_floating: false,
+                tab_index: None,
+                tab_id: None,
+                tab_count: 0,
+                line: 0,
+                column: 0,
+                client_id,
+                paste_shortcut: None,
+            },
+            Vec::new(),
+        ),
+    );
+    screen
+        .currently_marking_pane_group
+        .borrow_mut()
+        .insert(client_id, false);
+    screen
+        .last_mobile_state_sent
+        .insert(client_id, zellij_utils::ipc::MobileStatePayload::default());
+
+    screen.remove_client(client_id).expect("TEST");
+
+    assert!(!screen.pane_history.contains_key(&client_id));
+    assert!(!screen
+        .pending_client_vte_instructions
+        .contains_key(&client_id));
+    assert!(!screen.clipboard_paste_clients.contains_key(&client_id));
+    assert!(!screen
+        .client_kitty_host_state
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.open_context_menus.contains_key(&client_id));
+    assert!(!screen
+        .currently_marking_pane_group
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.last_mobile_state_sent.contains_key(&client_id));
+}
+
+#[test]
 fn subscriber_removed_when_all_panes_closed() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, messages) = create_new_screen_with_message_capture(size);

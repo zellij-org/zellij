@@ -7098,6 +7098,25 @@ impl Screen {
         }
         self.mode_info.remove(&client_id);
         self.client_keybinds.remove(&client_id);
+        // Per-client view and interaction state must not outlive the
+        // connection, or client churn grows it for the session's lifetime.
+        // (last_reported_client_visible_plugins is deliberately kept: it
+        // is replaced on the next report, and comparing against it is how
+        // plugins learn that this client no longer sees them.)
+        self.pane_history.remove(&client_id);
+        self.pending_client_vte_instructions.remove(&client_id);
+        self.clipboard_paste_clients.remove(&client_id);
+        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.open_context_menus.remove(&client_id);
+        self.currently_marking_pane_group
+            .borrow_mut()
+            .remove(&client_id);
+        self.last_mobile_state_sent.remove(&client_id);
+        self.watcher_clients.remove(&client_id);
+        self.client_session_histories.remove(&client_id);
+        self.last_session_history_infos.remove(&client_id);
+        self.pending_session_card_away_since.remove(&client_id);
+        self.mode_hints_requested.remove(&client_id);
         self.held_keybinds_requests.remove(&client_id);
         self.pending_keybinds_requests.retain(|_, pending| {
             !matches!(pending.reply_to, KeybindsReplyTo::Host { client_id: host_client_id, .. } if host_client_id == client_id)
@@ -13413,9 +13432,8 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
-                screen.client_session_histories.remove(&client_id);
-                screen.last_session_history_infos.remove(&client_id);
-                screen.pending_session_card_away_since.remove(&client_id);
+                // Per-client history maps are owned by remove_client;
+                // see the cleanup ledger there.
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.clear_live_views_of_client(client_id);
                 screen.mode_hints_requested.remove(&client_id);
