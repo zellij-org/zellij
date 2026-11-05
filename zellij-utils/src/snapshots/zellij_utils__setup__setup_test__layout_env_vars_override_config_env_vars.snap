@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 965
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -11935,6 +11936,9 @@ Config {
     },
     terminal: TerminalConfig {
         font: None,
+        font_bold: None,
+        font_italic: None,
+        font_bold_italic: None,
         font_size: None,
         system_fonts: None,
         ligatures: None,

@@ -215,7 +215,11 @@ pub enum SettingKind {
         max: i64,
         step: i64,
     },
-    FontFamily,
+    /// A font family picked from the installed ones; `unset` labels the
+    /// choice that leaves it unset.
+    FontFamily {
+        unset: &'static str,
+    },
     Keybindings,
     Mousebindings,
     Block,
@@ -233,6 +237,7 @@ pub struct SettingInfo {
 
 pub const UNSET_CHOICE: &str = "(not set)";
 pub const BUNDLED_FONT: &str = "(bundled font)";
+pub const SAME_AS_FONT: &str = "(same as Font)";
 pub const MISSING_SUFFIX: &str = " (missing)";
 
 pub fn option_value(label: &str) -> &str {
@@ -1237,8 +1242,37 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         SettingKey::TerminalFont => info(
             "Font",
             "Font family, chosen from the monospaced fonts installed on this computer",
-            FontFamily,
+            FontFamily {
+                unset: BUNDLED_FONT,
+            },
             "bundled font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontBold => info(
+            "Bold font",
+            "Font family for bold text in place of the Font's own bold",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontItalic => info(
+            "Italic font",
+            "Font family for italic text in place of the Font's own italic",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontBoldItalic => info(
+            "Bold italic font",
+            "Font family for bold italic text in place of the Font's own bold italic",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
             OnlyYou,
         ),
         SettingKey::TerminalFontSize => info(
@@ -1920,8 +1954,15 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | SerializationInterval
         | PostCommandDiscoveryHook => (C::Sessions, "Resurrection"),
         MirrorSession | DisableSessionMetadata => (C::Sessions, "Behaviour"),
-        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
-        | TerminalLigatures | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
+        TerminalFont
+        | TerminalFontBold
+        | TerminalFontItalic
+        | TerminalFontBoldItalic
+        | TerminalFontSize
+        | TerminalFontWeight
+        | TerminalSystemFonts
+        | TerminalLigatures
+        | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
         TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => {
             (C::ZellijTerminal, "Cursor")
         },
@@ -2557,7 +2598,9 @@ mod tests {
         }
         assert_eq!(
             describe(SettingKey::TerminalFont).kind,
-            SettingKind::FontFamily
+            SettingKind::FontFamily {
+                unset: BUNDLED_FONT
+            }
         );
     }
 
