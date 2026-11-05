@@ -1033,6 +1033,7 @@ message TogglePaneIdFullscreenPayload {
 
 message TogglePaneEmbedOrEjectForPaneIdPayload {
   PaneId pane_id = 1;
+  bool show_and_focus = 2;
 }
 
 message CloseTabWithIndexPayload {

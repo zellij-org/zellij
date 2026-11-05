@@ -280,6 +280,11 @@ impl SetupScreen {
 
     fn line_label(&self, line: Line) -> String {
         match (line, self.upgrade()) {
+            (Line::Copy, Some(upgrade)) if upgrade.same_version => format!(
+                "Replace Zellij {} at {} with this build",
+                upgrade.to,
+                upgrade.path.display()
+            ),
             (Line::Copy, Some(upgrade)) => {
                 format!("Update Zellij from {} to {}", upgrade.from, upgrade.to)
             },
@@ -288,6 +293,9 @@ impl SetupScreen {
     }
 
     fn ticked_by_default(&self, line: Line) -> bool {
+        if line == Line::Copy && self.upgrade().map(|u| u.same_version).unwrap_or(false) {
+            return false;
+        }
         line.ticked_by_default()
     }
 
@@ -640,6 +648,14 @@ impl SetupScreen {
         }
         match topic {
             Topic::Line(Line::Copy) => match self.upgrade() {
+                Some(upgrade) if upgrade.same_version => {
+                    paragraphs.push(format!(
+                        "A different build of Zellij {} is already at {}. Checking this replaces it with the build you are running now.",
+                        upgrade.to,
+                        upgrade.path.display()
+                    ));
+                    paragraphs.push("Both builds have the same version number, so nothing needs updating unless you want this build to be the one the desktop entry and the default terminal run.".to_owned());
+                },
                 Some(upgrade) => {
                     paragraphs.push(format!(
                         "Replaces the older Zellij at {} with this version. The old file is overwritten. Sessions that are already running keep using the old version until they end.",
@@ -1050,6 +1066,9 @@ impl SetupScreen {
                         uninstall: *line == Line::Entry && self.can_uninstall(),
                     }));
                     if let (Line::Copy, Some(upgrade)) = (line, self.upgrade()) {
+                        if upgrade.same_version {
+                            continue;
+                        }
                         let at = format!("    at {}", upgrade.path.display());
                         blocks.push(Block::Text(Text::from(truncate(&at, width)).dim_all()));
                     }

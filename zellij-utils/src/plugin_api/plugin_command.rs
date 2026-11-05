@@ -1981,6 +1981,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     )) => match toggle_pane_embed_or_eject_payload.pane_id {
                         Some(pane_id) => Ok(PluginCommand::TogglePaneEmbedOrEjectForPaneId(
                             pane_id.try_into()?,
+                            toggle_pane_embed_or_eject_payload.show_and_focus,
                         )),
                         _ => Err("Malformed toggle_pane_embed_or_eject_payload payload"),
                     },
@@ -4288,14 +4289,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id) => Ok(ProtobufPluginCommand {
-                name: CommandName::TogglePaneEmbedOrEjectForPaneId as i32,
-                payload: Some(Payload::TogglePaneEmbedOrEjectForPaneIdPayload(
-                    TogglePaneEmbedOrEjectForPaneIdPayload {
-                        pane_id: Some(pane_id.try_into()?),
-                    },
-                )),
-            }),
+            PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, show_and_focus) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::TogglePaneEmbedOrEjectForPaneId as i32,
+                    payload: Some(Payload::TogglePaneEmbedOrEjectForPaneIdPayload(
+                        TogglePaneEmbedOrEjectForPaneIdPayload {
+                            pane_id: Some(pane_id.try_into()?),
+                            show_and_focus,
+                        },
+                    )),
+                })
+            },
             PluginCommand::CloseTabWithIndex(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseTabWithIndex as i32,
                 payload: Some(Payload::CloseTabWithIndexPayload(
@@ -6260,6 +6264,38 @@ mod tests {
                 other => panic!("expected OpenPluginPopup, got {:?}", other),
             }
         }
+    }
+
+    #[test]
+    fn toggle_pane_embed_or_eject_keeps_its_focus_flag_and_defaults_to_off() {
+        use crate::data::PaneId;
+        for show_and_focus in [false, true] {
+            let original =
+                PluginCommand::TogglePaneEmbedOrEjectForPaneId(PaneId::Terminal(2), show_and_focus);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            match decoded {
+                PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, decoded_flag) => {
+                    assert_eq!(pane_id, PaneId::Terminal(2));
+                    assert_eq!(decoded_flag, show_and_focus);
+                },
+                other => panic!("expected TogglePaneEmbedOrEjectForPaneId, got {:?}", other),
+            }
+        }
+        let without_flag = ProtobufPluginCommand {
+            name: CommandName::TogglePaneEmbedOrEjectForPaneId as i32,
+            payload: Some(Payload::TogglePaneEmbedOrEjectForPaneIdPayload(
+                TogglePaneEmbedOrEjectForPaneIdPayload {
+                    pane_id: Some(PaneId::Terminal(2).try_into().unwrap()),
+                    ..Default::default()
+                },
+            )),
+        };
+        let decoded: PluginCommand = without_flag.try_into().expect("decode");
+        assert!(matches!(
+            decoded,
+            PluginCommand::TogglePaneEmbedOrEjectForPaneId(PaneId::Terminal(2), false)
+        ));
     }
 
     #[test]

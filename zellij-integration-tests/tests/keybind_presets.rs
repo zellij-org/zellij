@@ -11,7 +11,7 @@ const ARROW_DOWN: &[u8] = b"\x1b[B";
 const ARROW_UP: &[u8] = b"\x1b[A";
 
 const KEYBOARD_CATEGORY: usize = 2;
-const ADVANCED_CATEGORY: usize = 10;
+const ADVANCED_CATEGORY: usize = 11;
 const KEYS_LINK: &str = "Key bindings and preset…";
 const BACK_ON_KEYS_LINK: &str = "Opens the key bindings page";
 

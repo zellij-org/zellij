@@ -21583,3 +21583,51 @@ fn showing_bars_above_and_below_split_panes_restores_the_layout() {
     tab.resize_whole_tab(size).unwrap();
     assert_eq!(all_tiled_geoms(&tab), before);
 }
+
+#[test]
+pub fn making_a_pane_floating_by_pane_id_shows_and_focuses_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, client_id)
+        .unwrap();
+    assert!(!tab.are_floating_panes_visible());
+    tab.move_pane_between_layers(new_pane_id, Some(client_id))
+        .unwrap();
+    assert!(tab.pane_id_is_floating(&new_pane_id));
+    assert!(tab.are_floating_panes_visible());
+    assert_eq!(tab.get_active_pane_id(client_id), Some(new_pane_id));
+}
+
+#[test]
+pub fn making_a_pane_tiled_by_pane_id_hides_floating_panes_and_focuses_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, true);
+    let new_pane_id = PaneId::Terminal(2);
+    let other_floating_pane_id = PaneId::Terminal(3);
+    tab.horizontal_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.horizontal_split(other_floating_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.move_pane_between_layers(other_floating_pane_id, Some(client_id))
+        .unwrap();
+    tab.move_pane_between_layers(new_pane_id, Some(client_id))
+        .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    tab.move_pane_between_layers(new_pane_id, Some(client_id))
+        .unwrap();
+    assert!(!tab.pane_id_is_floating(&new_pane_id));
+    assert!(tab.pane_id_is_floating(&other_floating_pane_id));
+    assert!(!tab.are_floating_panes_visible());
+    assert_eq!(tab.get_active_pane_id(client_id), Some(new_pane_id));
+}

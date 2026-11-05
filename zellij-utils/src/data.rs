@@ -5184,7 +5184,7 @@ pub enum PluginCommand {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
-    TogglePaneEmbedOrEjectForPaneId(PaneId),
+    TogglePaneEmbedOrEjectForPaneId(PaneId, bool),
     CloseTabWithIndex(usize), // usize - tab_index
     BreakPanesToNewTab(Vec<PaneId>, Option<String>, bool), // bool -
     // should_change_focus_to_new_tab,

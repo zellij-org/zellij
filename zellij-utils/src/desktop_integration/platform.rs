@@ -263,10 +263,55 @@ pub fn copy_state(environment: &Environment, destination: &Path) -> CopyState {
     if location::same_contents(running, destination) {
         return CopyState::Copied;
     }
-    match upgrade_offer(destination) {
+    match upgrade_offer(destination).or_else(|| rebuild_offer(destination)) {
         Some(upgrade) => CopyState::Update(upgrade),
         None => CopyState::Occupied,
     }
+}
+
+pub fn upgrade_state_text(
+    destination: &Path,
+    upgrade: &crate::desktop_integration::Upgrade,
+) -> String {
+    if upgrade.same_version {
+        format!(
+            "{} is a different build of Zellij {}",
+            destination.display(),
+            upgrade.from
+        )
+    } else {
+        format!("{} is version {}", destination.display(), upgrade.from)
+    }
+}
+
+pub fn rebuild_offer(existing: &Path) -> Option<crate::desktop_integration::Upgrade> {
+    let installed = version_of(existing)?;
+    let running = crate::consts::VERSION;
+    let offer = same_version_offer(existing, &installed, running)?;
+    if !folder_is_writable(existing.parent()?) {
+        return None;
+    }
+    Some(offer)
+}
+
+fn same_version_offer(
+    existing: &Path,
+    installed: &str,
+    running: &str,
+) -> Option<crate::desktop_integration::Upgrade> {
+    use crate::desktop_integration::{version_number, Upgrade};
+    if location::package_manager_of(existing).is_some() {
+        return None;
+    }
+    if version_number(installed)? != version_number(running)? {
+        return None;
+    }
+    Some(Upgrade {
+        path: existing.to_path_buf(),
+        from: running.to_owned(),
+        to: running.to_owned(),
+        same_version: true,
+    })
 }
 
 pub fn entry_binary(
@@ -327,6 +372,7 @@ pub fn upgrade_offer(existing: &Path) -> Option<crate::desktop_integration::Upgr
             .unwrap_or(&installed)
             .to_owned(),
         to: running.to_owned(),
+        same_version: false,
     })
 }
 
@@ -697,7 +743,7 @@ mod linux {
                 return owned_status(
                     Item::CopyBinary,
                     Owner::Nobody,
-                    format!("{} is version {}", destination.display(), upgrade.from),
+                    super::upgrade_state_text(&destination, &upgrade),
                 )
                 .with_upgrade(upgrade)
                 .with_target(destination);
@@ -878,11 +924,20 @@ mod linux {
         };
         update(move |state: &mut IntegrationState| state.binary_copy = Some(record))?;
         let mut message = format!("Wrote {}", destination.display());
-        if let Some(upgrade) = &upgrade {
-            message.push_str(&format!(
-                "\nUpdated Zellij from {} to {}",
-                upgrade.from, upgrade.to
-            ));
+        match &upgrade {
+            Some(upgrade) if upgrade.same_version => {
+                message.push_str(&format!(
+                    "\nReplaced the other build of Zellij {} with this one",
+                    upgrade.to
+                ));
+            },
+            Some(upgrade) => {
+                message.push_str(&format!(
+                    "\nUpdated Zellij from {} to {}",
+                    upgrade.from, upgrade.to
+                ));
+            },
+            None => {},
         }
         if let Some(dir) = destination.parent() {
             if !location::path_contains(dir) {
@@ -1426,7 +1481,7 @@ mod windows_desktop {
                     return owned_status(
                         Item::CopyBinary,
                         Owner::Nobody,
-                        format!("{} is version {}", destination.display(), upgrade.from),
+                        super::upgrade_state_text(&destination, &upgrade),
                     )
                     .with_upgrade(upgrade)
                     .with_target(destination.clone());
@@ -1853,6 +1908,26 @@ mod unsupported {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_different_build_of_the_same_version_is_offered_as_a_replacement() {
+        let path = Path::new("/home/someone/.local/bin/zellij");
+        let offer = same_version_offer(path, "zellij 0.46.0", "0.46.0").unwrap();
+        assert!(offer.same_version);
+        assert_eq!(offer.from, "0.46.0");
+        assert_eq!(offer.to, "0.46.0");
+        assert_eq!(
+            upgrade_state_text(path, &offer),
+            "/home/someone/.local/bin/zellij is a different build of Zellij 0.46.0"
+        );
+    }
+
+    #[test]
+    fn a_different_version_is_not_offered_as_a_replacement_build() {
+        let path = Path::new("/home/someone/.local/bin/zellij");
+        assert!(same_version_offer(path, "zellij 0.45.0", "0.46.0").is_none());
+        assert!(same_version_offer(path, "zellij 0.47.0", "0.46.0").is_none());
+    }
 
     #[test]
     fn items_are_installed_in_dependency_order_and_removed_in_reverse() {

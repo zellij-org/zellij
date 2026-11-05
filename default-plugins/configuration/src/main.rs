@@ -92,7 +92,14 @@ impl ZellijPlugin for State {
                 EventType::PluginSettingsEntries,
             ]);
             set_close_directly(false);
-            self.screen = Screen::Settings(SettingsScreen::new());
+            let mut settings_screen = SettingsScreen::new();
+            if let Some(page) = configuration
+                .get("page")
+                .and_then(|page| settings::Category::from_slug(page))
+            {
+                settings_screen.open_at(page);
+            }
+            self.screen = Screen::Settings(settings_screen);
             rename_plugin_pane(own_plugin_id, "Settings");
             if let Some(coordinates) = FloatingPaneCoordinates::new(
                 Some("10%".to_owned()),

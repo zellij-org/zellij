@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
@@ -74,6 +75,12 @@ pub enum ApplyStatus {
     Failed(Option<String>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shortcut {
+    pub keys: String,
+    pub action: Action,
+}
+
 #[derive(Debug)]
 pub struct KeybindingState {
     expected: Vec<ExpectedBind>,
@@ -82,6 +89,8 @@ pub struct KeybindingState {
     applied: Vec<ExpectedBind>,
     base_mode: InputMode,
     status: ApplyStatus,
+    inbox: Option<Shortcut>,
+    session_manager: Option<Shortcut>,
 }
 
 impl Default for KeybindingState {
@@ -93,6 +102,8 @@ impl Default for KeybindingState {
             applied: vec![],
             base_mode: InputMode::Normal,
             status: ApplyStatus::NotApplied,
+            inbox: None,
+            session_manager: None,
         }
     }
 }
@@ -102,9 +113,6 @@ impl KeybindingState {
         let changed = self.base_mode != base_mode;
         self.base_mode = base_mode;
         changed
-    }
-    pub fn base_mode(&self) -> InputMode {
-        self.base_mode
     }
     pub fn base_mode_name(&self) -> String {
         format!("{:?}", self.base_mode).to_uppercase()
@@ -128,10 +136,51 @@ impl KeybindingState {
                 }
             }
         }
-        let changed = missing != self.missing || conflicts != self.conflicts;
+        let inbox = find_shortcut(keybinds, base_mode, |action| {
+            matches!(action, Action::ToggleSessionCard)
+        });
+        let session_manager = find_shortcut(keybinds, base_mode, |action| {
+            action.launches_plugin("session-manager")
+                || action.launches_plugin("zellij:session-manager")
+        });
+        let changed = missing != self.missing
+            || conflicts != self.conflicts
+            || inbox != self.inbox
+            || session_manager != self.session_manager;
         self.missing = missing;
         self.conflicts = conflicts;
+        self.inbox = inbox;
+        self.session_manager = session_manager;
         changed
+    }
+    pub fn inbox_keys(&self) -> Option<String> {
+        self.inbox.as_ref().map(|shortcut| shortcut.keys.clone())
+    }
+    pub fn session_manager_keys(&self) -> Option<String> {
+        self.session_manager
+            .as_ref()
+            .map(|shortcut| shortcut.keys.clone())
+    }
+    pub fn open_inbox(&self) {
+        let action = self
+            .inbox
+            .as_ref()
+            .map(|shortcut| shortcut.action.clone())
+            .unwrap_or(Action::ToggleSessionCard);
+        run_action(action, BTreeMap::new());
+    }
+    pub fn open_session_manager(&self) {
+        match &self.session_manager {
+            Some(shortcut) => run_action(shortcut.action.clone(), BTreeMap::new()),
+            None => {
+                open_plugin_pane_floating(
+                    "zellij:session-manager",
+                    BTreeMap::new(),
+                    None,
+                    BTreeMap::new(),
+                );
+            },
+        }
     }
     pub fn has_missing_binds(&self) -> bool {
         !self.missing.is_empty()
@@ -153,9 +202,6 @@ impl KeybindingState {
     }
     pub fn has_conflicts(&self) -> bool {
         !self.conflicts.is_empty()
-    }
-    pub fn bind_for_action(&self, action: &Action) -> Option<&ExpectedBind> {
-        self.expected.iter().find(|bind| &bind.action == action)
     }
     pub fn binds_to_add(&self) -> Vec<&ExpectedBind> {
         if !self.applied.is_empty() {
@@ -395,6 +441,56 @@ pub fn expected_binds() -> Vec<ExpectedBind> {
             in_base_mode: false,
         },
     ]
+}
+
+const MAX_MODE_HOPS: usize = 3;
+
+pub fn find_shortcut(
+    keybinds: &KeybindsVec,
+    base_mode: InputMode,
+    is_target: impl Fn(&Action) -> bool,
+) -> Option<Shortcut> {
+    let mut visited = vec![base_mode];
+    let mut frontier: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![(base_mode, vec![])];
+    for _ in 0..=MAX_MODE_HOPS {
+        let mut next_frontier = vec![];
+        for (mode, path) in &frontier {
+            let Some((_, mode_binds)) = keybinds.iter().find(|(m, _)| m == mode) else {
+                continue;
+            };
+            for (key, actions) in mode_binds {
+                if let Some(action) = actions.iter().find(|action| is_target(action)) {
+                    let mut keys = path.clone();
+                    keys.push(key.clone());
+                    return Some(Shortcut {
+                        keys: keys
+                            .iter()
+                            .map(|key| key.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" + "),
+                        action: action.clone(),
+                    });
+                }
+            }
+            for (key, actions) in mode_binds {
+                for action in actions {
+                    if let Action::SwitchToMode { input_mode } = action {
+                        if !visited.contains(input_mode) {
+                            visited.push(*input_mode);
+                            let mut keys = path.clone();
+                            keys.push(key.clone());
+                            next_frontier.push((*input_mode, keys));
+                        }
+                    }
+                }
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+    None
 }
 
 fn action_is_bound(keybinds: &KeybindsVec, action: &Action) -> bool {
