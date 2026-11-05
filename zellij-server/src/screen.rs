@@ -850,7 +850,13 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
     ),
-    SerializeLayoutForResurrection,
+    SerializeLayoutForResurrection(
+        /// Set by the periodic scheduler before queueing; cleared when
+        /// the screen thread actually runs the pass. Lets at most one
+        /// pending serialization exist so ticks cannot pile up behind a
+        /// stalled screen thread.
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ),
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
     UpdateSessionNameDraft(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenameSession(ClientId, Option<NotificationEnd>),
@@ -1522,7 +1528,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(..) => {
                 ScreenContext::SerializeLayoutForResurrection
             },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
@@ -14689,7 +14695,11 @@ pub(crate) fn screen_thread_main(
 
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(coalesce) => {
+                // Clear before doing the work so a tick arriving during
+                // this pass queues a genuinely-new pending pass rather
+                // than being dropped while we serialize.
+                coalesce.store(false, std::sync::atomic::Ordering::SeqCst);
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
