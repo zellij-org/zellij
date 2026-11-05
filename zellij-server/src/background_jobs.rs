@@ -470,12 +470,20 @@ pub(crate) fn background_jobs_main(
         let senders = bus.senders.clone();
         let serialization_ms = serialization_interval.unwrap_or(DEFAULT_SERIALIZATION_INTERVAL);
         runtime.spawn(async move {
+            // At most one pending serialization: while a queued pass
+            // hasn't run, further ticks are redundant and must not
+            // accumulate instructions behind a stalled screen thread.
+            let pending = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let mut ticker =
                 tokio::time::interval(std::time::Duration::from_millis(serialization_ms));
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                let _ = senders.send_to_screen(ScreenInstruction::SerializeLayoutForResurrection);
+                if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    let _ = senders.send_to_screen(
+                        ScreenInstruction::SerializeLayoutForResurrection(pending.clone()),
+                    );
+                }
             }
         });
     }
