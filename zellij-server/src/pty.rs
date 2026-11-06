@@ -1171,6 +1171,15 @@ impl Pty {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
+        // A cwd-only new-pane request still needs the server's environment-derived shell
+        // when no default_shell was configured.
+        let terminal_action = terminal_action.map(|terminal_action| match terminal_action {
+            TerminalAction::RunCommand(command) if command.command.as_os_str().is_empty() => {
+                self.get_default_terminal(command.cwd, None)
+            },
+            terminal_action => terminal_action,
+        });
+
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
             ClientTabIndexOrPaneId::ClientId(client_id)

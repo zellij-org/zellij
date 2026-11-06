@@ -1,10 +1,51 @@
 #![cfg(unix)]
 
+use clap::Parser;
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, GridSnapshot,
-    Size, PROMPT, TERMINAL_SIZE,
+    Size, TestRunner, PROMPT, TERMINAL_SIZE,
 };
+use zellij_utils::{
+    cli::{CliArgs, Command},
+    input::command::TerminalAction,
+};
+
+#[test]
+fn new_pane_with_cwd_uses_the_session_shell() {
+    for config in ["", r#"default_shell "/test/custom-shell""#] {
+        let mut zellij = TestRunner::new(TERMINAL_SIZE).with_config(config).start();
+        let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+        let shell = match first_terminal.terminal_action().unwrap() {
+            TerminalAction::RunCommand(command) => command.command,
+            other => panic!("Expected shell, got {:?}", other),
+        };
+        let cwd = tempfile::tempdir().unwrap();
+        let args = CliArgs::try_parse_from([
+            "zellij",
+            "action",
+            "new-pane",
+            "--cwd",
+            cwd.path().to_str().unwrap(),
+        ])
+        .unwrap();
+        let Some(Command::Action(action)) = args.command else {
+            panic!("Expected CLI action");
+        };
+        assert_eq!(zellij.run_cli_action(*action), 0);
+        let new_terminal = zellij.expect_pty_spawn();
+        match new_terminal.terminal_action().unwrap() {
+            TerminalAction::RunCommand(command) => {
+                assert_eq!(command.cwd.as_deref(), Some(cwd.path()));
+                assert_eq!(command.command, shell);
+                assert!(!command.hold_on_start);
+                assert!(!command.hold_on_close);
+            },
+            other => panic!("Expected shell, got {:?}", other),
+        }
+        zellij.quit();
+    }
+}
 
 #[test]
 fn override_layout_from_default_to_compact() {
