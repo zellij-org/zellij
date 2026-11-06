@@ -298,15 +298,19 @@ impl ClientSender {
         let (client_buffer_sender, client_buffer_receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
+            let mut stream_failed = false;
             while let Some(msg) = client_buffer_receiver.recv() {
-                sender
-                    .send_server_msg(msg)
-                    .with_context(err_context)
-                    .non_fatal();
+                if let Err(error) = sender.send_server_msg(msg).with_context(err_context) {
+                    log::error!("{:?}; stopping client writer", error);
+                    stream_failed = true;
+                    break;
+                }
             }
-            let _ = sender.send_server_msg(ServerToClientMsg::Exit {
-                exit_reason: ExitReason::Disconnect,
-            });
+            if !stream_failed {
+                let _ = sender.send_server_msg(ServerToClientMsg::Exit {
+                    exit_reason: ExitReason::Disconnect,
+                });
+            }
         });
         ClientSender {
             client_id,

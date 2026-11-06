@@ -365,6 +365,12 @@ pub struct TabOverrideResult {
     pub plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClosePaneSource {
+    External,
+    ChildExit,
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -503,6 +509,7 @@ pub enum ScreenInstruction {
         Option<ClientId>,
         Option<NotificationEnd>,
         Option<i32>,
+        ClosePaneSource,
     ), // i32 -> optional exit
     // status
     HoldPane(PaneId, Option<i32>, RunCommand),
@@ -843,7 +850,13 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
     ),
-    SerializeLayoutForResurrection,
+    SerializeLayoutForResurrection(
+        /// Set by the periodic scheduler before queueing; cleared when
+        /// the screen thread actually runs the pass. Lets at most one
+        /// pending serialization exist so ticks cannot pile up behind a
+        /// stalled screen thread.
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ),
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
     UpdateSessionNameDraft(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenameSession(ClientId, Option<NotificationEnd>),
@@ -1515,7 +1528,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(..) => {
                 ScreenContext::SerializeLayoutForResurrection
             },
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
@@ -2291,6 +2304,23 @@ const STARTUP_SENTINEL_TOKEN: u32 = 0;
 /// network-pathological cases ever see this fire.
 const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
+/// Focus-history depth retained per client. Ordered oldest→newest;
+/// entries beyond the cap evict the oldest.
+const MAX_PANE_HISTORY_ENTRIES: usize = 64;
+
+/// Tab focus-history depth retained per client, same recency
+/// semantics as `MAX_PANE_HISTORY_ENTRIES`.
+const MAX_TAB_HISTORY_ENTRIES: usize = 64;
+
+/// Only recent tab focus is meaningful; without a bound, repeated tab
+/// switching grows the history for the session's lifetime.
+fn cap_tab_history(history: &mut Vec<usize>) {
+    if history.len() > MAX_TAB_HISTORY_ENTRIES {
+        let overflow = history.len() - MAX_TAB_HISTORY_ENTRIES;
+        history.drain(..overflow);
+    }
+}
+
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
 const RECENTLY_DISCONNECTED_CLIENTS_LIMIT: usize = 256;
@@ -2814,6 +2844,7 @@ impl Screen {
                 let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
                 client_tab_history.retain(|&e| e != new_tab_index);
                 client_tab_history.push(old_active_index);
+                cap_tab_history(client_tab_history);
             },
             None => {
                 self.active_tab_ids.insert(client_id, new_tab_index);
@@ -7067,6 +7098,25 @@ impl Screen {
         }
         self.mode_info.remove(&client_id);
         self.client_keybinds.remove(&client_id);
+        // Per-client view and interaction state must not outlive the
+        // connection, or client churn grows it for the session's lifetime.
+        // (last_reported_client_visible_plugins is deliberately kept: it
+        // is replaced on the next report, and comparing against it is how
+        // plugins learn that this client no longer sees them.)
+        self.pane_history.remove(&client_id);
+        self.pending_client_vte_instructions.remove(&client_id);
+        self.clipboard_paste_clients.remove(&client_id);
+        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.open_context_menus.remove(&client_id);
+        self.currently_marking_pane_group
+            .borrow_mut()
+            .remove(&client_id);
+        self.last_mobile_state_sent.remove(&client_id);
+        self.watcher_clients.remove(&client_id);
+        self.client_session_histories.remove(&client_id);
+        self.last_session_history_infos.remove(&client_id);
+        self.pending_session_card_away_since.remove(&client_id);
+        self.mode_hints_requested.remove(&client_id);
         self.held_keybinds_requests.remove(&client_id);
         self.pending_keybinds_requests.retain(|_, pending| {
             !matches!(pending.reply_to, KeybindsReplyTo::Host { client_id: host_client_id, .. } if host_client_id == client_id)
@@ -10509,6 +10559,13 @@ impl Screen {
                 let history = self.pane_history.entry(client_id).or_insert_with(|| vec![]);
                 history.retain(|e| e != &active_pane_id);
                 history.push(active_pane_id.into());
+                // Focus history is only meaningful for recency; without
+                // a cap it accrues one entry per distinct focus for the
+                // session's lifetime.
+                if history.len() > MAX_PANE_HISTORY_ENTRIES {
+                    let overflow = history.len() - MAX_PANE_HISTORY_ENTRIES;
+                    history.drain(..overflow);
+                }
             }
         }
     }
@@ -12568,6 +12625,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                 // waiting for it
                 exit_status,
+                close_pane_source,
             ) => {
                 if let PaneId::Plugin(plugin_id) = id {
                     if screen.close_popup_with_plugin_id(plugin_id) {
@@ -12597,10 +12655,30 @@ pub(crate) fn screen_thread_main(
                             if screen.pane_ids_never_created.remove(&id) {
                                 pending_events_waiting_for_pane.remove(&id);
                                 closed_pane_was_never_created = true;
-                            } else {
+                            } else if close_pane_source == ClosePaneSource::ChildExit {
+                                // Replayed once the pane exists, which also
+                                // cleans up its PTY. Cleaning up now would stop
+                                // reading output the command printed before it
+                                // exited.
                                 pending_events_waiting_for_pane.entry(id).or_default().push(
-                                    ScreenInstruction::ClosePane(id, None, None, exit_status),
+                                    ScreenInstruction::ClosePane(
+                                        id,
+                                        None,
+                                        None,
+                                        exit_status,
+                                        ClosePaneSource::ChildExit,
+                                    ),
                                 );
+                                continue;
+                            } else if let PaneId::Plugin(_) = id {
+                                // A headless plugin has no pane, but closing it
+                                // must still unload it (via the PTY cleanup).
+                            } else {
+                                log::warn!(
+                                    "ignoring external close for pane {:?} because it does not exist",
+                                    id
+                                );
+                                continue;
                             }
                         }
                     },
@@ -12755,13 +12833,15 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::SetPaneFrameStyle(pane_frame_style, _completion_tx) => {
-                screen.pane_frame_style = pane_frame_style;
-                for tab in screen.tabs.values_mut() {
-                    tab.set_pane_frames(screen.pane_frame_style);
-                    tab.update_input_modes()?;
+                if screen.pane_frame_style != pane_frame_style {
+                    screen.pane_frame_style = pane_frame_style;
+                    for tab in screen.tabs.values_mut() {
+                        tab.set_pane_frames(screen.pane_frame_style);
+                        tab.update_input_modes()?;
+                    }
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
             },
             ScreenInstruction::SwitchTabNext(
                 client_id,
@@ -13352,9 +13432,8 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
-                screen.client_session_histories.remove(&client_id);
-                screen.last_session_history_infos.remove(&client_id);
-                screen.pending_session_card_away_since.remove(&client_id);
+                // Per-client history maps are owned by remove_client;
+                // see the cleanup ledger there.
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.clear_live_views_of_client(client_id);
                 screen.mode_hints_requested.remove(&client_id);
@@ -13440,22 +13519,27 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            any_changed |=
+                                tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_highlight_pane_frame_color_override(
+                            any_changed |= tab.add_highlight_pane_frame_color_override(
                                 pane_id,
                                 error_text.clone(),
                                 None,
@@ -13464,19 +13548,24 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.clear_pane_frame_color_override(pane_id, None);
+                            any_changed |= tab.clear_pane_frame_color_override(pane_id, None);
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::SetTabBellFlash(tab_id, is_flashing) => {
                 if let Some(tab) = screen.tabs.values_mut().find(|t| t.id == tab_id) {
@@ -14520,11 +14609,9 @@ pub(crate) fn screen_thread_main(
                         screen.switch_active_tab(tab_position, None, true, client_id)?;
                         screen.render(None)?;
 
-                        screen
-                            .tab_history
-                            .entry(client_id)
-                            .or_insert_with(Vec::new)
-                            .push(tab_id);
+                        let client_tab_history = screen.tab_history.entry(client_id).or_default();
+                        client_tab_history.push(tab_id);
+                        cap_tab_history(client_tab_history);
                     } else {
                         log::error!("Tab with ID {} not found", tab_id);
                     }
@@ -14659,7 +14746,11 @@ pub(crate) fn screen_thread_main(
 
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(coalesce) => {
+                // Clear before doing the work so a tick arriving during
+                // this pass queues a genuinely-new pending pass rather
+                // than being dropped while we serialize.
+                coalesce.store(false, std::sync::atomic::Ordering::SeqCst);
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }

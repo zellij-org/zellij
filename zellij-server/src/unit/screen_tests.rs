@@ -1,5 +1,6 @@
 use super::{
-    screen_thread_main, CopyOptions, Screen, ScreenInstruction, MAX_REMEMBERED_PANES_NEVER_CREATED,
+    screen_thread_main, ClosePaneSource, CopyOptions, Screen, ScreenInstruction,
+    MAX_REMEMBERED_PANES_NEVER_CREATED,
 };
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
@@ -6349,6 +6350,74 @@ fn subscriber_removed_on_remove_client() {
 
     let _ = screen.remove_client(100);
     assert!(!screen.pane_render_subscribers.contains_key(&100));
+}
+
+#[test]
+fn per_client_state_does_not_outlive_the_connection() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let client_id = 1;
+
+    // Black-box: focusing panes records per-client history.
+    screen
+        .focus_pane_with_id(PaneId::Terminal(1), true, false, client_id)
+        .expect("TEST");
+    assert!(screen.pane_history.contains_key(&client_id));
+
+    // White-box: the remaining client-keyed maps have no other
+    // disconnect cleanup path, so seed them directly.
+    screen
+        .pending_client_vte_instructions
+        .insert(client_id, vec!["stale".to_string()]);
+    screen.clipboard_paste_clients.insert(client_id, None);
+    screen
+        .client_kitty_host_state
+        .borrow_mut()
+        .insert(client_id, crate::output::HostKittyState::default());
+    screen.open_context_menus.insert(
+        client_id,
+        (
+            zellij_utils::data::ContextMenuContext {
+                kind: zellij_utils::data::ContextMenuKind::Pane,
+                pane_id: None,
+                pane_is_floating: false,
+                tab_index: None,
+                tab_id: None,
+                tab_count: 0,
+                line: 0,
+                column: 0,
+                client_id,
+                paste_shortcut: None,
+            },
+            Vec::new(),
+        ),
+    );
+    screen
+        .currently_marking_pane_group
+        .borrow_mut()
+        .insert(client_id, false);
+    screen
+        .last_mobile_state_sent
+        .insert(client_id, zellij_utils::ipc::MobileStatePayload::default());
+
+    screen.remove_client(client_id).expect("TEST");
+
+    assert!(!screen.pane_history.contains_key(&client_id));
+    assert!(!screen
+        .pending_client_vte_instructions
+        .contains_key(&client_id));
+    assert!(!screen.clipboard_paste_clients.contains_key(&client_id));
+    assert!(!screen
+        .client_kitty_host_state
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.open_context_menus.contains_key(&client_id));
+    assert!(!screen
+        .currently_marking_pane_group
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.last_mobile_state_sent.contains_key(&client_id));
 }
 
 #[test]
@@ -20408,4 +20477,113 @@ fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint(
         "a shifted frame must not resend every row"
     );
     assert_eq!(client.screen(), expected.screen());
+}
+
+/// Send `close` for a pane that does not exist yet, then create the pane, and
+/// count the PTY cleanups the screen requested for it.
+fn close_then_create_pane_cleanups(close: ScreenInstruction, pid: u32) -> usize {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(close);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(pid),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        ClientTabIndexOrPaneId::ClientId(1),
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let cleanups = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| {
+            matches!(instruction, PtyInstruction::ClosePane(PaneId::Terminal(id), _) if *id == pid)
+        })
+        .count();
+    cleanups
+}
+
+#[test]
+pub fn an_external_close_for_a_pane_that_does_not_exist_yet_is_ignored() {
+    // A stale or speculative close (CLI, plugin) must not be replayed onto a
+    // pane that is created later with the same id.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            None,
+            ClosePaneSource::External,
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 0);
+}
+
+#[test]
+pub fn a_child_exit_before_its_pane_exists_closes_the_pane_once_created() {
+    // A command that exits before its pane is laid out must still close it.
+    // The only cleanup comes from closing the created pane: none is sent
+    // while the pane does not exist yet.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            Some(0),
+            ClosePaneSource::ChildExit,
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 1);
+}
+
+#[test]
+pub fn an_external_close_for_a_headless_plugin_still_unloads_it() {
+    // Background plugins have no pane; the close must still reach the PTY
+    // thread, which unloads the plugin.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ClosePane(
+        PaneId::Plugin(9),
+        None,
+        None,
+        None,
+        ClosePaneSource::External,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    assert!(received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|instruction| matches!(instruction, PtyInstruction::ClosePane(PaneId::Plugin(9), _))));
 }

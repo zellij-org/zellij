@@ -164,6 +164,7 @@ pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
+const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneNotCreatedReason {
     NoRoom,
@@ -467,6 +468,7 @@ pub(crate) struct Tab {
     hidden_bars: HiddenBars,
     auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
+    pending_vte_event_bytes: HashMap<u32, usize>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
     link_handler: Rc<RefCell<LinkHandler>>,
@@ -1019,14 +1021,15 @@ pub trait Pane {
     fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
         None
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool;
     fn add_highlight_pane_frame_color_override(
         &mut self,
         _text: Option<String>,
         _client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
+        false
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>);
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool;
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
@@ -1303,7 +1306,7 @@ impl Tab {
         );
 
         let clipboard_provider = match copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+            Some(command) => ClipboardProvider::command(CopyCommand::new(command)),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
@@ -1344,6 +1347,7 @@ impl Tab {
             hidden_bars: HiddenBars::default(),
             auto_layout,
             pending_vte_events: HashMap::new(),
+            pending_vte_event_bytes: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
             pane_being_resized_with_mouse: None,
@@ -5157,6 +5161,7 @@ impl Tab {
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
+        let bytes_len = bytes.len();
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -5171,13 +5176,20 @@ impl Tab {
             // If the pane is scrolled buffer the vte events
             if terminal_output.is_scrolled() {
                 self.pending_vte_events.entry(pid).or_default().push(bytes);
-                if let Some(evs) = self.pending_vte_events.get(&pid) {
-                    // Reset scroll - and process all pending events for this pane
-                    if evs.len() >= MAX_PENDING_VTE_EVENTS {
-                        terminal_output.clear_scroll();
-                        self.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
+                let pending_bytes = self.pending_vte_event_bytes.entry(pid).or_default();
+                *pending_bytes = pending_bytes.saturating_add(bytes_len);
+                let pending_event_count = self
+                    .pending_vte_events
+                    .get(&pid)
+                    .map(|events| events.len())
+                    .unwrap_or_default();
+                // Reset scroll - and process all pending events for this pane
+                if pending_event_count >= MAX_PENDING_VTE_EVENTS
+                    || *pending_bytes >= MAX_PENDING_VTE_BYTES
+                {
+                    terminal_output.clear_scroll();
+                    self.process_pending_vte_events(pid)
+                        .with_context(err_context)?;
                 }
                 return Ok(());
             }
@@ -5214,12 +5226,11 @@ impl Tab {
         Ok(())
     }
     pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
-        if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
-            let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
-            for vte_event in vte_events {
-                self.process_pty_bytes(pid, vte_event)
-                    .context("failed to process pending vte events")?;
-            }
+        let vte_events = self.pending_vte_events.remove(&pid).unwrap_or_default();
+        self.pending_vte_event_bytes.remove(&pid);
+        for vte_event in vte_events {
+            self.process_pty_bytes(pid, vte_event)
+                .context("failed to process pending vte events")?;
         }
         Ok(())
     }
@@ -8260,7 +8271,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8272,15 +8283,16 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_red_pane_frame_color_override(error_text);
+            return pane.add_red_pane_frame_color_override(error_text);
         }
+        false
     }
     pub fn add_highlight_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8292,14 +8304,15 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_highlight_pane_frame_color_override(error_text, client_id);
+            return pane.add_highlight_pane_frame_color_override(error_text, client_id);
         }
+        false
     }
     pub fn clear_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8311,8 +8324,9 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.clear_pane_frame_color_override(client_id);
+            return pane.clear_pane_frame_color_override(client_id);
         }
+        false
     }
     pub fn set_plugin_regex_highlights_for_pane(
         &mut self,
@@ -9339,7 +9353,7 @@ impl Tab {
     }
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
         self.clipboard_provider = match &copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
+            Some(command) => ClipboardProvider::command(CopyCommand::new(command.clone())),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         self.copy_on_select = copy_options.copy_on_select;

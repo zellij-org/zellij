@@ -771,9 +771,9 @@ random seed 24301 case 92 grapheme=false size=7x13 5a3745514254a40a
 random seed 24301 case 92 grapheme=true size=20x80 f0b91c5548f8d0a5
 random seed 24301 case 92 grapheme=true size=7x13 0d7fe8a2eb26baec
 random seed 24301 case 93 grapheme=false size=20x80 919dd5ab861d0e8f
-random seed 24301 case 93 grapheme=false size=7x13 da25bc2f498ce0ec
+random seed 24301 case 93 grapheme=false size=7x13 7db06edf3c443d36
 random seed 24301 case 93 grapheme=true size=20x80 919dd5ab861d0e8f
-random seed 24301 case 93 grapheme=true size=7x13 da25bc2f498ce0ec
+random seed 24301 case 93 grapheme=true size=7x13 7db06edf3c443d36
 random seed 24301 case 94 grapheme=false size=20x80 3da656d7db4cbaad
 random seed 24301 case 94 grapheme=false size=7x13 2ac1956369ab0b3d
 random seed 24301 case 94 grapheme=true size=20x80 3da656d7db4cbaad

@@ -14,6 +14,7 @@ const READ_BUFFER_SIZE: usize = 65536;
 
 pub(crate) struct TerminalBytes {
     terminal_id: u32,
+    session_id: String,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
     debug: bool,
@@ -23,6 +24,7 @@ pub(crate) struct TerminalBytes {
 impl TerminalBytes {
     pub fn new(
         terminal_id: u32,
+        session_id: String,
         async_reader: Box<dyn AsyncReader>,
         senders: ThreadSenders,
         debug: bool,
@@ -30,6 +32,7 @@ impl TerminalBytes {
     ) -> Self {
         TerminalBytes {
             terminal_id,
+            session_id,
             senders,
             debug,
             async_reader,
@@ -62,7 +65,7 @@ impl TerminalBytes {
                 Ok(bytes) => {
                     self.activity_flag.store(true, Ordering::Relaxed);
                     if self.debug {
-                        let _ = debug_to_file(&bytes, self.terminal_id as i32);
+                        let _ = debug_to_file(&bytes, self.terminal_id as i32, &self.session_id);
                     }
                     self.async_send_to_screen(ScreenInstruction::PtyBytes(self.terminal_id, bytes))
                         .await

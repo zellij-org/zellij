@@ -314,6 +314,74 @@ fn spawn_render_scheduler(senders: crate::thread_bus::ThreadSenders) -> SharedRe
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
 static HOST_PROGRAM_STATUS_INTERVAL_MS: u64 = 500;
+const RUNNING_JOBS_PRUNE_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct FrameColorGenerations {
+    current: HashMap<PaneId, u64>,
+    next: u64,
+}
+
+impl FrameColorGenerations {
+    fn begin(&mut self, pane_ids: &[PaneId]) -> Vec<(PaneId, u64)> {
+        pane_ids
+            .iter()
+            .map(|pane_id| {
+                self.next = self.next.wrapping_add(1);
+                self.current.insert(*pane_id, self.next);
+                (*pane_id, self.next)
+            })
+            .collect()
+    }
+
+    fn take_current(&mut self, tokens: &[(PaneId, u64)]) -> Vec<PaneId> {
+        let current = tokens
+            .iter()
+            .filter_map(|(pane_id, generation)| {
+                (self.current.get(pane_id) == Some(generation)).then_some(*pane_id)
+            })
+            .collect::<Vec<_>>();
+        for pane_id in &current {
+            self.current.remove(pane_id);
+        }
+        current
+    }
+
+    fn invalidate(&mut self, pane_ids: &[PaneId]) {
+        for pane_id in pane_ids {
+            self.current.remove(pane_id);
+        }
+    }
+}
+
+/// Clear the overrides whose expiry is still the current one for their pane.
+///
+/// The generation check and the hand-off of the clear to the screen happen
+/// under one lock. Releasing the lock in between would let an expiry that
+/// passed the check be descheduled while a newer override is started and its
+/// highlight sent, so the late clear would remove the newer highlight. With
+/// the lock held, a newer override is only started (its generation is
+/// bumped) either before the check, which then fails, or after the clear has
+/// been queued ahead of the newer highlight.
+fn expire_frame_color_overrides(
+    generations: &Mutex<FrameColorGenerations>,
+    tokens: &[(PaneId, u64)],
+    send_clear: impl FnOnce(Vec<PaneId>),
+) {
+    let mut generations = lock_frame_color_generations(generations);
+    let pane_ids = generations.take_current(tokens);
+    if !pane_ids.is_empty() {
+        send_clear(pane_ids);
+    }
+}
+
+fn lock_frame_color_generations(
+    generations: &Mutex<FrameColorGenerations>,
+) -> std::sync::MutexGuard<'_, FrameColorGenerations> {
+    generations
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 #[derive(Clone)]
 pub struct SessionScanState {
@@ -339,6 +407,8 @@ pub(crate) fn background_jobs_main(
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
+    let mut last_running_jobs_prune = Instant::now();
+    let frame_color_generations = Arc::new(Mutex::new(FrameColorGenerations::default()));
     let mut loading_plugins: HashMap<u32, Arc<AtomicBool>> = HashMap::new(); // u32 - plugin_id
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
@@ -400,12 +470,20 @@ pub(crate) fn background_jobs_main(
         let senders = bus.senders.clone();
         let serialization_ms = serialization_interval.unwrap_or(DEFAULT_SERIALIZATION_INTERVAL);
         runtime.spawn(async move {
+            // At most one pending serialization: while a queued pass
+            // hasn't run, further ticks are redundant and must not
+            // accumulate instructions behind a stalled screen thread.
+            let pending = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let mut ticker =
                 tokio::time::interval(std::time::Duration::from_millis(serialization_ms));
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                let _ = senders.send_to_screen(ScreenInstruction::SerializeLayoutForResurrection);
+                if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    let _ = senders.send_to_screen(
+                        ScreenInstruction::SerializeLayoutForResurrection(pending.clone()),
+                    );
+                }
             }
         });
     }
@@ -460,16 +538,27 @@ pub(crate) fn background_jobs_main(
     }
 
     loop {
+        if last_running_jobs_prune.elapsed() >= RUNNING_JOBS_PRUNE_INTERVAL {
+            running_jobs.retain(|_, started| {
+                started.elapsed() <= Duration::from_millis(LONG_FLASH_DURATION_MS)
+            });
+            last_running_jobs_prune = Instant::now();
+        }
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
         err_ctx.add_call(ContextType::BackgroundJob((&event).into()));
-        let job = event.clone();
         match event {
             BackgroundJob::DisplayPaneError(pane_ids, text) => {
-                if job_already_running(job, &mut running_jobs) {
+                if job_already_running(
+                    BackgroundJob::DisplayPaneError(pane_ids.clone(), text.clone()),
+                    &mut running_jobs,
+                ) {
                     continue;
                 }
+                let frame_color_tokens =
+                    lock_frame_color_generations(&frame_color_generations).begin(&pane_ids);
                 runtime.spawn({
                     let senders = bus.senders.clone();
+                    let frame_color_generations = frame_color_generations.clone();
                     async move {
                         let _ = senders.send_to_screen(
                             ScreenInstruction::AddRedPaneFrameColorOverride(
@@ -481,17 +570,23 @@ pub(crate) fn background_jobs_main(
                             LONG_FLASH_DURATION_MS,
                         ))
                         .await;
-                        let _ = senders.send_to_screen(
-                            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                        expire_frame_color_overrides(
+                            &frame_color_generations,
+                            &frame_color_tokens,
+                            |pane_ids| {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                                );
+                            },
                         );
                     }
                 });
             },
             BackgroundJob::AnimatePluginLoading(pid) => {
-                let loading_plugin = Arc::new(AtomicBool::new(true));
-                if job_already_running(job, &mut running_jobs) {
+                if loading_plugins.contains_key(&pid) {
                     continue;
                 }
+                let loading_plugin = Arc::new(AtomicBool::new(true));
                 runtime.spawn({
                     let senders = bus.senders.clone();
                     let loading_plugin = loading_plugin.clone();
@@ -701,11 +796,17 @@ pub(crate) fn background_jobs_main(
                 wake.notify_one();
             },
             BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
-                if job_already_running(job, &mut running_jobs) {
+                if job_already_running(
+                    BackgroundJob::HighlightPanesWithMessage(pane_ids.clone(), text.clone()),
+                    &mut running_jobs,
+                ) {
                     continue;
                 }
+                let frame_color_tokens =
+                    lock_frame_color_generations(&frame_color_generations).begin(&pane_ids);
                 runtime.spawn({
                     let senders = bus.senders.clone();
+                    let frame_color_generations = frame_color_generations.clone();
                     async move {
                         let _ = senders.send_to_screen(
                             ScreenInstruction::AddHighlightPaneFrameColorOverride(
@@ -715,8 +816,14 @@ pub(crate) fn background_jobs_main(
                         );
                         tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
                             .await;
-                        let _ = senders.send_to_screen(
-                            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                        expire_frame_color_overrides(
+                            &frame_color_generations,
+                            &frame_color_tokens,
+                            |pane_ids| {
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                                );
+                            },
                         );
                     }
                 });
@@ -943,6 +1050,8 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::FlashPaneBell(pane_ids) => {
                 let is_flashing = Arc::new(AtomicBool::new(true));
+                let frame_color_tokens =
+                    lock_frame_color_generations(&frame_color_generations).begin(&pane_ids);
                 for &pane_id in &pane_ids {
                     flashing_pane_bells.insert(pane_id, is_flashing.clone());
                 }
@@ -950,6 +1059,7 @@ pub(crate) fn background_jobs_main(
                     let senders = bus.senders.clone();
                     let pane_ids_clone = pane_ids.clone();
                     let flag = is_flashing.clone();
+                    let frame_color_generations = frame_color_generations.clone();
                     async move {
                         let _ = senders.send_to_screen(
                             ScreenInstruction::AddHighlightPaneFrameColorOverride(
@@ -960,14 +1070,21 @@ pub(crate) fn background_jobs_main(
                         tokio::time::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS))
                             .await;
                         if flag.load(Ordering::SeqCst) {
-                            let _ = senders.send_to_screen(
-                                ScreenInstruction::ClearPaneFrameColorOverride(pane_ids_clone),
+                            expire_frame_color_overrides(
+                                &frame_color_generations,
+                                &frame_color_tokens,
+                                |pane_ids| {
+                                    let _ = senders.send_to_screen(
+                                        ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
+                                    );
+                                },
                             );
                         }
                     }
                 });
             },
             BackgroundJob::StopFlashPaneBell(pane_ids) => {
+                lock_frame_color_generations(&frame_color_generations).invalidate(&pane_ids);
                 for &pane_id in &pane_ids {
                     if let Some(flag) = flashing_pane_bells.remove(&pane_id) {
                         flag.store(false, Ordering::SeqCst);
@@ -1194,32 +1311,56 @@ pub fn write_session_state_to_disk(
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
     if file_content_changed(&metadata_cache_file_name, new_metadata.as_bytes()) {
-        let _wrote_metadata_file =
-            std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
-                .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
-                .and_then(|mut f| write!(f, "{}", new_metadata));
+        if let Err(error) =
+            write_file_atomically(&metadata_cache_file_name, new_metadata.as_bytes())
+        {
+            log::error!("Failed to write session metadata file: {:?}", error);
+        }
     }
 
     if !current_session_layout.is_empty() {
         let layout_cache_file_name = session_layout_cache_file_name(&session_id);
         if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
-            let _wrote_layout_file =
-                std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
-                    .and_then(|_| std::fs::File::create(&layout_cache_file_name))
-                    .and_then(|mut f| write!(f, "{}", current_session_layout));
+            // replacing the file gives it a new creation time; keep the
+            // session's own
+            zellij_utils::sessions::record_session_layout_creation_time(&layout_cache_file_name);
+            if let Err(error) =
+                write_file_atomically(&layout_cache_file_name, current_session_layout.as_bytes())
+            {
+                log::error!("Failed to write session layout file: {:?}", error);
+            }
         }
         let session_info_folder = session_info_folder_for_session(&session_id);
         for (external_file_name, external_file_contents) in layout_files_to_write {
             let external_file_path = session_info_folder.join(&external_file_name);
             if file_content_changed(&external_file_path, external_file_contents.as_bytes()) {
-                std::fs::File::create(&external_file_path)
-                    .and_then(|mut f| write!(f, "{}", external_file_contents))
-                    .unwrap_or_else(|e| {
-                        log::error!("Failed to write layout metadata file: {:?}", e);
-                    });
+                if let Err(error) =
+                    write_file_atomically(&external_file_path, external_file_contents.as_bytes())
+                {
+                    log::error!("Failed to write layout metadata file: {:?}", error);
+                }
             }
         }
     }
+}
+
+fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "file path has no parent directory",
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+    let mut temporary_file = tempfile::Builder::new()
+        .prefix(".zellij-session-")
+        .tempfile_in(parent)?;
+    temporary_file.write_all(contents)?;
+    temporary_file.as_file().sync_all()?;
+    temporary_file
+        .persist(path)
+        .map(|_| ())
+        .map_err(|error| error.error)
 }
 
 pub fn scan_session_list(
@@ -1283,9 +1424,9 @@ fn find_resurrectable_sessions(
                         return None;
                     }
                     let layout_file_name = folder_name.join("session-layout.kdl");
-                    let ctime = match std::fs::metadata(&layout_file_name)
-                        .and_then(|metadata| metadata.created())
-                    {
+                    let ctime = match zellij_utils::sessions::session_layout_creation_time(
+                        &layout_file_name,
+                    ) {
                         Ok(created) => Some(created),
                         Err(e) => {
                             if e.kind() == std::io::ErrorKind::NotFound {
@@ -1375,6 +1516,105 @@ mod tests {
     }
 
     #[test]
+    fn a_newer_frame_color_override_invalidates_the_older_expiry() {
+        let pane_id = PaneId::Terminal(1);
+        let mut generations = FrameColorGenerations::default();
+        let older = generations.begin(&[pane_id]);
+        let newer = generations.begin(&[pane_id]);
+
+        assert!(generations.take_current(&older).is_empty());
+        assert_eq!(generations.take_current(&newer), vec![pane_id]);
+    }
+
+    #[test]
+    fn a_stale_expiry_cannot_clear_a_newer_override_started_while_it_sends() {
+        let pane_id = PaneId::Terminal(1);
+        let generations = Arc::new(Mutex::new(FrameColorGenerations::default()));
+        let old_tokens = lock_frame_color_generations(&generations).begin(&[pane_id]);
+        let (queue_sender, queue) = std::sync::mpsc::channel::<&'static str>();
+        let (in_send_sender, in_send) = std::sync::mpsc::channel::<()>();
+
+        // The old expiry passes the generation check, then is slow to hand
+        // its clear to the screen queue.
+        let expiry = std::thread::spawn({
+            let generations = generations.clone();
+            let queue_sender = queue_sender.clone();
+            move || {
+                expire_frame_color_overrides(&generations, &old_tokens, |_| {
+                    in_send_sender.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(300));
+                    queue_sender.send("clear").unwrap();
+                });
+            }
+        });
+        in_send.recv().unwrap();
+        // A newer override starts and sends its highlight meanwhile.
+        let new_tokens = lock_frame_color_generations(&generations).begin(&[pane_id]);
+        queue_sender.send("highlight").unwrap();
+        expiry.join().unwrap();
+
+        // The stale clear must be queued before the newer highlight, never
+        // after it.
+        assert_eq!(queue.try_recv().unwrap(), "clear");
+        assert_eq!(queue.try_recv().unwrap(), "highlight");
+        // and the newer override still expires normally.
+        let mut cleared = vec![];
+        expire_frame_color_overrides(&generations, &new_tokens, |pane_ids| cleared = pane_ids);
+        assert_eq!(cleared, vec![pane_id]);
+    }
+
+    #[test]
+    fn an_explicit_clear_invalidates_a_pending_expiry() {
+        let pane_id = PaneId::Terminal(1);
+        let mut generations = FrameColorGenerations::default();
+        let pending = generations.begin(&[pane_id]);
+
+        generations.invalidate(&[pane_id]);
+
+        assert!(generations.take_current(&pending).is_empty());
+    }
+
+    #[test]
+    fn atomic_file_write_replaces_contents_without_leaving_a_temporary_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("session-state");
+        std::fs::write(&path, b"old").unwrap();
+
+        write_file_atomically(&path, b"new").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        let entries = std::fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(entries, 1);
+    }
+
+    #[test]
+    fn concurrent_atomic_writes_never_expose_mixed_contents() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("session-state");
+        let barrier = Arc::new(std::sync::Barrier::new(9));
+        let handles = (0..8)
+            .map(|index| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let contents = vec![b'a' + index; 4096];
+                    barrier.wait();
+                    write_file_atomically(&path, &contents).unwrap();
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents.len(), 4096);
+        assert!(contents.windows(2).all(|window| window[0] == window[1]));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
     fn scan_session_list_returns_empty_when_no_peers() {
         let sock_dir = tempdir().unwrap();
         let info_dir = tempdir().unwrap();
@@ -1425,6 +1665,38 @@ mod tests {
         assert!(live.is_empty());
         assert_eq!(resurrectable.len(), 1);
         assert!(resurrectable.contains_key("dead-beta"));
+    }
+
+    #[test]
+    fn a_dead_sessions_age_survives_replacing_its_layout_file() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        write_layout(info_dir.path(), "long-running");
+        let layout = info_dir.path().join("long-running/session-layout.kdl");
+        // the session started two hours ago
+        let started = std::time::SystemTime::now() - Duration::from_secs(2 * 3600);
+        let started_secs = started
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        std::fs::write(
+            layout.with_file_name("session-layout-created"),
+            started_secs.to_string(),
+        )
+        .unwrap();
+
+        // every later save replaces the file, which gets a fresh timestamp
+        write_file_atomically(&layout, b"layout { pane }").unwrap();
+        zellij_utils::sessions::record_session_layout_creation_time(&layout);
+
+        let (_, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert!(resurrectable["long-running"] >= Duration::from_secs(2 * 3600 - 10));
     }
 
     #[test]
@@ -1489,6 +1761,10 @@ mod tests {
     }
 }
 
+/// Bytes of stderr retained from a background command for error
+/// logging. The pipe is drained fully but only this much is kept.
+const BACKGROUND_COMMAND_STDERR_RETAINED: usize = 8 * 1024;
+
 async fn run_in_background(
     command: PathBuf,
     args: Vec<String>,
@@ -1518,19 +1794,55 @@ async fn run_in_background(
             );
         }
     }
-    match process.output().await {
-        Ok(output) if !output.status.success() => {
+    let mut child = match process.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            log::error!(
+                "Failed to start background command '{}': {}",
+                command.display(),
+                e
+            );
+            return;
+        },
+    };
+    // stderr is piped only so a failing command's tail can be logged.
+    // Capture is bounded: the pipe is drained fully (a chatty child
+    // must not deadlock on a full pipe) but only the last
+    // BACKGROUND_COMMAND_STDERR_RETAINED bytes are retained.
+    let mut stderr_pipe = child.stderr.take().expect("stderr is piped");
+    let drain = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut retained: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match stderr_pipe.read(&mut chunk).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    retained.extend_from_slice(&chunk[..n]);
+                    if retained.len() > BACKGROUND_COMMAND_STDERR_RETAINED {
+                        let overflow = retained.len() - BACKGROUND_COMMAND_STDERR_RETAINED;
+                        retained.drain(..overflow);
+                    }
+                },
+            }
+        }
+        retained
+    });
+    let status = child.wait().await;
+    let stderr = drain.await.unwrap_or_default();
+    match status {
+        Ok(status) if !status.success() => {
             log::error!(
                 "Background command '{}' exited with {}: {}",
                 command.display(),
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim_end()
+                status,
+                String::from_utf8_lossy(&stderr).trim_end()
             );
         },
         Ok(_) => {},
         Err(e) => {
             log::error!(
-                "Failed to start background command '{}': {}",
+                "Failed to wait for background command '{}': {}",
                 command.display(),
                 e
             );

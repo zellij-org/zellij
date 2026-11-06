@@ -2461,7 +2461,7 @@ mod links_on_the_wire {
 
         fn detected(&self, uri: &str) -> RcCharacterStyles {
             let mut styles = DEFAULT_STYLES;
-            styles.link_anchor = Some(self.links.borrow_mut().new_link_from_url(uri.to_owned()));
+            styles.link_anchor = self.links.borrow_mut().new_link_from_url(uri.to_owned());
             RcCharacterStyles::from(styles)
         }
 

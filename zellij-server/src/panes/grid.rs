@@ -37,6 +37,33 @@ use zellij_utils::{
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
+/// Longest pane title kept from OSC 0/2, in bytes. A title is shown on one
+/// frame line, and every CSI 22 t copies it onto the title stack, so an
+/// unbounded title multiplies into the stack: one 4 MiB title pushed 1000
+/// times would retain about 4 GiB.
+pub const MAX_TITLE_BYTES: usize = 4096;
+/// Longest DCS payloads assembled for Zellij UI components, nested-session
+/// frames and XTGETTCAP queries. A longer sequence is discarded whole
+/// rather than dispatched truncated; without a limit an unterminated
+/// sequence grew without bound.
+pub const MAX_UI_COMPONENT_DCS_BYTES: usize = 4 * 1024 * 1024;
+/// Matches the largest frame a nested session emits.
+pub const MAX_NESTED_FRAME_DCS_BYTES: usize = 1024 * 1024;
+pub const MAX_XTGETTCAP_DCS_BYTES: usize = 64 * 1024;
+
+/// Append a DCS payload byte, abandoning the sequence once it exceeds
+/// `limit`: the buffer is dropped, the rest of the sequence is ignored and
+/// nothing is dispatched for it.
+fn push_bounded_dcs_byte(buffer: &mut Option<Vec<u8>>, byte: u8, limit: usize, kind: &str) {
+    if let Some(bytes) = buffer {
+        if bytes.len() < limit {
+            bytes.push(byte);
+        } else {
+            log::warn!("discarding a {kind} DCS sequence longer than {limit} bytes");
+            *buffer = None;
+        }
+    }
+}
 
 const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     &BASE64_STANDARD_ALPHABET,
@@ -952,6 +979,12 @@ struct KittyRowSnapshot {
     split_rows: u64,
 }
 
+#[derive(Clone, Copy, Default)]
+pub(super) struct ScrollResult {
+    pub(super) moved: bool,
+    pub(super) found_something: bool,
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -1764,10 +1797,12 @@ impl Grid {
         }
     }
 
-    pub fn scroll_up_one_line(&mut self) -> bool {
+    pub(super) fn scroll_up_one_line_with_progress(&mut self) -> ScrollResult {
+        let mut result = ScrollResult::default();
         let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
+            result.moved = true;
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
 
@@ -1792,14 +1827,20 @@ impl Grid {
                 .move_down(1, &self.viewport, self.height);
         }
         self.output_buffer.update_all_lines();
-        found_something
+        result.found_something = found_something;
+        result
     }
-    pub fn scroll_down_one_line(&mut self) -> bool {
+    pub fn scroll_up_one_line(&mut self) -> bool {
+        self.scroll_up_one_line_with_progress().found_something
+    }
+    pub(super) fn scroll_down_one_line_with_progress(&mut self) -> ScrollResult {
+        let mut result = ScrollResult::default();
         let mut found_something = false;
         if !self.lines_below.is_empty()
             && self.viewport.len() == self.height
             && !self.viewport.is_empty()
         {
+            result.moved = true;
             let line_to_push_up = self.viewport.pop_front().unwrap();
 
             let line_to_push_up = if line_to_push_up.is_canonical || !self.lines_above.is_empty() {
@@ -1845,7 +1886,11 @@ impl Grid {
             self.is_scrolled = false;
             self.lines_below.shrink_to_fit();
         }
-        found_something
+        result.found_something = found_something;
+        result
+    }
+    pub fn scroll_down_one_line(&mut self) -> bool {
+        self.scroll_down_one_line_with_progress().found_something
     }
     pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, true);
@@ -1895,6 +1940,9 @@ impl Grid {
                 .saved_cursor_position
                 .as_ref()
                 .map(|saved_cursor| self.canonical_line_index_of_row(saved_cursor.y));
+            let first_canonical_row = self.viewport.iter().position(|row| row.is_canonical);
+            let cursor_y = self.cursor.y;
+            let saved_cursor_y = self.saved_cursor_position.as_ref().map(|saved| saved.y);
             let mut viewport_canonical_lines = vec![];
             for mut row in self.viewport.drain(..) {
                 if !row.is_canonical
@@ -1918,11 +1966,23 @@ impl Grid {
                             last_line.append(&mut row);
                         },
                         None => {
-                            // the state is corrupted somehow
-                            // this is a bug and I'm not yet sure why it happens
-                            // usually it fixes itself and is a result of some race
-                            // TODO: investigate why this happens and solve it
-                            return;
+                            log::warn!(
+                                "viewport began with a continuation row and no scrollback; normalizing it as canonical"
+                            );
+                            viewport_canonical_lines.push(row.canonical());
+                            // The canonical line indices above only counted
+                            // rows that were already canonical. Lines at or
+                            // after the first of them now come one later.
+                            if first_canonical_row.is_some_and(|first| cursor_y >= first) {
+                                cursor_canonical_line_index += 1;
+                            }
+                            if let (Some(index), Some(saved_y)) =
+                                (saved_cursor_canonical_line_index.as_mut(), saved_cursor_y)
+                            {
+                                if first_canonical_row.is_some_and(|first| saved_y >= first) {
+                                    *index += 1;
+                                }
+                            }
                         },
                     }
                 }
@@ -2523,23 +2583,26 @@ impl Grid {
     }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {
-            self.scroll_up_one_line();
+            if !self.scroll_up_one_line_with_progress().moved {
+                break;
+            }
         }
         self.output_buffer.update_all_lines();
     }
     pub fn move_viewport_down(&mut self, count: usize) {
         for _ in 0..count {
-            self.scroll_down_one_line();
+            if !self.scroll_down_one_line_with_progress().moved {
+                break;
+            }
         }
         self.output_buffer.update_all_lines();
     }
     pub fn reset_viewport(&mut self) {
-        let max_lines_to_scroll = *SCROLL_BUFFER_SIZE.get().unwrap() * 2; // while not very elegant, this can prevent minor bugs from becoming showstoppers by sticking the whole app display in an endless loop
-        let mut lines_scrolled = 0;
         let should_clear_output_buffer = self.is_scrolled;
-        while self.is_scrolled && lines_scrolled < max_lines_to_scroll {
-            self.scroll_down_one_line();
-            lines_scrolled += 1;
+        while self.is_scrolled {
+            if !self.scroll_down_one_line_with_progress().moved {
+                break;
+            }
         }
         if should_clear_output_buffer {
             self.output_buffer.update_all_lines();
@@ -4293,7 +4356,14 @@ impl Grid {
             self.output_buffer.update_line(l as usize);
         }
     }
-    fn set_title(&mut self, title: String) {
+    fn set_title(&mut self, mut title: String) {
+        if title.len() > MAX_TITLE_BYTES {
+            let mut end = MAX_TITLE_BYTES;
+            while !title.is_char_boundary(end) {
+                end -= 1;
+            }
+            title.truncate(end);
+        }
         self.title = if title.is_empty() { None } else { Some(title) };
     }
     fn push_current_title_to_stack(&mut self) {
@@ -5442,12 +5512,27 @@ impl Handler for Grid {
             // we explicitly set this to false here because in the context of Sixel, we only render the
             // image when it's done, i.e. in the unhook method
             self.should_render = false;
-        } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
-            ui_component_bytes.push(byte);
-        } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.as_mut() {
-            nested_frame_bytes.push(byte);
-        } else if let Some(xtgettcap_bytes) = self.xtgettcap_bytes.as_mut() {
-            xtgettcap_bytes.push(byte);
+        } else if self.ui_component_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.ui_component_bytes,
+                byte,
+                MAX_UI_COMPONENT_DCS_BYTES,
+                "UI component",
+            );
+        } else if self.nested_frame_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.nested_frame_bytes,
+                byte,
+                MAX_NESTED_FRAME_DCS_BYTES,
+                "nested-session frame",
+            );
+        } else if self.xtgettcap_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.xtgettcap_bytes,
+                byte,
+                MAX_XTGETTCAP_DCS_BYTES,
+                "XTGETTCAP query",
+            );
         }
     }
 
@@ -7383,7 +7468,9 @@ impl Row {
             for character in &row.columns {
                 let character_width = character.width();
                 if current_part_width + character_width > max_row_length {
-                    part_lengths.push(current_part_len);
+                    if current_part_len > 0 {
+                        part_lengths.push(current_part_len);
+                    }
                     current_part_len = 0;
                     current_part_width = 0;
                 }

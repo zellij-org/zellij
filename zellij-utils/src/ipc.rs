@@ -29,6 +29,7 @@ mod protobuf_conversion;
 mod tests;
 
 type SessionId = u64;
+const MAX_FRAME_BYTES: usize = 256 * 1024 * 1024;
 
 /// A bidirectional byte stream that supports cloning for simultaneous read/write.
 pub trait IpcStream: Read + Write + Send + 'static {
@@ -458,14 +459,14 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     pub fn send_client_msg(&mut self, msg: ClientToServerMsg) -> Result<()> {
         let proto_msg: ProtoClientToServerMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
-        let _ = self.sender.flush();
+        self.sender.flush()?;
         Ok(())
     }
 
     pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
         let proto_msg: ProtoServerToClientMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
-        let _ = self.sender.flush();
+        self.sender.flush()?;
         Ok(())
     }
 
@@ -574,6 +575,10 @@ fn read_protobuf_message<T: Message + Default>(
         .read_exact(&mut len_bytes)
         .map_err(|_| IpcReceiveError::Disconnected)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > MAX_FRAME_BYTES {
+        // The payload is left unread, so the stream cannot be resynchronized.
+        return Err(IpcReceiveError::Disconnected);
+    }
 
     let mut buf = vec![0u8; len];
     reader
@@ -585,6 +590,7 @@ fn read_protobuf_message<T: Message + Default>(
 
 fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
     let encoded = msg.encode_to_vec();
+    validate_frame_length(encoded.len())?;
     let len = encoded.len() as u32;
 
     // we measure the length of the message and transmit it first so that the reader will be able
@@ -596,6 +602,16 @@ fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Resul
     Ok(())
 }
 
+fn validate_frame_length(len: usize) -> Result<()> {
+    if len > MAX_FRAME_BYTES {
+        return Err(anyhow::anyhow!(
+            "encoded IPC frame exceeds the maximum frame size"
+        ));
+    }
+    u32::try_from(len).map_err(|_| anyhow::anyhow!("encoded IPC frame exceeds the u32 prefix"))?;
+    Ok(())
+}
+
 // Protobuf helper functions
 pub fn send_protobuf_client_to_server(
     sender: &mut IpcSenderWithContext<ClientToServerMsg>,
@@ -603,7 +619,7 @@ pub fn send_protobuf_client_to_server(
 ) -> Result<()> {
     let proto_msg: ProtoClientToServerMsg = msg.into();
     write_protobuf_message(&mut sender.sender, &proto_msg)?;
-    let _ = sender.sender.flush();
+    sender.sender.flush()?;
     Ok(())
 }
 
@@ -613,7 +629,7 @@ pub fn send_protobuf_server_to_client(
 ) -> Result<()> {
     let proto_msg: ProtoServerToClientMsg = msg.into();
     write_protobuf_message(&mut sender.sender, &proto_msg)?;
-    let _ = sender.sender.flush();
+    sender.sender.flush()?;
     Ok(())
 }
 

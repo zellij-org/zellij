@@ -1,14 +1,84 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext, IpcStream,
     ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+struct FlushFailureStream;
+
+impl Read for FlushFailureStream {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("read not supported"))
+    }
+}
+
+impl Write for FlushFailureStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("flush failed"))
+    }
+}
+
+impl IpcStream for FlushFailureStream {
+    fn try_clone_stream(&self) -> std::io::Result<Box<dyn IpcStream>> {
+        Err(std::io::Error::other("clone not supported"))
+    }
+    fn set_read_timeout(&self, _timeout: Option<std::time::Duration>) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn send_reports_flush_failure() {
+    let mut sender =
+        IpcSenderWithContext::<ClientToServerMsg>::from_boxed(Box::new(FlushFailureStream));
+
+    assert!(
+        sender
+            .send_client_msg(ClientToServerMsg::ConnStatus)
+            .is_err(),
+        "a failed flush must not be reported as a successful send"
+    );
+}
+
+#[test]
+fn oversized_advertised_frames_are_rejected_before_allocation() {
+    // The unread payload would otherwise be parsed as the next frames, so
+    // the stream is treated as disconnected rather than skipped over.
+    let advertised_len = (crate::ipc::MAX_FRAME_BYTES + 1) as u32;
+    let mut bytes = advertised_len.to_le_bytes().to_vec();
+    // Bytes that a reader attempting the allocation-and-read would consume.
+    bytes.extend_from_slice(&[0u8; 64]);
+    let mut frame = std::io::Cursor::new(bytes);
+
+    assert!(matches!(
+        crate::ipc::read_protobuf_message::<crate::ipc::ProtoClientToServerMsg>(&mut frame),
+        Err(IpcReceiveError::Disconnected)
+    ));
+    // Without the limit check the reader would allocate the advertised
+    // buffer and read (part of) the payload before failing with the same
+    // error, so the error alone cannot show the limit was applied. The
+    // reader must have stopped right after the length prefix.
+    assert_eq!(
+        frame.position(),
+        4,
+        "the oversized payload must not be read"
+    );
+}
+
+#[test]
+fn outgoing_frames_enforce_the_same_size_limit() {
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES).is_ok());
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES + 1).is_err());
+}
 
 // --- Cross-platform IPC helpers ---
 // On Unix: use filesystem-based sockets (TempDir + PathBuf + GenericFilePath)

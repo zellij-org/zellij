@@ -64,6 +64,16 @@ fn row_to_string(row: &crate::panes::grid::Row) -> String {
 }
 
 #[test]
+fn a_wide_character_in_a_one_column_row_does_not_create_an_empty_leading_row() {
+    use crate::panes::grid::Row;
+
+    let rows = Row::rewrap_rows(vec![row_from_str("你")], 1);
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(row_to_string(&rows[0]), "你");
+}
+
+#[test]
 fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
     use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
 
@@ -2673,6 +2683,30 @@ pub fn scroll_down_with_line_wraps() {
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn scroll_progress_stops_when_viewport_height_is_invalid() {
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert!(!grid.scroll_down_one_line_with_progress().moved);
+}
+
+#[test]
+fn search_stops_when_viewport_cannot_scroll() {
+    use zellij_utils::input::actions::SearchDirection;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert!(!grid.search_viewport_move(SearchDirection::Down));
 }
 
 #[test]
@@ -6592,6 +6626,24 @@ fn csi_22t_and_23t_stay_local() {
 }
 
 #[test]
+fn long_titles_are_truncated_before_they_reach_the_title_stack() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    // Multi-byte characters straddle the limit: truncation must keep a
+    // character boundary.
+    let long_title = "€".repeat(super::MAX_TITLE_BYTES);
+    parser.feed(&mut grid, format!("\x1b]2;{long_title}\x07").as_bytes());
+    let title = grid.title.clone().expect("title is set");
+    assert!(title.len() <= super::MAX_TITLE_BYTES);
+    assert!(long_title.starts_with(&title));
+    for _ in 0..super::MAX_TITLE_STACK_SIZE + 10 {
+        parser.feed(&mut grid, b"\x1b[22;0t");
+    }
+    let retained: usize = grid.title_stack.iter().map(String::len).sum();
+    assert!(retained <= (super::MAX_TITLE_STACK_SIZE + 1) * super::MAX_TITLE_BYTES);
+}
+
+#[test]
 fn an_empty_osc_title_clears_the_title_instead_of_setting_an_empty_one() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
@@ -9320,6 +9372,37 @@ fn xtgettcap_answers_the_ms_capability() {
 }
 
 #[test]
+fn an_oversized_xtgettcap_query_is_discarded_whole() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut query = b"\x1bP+q4d73".to_vec();
+    query.resize(query.len() + super::MAX_XTGETTCAP_DCS_BYTES, b'0');
+    query.extend_from_slice(b"\x1b\\");
+    vte_parser.feed(&mut grid, &query);
+    assert!(grid.pending_messages_to_pty.is_empty());
+    // The next query is answered normally.
+    vte_parser.feed(&mut grid, b"\x1bP+q4d73\x1b\\");
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+}
+
+#[test]
+fn unterminated_dcs_payloads_are_bounded() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let chunk = vec![b'a'; 64 * 1024];
+    vte_parser.feed(&mut grid, b"\x1bPz");
+    for _ in 0..(super::MAX_UI_COMPONENT_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.ui_component_bytes.is_none());
+    vte_parser.feed(&mut grid, b"\x1b\\\x1bP+q");
+    for _ in 0..(super::MAX_XTGETTCAP_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.xtgettcap_bytes.is_none());
+}
+
+#[test]
 fn xtgettcap_rejects_unknown_capabilities() {
     let mut grid = create_grid_with_content("");
     let mut vte_parser = vt_parser::Parser::new();
@@ -9990,6 +10073,69 @@ fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
     feed(&mut grid, "\rX");
     assert_eq!(rendered_row(&grid, 0), "0123456789");
     assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn forced_reflow_normalizes_an_orphaned_continuation_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(grid.viewport.len(), 1);
+    assert!(grid.viewport[0].is_canonical);
+    assert_eq!(row_to_string(&grid.viewport[0]), "orphan");
+}
+
+#[test]
+fn orphan_row_recovery_keeps_the_cursor_on_its_line() {
+    // [orphan continuation, "first", "second"]: the orphan becomes its own
+    // canonical line, so the cursor (and saved cursor) on "first" must stay
+    // on "first" rather than moving up onto the orphan.
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.viewport.push_back(row_from_str("second").canonical());
+    grid.move_cursor_to(
+        2,
+        1,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.save_cursor_position();
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(row_to_string(&grid.viewport[1]), "first");
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+    grid.move_cursor_to(
+        0,
+        2,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.restore_cursor_position();
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+}
+
+#[test]
+fn orphan_row_recovery_keeps_a_cursor_on_the_orphan_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.move_cursor_to(
+        3,
+        0,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
 
 #[test]

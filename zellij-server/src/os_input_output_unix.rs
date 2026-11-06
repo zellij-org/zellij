@@ -83,10 +83,17 @@ impl RawFdAsyncReader {
 
 fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
     let mut buf: Vec<u8> = Vec::with_capacity(max);
-    let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity()) };
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
+    let ret = loop {
+        let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity()) };
+        if ret < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        break ret;
+    };
     unsafe { buf.set_len(ret as usize) };
     while ret > 0 && buf.len() < buf.capacity() {
         let filled = buf.len();
@@ -97,7 +104,13 @@ fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
                 buf.capacity() - filled,
             )
         };
-        if more <= 0 {
+        if more < 0 {
+            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            break;
+        }
+        if more == 0 {
             break;
         }
         unsafe { buf.set_len(filled + more as usize) };
@@ -213,10 +226,6 @@ fn handle_openpty(
         )
     };
 
-    // primary side of pty and child fd
-    let pid_primary = open_pty_res.master.into_raw_fd();
-    let pid_secondary = open_pty_res.slave.into_raw_fd();
-
     if !command_exists(&cmd, pane_env) {
         return Err(ZellijError::CommandNotFound {
             terminal_id,
@@ -225,7 +234,11 @@ fn handle_openpty(
         .with_context(|| err_context(&cmd));
     }
 
-    let mut child = unsafe {
+    // primary side of pty and child fd
+    let pid_primary = open_pty_res.master.into_raw_fd();
+    let pid_secondary = open_pty_res.slave.into_raw_fd();
+
+    let spawn_result = unsafe {
         let cmd = cmd.clone();
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
@@ -249,13 +262,20 @@ fn handle_openpty(
             .env("ZELLIJ_PANE_ID", &format!("{}", terminal_id))
             .pre_exec(move || -> io::Result<()> {
                 if libc::login_tty(pid_secondary) != 0 {
-                    panic!("failed to set controlling terminal");
+                    return Err(io::Error::last_os_error());
                 }
                 close_fds::close_open_fds(3, &[]);
                 Ok(())
             })
             .spawn()
-            .expect("failed to spawn")
+    };
+    let mut child = match spawn_result {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = unistd::close(pid_primary);
+            let _ = unistd::close(pid_secondary);
+            return Err(e).with_context(|| err_context(&cmd));
+        },
     };
 
     let child_id = child.id();

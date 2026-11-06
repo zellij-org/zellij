@@ -50,9 +50,49 @@ struct PendingWrite {
     _completion: Option<NotificationEnd>,
 }
 
+#[derive(Default)]
+struct PendingQueue {
+    writes: VecDeque<PendingWrite>,
+    remaining_bytes: usize,
+}
+
+impl PendingQueue {
+    fn is_empty(&self) -> bool {
+        self.writes.is_empty()
+    }
+
+    fn push_back(&mut self, write: PendingWrite) {
+        self.remaining_bytes = self
+            .remaining_bytes
+            .saturating_add(write.bytes.len().saturating_sub(write.offset));
+        self.writes.push_back(write);
+    }
+
+    fn front_remaining(&self) -> Option<&[u8]> {
+        self.writes
+            .front()
+            .map(|write| write.bytes.get(write.offset..).unwrap_or_default())
+    }
+
+    fn advance(&mut self, written: usize) {
+        if let Some(write) = self.writes.front_mut() {
+            write.offset = write.offset.saturating_add(written);
+            self.remaining_bytes = self.remaining_bytes.saturating_sub(written);
+            if write.offset >= write.bytes.len() {
+                self.writes.pop_front();
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.writes.clear();
+        self.remaining_bytes = 0;
+    }
+}
+
 pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
-    let mut pending: HashMap<u32, VecDeque<PendingWrite>> = HashMap::new();
+    let mut pending: HashMap<u32, PendingQueue> = HashMap::new();
 
     loop {
         // If we have pending writes, use a short timeout so we can keep
@@ -80,16 +120,12 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             match event {
                 PtyWriteInstruction::Write(bytes, terminal_id, completion) => {
                     let queue = pending.entry(terminal_id).or_default();
-                    let queued: usize = queue
-                        .iter()
-                        .map(|w| w.bytes.len().saturating_sub(w.offset))
-                        .sum();
-                    if queued + bytes.len() > MAX_PENDING_BYTES {
+                    if queue.remaining_bytes.saturating_add(bytes.len()) > MAX_PENDING_BYTES {
                         log::error!(
                             "dropping write buffer for terminal {} \
                              ({} + {} bytes exceeds {} limit)",
                             terminal_id,
-                            queued,
+                            queue.remaining_bytes,
                             bytes.len(),
                             MAX_PENDING_BYTES,
                         );
@@ -150,19 +186,15 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                 _ => continue,
             };
 
-            while let Some(front) = queue.front_mut() {
-                let remaining = front.bytes.get(front.offset..).unwrap_or_default();
+            while let Some(remaining) = queue.front_remaining() {
                 if remaining.is_empty() {
-                    queue.pop_front();
+                    queue.advance(0);
                     continue;
                 }
                 match os_input.write_to_tty_stdin(tid, remaining) {
                     Ok(0) => break, // EAGAIN — move to next terminal
                     Ok(n) => {
-                        front.offset = front.offset.saturating_add(n);
-                        if front.offset >= front.bytes.len() {
-                            queue.pop_front();
-                        }
+                        queue.advance(n);
                     },
                     Err(e) => {
                         // Terminal error (EBADF, EIO, etc) — clear its queue

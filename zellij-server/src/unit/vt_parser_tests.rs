@@ -859,6 +859,91 @@ fn an_osc_string_keeps_at_most_sixteen_fields() {
 }
 
 #[test]
+fn oversized_osc_payload_is_dropped_and_parser_recovers() {
+    let mut bytes = b"\x1b]0;".to_vec();
+    bytes.extend(std::iter::repeat(b'x').take(super::MAX_OSC_PAYLOAD_BYTES + 1));
+    bytes.push(0x07);
+    bytes.extend_from_slice(b"ok");
+
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    for chunk in bytes.chunks(4096) {
+        parser.feed(&mut ours, chunk);
+    }
+    assert_eq!(ours.0, text("ok"));
+    assert!(parser.osc_capacity() <= super::RETAINED_OSC_CAPACITY);
+}
+
+thread_local! {
+    static WARNINGS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+struct WarningCapture;
+
+impl log::Log for WarningCapture {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Warn
+    }
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            WARNINGS.with(|warnings| warnings.borrow_mut().push(record.args().to_string()));
+        }
+    }
+    fn flush(&self) {}
+}
+
+#[test]
+fn an_oversized_osc_payload_logs_one_warning_without_the_payload() {
+    static CAPTURE: WarningCapture = WarningCapture;
+    let _ = log::set_logger(&CAPTURE);
+    log::set_max_level(log::LevelFilter::Warn);
+    WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+
+    let mut bytes = b"\x1b]52;c;".to_vec();
+    bytes.extend(std::iter::repeat(b'Q').take(super::MAX_OSC_PAYLOAD_BYTES + 1));
+    bytes.push(0x07);
+
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    for chunk in bytes.chunks(4096) {
+        parser.feed(&mut ours, chunk);
+    }
+    assert!(ours.0.is_empty());
+    let warnings = WARNINGS.with(|warnings| warnings.borrow().clone());
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("OSC 52"), "{}", warnings[0]);
+    assert!(
+        warnings[0].contains(&super::MAX_OSC_PAYLOAD_BYTES.to_string()),
+        "{}",
+        warnings[0]
+    );
+    assert!(!warnings[0].contains("QQQ"), "{}", warnings[0]);
+}
+
+#[test]
+fn a_large_osc_payload_within_the_limit_is_dispatched_and_released() {
+    // e.g. an OSC 52 clipboard copy of a few hundred KiB of text
+    let payload = vec![b'Q'; 1024 * 1024];
+    let mut bytes = b"\x1b]52;c;".to_vec();
+    bytes.extend_from_slice(&payload);
+    bytes.push(0x07);
+
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    for chunk in bytes.chunks(4096) {
+        parser.feed(&mut ours, chunk);
+    }
+    assert_eq!(
+        ours.0,
+        vec![osc(
+            &[b"52".as_slice(), b"c".as_slice(), payload.as_slice()],
+            true
+        )]
+    );
+    assert!(parser.osc_capacity() <= super::RETAINED_OSC_CAPACITY);
+}
+
+#[test]
 fn an_osc_string_drops_controls_and_keeps_other_bytes() {
     expect(
         b"\x1b]0;a\x01b\xc3\xa9\x7f\x07",
