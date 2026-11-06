@@ -145,7 +145,30 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
 }
 
 fn char_index_to_char(char_index: i32) -> char {
-    char_index as u8 as char
+    u32::try_from(char_index)
+        .ok()
+        .and_then(char::from_u32)
+        .unwrap_or(char::REPLACEMENT_CHARACTER)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::char_index_to_char;
+
+    #[test]
+    fn decodes_unicode_code_points_without_truncation() {
+        assert_eq!(char_index_to_char('a' as i32), 'a');
+        assert_eq!(char_index_to_char('ж' as i32), 'ж');
+        assert_eq!(char_index_to_char('❯' as i32), '❯');
+        assert_eq!(char_index_to_char('😀' as i32), '😀');
+    }
+
+    #[test]
+    fn replaces_invalid_unicode_code_points() {
+        assert_eq!(char_index_to_char(-1), char::REPLACEMENT_CHARACTER);
+        assert_eq!(char_index_to_char(0x11_0000), char::REPLACEMENT_CHARACTER);
+        assert_eq!(char_index_to_char(0xD800), char::REPLACEMENT_CHARACTER);
+    }
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
