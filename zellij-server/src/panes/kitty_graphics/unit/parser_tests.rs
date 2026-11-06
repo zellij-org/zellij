@@ -386,3 +386,39 @@ fn temp_file_outside_temp_dir_with_magic_name_is_deleted() {
     assert_eq!(command.image.unwrap().bytes, raster);
     assert!(!path.exists());
 }
+
+#[test]
+fn multi_chunk_payload_exceeding_max_payload_bytes_is_einval_and_aborts() {
+    let mut parser = KittyCommandParser::new();
+    let large_chunk = vec![b'A'; MAX_PAYLOAD_B64_BYTES - 50];
+    let mut first_cmd = b"a=T,f=24,s=2,v=2,m=1;".to_vec();
+    first_cmd.extend_from_slice(&large_chunk);
+    assert!(parser.parse(&first_cmd).is_none());
+    assert!(parser.has_pending());
+
+    let second_chunk = vec![b'A'; 100];
+    let mut second_cmd = b"m=1;".to_vec();
+    second_cmd.extend_from_slice(&second_chunk);
+    let res = parser.parse(&second_cmd);
+    let err = res
+        .expect("expected rejection of oversized multi-chunk upload")
+        .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.message, "image too large");
+    assert!(!parser.has_pending());
+}
+
+#[test]
+fn first_chunk_with_m1_exceeding_max_payload_bytes_is_einval() {
+    let mut parser = KittyCommandParser::new();
+    let oversized = vec![b'A'; MAX_PAYLOAD_B64_BYTES + 1];
+    let mut cmd = b"a=T,f=24,s=2,v=2,m=1;".to_vec();
+    cmd.extend_from_slice(&oversized);
+    let res = parser.parse(&cmd);
+    let err = res
+        .expect("expected rejection on oversized first chunk")
+        .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.message, "image too large");
+    assert!(!parser.has_pending());
+}
