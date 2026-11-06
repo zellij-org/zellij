@@ -135,9 +135,17 @@ mod tests {
         assert_eq!(notifications_off(NotificationSetting::Enabled), None);
         let for_app = notifications_off(NotificationSetting::DisabledForApplication).unwrap();
         assert!(for_app.contains("off for Zellij"), "{}", for_app);
-        assert!(for_app.contains("Settings > System > Notifications"), "{}", for_app);
+        assert!(
+            for_app.contains("Settings > System > Notifications"),
+            "{}",
+            for_app
+        );
         let for_user = notifications_off(NotificationSetting::DisabledForUser).unwrap();
-        assert!(for_user.contains("Settings > System > Notifications"), "{}", for_user);
+        assert!(
+            for_user.contains("Settings > System > Notifications"),
+            "{}",
+            for_user
+        );
         let policy = notifications_off(NotificationSetting::DisabledByGroupPolicy).unwrap();
         assert!(policy.contains("group policy"), "{}", policy);
     }
