@@ -19,7 +19,7 @@ const KEYS_PAGE: (usize, usize) = (2, 0);
 const MOUSE_BINDINGS_PAGE: (usize, usize) = (3, 10);
 const MENU_PAGE: (usize, usize) = (3, 9);
 const THEMES_PAGE: (usize, usize) = (1, 4);
-const PLUGINS_PAGE: (usize, usize) = (10, 0);
+const PLUGINS_PAGE: (usize, usize) = (11, 0);
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));

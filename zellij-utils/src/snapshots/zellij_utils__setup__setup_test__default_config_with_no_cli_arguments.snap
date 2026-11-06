@@ -47,14 +47,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -435,14 +427,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -952,14 +936,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1621,14 +1597,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     ' ',
                 ),
@@ -2280,14 +2248,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -2760,14 +2720,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -3154,14 +3106,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3647,14 +3591,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -4006,14 +3942,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4387,14 +4315,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -4612,6 +4532,17 @@ Config {
             }: [
                 MoveFocusOrTab {
                     direction: Left,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+                SwitchToMode {
+                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -5048,14 +4979,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5470,14 +5393,6 @@ Config {
                 },
             ],
             KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
-            ],
-            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5860,14 +5775,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6410,14 +6317,6 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
-            ],
-            KeyWithModifier {
-                bare_key: F(
-                    9,
-                ),
-                key_modifiers: {},
-            }: [
-                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -12033,6 +11932,9 @@ Config {
     },
     terminal: TerminalConfig {
         font: None,
+        font_bold: None,
+        font_italic: None,
+        font_bold_italic: None,
         font_size: None,
         system_fonts: None,
         ligatures: None,

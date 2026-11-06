@@ -4697,8 +4697,8 @@ impl Options {
         let comment_text = format!(
             "{}\n{}\n{}\n{}",
             " ",
-            "// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard",
-            "// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)",
+            "// An extra key that gives typing back to a plugin while a live pane view inside it is taking the keyboard",
+            "// Default: not set, Alt Enter, the inbox key or a click outside always do it (a key written twice means pressing it twice quickly)",
             "// ",
         );
 
@@ -4714,7 +4714,7 @@ impl Options {
             }
             Some(node)
         } else if add_comments {
-            let mut node = create_node(crate::data::DEFAULT_LIVE_VIEW_RELEASE_KEY);
+            let mut node = create_node("Ctrl Alt Home");
             node.set_leading(format!("{}\n// ", comment_text));
             Some(node)
         } else {

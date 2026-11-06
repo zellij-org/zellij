@@ -6487,6 +6487,7 @@ dependencies = [
  "regex",
  "ssh2",
  "suggest",
+ "tempfile",
  "thiserror 2.0.19",
  "zellij-client",
  "zellij-server",

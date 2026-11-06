@@ -1357,7 +1357,7 @@ fn a_seen_agent_stays_in_the_inbox_until_its_shell_prompt_returns() {
     wait_for_session_attention(&zellij, "the agent is forgotten", |attention| {
         pane_item(attention, &left).is_none()
     });
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until(
         "the browser opens without the agent on either tab",
         |grid_snapshot| {

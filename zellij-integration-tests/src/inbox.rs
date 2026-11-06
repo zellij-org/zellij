@@ -10,12 +10,12 @@ pub const GO_KEY: &str = "<ENTER> go";
 pub const TYPE_INTO_IT: &str = "<Alt ENTER> type";
 pub const TYPE_INTO_IT_HINT: &str = "<Alt ENTER> type into it";
 pub const TYPING_INTO: &str = "typing into";
-pub const RELEASE_KEY_HINT: &str = "<F9>";
+pub const RELEASE_KEY_HINT: &str = "<Ctrl o> <i>";
 pub const SESSIONS_HELP: &str = "<F1> all keys";
 pub const ATTENTION_CONFIG: &str = "session_indicator true\nmouse_mode true";
 
 pub fn open_inbox(zellij: &TestSession) -> GridSnapshot {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     let opened = zellij.wait_until("the session manager opens", |grid_snapshot| {
         shows_inbox(grid_snapshot) || grid_snapshot.contains(SESSIONS_HELP)
     });
@@ -27,7 +27,7 @@ pub fn open_inbox(zellij: &TestSession) -> GridSnapshot {
 }
 
 pub fn open_inbox_on(zellij: &TestSession, text: &str) -> GridSnapshot {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
         inbox_shows(grid_snapshot, text) && grid_snapshot.contains(ITEM_ACTIONS)
     })
@@ -79,7 +79,7 @@ pub fn press_esc(client: &impl TypesKeys) {
 }
 
 pub fn press_release_key(client: &impl TypesKeys) {
-    client.type_bytes(&keys::F9);
+    client.type_bytes(&keys::INBOX_KEY);
 }
 
 pub fn press_type_key(client: &impl TypesKeys) {

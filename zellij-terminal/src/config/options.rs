@@ -88,14 +88,19 @@ impl Default for Options {
     }
 }
 
+/// A configured family name, or none for a blank one.
+fn named_family(family: &Option<String>) -> Option<String> {
+    family.clone().filter(|family| !family.trim().is_empty())
+}
+
 pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Options {
     let section = &settings.section;
     Options {
         font: FontOptions {
-            family: section
-                .font
-                .clone()
-                .filter(|family| !family.trim().is_empty()),
+            family: named_family(&section.font),
+            bold_family: named_family(&section.font_bold),
+            italic_family: named_family(&section.font_italic),
+            bold_italic_family: named_family(&section.font_bold_italic),
             size: points_to_pixels(section.font_size.unwrap_or(DEFAULT_FONT_POINTS)),
             system_fonts: section.system_fonts.unwrap_or(true),
             ligatures: section.ligatures.unwrap_or(DEFAULT_LIGATURES),
@@ -663,6 +668,25 @@ mod tests {
             None,
         );
         assert_eq!(options.font.family, None);
+    }
+
+    #[test]
+    fn per_style_families_reach_the_font_options_and_blank_ones_are_dropped() {
+        let options = resolve(
+            &settings(TerminalConfig {
+                font_bold: Some(" ".to_owned()),
+                font_italic: Some("Italic Mono".to_owned()),
+                font_bold_italic: Some("Bold Italic Mono".to_owned()),
+                ..TerminalConfig::default()
+            }),
+            None,
+        );
+        assert_eq!(options.font.bold_family, None);
+        assert_eq!(options.font.italic_family.as_deref(), Some("Italic Mono"));
+        assert_eq!(
+            options.font.bold_italic_family.as_deref(),
+            Some("Bold Italic Mono")
+        );
     }
 
     #[test]

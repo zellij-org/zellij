@@ -114,6 +114,15 @@ pub struct CellMetrics {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FontId(usize);
 
+/// A face from a family set for one style. One that measures the same cell
+/// as the regular face is drawn as-is, like a primary face; any other is
+/// fitted into the cell like a fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StyleFace {
+    font: FontId,
+    in_cell: bool,
+}
+
 impl FontId {
     pub const SPRITES: FontId = FontId(usize::MAX);
 }
@@ -250,6 +259,11 @@ pub struct CellPlacement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontOptions {
     pub family: Option<String>,
+    /// Families for one style each, taking that style's face from `family`'s
+    /// place. A style without one keeps `family`'s face.
+    pub bold_family: Option<String>,
+    pub italic_family: Option<String>,
+    pub bold_italic_family: Option<String>,
     pub size: f32,
     pub system_fonts: bool,
     pub ligatures: bool,
@@ -258,10 +272,25 @@ pub struct FontOptions {
     pub cell: CellAdjust,
 }
 
+impl FontOptions {
+    /// The family set for `style` alone, if any.
+    fn style_family(&self, style: FaceStyle) -> Option<&str> {
+        match style {
+            FaceStyle::Regular => None,
+            FaceStyle::Bold => self.bold_family.as_deref(),
+            FaceStyle::Italic => self.italic_family.as_deref(),
+            FaceStyle::BoldItalic => self.bold_italic_family.as_deref(),
+        }
+    }
+}
+
 impl Default for FontOptions {
     fn default() -> Self {
         Self {
             family: None,
+            bold_family: None,
+            italic_family: None,
+            bold_italic_family: None,
             size: DEFAULT_FONT_SIZE,
             system_fonts: true,
             ligatures: DEFAULT_LIGATURES,
@@ -351,6 +380,9 @@ pub struct FontStack {
     coords: Vec<Vec<i16>>,
     color_capable: Vec<bool>,
     primary: [FontId; 4],
+    /// Faces from the families set for one style each, tried before that
+    /// style's primary face.
+    styled: [Option<StyleFace>; 4],
     fallbacks: Vec<FontId>,
     size: f32,
     weight: u16,
@@ -405,6 +437,7 @@ impl FontStack {
             coords,
             color_capable,
             primary: embedded_primary,
+            styled: [None; 4],
             fallbacks: vec![FontId(4), EMOJI_FONT, SYMBOLS_FONT],
             size,
             weight: options.weight,
@@ -445,6 +478,7 @@ impl FontStack {
         );
         stack.metrics = metrics;
         stack.placement = placement;
+        stack.styled = stack.requested_styles(options);
         Ok(stack)
     }
 
@@ -464,8 +498,13 @@ impl FontStack {
         FaceRequest::weighted(style, self.weight)
     }
 
+    /// The face text of `style` is shaped and drawn in: the style's own
+    /// family when that shares the cell, else the main family's face.
     pub fn primary_of(&self, style: FaceStyle) -> FontId {
-        self.primary[style.index()]
+        match self.styled[style.index()] {
+            Some(styled) if styled.in_cell => styled.font,
+            _ => self.primary[style.index()],
+        }
     }
 }
 
