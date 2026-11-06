@@ -37,6 +37,11 @@ use zellij_utils::{
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
+/// Longest pane title kept from OSC 0/2, in bytes. A title is shown on one
+/// frame line, and every CSI 22 t copies it onto the title stack, so an
+/// unbounded title multiplies into the stack: one 4 MiB title pushed 1000
+/// times would retain about 4 GiB.
+pub const MAX_TITLE_BYTES: usize = 4096;
 
 const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     &BASE64_STANDARD_ALPHABET,
@@ -4329,7 +4334,14 @@ impl Grid {
             self.output_buffer.update_line(l as usize);
         }
     }
-    fn set_title(&mut self, title: String) {
+    fn set_title(&mut self, mut title: String) {
+        if title.len() > MAX_TITLE_BYTES {
+            let mut end = MAX_TITLE_BYTES;
+            while !title.is_char_boundary(end) {
+                end -= 1;
+            }
+            title.truncate(end);
+        }
         self.title = if title.is_empty() { None } else { Some(title) };
     }
     fn push_current_title_to_stack(&mut self) {

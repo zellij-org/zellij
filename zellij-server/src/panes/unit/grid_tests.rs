@@ -6626,6 +6626,24 @@ fn csi_22t_and_23t_stay_local() {
 }
 
 #[test]
+fn long_titles_are_truncated_before_they_reach_the_title_stack() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    // Multi-byte characters straddle the limit: truncation must keep a
+    // character boundary.
+    let long_title = "€".repeat(super::MAX_TITLE_BYTES);
+    parser.feed(&mut grid, format!("\x1b]2;{long_title}\x07").as_bytes());
+    let title = grid.title.clone().expect("title is set");
+    assert!(title.len() <= super::MAX_TITLE_BYTES);
+    assert!(long_title.starts_with(&title));
+    for _ in 0..super::MAX_TITLE_STACK_SIZE + 10 {
+        parser.feed(&mut grid, b"\x1b[22;0t");
+    }
+    let retained: usize = grid.title_stack.iter().map(String::len).sum();
+    assert!(retained <= (super::MAX_TITLE_STACK_SIZE + 1) * super::MAX_TITLE_BYTES);
+}
+
+#[test]
 fn an_empty_osc_title_clears_the_title_instead_of_setting_an_empty_one() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
