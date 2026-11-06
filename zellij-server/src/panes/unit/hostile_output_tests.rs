@@ -162,8 +162,8 @@ impl Gen {
 
     /// A sixel raster attribute: the sizes that overflow, and the sizes that
     /// are merely large. Declared heights from a few thousand pixels up are
-    /// kept out because they cost quadratic time (see
-    /// `a_tall_sixel_raster_costs_quadratic_time`).
+    /// kept out to keep the run short (see
+    /// `a_tall_sixel_raster_is_rejected_cheaply`).
     fn raster_number(&mut self) -> String {
         match self.rng.below(8) {
             0 => "4294967295".into(),
@@ -783,10 +783,6 @@ struct Soak {
     rows: usize,
     columns: usize,
     fed: usize,
-    /// Hold the viewport to the pane's height and the kitty store to its
-    /// quota. Off for the ordinary runs, which only guard against runaway
-    /// growth for the two known bugs that break these bounds.
-    strict: bool,
 }
 
 impl Soak {
@@ -794,7 +790,6 @@ impl Soak {
         let mut geom = PaneGeom::default();
         geom.cols.set_inner(INITIAL_COLUMNS);
         geom.rows.set_inner(INITIAL_ROWS);
-        let links = Rc::new(RefCell::new(LinkHandler::new()));
         let sixel_store = Rc::new(RefCell::new(SixelImageStore::default()));
         let kitty_store = Rc::new(RefCell::new(KittyImageStore::with_quota(KITTY_QUOTA_BYTES)));
         let pane = TerminalPane::new(
@@ -803,7 +798,6 @@ impl Soak {
             Style::default(),
             0,
             String::new(),
-            links.clone(),
             Rc::new(RefCell::new(Some(SizeInPixels {
                 width: 8,
                 height: 16,
@@ -821,6 +815,7 @@ impl Soak {
             false,
             None,
         );
+        let links = pane.grid.link_handler.clone();
         Soak {
             pane,
             links,
@@ -829,7 +824,6 @@ impl Soak {
             rows: INITIAL_ROWS,
             columns: INITIAL_COLUMNS,
             fed: 0,
-            strict: false,
         }
     }
 
@@ -879,15 +873,7 @@ impl Soak {
         // screen geometry
         assert_eq!(self.pane.grid.height, self.rows, "grid height, {at}");
         assert_eq!(self.pane.grid.width, self.columns, "grid width, {at}");
-        // KNOWN BUG, see `scroll_region_below_the_screen_grows_the_viewport`:
-        // a scroll region that reaches past the last row lets scrolling add
-        // rows to the viewport. Until that is fixed the ordinary runs only
-        // insist on the bound that the 16-bit region parameters imply.
-        let viewport_limit = if self.strict {
-            self.rows
-        } else {
-            self.rows + u16::MAX as usize
-        };
+        let viewport_limit = self.rows;
         assert!(
             state.viewport <= viewport_limit,
             "viewport has {} rows for a pane of {}, {at}",
@@ -996,14 +982,7 @@ impl Soak {
         );
 
         // kitty images
-        // KNOWN BUG, see `scaled_kitty_placements_push_the_store_past_its_quota`:
-        // scaled copies of a placed image are added without regard to the
-        // quota. The ordinary runs only guard against runaway growth.
-        let kitty_limit = if self.strict {
-            KITTY_QUOTA_BYTES
-        } else {
-            16 * KITTY_QUOTA_BYTES
-        };
+        let kitty_limit = KITTY_QUOTA_BYTES;
         let kitty_bytes = self.kitty_store.borrow().total_bytes();
         assert!(
             kitty_bytes <= kitty_limit,
@@ -1048,7 +1027,7 @@ impl Soak {
 
 /// A random pane size. Panes are at least two columns wide: a wide character
 /// reflowed into a single column overflows it (see
-/// `a_wide_character_reflowed_into_a_one_column_pane_overflows_it`).
+/// `a_wide_character_reflowed_into_a_one_column_pane_does_not_overflow_it`).
 fn random_size(gen: &mut Gen) -> (usize, usize) {
     match gen.rng.below(10) {
         0 => (1, gen.rng.range(2, 400)),
@@ -1141,9 +1120,8 @@ fn plan_single_kind(kind: Kind, seed: u64, budget: usize) -> Vec<Op> {
 }
 
 /// Run `ops` on a fresh pane and call `after_each` after every one.
-fn replay(ops: &[Op], strict: bool, after_each: &mut dyn FnMut(&mut Soak)) -> Soak {
+fn replay(ops: &[Op], after_each: &mut dyn FnMut(&mut Soak)) -> Soak {
     let mut soak = Soak::new();
-    soak.strict = strict;
     for op in ops {
         match op {
             Op::Feed(bytes) => soak.feed(bytes),
@@ -1162,7 +1140,7 @@ fn replay(ops: &[Op], strict: bool, after_each: &mut dyn FnMut(&mut Soak)) -> So
 /// needed to rerun it.
 fn run_plan(label: &str, ops: &[Op]) {
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let mut soak = replay(ops, false, &mut |soak| soak.check_bounds());
+        let mut soak = replay(ops, &mut |soak| soak.check_bounds());
         soak.settle_and_check();
         drop(soak);
         assert_eq!(
@@ -1515,10 +1493,11 @@ fn cpu_grows_linearly_with_hostile_input() {
 }
 
 // ---------------------------------------------------------------------------
-// bugs found by the soak, kept as ignored reproducers
+// bugs found by the soak, kept as regressions (fixed by fix/pane-output-bounds
+// and fix/graphics-cache-bounds)
 // ---------------------------------------------------------------------------
 
-/// BUG: a scroll region whose top lies below the last row (`CSI 42;96 r` on
+/// Was a bug: a scroll region whose top lies below the last row (`CSI 42;96 r` on
 /// a 24-row pane), followed by a scroll (`CSI S`), adds rows to the
 /// viewport: it ends up with as many rows as the region's top margin, 42 in
 /// this case, instead of 24, until the next resize. The growth is bounded
@@ -1526,28 +1505,25 @@ fn cpu_grows_linearly_with_hostile_input() {
 /// viewport no longer matches the pane. Found by the mixed soak, seed 7020
 /// with `Kind::Csi`; the default runs check only the 16-bit bound.
 #[test]
-#[ignore = "BUG: a scroll region below the screen grows the viewport past the pane height"]
-fn scroll_region_below_the_screen_grows_the_viewport() {
+fn scroll_region_below_the_screen_keeps_the_viewport_at_the_pane_height() {
     let mut soak = Soak::new();
-    soak.strict = true;
     soak.feed(b"\x1b[42;96r\x1b[S");
     soak.check_bounds();
 }
 
-/// BUG: a double-width character that is reflowed into a one-column pane
+/// Was a bug: a double-width character that is reflowed into a one-column pane
 /// stays two columns wide, so the row is wider than the pane. Found by the
 /// mixed soak, seed 4 (before panes of one column were left out of
 /// `random_size`).
 #[test]
-#[ignore = "BUG: a wide character reflowed into a one-column pane overflows it"]
-fn a_wide_character_reflowed_into_a_one_column_pane_overflows_it() {
+fn a_wide_character_reflowed_into_a_one_column_pane_does_not_overflow_it() {
     let mut soak = Soak::new();
     soak.feed("\u{ff13}".as_bytes());
     soak.resize(1, 1);
     soak.check_bounds();
 }
 
-/// BUG: the CPU cost of a sixel image is quadratic in the height declared
+/// Was a bug: the CPU cost of a sixel image is quadratic in the height declared
 /// by its raster attributes, and is paid before any image data arrives.
 /// The 16 bytes below, a raster attribute of height 65536 and nothing
 /// else, take over 30 s in a debug build; a declared height of 32000 takes
@@ -1558,8 +1534,7 @@ fn a_wide_character_reflowed_into_a_one_column_pane_overflows_it() {
 /// declares heights of at most 1500, and values that overflow, which are
 /// rejected quickly.
 #[test]
-#[ignore = "BUG: a tall sixel raster attribute costs quadratic CPU"]
-fn a_tall_sixel_raster_costs_quadratic_time() {
+fn a_tall_sixel_raster_is_rejected_cheaply() {
     let mut soak = Soak::new();
     let started = Instant::now();
     soak.feed(b"\x1bPq\"1;2;2;65536!");
@@ -1570,7 +1545,7 @@ fn a_tall_sixel_raster_costs_quadratic_time() {
     );
 }
 
-/// BUG: every placement of an image at a size other than its own adds a
+/// Was a bug: every placement of an image at a size other than its own adds a
 /// scaled copy of the image to the store (`add_scaled_variant`), and the
 /// copies are charged to the quota but never refused or evicted while the
 /// image is placed, nor dropped when a placement goes away. One 2x2 pixel
@@ -1581,14 +1556,28 @@ fn a_tall_sixel_raster_costs_quadratic_time() {
 /// 7012 (store at 4.5 MB of 4 MiB after 75 KB of output) and by
 /// `kitty_images_stay_within_the_store_quota`, and reduced by hand.
 #[test]
-#[ignore = "BUG: scaled kitty placements push the store past its quota"]
-fn scaled_kitty_placements_push_the_store_past_its_quota() {
+fn scaled_kitty_placements_stay_within_the_store_quota() {
     let mut soak = Soak::new();
-    soak.strict = true;
     let pixels = BASE64_ENCODER.encode([0u8; 16]);
     soak.feed(format!("\x1b_Ga=t,f=32,s=2,v=2,i=1,q=2;{pixels}\x1b\\").as_bytes());
     for cells in 1..=60 {
         soak.feed(format!("\x1b_Ga=p,i=1,c={cells},r={cells},q=2\x1b\\").as_bytes());
         soak.check_bounds();
     }
+}
+
+/// A pane that is shrunk while it shows the alternate screen must shrink the
+/// alternate screen's viewport with it. Found by the heavy soak, seed 1002: a
+/// one-row pane held a 24-row viewport.
+#[test]
+fn shrinking_a_pane_on_the_alternate_screen_shrinks_its_viewport() {
+    let mut soak = Soak::new();
+    soak.feed(b"\x1b[?1049h");
+    soak.feed("row\r\n".repeat(INITIAL_ROWS).as_bytes());
+    soak.resize(1, 40);
+    soak.check_bounds();
+    soak.feed(b"\x1b[?1049l");
+    soak.check_bounds();
+    soak.resize(INITIAL_ROWS, INITIAL_COLUMNS);
+    soak.check_bounds();
 }
