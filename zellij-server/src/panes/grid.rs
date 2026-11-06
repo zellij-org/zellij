@@ -38,8 +38,28 @@ use zellij_utils::{
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 pub const MAX_TITLE_BYTES: usize = 4096;
-const MAX_XTGETTCAP_BYTES: usize = 4096;
-const MAX_NESTED_FRAME_BYTES: usize = 1_048_576;
+/// Longest DCS payloads assembled for Zellij UI components, nested-session
+/// frames and XTGETTCAP queries. A longer sequence is discarded whole
+/// rather than dispatched truncated; without a limit an unterminated
+/// sequence grew without bound.
+pub const MAX_UI_COMPONENT_DCS_BYTES: usize = 4 * 1024 * 1024;
+/// Matches the largest frame a nested session emits.
+pub const MAX_NESTED_FRAME_DCS_BYTES: usize = 1024 * 1024;
+pub const MAX_XTGETTCAP_DCS_BYTES: usize = 4096;
+
+/// Append a DCS payload byte, abandoning the sequence once it exceeds
+/// `limit`: the buffer is dropped, the rest of the sequence is ignored and
+/// nothing is dispatched for it.
+fn push_bounded_dcs_byte(buffer: &mut Option<Vec<u8>>, byte: u8, limit: usize, kind: &str) {
+    if let Some(bytes) = buffer {
+        if bytes.len() < limit {
+            bytes.push(byte);
+        } else {
+            log::warn!("discarding a {kind} DCS sequence longer than {limit} bytes");
+            *buffer = None;
+        }
+    }
+}
 
 const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     &BASE64_STANDARD_ALPHABET,
@@ -5491,20 +5511,27 @@ impl Handler for Grid {
             // we explicitly set this to false here because in the context of Sixel, we only render the
             // image when it's done, i.e. in the unhook method
             self.should_render = false;
-        } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
-            ui_component_bytes.push(byte);
-        } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.as_mut() {
-            if nested_frame_bytes.len() < MAX_NESTED_FRAME_BYTES {
-                nested_frame_bytes.push(byte);
-            } else {
-                self.nested_frame_bytes = None;
-            }
-        } else if let Some(xtgettcap_bytes) = self.xtgettcap_bytes.as_mut() {
-            if xtgettcap_bytes.len() < MAX_XTGETTCAP_BYTES {
-                xtgettcap_bytes.push(byte);
-            } else {
-                self.xtgettcap_bytes = None;
-            }
+        } else if self.ui_component_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.ui_component_bytes,
+                byte,
+                MAX_UI_COMPONENT_DCS_BYTES,
+                "UI component",
+            );
+        } else if self.nested_frame_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.nested_frame_bytes,
+                byte,
+                MAX_NESTED_FRAME_DCS_BYTES,
+                "nested-session frame",
+            );
+        } else if self.xtgettcap_bytes.is_some() {
+            push_bounded_dcs_byte(
+                &mut self.xtgettcap_bytes,
+                byte,
+                MAX_XTGETTCAP_DCS_BYTES,
+                "XTGETTCAP query",
+            );
         }
     }
 
