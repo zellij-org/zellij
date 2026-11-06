@@ -39,7 +39,6 @@ pub enum AppEvent {
         ticket: u64,
         result: Result<crate::session::connection::Connection, String>,
     },
-    #[cfg_attr(not(unix), allow(dead_code))]
     Terminate,
     Describe(std::sync::mpsc::Sender<zellij_utils::app_control::AppState>),
     RaiseWindows {

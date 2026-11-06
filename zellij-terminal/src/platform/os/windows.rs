@@ -24,7 +24,9 @@ pub fn claim_app_identity() {
 }
 
 pub fn terminate_on_signal(poster: AppPoster) {
-    let _ = poster;
+    crate::windows_shell::console_events::end_on_console_event(move || {
+        poster.post(crate::app::AppEvent::Terminate);
+    });
 }
 
 pub fn detach_from_terminal(command: &mut std::process::Command) {
