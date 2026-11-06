@@ -211,12 +211,14 @@ pub enum PluginInstruction {
         cli_client_id: ClientId,
         plugin_and_client_id: Option<(u32, ClientId)>,
         notification_end: Option<NotificationEnd>,
+        client_local: bool,
     },
     CachePluginEvents {
         plugin_id: PluginId,
     },
     MessageFromPlugin {
         source_plugin_id: u32,
+        source_client_id: ClientId,
         message: MessageToPlugin,
     },
     UnblockCliPipes(Vec<PluginRenderAsset>),
@@ -1252,6 +1254,7 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
+                retain_cli_pipe_targets(&mut pipe_messages, &wasm_bridge);
                 let has_recipients = !pipe_messages.is_empty();
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
                 if !has_recipients && !wasm_bridge.cli_pipe_is_pending(&pipe_id) {
@@ -1347,6 +1350,7 @@ pub(crate) fn plugin_thread_main(
                 cli_client_id,
                 plugin_and_client_id,
                 notification_end,
+                client_local,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
@@ -1396,6 +1400,9 @@ pub(crate) fn plugin_thread_main(
                         },
                     }
                 }
+                if client_local {
+                    retain_client_local_pipes(&mut pipe_messages, cli_client_id, &wasm_bridge);
+                }
                 wasm_bridge.pipe_messages(
                     pipe_messages,
                     shutdown_send.clone(),
@@ -1407,6 +1414,7 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::MessageFromPlugin {
                 source_plugin_id,
+                source_client_id,
                 message,
             } => {
                 let mut pipe_messages = vec![];
@@ -1455,9 +1463,10 @@ pub(crate) fn plugin_thread_main(
                     },
                     (None, Some(destination_plugin_id)) => {
                         let is_private = true;
+                        let target_client_id = message.client_local.then_some(source_client_id);
                         pipe_messages.push((
                             Some(destination_plugin_id),
-                            None,
+                            target_client_id,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
                                 message.message_name,
@@ -1470,9 +1479,10 @@ pub(crate) fn plugin_thread_main(
                     (Some(plugin_url), Some(destination_plugin_id)) => {
                         log::warn!("Message contains both a destination plugin url: {plugin_url} and a destination plugin id: {destination_plugin_id}, ignoring the url and prioritizing the id");
                         let is_private = true;
+                        let target_client_id = message.client_local.then_some(source_client_id);
                         pipe_messages.push((
                             Some(destination_plugin_id),
-                            None,
+                            target_client_id,
                             PipeMessage::new(
                                 PipeSource::Plugin(source_plugin_id),
                                 message.message_name,
@@ -1493,6 +1503,9 @@ pub(crate) fn plugin_thread_main(
                             &mut pipe_messages,
                         );
                     },
+                }
+                if message.client_local {
+                    retain_client_local_pipes(&mut pipe_messages, source_client_id, &wasm_bridge);
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
@@ -1843,6 +1856,37 @@ fn pipe_to_specific_plugins(
             },
         },
     }
+}
+
+fn retain_client_local_pipes(
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+    client_id: ClientId,
+    wasm_bridge: &WasmBridge,
+) {
+    pipe_messages.retain_mut(|(plugin_id, target_client_id, _)| match target_client_id {
+        Some(target_client_id) => *target_client_id == client_id,
+        None if (*plugin_id)
+            .map(|plugin_id| wasm_bridge.is_shared_plugin_or_slot(plugin_id))
+            .unwrap_or(false) =>
+        {
+            *target_client_id = Some(client_id);
+            true
+        },
+        None => false,
+    });
+}
+
+fn retain_cli_pipe_targets(
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+    wasm_bridge: &WasmBridge,
+) {
+    pipe_messages.retain(|(plugin_id, client_id, _)| match client_id {
+        Some(client_id) => wasm_bridge.client_is_connected(client_id),
+        None => plugin_id
+            .as_ref()
+            .map(|plugin_id| wasm_bridge.is_shared_plugin_or_slot(*plugin_id))
+            .unwrap_or(false),
+    });
 }
 
 fn load_background_plugin(

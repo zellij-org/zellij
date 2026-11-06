@@ -1618,6 +1618,7 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
     env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
             source_plugin_id: env.plugin_id,
+            source_client_id: acting_client(env),
             message: message_to_plugin,
         })
         .context("failed to send message to plugin")

@@ -463,6 +463,7 @@ pub fn shared_plugin_slot_commands_are_checked() {
         cli_client_id: client_id,
         plugin_and_client_id: Some((slot_id, client_id)),
         notification_end: None,
+        client_local: false,
     });
     screen.wait_until("slot command results rendered", |renders| {
         field(&renders[&(slot_id, client_id)], "self_commands").contains("Err")
@@ -545,6 +546,7 @@ pub fn shared_plugin_collapses_a_slot_by_id() {
         cli_client_id: client_id,
         plugin_and_client_id: Some((slots[0], client_id)),
         notification_end: None,
+        client_local: false,
     });
     screen.wait_until("slot command results rendered", |renders| {
         field(&renders[&(slots[0], client_id)], "self_commands").contains("Err")
@@ -648,6 +650,7 @@ fn pipe_to_slot(
         cli_client_id: client_id,
         plugin_and_client_id: Some((slot_id, client_id)),
         notification_end: None,
+        client_local: false,
     });
 }
 
