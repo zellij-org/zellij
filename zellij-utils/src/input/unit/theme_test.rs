@@ -344,6 +344,15 @@ fn quoted_rgb_and_bare_hex_colors_read_like_the_number_form() {
 }
 
 #[test]
+fn multibyte_hex_colors_are_rejected_without_panicking() {
+    // https://github.com/zellij-org/zellij/issues/5732: 'é' is two bytes, so a
+    // byte-length check used to slice inside the character and panic.
+    assert!(theme_with_fg("\"#aé\"").is_err());
+    assert!(theme_with_fg("\"ééé\"").is_err());
+    assert!(theme_with_fg("\"#agb\"").is_err());
+}
+
+#[test]
 fn color_values_outside_0_to_255_are_rejected() {
     assert!(theme_with_fg("111 222 333").is_err());
     assert!(theme_with_fg("-1 0 0").is_err());
