@@ -45,6 +45,7 @@ insta = "1.48"
 ssh2 = "0.9.1"
 rand = { workspace = true }
 regex = { workspace = true }
+tempfile = { workspace = true }
 
 [workspace]
 members = [

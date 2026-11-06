@@ -6,6 +6,10 @@ use std::path::PathBuf;
 pub mod com;
 #[cfg(not(target_family = "wasm"))]
 pub mod desktop_entry;
+#[cfg(target_os = "macos")]
+pub mod icns;
+#[cfg(target_os = "macos")]
+pub mod macos_bundle;
 #[cfg(not(target_family = "wasm"))]
 pub mod platform;
 #[cfg(windows)]
@@ -283,6 +287,9 @@ pub struct ItemStatus {
     pub target: Option<PathBuf>,
     #[serde(default)]
     pub removes: Vec<String>,
+    /// Shown instead of the item's usual name, e.g. "Zellij.app".
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,6 +315,7 @@ impl ItemStatus {
             upgrade: None,
             target: None,
             removes: vec![],
+            display_name: None,
         }
     }
     pub fn already(item: Item, reason: impl Into<String>) -> Self {
@@ -330,6 +338,10 @@ impl ItemStatus {
     }
     pub fn with_instructions(mut self, instructions: Vec<String>) -> Self {
         self.instructions = instructions;
+        self
+    }
+    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
+        self.display_name = Some(name.into());
         self
     }
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
@@ -390,9 +402,14 @@ impl Status {
     pub fn item(&self, item: Item) -> Option<&ItemStatus> {
         self.items.iter().find(|status| status.item == item)
     }
+    /// Whether Zellij can remove this item. Also true for ours when an update is waiting.
     pub fn removable(&self, item: Item) -> bool {
         self.item(item)
-            .map(|status| status.installed && status.changeable && status.owner == Owner::Zellij)
+            .map(|status| {
+                (status.installed || status.upgrade.is_some())
+                    && status.changeable
+                    && status.owner == Owner::Zellij
+            })
             .unwrap_or(false)
     }
     pub fn offered(&self, item: Item) -> bool {
@@ -1399,6 +1416,27 @@ mod tests {
         let plan = plan_setup(&status_with(vec![someone]), actions);
         assert!(plan.remove.is_empty());
         assert_eq!(plan.refused.len(), 1);
+    }
+
+    #[test]
+    fn an_entry_of_ours_with_an_update_waiting_can_still_be_removed() {
+        let out_of_date = ItemStatus {
+            installed: false,
+            ..ours(Item::Launcher)
+        }
+        .with_upgrade(Upgrade {
+            path: PathBuf::from("/Users/me/Applications/Zellij.app"),
+            from: "0.46.0".to_owned(),
+            to: "0.46.1".to_owned(),
+            same_version: false,
+        });
+        let actions = SetupActions {
+            uninstall_desktop_entry: true,
+            ..Default::default()
+        };
+        let plan = plan_setup(&status_with(vec![out_of_date]), actions);
+        assert_eq!(plan.remove, vec![Item::Launcher]);
+        assert!(plan.notes.is_empty(), "{:?}", plan.notes);
     }
 
     #[test]

@@ -161,6 +161,71 @@ pub struct SetupScreen {
     widened: bool,
 }
 
+/// Wording for the desktop entry line. On macOS the entry is Zellij.app, so we use the app's
+/// name instead of "Desktop Entry".
+struct EntryWords {
+    app: Option<String>,
+}
+
+impl EntryWords {
+    fn of(display_name: Option<&str>) -> Self {
+        EntryWords {
+            app: display_name.map(str::to_owned),
+        }
+    }
+
+    fn title(&self) -> &str {
+        self.app.as_deref().unwrap_or("Desktop Entry")
+    }
+
+    fn sentence(&self) -> String {
+        match &self.app {
+            Some(app) => app.clone(),
+            None => "the desktop entry".to_owned(),
+        }
+    }
+
+    fn capitalized(&self) -> String {
+        match &self.app {
+            Some(app) => app.clone(),
+            None => "The desktop entry".to_owned(),
+        }
+    }
+
+    fn uninstall_title(&self) -> String {
+        format!("Uninstall {}", self.title())
+    }
+
+    fn uninstalled(&self) -> String {
+        format!("✓ {} was uninstalled.", self.capitalized())
+    }
+
+    fn not_uninstalled(&self, reason: &str) -> String {
+        format!(
+            "✗ {} could not be uninstalled: {}",
+            self.capitalized(),
+            reason
+        )
+    }
+
+    fn uninstall_deletes(&self) -> String {
+        format!("Uninstalling {} deletes:\n", self.sentence())
+    }
+}
+
+fn entry_line_label(words: &EntryWords, upgrade: Option<&Upgrade>) -> String {
+    match upgrade {
+        Some(upgrade) if upgrade.from == upgrade.to => format!("Reinstall {}", words.title()),
+        Some(upgrade) => format!(
+            "Update {} from {} to {}",
+            words.title(),
+            upgrade.from,
+            upgrade.to
+        ),
+        None => format!("Install {}", words.title()),
+    }
+}
+
 impl SetupScreen {
     pub fn new(auto_shown: bool, own_plugin_id: u32) -> Self {
         let mut keys = KeysScreen::new(true).as_setup_step();
@@ -258,7 +323,7 @@ impl SetupScreen {
     }
 
     fn can_uninstall(&self) -> bool {
-        !self.auto_shown && self.line_done(Line::Entry) && !self.removable_entry_items().is_empty()
+        !self.auto_shown && !self.removable_entry_items().is_empty()
     }
 
     fn removed_by_uninstall(&self) -> Vec<String> {
@@ -273,9 +338,32 @@ impl SetupScreen {
     }
 
     fn upgrade(&self) -> Option<&Upgrade> {
-        self.offered(Line::Copy)
+        self.upgrade_of(Line::Copy)
+    }
+
+    fn upgrade_of(&self, line: Line) -> Option<&Upgrade> {
+        self.offered(line)
             .into_iter()
             .find_map(|status| status.upgrade.as_ref())
+    }
+
+    /// Only set on macOS, where the desktop entry is an app.
+    fn app_name(&self) -> Option<&str> {
+        self.status
+            .as_ref()
+            .and_then(|status| status.item(Item::Launcher))
+            .and_then(|status| status.display_name.as_deref())
+    }
+
+    fn item_label(&self, item: Item) -> String {
+        match (item, self.app_name()) {
+            (Item::Launcher, Some(app)) => app.to_owned(),
+            _ => item.label().to_owned(),
+        }
+    }
+
+    fn entry_words(&self) -> EntryWords {
+        EntryWords::of(self.app_name())
     }
 
     fn line_label(&self, line: Line) -> String {
@@ -288,6 +376,7 @@ impl SetupScreen {
             (Line::Copy, Some(upgrade)) => {
                 format!("Update Zellij from {} to {}", upgrade.from, upgrade.to)
             },
+            (Line::Entry, _) => entry_line_label(&self.entry_words(), self.upgrade_of(Line::Entry)),
             _ => line.label().to_owned(),
         }
     }
@@ -332,14 +421,8 @@ impl SetupScreen {
                 self.uninstalling = false;
                 let failed: Vec<&Outcome> = outcomes.iter().filter(|o| !o.succeeded).collect();
                 self.notice = Some(match failed.first() {
-                    None => ("✓ The desktop entry was uninstalled.".to_owned(), true),
-                    Some(outcome) => (
-                        format!(
-                            "✗ The desktop entry could not be uninstalled: {}",
-                            outcome.message
-                        ),
-                        false,
-                    ),
+                    None => (self.entry_words().uninstalled(), true),
+                    Some(outcome) => (self.entry_words().not_uninstalled(&outcome.message), false),
                 });
                 self.ticked.remove(&Line::Entry);
                 request_desktop_integration(&Request::Status);
@@ -455,7 +538,7 @@ impl SetupScreen {
         }
         self.hovered = None;
         let removes = self.removed_by_uninstall();
-        let mut text = String::from("Uninstalling the desktop entry deletes:\n");
+        let mut text = self.entry_words().uninstall_deletes();
         for path in &removes {
             text.push('\n');
             text.push_str(path);
@@ -465,7 +548,7 @@ impl SetupScreen {
             message = message.color_substring(0, path);
         }
         let request = PromptRequest::confirm(message)
-            .title("Uninstall Desktop Entry")
+            .title(self.entry_words().uninstall_title())
             .yes("Uninstall")
             .no("Cancel")
             .placement(placement);
@@ -681,7 +764,9 @@ impl SetupScreen {
                     .offered(Line::Entry)
                     .iter()
                     .any(|status| status.item == Item::StartMenu);
-                if windows {
+                if let Some(app) = &self.entry_words().app {
+                    paragraphs.push(format!("Puts {} in your Applications folder, so Zellij opens from Finder, Spotlight or the Dock like any other app. To update it later, install it again.", app));
+                } else if windows {
                     paragraphs.push("Adds Zellij to the Start menu, and an \"Open Zellij here\" item when you right-click a folder in Explorer.".to_owned());
                 } else {
                     paragraphs.push("Adds Zellij to your app menu, so it opens in its own window like any other app.".to_owned());
@@ -1149,7 +1234,7 @@ impl SetupScreen {
             let verb = if outcome.install { "" } else { "Removed: " };
             blocks.push(Block::Text(
                 Text::from(truncate(
-                    &format!("{} {}{}", mark, verb, outcome.item.label()),
+                    &format!("{} {}{}", mark, verb, self.item_label(outcome.item)),
                     width,
                 ))
                 .color_range(color, ..1),
@@ -1341,6 +1426,7 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zellij_tile::prelude::desktop_integration::Owner;
 
     fn plain(text: &Text) -> String {
         StyledText::from(text.clone()).text
@@ -1395,6 +1481,83 @@ mod tests {
                 OutcomeSection::Note("It runs /bin/zellij".to_owned()),
                 OutcomeSection::Files("Removed", vec!["/a/old.desktop".to_owned()]),
             ]
+        );
+    }
+
+    fn upgrade(from: &str, to: &str) -> Upgrade {
+        Upgrade {
+            path: std::path::PathBuf::from("/Users/me/Applications/Zellij.app"),
+            from: from.to_owned(),
+            to: to.to_owned(),
+            same_version: from == to,
+        }
+    }
+
+    #[test]
+    fn an_app_of_ours_with_an_update_waiting_can_be_uninstalled() {
+        let out_of_date = ItemStatus {
+            available: true,
+            changeable: true,
+            owner: Owner::Zellij,
+            ..ItemStatus::unavailable(Item::Launcher, "Zellij.app 0.46.0 is installed")
+        }
+        .with_upgrade(upgrade("0.46.0", "0.47.0"))
+        .with_removes(vec!["/Users/me/Applications/Zellij.app".to_owned()]);
+        let mut screen = SetupScreen::new(false, 0);
+        screen.status = Some(Status {
+            items: vec![out_of_date],
+            ..Status::default()
+        });
+        assert!(screen.can_uninstall());
+    }
+
+    #[test]
+    fn a_mac_status_names_the_app() {
+        let words = EntryWords::of(Some("Zellij.app"));
+        assert_eq!(entry_line_label(&words, None), "Install Zellij.app");
+        assert_eq!(words.uninstall_title(), "Uninstall Zellij.app");
+        assert_eq!(words.uninstalled(), "✓ Zellij.app was uninstalled.");
+        assert_eq!(
+            words.not_uninstalled("busy"),
+            "✗ Zellij.app could not be uninstalled: busy"
+        );
+        assert_eq!(
+            words.uninstall_deletes(),
+            "Uninstalling Zellij.app deletes:\n"
+        );
+    }
+
+    #[test]
+    fn an_upgrade_of_the_app_is_offered() {
+        let words = EntryWords::of(Some("Zellij.app"));
+        assert_eq!(
+            entry_line_label(&words, Some(&upgrade("0.46.0", "0.47.0"))),
+            "Update Zellij.app from 0.46.0 to 0.47.0"
+        );
+    }
+
+    #[test]
+    fn same_version_reads_reinstall() {
+        let words = EntryWords::of(Some("Zellij.app"));
+        assert_eq!(
+            entry_line_label(&words, Some(&upgrade("0.46.0", "0.46.0"))),
+            "Reinstall Zellij.app"
+        );
+    }
+
+    #[test]
+    fn without_a_display_name_the_wording_stays() {
+        let words = EntryWords::of(None);
+        assert_eq!(entry_line_label(&words, None), "Install Desktop Entry");
+        assert_eq!(words.uninstall_title(), "Uninstall Desktop Entry");
+        assert_eq!(words.uninstalled(), "✓ The desktop entry was uninstalled.");
+        assert_eq!(
+            words.not_uninstalled("busy"),
+            "✗ The desktop entry could not be uninstalled: busy"
+        );
+        assert_eq!(
+            words.uninstall_deletes(),
+            "Uninstalling the desktop entry deletes:\n"
         );
     }
 

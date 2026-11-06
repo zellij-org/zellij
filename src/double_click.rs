@@ -89,7 +89,7 @@ fn has_terminal() -> bool {
     true
 }
 
-fn current_launch() -> Launch {
+pub(crate) fn current_launch() -> Launch {
     Launch {
         platform: Platform::current(),
         has_arguments: std::env::args_os().len() > 1,
@@ -116,6 +116,10 @@ fn window_opts() -> Option<CliArgs> {
             program.as_deref().and_then(Path::parent),
             std::env::home_dir().as_deref(),
         );
+        // The session server, and the plugins it runs, start in this process's folder.
+        if let Some(folder) = &terminal_args.working_directory {
+            let _ = std::env::set_current_dir(folder);
+        }
     }
     Some(opts)
 }

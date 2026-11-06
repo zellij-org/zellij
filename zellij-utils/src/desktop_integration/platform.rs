@@ -7,8 +7,11 @@ use crate::desktop_integration::{
 
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
 use linux as platform;
+#[cfg(target_os = "macos")]
+use macos as platform;
 #[cfg(not(any(
     windows,
+    target_os = "macos",
     all(unix, not(target_os = "macos"), not(target_os = "android"))
 )))]
 use unsupported as platform;
@@ -224,6 +227,7 @@ pub fn owned_status(item: Item, owner: Owner, state_text: impl Into<String>) -> 
         upgrade: None,
         target: None,
         removes: vec![],
+        display_name: None,
     }
 }
 
@@ -1865,8 +1869,718 @@ mod windows_desktop {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod macos {
+    use std::path::{Path, PathBuf};
+
+    use anyhow::{bail, Context, Result};
+
+    use super::{copy_binary, outcome, owned_status};
+    use crate::desktop_integration::macos_bundle::{self, Build, Installed};
+    use crate::desktop_integration::{
+        load, location, update, BinaryCopyRecord, Environment, IntegrationState, Item, ItemStatus,
+        Outcome, Owner, RepairOffer, Upgrade,
+    };
+
+    pub(super) struct Running {
+        pub path: PathBuf,
+        pub version: String,
+        pub build: Build,
+    }
+
+    fn home() -> Option<PathBuf> {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|h| h.is_absolute())
+    }
+
+    fn copy_destination() -> Option<PathBuf> {
+        home().map(|h| {
+            h.join(".local")
+                .join("bin")
+                .join(crate::distribution::name())
+        })
+    }
+
+    pub fn describe(environment: &mut Environment) {
+        if over_ssh(|key| std::env::var_os(key)) {
+            environment.no_desktop = Some("Not available over SSH".to_owned());
+        }
+        if let Some(binary) = environment.binary.clone() {
+            environment.package_manager = location::package_manager_of(&binary);
+            environment.binary_permanent = location::system_install_of(&binary).is_some()
+                || copy_destination()
+                    .map(|destination| location::same_file(&binary, &destination))
+                    .unwrap_or(false);
+            if !environment.binary_permanent {
+                let downloads = home().map(|h| h.join("Downloads"));
+                let place =
+                    location::place_of(&binary, downloads.as_deref(), &location::temporary_dirs());
+                environment.binary_location_note = Some(location::place_note(place));
+            }
+        }
+    }
+
+    pub fn items(environment: &Environment, _state: &IntegrationState) -> Vec<ItemStatus> {
+        let copy = match copy_destination() {
+            Some(destination) => copy_binary_status(environment, &destination),
+            None => ItemStatus::unavailable(Item::CopyBinary, "There is no home folder"),
+        };
+        let app = match (macos_bundle::applications_dir(), running(environment)) {
+            (Ok(applications), Some(running)) => app_item(environment, &applications, &running),
+            (Err(e), _) => ItemStatus::unavailable(Item::Launcher, format!("{:#}", e)),
+            (_, None) => {
+                ItemStatus::unavailable(Item::Launcher, "The running zellij could not be found")
+            },
+        };
+        vec![
+            copy,
+            app,
+            other_item(Item::DefaultTerminal),
+            other_item(Item::StartMenu),
+            other_item(Item::ExplorerItem),
+        ]
+    }
+
+    pub(super) fn app_item(
+        environment: &Environment,
+        applications: &Path,
+        running: &Running,
+    ) -> ItemStatus {
+        if let Some(reason) = &environment.no_desktop {
+            return ItemStatus::unavailable(Item::Launcher, reason.clone());
+        }
+        let bundle = macos_bundle::bundle_path(applications);
+        let installed = macos_bundle::installed(applications);
+        if installed.is_none() && bundle.symlink_metadata().is_ok() {
+            return owned_status(
+                Item::Launcher,
+                Owner::Someone,
+                format!("{} is not Zellij's, so it is left alone", bundle.display()),
+            )
+            .with_display_name(macos_bundle::bundle_name())
+            .with_target(bundle);
+        }
+        app_status(installed.as_ref(), &bundle, running)
+    }
+
+    pub(super) fn over_ssh(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+        ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+            .iter()
+            .any(|key| get(key).is_some_and(|value| !value.is_empty()))
+    }
+
+    fn running(environment: &Environment) -> Option<Running> {
+        let path = environment.binary.clone()?;
+        let build = macos_bundle::build_of(&path)?;
+        Some(Running {
+            path,
+            version: crate::distribution::distribution().version.to_owned(),
+            build,
+        })
+    }
+
+    pub(super) fn app_status(
+        installed: Option<&Installed>,
+        bundle: &Path,
+        running: &Running,
+    ) -> ItemStatus {
+        let name = macos_bundle::bundle_name();
+        let base = ItemStatus {
+            available: true,
+            changeable: true,
+            owner: Owner::Zellij,
+            ..ItemStatus::unavailable(Item::Launcher, "")
+        }
+        .with_display_name(name.clone())
+        .with_target(bundle.to_path_buf());
+        if macos_bundle::is_inside_a_bundle(&running.path) {
+            return ItemStatus {
+                installed: installed.is_some(),
+                changeable: false,
+                state_text: format!("This is the copy of Zellij inside {}", name),
+                ..base
+            }
+            .with_hint(format!(
+                "To update {}, run zellij setup --install-desktop-entry from a terminal",
+                name
+            ));
+        }
+        match installed {
+            None => ItemStatus {
+                state_text: format!("{} is not installed", name),
+                ..base
+            },
+            Some(app) => {
+                // Don't offer to "update" an app that was built from a newer zellij.
+                let newer = crate::desktop_integration::version_number(&app.version)
+                    > crate::desktop_integration::version_number(&running.version);
+                let current =
+                    newer || (app.version == running.version && app.build == running.build);
+                let status = ItemStatus {
+                    installed: current,
+                    state_text: format!(
+                        "{} {} is installed in {}",
+                        name,
+                        app.version,
+                        parent_of(bundle)
+                    ),
+                    ..base
+                }
+                .with_removes(vec![bundle.display().to_string()]);
+                if current {
+                    status
+                } else {
+                    status.with_upgrade(Upgrade {
+                        path: bundle.to_path_buf(),
+                        from: app.version.clone(),
+                        to: running.version.clone(),
+                        same_version: app.version == running.version,
+                    })
+                }
+            },
+        }
+    }
+
+    fn parent_of(bundle: &Path) -> String {
+        bundle
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn copy_binary_status(environment: &Environment, destination: &Path) -> ItemStatus {
+        // The binary inside the app has been re-signed, so a copy of it would never match
+        // the app.
+        if let Some(running) = environment
+            .binary
+            .as_deref()
+            .filter(|b| macos_bundle::is_inside_a_bundle(b))
+        {
+            return ItemStatus::unavailable(
+                Item::CopyBinary,
+                format!(
+                    "{} is the copy of Zellij inside {}",
+                    running.display(),
+                    macos_bundle::bundle_name()
+                ),
+            )
+            .with_hint(format!(
+                "To put zellij on your PATH, run zellij setup --copy-to-permanent-folder \
+                 from the zellij you made {} from",
+                macos_bundle::bundle_name()
+            ));
+        }
+        let mut text = match super::copy_state(environment, destination) {
+            super::CopyState::Permanent(reason) => {
+                return ItemStatus::already(Item::CopyBinary, reason);
+            },
+            super::CopyState::Copied => {
+                return ItemStatus::already(
+                    Item::CopyBinary,
+                    format!("Copied to {}", destination.display()),
+                );
+            },
+            super::CopyState::Update(upgrade) => {
+                return owned_status(
+                    Item::CopyBinary,
+                    Owner::Nobody,
+                    super::upgrade_state_text(destination, &upgrade),
+                )
+                .with_upgrade(upgrade)
+                .with_target(destination.to_path_buf());
+            },
+            super::CopyState::Occupied => format!(
+                "A different file is already at {}, replacing it asks first.",
+                destination.display()
+            ),
+            super::CopyState::Fresh => String::new(),
+        };
+        text = environment
+            .binary_location_note
+            .clone()
+            .map(|note| format!("{} {}", note, text))
+            .unwrap_or(text);
+        text.push_str(&format!(
+            " It would be copied to {}.",
+            destination.display()
+        ));
+        if let Some(dir) = destination.parent() {
+            if !location::path_contains(dir) {
+                text.push_str(&format!(
+                    " {} is not on your PATH, so add it to run `zellij` from a terminal.",
+                    dir.display()
+                ));
+            }
+        }
+        owned_status(Item::CopyBinary, Owner::Nobody, text.trim().to_owned())
+            .with_target(destination.to_path_buf())
+    }
+
+    pub(super) fn other_item(item: Item) -> ItemStatus {
+        let reason = match item {
+            Item::DefaultTerminal => "Not available on macOS",
+            Item::StartMenu | Item::ExplorerItem => "Windows only",
+            Item::Launcher | Item::CopyBinary => "Not available here",
+        };
+        ItemStatus::unavailable(item, reason)
+    }
+
+    pub fn repair_offer(_state: &IntegrationState) -> Option<RepairOffer> {
+        None
+    }
+
+    pub fn install(item: Item, environment: &Environment, overwrite: bool) -> Outcome {
+        let result = match item {
+            Item::Launcher => install_app(environment),
+            Item::CopyBinary => install_copy(environment, overwrite),
+            other => Err(anyhow::anyhow!(other_item(other).state_text)),
+        };
+        outcome(item, true, result)
+    }
+
+    pub fn remove(item: Item, _environment: &Environment) -> Outcome {
+        let result = match item {
+            Item::Launcher => macos_bundle::applications_dir()
+                .and_then(|applications| macos_bundle::uninstall(&applications))
+                .map(|removed| removed_message(removed.as_deref())),
+            Item::CopyBinary => super::remove_recorded_copy(&load()),
+            other => Err(anyhow::anyhow!(other_item(other).state_text)),
+        };
+        outcome(item, false, result)
+    }
+
+    fn install_copy(environment: &Environment, overwrite: bool) -> Result<String> {
+        let source = environment
+            .binary
+            .clone()
+            .context("The running zellij could not be found")?;
+        let destination = copy_destination().context("there is no home folder")?;
+        let upgrade = match super::copy_state(environment, &destination) {
+            super::CopyState::Update(upgrade) => Some(upgrade),
+            _ => None,
+        };
+        let overwrite = overwrite || upgrade.is_some();
+        let existed = destination.exists();
+        let Some(fingerprint) = copy_keeping_build(&source, &destination, overwrite)? else {
+            return Ok(format!("{} is this copy already", destination.display()));
+        };
+        let record = BinaryCopyRecord {
+            destination: destination.clone(),
+            created: !existed || (overwrite && upgrade.is_none()),
+            fingerprint,
+        };
+        update(move |state: &mut IntegrationState| state.binary_copy = Some(record))?;
+        let mut message = format!("Wrote {}", destination.display());
+        match &upgrade {
+            Some(upgrade) if upgrade.same_version => {
+                message.push_str(&format!(
+                    "\nReplaced the other build of Zellij {} with this one",
+                    upgrade.to
+                ));
+            },
+            Some(upgrade) => {
+                message.push_str(&format!(
+                    "\nUpdated Zellij from {} to {}",
+                    upgrade.from, upgrade.to
+                ));
+            },
+            None => {},
+        }
+        if let Some(dir) = destination.parent() {
+            if !location::path_contains(dir) {
+                message.push_str(&format!(
+                    "\n{} is not on your PATH yet; add it to run `zellij` from a terminal",
+                    dir.display()
+                ));
+            }
+        }
+        Ok(message)
+    }
+
+    /// Like `copy_binary`, but keeps the source's mtime, so the app sees both files as the
+    /// same build.
+    pub(super) fn copy_keeping_build(
+        source: &Path,
+        destination: &Path,
+        overwrite: bool,
+    ) -> Result<Option<String>> {
+        let fingerprint = copy_binary(source, destination, overwrite)?;
+        if fingerprint.is_some() {
+            let kept = source
+                .metadata()
+                .and_then(|m| m.modified())
+                .and_then(|modified| {
+                    std::fs::File::options()
+                        .write(true)
+                        .open(destination)?
+                        .set_modified(modified)
+                });
+            if let Err(e) = kept {
+                log::warn!("failed to give {:?} its source's time: {}", destination, e);
+            }
+        }
+        Ok(fingerprint)
+    }
+
+    fn install_app(environment: &Environment) -> Result<String> {
+        let binary = environment
+            .binary
+            .clone()
+            .context("The running zellij could not be found")?;
+        if macos_bundle::is_inside_a_bundle(&binary) {
+            bail!(
+                "This is the copy of Zellij inside {}. To update it, run zellij setup \
+                 --install-desktop-entry from a terminal",
+                macos_bundle::bundle_name()
+            );
+        }
+        let applications = macos_bundle::applications_dir()?;
+        let bundle = macos_bundle::install(&applications, &binary, macos_bundle::codesign)?;
+        Ok(installed_message(&bundle))
+    }
+
+    pub(super) fn installed_message(bundle: &Path) -> String {
+        format!(
+            "Wrote {}\nRestart Zellij to use the new version.",
+            bundle.display()
+        )
+    }
+
+    pub(super) fn removed_message(removed: Option<&Path>) -> String {
+        match removed {
+            Some(bundle) => format!("Removed {}\nQuit Zellij to finish.", bundle.display()),
+            None => "Nothing written by Zellij was found".to_owned(),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::desktop_integration::macos_bundle::Installed;
+        use crate::desktop_integration::{Owner, Upgrade};
+        use std::path::{Path, PathBuf};
+
+        const BUNDLE: &str = "/Users/me/Applications/Zellij.app";
+        const RUNNING: &str = "/opt/homebrew/bin/zellij";
+
+        fn status(
+            installed: Option<Installed>,
+            version: &str,
+            len: u64,
+            inside: bool,
+        ) -> ItemStatus {
+            status_of_build(installed, version, Build { len, modified: 1 }, inside)
+        }
+
+        fn status_of_build(
+            installed: Option<Installed>,
+            version: &str,
+            build: Build,
+            inside: bool,
+        ) -> ItemStatus {
+            app_status(
+                installed.as_ref(),
+                Path::new(BUNDLE),
+                &Running {
+                    path: PathBuf::from(if inside {
+                        "/Users/me/Applications/Zellij.app/Contents/MacOS/zellij"
+                    } else {
+                        RUNNING
+                    }),
+                    version: version.to_owned(),
+                    build,
+                },
+            )
+        }
+
+        fn at(version: &str, len: u64) -> Option<Installed> {
+            Some(Installed {
+                version: version.to_owned(),
+                build: Build { len, modified: 1 },
+            })
+        }
+
+        #[test]
+        fn a_rebuild_of_the_same_size_offers_a_reinstall() {
+            let installed = Some(Installed {
+                version: "0.46.0".to_owned(),
+                build: Build {
+                    len: 10,
+                    modified: 1,
+                },
+            });
+            let s = status_of_build(
+                installed,
+                "0.46.0",
+                Build {
+                    len: 10,
+                    modified: 2,
+                },
+                false,
+            );
+            assert!(!s.installed && s.changeable);
+            assert!(s.upgrade.is_some());
+        }
+
+        #[test]
+        fn an_app_not_installed_is_offered() {
+            let s = status(None, "0.46.0", 10, false);
+            assert_eq!(s.item, Item::Launcher);
+            assert!(s.available && s.changeable && !s.installed);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.display_name.as_deref(), Some("Zellij.app"));
+        }
+
+        #[test]
+        fn an_app_made_from_this_binary_is_installed_and_removable() {
+            let s = status(at("0.46.0", 10), "0.46.0", 10, false);
+            assert!(s.available && s.changeable && s.installed);
+            assert_eq!(s.owner, Owner::Zellij);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.removes, vec![BUNDLE.to_owned()]);
+        }
+
+        #[test]
+        fn another_version_offers_an_update() {
+            let s = status(at("0.45.1", 10), "0.46.0", 10, false);
+            assert!(s.available && s.changeable && !s.installed);
+            assert_eq!(
+                s.upgrade,
+                Some(Upgrade {
+                    path: PathBuf::from(BUNDLE),
+                    from: "0.45.1".to_owned(),
+                    to: "0.46.0".to_owned(),
+                    same_version: false,
+                })
+            );
+        }
+
+        #[test]
+        fn a_newer_app_is_not_offered_as_a_downgrade() {
+            let s = status(at("0.47.0", 10), "0.46.0", 10, false);
+            assert!(s.installed && s.changeable, "{:?}", s);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.removes, vec![BUNDLE.to_owned()]);
+        }
+
+        fn running_here() -> Running {
+            Running {
+                path: PathBuf::from(RUNNING),
+                version: "0.46.0".to_owned(),
+                build: Build {
+                    len: 10,
+                    modified: 1,
+                },
+            }
+        }
+
+        #[test]
+        fn an_app_that_is_not_zellijs_is_left_alone() {
+            let dir = tempfile::tempdir().unwrap();
+            let bundle = macos_bundle::bundle_path(dir.path());
+            std::fs::create_dir_all(bundle.join("Contents")).unwrap();
+            let s = app_item(&Environment::default(), dir.path(), &running_here());
+            assert!(s.installed && !s.changeable, "{:?}", s);
+            assert_eq!(s.owner, Owner::Someone);
+            assert!(s.state_text.contains("left alone"), "{}", s.state_text);
+        }
+
+        #[test]
+        fn the_app_is_not_offered_without_a_desktop() {
+            let dir = tempfile::tempdir().unwrap();
+            let environment = Environment {
+                no_desktop: Some("Not available over SSH".to_owned()),
+                ..Environment::default()
+            };
+            let s = app_item(&environment, dir.path(), &running_here());
+            assert!(!s.available && !s.changeable, "{:?}", s);
+            assert_eq!(s.state_text, "Not available over SSH");
+        }
+
+        #[test]
+        fn an_ssh_session_has_no_desktop() {
+            let only = |name: &'static str| {
+                move |key: &str| (key == name).then(|| std::ffi::OsString::from("x"))
+            };
+            assert!(over_ssh(only("SSH_CONNECTION")));
+            assert!(over_ssh(only("SSH_TTY")));
+            assert!(!over_ssh(only("TERM")));
+        }
+
+        #[test]
+        fn same_version_rebuild_offers_a_reinstall() {
+            let s = status(at("0.46.0", 10), "0.46.0", 11, false);
+            assert!(!s.installed && s.changeable);
+            let upgrade = s.upgrade.unwrap();
+            assert_eq!(
+                (upgrade.from.as_str(), upgrade.to.as_str()),
+                ("0.46.0", "0.46.0")
+            );
+            assert!(upgrade.same_version);
+        }
+
+        #[test]
+        fn from_inside_the_app_nothing_can_be_changed() {
+            let s = status(at("0.46.0", 10), "0.46.0", 10, true);
+            assert!(s.installed && !s.changeable);
+            assert!(
+                s.hint
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("zellij setup --install-desktop-entry"),
+                "{:?}",
+                s.hint
+            );
+        }
+
+        fn running_from(binary: &Path) -> Environment {
+            Environment {
+                binary: Some(binary.to_path_buf()),
+                ..Environment::default()
+            }
+        }
+
+        #[test]
+        fn copy_is_offered_for_a_binary_outside_the_path() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("Downloads").join("zellij");
+            std::fs::create_dir_all(running.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"zellij").unwrap();
+            let destination = dir.path().join(".local").join("bin").join("zellij");
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert_eq!(s.item, Item::CopyBinary);
+            assert!(s.available && s.changeable && !s.installed, "{:?}", s);
+            assert_eq!(s.target.as_deref(), Some(destination.as_path()));
+            assert!(
+                s.state_text
+                    .contains(&format!("It would be copied to {}", destination.display())),
+                "{}",
+                s.state_text
+            );
+            assert!(
+                s.state_text.contains("is not on your PATH"),
+                "{}",
+                s.state_text
+            );
+        }
+
+        #[test]
+        fn another_build_of_the_same_version_is_offered_as_a_replacement() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let destination = dir.path().join("bin").join("zellij");
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"this build").unwrap();
+            std::fs::write(
+                &destination,
+                format!("#!/bin/sh\necho zellij {}\n", crate::consts::VERSION),
+            )
+            .unwrap();
+            std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert!(
+                s.upgrade.as_ref().is_some_and(|u| u.same_version),
+                "{:?}",
+                s
+            );
+            assert_eq!(
+                s.state_text,
+                format!(
+                    "{} is a different build of Zellij {}",
+                    destination.display(),
+                    crate::consts::VERSION
+                )
+            );
+        }
+
+        #[test]
+        fn a_binary_already_copied_shows_as_copied() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let destination = dir.path().join("bin").join("zellij");
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"zellij").unwrap();
+            std::fs::write(&destination, b"zellij").unwrap();
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert!(s.installed && !s.changeable, "{:?}", s);
+            assert_eq!(s.state_text, format!("Copied to {}", destination.display()));
+        }
+
+        #[test]
+        fn the_copy_counts_as_the_same_build_as_its_source() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let copy = dir.path().join("bin").join("zellij");
+            std::fs::write(&running, b"zellij").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            copy_keeping_build(&running, &copy, false).unwrap();
+            let source = macos_bundle::build_of(&running).unwrap();
+            assert_eq!(macos_bundle::build_of(&copy), Some(source));
+            let app = Installed {
+                version: "0.46.0".to_owned(),
+                build: source,
+            };
+            let from_copy = app_status(
+                Some(&app),
+                Path::new(BUNDLE),
+                &Running {
+                    path: copy.clone(),
+                    version: "0.46.0".to_owned(),
+                    build: macos_bundle::build_of(&copy).unwrap(),
+                },
+            );
+            assert!(
+                from_copy.installed && from_copy.upgrade.is_none(),
+                "{:?}",
+                from_copy
+            );
+        }
+
+        #[test]
+        fn copy_is_not_offered_from_inside_the_app() {
+            let s = copy_binary_status(
+                &running_from(Path::new(
+                    "/Users/me/Applications/Zellij.app/Contents/MacOS/zellij",
+                )),
+                Path::new("/Users/me/.local/bin/zellij"),
+            );
+            assert!(!s.available && !s.changeable, "{:?}", s);
+            assert!(
+                s.state_text.contains("inside Zellij.app"),
+                "{}",
+                s.state_text
+            );
+        }
+
+        #[test]
+        fn the_other_items_are_unavailable_on_macos() {
+            for item in [Item::DefaultTerminal, Item::StartMenu, Item::ExplorerItem] {
+                let s = other_item(item);
+                assert_eq!(s.item, item);
+                assert!(!s.available && !s.changeable && !s.installed, "{:?}", item);
+                assert!(!s.state_text.is_empty());
+            }
+        }
+
+        #[test]
+        fn messages_say_what_to_do_next() {
+            assert!(installed_message(Path::new(BUNDLE))
+                .ends_with("Restart Zellij to use the new version."));
+            assert!(installed_message(Path::new(BUNDLE)).starts_with(&format!("Wrote {}", BUNDLE)));
+            assert_eq!(
+                removed_message(Some(Path::new(BUNDLE))),
+                format!("Removed {}\nQuit Zellij to finish.", BUNDLE)
+            );
+            assert_eq!(removed_message(None), "Nothing written by Zellij was found");
+        }
+    }
+}
+
 #[cfg(not(any(
     windows,
+    target_os = "macos",
     all(unix, not(target_os = "macos"), not(target_os = "android"))
 )))]
 mod unsupported {
