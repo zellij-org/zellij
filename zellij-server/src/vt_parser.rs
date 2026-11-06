@@ -532,6 +532,16 @@ impl Parser {
         self.osc_overflowed = false;
     }
 
+    /// The numeric command of the OSC being assembled (the `52` of
+    /// `OSC 52 ; c ; ...`), if its first field is a short run of digits.
+    fn osc_number(&self) -> Option<&str> {
+        let first = self.osc.split(|&byte| byte == b';').next()?;
+        if first.is_empty() || first.len() > 5 || !first.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        str::from_utf8(first).ok()
+    }
+
     fn osc_finish<H: Handler>(&self, handler: &mut H, ended_by_bell: bool) {
         if self.osc_overflowed {
             return;
@@ -712,9 +722,17 @@ impl Parser {
             _ if self.osc.len() < MAX_OSC_PAYLOAD_BYTES => self.osc.push(byte),
             _ => {
                 if !self.osc_overflowed {
-                    log::warn!(
-                        "discarding an OSC sequence longer than {MAX_OSC_PAYLOAD_BYTES} bytes"
-                    );
+                    // once per dropped sequence, and never the payload
+                    match self.osc_number() {
+                        Some(number) => log::warn!(
+                            "discarding OSC {number} sequence: payload exceeds the \
+                             {MAX_OSC_PAYLOAD_BYTES} byte limit"
+                        ),
+                        None => log::warn!(
+                            "discarding OSC sequence: payload exceeds the \
+                             {MAX_OSC_PAYLOAD_BYTES} byte limit"
+                        ),
+                    }
                 }
                 self.osc_overflowed = true;
             },
