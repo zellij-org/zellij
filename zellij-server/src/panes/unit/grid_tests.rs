@@ -9372,6 +9372,37 @@ fn xtgettcap_answers_the_ms_capability() {
 }
 
 #[test]
+fn an_oversized_xtgettcap_query_is_discarded_whole() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut query = b"\x1bP+q4d73".to_vec();
+    query.resize(query.len() + super::MAX_XTGETTCAP_DCS_BYTES, b'0');
+    query.extend_from_slice(b"\x1b\\");
+    vte_parser.feed(&mut grid, &query);
+    assert!(grid.pending_messages_to_pty.is_empty());
+    // The next query is answered normally.
+    vte_parser.feed(&mut grid, b"\x1bP+q4d73\x1b\\");
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+}
+
+#[test]
+fn unterminated_dcs_payloads_are_bounded() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let chunk = vec![b'a'; 64 * 1024];
+    vte_parser.feed(&mut grid, b"\x1bPz");
+    for _ in 0..(super::MAX_UI_COMPONENT_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.ui_component_bytes.is_none());
+    vte_parser.feed(&mut grid, b"\x1b\\\x1bP+q");
+    for _ in 0..(super::MAX_XTGETTCAP_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.xtgettcap_bytes.is_none());
+}
+
+#[test]
 fn xtgettcap_rejects_unknown_capabilities() {
     let mut grid = create_grid_with_content("");
     let mut vte_parser = vt_parser::Parser::new();
