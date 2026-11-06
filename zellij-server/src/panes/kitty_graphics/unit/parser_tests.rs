@@ -281,7 +281,7 @@ fn file_medium_nonexistent_path_is_ebadf() {
 fn temp_file_medium_inside_temp_dir_is_deleted_after_read() {
     let raster = raster_12_bytes();
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("img.bin");
+    let path = dir.path().join("tty-graphics-protocol-img.bin");
     std::fs::write(&path, &raster).unwrap();
     let mut parser = KittyCommandParser::new();
     let command = parse_one(
@@ -291,6 +291,22 @@ fn temp_file_medium_inside_temp_dir_is_deleted_after_read() {
     .unwrap();
     assert_eq!(command.image.unwrap().bytes, raster);
     assert!(!path.exists());
+}
+
+#[test]
+fn temp_file_medium_without_the_protocol_marker_is_not_deleted() {
+    let raster = raster_12_bytes();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("img.bin");
+    std::fs::write(&path, &raster).unwrap();
+    let mut parser = KittyCommandParser::new();
+    let command = parse_one(
+        &mut parser,
+        &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
+    )
+    .unwrap();
+    assert_eq!(command.image.unwrap().bytes, raster);
+    assert!(path.exists());
 }
 
 #[test]
@@ -385,4 +401,43 @@ fn temp_file_outside_temp_dir_with_magic_name_is_deleted() {
     .unwrap();
     assert_eq!(command.image.unwrap().bytes, raster);
     assert!(!path.exists());
+}
+
+#[test]
+fn temp_file_medium_does_not_delete_a_file_outside_temp_dir_reached_through_dot_dot() {
+    let raster = raster_12_bytes();
+    let dir = tempfile::Builder::new()
+        .prefix("kitty-parser-test")
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .unwrap();
+    let victim = dir.path().join("victim.bin");
+    std::fs::write(&victim, &raster).unwrap();
+    std::fs::create_dir(dir.path().join("tty-graphics-protocol")).unwrap();
+
+    // <temp dir>/../../<victim without its root>
+    let mut via_temp_dir = std::env::temp_dir();
+    for _ in std::env::temp_dir().components().skip(1) {
+        via_temp_dir.push("..");
+    }
+    via_temp_dir.extend(victim.components().skip_while(|c| {
+        matches!(
+            c,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir
+        )
+    }));
+
+    for path in [
+        dir.path()
+            .join("tty-graphics-protocol")
+            .join("..")
+            .join("victim.bin"),
+        via_temp_dir,
+    ] {
+        let mut parser = KittyCommandParser::new();
+        let _ = parse_one(
+            &mut parser,
+            &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
+        );
+        assert!(victim.exists(), "{} was deleted", path.display());
+    }
 }
