@@ -11453,3 +11453,53 @@ fn a_url_with_a_suggestion_after_the_cursor_waits_until_the_line_is_final() {
         vec!["http://www.example.org".to_owned()]
     );
 }
+
+#[test]
+fn cpr_reports_absolute_row_with_scroll_region_and_no_decom() {
+    // CSI 6 n (CPR) must report absolute screen coordinates when origin mode
+    // (DECOM) is off. Zellij does not implement DECOM, so a DECSTBM region
+    // must not shift the reported row. Also cover the previous wrap bug where
+    // cursor.y < scroll_region.top produced 0 or usize::MAX (#5797).
+    let mut vte_parser = vt_parser::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        29,
+        118,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+
+    // No scroll region: row 4 -> CSI 4;1R
+    vte_parser.feed(&mut grid, b"\x1b[4;1H\x1b[6n");
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+    let reply = String::from_utf8(grid.pending_messages_to_pty.remove(0)).unwrap();
+    assert_eq!(reply, "\u{1b}[4;1R");
+
+    // DECSTBM top=3 bottom=20, no DECOM: absolute rows stay absolute
+    vte_parser.feed(&mut grid, b"\x1b[3;20r");
+    for (row, expected) in [
+        (1usize, "\u{1b}[1;1R"),
+        (2, "\u{1b}[2;1R"),
+        (3, "\u{1b}[3;1R"),
+        (4, "\u{1b}[4;1R"),
+        (10, "\u{1b}[10;1R"),
+    ] {
+        grid.pending_messages_to_pty.clear();
+        let seq = format!("\u{1b}[{};1H\u{1b}[6n", row);
+        vte_parser.feed(&mut grid, seq.as_bytes());
+        assert_eq!(grid.pending_messages_to_pty.len(), 1, "row={row}");
+        let reply = String::from_utf8(grid.pending_messages_to_pty.remove(0)).unwrap();
+        assert_eq!(reply, expected, "row={row}");
+    }
+}
