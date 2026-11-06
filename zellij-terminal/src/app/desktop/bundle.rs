@@ -1,6 +1,3 @@
-#[cfg(windows)]
-pub const WINDOWS_APP_ID: &str = "Zellij.Zellij";
-
 #[cfg(target_os = "macos")]
 pub fn running_bundle_identifier() -> Option<String> {
     let bundle = objc2_foundation::NSBundle::mainBundle();

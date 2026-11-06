@@ -18,8 +18,12 @@ impl Run {
 }
 
 pub fn claim_app_identity() {
-    crate::app::desktop::platform_windows::set_process_app_id();
-    crate::app::desktop::platform_windows::register_app_id();
+    if let Err(e) = crate::windows_shell::app_registration::register() {
+        report!(
+            "the app could not register its name and icon for desktop notifications: {:#}",
+            e
+        );
+    }
     crate::windows_shell::jump_list::install();
 }
 
