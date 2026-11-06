@@ -460,6 +460,9 @@ impl TerminalSettings {
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerminalConfig {
     pub font: Option<String>,
+    pub font_bold: Option<String>,
+    pub font_italic: Option<String>,
+    pub font_bold_italic: Option<String>,
     pub font_size: Option<f32>,
     pub system_fonts: Option<bool>,
     pub ligatures: Option<bool>,
@@ -514,8 +517,15 @@ impl TerminalConfig {
     pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
         let mut window = TerminalConfig::default();
 
-        if let Some(font) = kdl_get_child_entry_string_value!(kdl, "font") {
-            window.font = Some(font.to_owned());
+        for (name, field) in [
+            ("font", &mut window.font),
+            ("font_bold", &mut window.font_bold),
+            ("font_italic", &mut window.font_italic),
+            ("font_bold_italic", &mut window.font_bold_italic),
+        ] {
+            if let Some(font) = kdl_get_child_entry_string_value!(kdl, name) {
+                *field = Some(font.to_owned());
+            }
         }
         if let Some(font_size) = kdl_get_child!(kdl, "font_size") {
             window.font_size = Some(font_size_from_kdl(font_size)?);
@@ -670,10 +680,17 @@ impl TerminalConfig {
         let mut node = KdlNode::new("terminal");
         let mut children = KdlDocument::new();
 
-        if let Some(font) = &self.font {
-            let mut font_node = KdlNode::new("font");
-            font_node.push(KdlValue::String(font.clone()));
-            children.nodes_mut().push(font_node);
+        for (name, font) in [
+            ("font", &self.font),
+            ("font_bold", &self.font_bold),
+            ("font_italic", &self.font_italic),
+            ("font_bold_italic", &self.font_bold_italic),
+        ] {
+            if let Some(font) = font {
+                let mut font_node = KdlNode::new(name);
+                font_node.push(KdlValue::String(font.clone()));
+                children.nodes_mut().push(font_node);
+            }
         }
         if let Some(font_size) = self.font_size {
             let mut font_size_node = KdlNode::new("font_size");
@@ -880,6 +897,9 @@ impl TerminalConfig {
     pub fn merge(&self, other: TerminalConfig) -> Self {
         let mut merged = self.clone();
         merged.font = other.font.or(merged.font);
+        merged.font_bold = other.font_bold.or(merged.font_bold);
+        merged.font_italic = other.font_italic.or(merged.font_italic);
+        merged.font_bold_italic = other.font_bold_italic.or(merged.font_bold_italic);
         merged.font_size = other.font_size.or(merged.font_size);
         merged.system_fonts = other.system_fonts.or(merged.system_fonts);
         merged.ligatures = other.ligatures.or(merged.ligatures);
@@ -1382,6 +1402,29 @@ mod tests {
         assert_eq!(parsed.font_size, Some(13.5));
         let reparsed = section(&parsed.to_kdl().unwrap().to_string()).unwrap();
         assert_eq!(reparsed.font_size, Some(13.5));
+    }
+
+    #[test]
+    fn per_style_font_families_round_trip_through_kdl_and_merge() {
+        let parsed = section(
+            "terminal {\n font \"Regular Mono\"\n font_bold \"Bold Mono\"\n \
+             font_italic \"Italic Mono\"\n font_bold_italic \"Bold Italic Mono\"\n}",
+        )
+        .unwrap();
+        assert_eq!(parsed.font_bold.as_deref(), Some("Bold Mono"));
+        assert_eq!(parsed.font_italic.as_deref(), Some("Italic Mono"));
+        assert_eq!(parsed.font_bold_italic.as_deref(), Some("Bold Italic Mono"));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let merged = parsed.clone().merge(TerminalConfig {
+            font_italic: Some("Other".to_owned()),
+            ..TerminalConfig::default()
+        });
+        assert_eq!(merged.font_italic.as_deref(), Some("Other"));
+        assert_eq!(merged.font_bold.as_deref(), Some("Bold Mono"));
+        let kept = parsed.clone().merge(TerminalConfig::default());
+        assert_eq!(kept, parsed);
     }
 
     #[test]

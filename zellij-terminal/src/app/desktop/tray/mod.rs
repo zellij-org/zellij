@@ -9,11 +9,15 @@ use zellij_utils::input::attention::{BADGE_STATUSES, POPUP_STATUSES};
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod macos_reopen;
 #[cfg(windows)]
 mod windows;
 
 #[cfg(target_os = "macos")]
 pub use macos::{activate, install_main_menu, set_accessory, MainMenu};
+#[cfg(target_os = "macos")]
+pub use macos_reopen::install_reopen_handler;
 #[cfg(not(target_os = "macos"))]
 mod no_main_menu;
 #[cfg(not(target_os = "macos"))]

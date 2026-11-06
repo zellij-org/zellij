@@ -149,6 +149,9 @@ context_menu {
 
 const EVERY_WINDOW_SETTING_SET: &str = "terminal {
     font \"Iosevka Term\"
+    font_bold \"Iosevka Term Bold\"
+    font_italic \"Iosevka Term Italic\"
+    font_bold_italic \"Iosevka Term Bold Italic\"
     font_size 13.5
     font_weight 500
     system_fonts false

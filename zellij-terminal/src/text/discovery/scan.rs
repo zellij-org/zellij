@@ -7,7 +7,12 @@ pub struct Face {
     pub monospaced: bool,
     pub weight: u16,
     pub italic: bool,
+    /// The OS/2 width class: 1 (ultra-condensed) to 9 (ultra-expanded).
+    pub width: u16,
 }
+
+/// The OS/2 width class of a face that is neither condensed nor expanded.
+pub const NORMAL_WIDTH: u16 = 5;
 
 pub fn preferred_fallbacks(platform: Platform) -> &'static [&'static str] {
     match platform {
@@ -68,10 +73,15 @@ fn weight_distance(weight: u16, target: u16) -> (u16, bool) {
     (distance, wrong_side)
 }
 
-fn style_distance(face: &Face, request: FaceRequest) -> ((u16, bool), bool) {
+/// How far a face is from a request, closest first. Width only breaks ties:
+/// a family may ship wider and narrower cuts of each style under one
+/// name, and a terminal wants the normal one, but never at the cost
+/// of the requested weight or slant.
+fn style_distance(face: &Face, request: FaceRequest) -> ((u16, bool), bool, u16) {
     (
         weight_distance(face.weight, request.weight),
         face.italic != request.italic,
+        face.width.abs_diff(NORMAL_WIDTH),
     )
 }
 
@@ -177,6 +187,7 @@ mod scanner {
                     monospaced: info.monospaced,
                     weight: info.weight.0,
                     italic: info.style != fontdb::Style::Normal,
+                    width: info.stretch.to_number(),
                 });
             }
             if faces.is_empty() {
@@ -261,6 +272,7 @@ mod tests {
             monospaced,
             weight: if bold { 700 } else { 400 },
             italic,
+            width: NORMAL_WIDTH,
         }
     }
 
@@ -270,7 +282,63 @@ mod tests {
             monospaced: true,
             weight,
             italic: false,
+            width: NORMAL_WIDTH,
         }
+    }
+
+    #[test]
+    fn a_family_prefers_its_normal_width_to_wider_and_narrower_faces() {
+        let wide = Face {
+            width: 6,
+            ..weighted("Mono", 400)
+        };
+        let narrow = Face {
+            width: 3,
+            ..weighted("Mono", 400)
+        };
+        let wide_bold = Face {
+            width: 6,
+            ..weighted("Mono", 700)
+        };
+        let faces = vec![
+            wide,
+            narrow,
+            wide_bold,
+            weighted("Mono", 400),
+            weighted("Mono", 700),
+        ];
+        assert_eq!(family_choice(&faces, "Mono", upright(400)), Some(3));
+        assert_eq!(
+            family_choice(&faces, "Mono", FaceStyle::Bold.into()),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn width_only_breaks_ties_between_faces_of_the_requested_style() {
+        let wide_italic = Face {
+            width: 6,
+            ..face("Mono", true, false, true)
+        };
+        let condensed_bold = Face {
+            width: 4,
+            ..face("Mono", true, true, false)
+        };
+        let faces = vec![
+            face("Mono", true, false, false),
+            wide_italic,
+            condensed_bold,
+        ];
+        assert_eq!(
+            family_choice(&faces, "Mono", FaceStyle::Italic.into()),
+            Some(1),
+            "an italic in another width still beats an upright face"
+        );
+        assert_eq!(
+            family_choice(&faces, "Mono", FaceStyle::Bold.into()),
+            Some(2),
+            "a bold in another width still beats a regular face"
+        );
     }
 
     fn upright(weight: u16) -> FaceRequest {

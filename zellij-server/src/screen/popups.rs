@@ -1067,6 +1067,9 @@ impl Screen {
         Ok(())
     }
     pub fn toggle_session_card(&mut self, client_id: ClientId) {
+        if self.release_live_view_for_the_inbox_key(client_id) {
+            return;
+        }
         let Ok(tab) = self.get_active_tab(client_id) else {
             return;
         };
@@ -1150,6 +1153,12 @@ impl Screen {
                 return;
             },
         };
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .clone();
+        mode_info.base_mode = Some(mode_info.base_mode.unwrap_or(self.default_mode_info.mode));
         self.request_popup(
             client_id,
             run_plugin_or_alias,
@@ -1158,7 +1167,7 @@ impl Screen {
             None,
             SESSION_CARD_COLS,
             SESSION_CARD_ROWS,
-            vec![],
+            vec![Event::ModeUpdate(mode_info)],
         );
     }
     fn open_session_manager(&mut self, client_id: ClientId) {

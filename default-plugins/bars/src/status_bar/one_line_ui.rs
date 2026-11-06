@@ -1684,6 +1684,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         }
         hints_list.push((s("next item"), s("Next"), next_keys.into_iter().take(1).collect()));
         hints_list.extend(vec![
+        (s("Inbox"), s("Inbox"), single_action_key(&km, &[A::ToggleSessionCard])),
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Rename"), s("Rename"),
             single_action_key(&km, &[A::SwitchToMode{input_mode: IM::RenameSession}, A::SessionNameInput{input: vec![0]}])),

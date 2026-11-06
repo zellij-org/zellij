@@ -3,7 +3,6 @@ mod diagnostics;
 mod app;
 mod config;
 mod emulation;
-pub mod icns;
 mod input;
 mod launch;
 mod platform;

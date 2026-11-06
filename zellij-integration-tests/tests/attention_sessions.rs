@@ -108,7 +108,7 @@ fn attention_from_another_session_reaches_the_indicator_and_the_inbox() {
         "attention took {:?} to arrive",
         started.elapsed()
     );
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     let place = format!("{} ", background.session_name());
     zellij.wait_until("the inbox opens on the item's row", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)")
@@ -149,7 +149,7 @@ fn typing_into_the_live_view_writes_into_a_pane_of_another_session_and_keeps_its
     let (mut zellij, _) = start_main_session(ATTENTION_ON);
     terminal.output(&needs_you("Allow edit?"));
     wait_for_indicator(&zellij, "the item arrived", "● 1");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox shows the item's row", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Allow edit?")
     });
@@ -381,7 +381,7 @@ fn settled(zellij: &TestSession, mut grid_snapshot: GridSnapshot) -> GridSnapsho
 const SESSIONS_HELP: &str = "<F1> all keys";
 
 fn open_dropdown_on_the_sessions(zellij: &TestSession, listed: &str) {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     let grid_snapshot = zellij.wait_until("the dropdown opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(listed)
     });
@@ -411,7 +411,7 @@ fn the_dropdown_opens_on_the_newest_counted_item() {
     std::thread::sleep(Duration::from_millis(50));
     newer_terminal.output(&needs_you("Newer question?"));
     wait_for_indicator(&zellij, "both items are counted", "● 2");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the dropdown opens on the inbox", |grid_snapshot| {
         shows_inbox(grid_snapshot)
             && grid_snapshot.contains("Newer question?")
@@ -585,7 +585,7 @@ fn the_inbox_live_view_shows_the_items_pane_and_follows_its_output() {
     numbered_lines(&terminal, "line", 3);
     terminal.output(&needs_you("Watch me?"));
     wait_for_indicator(&zellij, "the item is counted", "● 1");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the live view shows the pane", |grid_snapshot| {
         inbox_shows(grid_snapshot, "Watch me?")
             && visible_numbers(grid_snapshot, "line").contains(&3)
@@ -645,7 +645,7 @@ fn going_to_an_item_shows_done_and_the_way_back_once_it_clears() {
     let first = zellij.session_name().to_owned();
     terminal.output(&needs_you("Go there?"));
     wait_for_indicator(&zellij, "the item is counted", "● 1");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
         grid_snapshot.contains("Go there?") && grid_snapshot.contains("<ENTER> go")
     });
@@ -782,7 +782,7 @@ fn typing_through_the_live_view_makes_a_running_command_interactive() {
     zellij_integration_tests::wait_for("the command shows as working", || {
         working_count(background.session_name()) == Some(1)
     });
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox selects the running command", |grid_snapshot| {
         inbox_shows(grid_snapshot, "running: python")
     });
@@ -813,7 +813,7 @@ fn a_remembered_agent_of_another_session_is_listed_and_c_forgets_it() {
     terminal.output(&program_status("state=working:app=claude"));
     terminal.output(&program_status("state=done:app=claude"));
     wait_for_indicator(&zellij, "the finished agent is counted", "✓ 1");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     let place = format!("{} ", background.session_name());
     zellij.wait_until(
         "the agent is seen in the live view and offered to be forgotten",

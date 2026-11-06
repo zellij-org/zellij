@@ -453,6 +453,189 @@ fn a_family_request_without_discovery_falls_back_rather_than_failing() {
     assert!(stack.lookup(FaceStyle::Regular, 'A').is_some());
 }
 
+fn file_of_font(stack: &FontStack, font: FontId) -> Option<String> {
+    stack
+        .loaded
+        .iter()
+        .find(|(_, loaded)| **loaded == font)
+        .and_then(|((path, _, _), _)| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
+fn file_of(stack: &FontStack, style: FaceStyle) -> Option<String> {
+    file_of_font(stack, stack.primary_of(style))
+}
+
+fn drawn_from(stack: &mut FontStack, style: FaceStyle, character: char) -> Option<String> {
+    let glyph = stack.lookup(style, character)?;
+    file_of_font(stack, glyph.font)
+}
+
+/// A family with other cell metrics than Iosevka and no Latin letters.
+const SECOND_FAMILY: &str = "Symbols Nerd Font Mono";
+const SECOND_FAMILY_FILE: &str = "SymbolsNerdFontMono-Regular.ttf";
+/// A Powerline arrow, which the second family carries.
+const ICON: char = '\u{e0b0}';
+
+fn iosevka_with(styles: FontOptions) -> FontOptions {
+    FontOptions {
+        family: Some("Iosevka Term".to_owned()),
+        ..styles
+    }
+}
+
+#[test]
+fn a_style_family_draws_its_style_and_leaves_the_others_alone() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut stack = FontStack::build_with(
+        &iosevka_with(FontOptions {
+            italic_family: Some(SECOND_FAMILY.to_owned()),
+            ..FontOptions::default()
+        }),
+        Some(discovery),
+    )
+    .unwrap();
+    assert_eq!(
+        drawn_from(&mut stack, FaceStyle::Italic, ICON).as_deref(),
+        Some(SECOND_FAMILY_FILE)
+    );
+    for style in [FaceStyle::Regular, FaceStyle::Bold, FaceStyle::BoldItalic] {
+        assert_ne!(
+            drawn_from(&mut stack, style, ICON).as_deref(),
+            Some(SECOND_FAMILY_FILE),
+            "{:?} has no family of its own and must not use the italic one",
+            style
+        );
+    }
+    assert_eq!(
+        stack.metrics(),
+        fonts().metrics(),
+        "the cell is measured from the regular face alone"
+    );
+}
+
+#[test]
+fn every_style_family_is_honoured() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut stack = FontStack::build_with(
+        &iosevka_with(FontOptions {
+            bold_family: Some(SECOND_FAMILY.to_owned()),
+            italic_family: Some(SECOND_FAMILY.to_owned()),
+            bold_italic_family: Some(SECOND_FAMILY.to_owned()),
+            ..FontOptions::default()
+        }),
+        Some(discovery),
+    )
+    .unwrap();
+    for style in [FaceStyle::Bold, FaceStyle::Italic, FaceStyle::BoldItalic] {
+        assert_eq!(
+            drawn_from(&mut stack, style, ICON).as_deref(),
+            Some(SECOND_FAMILY_FILE),
+            "{:?}",
+            style
+        );
+    }
+    assert_eq!(
+        file_of(&stack, FaceStyle::Regular).as_deref(),
+        Some("IosevkaTerm-Regular.ttf")
+    );
+}
+
+#[test]
+fn a_character_the_style_family_lacks_comes_from_the_main_familys_face() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut stack = FontStack::build_with(
+        &iosevka_with(FontOptions {
+            italic_family: Some(SECOND_FAMILY.to_owned()),
+            ..FontOptions::default()
+        }),
+        Some(discovery),
+    )
+    .unwrap();
+    let queries = stack.discovery_queries;
+    assert_eq!(
+        drawn_from(&mut stack, FaceStyle::Italic, 'A').as_deref(),
+        Some("IosevkaTerm-Italic.ttf")
+    );
+    assert_eq!(
+        stack.discovery_queries, queries,
+        "the main family carries the letter, so no system font is searched"
+    );
+}
+
+#[test]
+fn a_style_family_with_another_cell_is_fitted_like_a_fallback() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut stack = FontStack::build_with(
+        &iosevka_with(FontOptions {
+            italic_family: Some(SECOND_FAMILY.to_owned()),
+            ..FontOptions::default()
+        }),
+        Some(discovery),
+    )
+    .unwrap();
+    let icon = stack.lookup(FaceStyle::Italic, ICON).unwrap();
+    assert!(
+        !stack.is_primary(icon.font),
+        "a taller, wider family must be fitted into the cell, not drawn as-is"
+    );
+    assert_eq!(
+        file_of(&stack, FaceStyle::Italic).as_deref(),
+        Some("IosevkaTerm-Italic.ttf"),
+        "italic runs are still shaped in the main family"
+    );
+}
+
+#[test]
+fn a_style_family_sharing_the_cell_is_drawn_as_is() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut stack = FontStack::build_with(
+        &FontOptions {
+            italic_family: Some("Iosevka Term".to_owned()),
+            ..FontOptions::default()
+        },
+        Some(discovery),
+    )
+    .unwrap();
+    assert_eq!(stack.primary_of(FaceStyle::Regular), EMBEDDED_PRIMARY[0]);
+    assert_eq!(
+        file_of(&stack, FaceStyle::Italic).as_deref(),
+        Some("IosevkaTerm-Italic.ttf"),
+        "a style family on the embedded font's cell leads its style"
+    );
+    let letter = stack.lookup(FaceStyle::Italic, 'A').unwrap();
+    assert!(stack.is_primary(letter.font));
+}
+
+#[test]
+fn a_style_family_that_does_not_resolve_keeps_the_main_familys_face() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let stack = FontStack::build_with(
+        &iosevka_with(FontOptions {
+            italic_family: Some("No Such Family At All".to_owned()),
+            ..FontOptions::default()
+        }),
+        Some(discovery),
+    )
+    .unwrap();
+    assert_eq!(
+        file_of(&stack, FaceStyle::Italic).as_deref(),
+        Some("IosevkaTerm-Italic.ttf")
+    );
+}
+
 #[test]
 fn a_resolved_family_still_falls_back_for_what_it_does_not_carry() {
     let Some(discovery) = synthetic_discovery() else {

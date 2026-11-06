@@ -91,9 +91,8 @@ impl FontStack {
                 return Some(font);
             }
         }
-        let primary = self.primary[style.index()];
-        if self.covers(primary, text) {
-            return Some(primary);
+        if let Some(font) = self.faces_for(style).find(|font| self.covers(*font, text)) {
+            return Some(font);
         }
         if text.chars().any(is_private_use) && self.covers(SYMBOLS_FONT, text) {
             return Some(SYMBOLS_FONT);

@@ -11,10 +11,10 @@ use crate::page::{
     changed_by, note_group, note_overlay, outside_overlays, run_effects, Page, PageResponse,
 };
 use crate::settings::{
-    check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, option_value,
-    page_matches, parse_hex_colour, placement, release_key_placeholder, search_settings, section,
-    settings_in, value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck,
-    BUNDLED_FONT, CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
+    check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, needs_attention,
+    option_value, page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
+    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, CATEGORIES,
+    MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -255,6 +255,12 @@ fn is_ctrl_key(key: &KeyWithModifier, character: char) -> bool {
     key.is_key_with_ctrl_modifier(BareKey::Char(character))
 }
 
+/// Whether picking `label` for `key` clears the setting rather than saving it.
+fn unsets(key: SettingKey, label: &str) -> bool {
+    label == UNSET_CHOICE
+        || matches!(describe(key).kind, SettingKind::FontFamily { unset } if unset == label)
+}
+
 fn is_shift_tab(key: &KeyWithModifier) -> bool {
     key.bare_key == BareKey::Tab && key.has_modifiers(&[KeyModifier::Shift])
 }
@@ -328,6 +334,15 @@ impl SettingsScreen {
         self.set_focus(Focus::Content);
         if page.is_keys_screen() {
             self.keys_screen.focus_preset();
+        }
+    }
+    pub fn open_at(&mut self, page: Category) {
+        if page.parent().is_some() {
+            self.open_sub_page(page);
+        } else if let Some(index) = CATEGORIES.iter().position(|c| *c == page) {
+            self.menu.set_selected(index);
+            self.select_category();
+            self.set_focus(Focus::Content);
         }
     }
     fn close_sub_page(&mut self) -> bool {
@@ -700,6 +715,7 @@ impl SettingsScreen {
                 }
             }
         }
+        self.apply_attention_lock();
         if let Some(focused) = focused {
             if self.focus == Focus::Content {
                 if !self.elements.focus(&focused) {
@@ -807,12 +823,12 @@ impl SettingsScreen {
                 "false".to_owned(),
             ],
             SettingKind::Theme { can_be_unset } => self.theme_options(can_be_unset, &current),
-            SettingKind::FontFamily => self.font_options(&current),
+            SettingKind::FontFamily { unset } => self.font_options(unset, &current),
             _ => vec![],
         }
     }
-    fn font_options(&self, current: &Option<String>) -> Vec<String> {
-        let mut options = vec![BUNDLED_FONT.to_owned()];
+    fn font_options(&self, unset: &str, current: &Option<String>) -> Vec<String> {
+        let mut options = vec![unset.to_owned()];
         options.extend(self.snapshot.font_families.iter().cloned());
         if let Some(current) = current {
             let listed = self
@@ -836,7 +852,7 @@ impl SettingsScreen {
             | SettingKind::Theme {
                 can_be_unset: false,
             } => Some(info.default.to_owned()),
-            SettingKind::FontFamily => Some(BUNDLED_FONT.to_owned()),
+            SettingKind::FontFamily { unset } => Some(unset.to_owned()),
             _ => Some(UNSET_CHOICE.to_owned()),
         });
         value
@@ -851,16 +867,6 @@ impl SettingsScreen {
                     })
             })
             .unwrap_or(0)
-    }
-    fn text_placeholder(&self, key: SettingKey, info: &SettingInfo) -> String {
-        if key != SettingKey::LiveViewReleaseKey {
-            return info.default.to_owned();
-        }
-        let mode = self
-            .current_value(SettingKey::DefaultMode)
-            .and_then(|mode| mode.parse().ok())
-            .unwrap_or(InputMode::Normal);
-        release_key_placeholder(&self.snapshot.keybindings, mode)
     }
     fn toggle_value(&self, key: SettingKey) -> bool {
         self.current_value(key)
@@ -898,14 +904,14 @@ impl SettingsScreen {
             SettingKind::Toggle => Toggle::new(info.name, self.toggle_value(key))
                 .label_width(label_width)
                 .into(),
-            SettingKind::FontFamily if !self.font_is_listed() => {
+            SettingKind::FontFamily { unset } if !self.font_is_listed() => {
                 TextInput::new(self.current_value(key).unwrap_or_default())
                     .label(info.name)
                     .label_width(label_width)
-                    .placeholder(BUNDLED_FONT)
+                    .placeholder(unset)
                     .into()
             },
-            SettingKind::FontFamily
+            SettingKind::FontFamily { .. }
             | SettingKind::OptionalToggle
             | SettingKind::Choice(_)
             | SettingKind::OptionalChoice(_)
@@ -920,7 +926,7 @@ impl SettingsScreen {
             SettingKind::Text(_) => TextInput::new(self.current_value(key).unwrap_or_default())
                 .label(info.name)
                 .label_width(label_width)
-                .placeholder(self.text_placeholder(key, &info))
+                .placeholder(info.default.to_owned())
                 .into(),
             SettingKind::Number { min, max, step } => {
                 NumberStepper::new(info.name, self.number_value(key, min))
@@ -967,7 +973,7 @@ impl SettingsScreen {
                         toggle.set_on(on);
                     }
                 },
-                SettingKind::FontFamily
+                SettingKind::FontFamily { .. }
                 | SettingKind::OptionalToggle
                 | SettingKind::Choice(_)
                 | SettingKind::OptionalChoice(_)
@@ -1000,7 +1006,7 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Text(_) | SettingKind::FontFamily => {
+                SettingKind::Text(_) | SettingKind::FontFamily { .. } => {
                     let current = self.current_value(key).unwrap_or_default();
                     let editing = self.editing == Some(key);
                     if let Some(input) = self.elements.text_input_mut(&key) {
@@ -1020,6 +1026,46 @@ impl SettingsScreen {
                     }
                 },
                 _ => {},
+            }
+        }
+        self.apply_attention_lock();
+    }
+    fn attention_is_off(&self) -> bool {
+        !self.toggle_value(SettingKey::AttentionEnabled)
+    }
+    fn is_locked(&self, key: SettingKey) -> bool {
+        needs_attention(key) && self.attention_is_off()
+    }
+    fn heading_is_locked(&self, heading: &str) -> bool {
+        self.attention_is_off()
+            && self.rows.iter().any(|row| match row {
+                Row::Setting(key) => {
+                    needs_attention(*key)
+                        && (section(*key) == heading
+                            || (self.search_active && describe(*key).category.title() == heading))
+                },
+                _ => false,
+            })
+            && !(section(SettingKey::AttentionEnabled) == heading && !self.search_active)
+    }
+    fn apply_attention_lock(&mut self) {
+        let attention_is_off = self.attention_is_off();
+        for key in self.elements.keys() {
+            let locked = attention_is_off && needs_attention(key);
+            match self.elements.get_mut(&key) {
+                Some(Element::Toggle(toggle)) => toggle.set_disabled(locked),
+                Some(Element::Dropdown(dropdown)) => dropdown.set_disabled(locked),
+                Some(Element::TextInput(input)) => input.set_disabled(locked),
+                Some(Element::NumberStepper(stepper)) => stepper.set_disabled(locked),
+                _ => {},
+            }
+        }
+        if let Some(focused) = self.elements.focused_key().copied() {
+            if self.is_locked(focused)
+                && !self.elements.focus(&SettingKey::AttentionEnabled)
+                && !self.elements.focus_first()
+            {
+                self.elements.blur();
             }
         }
     }
@@ -1947,7 +1993,7 @@ impl SettingsScreen {
             UiResponse::Changed(UiValue::Bool(on)) => self.set_value(key, &on.to_string()),
             UiResponse::Changed(UiValue::Choice { label, .. }) => {
                 self.theme_preview.commit(key);
-                if label == UNSET_CHOICE || label == BUNDLED_FONT {
+                if unsets(key, &label) {
                     self.unset_value(key);
                 } else {
                     let value = value_for_label(key, &label);
@@ -2934,13 +2980,13 @@ impl SettingsScreen {
                 },
                 Row::Heading(title) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
-                        print_text_with_coordinates(
-                            Text::from(truncate(title, content_width)).color_all(2),
-                            x,
-                            screen_y,
-                            None,
-                            None,
-                        );
+                        let heading = Text::from(truncate(title, content_width));
+                        let heading = if self.heading_is_locked(title) {
+                            heading.dim_all()
+                        } else {
+                            heading.color_all(2)
+                        };
+                        print_text_with_coordinates(heading, x, screen_y, None, None);
                     }
                 },
                 Row::LabelledHeading(title, value) => {
@@ -3042,12 +3088,15 @@ impl SettingsScreen {
                 _ => {},
             }
         }
+        let locked = self.is_locked(key);
         let swatch_width = if describe(key).kind == SettingKind::Text(TextCheck::Colour) {
             if let Some(swatch) = colour_swatch(
                 self.current_value(key).as_deref(),
                 x + element_width + 2,
                 screen_y,
-            ) {
+            )
+            .filter(|_| !locked)
+            {
                 print!("{}", swatch);
             }
             COLOUR_SWATCH_WIDTH
@@ -3072,6 +3121,9 @@ impl SettingsScreen {
             if self.active_danger(key).is_some() {
                 marker_text = marker_text.error_color_substring(DANGER_MARKER);
             }
+            if locked {
+                marker_text = Text::from(&marker).dim_all();
+            }
             print_text_with_coordinates(marker_text, marker_x, screen_y, None, None);
         }
     }
@@ -3080,6 +3132,7 @@ impl SettingsScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::{BUNDLED_FONT, SAME_AS_FONT};
 
     const ROWS: usize = 200;
     const COLS: usize = 160;
@@ -3117,18 +3170,88 @@ mod tests {
         screen
     }
 
-    fn font_choice(screen: &SettingsScreen) -> (Vec<String>, String) {
-        let info = describe(SettingKey::TerminalFont);
-        let options = screen.choice_options(SettingKey::TerminalFont, &info);
-        let selected = screen.selected_choice_index(SettingKey::TerminalFont, &options);
+    fn choice_of(screen: &SettingsScreen, key: SettingKey) -> (Vec<String>, String) {
+        let info = describe(key);
+        let options = screen.choice_options(key, &info);
+        let selected = screen.selected_choice_index(key, &options);
         let shown = options[selected].clone();
         (options, shown)
+    }
+
+    fn is_disabled(screen: &SettingsScreen, key: SettingKey) -> bool {
+        screen.elements.get(&key).unwrap().widget().is_disabled()
+    }
+
+    #[test]
+    fn turning_attention_off_grays_out_the_other_attention_and_notification_settings() {
+        let mut screen = screen_with(&[(SettingKey::AttentionEnabled, "false")], &[]);
+        screen.open_at(Category::Attention);
+        assert!(!is_disabled(&screen, SettingKey::AttentionEnabled));
+        assert!(is_disabled(&screen, SettingKey::AttentionFrameMarkers));
+        assert!(is_disabled(&screen, SettingKey::AttentionIdleRule));
+        assert_eq!(
+            screen.elements.focused_key(),
+            Some(&SettingKey::AttentionEnabled)
+        );
+        assert!(screen.heading_is_locked("Inside Zellij"));
+        assert!(!screen.heading_is_locked("Attention"));
+        screen.open_at(Category::Notifications);
+        assert!(is_disabled(&screen, SettingKey::AttentionTrayIcon));
+        assert!(is_disabled(&screen, SettingKey::AttentionPopupDone));
+    }
+
+    #[test]
+    fn with_attention_on_nothing_is_grayed_out() {
+        let mut screen = screen_with(&[(SettingKey::AttentionEnabled, "true")], &[]);
+        screen.open_at(Category::Attention);
+        assert!(!is_disabled(&screen, SettingKey::AttentionFrameMarkers));
+        assert!(!screen.heading_is_locked("Inside Zellij"));
+    }
+
+    const STYLE_FONTS: [SettingKey; 3] = [
+        SettingKey::TerminalFontBold,
+        SettingKey::TerminalFontItalic,
+        SettingKey::TerminalFontBoldItalic,
+    ];
+
+    #[test]
+    fn a_style_font_dropdown_starts_with_the_main_font_then_the_installed_ones() {
+        let screen = screen_with(&[], &["Iosevka Term"]);
+        for key in STYLE_FONTS {
+            let (options, shown) = choice_of(&screen, key);
+            assert_eq!(
+                options,
+                vec![SAME_AS_FONT.to_owned(), "Iosevka Term".to_owned()],
+                "{:?}",
+                key
+            );
+            assert_eq!(shown, SAME_AS_FONT, "{:?}", key);
+            assert!(unsets(key, SAME_AS_FONT), "{:?}", key);
+            assert!(!unsets(key, BUNDLED_FONT), "{:?}", key);
+        }
+        assert!(unsets(SettingKey::TerminalFont, BUNDLED_FONT));
+    }
+
+    #[test]
+    fn a_style_font_set_in_the_file_is_selected() {
+        let screen = screen_with(
+            &[(SettingKey::TerminalFontItalic, "Iosevka Term")],
+            &["Iosevka Term"],
+        );
+        assert_eq!(
+            choice_of(&screen, SettingKey::TerminalFontItalic).1,
+            "Iosevka Term"
+        );
+        assert_eq!(
+            choice_of(&screen, SettingKey::TerminalFontBold).1,
+            SAME_AS_FONT
+        );
     }
 
     #[test]
     fn the_font_dropdown_starts_with_the_bundled_font_then_the_installed_ones() {
         let screen = screen_with(&[], &["Iosevka Term", "JetBrains Mono"]);
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(
             options,
             vec![
@@ -3146,7 +3269,7 @@ mod tests {
             &[(SettingKey::TerminalFont, "iosevka term")],
             &["Iosevka Term", "JetBrains Mono"],
         );
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(options.len(), 3, "{:?}", options);
         assert_eq!(shown, "Iosevka Term");
     }
@@ -3157,7 +3280,7 @@ mod tests {
             &[(SettingKey::TerminalFont, "Gone Mono")],
             &["Iosevka Term"],
         );
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(
             options,
             vec![
