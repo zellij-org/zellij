@@ -4875,6 +4875,7 @@ impl From<crate::input::command::RunCommandAction>
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin.map(|op| op.into()),
             use_terminal_title: action.use_terminal_title,
+            drop_to_shell_on_exit: false,
             notify: action.notify,
         }
     }
@@ -4978,6 +4979,7 @@ impl From<crate::input::layout::Run>
                         hold_on_start: cmd.hold_on_start,
                         originating_plugin: cmd.originating_plugin.map(|op| op.into()),
                         use_terminal_title: cmd.use_terminal_title,
+                        drop_to_shell_on_exit: cmd.drop_to_shell_on_exit,
                         notify: cmd.notify,
                     },
                 )),
@@ -5372,6 +5374,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Run>
                         .map(|op| op.try_into())
                         .transpose()?,
                     use_terminal_title: cmd.use_terminal_title,
+                    drop_to_shell_on_exit: cmd.drop_to_shell_on_exit,
                     notify: cmd.notify,
                 },
             )),
