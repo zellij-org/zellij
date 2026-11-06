@@ -18,6 +18,11 @@ struct MockOsApi {
     cwds: Arc<Mutex<HashMap<u32, PathBuf>>>,
     cmds: Arc<Mutex<HashMap<u32, Vec<String>>>>,
     cmds_by_ppid: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    // (signal, pid) for every kill/force_kill/send_sigint request
+    signals: Arc<Mutex<Vec<(&'static str, u32)>>>,
+    // pid handed out by spawn_terminal, and the quit callback it was given
+    spawn_pid: Arc<Mutex<Option<u32>>>,
+    quit_cb: Arc<Mutex<Option<Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>>>>,
 }
 
 impl MockOsApi {
@@ -26,7 +31,13 @@ impl MockOsApi {
             cwds: Arc::new(Mutex::new(HashMap::new())),
             cmds: Arc::new(Mutex::new(HashMap::new())),
             cmds_by_ppid: Arc::new(Mutex::new(HashMap::new())),
+            signals: Arc::new(Mutex::new(Vec::new())),
+            spawn_pid: Arc::new(Mutex::new(None)),
+            quit_cb: Arc::new(Mutex::new(None)),
         }
+    }
+    fn signals(&self) -> Vec<(&'static str, u32)> {
+        self.signals.lock().unwrap().clone()
     }
     fn set_cwd(&self, pid: u32, path: PathBuf) {
         self.cwds.lock().unwrap().insert(pid, path);
@@ -59,11 +70,22 @@ impl ServerOsApi for MockOsApi {
     fn spawn_terminal(
         &self,
         _: TerminalAction,
-        _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
-        unimplemented!()
+        let child_pid = self
+            .spawn_pid
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the test must set the pid to spawn with");
+        *self.quit_cb.lock().unwrap() = Some(quit_cb);
+        Ok((
+            7,
+            Box::new(crate::os_input_output::NullAsyncReader),
+            Some(child_pid),
+        ))
     }
     fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> anyhow::Result<usize> {
         Ok(buf.len())
@@ -71,13 +93,16 @@ impl ServerOsApi for MockOsApi {
     fn tcdrain(&self, _: u32) -> anyhow::Result<()> {
         Ok(())
     }
-    fn kill(&self, _: u32) -> anyhow::Result<()> {
+    fn kill(&self, pid: u32) -> anyhow::Result<()> {
+        self.signals.lock().unwrap().push(("SIGHUP", pid));
         Ok(())
     }
-    fn force_kill(&self, _: u32) -> anyhow::Result<()> {
+    fn force_kill(&self, pid: u32) -> anyhow::Result<()> {
+        self.signals.lock().unwrap().push(("SIGKILL", pid));
         Ok(())
     }
-    fn send_sigint(&self, _: u32) -> anyhow::Result<()> {
+    fn send_sigint(&self, pid: u32) -> anyhow::Result<()> {
+        self.signals.lock().unwrap().push(("SIGINT", pid));
         Ok(())
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
@@ -697,4 +722,84 @@ fn forgetting_a_child_drops_its_run_generation() {
     // A notification for the forgotten run is a no-op.
     pty.clear_exited_process_identity(4, run);
     assert_eq!(pty.id_to_child_pid.get(&4), None);
+}
+
+/// Spawns a plain (not held) command through the mock, which hands out the
+/// terminal id 7 and the given child PID. Returns the pty, the mock, the
+/// receiver of the instructions the pty sends itself, and the exit
+/// notification the OS layer would deliver once the child was reaped.
+fn spawn_plain_command(
+    child_pid: u32,
+) -> (
+    Pty,
+    MockOsApi,
+    channels::Receiver<(PtyInstruction, ErrorContext)>,
+    Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+) {
+    let mock = MockOsApi::new();
+    *mock.spawn_pid.lock().unwrap() = Some(child_pid);
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let mut bus: Bus<PtyInstruction> = Bus::empty().should_silently_fail();
+    bus.os_input = Some(Box::new(mock.clone()));
+    bus.senders.to_pty = Some(SenderWithContext::new(pty_tx));
+    let mut pty = Pty::new(bus, false, None, None, Default::default());
+    let run_command = RunCommand {
+        command: PathBuf::from("true"),
+        args: vec![],
+        cwd: None,
+        hold_on_close: false,
+        hold_on_start: false,
+        originating_plugin: None,
+        use_terminal_title: false,
+        notify: false,
+    };
+    let (terminal_id, _starts_held) = pty
+        .spawn_terminal(
+            Some(TerminalAction::RunCommand(run_command)),
+            ClientTabIndexOrPaneId::TabIndex(0),
+            None,
+        )
+        .unwrap();
+    assert_eq!(terminal_id, 7);
+    assert_eq!(pty.id_to_child_pid.get(&7), Some(&child_pid));
+    let quit_cb = mock.quit_cb.lock().unwrap().take().unwrap();
+    (pty, mock, pty_rx, quit_cb)
+}
+
+/// What the PTY thread does with the instructions it was sent.
+fn handle_forget_requests(
+    pty: &mut Pty,
+    pty_rx: &channels::Receiver<(PtyInstruction, ErrorContext)>,
+) {
+    while let Ok((instruction, _)) = pty_rx.try_recv() {
+        if let PtyInstruction::ClearPaneProcessIdentity(PaneId::Terminal(id), run_generation) =
+            instruction
+        {
+            pty.clear_exited_process_identity(id, run_generation);
+        }
+    }
+}
+
+#[test]
+fn closing_a_pane_whose_child_exited_signals_nothing() {
+    // A command that is not held exits and is reaped; the pane is closed
+    // afterwards. The PID may already belong to an unrelated process, so it
+    // must not be signalled.
+    let (mut pty, mock, pty_rx, quit_cb) = spawn_plain_command(4242);
+    quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
+    handle_forget_requests(&mut pty, &pty_rx);
+    assert_eq!(pty.id_to_child_pid.get(&7), None);
+
+    pty.send_sigint_to_pane(PaneId::Terminal(7));
+    pty.send_sigkill_to_pane(PaneId::Terminal(7));
+    pty.close_pane(PaneId::Terminal(7)).unwrap();
+    assert_eq!(mock.signals(), vec![], "a reaped PID must not be signalled");
+}
+
+#[test]
+fn closing_a_pane_whose_child_is_running_still_hangs_it_up() {
+    let (mut pty, mock, pty_rx, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty, &pty_rx);
+    pty.close_pane(PaneId::Terminal(7)).unwrap();
+    assert_eq!(mock.signals(), vec![("SIGHUP", 4242)]);
 }
