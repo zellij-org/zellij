@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
@@ -106,6 +106,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    loading_only_for: Option<HashSet<ClientId>>,
     requesting_permissions: Option<PluginPermission>,
     debug: bool,
     arrow_fonts: bool,
@@ -175,9 +176,10 @@ impl PluginPane {
             text_being_pasted: None,
             supports_mouse_selection: false,
             mouse_modifiers: BTreeSet::new(),
+            loading_only_for: None,
         };
         for client_id in currently_connected_clients {
-            plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
+            plugin.write_bytes(client_id, initial_loading_message.as_bytes().to_vec());
         }
         plugin
     }
@@ -235,31 +237,10 @@ impl Pane for PluginPane {
         self.set_should_render(true);
     }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
-        self.set_client_should_render(client_id, true);
-
-        let mut vte_bytes = bytes;
-        if let Some(plugin_permission) = &self.requesting_permissions {
-            vte_bytes = self
-                .display_request_permission_message(plugin_permission)
-                .into();
+        if let Some(loading_clients) = self.loading_only_for.as_mut() {
+            loading_clients.remove(&client_id);
         }
-
-        let grid = get_or_create_grid!(self, client_id);
-
-        // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
-        // and scroll, reset the cursor position and make sure all the viewport is rendered
-        grid.delete_viewport_and_scroll();
-        grid.reset_cursor_position();
-        grid.render_full_viewport();
-
-        let vte_parser = self
-            .vte_parsers
-            .entry(client_id)
-            .or_insert_with(|| vt_parser::Parser::new());
-
-        vte_parser.feed(grid, &vte_bytes);
-
-        self.should_render.insert(client_id, true);
+        self.write_bytes(client_id, bytes);
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         let own_content_columns = self.get_content_columns();
@@ -836,24 +817,30 @@ impl Pane for PluginPane {
             return;
         }
         self.loading_indication.merge(loading_indication);
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
     }
     fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        self.loading_only_for = None;
         self.loading_indication.merge(loading_indication);
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
+    }
+    fn start_loading_indication_for_client(
+        &mut self,
+        client_id: ClientId,
+        loading_indication: LoadingIndication,
+    ) {
+        self.loading_only_for
+            .get_or_insert_with(HashSet::new)
+            .insert(client_id);
+        self.loading_indication.merge(loading_indication);
+        self.write_loading_indication();
     }
     fn progress_animation_offset(&mut self) {
         if self.loading_indication.ended {
             return;
         }
         self.loading_indication.progress_animation_offset();
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
     }
     fn current_title(&self) -> String {
         if self.pane_name.is_empty() {
@@ -1017,9 +1004,45 @@ impl PluginPane {
     fn handle_plugin_bytes_for_all_clients(&mut self, bytes: VteBytes) {
         let client_ids: Vec<ClientId> = self.grids.keys().copied().collect();
         for client_id in client_ids {
-            self.handle_plugin_bytes(client_id, bytes.clone());
+            self.write_bytes(client_id, bytes.clone());
         }
     }
+    fn write_loading_indication(&mut self) {
+        let bytes = self.loading_indication.to_string().as_bytes().to_vec();
+        let client_ids: Vec<ClientId> = match &self.loading_only_for {
+            Some(loading_clients) => loading_clients.iter().copied().collect(),
+            None => self.grids.keys().copied().collect(),
+        };
+        for client_id in client_ids {
+            self.write_bytes(client_id, bytes.clone());
+        }
+    }
+    fn write_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
+        self.set_client_should_render(client_id, true);
+
+        let mut vte_bytes = bytes;
+        if let Some(plugin_permission) = &self.requesting_permissions {
+            vte_bytes = self
+                .display_request_permission_message(plugin_permission)
+                .into();
+        }
+
+        let grid = get_or_create_grid!(self, client_id);
+
+        grid.delete_viewport_and_scroll();
+        grid.reset_cursor_position();
+        grid.render_full_viewport();
+
+        let vte_parser = self
+            .vte_parsers
+            .entry(client_id)
+            .or_insert_with(|| vt_parser::Parser::new());
+
+        vte_parser.feed(grid, &vte_bytes);
+
+        self.should_render.insert(client_id, true);
+    }
+
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
         let bold_white = style!(self.style.colors.text_unselected.base).bold();
         let cyan = style!(self.style.colors.text_unselected.emphasis_1).bold();
@@ -1069,5 +1092,73 @@ impl PluginPane {
         }
 
         messages
+    }
+}
+
+#[cfg(test)]
+mod loading_indication_tests {
+    use super::*;
+    use zellij_utils::channels;
+
+    fn plugin_pane(clients: Vec<ClientId>) -> PluginPane {
+        let (sender, _receiver) = channels::unbounded();
+        let mut geom = PaneGeom::default();
+        geom.cols.set_inner(40);
+        geom.rows.set_inner(5);
+        let mut pane = PluginPane::new(
+            1,
+            geom,
+            SenderWithContext::new(sender),
+            "plugin".to_owned(),
+            String::new(),
+            Rc::new(RefCell::new(SixelImageStore::default())),
+            Rc::new(RefCell::new(KittyImageStore::default())),
+            Rc::new(RefCell::new(Palette::default())),
+            Rc::new(RefCell::new(HashMap::new())),
+            Rc::new(RefCell::new(LinkHandler::new())),
+            Rc::new(RefCell::new(None)),
+            clients,
+            Style::default(),
+            None,
+            false,
+            false,
+            false,
+        );
+        pane.set_content_offset(Offset::default());
+        pane
+    }
+
+    fn shown_to(pane: &PluginPane, client_id: ClientId) -> String {
+        format!("{:?}", pane.grids.get(&client_id).unwrap())
+    }
+
+    #[test]
+    fn loading_for_a_new_client_leaves_the_other_clients_content_alone() {
+        let mut pane = plugin_pane(vec![1]);
+        pane.handle_plugin_bytes(1, b"about screen".to_vec());
+        pane.start_loading_indication_for_client(2, LoadingIndication::new("plugin".to_owned()));
+        pane.progress_animation_offset();
+        assert!(shown_to(&pane, 1).contains("about screen"));
+    }
+
+    #[test]
+    fn late_loading_ticks_do_not_wipe_a_client_that_already_rendered() {
+        let mut pane = plugin_pane(vec![1]);
+        pane.handle_plugin_bytes(1, b"about screen".to_vec());
+        pane.start_loading_indication_for_client(2, LoadingIndication::new("plugin".to_owned()));
+        pane.handle_plugin_bytes(2, b"second window".to_vec());
+        pane.progress_animation_offset();
+        assert!(shown_to(&pane, 1).contains("about screen"));
+        assert!(shown_to(&pane, 2).contains("second window"));
+    }
+
+    #[test]
+    fn loading_for_all_clients_still_reaches_every_client() {
+        let mut pane = plugin_pane(vec![1, 2]);
+        pane.handle_plugin_bytes(1, b"first".to_vec());
+        pane.handle_plugin_bytes(2, b"second".to_vec());
+        pane.start_loading_indication(LoadingIndication::new("plugin".to_owned()));
+        assert!(!shown_to(&pane, 1).contains("first"));
+        assert!(!shown_to(&pane, 2).contains("second"));
     }
 }

@@ -76,6 +76,11 @@ impl ActiveComponent {
                 run_command(&[&executable.borrow(), &link], Default::default());
                 None
             },
+            Some(ClickAction::Run(effect)) => {
+                effect();
+                self.left_click_action = Some(ClickAction::Run(effect));
+                None
+            },
             None => None,
         }
     }
@@ -146,12 +151,14 @@ impl ComponentCoordinates {
 pub enum ClickAction {
     ChangePage(Box<dyn FnOnce() -> Page>),
     OpenLink(String, Rc<RefCell<String>>), // (destination, executable)
+    Run(Rc<dyn Fn()>),
 }
 
 impl std::fmt::Debug for ClickAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClickAction::ChangePage(_) => write!(f, "ChangePage"),
+            ClickAction::Run(_) => write!(f, "Run"),
             ClickAction::OpenLink(destination, executable) => {
                 write!(f, "OpenLink: {}, {:?}", destination, executable)
             },
@@ -168,5 +175,11 @@ impl ClickAction {
     }
     pub fn new_open_link(destination: String, executable: Rc<RefCell<String>>) -> Self {
         ClickAction::OpenLink(destination, executable)
+    }
+    pub fn new_run<F>(effect: F) -> Self
+    where
+        F: Fn() + 'static,
+    {
+        ClickAction::Run(Rc::new(effect))
     }
 }

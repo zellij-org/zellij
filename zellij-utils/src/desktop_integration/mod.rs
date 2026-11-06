@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[cfg(windows)]
 pub mod com;
 #[cfg(not(target_family = "wasm"))]
 pub mod desktop_entry;
+#[cfg(target_os = "macos")]
+pub mod icns;
+#[cfg(target_os = "macos")]
+pub mod macos_bundle;
 #[cfg(not(target_family = "wasm"))]
 pub mod platform;
 #[cfg(windows)]
@@ -29,44 +33,6 @@ pub fn windows_app_id() -> String {
 }
 
 pub const REMOTE_WARNING: &str = "The window opens on the computer running Zellij.";
-
-pub const OPT_OUT_ATTENTION: [(&str, &str); 6] = [
-    ("frame_markers", "false"),
-    ("host_status", "false"),
-    ("tab_markers", "false"),
-    ("startup_card", "\"never\""),
-    ("tray_icon", "false"),
-    (
-        "desktop_notifications",
-        "{ needs_you false; failed false; done false; }",
-    ),
-];
-
-pub const OPT_OUT_TOP_LEVEL: [(&str, &str); 1] = [("session_indicator", "false")];
-
-pub fn opt_out_kdl() -> String {
-    let mut text = String::from("attention {\n");
-    for (key, value) in OPT_OUT_ATTENTION {
-        text.push_str(&format!("    {} {}\n", key, value));
-    }
-    text.push_str("}\n");
-    for (key, value) in OPT_OUT_TOP_LEVEL {
-        text.push_str(&format!("{} {}\n", key, value));
-    }
-    text
-}
-
-pub fn opt_out_record() -> BTreeMap<String, String> {
-    OPT_OUT_ATTENTION
-        .iter()
-        .map(|(key, value)| (format!("attention.{}", key), value.to_string()))
-        .chain(
-            OPT_OUT_TOP_LEVEL
-                .iter()
-                .map(|(key, value)| (key.to_string(), value.to_string())),
-        )
-        .collect()
-}
 
 pub const DESKTOP_OVERRIDE_ENV: &str = "ZELLIJ_DESKTOP_INTEGRATION";
 
@@ -238,7 +204,7 @@ pub fn window_welcome_points(only_missing: bool) -> Vec<String> {
         );
         lines.push(
             "Desktop notifications tell you when a command finishes, fails or needs you. Choose \
-             which in Settings → Attention."
+             which in Settings → Notifications."
                 .to_owned(),
         );
         lines.push(
@@ -321,6 +287,9 @@ pub struct ItemStatus {
     pub target: Option<PathBuf>,
     #[serde(default)]
     pub removes: Vec<String>,
+    /// Shown instead of the item's usual name, e.g. "Zellij.app".
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,6 +297,8 @@ pub struct Upgrade {
     pub path: PathBuf,
     pub from: String,
     pub to: String,
+    #[serde(default)]
+    pub same_version: bool,
 }
 
 impl ItemStatus {
@@ -344,6 +315,7 @@ impl ItemStatus {
             upgrade: None,
             target: None,
             removes: vec![],
+            display_name: None,
         }
     }
     pub fn already(item: Item, reason: impl Into<String>) -> Self {
@@ -366,6 +338,10 @@ impl ItemStatus {
     }
     pub fn with_instructions(mut self, instructions: Vec<String>) -> Self {
         self.instructions = instructions;
+        self
+    }
+    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
+        self.display_name = Some(name.into());
         self
     }
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
@@ -426,9 +402,14 @@ impl Status {
     pub fn item(&self, item: Item) -> Option<&ItemStatus> {
         self.items.iter().find(|status| status.item == item)
     }
+    /// Whether Zellij can remove this item. Also true for ours when an update is waiting.
     pub fn removable(&self, item: Item) -> bool {
         self.item(item)
-            .map(|status| status.installed && status.changeable && status.owner == Owner::Zellij)
+            .map(|status| {
+                (status.installed || status.upgrade.is_some())
+                    && status.changeable
+                    && status.owner == Owner::Zellij
+            })
             .unwrap_or(false)
     }
     pub fn offered(&self, item: Item) -> bool {
@@ -473,8 +454,6 @@ pub enum Request {
     },
     Repair(RepairAnswer),
     SetFlag(Flag),
-    RecordOptOut(BTreeMap<String, String>),
-    ClearOptOut,
     ReportMissingServices(Vec<String>),
 }
 
@@ -555,7 +534,6 @@ pub struct IntegrationState {
     pub icons: Vec<PathBuf>,
     pub binary_copy: Option<BinaryCopyRecord>,
     pub windows: WindowsRecord,
-    pub opt_out: BTreeMap<String, String>,
     pub repair: RepairRecord,
     pub flags: BTreeSet<Flag>,
     pub missing_services: Vec<String>,
@@ -593,14 +571,6 @@ impl IntegrationState {
         match request {
             Request::SetFlag(flag) => {
                 self.set(*flag);
-                true
-            },
-            Request::RecordOptOut(values) => {
-                self.opt_out = values.clone();
-                true
-            },
-            Request::ClearOptOut => {
-                self.opt_out.clear();
                 true
             },
             Request::ReportMissingServices(services) => {
@@ -710,6 +680,7 @@ pub use storage::*;
 #[cfg(not(target_family = "wasm"))]
 pub mod location {
     use super::*;
+    use std::collections::BTreeMap;
     use std::path::Path;
 
     pub const MARKER_KEY: &str = "X-Zellij-Installed";
@@ -1264,7 +1235,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(STATE_FILE_NAME);
         let handles: Vec<_> = [
-            Request::RecordOptOut(opt_out_record()),
+            Request::SetFlag(Flag::RemindersOff),
             Request::SetFlag(Flag::SetupApproved),
             Request::SetFlag(Flag::WizardDismissed),
             Request::SetFlag(Flag::ExitLineShown),
@@ -1279,7 +1250,7 @@ mod tests {
             handle.join().unwrap();
         }
         let state = load_from(&path);
-        assert_eq!(state.opt_out, opt_out_record());
+        assert!(state.has(Flag::RemindersOff));
         assert!(state.has(Flag::SetupApproved));
         assert!(state.has(Flag::WizardDismissed));
         assert!(state.has(Flag::ExitLineShown));
@@ -1296,10 +1267,6 @@ mod tests {
             other => panic!("{:?}", other),
         }
         assert!(load_from(&path).has(Flag::DesktopAppIntroduced));
-        handle_state_request_at(&path, &Request::RecordOptOut(opt_out_record()));
-        assert_eq!(load_from(&path).opt_out, opt_out_record());
-        handle_state_request_at(&path, &Request::ClearOptOut);
-        assert!(load_from(&path).opt_out.is_empty());
     }
 
     #[test]
@@ -1452,6 +1419,27 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_of_ours_with_an_update_waiting_can_still_be_removed() {
+        let out_of_date = ItemStatus {
+            installed: false,
+            ..ours(Item::Launcher)
+        }
+        .with_upgrade(Upgrade {
+            path: PathBuf::from("/Users/me/Applications/Zellij.app"),
+            from: "0.46.0".to_owned(),
+            to: "0.46.1".to_owned(),
+            same_version: false,
+        });
+        let actions = SetupActions {
+            uninstall_desktop_entry: true,
+            ..Default::default()
+        };
+        let plan = plan_setup(&status_with(vec![out_of_date]), actions);
+        assert_eq!(plan.remove, vec![Item::Launcher]);
+        assert!(plan.notes.is_empty(), "{:?}", plan.notes);
+    }
+
+    #[test]
     fn the_desktop_override_reads_on_and_off() {
         assert_eq!(desktop_override(Some("on")), Some(DesktopOverride::On));
         assert_eq!(desktop_override(Some("OFF")), Some(DesktopOverride::Off));
@@ -1505,15 +1493,6 @@ mod tests {
         let mut dismissed = IntegrationState::default();
         dismissed.set(Flag::WizardDismissed);
         assert!(!dismissed.setup_resolved());
-    }
-
-    #[test]
-    fn the_opt_out_writes_every_attention_key_and_the_session_indicator() {
-        let kdl = opt_out_kdl();
-        for (key, value) in OPT_OUT_ATTENTION {
-            assert!(kdl.contains(&format!("{} {}", key, value)), "{}", kdl);
-        }
-        assert!(kdl.contains("session_indicator false"));
     }
 
     #[test]

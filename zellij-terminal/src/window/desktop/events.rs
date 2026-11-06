@@ -164,6 +164,9 @@ impl ApplicationHandler<Wake> for Desktop {
             earliest(hosting.background.deadline());
         }
         if self.conductor.should_exit() {
+            // winit on Windows waits for one more message after this before it exits, and
+            // none may come when the last window closed without focus. Poll skips that wait.
+            event_loop.set_control_flow(ControlFlow::Poll);
             event_loop.exit();
             return;
         }

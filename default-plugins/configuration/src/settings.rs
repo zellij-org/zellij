@@ -8,6 +8,7 @@ pub enum Category {
     Mouse,
     Clipboard,
     PanesAndLayouts,
+    Attention,
     Notifications,
     Sessions,
     ZellijTerminal,
@@ -21,13 +22,14 @@ pub enum Category {
     PluginsAndEnvironment,
 }
 
-pub const CATEGORIES: [Category; 11] = [
+pub const CATEGORIES: [Category; 12] = [
     Category::General,
     Category::Appearance,
     Category::Keyboard,
     Category::Mouse,
     Category::Clipboard,
     Category::PanesAndLayouts,
+    Category::Attention,
     Category::Notifications,
     Category::Sessions,
     Category::ZellijTerminal,
@@ -56,6 +58,7 @@ impl Category {
             Category::Mouse => "Mouse",
             Category::Clipboard => "Clipboard and selection",
             Category::PanesAndLayouts => "Panes and layouts",
+            Category::Attention => "Attention",
             Category::Notifications => "Notifications",
             Category::Sessions => "Sessions",
             Category::ZellijTerminal => "Zellij terminal",
@@ -68,6 +71,25 @@ impl Category {
             Category::ContextMenu => "Right-click menu",
             Category::PluginsAndEnvironment => "Plugins and environment",
         }
+    }
+    pub fn slug(&self) -> String {
+        self.title()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    }
+    pub fn from_slug(slug: &str) -> Option<Category> {
+        CATEGORIES
+            .iter()
+            .chain(SUB_PAGES.iter())
+            .find(|category| category.slug() == slug)
+            .copied()
     }
     pub fn link_label(&self) -> &'static str {
         match self {
@@ -193,7 +215,11 @@ pub enum SettingKind {
         max: i64,
         step: i64,
     },
-    FontFamily,
+    /// A font family picked from the installed ones; `unset` labels the
+    /// choice that leaves it unset.
+    FontFamily {
+        unset: &'static str,
+    },
     Keybindings,
     Mousebindings,
     Block,
@@ -211,6 +237,7 @@ pub struct SettingInfo {
 
 pub const UNSET_CHOICE: &str = "(not set)";
 pub const BUNDLED_FONT: &str = "(bundled font)";
+pub const SAME_AS_FONT: &str = "(same as Font)";
 pub const MISSING_SUFFIX: &str = " (missing)";
 
 pub fn option_value(label: &str) -> &str {
@@ -234,32 +261,6 @@ const LINE_STYLES: &[&str] = &["single", "double", "heavy", "dashed", "heavy_das
 pub const INPUT_MODES: &[&str] = &[
     "normal", "locked", "pane", "tab", "resize", "move", "scroll", "session", "tmux",
 ];
-
-pub fn release_key_placeholder(entries: &[KeybindingEntry], mode: InputMode) -> String {
-    let primary = KeyWithModifier::new(BareKey::F(9));
-    let mut keys: Vec<&KeyWithModifier> = entries
-        .iter()
-        .filter(|entry| entry.mode == mode && !entry.unbound)
-        .filter(|entry| {
-            entry.actions.iter().any(|action| {
-                action
-                    .split(|c: char| c.is_whitespace() || c == '{' || c == ';')
-                    .next()
-                    == Some("ToggleSessionCard")
-            })
-        })
-        .map(|entry| &entry.key)
-        .collect();
-    keys.sort_by(|a, b| {
-        (**b == primary)
-            .cmp(&(**a == primary))
-            .then(a.key_modifiers.len().cmp(&b.key_modifiers.len()))
-            .then(a.cmp(b))
-    });
-    keys.first()
-        .map(|key| key.to_string())
-        .unwrap_or_else(|| primary.to_string())
-}
 
 fn info(
     name: &'static str,
@@ -718,8 +719,8 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             OnlyYou,
         ),
         SettingKey::AttentionEnabled => info(
-            "Pane status",
-            "Track what panes need (approval, failures, finished commands) and show it: markers, the inbox, the session card, the session indicator, the tray badge and desktop notifications",
+            "Attention Features",
+            "Track what panes need (approval, failures, finished commands) and show it: markers, the inbox, the session card, the session indicator, the tray badge and desktop notifications. When off, every other Attention and Notifications setting has no effect",
             Toggle,
             "true",
             OnlyYou,
@@ -964,9 +965,9 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::LiveViewReleaseKey => info(
             "Live view release key",
-            "Key that stops typing into a live pane view and gives the keys back to its plugin",
+            "An extra key that stops typing into a live pane view (Alt Enter always works)",
             Text(TextCheck::Key),
-            "the key that opens the inbox, F9 if there is none",
+            "not set",
             Everyone,
         ),
         SettingKey::NestedSessionHandling => info(
@@ -1241,8 +1242,37 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         SettingKey::TerminalFont => info(
             "Font",
             "Font family, chosen from the monospaced fonts installed on this computer",
-            FontFamily,
+            FontFamily {
+                unset: BUNDLED_FONT,
+            },
             "bundled font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontBold => info(
+            "Bold font",
+            "Font family for bold text in place of the Font's own bold",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontItalic => info(
+            "Italic font",
+            "Font family for italic text in place of the Font's own italic",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
+            OnlyYou,
+        ),
+        SettingKey::TerminalFontBoldItalic => info(
+            "Bold italic font",
+            "Font family for bold italic text in place of the Font's own bold italic",
+            FontFamily {
+                unset: SAME_AS_FONT,
+            },
+            "same as Font",
             OnlyYou,
         ),
         SettingKey::TerminalFontSize => info(
@@ -1793,7 +1823,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 43] = [
+pub const SECTION_ORDER: [&str; 44] = [
     "Startup",
     "Quitting",
     "Starting points",
@@ -1815,13 +1845,14 @@ pub const SECTION_ORDER: [&str; 43] = [
     "Layouts",
     "Scrollback",
     "Mirrors",
-    "Pane status",
+    "Attention",
     "Inside Zellij",
     "Outside Zellij",
+    "Timing",
+    "Delivery",
     "Desktop pop-ups",
     "Tray badge",
     "Tray badge colours",
-    "Timing",
     "Session name",
     "Resurrection",
     "Behaviour",
@@ -1888,14 +1919,14 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | SwapLayoutNotification => (C::PanesAndLayouts, "Layouts"),
         ScrollBufferSize | ScrollbackEditor => (C::PanesAndLayouts, "Scrollback"),
         MirrorResizesSourcePane | LiveViewReleaseKey => (C::PanesAndLayouts, "Mirrors"),
-        AttentionEnabled => (C::Notifications, "Pane status"),
+        AttentionEnabled => (C::Attention, "Attention"),
         AttentionFrameMarkers | AttentionTabMarkers | AttentionStartupCard => {
-            (C::Notifications, "Inside Zellij")
+            (C::Attention, "Inside Zellij")
         },
-        AttentionHostStatus
-        | HostNotificationProtocol
-        | AttentionTrayIcon
-        | AttentionNotificationDetails => (C::Notifications, "Outside Zellij"),
+        AttentionHostStatus => (C::Attention, "Outside Zellij"),
+        HostNotificationProtocol | AttentionTrayIcon | AttentionNotificationDetails => {
+            (C::Notifications, "Delivery")
+        },
         AttentionPopupNeedsYou | AttentionPopupFailed | AttentionPopupDone => {
             (C::Notifications, "Desktop pop-ups")
         },
@@ -1915,7 +1946,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | AttentionDoneThresholdSecs
         | AttentionTrackCommands
         | AttentionIdleActivitySecs
-        | AttentionIdleSilenceSecs => (C::Notifications, "Timing"),
+        | AttentionIdleSilenceSecs => (C::Attention, "Timing"),
         SessionName | AttachToSession => (C::Sessions, "Session name"),
         SessionSerialization
         | SerializePaneViewport
@@ -1923,8 +1954,15 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | SerializationInterval
         | PostCommandDiscoveryHook => (C::Sessions, "Resurrection"),
         MirrorSession | DisableSessionMetadata => (C::Sessions, "Behaviour"),
-        TerminalFont | TerminalFontSize | TerminalFontWeight | TerminalSystemFonts
-        | TerminalLigatures | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
+        TerminalFont
+        | TerminalFontBold
+        | TerminalFontItalic
+        | TerminalFontBoldItalic
+        | TerminalFontSize
+        | TerminalFontWeight
+        | TerminalSystemFonts
+        | TerminalLigatures
+        | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
         TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => {
             (C::ZellijTerminal, "Cursor")
         },
@@ -2191,6 +2229,14 @@ pub fn value_for_label(key: SettingKey, label: &str) -> String {
         .unwrap_or_else(|| option_value(label).to_owned())
 }
 
+pub fn needs_attention(key: SettingKey) -> bool {
+    key != SettingKey::AttentionEnabled
+        && matches!(
+            placement(key).0,
+            Category::Attention | Category::Notifications
+        )
+}
+
 pub fn inherits_from(key: SettingKey) -> Option<SettingKey> {
     match key {
         SettingKey::TerminalPaddingTop
@@ -2296,40 +2342,43 @@ pub fn kdl_for(key: SettingKey, value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
 
-    fn binding(mode: InputMode, key: &str, action: &str, unbound: bool) -> KeybindingEntry {
-        KeybindingEntry {
-            mode,
-            key: KeyWithModifier::from_str(key).unwrap(),
-            actions: vec![action.to_owned()],
-            source: KeybindingSource::User,
-            unbound,
-            preset_actions: None,
-            unsaved: false,
-        }
+    #[test]
+    fn pages_linked_from_the_release_notes_can_be_found_by_name() {
+        assert_eq!(
+            Category::from_slug("notifications"),
+            Some(Category::Notifications)
+        );
+        assert_eq!(
+            Category::from_slug("zellij_terminal"),
+            Some(Category::ZellijTerminal)
+        );
+        assert_eq!(
+            Category::from_slug("right_click_menu"),
+            Some(Category::ContextMenu)
+        );
+        assert_eq!(
+            Category::from_slug("mouse_bindings"),
+            Some(Category::MouseBindings)
+        );
+        assert_eq!(Category::from_slug("attention"), Some(Category::Attention));
+        assert_eq!(Category::from_slug("nonsense"), None);
     }
 
     #[test]
-    fn the_release_key_placeholder_follows_the_inbox_binding_or_is_f9() {
-        let normal = InputMode::Normal;
-        assert_eq!(release_key_placeholder(&[], normal), "F9");
-        let rebound = vec![
-            binding(normal, "F9", "ToggleSessionCard", true),
-            binding(normal, "Ctrl Alt y", "ToggleSessionCard", false),
-            binding(normal, "Alt i", "ToggleSessionCard;", false),
-            binding(normal, "Alt n", "NewPane", false),
-            binding(InputMode::Locked, "Alt l", "ToggleSessionCard", false),
-        ];
-        assert_eq!(release_key_placeholder(&rebound, normal), "Alt i");
-        assert_eq!(
-            release_key_placeholder(&rebound, InputMode::Locked),
-            "Alt l"
-        );
-        assert_eq!(release_key_placeholder(&rebound, InputMode::Pane), "F9");
-        let mut with_f9 = rebound.clone();
-        with_f9.push(binding(normal, "F9", "ToggleSessionCard", false));
-        assert_eq!(release_key_placeholder(&with_f9, normal), "F9");
+    fn attention_features_comes_first_and_everything_else_on_both_pages_depends_on_it() {
+        let attention = settings_in(Category::Attention);
+        assert_eq!(attention.first(), Some(&SettingKey::AttentionEnabled));
+        assert!(!needs_attention(SettingKey::AttentionEnabled));
+        for key in attention.iter().skip(1) {
+            assert!(needs_attention(*key), "{}", key);
+        }
+        let notifications = settings_in(Category::Notifications);
+        assert!(!notifications.is_empty());
+        for key in notifications {
+            assert!(needs_attention(key), "{}", key);
+        }
+        assert!(!needs_attention(SettingKey::MouseMode));
     }
 
     #[test]
@@ -2549,7 +2598,9 @@ mod tests {
         }
         assert_eq!(
             describe(SettingKey::TerminalFont).kind,
-            SettingKind::FontFamily
+            SettingKind::FontFamily {
+                unset: BUNDLED_FONT
+            }
         );
     }
 

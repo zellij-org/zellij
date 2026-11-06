@@ -421,9 +421,9 @@ pub struct Options {
     #[clap(
         long,
         value_parser,
-        help = "The key that gives typing back to a plugin while a live pane view inside it is \
-                taking the keyboard (default: the key bound to ToggleSessionCard, F9 if none; a key \
-                written twice means pressing it twice)"
+        help = "An extra key that gives typing back to a plugin while a live pane view inside it \
+                is taking the keyboard (default: none, Alt Enter, the inbox key or a click outside \
+                always do it; a key written twice means pressing it twice)"
     )]
     #[serde(default)]
     pub live_view_release_key: Option<String>,

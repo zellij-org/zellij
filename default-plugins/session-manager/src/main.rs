@@ -417,6 +417,7 @@ impl State {
                 }
                 self.colors = Colors::new(mode_info.style.colors);
                 self.simplified_ui = mode_info.capabilities.arrow_fonts;
+                self.inbox.shortcut = inbox::inbox_shortcut(&mode_info);
                 let was_web_client = self.is_web_client;
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
                 self.remote_client = mode_info.remote_client.clone();
@@ -2997,10 +2998,9 @@ impl State {
                 "type into the shown pane (again to stop)",
             ));
             hints.push(hint("<click the view>", "type into the shown pane"));
-            hints.push(hint(
-                self.inbox.release_key_text(),
-                "stop typing (or click outside the view)",
-            ));
+            if let Some(stop_key) = self.inbox.stop_typing_key_text() {
+                hints.push(hint(stop_key, "stop typing (or click outside the view)"));
+            }
         }
         if self.selected_session_is_exited() {
             hints.push(hint("<Shift ←↓↑→>", "scroll the preview"));
@@ -3043,7 +3043,7 @@ impl State {
         let muted = item.map(|i| i.item.attention.is_muted()).unwrap_or(false);
         let watched = item.map(|i| i.item.attention.watched).unwrap_or(false);
         let mut hints = if self.inbox.live_mode {
-            vec![
+            let mut live_hints = vec![
                 hint("<ENTER>", "go to the pane"),
                 hint(inbox::TYPE_KEY, "type into the shown pane (again to stop)"),
                 hint("<click the view>", "type into the shown pane"),
@@ -3058,19 +3058,19 @@ impl State {
                         }
                     ),
                 ),
-                hint(
-                    self.inbox.release_key_text(),
-                    "stop typing (or click outside the view)",
-                ),
-                hint(
-                    "<w>",
-                    if self.inbox.wide_list {
-                        "narrow the list"
-                    } else {
-                        "widen the list"
-                    },
-                ),
-            ]
+            ];
+            if let Some(stop_key) = self.inbox.stop_typing_key_text() {
+                live_hints.push(hint(stop_key, "stop typing (or click outside the view)"));
+            }
+            live_hints.push(hint(
+                "<w>",
+                if self.inbox.wide_list {
+                    "narrow the list"
+                } else {
+                    "widen the list"
+                },
+            ));
+            live_hints
         } else {
             vec![hint("<ENTER>", "go to the pane")]
         };
@@ -4519,7 +4519,12 @@ mod live_view_state_tests {
         assert!(keys.contains(&"<ENTER>"));
         assert!(keys.contains(&inbox::TYPE_KEY));
         assert!(keys.contains(&"<click the view>"));
-        assert!(keys.contains(&"<F9>"));
+        assert!(!keys.iter().any(|key| key.contains("F9")));
+        state.inbox.shortcut = Some("<Ctrl o> <i>".to_owned());
+        let hints = state.inbox_hints(true);
+        assert!(hints
+            .iter()
+            .any(|hint| hint.key == "<Ctrl o> <i>" && hint.label.contains("stop typing")));
         assert!(!keys
             .iter()
             .any(|key| key.contains("<g>") || key.contains("→")));
@@ -4553,7 +4558,7 @@ mod live_view_state_tests {
             resize_allowed: true,
             pinned: false,
             source_size: None,
-            release_key: "F9".to_owned(),
+            release_key: String::new(),
         };
         state.inbox.apply_live_view_status(status);
         state.render_plugin(16, 88);
@@ -4916,7 +4921,7 @@ mod sessions_live_view_tests {
             resize_allowed: true,
             pinned: true,
             source_size: None,
-            release_key: "F9".to_owned(),
+            release_key: String::new(),
         });
         state.render_plugin(ROWS, COLS);
         assert_eq!(shown(&state), Some(("web".to_owned(), PaneId::Terminal(7))));
@@ -4952,7 +4957,7 @@ mod sessions_live_view_tests {
             resize_allowed: true,
             pinned: true,
             source_size: None,
-            release_key: "F9".to_owned(),
+            release_key: String::new(),
         });
         state.render_plugin(ROWS, COLS);
         assert!(state.inbox.live_view_hint_text().starts_with("typing into"));
@@ -5117,7 +5122,10 @@ mod sessions_live_view_tests {
         assert!(hints
             .iter()
             .any(|hint| hint.key == inbox::TYPE_KEY && hint.label.contains("type")));
-        assert!(hints.iter().any(|hint| hint.key == "<F9>"));
+        assert!(!hints.iter().any(|hint| hint.key.contains("F9")));
+        state.inbox.shortcut = Some("<Ctrl o> <i>".to_owned());
+        let hints = state.sessions_hints(true);
+        assert!(hints.iter().any(|hint| hint.key == "<Ctrl o> <i>"));
         assert!(!hints.iter().any(|hint| hint.key == "<Shift ←↓↑→>"));
         let shift_up = KeyWithModifier::new(BareKey::Up).with_shift_modifier();
         assert_eq!(state.handle_manager_key(&shift_up), None);

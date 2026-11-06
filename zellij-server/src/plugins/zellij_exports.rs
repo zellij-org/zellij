@@ -1288,8 +1288,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::TogglePaneIdFullscreen(pane_id) => {
                         toggle_pane_id_fullscreen(env, pane_id.into())
                     },
-                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
-                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into())
+                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, show_and_focus) => {
+                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into(), show_and_focus)
                     },
                     PluginCommand::CloseTabWithIndex(tab_index) => {
                         close_tab_with_index(env, tab_index)
@@ -6058,10 +6058,13 @@ fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
         .send_to_screen(ScreenInstruction::TogglePaneIdFullscreen(pane_id));
 }
 
-fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id));
+fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId, show_and_focus: bool) {
+    let instruction = if show_and_focus {
+        ScreenInstruction::MovePaneBetweenLayersForPaneId(pane_id, Some(acting_client(env)))
+    } else {
+        ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id)
+    };
+    let _ = env.senders.send_to_screen(instruction);
 }
 
 fn close_tab_with_index(env: &PluginEnv, tab_index: usize) {

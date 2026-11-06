@@ -232,10 +232,10 @@ support_kitty_keyboard_protocol false
 // 
 // mirror_resizes_source_pane false
  
-// The key that gives typing back to a plugin while a live pane view inside it is taking the keyboard
-// Default: the key bound to ToggleSessionCard (F9 if none, a key written twice means pressing it twice quickly)
+// An extra key that gives typing back to a plugin while a live pane view inside it is taking the keyboard
+// Default: not set, Alt Enter, the inbox key or a click outside always do it (a key written twice means pressing it twice quickly)
 // 
-// live_view_release_key "F9"
+// live_view_release_key "Ctrl Alt Home"
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.

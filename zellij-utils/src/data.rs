@@ -4160,7 +4160,6 @@ impl LiveView {
     }
 }
 
-pub const DEFAULT_LIVE_VIEW_RELEASE_KEY: &str = "F9";
 pub const LIVE_VIEW_DOUBLE_PRESS_MS: u64 = 400;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5185,7 +5184,7 @@ pub enum PluginCommand {
     PageScrollUpInPaneId(PaneId),
     PageScrollDownInPaneId(PaneId),
     TogglePaneIdFullscreen(PaneId),
-    TogglePaneEmbedOrEjectForPaneId(PaneId),
+    TogglePaneEmbedOrEjectForPaneId(PaneId, bool),
     CloseTabWithIndex(usize), // usize - tab_index
     BreakPanesToNewTab(Vec<PaneId>, Option<String>, bool), // bool -
     // should_change_focus_to_new_tab,
@@ -5613,6 +5612,9 @@ setting_keys! {
     WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
     WebClientBaseUrl => (WebClient, "base_url", true, Text),
     TerminalFont => (Terminal, "font", false, Text),
+    TerminalFontBold => (Terminal, "font_bold", false, Text),
+    TerminalFontItalic => (Terminal, "font_italic", false, Text),
+    TerminalFontBoldItalic => (Terminal, "font_bold_italic", false, Text),
     TerminalFontSize => (Terminal, "font_size", false, Decimal),
     TerminalFontWeight => (Terminal, "font_weight", false, Number),
     TerminalSystemFonts => (Terminal, "system_fonts", false, Flag),
@@ -6508,7 +6510,7 @@ mod live_view_release_gesture_tests {
         assert_eq!(LiveViewReleaseGesture::parse("Esc Tab"), None);
         assert_eq!(LiveViewReleaseGesture::parse("not a key"), None);
         assert_eq!(
-            LiveViewReleaseGesture::parse(DEFAULT_LIVE_VIEW_RELEASE_KEY),
+            LiveViewReleaseGesture::parse("F9"),
             Some(LiveViewReleaseGesture {
                 key: KeyWithModifier::new(BareKey::F(9)),
                 double: false,
@@ -6519,10 +6521,7 @@ mod live_view_release_gesture_tests {
     #[test]
     fn the_gesture_is_shown_as_a_key_hint() {
         assert_eq!(LiveViewReleaseGesture::display("Esc Esc"), "<ESC> twice");
-        assert_eq!(
-            LiveViewReleaseGesture::display(DEFAULT_LIVE_VIEW_RELEASE_KEY),
-            "<F9>"
-        );
+        assert_eq!(LiveViewReleaseGesture::display("F9"), "<F9>");
         assert_eq!(
             LiveViewReleaseGesture::display("Ctrl Alt Home"),
             "<Ctrl Alt HOME>"

@@ -39,7 +39,6 @@ pub enum AppEvent {
         ticket: u64,
         result: Result<crate::session::connection::Connection, String>,
     },
-    #[cfg_attr(not(unix), allow(dead_code))]
     Terminate,
     Describe(std::sync::mpsc::Sender<zellij_utils::app_control::AppState>),
     RaiseWindows {
@@ -280,6 +279,8 @@ impl Background {
 
     pub fn start_on_main_thread(&mut self) {
         if let Some(events) = self.tray_events.clone() {
+            #[cfg(target_os = "macos")]
+            tray::install_reopen_handler(events.clone());
             self._main_menu = tray::install_main_menu(events);
         }
         self.apply_tray_visibility();

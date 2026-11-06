@@ -2672,6 +2672,7 @@ fn route_action_with_origin(
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
                     pane_id.into(),
+                    Some(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -3071,9 +3072,7 @@ pub(crate) fn route_thread_main(
                                     s.live_view_captures
                                         .lock()
                                         .ok()?
-                                        .key_pressed(client_id, &key, || {
-                                            s.live_view_release_keys(&client_id)
-                                        })
+                                        .key_pressed(client_id, &key)
                                         .then(|| s.senders.clone())
                                 });
                             if let Some(senders) = live_view_release {
