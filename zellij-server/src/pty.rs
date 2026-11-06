@@ -107,9 +107,10 @@ pub enum PtyInstruction {
     ),
     ClosePane(PaneId, Option<NotificationEnd>),
     ClosePaneThatWasNotCreated(PaneId, Option<NotificationEnd>),
-    /// Forget the child process of a held pane whose command exited. The
-    /// generation names the run that exited, so a late notification from a
-    /// replaced run cannot erase the process of the run that replaced it.
+    /// Forget the child process of a pane whose command exited and was
+    /// reaped, whether the pane is held or about to be closed. The generation
+    /// names the run that exited, so a late notification from a replaced run
+    /// cannot erase the process of the run that replaced it.
     ClearPaneProcessIdentity(PaneId, u64),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
@@ -1193,8 +1194,9 @@ impl Pty {
         self.child_run_generations.remove(&terminal_id);
         self.id_to_child_pid.remove(&terminal_id)
     }
-    /// A held pane's command exited: forget its process, unless the pane has
-    /// since started another run whose process must stay addressable.
+    /// A pane's command exited and was reaped, so its PID may now belong to an
+    /// unrelated process: forget it, unless the pane has since started another
+    /// run whose process must stay addressable.
     fn clear_exited_process_identity(&mut self, terminal_id: u32, run_generation: u64) {
         if self.child_run_generations.get(&terminal_id) == Some(&run_generation) {
             self.forget_child_pid(terminal_id);
@@ -1266,6 +1268,12 @@ impl Pty {
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, command| {
+                // The child has been reaped, so its PID may be reused by an
+                // unrelated process: forget it before anything can signal it.
+                let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                    pane_id,
+                    run_generation,
+                ));
                 // if this command originated in a plugin, we send the plugin an event letting it
                 // know the command exited and some other useful information
                 if let PaneId::Terminal(pane_id) = pane_id {
@@ -1296,10 +1304,6 @@ impl Pty {
                 }
 
                 if hold_on_close {
-                    let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
-                        pane_id,
-                        run_generation,
-                    ));
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,
                         exit_status,
@@ -1819,6 +1823,12 @@ impl Pty {
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, _command| {
+                // The child has been reaped, so its PID may be reused by an
+                // unrelated process: forget it before anything can signal it.
+                let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                    pane_id,
+                    run_generation,
+                ));
                 let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
                     pane_id,
                     None,
@@ -1844,6 +1854,12 @@ impl Pty {
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
+                        // The child has been reaped, so its PID may be reused by an
+                        // unrelated process: forget it before anything can signal it.
+                        let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                            pane_id,
+                            run_generation,
+                        ));
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             if let Some(originating_plugin) = originating_plugin.as_ref() {
                                 let update_event = Event::CommandPaneExited(
@@ -1860,10 +1876,6 @@ impl Pty {
                         }
 
                         if hold_on_close {
-                            let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
-                                pane_id,
-                                run_generation,
-                            ));
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
                                 exit_status,
@@ -2152,6 +2164,12 @@ impl Pty {
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
+                        // The child has been reaped, so its PID may be reused by an
+                        // unrelated process: forget it before anything can signal it.
+                        let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
+                            pane_id,
+                            run_generation,
+                        ));
                         if let PaneId::Terminal(pane_id) = pane_id {
                             if let Some(originating_plugin) = originating_plugin.as_ref() {
                                 let update_event = Event::CommandPaneExited(
@@ -2167,10 +2185,6 @@ impl Pty {
                             }
                         }
                         if hold_on_close {
-                            let _ = senders.send_to_pty(PtyInstruction::ClearPaneProcessIdentity(
-                                pane_id,
-                                run_generation,
-                            ));
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
                                 exit_status,
