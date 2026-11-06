@@ -263,6 +263,9 @@ jobs:
       - name: Check bundled assets
         run: cargo xtask assets --check
 
+      - name: Test web connection lifecycle
+        run: node --test zellij-client/tests/web_connection.test.cjs
+
   desktop-files:
     name: Validate Desktop Files
     runs-on: ubuntu-latest
