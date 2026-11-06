@@ -21084,6 +21084,8 @@ fn closed_terminals_are_forgotten_in_close_order() {
         super::MAX_REMEMBERED_CLOSED_TERMINALS
     );
 }
+
+#[test]
 fn releasing_a_key_intercept_only_affects_the_plugin_that_holds_it() {
     let mut intercepts = KeybindIntercepts::default();
     intercepts.intercept(1, 10);
