@@ -170,7 +170,9 @@ fn build_command(
 
             let mut args = vec![];
 
-            if !command.is_dir() {
+            // An editor that names an existing file is a path, not a command line:
+            // splitting it would break paths with spaces (eg. "C:\Program Files\...")
+            if !command.is_dir() && !command.is_file() {
                 separate_command_arguments(&mut command, &mut args);
             }
             let file_to_open = payload

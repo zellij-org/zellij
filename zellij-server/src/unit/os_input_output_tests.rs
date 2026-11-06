@@ -409,3 +409,43 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     assert!(output.contains(expected), "got: '{}'", output);
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }
+
+#[test]
+fn an_editor_path_containing_spaces_is_not_split_into_arguments() {
+    use zellij_utils::input::command::{OpenFilePayload, TerminalAction};
+
+    let dir = tempfile::tempdir().unwrap();
+    let editor_dir = dir.path().join("Program Files").join("My Editor");
+    std::fs::create_dir_all(&editor_dir).unwrap();
+    let editor = editor_dir.join("editor.exe");
+    std::fs::write(&editor, b"").unwrap();
+
+    let payload = OpenFilePayload {
+        path: PathBuf::from("file.txt"),
+        ..Default::default()
+    };
+    let (cmd, _) = build_command(
+        TerminalAction::OpenFile(payload),
+        Some(editor.clone()),
+        &PaneEnv::new(),
+    );
+    assert_eq!(cmd.command, editor);
+    assert_eq!(cmd.args, vec!["file.txt".to_owned()]);
+}
+
+#[test]
+fn an_editor_command_with_arguments_is_still_split() {
+    use zellij_utils::input::command::{OpenFilePayload, TerminalAction};
+
+    let payload = OpenFilePayload {
+        path: PathBuf::from("file.txt"),
+        ..Default::default()
+    };
+    let (cmd, _) = build_command(
+        TerminalAction::OpenFile(payload),
+        Some(PathBuf::from("vim -e")),
+        &PaneEnv::new(),
+    );
+    assert_eq!(cmd.command, PathBuf::from("vim"));
+    assert_eq!(cmd.args, vec!["-e".to_owned(), "file.txt".to_owned()]);
+}
