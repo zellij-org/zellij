@@ -750,6 +750,83 @@ mod web_client_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    /// The path `zellij web --status` takes since the isahc removal: discover
+    /// the running web server's unix IPC socket and ask it for its version
+    /// there, instead of an HTTP GET to /info/version. Proves the client half
+    /// against a REAL web server, not a fake listener.
+    #[tokio::test]
+    #[serial]
+    async fn test_ipc_version_query_answers_the_web_status_path() {
+        isolate_token_db();
+        let _ = delete_db();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let config = Config::default();
+        let options = Options::default();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let temp_config_path = std::env::temp_dir().join("test_config.kdl");
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server should start");
+
+        let version = timeout(Duration::from_secs(10), async {
+            loop {
+                let found = tokio::task::spawn_blocking(move || {
+                    let sockets =
+                        zellij_utils::web_server_commands::discover_webserver_sockets().ok()?;
+                    for socket in sockets {
+                        let path = socket.to_str()?;
+                        let response = zellij_utils::web_server_commands::query_webserver_with_response(
+                            path,
+                            zellij_utils::web_server_commands::InstructionForWebServer::QueryVersion,
+                            500,
+                        )
+                        .ok()?;
+                        if let zellij_utils::web_server_commands::WebServerResponse::Version(info) =
+                            response
+                        {
+                            if info.port == port {
+                                return Some(info.version);
+                            }
+                        }
+                    }
+                    None
+                })
+                .await
+                .ok()
+                .flatten();
+                if let Some(version) = found {
+                    return version;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .expect("the web server never answered a version query on its IPC socket");
+        assert_eq!(version, VERSION);
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_unauthorized_access_without_session() {
