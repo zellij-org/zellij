@@ -8369,15 +8369,21 @@ fn kitty_reply_icat_detection_sequence() {
         grid.pending_messages_to_pty[0],
         b"\x1b_Gi=1;OK\x1b\\".to_vec()
     );
-    assert_eq!(
-        grid.pending_messages_to_pty[1],
-        b"\x1b_Gi=2;OK\x1b\\".to_vec()
+    let file_reply = String::from_utf8(grid.pending_messages_to_pty[1].clone()).unwrap();
+    assert!(
+        file_reply.starts_with("\x1b_Gi=2;ENOTSUPPORTED"),
+        "a temp-file query must not read the host file, got {file_reply:?}"
     );
+    assert!(file_reply.ends_with("\x1b\\"));
     let third = String::from_utf8(grid.pending_messages_to_pty[2].clone()).unwrap();
     assert!(third.starts_with("\x1b_Gi=3;ENOTSUPPORTED"));
     assert!(third.ends_with("\x1b\\"));
     assert!(path.starts_with(std::env::temp_dir()));
-    assert!(!path.exists());
+    assert!(
+        path.exists(),
+        "refusing the transfer must not delete the file"
+    );
+    let _ = std::fs::remove_file(&path);
 }
 
 #[test]

@@ -540,6 +540,8 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
 
 const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
 
+// Terminal output no longer invokes these. Tests pin the confinement behavior.
+#[cfg_attr(not(test), allow(dead_code))]
 struct OpenedGraphicsFile {
     file: std::fs::File,
     len: u64,
@@ -552,6 +554,7 @@ struct OpenedGraphicsFile {
     file_name: std::ffi::CString,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn known_temp_dirs() -> Vec<PathBuf> {
     [
         std::env::temp_dir(),
@@ -565,6 +568,7 @@ fn known_temp_dirs() -> Vec<PathBuf> {
 
 // kitty refuses to read from these. /dev/shm is a regular tmpfs and one of the
 // temp directories the protocol knows about, so it stays usable.
+#[cfg_attr(not(test), allow(dead_code))]
 fn is_forbidden_path(canonical_path: &Path) -> bool {
     canonical_path.starts_with("/proc")
         || canonical_path.starts_with("/sys")
@@ -572,6 +576,7 @@ fn is_forbidden_path(canonical_path: &Path) -> bool {
 }
 
 #[cfg(unix)]
+#[cfg_attr(not(test), allow(dead_code))]
 fn openat_nofollow(
     directory: std::os::fd::RawFd,
     name: &std::ffi::CStr,
@@ -599,6 +604,7 @@ fn openat_nofollow(
 // O_NONBLOCK keeps a FIFO swapped in at the last moment from blocking the open.
 // Returns the file, the directory it was found in and its name there.
 #[cfg(unix)]
+#[cfg_attr(not(test), allow(dead_code))]
 fn open_without_following_symlinks(
     path: &Path,
 ) -> std::io::Result<(std::fs::File, std::os::fd::OwnedFd, std::ffi::CString)> {
@@ -640,6 +646,7 @@ fn open_without_following_symlinks(
 // Resolves `..` and symlinks first, then opens the resolved path once; the
 // regular-file check is done on the open handle (fstat), not on the path, so
 // the file that is checked is the file that is read.
+#[cfg_attr(not(test), allow(dead_code))]
 fn open_graphics_file(path: &Path) -> std::io::Result<OpenedGraphicsFile> {
     let canonical_path = std::fs::canonicalize(path)?;
     if is_forbidden_path(&canonical_path) {
@@ -668,6 +675,7 @@ fn open_graphics_file(path: &Path) -> std::io::Result<OpenedGraphicsFile> {
 
 // Per the kitty protocol a `t=t` file may only be deleted if it lives directly
 // in a temp directory and its name contains the marker string.
+#[cfg_attr(not(test), allow(dead_code))]
 fn should_delete_temp_file(opened: &OpenedGraphicsFile) -> bool {
     let path = &opened.canonical_path;
     let name_has_marker = path
@@ -692,6 +700,7 @@ fn should_delete_temp_file(opened: &OpenedGraphicsFile) -> bool {
 // the directory the file lives in; in a sticky temp directory such as /tmp
 // that is only the file's owner (or root), i.e. someone who could delete the
 // file anyway.
+#[cfg_attr(not(test), allow(dead_code))]
 fn delete_opened_file(opened: &OpenedGraphicsFile) {
     #[cfg(unix)]
     {
@@ -726,6 +735,7 @@ fn delete_opened_file(opened: &OpenedGraphicsFile) {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn read_file_range(
     file: &mut std::fs::File,
     file_len: u64,
@@ -760,6 +770,13 @@ fn run_payload_pipeline(
     payload_b64: &[u8],
 ) -> Result<KittyCommand, KittyError> {
     let echo = EchoFields::from_command(&command);
+    // Pane output must not open, read, or delete a host path.
+    if matches!(command.medium, KittyMedium::File | KittyMedium::TempFile) {
+        return Err(echo.error(
+            KittyErrorCode::Enotsupported,
+            "file transfer is not supported",
+        ));
+    }
     if payload_b64.len() > MAX_PAYLOAD_B64_BYTES {
         return Err(echo.error(KittyErrorCode::Einval, "image too large"));
     }
@@ -768,25 +785,9 @@ fn run_payload_pipeline(
         .rposition(|b| *b != b'=')
         .map(|pos| pos + 1)
         .unwrap_or(0);
-    let decoded = BASE64_DECODER
+    let data = BASE64_DECODER
         .decode(&payload_b64[..trimmed_len])
         .map_err(|_| echo.error(KittyErrorCode::Einval, "invalid base64 payload"))?;
-    let data = match command.medium {
-        KittyMedium::Direct => decoded,
-        KittyMedium::File | KittyMedium::TempFile => {
-            let path_string = String::from_utf8(decoded)
-                .map_err(|_| echo.error(KittyErrorCode::Ebadf, "invalid file path"))?;
-            let path = std::path::PathBuf::from(path_string);
-            let mut opened = open_graphics_file(&path)
-                .map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))?;
-            let delete_after = command.medium == KittyMedium::TempFile;
-            let read_result = read_file_range(&mut opened.file, opened.len, &command, &echo);
-            if delete_after && read_result.is_ok() && should_delete_temp_file(&opened) {
-                delete_opened_file(&opened);
-            }
-            read_result?
-        },
-    };
     let data = if command.compressed {
         let mut inflated = Vec::new();
         flate2::read::ZlibDecoder::new(&data[..])
