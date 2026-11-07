@@ -50,8 +50,9 @@ pub fn zellij_server_listener(
                 // itself vouched for, so it may never create.
                 let mut create_policy = Some(create_policy);
                 'reconnect_loop: loop {
-                    let this_create_policy =
-                        create_policy.take().unwrap_or(SessionCreationPolicy::AttachOnly);
+                    let this_create_policy = create_policy
+                        .take()
+                        .unwrap_or(SessionCreationPolicy::AttachOnly);
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
                         let Some(session_name) = reconnect_info

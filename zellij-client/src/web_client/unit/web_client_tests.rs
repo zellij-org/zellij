@@ -579,10 +579,19 @@ mod web_client_tests {
         let web_client_id = create_client_session(port, &session_token).await;
 
         let remembered_lane = "work-1793998170-e39f063d";
-        let message =
-            first_terminal_message(port, &session_token, &web_client_id, Some(remembered_lane), false)
-                .await
-                .expect("the web client created the session instead of refusing it");
+        let message = first_terminal_message(
+            port,
+            &session_token,
+            &web_client_id,
+            Some(remembered_lane),
+            false,
+        )
+        .await
+        .expect("the web client created the session instead of refusing it");
+        println!(
+            "refusal delivered to the browser for {:?}: {:?}",
+            remembered_lane, message
+        );
 
         assert!(
             message.contains("is not available"),
@@ -673,9 +682,14 @@ mod web_client_tests {
         let web_client_id = create_client_session(port, &session_token).await;
 
         let lane = "work-1793998170-e39f063d";
-        let message = first_terminal_message(port, &session_token, &web_client_id, Some(lane), true)
-            .await
-            .expect("the web client created an orchestrator-owned lane session");
+        let message =
+            first_terminal_message(port, &session_token, &web_client_id, Some(lane), true)
+                .await
+                .expect("the web client created an orchestrator-owned lane session");
+        println!(
+            "refusal delivered to the browser for {:?}: {:?}",
+            lane, message
+        );
 
         assert!(
             message.contains("orchestrator-owned"),
@@ -717,7 +731,8 @@ mod web_client_tests {
         let session_token = login_and_get_session_token(port, &auth_token).await;
         let web_client_id = create_client_session(port, &session_token).await;
 
-        let message = first_terminal_message(port, &session_token, &web_client_id, None, false).await;
+        let message =
+            first_terminal_message(port, &session_token, &web_client_id, None, false).await;
         assert!(
             message.is_none(),
             "an unnamed request must not be refused, got: {:?}",
@@ -1743,7 +1758,11 @@ mod web_session_ownership_tests {
             assert!(parse_create_flag(Some(yes)), "{:?} must mean create", yes);
         }
         for no in ["0", "false", "no", "", "maybe"] {
-            assert!(!parse_create_flag(Some(no)), "{:?} must not mean create", no);
+            assert!(
+                !parse_create_flag(Some(no)),
+                "{:?} must not mean create",
+                no
+            );
         }
         assert!(!parse_create_flag(None));
     }
@@ -1783,21 +1802,30 @@ mod web_session_ownership_tests {
         assert!(is_orchestrator_owned_session_name(LANE));
         // The recogniser is the janitor's own `startswith("work-")`, not a
         // tighter regex, so a lane name that gains a suffix is still refused.
-        assert!(is_orchestrator_owned_session_name("work-1793998170-e39f063d-2"));
+        assert!(is_orchestrator_owned_session_name(
+            "work-1793998170-e39f063d-2"
+        ));
         assert!(!is_orchestrator_owned_session_name("workshop"));
         assert!(!is_orchestrator_owned_session_name("my-work-lane"));
 
         // Attach-only never gets as far as ownership: it does not create at all.
         let attach_only_err = decide_session_action(LANE, false, SessionCreationPolicy::AttachOnly)
             .expect_err("attach-only must never create a lane session");
-        assert!(attach_only_err.contains("is not running"), "got: {}", attach_only_err);
+        assert!(
+            attach_only_err.contains("is not running"),
+            "got: {}",
+            attach_only_err
+        );
 
         // With an explicit create, the ownership rule is what refuses it — and
         // the message says how the session is really started.
-        let create_err =
-            decide_session_action(LANE, false, SessionCreationPolicy::CreateIfMissing)
-                .expect_err("a lane session must never be created from the web");
-        assert!(create_err.contains("orchestrator-owned"), "got: {}", create_err);
+        let create_err = decide_session_action(LANE, false, SessionCreationPolicy::CreateIfMissing)
+            .expect_err("a lane session must never be created from the web");
+        assert!(
+            create_err.contains("orchestrator-owned"),
+            "got: {}",
+            create_err
+        );
         assert!(
             create_err.contains("zellij attach --create-background"),
             "got: {}",
