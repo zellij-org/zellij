@@ -43,6 +43,19 @@ pub fn should_use_https(
     }
 }
 
+/// Whether a terminal-socket request carries an explicit CREATE intent.
+///
+/// LOCAL PATCH (web session ownership, llmos#15114): a named web attach no
+/// longer creates the session it names unless the request asks for it
+/// (`?create=1`). Anything else — including a browser reloading the tab it left
+/// open on a session that has since been reaped — is attach-only.
+pub fn parse_create_flag(raw: Option<&str>) -> bool {
+    match raw.map(|value| value.trim().to_ascii_lowercase()) {
+        Some(value) => matches!(value.as_str(), "1" | "true" | "yes" | "on"),
+        None => false,
+    }
+}
+
 pub fn parse_cookies<T>(request: &Request<T>) -> HashMap<String, String> {
     let mut cookies = HashMap::new();
 

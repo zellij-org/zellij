@@ -28,6 +28,21 @@ impl ClientOsApiFactory for RealClientOsApiFactory {
     }
 }
 
+/// Whether this web connection is allowed to CREATE the session it names.
+///
+/// LOCAL PATCH (web session ownership, llmos#15114): the web client used to
+/// create-or-resurrect ANY session name a browser asked for, so a Zellient tab
+/// left open on a lane's session re-minted that session seconds after the
+/// janitor deleted it (the husk loop of llmos#15108). Creation is now an
+/// explicit request (`?create=1`); a plain named attach is attach-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionCreationPolicy {
+    /// Attach to the session if it is live; otherwise fail this connection.
+    AttachOnly,
+    /// Attach if live, otherwise spawn (or resurrect) the session.
+    CreateIfMissing,
+}
+
 pub trait SessionManager: Send + Sync + std::fmt::Debug {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>>;
     fn get_resurrection_layout(
@@ -45,6 +60,7 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
         is_welcome_screen: bool,
+        create_policy: SessionCreationPolicy,
     ) -> Result<(ClientToServerMsg, PathBuf), String>;
 }
 
@@ -77,6 +93,7 @@ impl SessionManager for RealSessionManager {
         os_input: Box<dyn ClientOsApi>,
         requested_layout: Option<LayoutInfo>,
         is_welcome_screen: bool,
+        create_policy: SessionCreationPolicy,
     ) -> Result<(ClientToServerMsg, PathBuf), String> {
         crate::web_client::session_management::spawn_session_if_needed(
             session_name,
@@ -88,6 +105,7 @@ impl SessionManager for RealSessionManager {
             os_input,
             requested_layout,
             is_welcome_screen,
+            create_policy,
         )
     }
 }
@@ -208,6 +226,11 @@ pub struct CreateClientIdResponse {
 #[derive(Deserialize)]
 pub struct TerminalParams {
     pub web_client_id: String,
+    // LOCAL PATCH (web session ownership, llmos#15114): an explicit create
+    // intent on a NAMED terminal socket (`?create=1`). Absent means attach-only;
+    // see `session_creation_policy`. Kept as a string so `1`/`true` both parse
+    // (a bool field would reject `1` with a 400 before this code runs).
+    pub create: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -1,7 +1,9 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
 use crate::web_client::session_management::build_initial_connection;
-use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
+use crate::web_client::types::{
+    ClientConnectionBus, ConnectionTable, SessionCreationPolicy, SessionManager,
+};
 use crate::web_client::utils::terminal_init_messages;
 
 use std::{
@@ -26,6 +28,7 @@ pub fn zellij_server_listener(
     config_file_path: Option<PathBuf>,
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
+    create_policy: SessionCreationPolicy,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -41,7 +44,14 @@ pub fn zellij_server_listener(
                             return;
                         },
                     };
+                // LOCAL PATCH (web session ownership, llmos#15114): the policy
+                // belongs to the request that OPENED this socket. A reconnect
+                // after a server-driven SwitchSession names a session the server
+                // itself vouched for, so it may never create.
+                let mut create_policy = Some(create_policy);
                 'reconnect_loop: loop {
+                    let this_create_policy =
+                        create_policy.take().unwrap_or(SessionCreationPolicy::AttachOnly);
                     let reconnect_info = reconnect_to_session.take();
                     let path = {
                         let Some(session_name) = reconnect_info
@@ -99,16 +109,22 @@ pub fn zellij_server_listener(
                             os_input.clone(),
                             reconnect_info.as_ref().and_then(|r| r.layout.clone()),
                             is_welcome_screen,
+                            this_create_policy,
                         ) {
                         Ok(msg_and_pipe) => msg_and_pipe,
                         Err(e) => {
-                            log::error!(
-                                "Failed to spawn session {:?}: {}",
+                            // LOCAL PATCH (web session ownership, llmos#15114):
+                            // a refusal is not a spawn failure — say so in the
+                            // terminal instead of "Error creating session", so a
+                            // stale tab reads "session ended" and stops
+                            // re-minting it.
+                            log::info!(
+                                "Refusing web connection to session {:?}: {}",
                                 session_name,
                                 e
                             );
                             client_connection_bus.send_stdout(format!(
-                                "\r\nError creating session {:?}: {}\r\n",
+                                "\u{1b}[2J\r\nSession {:?} is not available.\r\n\r\n{}\r\n",
                                 session_name, e
                             ));
                             return;

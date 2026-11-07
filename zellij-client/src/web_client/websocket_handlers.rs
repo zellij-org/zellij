@@ -6,7 +6,9 @@ use crate::web_client::message_handlers::{
     parse_stdin, render_to_client, send_control_messages_to_client,
 };
 use crate::web_client::server_listener::zellij_server_listener;
+use crate::web_client::session_management::session_creation_policy;
 use crate::web_client::types::{AppState, TerminalParams};
+use crate::web_client::utils::parse_create_flag;
 
 use axum::{
     extract::{
@@ -169,6 +171,15 @@ async fn handle_ws_terminal(
             .set_client_session(&web_client_id, sname.clone());
     }
 
+    // LOCAL PATCH (web session ownership, llmos#15114): whether this socket may
+    // CREATE the session it names. A named request is attach-only unless it
+    // carries an explicit create intent; an unnamed request asks for a terminal
+    // and the server picks the name, so it may create.
+    let create_policy = session_creation_policy(
+        session_name.as_ref().map(|p| p.0.as_str()),
+        parse_create_flag(params.create.as_deref()),
+    );
+
     zellij_server_listener(
         os_input.clone(),
         state.connection_table.clone(),
@@ -178,6 +189,7 @@ async fn handle_ws_terminal(
         Some(state.config_file_path.clone()),
         web_client_id.clone(),
         state.session_manager.clone(),
+        create_policy,
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
