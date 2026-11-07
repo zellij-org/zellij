@@ -44,7 +44,11 @@ impl Downloader {
         }
     }
 
-    pub async fn download(&self, url: &str, file_name: Option<&str>) -> Result<(), DownloaderError> {
+    pub async fn download(
+        &self,
+        url: &str,
+        file_name: Option<&str>,
+    ) -> Result<(), DownloaderError> {
         let file_name = match file_name {
             Some(name) => name.to_string(),
             None => self.parse_name(url)?,
@@ -66,9 +70,7 @@ impl Downloader {
         let url = url.to_string();
         tokio::task::spawn_blocking(move || download_blocking(&url, &file_part_path, &file_path))
             .await
-            .map_err(|e| {
-                DownloaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
-            })?
+            .map_err(|e| DownloaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
     }
 
     pub async fn download_without_cache(url: &str) -> Result<String, DownloaderError> {

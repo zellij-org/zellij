@@ -2,7 +2,6 @@ use dialoguer::Confirm;
 use std::net::IpAddr;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
-
 use zellij_client::{
     old_config_converter::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,

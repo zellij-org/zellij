@@ -60,7 +60,6 @@ fn isolate_token_db() {
     std::env::set_var("ZELLIJ_TOKEN_DB_PATH", dir.join("tokens.db"));
 }
 
-
 mod web_client_tests {
     use super::*;
 
@@ -143,7 +142,9 @@ mod web_client_tests {
 
         assert!((200..300).contains(&response.status()));
 
-        let version_text = response.into_string().expect("Failed to read response body");
+        let version_text = response
+            .into_string()
+            .expect("Failed to read response body");
         assert_eq!(version_text, VERSION);
 
         server_handle.abort();
@@ -203,7 +204,11 @@ mod web_client_tests {
         let mut response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
+                http_post(
+                    &login_url,
+                    &[("Content-Type", "application/json")],
+                    &login_payload.to_string(),
+                )
             }),
         )
         .await
@@ -213,7 +218,9 @@ mod web_client_tests {
 
         assert!((200..300).contains(&response.status()));
 
-        let response_text = response.into_string().expect("Failed to read response body");
+        let response_text = response
+            .into_string()
+            .expect("Failed to read response body");
         let response_json: serde_json::Value =
             serde_json::from_str(&response_text).expect("Failed to parse JSON");
 
@@ -271,7 +278,11 @@ mod web_client_tests {
         let response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
+                http_post(
+                    &login_url,
+                    &[("Content-Type", "application/json")],
+                    &login_payload.to_string(),
+                )
             }),
         )
         .await
@@ -335,7 +346,11 @@ mod web_client_tests {
         let login_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
+                http_post(
+                    &login_url,
+                    &[("Content-Type", "application/json")],
+                    &login_payload.to_string(),
+                )
             }),
         )
         .await
@@ -363,7 +378,14 @@ mod web_client_tests {
             tokio::task::spawn_blocking({
                 let session_token = session_token.to_string();
                 move || {
-                    http_post(&session_url, &[("Cookie", &format!("session_token={}", session_token)), ("Content-Type", "application/json")], "{}")
+                    http_post(
+                        &session_url,
+                        &[
+                            ("Cookie", &format!("session_token={}", session_token)),
+                            ("Content-Type", "application/json"),
+                        ],
+                        "{}",
+                    )
                 }
             }),
         )
@@ -568,9 +590,8 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_named_attach_refused";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), false)
-                .expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), false)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new()); // nothing is running
         let session_manager_for_verification = session_manager.clone();
@@ -624,9 +645,8 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_named_attach_create";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), false)
-                .expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), false)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let session_manager_for_verification = session_manager.clone();
@@ -670,9 +690,8 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_lane_name_refused";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), false)
-                .expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), false)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let session_manager_for_verification = session_manager.clone();
@@ -721,9 +740,8 @@ mod web_client_tests {
         let _ = delete_db();
 
         let test_token_name = "test_token_unnamed_attach_creates";
-        let (auth_token, _) =
-            create_token(Some(test_token_name.to_string()), false)
-                .expect("Failed to create test token");
+        let (auth_token, _) = create_token(Some(test_token_name.to_string()), false)
+            .expect("Failed to create test token");
 
         let session_manager = Arc::new(MockSessionManager::new());
         let session_manager_for_verification = session_manager.clone();
@@ -1593,7 +1611,10 @@ mod web_client_tests {
                     let cookie = format!("session_token={}", session_token);
                     http_post(
                         &session_url,
-                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        &[
+                            ("Cookie", cookie.as_str()),
+                            ("Content-Type", "application/json"),
+                        ],
                         "{}",
                     )
                 }
@@ -1981,7 +2002,10 @@ mod web_client_tests {
                     let cookie = format!("session_token={}", session_token);
                     http_post(
                         &session_url,
-                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        &[
+                            ("Cookie", cookie.as_str()),
+                            ("Content-Type", "application/json"),
+                        ],
                         "{}",
                     )
                 }
@@ -2008,7 +2032,10 @@ mod web_client_tests {
                     let cookie = format!("session_token={}", session_token);
                     http_post(
                         &session_url,
-                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        &[
+                            ("Cookie", cookie.as_str()),
+                            ("Content-Type", "application/json"),
+                        ],
                         "{}",
                     )
                 }
@@ -2050,7 +2077,11 @@ mod web_client_tests {
         let login_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
+                http_post(
+                    &login_url,
+                    &[("Content-Type", "application/json")],
+                    &login_payload.to_string(),
+                )
             }),
         )
         .await
@@ -2078,7 +2109,14 @@ mod web_client_tests {
             tokio::task::spawn_blocking({
                 let session_token = session_token.to_string();
                 move || {
-                    http_post(&session_url, &[("Cookie", &format!("session_token={}", session_token)), ("Content-Type", "application/json")], "{}")
+                    http_post(
+                        &session_url,
+                        &[
+                            ("Cookie", &format!("session_token={}", session_token)),
+                            ("Content-Type", "application/json"),
+                        ],
+                        "{}",
+                    )
                 }
             }),
         )

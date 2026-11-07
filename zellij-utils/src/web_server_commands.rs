@@ -136,10 +136,8 @@ mod web_server_query_tests {
     // use since the isahc HTTP poll was removed.
     #[test]
     fn query_version_round_trip_over_ipc() {
-        let dir = std::env::temp_dir().join(format!(
-            "zellij-web-query-test-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("zellij-web-query-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let socket_path = dir.join("ipctest");
         let _ = std::fs::remove_file(&socket_path);
@@ -153,10 +151,7 @@ mod web_server_query_tests {
             stream.read_exact(&mut buf).unwrap();
             let proto_instruction = ProtoInstructionForWebServer::decode(&buf[..]).unwrap();
             let instruction: InstructionForWebServer = proto_instruction.try_into().unwrap();
-            assert!(matches!(
-                instruction,
-                InstructionForWebServer::QueryVersion
-            ));
+            assert!(matches!(instruction, InstructionForWebServer::QueryVersion));
             let response: ProtoWebServerResponse = WebServerResponse::Version(VersionInfo {
                 version: "0.43.1".to_owned(),
                 ip: "0.0.0.0".to_owned(),

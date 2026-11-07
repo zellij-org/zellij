@@ -13,7 +13,6 @@ use zellij_utils::web_server_commands::{
     WebServerResponse,
 };
 
-
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Read, Write};
@@ -380,9 +379,9 @@ pub(crate) fn background_jobs_main(
                     if web_server_status_query_disabled {
                         continue;
                     }
-                    if last_web_server_status_query
-                        .map_or(false, |t| t.elapsed() < WEB_SERVER_STATUS_QUERY_MIN_INTERVAL)
-                    {
+                    if last_web_server_status_query.map_or(false, |t| {
+                        t.elapsed() < WEB_SERVER_STATUS_QUERY_MIN_INTERVAL
+                    }) {
                         continue;
                     }
                     last_web_server_status_query = Some(Instant::now());
