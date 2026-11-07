@@ -412,8 +412,8 @@ random seed 24301 case 2 grapheme=true size=20x80 2de02f2743418a67
 random seed 24301 case 2 grapheme=true size=7x13 6b9508dc8b9bc9ea
 random seed 24301 case 3 grapheme=false size=20x80 678c5df133e423bb
 random seed 24301 case 3 grapheme=false size=7x13 3c04bbf251f11cc6
-random seed 24301 case 3 grapheme=true size=20x80 a61b0c2bd62eb997
-random seed 24301 case 3 grapheme=true size=7x13 0cdd3289e458144a
+random seed 24301 case 3 grapheme=true size=20x80 c3f0b4a4b0aa748f
+random seed 24301 case 3 grapheme=true size=7x13 9680965a7b015e9d
 random seed 24301 case 4 grapheme=false size=20x80 893ad3f790314987
 random seed 24301 case 4 grapheme=false size=7x13 c295122428a3af5e
 random seed 24301 case 4 grapheme=true size=20x80 893ad3f790314987
@@ -625,7 +625,7 @@ random seed 24301 case 55 grapheme=true size=7x13 00c6b1dc07128fcf
 random seed 24301 case 56 grapheme=false size=20x80 cc293cc6a9058704
 random seed 24301 case 56 grapheme=false size=7x13 34d3efeac7dcee11
 random seed 24301 case 56 grapheme=true size=20x80 cc293cc6a9058704
-random seed 24301 case 56 grapheme=true size=7x13 dad8d87b87ae0818
+random seed 24301 case 56 grapheme=true size=7x13 6c0747dff645aea3
 random seed 24301 case 57 grapheme=false size=20x80 433d2ae97cd3de52
 random seed 24301 case 57 grapheme=false size=7x13 7dd99267f080659f
 random seed 24301 case 57 grapheme=true size=20x80 5dd2b69c04b59d04
@@ -713,7 +713,7 @@ random seed 24301 case 77 grapheme=true size=7x13 8ed52ef38ed0a1a7
 random seed 24301 case 78 grapheme=false size=20x80 7431f2ae8f8c3eb2
 random seed 24301 case 78 grapheme=false size=7x13 69bd46b82f758249
 random seed 24301 case 78 grapheme=true size=20x80 f7bb3e97574de393
-random seed 24301 case 78 grapheme=true size=7x13 71fb88d2119ae3b2
+random seed 24301 case 78 grapheme=true size=7x13 ce04557db51b8880
 random seed 24301 case 79 grapheme=false size=20x80 1624ef7acb9cc40f
 random seed 24301 case 79 grapheme=false size=7x13 01cd8d122596ef96
 random seed 24301 case 79 grapheme=true size=20x80 6ad16be00037c575
@@ -825,7 +825,7 @@ random seed 24301 case 105 grapheme=true size=7x13 54e30eb36c8b9b3c
 random seed 24301 case 106 grapheme=false size=20x80 73ebe5d1cb18a900
 random seed 24301 case 106 grapheme=false size=7x13 6540dd5e14d1a3d3
 random seed 24301 case 106 grapheme=true size=20x80 bcbdb709a69ef72f
-random seed 24301 case 106 grapheme=true size=7x13 14da16a64851d80e
+random seed 24301 case 106 grapheme=true size=7x13 54e21bf7cbeeeffd
 random seed 24301 case 107 grapheme=false size=20x80 e3a4d6f27ca79698
 random seed 24301 case 107 grapheme=false size=7x13 4696cc149fa14c87
 random seed 24301 case 107 grapheme=true size=20x80 2cb46d3c14c1c498
@@ -956,8 +956,8 @@ random seed 24301 case 138 grapheme=true size=20x80 3d0dae19162ec25c
 random seed 24301 case 138 grapheme=true size=7x13 be119ebdc203611d
 random seed 24301 case 139 grapheme=false size=20x80 8afc7123d17bfffd
 random seed 24301 case 139 grapheme=false size=7x13 a24e0248e12b1156
-random seed 24301 case 139 grapheme=true size=20x80 e2ec46d149cb296c
-random seed 24301 case 139 grapheme=true size=7x13 5ac42ccb0ea75091
+random seed 24301 case 139 grapheme=true size=20x80 e29099b39652ae42
+random seed 24301 case 139 grapheme=true size=7x13 be9e7247a69da2df
 random seed 24301 case 140 grapheme=false size=20x80 5c1e98b82c930691
 random seed 24301 case 140 grapheme=false size=7x13 d58a6bc32c1b8d22
 random seed 24301 case 140 grapheme=true size=20x80 5c1e98b82c930691
