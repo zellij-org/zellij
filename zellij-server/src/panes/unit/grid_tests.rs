@@ -69,8 +69,84 @@ fn a_wide_character_in_a_one_column_row_does_not_create_an_empty_leading_row() {
 
     let rows = Row::rewrap_rows(vec![row_from_str("你")], 1);
 
-    assert_eq!(rows.len(), 1);
-    assert_eq!(row_to_string(&rows[0]), "你");
+    // the character is kept and its stored width is clipped to the pane, not replaced by blanks
+    assert!(rows.iter().all(|row| row.width() <= 1));
+    assert_eq!(rows.iter().map(row_to_string).collect::<String>(), "你");
+    assert_eq!(rows[0].columns[0].width(), 1);
+    assert_eq!(rows[0].columns[0].natural_width(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row.columns.iter().all(|cell| cell.character != ' ')));
+
+    let widened = Row::rewrap_rows(rows, 4);
+    assert_eq!(widened.len(), 1);
+    assert_eq!(row_to_string(&widened[0]), "你");
+    assert_eq!(widened[0].columns[0].width(), 2);
+    assert!(widened.iter().all(|row| row.width() <= 4));
+}
+
+#[test]
+fn blanking_a_wide_character_keeps_the_columns_of_the_osc133_markers() {
+    use crate::panes::grid::{Osc133MarkerKind, Row};
+
+    // the marker is at column 3: after the two columns of the wide character and the "X"
+    let mut row = row_from_str("你Xy");
+    row.add_osc133_marker(3, Osc133MarkerKind::Prompt);
+
+    let rows = Row::rewrap_rows(vec![row], 1);
+
+    assert!(rows.iter().all(|row| row.width() <= 1));
+    assert_eq!(rows.iter().map(row_to_string).collect::<String>(), "你Xy");
+    let marked: Vec<(usize, usize)> = rows
+        .iter()
+        .enumerate()
+        .flat_map(|(index, row)| row.osc133_markers.iter().map(move |m| (index, m.column)))
+        .collect();
+    // 你 clips from 2 columns to 1, so the marker shifts by -1 and stays just after "X"
+    assert_eq!(row_to_string(&rows[1]), "X");
+    assert_eq!(marked, vec![(1, 1)]);
+
+    let widened = Row::rewrap_rows(rows, 4);
+    assert_eq!(widened.len(), 1);
+    assert_eq!(row_to_string(&widened[0]), "你Xy");
+    assert_eq!(widened[0].columns[0].width(), 2);
+    assert!(widened[0].width() <= 4);
+    let marked: Vec<usize> = widened[0]
+        .osc133_markers
+        .iter()
+        .map(|marker| marker.column)
+        .collect();
+    assert_eq!(marked, vec![3]);
+}
+
+#[test]
+fn a_narrow_soft_wrapped_wide_character_regains_its_width() {
+    use crate::panes::grid::Row;
+
+    // one logical line, soft-wrapped at width 3: "你" (2) + "a" fill the first row, "b" the next
+    let wrapped = Row::rewrap_rows(vec![row_from_str("你ab")], 3);
+    assert_eq!(wrapped.len(), 2);
+    assert_eq!(row_to_string(&wrapped[0]), "你a");
+    assert_eq!(wrapped[0].columns[0].width(), 2);
+    assert_eq!(row_to_string(&wrapped[1]), "b");
+
+    let narrow = Row::rewrap_rows(wrapped, 1);
+    assert!(narrow.iter().all(|row| row.width() <= 1));
+    assert_eq!(narrow.iter().map(row_to_string).collect::<String>(), "你ab");
+    assert_eq!(narrow[0].columns[0].character, '你');
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    assert_eq!(narrow[0].columns[0].natural_width(), 2);
+
+    let restored = Row::rewrap_rows(narrow, 3);
+    assert_eq!(restored.len(), 2);
+    assert_eq!(row_to_string(&restored[0]), "你a");
+    assert_eq!(restored[0].columns[0].width(), 2);
+    assert_eq!(row_to_string(&restored[1]), "b");
+    assert_eq!(
+        restored.iter().map(row_to_string).collect::<String>(),
+        "你ab"
+    );
+    assert!(restored.iter().all(|row| row.width() <= 3));
 }
 
 #[test]

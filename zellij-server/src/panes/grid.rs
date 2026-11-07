@@ -2535,8 +2535,8 @@ impl Grid {
             let mut new_viewport_rows = vec![];
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts = canonical_line.split_to_rows_of_length(new_columns);
-                // If a character is wider than the grid, split_to_rows_of_length returns an empty
-                // vec — skip the line, matching the old `break` behavior
+                // An empty split contributes no rows. Wide characters are clipped to the
+                // pane inside rewrap, not dropped, so this is not a wide-character skip.
                 if canonical_line_parts.is_empty() {
                     continue;
                 }
@@ -8104,6 +8104,49 @@ impl Row {
         };
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }
+    /// Fit each stored width to `max_row_length` without dropping the character.
+    /// `width()` is what the wrap loop uses; `natural_width()` is restored when
+    /// a later reflow is wide enough. Markers at or after a character's old end
+    /// column move by the width delta, in the row's old column coordinates.
+    fn fit_character_widths_for_reflow(&mut self, max_row_length: usize) {
+        if max_row_length == 0 {
+            return;
+        }
+        let mut old_column = 0usize;
+        // (old end column, width delta), in increasing old-column order.
+        let mut adjustments: Vec<(usize, isize)> = Vec::new();
+        for character in self.columns.iter_mut() {
+            let old = character.width();
+            let natural = character.natural_width();
+            let logical = if old < natural { natural } else { old };
+            let new = if logical > max_row_length {
+                max_row_length
+            } else {
+                logical
+            };
+            if new != old {
+                character.set_width(new as u8);
+                adjustments.push((old_column + old, new as isize - old as isize));
+            }
+            old_column += old;
+        }
+        if adjustments.is_empty() {
+            return;
+        }
+        self.mark_widths_changed();
+        for marker in self.osc133_markers.iter_mut() {
+            let mut shift = 0isize;
+            for &(old_end, delta) in &adjustments {
+                if marker.column < old_end {
+                    break;
+                }
+                shift += delta;
+            }
+            if shift != 0 {
+                marker.column = marker.column.saturating_add_signed(shift);
+            }
+        }
+    }
     pub fn rewrap_rows(mut rows: Vec<Row>, max_row_length: usize) -> Vec<Row> {
         #[cfg(test)]
         REWRAP_ROWS_CALLS.with(|c| c.set(c.get() + 1));
@@ -8119,27 +8162,10 @@ impl Row {
         let mut current_part_len = 0;
         let mut current_part_width = 0;
         for row in &mut rows {
+            row.fit_character_widths_for_reflow(max_row_length);
             for mut marker in row.osc133_markers.take_all() {
                 marker.column += column_offset;
                 markers.push(marker);
-            }
-            if max_row_length > 0 && row.columns.iter().any(|c| c.width() > max_row_length) {
-                // a character wider than the pane cannot be shown anywhere in it (typing one is
-                // ignored too): replace it with as many blanks as columns it took, rather than
-                // giving it a row wider than the pane. The cells that follow (and the OSC 133
-                // markers, which are positioned in columns) stay where they were.
-                let columns = std::mem::take(&mut row.columns);
-                for character in columns {
-                    let width = character.width();
-                    if width > max_row_length {
-                        for _ in 0..width {
-                            row.columns
-                                .push(TerminalCharacter::new_styled(' ', character.styles.clone()));
-                        }
-                    } else {
-                        row.columns.push(character);
-                    }
-                }
             }
             for character in row.columns.iter() {
                 let character_width = character.width();
