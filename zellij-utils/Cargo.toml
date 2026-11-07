@@ -47,9 +47,7 @@ tokio-util = { version = "0.7", default-features = false, features = ["compat", 
 log4rs = { version = "1.2.0", default-features = false, features = ["pattern_encoder", "rolling_file_appender", "compound_policy", "fixed_window_roller", "size_trigger"] }
 termwiz = { workspace = true }
 interprocess = { workspace = true }
-openssl-sys = { version = "0.9.93", default-features = false, features = ["vendored"], optional = true }
-isahc = { workspace = true }
-curl-sys = { version = "0.4", default-features = false, features = ["force-system-lib-on-osx", "ssl"], optional = true }
+ureq = { workspace = true }
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
@@ -69,4 +67,3 @@ disable_automatic_asset_installation = []
 unstable = []
 plugins_from_target = []
 web_server_capability = ["dep:rusqlite"]
-vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]

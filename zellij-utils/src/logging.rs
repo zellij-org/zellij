@@ -76,7 +76,7 @@ pub fn configure_logger() {
         .logger(
             Logger::builder()
                 .appender("logFile")
-                .build("isahc", LevelFilter::Error),
+                .build("ureq", LevelFilter::Error),
         )
         .logger(
             Logger::builder()

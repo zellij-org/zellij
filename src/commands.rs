@@ -2,8 +2,6 @@ use dialoguer::Confirm;
 use std::net::IpAddr;
 use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
-#[cfg(feature = "web_server_capability")]
-use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
 
 use zellij_client::{
     old_config_converter::{
@@ -28,6 +26,11 @@ use zellij_client::web_client::start_web_client as start_web_client_impl;
 
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
+#[cfg(feature = "web_server_capability")]
+use zellij_utils::web_server_commands::{
+    discover_webserver_sockets, query_webserver_with_response, InstructionForWebServer,
+    WebServerResponse,
+};
 
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
@@ -327,29 +330,39 @@ pub const DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS: u64 = 30;
 
 #[cfg(feature = "web_server_capability")]
 pub(crate) fn web_server_status(
-    web_server_base_url: &str,
+    _web_server_base_url: &str,
     timeout_secs: Option<u64>,
 ) -> Result<String, String> {
-    let timeout =
-        Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS));
-    let http_client = HttpClient::builder()
-        .timeout(timeout)
-        .redirect_policy(RedirectPolicy::Follow)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let request = Request::get(format!("{}/info/version", web_server_base_url,));
-    let req = request.body(()).map_err(|e| e.to_string())?;
-    let mut res = http_client.send(req).map_err(|e| e.to_string())?;
-    let status_code = res.status();
-    if status_code == 200 {
-        let body = res.bytes().map_err(|e| e.to_string())?;
-        Ok(String::from_utf8_lossy(&body).to_string())
-    } else {
-        Err(format!(
-            "Failed to stop web server, got status code: {}",
-            status_code
-        ))
+    // LOCAL PATCH (isahc removal, 2026-07-14): query the web server's version
+    // over its unix IPC socket instead of an isahc HTTP request — the same
+    // transport the session server's status poll uses (upstream 0.44 does the
+    // same). isahc's curl agent threads SIGSEGV sporadically (dmesg:
+    // "isahc-agent-N ... segfault ... in zellij"), and this CLI was the last
+    // eager isahc client in the binary.
+    let timeout_ms = timeout_secs
+        .unwrap_or(DEFAULT_WEB_SERVER_STATUS_TIMEOUT_SECS)
+        .saturating_mul(1000);
+    let sockets = discover_webserver_sockets().map_err(|e| e.to_string())?;
+    if sockets.is_empty() {
+        return Err("no web server IPC sockets found".to_string());
     }
+    let mut last_error = "no web server responded".to_string();
+    for socket in sockets {
+        let Some(socket_path) = socket.to_str() else {
+            continue;
+        };
+        match query_webserver_with_response(
+            socket_path,
+            InstructionForWebServer::QueryVersion,
+            timeout_ms,
+        ) {
+            Ok(WebServerResponse::Version(info)) => return Ok(info.version),
+            Err(e) => {
+                last_error = format!("{}: {}", socket.display(), e);
+            },
+        }
+    }
+    Err(last_error)
 }
 
 #[cfg(not(feature = "web_server_capability"))]

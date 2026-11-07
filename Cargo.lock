@@ -2082,9 +2082,9 @@ checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
 
 [[package]]
 name = "libloading"
-version = "0.8.7"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
+checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
  "windows-targets 0.52.6",
@@ -2556,15 +2556,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
-name = "openssl-src"
-version = "300.5.4+3.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507b3792995dae9b0df8a1c1e3771e8418b7c2d9f0baeba32e6fe8b06c7cb72"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "openssl-sys"
 version = "0.9.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2572,7 +2563,6 @@ checksum = "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321"
 dependencies = [
  "cc",
  "libc",
- "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -3185,7 +3175,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "730944ca083c1c233a75c09f199e973ca499344a2b7ba9e755c457e86fb4a321"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -4340,6 +4332,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
 name = "url"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4667,6 +4674,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e1c941927d34709f255558166f8901a2005f8ab4a9650432e9281b7cc6f3b75"
 dependencies = [
  "wast 239.0.0",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.11",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+dependencies = [
+ "rustls-pki-types",
 ]
 
 [[package]]
@@ -5117,7 +5142,6 @@ dependencies = [
  "humantime",
  "insta",
  "interprocess",
- "isahc",
  "log",
  "miette",
  "names",
@@ -5159,6 +5183,7 @@ dependencies = [
  "notify",
  "num_cpus",
  "regex",
+ "rustls",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -5170,6 +5195,7 @@ dependencies = [
  "tokio-tungstenite 0.20.1",
  "tokio-util",
  "tower-http",
+ "ureq",
  "url",
  "urlencoding",
  "uuid",
@@ -5195,7 +5221,6 @@ dependencies = [
  "highway",
  "insta",
  "interprocess",
- "isahc",
  "kdl",
  "lazy_static",
  "libc",
@@ -5217,6 +5242,7 @@ dependencies = [
  "tokio",
  "typetag",
  "unicode-width 0.1.10",
+ "ureq",
  "url",
  "uuid",
  "vte 0.11.0",
@@ -5257,14 +5283,12 @@ dependencies = [
  "colored",
  "colorsys",
  "crossbeam",
- "curl-sys",
  "directories",
  "expect-test",
  "humantime",
  "include_dir",
  "insta",
  "interprocess",
- "isahc",
  "kdl",
  "lazy_static",
  "log",
@@ -5273,7 +5297,6 @@ dependencies = [
  "names",
  "nix 0.23.1",
  "notify",
- "openssl-sys",
  "percent-encoding",
  "prost",
  "rusqlite",
@@ -5292,6 +5315,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "unicode-width 0.1.10",
+ "ureq",
  "url",
  "uuid",
 ]

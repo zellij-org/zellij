@@ -13,17 +13,14 @@ use zellij_utils::web_server_commands::{
     WebServerResponse,
 };
 
-use isahc::prelude::*;
-use isahc::AsyncReadResponseExt;
-use isahc::{config::RedirectPolicy, HttpClient, Request};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex, OnceLock,
+    Arc, Mutex,
 };
 use std::time::{Duration, Instant};
 use zellij_utils::consts::is_ipc_socket;
@@ -129,12 +126,15 @@ pub(crate) fn background_jobs_main(
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
-    // Built lazily on the first WebRequest: isahc spawns its curl agent threads
-    // the moment the client is constructed, so an eager build puts those threads
-    // in every server even when no plugin ever calls web_request.
-    let http_client: OnceLock<Option<HttpClient>> = OnceLock::new();
     // We needn't do anything with the runtime, but it should exist at this point.
     let runtime = crate::global_async_runtime::get_tokio_runtime();
+    // Rate-limit the per-session-info-tick (~1s) web-server status poll, and
+    // let a spawner opt a server out entirely (work sessions don't need the
+    // status-bar web indicator).
+    let mut last_web_server_status_query: Option<Instant> = None;
+    let web_server_status_query_disabled =
+        std::env::var_os("ZELLIJ_DISABLE_WEB_SERVER_STATUS_QUERY").is_some();
+    const WEB_SERVER_STATUS_QUERY_MIN_INTERVAL: Duration = Duration::from_secs(15);
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -336,104 +336,65 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
-                runtime.spawn({
+                // LOCAL PATCH (isahc removal, 2026-07-15): plugin web requests
+                // go through ureq — a blocking client with no background agent
+                // threads — on a detached thread, mirroring the IPC status
+                // query below. isahc's curl agent threads SIGSEGV sporadically
+                // (dmesg: "isahc-agent-N ... segfault ... in zellij") and took
+                // the whole session server down with them.
+                std::thread::spawn({
                     let senders = bus.senders.clone();
-                    let http_client = http_client
-                        .get_or_init(|| {
-                            HttpClient::builder()
-                                // TODO: timeout?
-                                .redirect_policy(RedirectPolicy::Follow)
-                                .build()
-                                .ok()
-                        })
-                        .clone();
-                    async move {
-                        async fn web_request(
-                            url: String,
-                            verb: HttpVerb,
-                            headers: BTreeMap<String, String>,
-                            body: Vec<u8>,
-                            http_client: HttpClient,
-                        ) -> Result<
-                            (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            isahc::Error,
-                        > {
-                            let mut request = match verb {
-                                HttpVerb::Get => Request::get(url),
-                                HttpVerb::Post => Request::post(url),
-                                HttpVerb::Put => Request::put(url),
-                                HttpVerb::Delete => Request::delete(url),
-                            };
-                            for (header, value) in headers {
-                                request = request.header(header.as_str(), value);
-                            }
-                            let mut res = if !body.is_empty() {
-                                let req = request.body(body)?;
-                                http_client.send_async(req).await?
-                            } else {
-                                let req = request.body(())?;
-                                http_client.send_async(req).await?
-                            };
-
-                            let status_code = res.status();
-                            let headers: BTreeMap<String, String> = res
-                                .headers()
-                                .iter()
-                                .filter_map(|(name, value)| match value.to_str() {
-                                    Ok(value) => Some((name.to_string(), value.to_string())),
-                                    Err(e) => {
-                                        log::error!(
-                                            "Failed to convert header {:?} to string: {:?}",
-                                            name,
-                                            e
-                                        );
-                                        None
-                                    },
-                                })
-                                .collect();
-                            let body = res.bytes().await?;
-                            Ok((status_code.as_u16(), headers, body))
-                        }
-                        let Some(http_client) = http_client else {
-                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
-                            return;
-                        };
-
-                        match web_request(url, verb, headers, body, http_client).await {
-                            Ok((status, headers, body)) => {
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    Event::WebRequestResult(status, headers, body, context),
-                                )]));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to send web request: {}", e);
-                                let error_body = e.to_string().as_bytes().to_vec();
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    Event::WebRequestResult(
-                                        400,
-                                        BTreeMap::new(),
-                                        error_body,
-                                        context,
-                                    ),
-                                )]));
-                            },
-                        }
+                    move || match blocking_web_request(&url, verb, headers, body) {
+                        Ok((status, headers, body)) => {
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                Some(plugin_id),
+                                Some(client_id),
+                                Event::WebRequestResult(status, headers, body, context),
+                            )]));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to send web request: {}", e);
+                            let error_body = e.as_bytes().to_vec();
+                            let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                Some(plugin_id),
+                                Some(client_id),
+                                Event::WebRequestResult(400, BTreeMap::new(), error_body, context),
+                            )]));
+                        },
                     }
                 });
             },
             BackgroundJob::QueryZellijWebServerStatus => {
+                // LOCAL PATCH (isahc removal, 2026-07-14): query the web
+                // server over its unix IPC socket instead of an isahc HTTP
+                // request. isahc's curl agent threads SIGSEGV sporadically
+                // (dmesg: "isahc-agent-N ... segfault ... in zellij") and take
+                // the whole session server — every pane in every session it
+                // hosts — down with them. Upstream also moved this poll off
+                // isahc onto unix-socket queries after 0.43.1.
                 #[cfg(feature = "web_server_capability")]
                 {
-                    let status = query_webserver_via_ipc(&web_server_base_url)
-                        .unwrap_or(WebServerStatus::Offline);
-                    runtime.spawn({
+                    // Skip entirely when the spawner opted out, and never poll
+                    // more often than the min interval — this job fires on
+                    // every session-info tick (~1s) otherwise.
+                    if web_server_status_query_disabled {
+                        continue;
+                    }
+                    if last_web_server_status_query
+                        .map_or(false, |t| t.elapsed() < WEB_SERVER_STATUS_QUERY_MIN_INTERVAL)
+                    {
+                        continue;
+                    }
+                    last_web_server_status_query = Some(Instant::now());
+
+                    // Detached thread: the query is synchronous socket I/O
+                    // with short timeouts — don't stall this loop on it.
+                    std::thread::spawn({
                         let senders = bus.senders.clone();
                         let web_server_base_url = web_server_base_url.clone();
-                        async move {
+                        move || {
+                            let status = query_webserver_via_ipc(&web_server_base_url)
+                                .unwrap_or(WebServerStatus::Offline);
                             let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                 None,
                                 None,
@@ -712,6 +673,57 @@ fn find_resurrectable_sessions(
     }
 }
 
+// LOCAL PATCH (isahc removal, 2026-07-15): plugin WebRequests on ureq — no
+// curl agent threads, blocking I/O confined to its own detached thread. A
+// non-2xx HTTP status is reported to the plugin as a real response with that
+// status, not flattened into a transport error.
+fn blocking_web_request(
+    url: &str,
+    verb: HttpVerb,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+) -> Result<(u16, BTreeMap<String, String>, Vec<u8>), String> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .build();
+    let mut request = match verb {
+        HttpVerb::Get => agent.get(url),
+        HttpVerb::Post => agent.post(url),
+        HttpVerb::Put => agent.put(url),
+        HttpVerb::Delete => agent.delete(url),
+    };
+    for (header, value) in headers {
+        request = request.set(&header, &value);
+    }
+    let response = if !body.is_empty() {
+        request.send_bytes(&body)
+    } else {
+        request.call()
+    };
+    let response = match response {
+        Ok(response) => response,
+        Err(ureq::Error::Status(_code, response)) => response,
+        Err(e) => return Err(e.to_string()),
+    };
+    let status_code = response.status();
+    let mut response_headers = BTreeMap::new();
+    for name in response.headers_names() {
+        if let Some(value) = response.header(&name) {
+            response_headers.insert(name.clone(), value.to_string());
+        }
+    }
+    let mut response_body = Vec::new();
+    response
+        .into_reader()
+        .read_to_end(&mut response_body)
+        .map_err(|e| e.to_string())?;
+    Ok((status_code, response_headers, response_body))
+}
+
+// LOCAL PATCH (isahc removal, 2026-07-14): the web server's status is queried
+// over its unix IPC socket. Discovers running web server instances via their
+// IPC sockets and asks each for its version and bound address — no HTTP, no
+// isahc, no curl agent threads in the session server.
 #[cfg(feature = "web_server_capability")]
 fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus> {
     let expected_addr =

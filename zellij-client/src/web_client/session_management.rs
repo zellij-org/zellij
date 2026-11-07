@@ -1,5 +1,6 @@
 use crate::os_input_output::ClientOsApi;
 use crate::spawn_server;
+use crate::web_client::types::SessionCreationPolicy;
 
 use std::{fs, path::PathBuf};
 use zellij_utils::{
@@ -142,4 +143,72 @@ pub fn create_ipc_pipe(session_name: &str) -> PathBuf {
         sock_dir
     };
     zellij_ipc_pipe
+}
+
+/// How a terminal socket request may treat the session it names.
+///
+/// LOCAL PATCH (web session ownership, llmos#15114). Two requests reach this
+/// socket: an UNNAMED one (`/ws/terminal` — the browser asked for a terminal and
+/// the server picks the name) and a NAMED one (`/ws/terminal/<name>` — the
+/// browser asked for a session it remembers). Only the unnamed request may
+/// create: a name the browser merely remembers is not evidence that anything
+/// still wants that session, and a Zellient tab left open on a lane re-minted
+/// the lane husk the moment the janitor deleted it. A named request that
+/// genuinely wants a new session says so (`?create=1`).
+pub fn session_creation_policy(
+    requested_session_name: Option<&str>,
+    explicit_create: bool,
+) -> SessionCreationPolicy {
+    match requested_session_name {
+        None => SessionCreationPolicy::CreateIfMissing,
+        Some(_) if explicit_create => SessionCreationPolicy::CreateIfMissing,
+        Some(_) => SessionCreationPolicy::AttachOnly,
+    }
+}
+
+/// A session name the orchestrator owns. Every lane runs in
+/// `work-<digits>-<hex>`, is minted by the orchestrator (`zellij attach
+/// --create-background`) and is reaped by `zellij_session_janitor` when its
+/// queue row ends. A browser is never a lane's owner, so it may watch a live
+/// lane but must never bring one back — that resurrection is the husk
+/// (llmos#15114). The recogniser is the janitor's own test (`name.startswith
+/// ("work-")`), deliberately not a tighter regex: a lane name that ever gains a
+/// suffix must still be refused.
+pub fn is_orchestrator_owned_session_name(name: &str) -> bool {
+    name.starts_with("work-")
+}
+
+/// What a web connection should do about the session it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionAction {
+    Attach,
+    Create,
+}
+
+/// The single decision the web attach path makes about a session name.
+///
+/// Attaching never creates anything. Creating needs BOTH a create policy AND a
+/// name no orchestrator owns; everything else is refused with a message the
+/// browser can read.
+pub fn decide_session_action(
+    session_name: &str,
+    session_is_live: bool,
+    create_policy: SessionCreationPolicy,
+) -> Result<SessionAction, String> {
+    if session_is_live {
+        return Ok(SessionAction::Attach);
+    }
+    if create_policy == SessionCreationPolicy::AttachOnly {
+        return Err(format!(
+            "session {:?} is not running — the web client attaches to live sessions only and does not create them",
+            session_name
+        ));
+    }
+    if is_orchestrator_owned_session_name(session_name) {
+        return Err(format!(
+            "session {:?} is orchestrator-owned (work-*); the web client will not create or resurrect it. Start it with `zellij attach --create-background {}`",
+            session_name, session_name
+        ));
+    }
+    Ok(SessionAction::Create)
 }

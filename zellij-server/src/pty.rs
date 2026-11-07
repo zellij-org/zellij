@@ -1113,7 +1113,16 @@ impl Pty {
                     .listen()
                     .await
                     .with_context(|| err_context(terminal_id))
-                    .fatal();
+                    // NON-FATAL, not fatal (Chris's fork, 2026-08-03). A TerminalBytes listener
+                    // ends when its pane/client goes away — a routine event. Upstream calls
+                    // .fatal() here, which PANICS THE WHOLE SERVER, so one web client
+                    // disconnecting takes down every session on the box. Five panics on
+                    // 2026-08-03; the 16:06:57 one ("failed to spawn terminals for layout" ->
+                    // "failed to send message to channel") killed a live Claude Code session.
+                    // Still .fatal() upstream at v0.44.3 — NOT fixed by upgrading. .non_fatal()
+                    // logs the same error and drops the listener, already the dominant idiom
+                    // here (118 non_fatal vs 18 fatal in zellij-server).
+                    .non_fatal();
             }
         });
 
@@ -1306,7 +1315,8 @@ impl Pty {
                                 .listen()
                                 .await
                                 .context("failed to spawn terminals for layout")
-                                .fatal();
+                                // non-fatal for the same reason as the first TerminalBytes listener above.
+                                .non_fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -1474,7 +1484,8 @@ impl Pty {
                                 .listen()
                                 .await
                                 .context("failed to spawn terminals for layout")
-                                .fatal();
+                                // non-fatal for the same reason as the first TerminalBytes listener above.
+                                .non_fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -1853,7 +1864,8 @@ impl Pty {
                             .listen()
                             .await
                             .with_context(|| err_context(pane_id))
-                            .fatal();
+                            // non-fatal for the same reason as the first TerminalBytes listener above.
+                            .non_fatal();
                     }
                 });
 

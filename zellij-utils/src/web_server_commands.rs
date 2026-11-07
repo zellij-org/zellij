@@ -124,3 +124,65 @@ fn receive_webserver_response(mut stream: LocalSocketStream) -> Result<WebServer
     let proto_response = ProtoWebServerResponse::decode(&buffer[..])?;
     proto_response.try_into()
 }
+
+#[cfg(test)]
+mod web_server_query_tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    // The web server's ipc_listener protocol: a length-prefixed protobuf
+    // instruction in, a length-prefixed protobuf response out. This is the
+    // transport `zellij web --status` and the session server's status poll
+    // use since the isahc HTTP poll was removed.
+    #[test]
+    fn query_version_round_trip_over_ipc() {
+        let dir = std::env::temp_dir().join(format!(
+            "zellij-web-query-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let socket_path = dir.join("ipctest");
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut len_bytes = [0u8; 4];
+            stream.read_exact(&mut len_bytes).unwrap();
+            let len = u32::from_le_bytes(len_bytes) as usize;
+            let mut buf = vec![0u8; len];
+            stream.read_exact(&mut buf).unwrap();
+            let proto_instruction = ProtoInstructionForWebServer::decode(&buf[..]).unwrap();
+            let instruction: InstructionForWebServer = proto_instruction.try_into().unwrap();
+            assert!(matches!(
+                instruction,
+                InstructionForWebServer::QueryVersion
+            ));
+            let response: ProtoWebServerResponse = WebServerResponse::Version(VersionInfo {
+                version: "0.43.1".to_owned(),
+                ip: "0.0.0.0".to_owned(),
+                port: 8082,
+            })
+            .into();
+            let encoded = response.encode_to_vec();
+            stream
+                .write_all(&(encoded.len() as u32).to_le_bytes())
+                .unwrap();
+            stream.write_all(&encoded).unwrap();
+        });
+        let response = query_webserver_with_response(
+            socket_path.to_str().unwrap(),
+            InstructionForWebServer::QueryVersion,
+            2000,
+        )
+        .unwrap();
+        server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        match response {
+            WebServerResponse::Version(info) => {
+                assert_eq!(info.version, "0.43.1");
+                assert_eq!(info.ip, "0.0.0.0");
+                assert_eq!(info.port, 8082);
+            },
+        }
+    }
+}

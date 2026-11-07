@@ -13,6 +13,10 @@ pub struct WebClientToWebServerControlMessage {
 pub enum WebClientToWebServerControlMessagePayload {
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
+    // Detach every OTHER web client attached to the same session as the sender,
+    // so the sender's client gets the full session size (zellij sizes a session
+    // to the last client that resized; with others gone the sender wins).
+    DetachOtherClients,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

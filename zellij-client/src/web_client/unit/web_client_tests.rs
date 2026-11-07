@@ -1,14 +1,37 @@
 use super::serve_web_client;
 use super::*;
 use futures_util::{SinkExt, StreamExt};
-use isahc::prelude::*;
+
+// LOCAL PATCH (isahc removal, 2026-07-15): test HTTP goes through ureq.
+// ureq surfaces non-2xx statuses as Err(Error::Status) — these shims fold
+// them back into Ok(response) so tests can assert on real status codes.
+fn http_get(url: &str) -> Result<ureq::Response, ureq::Error> {
+    match ureq::get(url).call() {
+        Err(ureq::Error::Status(_, response)) => Ok(response),
+        other => other,
+    }
+}
+
+fn http_post(
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> Result<ureq::Response, ureq::Error> {
+    let mut request = ureq::post(url);
+    for (name, value) in headers {
+        request = request.set(name, value);
+    }
+    match request.send_string(body) {
+        Err(ureq::Error::Status(_, response)) => Ok(response),
+        other => other,
+    }
+}
 use serde_json;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::layout::Layout;
 use zellij_utils::{consts::VERSION, input::config::Config, input::options::Options};
 
@@ -19,9 +42,9 @@ use crate::web_client::control_message::{
 };
 use crate::web_client::ClientOsApiFactory;
 use zellij_utils::{
-    data::{LayoutInfo, Palette},
+    data::Palette,
     errors::ErrorContext,
-    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg},
     pane_size::Size,
     web_authentication_tokens::{create_token, delete_db, revoke_token},
 };
@@ -50,7 +73,7 @@ mod web_client_tests {
         while start.elapsed() < timeout {
             match tokio::task::spawn_blocking({
                 let url = url.clone();
-                move || isahc::get(&url)
+                move || http_get(&url)
             })
             .await
             {
@@ -111,16 +134,16 @@ mod web_client_tests {
 
         let mut response = timeout(
             Duration::from_secs(5),
-            tokio::task::spawn_blocking(move || isahc::get(&url)),
+            tokio::task::spawn_blocking(move || http_get(&url)),
         )
         .await
         .expect("Request timed out")
         .expect("Spawn blocking failed")
         .expect("Request failed");
 
-        assert!(response.status().is_success());
+        assert!((200..300).contains(&response.status()));
 
-        let version_text = response.text().expect("Failed to read response body");
+        let version_text = response.into_string().expect("Failed to read response body");
         assert_eq!(version_text, VERSION);
 
         server_handle.abort();
@@ -180,11 +203,7 @@ mod web_client_tests {
         let mut response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                isahc::Request::post(&login_url)
-                    .header("Content-Type", "application/json")
-                    .body(login_payload.to_string())
-                    .unwrap()
-                    .send()
+                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
             }),
         )
         .await
@@ -192,9 +211,9 @@ mod web_client_tests {
         .expect("Spawn blocking failed")
         .expect("Login request failed");
 
-        assert!(response.status().is_success());
+        assert!((200..300).contains(&response.status()));
 
-        let response_text = response.text().expect("Failed to read response body");
+        let response_text = response.into_string().expect("Failed to read response body");
         let response_json: serde_json::Value =
             serde_json::from_str(&response_text).expect("Failed to parse JSON");
 
@@ -252,11 +271,7 @@ mod web_client_tests {
         let response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                isahc::Request::post(&login_url)
-                    .header("Content-Type", "application/json")
-                    .body(login_payload.to_string())
-                    .unwrap()
-                    .send()
+                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
             }),
         )
         .await
@@ -320,11 +335,7 @@ mod web_client_tests {
         let login_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                isahc::Request::post(&login_url)
-                    .header("Content-Type", "application/json")
-                    .body(login_payload.to_string())
-                    .unwrap()
-                    .send()
+                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
             }),
         )
         .await
@@ -332,14 +343,14 @@ mod web_client_tests {
         .unwrap()
         .unwrap();
 
-        assert!(login_response.status().is_success());
+        assert!((200..300).contains(&login_response.status()));
 
-        let set_cookie_header = login_response.headers().get("set-cookie");
+        let set_cookie_header = login_response.header("set-cookie");
         assert!(
             set_cookie_header.is_some(),
             "Should have received session cookie"
         );
-        let cookie_value = set_cookie_header.unwrap().to_str().unwrap();
+        let cookie_value = set_cookie_header.unwrap();
         let session_token = cookie_value
             .split(';')
             .next()
@@ -352,12 +363,7 @@ mod web_client_tests {
             tokio::task::spawn_blocking({
                 let session_token = session_token.to_string();
                 move || {
-                    isahc::Request::post(&session_url)
-                        .header("Cookie", format!("session_token={}", session_token))
-                        .header("Content-Type", "application/json")
-                        .body("{}")
-                        .unwrap()
-                        .send()
+                    http_post(&session_url, &[("Cookie", &format!("session_token={}", session_token)), ("Content-Type", "application/json")], "{}")
                 }
             }),
         )
@@ -366,10 +372,10 @@ mod web_client_tests {
         .unwrap()
         .unwrap();
 
-        assert!(client_response.status().is_success());
+        assert!((200..300).contains(&client_response.status()));
 
         let client_data: serde_json::Value =
-            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+            serde_json::from_str(&client_response.into_string().unwrap()).unwrap();
         let web_client_id = client_data["web_client_id"].as_str().unwrap().to_string();
 
         let control_ws_url = format!("ws://127.0.0.1:{}/ws/control", port);
@@ -477,6 +483,273 @@ mod web_client_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    /// Start the web server over a mock session manager, for the
+    /// web-session-ownership tests (llmos#15114). Returns the bound port and the
+    /// server task so the test can abort it.
+    async fn start_web_server_with(
+        session_manager: Arc<MockSessionManager>,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+        let config = Config::default();
+        let options = Options::default();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+        let temp_config_path = std::env::temp_dir().join(format!(
+            "test_config_web_session_ownership_{}.kdl",
+            std::process::id()
+        ));
+        let server_handle = tokio::spawn(async move {
+            serve_web_client(
+                config,
+                options,
+                Some(temp_config_path),
+                listener,
+                None,
+                Some(session_manager),
+                Some(client_os_api_factory),
+                addr.ip(),
+                port,
+            )
+            .await;
+        });
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+        (port, server_handle)
+    }
+
+    /// Open a terminal socket for `session_name` (or unnamed when None) and read
+    /// the FIRST thing the server sends back. A refusal arrives as terminal text
+    /// (the listener writes it through the client's stdout channel); a session
+    /// that was created sends nothing on the terminal channel, so a refusal is
+    /// distinguishable from a spawn without any timing guess.
+    async fn first_terminal_message(
+        port: u16,
+        session_token: &str,
+        web_client_id: &str,
+        session_name: Option<&str>,
+        create: bool,
+    ) -> Option<String> {
+        let create_query = if create { "&create=1" } else { "" };
+        let terminal_ws_url = match session_name {
+            Some(name) => format!(
+                "ws://127.0.0.1:{}/ws/terminal/{}?web_client_id={}{}",
+                port, name, web_client_id, create_query
+            ),
+            None => format!(
+                "ws://127.0.0.1:{}/ws/terminal?web_client_id={}{}",
+                port, web_client_id, create_query
+            ),
+        };
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, session_token),
+        )
+        .await
+        .expect("Terminal WebSocket connection timed out")
+        .expect("Failed to connect to terminal WebSocket");
+        let (_terminal_sink, mut terminal_stream) = terminal_ws.split();
+        match timeout(Duration::from_millis(1500), terminal_stream.next()).await {
+            Ok(Some(Ok(Message::Text(text)))) => Some(text.to_string()),
+            _ => None,
+        }
+    }
+
+    /// The reported defect (llmos#15114): a Zellient tab left open on a lane
+    /// re-minted that lane's session the moment it was reaped, because the web
+    /// client created ANY name a browser asked for. A named attach to a session
+    /// that is not running must now be REFUSED — no spawn, and the browser reads
+    /// why.
+    #[tokio::test]
+    #[serial]
+    async fn test_named_web_attach_to_a_missing_session_is_refused() {
+        isolate_token_db();
+        let _ = delete_db();
+
+        let test_token_name = "test_token_named_attach_refused";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false)
+                .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new()); // nothing is running
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = start_web_server_with(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        let remembered_lane = "work-1793998170-e39f063d";
+        let message = first_terminal_message(
+            port,
+            &session_token,
+            &web_client_id,
+            Some(remembered_lane),
+            false,
+        )
+        .await
+        .expect("the web client created the session instead of refusing it");
+        println!(
+            "refusal delivered to the browser for {:?}: {:?}",
+            remembered_lane, message
+        );
+
+        assert!(
+            message.contains("is not available"),
+            "refusal must reach the browser, got: {:?}",
+            message
+        );
+        assert!(
+            message.contains("does not create them"),
+            "refusal must say the web client does not create sessions, got: {:?}",
+            message
+        );
+        assert!(
+            session_manager_for_verification.spawn_attempts().is_empty(),
+            "a named attach must never reach the create path, got: {:?}",
+            session_manager_for_verification.spawn_attempts()
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    /// The explicit-create request (`?create=1`) still creates a session the
+    /// browser deliberately asks for — the capability is gated, not removed.
+    #[tokio::test]
+    #[serial]
+    async fn test_named_web_attach_with_explicit_create_still_creates() {
+        isolate_token_db();
+        let _ = delete_db();
+
+        let test_token_name = "test_token_named_attach_create";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false)
+                .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = start_web_server_with(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        let message = first_terminal_message(
+            port,
+            &session_token,
+            &web_client_id,
+            Some("deliberate-new-session"),
+            true,
+        )
+        .await;
+        assert!(
+            message.is_none(),
+            "an explicit create must not be refused, got: {:?}",
+            message
+        );
+        assert_eq!(
+            session_manager_for_verification.spawn_attempts(),
+            vec!["deliberate-new-session".to_owned()],
+            "an explicit create must reach the create path"
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    /// Even with an explicit create, a `work-*` name is refused: the
+    /// orchestrator owns lane sessions (it mints them with
+    /// `zellij attach --create-background`), so a browser may watch a live lane
+    /// but never resurrect one.
+    #[tokio::test]
+    #[serial]
+    async fn test_web_attach_never_creates_an_orchestrator_owned_session() {
+        isolate_token_db();
+        let _ = delete_db();
+
+        let test_token_name = "test_token_lane_name_refused";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false)
+                .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = start_web_server_with(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        let lane = "work-1793998170-e39f063d";
+        let message =
+            first_terminal_message(port, &session_token, &web_client_id, Some(lane), true)
+                .await
+                .expect("the web client created an orchestrator-owned lane session");
+        println!(
+            "refusal delivered to the browser for {:?}: {:?}",
+            lane, message
+        );
+
+        assert!(
+            message.contains("orchestrator-owned"),
+            "refusal must name the ownership rule, got: {:?}",
+            message
+        );
+        assert!(
+            message.contains("zellij attach --create-background"),
+            "refusal must say how the session is started, got: {:?}",
+            message
+        );
+        assert!(
+            session_manager_for_verification.spawn_attempts().is_empty(),
+            "a lane session must never be created from the web, got: {:?}",
+            session_manager_for_verification.spawn_attempts()
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    /// A browser that opens the web client with NO name still gets a terminal
+    /// (the server picks the name) — the gate is on names the browser chooses.
+    #[tokio::test]
+    #[serial]
+    async fn test_unnamed_web_attach_still_creates_a_terminal() {
+        isolate_token_db();
+        let _ = delete_db();
+
+        let test_token_name = "test_token_unnamed_attach_creates";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false)
+                .expect("Failed to create test token");
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let session_manager_for_verification = session_manager.clone();
+        let (port, server_handle) = start_web_server_with(session_manager).await;
+
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+
+        let message =
+            first_terminal_message(port, &session_token, &web_client_id, None, false).await;
+        assert!(
+            message.is_none(),
+            "an unnamed request must not be refused, got: {:?}",
+            message
+        );
+        assert_eq!(
+            session_manager_for_verification.spawn_attempts().len(),
+            1,
+            "an unnamed request must still create the terminal session"
+        );
+
+        server_handle.abort();
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     #[tokio::test]
     #[serial]
     async fn test_unauthorized_access_without_session() {
@@ -516,7 +789,7 @@ mod web_client_tests {
         let session_url = format!("http://127.0.0.1:{}/session", port);
         let response = timeout(
             Duration::from_secs(5),
-            tokio::task::spawn_blocking(move || isahc::post(&session_url, "{}")),
+            tokio::task::spawn_blocking(move || http_post(&session_url, &[], "{}")),
         )
         .await
         .expect("Session request timed out")
@@ -568,12 +841,14 @@ mod web_client_tests {
         let response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                isahc::Request::post(&session_url)
-                    .header("Cookie", "session_token=invalid_session_token_123")
-                    .header("Content-Type", "application/json")
-                    .body("{}")
-                    .unwrap()
-                    .send()
+                http_post(
+                    &session_url,
+                    &[
+                        ("Cookie", "session_token=invalid_session_token_123"),
+                        ("Content-Type", "application/json"),
+                    ],
+                    "{}",
+                )
             }),
         )
         .await
@@ -1232,17 +1507,18 @@ mod web_client_tests {
         let session_token = login_and_get_session_token(port, &auth_token).await;
 
         let session_url = format!("http://127.0.0.1:{}/session", port);
-        let mut client_response = timeout(
+        let client_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking({
                 let session_token = session_token.to_string();
+                let session_url = session_url.clone();
                 move || {
-                    isahc::Request::post(&session_url)
-                        .header("Cookie", format!("session_token={}", session_token))
-                        .header("Content-Type", "application/json")
-                        .body("{}")
-                        .unwrap()
-                        .send()
+                    let cookie = format!("session_token={}", session_token);
+                    http_post(
+                        &session_url,
+                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        "{}",
+                    )
                 }
             }),
         )
@@ -1251,10 +1527,10 @@ mod web_client_tests {
         .unwrap()
         .unwrap();
 
-        assert!(client_response.status().is_success());
+        assert!((200..300).contains(&client_response.status()));
 
         let client_data: serde_json::Value =
-            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+            serde_json::from_str(&client_response.into_string().unwrap()).unwrap();
         let is_read_only = client_data["is_read_only"].as_bool().unwrap();
 
         assert_eq!(is_read_only, true, "Client should be marked as read-only");
@@ -1619,17 +1895,18 @@ mod web_client_tests {
         let regular_session_token = login_and_get_session_token(port, &regular_token).await;
 
         let session_url = format!("http://127.0.0.1:{}/session", port);
-        let mut regular_response = timeout(
+        let regular_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking({
                 let session_token = regular_session_token.to_string();
+                let session_url = session_url.clone();
                 move || {
-                    isahc::Request::post(&session_url)
-                        .header("Cookie", format!("session_token={}", session_token))
-                        .header("Content-Type", "application/json")
-                        .body("{}")
-                        .unwrap()
-                        .send()
+                    let cookie = format!("session_token={}", session_token);
+                    http_post(
+                        &session_url,
+                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        "{}",
+                    )
                 }
             }),
         )
@@ -1639,23 +1916,24 @@ mod web_client_tests {
         .unwrap();
 
         let regular_client_data: serde_json::Value =
-            serde_json::from_str(&regular_response.text().unwrap()).unwrap();
+            serde_json::from_str(&regular_response.into_string().unwrap()).unwrap();
         let regular_is_read_only = regular_client_data["is_read_only"].as_bool().unwrap();
 
         let readonly_session_token = login_and_get_session_token(port, &readonly_token).await;
 
         let session_url = format!("http://127.0.0.1:{}/session", port);
-        let mut readonly_response = timeout(
+        let readonly_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking({
                 let session_token = readonly_session_token.to_string();
+                let session_url = session_url.clone();
                 move || {
-                    isahc::Request::post(&session_url)
-                        .header("Cookie", format!("session_token={}", session_token))
-                        .header("Content-Type", "application/json")
-                        .body("{}")
-                        .unwrap()
-                        .send()
+                    let cookie = format!("session_token={}", session_token);
+                    http_post(
+                        &session_url,
+                        &[("Cookie", cookie.as_str()), ("Content-Type", "application/json")],
+                        "{}",
+                    )
                 }
             }),
         )
@@ -1665,7 +1943,7 @@ mod web_client_tests {
         .unwrap();
 
         let readonly_client_data: serde_json::Value =
-            serde_json::from_str(&readonly_response.text().unwrap()).unwrap();
+            serde_json::from_str(&readonly_response.into_string().unwrap()).unwrap();
         let readonly_is_read_only = readonly_client_data["is_read_only"].as_bool().unwrap();
 
         // Verify is_read_only flag in responses
@@ -1695,11 +1973,7 @@ mod web_client_tests {
         let login_response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
-                isahc::Request::post(&login_url)
-                    .header("Content-Type", "application/json")
-                    .body(login_payload.to_string())
-                    .unwrap()
-                    .send()
+                http_post(&login_url, &[("Content-Type", "application/json")], &login_payload.to_string())
             }),
         )
         .await
@@ -1707,10 +1981,10 @@ mod web_client_tests {
         .unwrap()
         .unwrap();
 
-        assert!(login_response.status().is_success());
+        assert!((200..300).contains(&login_response.status()));
 
-        let set_cookie_header = login_response.headers().get("set-cookie").unwrap();
-        let cookie_value = set_cookie_header.to_str().unwrap();
+        let set_cookie_header = login_response.header("set-cookie").unwrap();
+        let cookie_value = set_cookie_header;
         cookie_value
             .split(';')
             .next()
@@ -1727,12 +2001,7 @@ mod web_client_tests {
             tokio::task::spawn_blocking({
                 let session_token = session_token.to_string();
                 move || {
-                    isahc::Request::post(&session_url)
-                        .header("Cookie", format!("session_token={}", session_token))
-                        .header("Content-Type", "application/json")
-                        .body("{}")
-                        .unwrap()
-                        .send()
+                    http_post(&session_url, &[("Cookie", &format!("session_token={}", session_token)), ("Content-Type", "application/json")], "{}")
                 }
             }),
         )
@@ -1741,10 +2010,10 @@ mod web_client_tests {
         .unwrap()
         .unwrap();
 
-        assert!(client_response.status().is_success());
+        assert!((200..300).contains(&client_response.status()));
 
         let client_data: serde_json::Value =
-            serde_json::from_str(&client_response.text().unwrap()).unwrap();
+            serde_json::from_str(&client_response.into_string().unwrap()).unwrap();
         client_data["web_client_id"].as_str().unwrap().to_string()
     }
 
@@ -2114,6 +2383,11 @@ pub struct MockSessionManager {
     pub sessions_created: Arc<Mutex<HashSet<String>>>,
     pub first_messages_sent: Arc<Mutex<Vec<(String, ClientToServerMsg)>>>,
     pub all_sessions_exist: bool,
+    /// Every session name this mock was asked to SPAWN, so a test can prove the
+    /// socket refused instead of creating (llmos#15114). Shared across clones:
+    /// keep one handle for verification before moving the manager into the
+    /// server.
+    pub spawn_attempts: Arc<Mutex<Vec<String>>>,
 }
 
 impl MockSessionManager {
@@ -2124,6 +2398,7 @@ impl MockSessionManager {
             sessions_created: Arc::new(Mutex::new(HashSet::new())),
             first_messages_sent: Arc::new(Mutex::new(Vec::new())),
             all_sessions_exist: false,
+            spawn_attempts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -2134,6 +2409,7 @@ impl MockSessionManager {
             sessions_created: Arc::new(Mutex::new(HashSet::new())),
             first_messages_sent: Arc::new(Mutex::new(Vec::new())),
             all_sessions_exist: true,
+            spawn_attempts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -2148,6 +2424,12 @@ impl MockSessionManager {
 
     pub fn was_session_created(&self, session_name: &str) -> bool {
         self.sessions_created.lock().unwrap().contains(session_name)
+    }
+
+    /// Session names this mock was asked to SPAWN (ie. the listener did not
+    /// refuse the request). Empty means the socket refused.
+    pub fn spawn_attempts(&self) -> Vec<String> {
+        self.spawn_attempts.lock().unwrap().clone()
     }
 }
 
@@ -2188,6 +2470,13 @@ impl SessionManager for MockSessionManager {
                 .lock()
                 .unwrap()
                 .insert(session_name.to_owned());
+            // LOCAL PATCH (web session ownership, llmos#15114): reaching the
+            // create path at all is what a test asserts against — a refused
+            // request never gets here.
+            self.spawn_attempts
+                .lock()
+                .unwrap()
+                .push(session_name.to_owned());
         }
     }
 }
@@ -2288,5 +2577,122 @@ impl ClientOsApi for MockClientOsApi {
     }
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
+    }
+}
+
+/// Pure tests for the web session-ownership decision (llmos#15114): what policy a
+/// request earns, how the create flag parses, and the decision matrix that turns
+/// (live?, policy, name) into attach / create / refuse.
+mod web_session_ownership_tests {
+    use crate::web_client::session_management::{
+        decide_session_action, is_orchestrator_owned_session_name, session_creation_policy,
+        SessionAction,
+    };
+    use crate::web_client::types::SessionCreationPolicy;
+    use crate::web_client::utils::parse_create_flag;
+
+    const LANE: &str = "work-1793998170-e39f063d";
+
+    #[test]
+    fn unnamed_request_may_create_a_session() {
+        // `/ws/terminal` with no name: the browser asked for a terminal and the
+        // SERVER picks the name, so nothing here can re-mint a remembered name.
+        assert_eq!(
+            session_creation_policy(None, false),
+            SessionCreationPolicy::CreateIfMissing
+        );
+    }
+
+    #[test]
+    fn named_request_is_attach_only_unless_it_asks_to_create() {
+        assert_eq!(
+            session_creation_policy(Some("a-session"), false),
+            SessionCreationPolicy::AttachOnly
+        );
+        assert_eq!(
+            session_creation_policy(Some("a-session"), true),
+            SessionCreationPolicy::CreateIfMissing
+        );
+    }
+
+    #[test]
+    fn create_flag_accepts_the_usual_affirmatives_and_nothing_else() {
+        for yes in ["1", "true", "TRUE", " yes ", "on"] {
+            assert!(parse_create_flag(Some(yes)), "{:?} must mean create", yes);
+        }
+        for no in ["0", "false", "no", "", "maybe"] {
+            assert!(
+                !parse_create_flag(Some(no)),
+                "{:?} must not mean create",
+                no
+            );
+        }
+        assert!(!parse_create_flag(None));
+    }
+
+    #[test]
+    fn a_live_session_is_attached_whatever_the_policy() {
+        for policy in [
+            SessionCreationPolicy::AttachOnly,
+            SessionCreationPolicy::CreateIfMissing,
+        ] {
+            assert_eq!(
+                decide_session_action(LANE, true, policy),
+                Ok(SessionAction::Attach),
+                "a live lane must stay attachable from the web (Zellient watches it)"
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_session_is_created_only_under_the_create_policy() {
+        assert_eq!(
+            decide_session_action("my-session", false, SessionCreationPolicy::CreateIfMissing),
+            Ok(SessionAction::Create)
+        );
+    }
+
+    #[test]
+    fn a_missing_attach_only_session_is_refused_with_a_readable_reason() {
+        let err = decide_session_action(LANE, false, SessionCreationPolicy::AttachOnly)
+            .expect_err("attach-only must never create");
+        assert!(err.contains("is not running"), "got: {}", err);
+        assert!(err.contains("does not create them"), "got: {}", err);
+    }
+
+    #[test]
+    fn orchestrator_owned_names_are_never_created() {
+        assert!(is_orchestrator_owned_session_name(LANE));
+        // The recogniser is the janitor's own `startswith("work-")`, not a
+        // tighter regex, so a lane name that gains a suffix is still refused.
+        assert!(is_orchestrator_owned_session_name(
+            "work-1793998170-e39f063d-2"
+        ));
+        assert!(!is_orchestrator_owned_session_name("workshop"));
+        assert!(!is_orchestrator_owned_session_name("my-work-lane"));
+
+        // Attach-only never gets as far as ownership: it does not create at all.
+        let attach_only_err = decide_session_action(LANE, false, SessionCreationPolicy::AttachOnly)
+            .expect_err("attach-only must never create a lane session");
+        assert!(
+            attach_only_err.contains("is not running"),
+            "got: {}",
+            attach_only_err
+        );
+
+        // With an explicit create, the ownership rule is what refuses it — and
+        // the message says how the session is really started.
+        let create_err = decide_session_action(LANE, false, SessionCreationPolicy::CreateIfMissing)
+            .expect_err("a lane session must never be created from the web");
+        assert!(
+            create_err.contains("orchestrator-owned"),
+            "got: {}",
+            create_err
+        );
+        assert!(
+            create_err.contains("zellij attach --create-background"),
+            "got: {}",
+            create_err
+        );
     }
 }

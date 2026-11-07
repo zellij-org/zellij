@@ -1,9 +1,12 @@
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::control_message::{SetConfigPayload, WebServerToWebClientControlMessage};
 use crate::web_client::session_management::{
-    build_initial_connection, create_first_message, create_ipc_pipe,
+    build_initial_connection, create_first_message, create_ipc_pipe, decide_session_action,
+    SessionAction,
 };
-use crate::web_client::types::{ClientConnectionBus, ConnectionTable, SessionManager};
+use crate::web_client::types::{
+    ClientConnectionBus, ConnectionTable, SessionCreationPolicy, SessionManager,
+};
 use crate::web_client::utils::terminal_init_messages;
 
 use std::{
@@ -29,6 +32,7 @@ pub fn zellij_server_listener(
     web_client_id: String,
     session_manager: Arc<dyn SessionManager>,
     attachment_complete_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    create_policy: SessionCreationPolicy,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -45,7 +49,15 @@ pub fn zellij_server_listener(
                         },
                     };
                 let mut attachment_complete_tx = attachment_complete_tx;
+                // LOCAL PATCH (web session ownership, llmos#15114): the policy
+                // belongs to the request that OPENED this socket. A reconnect
+                // after a server-driven SwitchSession names a session the server
+                // itself vouched for, so it may never create.
+                let mut create_policy = Some(create_policy);
                 'reconnect_loop: loop {
+                    let this_create_policy = create_policy
+                        .take()
+                        .unwrap_or(SessionCreationPolicy::AttachOnly);
                     let reconnect_info = reconnect_to_session.take();
                     let initial_layout = reconnect_info.as_ref().and_then(|r| r.layout.clone());
                     let path = {
@@ -102,7 +114,34 @@ pub fn zellij_server_listener(
                         return;
                     }
 
-                    let should_create_new_session = !session_exists;
+                    // LOCAL PATCH (web session ownership, llmos#15114): whether
+                    // this connection may CREATE the session it names is decided
+                    // by the request that opened the socket, not by the mere
+                    // absence of the session. A browser tab left open on a lane
+                    // re-minted that lane's session seconds after the janitor
+                    // deleted it; refusing here ends that loop, and the refusal
+                    // is printed in the terminal so the tab reads "session
+                    // ended" instead of reconnecting forever.
+                    let session_action =
+                        match decide_session_action(&session_name, session_exists, this_create_policy)
+                        {
+                            Ok(action) => action,
+                            Err(refusal) => {
+                                log::info!(
+                                    "Refusing web connection to session {:?}: {}",
+                                    session_name,
+                                    refusal
+                                );
+                                client_connection_bus.send_stdout(format!(
+                                    "\u{1b}[2J\r\nSession {:?} is not available.\r\n\r\n{}\r\n",
+                                    session_name, refusal
+                                ));
+                                return;
+                            },
+                        };
+
+                    let should_create_new_session =
+                        matches!(session_action, SessionAction::Create);
                     let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name);
 

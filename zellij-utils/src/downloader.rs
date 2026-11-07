@@ -1,23 +1,22 @@
-use isahc::prelude::*;
-use isahc::{config::RedirectPolicy, HttpClient, Request};
+// LOCAL PATCH (isahc removal, 2026-07-15): downloads go through ureq, a
+// blocking HTTP client with no background agent threads. isahc's curl agent
+// threads SIGSEGV sporadically (dmesg: "isahc-agent-N ... segfault ... in
+// zellij") and took down every session server they spawned in. Blocking I/O
+// runs on tokio's blocking pool via spawn_blocking, never on the executor
+// threads.
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
-use tokio::{io::AsyncWriteExt as _, sync::Mutex};
-use tokio_stream::StreamExt as _;
-use tokio_util::compat::FuturesAsyncReadCompatExt as _;
-use tokio_util::io::ReaderStream;
+use tokio::sync::Mutex;
 use url::Url;
-
-const STREAM_BUFFER_SIZE_BYTES: usize = 65535;
 
 #[derive(Error, Debug)]
 pub enum DownloaderError {
     #[error("RequestError: {0}")]
-    Request(#[from] isahc::Error),
-    #[error("HttpError: {0}")]
-    HttpError(#[from] isahc::http::Error),
+    Request(#[from] Box<ureq::Error>),
     #[error("IoError: {0}")]
     Io(#[source] std::io::Error),
     #[error("StdIoError: {0}")]
@@ -28,13 +27,8 @@ pub enum DownloaderError {
     InvalidUrlBody(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Downloader {
-    // Built lazily on the first download: isahc spawns its curl agent threads
-    // the moment the client is constructed, and a Downloader lives in every
-    // server (wasm_bridge) even when no plugin is ever downloaded. Arc'd so
-    // clones share the one client, as they did when it was built eagerly.
-    client: Arc<OnceLock<Option<HttpClient>>>,
     location: PathBuf,
     // the whole thing is an Arc/Mutex so that Downloader is thread safe, and the individual values of
     // the HashMap are Arc/Mutexes (Mutexi?) to represent that individual downloads should not
@@ -42,44 +36,15 @@ pub struct Downloader {
     download_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
-impl Default for Downloader {
-    fn default() -> Self {
-        Self {
-            client: Default::default(),
-            location: PathBuf::from(""),
-            download_locks: Default::default(),
-        }
-    }
-}
-
 impl Downloader {
     pub fn new(location: PathBuf) -> Self {
         Self {
-            client: Default::default(),
             location,
             download_locks: Default::default(),
         }
     }
 
-    pub async fn download(
-        &self,
-        url: &str,
-        file_name: Option<&str>,
-    ) -> Result<(), DownloaderError> {
-        let Some(client) = self
-            .client
-            .get_or_init(|| {
-                HttpClient::builder()
-                    // TODO: timeout?
-                    .redirect_policy(RedirectPolicy::Follow)
-                    .build()
-                    .ok()
-            })
-            .as_ref()
-        else {
-            log::error!("No Http client found, cannot perform requests - this is likely a misconfiguration of isahc::HttpClient");
-            return Ok(());
-        };
+    pub async fn download(&self, url: &str, file_name: Option<&str>) -> Result<(), DownloaderError> {
         let file_name = match file_name {
             Some(name) => name.to_string(),
             None => self.parse_name(url)?,
@@ -98,79 +63,33 @@ impl Downloader {
             return Ok(());
         }
         let file_part_path = self.location.join(format!("{}.part", file_name));
-        let (mut target, file_part_size) = {
-            if file_part_path.exists() {
-                let file_part = tokio::fs::OpenOptions::new()
-                    .append(true)
-                    .write(true)
-                    .open(&file_part_path)
-                    .await
-                    .map_err(|e| DownloaderError::Io(e))?;
-
-                let file_part_size = file_part
-                    .metadata()
-                    .await
-                    .map_err(|e| DownloaderError::Io(e))?
-                    .len();
-
-                log::debug!("Resuming download from {} bytes", file_part_size);
-
-                (file_part, file_part_size)
-            } else {
-                let file_part = tokio::fs::File::create(&file_part_path)
-                    .await
-                    .map_err(|e| DownloaderError::Io(e))?;
-
-                (file_part, 0)
-            }
-        };
-        let request = Request::get(url)
-            .header("Content-Type", "application/octet-stream")
-            .header("Range", format!("bytes={}-", file_part_size))
-            .body(())?;
-        let mut res = client.send_async(request).await?;
-        let body = res.body_mut();
-        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(DownloaderError::Io)?;
-            target
-                .write_all(&chunk)
-                .await
-                .map_err(DownloaderError::Io)?;
-        }
-
-        log::debug!("Download complete: {:?}", file_part_path);
-
-        tokio::fs::rename(file_part_path, file_path)
+        let url = url.to_string();
+        tokio::task::spawn_blocking(move || download_blocking(&url, &file_part_path, &file_path))
             .await
-            .map_err(|e| DownloaderError::Io(e))?;
-
-        Ok(())
+            .map_err(|e| {
+                DownloaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+            })?
     }
+
     pub async fn download_without_cache(url: &str) -> Result<String, DownloaderError> {
-        let request = Request::get(url)
-            .header("Content-Type", "application/octet-stream")
-            .body(())?;
-        let client = HttpClient::builder()
-            // TODO: timeout?
-            .redirect_policy(RedirectPolicy::Follow)
-            .build()?;
-
-        let mut res = client.send_async(request).await?;
-
-        let mut downloaded_bytes: Vec<u8> = vec![];
-        let body = res.body_mut();
-        let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(DownloaderError::Io)?;
-            downloaded_bytes.extend_from_slice(&*chunk);
-        }
-
-        log::debug!("Download complete");
-        let stringified = String::from_utf8(downloaded_bytes)
-            .map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
-
-        Ok(stringified)
+        let url = url.to_string();
+        tokio::task::spawn_blocking(move || {
+            let response = ureq::get(&url)
+                .set("Content-Type", "application/octet-stream")
+                .call()
+                .map_err(Box::new)?;
+            let mut downloaded_bytes: Vec<u8> = Vec::new();
+            response
+                .into_reader()
+                .read_to_end(&mut downloaded_bytes)
+                .map_err(DownloaderError::Io)?;
+            log::debug!("Download complete");
+            let stringified = String::from_utf8(downloaded_bytes)
+                .map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
+            Ok(stringified)
+        })
+        .await
+        .map_err(|e| DownloaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
     }
 
     /// Download the content of a URL and block for the result.
@@ -227,6 +146,43 @@ impl Downloader {
             .or_insert_with(|| Default::default());
         download_lock.clone()
     }
+}
+
+fn download_blocking(
+    url: &str,
+    file_part_path: &Path,
+    file_path: &Path,
+) -> Result<(), DownloaderError> {
+    let (mut target, file_part_size) = {
+        if file_part_path.exists() {
+            let file_part = fs::OpenOptions::new()
+                .append(true)
+                .open(file_part_path)
+                .map_err(DownloaderError::Io)?;
+
+            let file_part_size = file_part.metadata().map_err(DownloaderError::Io)?.len();
+
+            log::debug!("Resuming download from {} bytes", file_part_size);
+
+            (file_part, file_part_size)
+        } else {
+            let file_part = fs::File::create(file_part_path).map_err(DownloaderError::Io)?;
+
+            (file_part, 0)
+        }
+    };
+    let response = ureq::get(url)
+        .set("Content-Type", "application/octet-stream")
+        .set("Range", &format!("bytes={}-", file_part_size))
+        .call()
+        .map_err(Box::new)?;
+    std::io::copy(&mut response.into_reader(), &mut target).map_err(DownloaderError::Io)?;
+
+    log::debug!("Download complete: {:?}", file_part_path);
+
+    fs::rename(file_part_path, file_path).map_err(DownloaderError::Io)?;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -76,6 +76,48 @@ impl ConnectionTable {
             client_channels.cleanup();
         }
         self.client_read_only_status.remove(client_id);
+        self.client_id_to_session.remove(client_id);
+        // If this client owned a session's size, release ownership so the
+        // remaining clients can resize again.
+        self.session_size_owner
+            .retain(|_, owner| owner.as_str() != client_id);
+    }
+
+    pub fn set_client_session(&mut self, client_id: &str, session_name: String) {
+        self.client_id_to_session
+            .insert(client_id.to_owned(), session_name);
+    }
+
+    /// Make `requester_id` the size owner of its session: every OTHER client of
+    /// that session now mirrors the owner's size (their TerminalResize is
+    /// dropped, see `resize_allowed`) and can never re-clamp it. Returns the
+    /// number of other clients now mirroring. Clients are NOT detached — they
+    /// stay attached and simply follow the owner's size.
+    pub fn claim_session_size_owner(&mut self, requester_id: &str) -> usize {
+        let Some(session) = self.client_id_to_session.get(requester_id).cloned() else {
+            return 0;
+        };
+        let others = self
+            .client_id_to_session
+            .iter()
+            .filter(|(id, sess)| id.as_str() != requester_id && **sess == session)
+            .count();
+        self.session_size_owner
+            .insert(session, requester_id.to_owned());
+        others
+    }
+
+    /// True if `client_id` is allowed to resize its session: allowed when there
+    /// is no size owner for that session, or this client IS the owner. A
+    /// non-owner's resize is dropped so it can only mirror.
+    pub fn resize_allowed(&self, client_id: &str) -> bool {
+        let Some(session) = self.client_id_to_session.get(client_id) else {
+            return true; // unknown session — don't block
+        };
+        match self.session_size_owner.get(session) {
+            Some(owner) => owner == client_id,
+            None => true,
+        }
     }
 
     pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {

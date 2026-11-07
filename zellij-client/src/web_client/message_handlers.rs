@@ -112,13 +112,20 @@ pub fn parse_stdin(
         maybe_more,
     );
 
+    // Attach the message's raw bytes to only the FIRST key event (same
+    // convention as the native client's stdin_loop, which drains its buffer
+    // into the first event). The server writes `raw_bytes` to the pty for
+    // every unbound key, so attaching the whole buffer to each of N parsed
+    // keys wrote the N-char message N times — tail-chunk input duplication
+    // whenever a WS message carried more than one character.
+    let mut raw_bytes = buf.to_vec();
     for (_i, input_event) in events.into_iter().enumerate() {
         match input_event {
             InputEvent::Key(key_event) => {
                 let key = cast_termwiz_key(key_event.clone(), &buf, None);
                 os_input.send_to_server(ClientToServerMsg::Key {
                     key: key.clone(),
-                    raw_bytes: buf.to_vec(),
+                    raw_bytes: std::mem::take(&mut raw_bytes),
                     is_kitty_keyboard_protocol: false,
                 });
             },
