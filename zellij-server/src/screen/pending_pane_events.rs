@@ -4,54 +4,101 @@
 //! creates it is applied. Those events are buffered here and replayed in
 //! order once the pane exists (or discarded if it is never created).
 //!
-//! Everything buffered here is bounded, since the events come from programs
-//! and from panes that may never appear:
+//! Everything buffered here is bounded. Output comes from programs, and a
+//! pane may never appear, but bounding must not rewrite what is retained:
 //!
 //! * Output is budgeted per pane and across all pending panes. Adjacent
 //!   output for a pane is coalesced into one buffer, so the number of
-//!   retained instructions does not grow with the number of writes.
-//! * Lifecycle facts (exit, hold) are never dropped to make room for output:
-//!   losing one would leave a pane that never shows as exited and blocking
-//!   waiters that never complete. They are limited per pane.
-//! * The number of panes with anything buffered is capped, evicting the pane
-//!   that has been waiting longest. This covers events for panes that will
-//!   never be created, such as the late exit of a long-closed terminal.
+//!   retained instructions does not grow with the number of writes. A chunk
+//!   that would exceed either budget is dropped whole. The prefix already
+//!   buffered stays, and the first overflow appends one truncation notice so
+//!   that prefix is not replayed as a complete stream. Notice bytes are not
+//!   counted against the budget.
+//! * Lifecycle facts (exit, hold) are settlement. Duplicate exits collapse to
+//!   the latest close, and duplicate holds collapse to the latest hold, so a
+//!   flood cannot grow the queue. A fact for a pane that already has an entry
+//!   is never dropped.
+//! * The number of panes with anything buffered is capped. A new pane past
+//!   the cap is not inserted; nothing already buffered is evicted to make
+//!   room. Existing panes still accept events. Creation is also bounded
+//!   before the process is spawned, so every admitted pane can still settle.
 
 use super::ScreenInstruction;
 use crate::panes::PaneId;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 /// Buffered output retained per not-yet-created pane.
 pub(crate) const MAX_PENDING_OUTPUT_BYTES_PER_PANE: usize = 1024 * 1024;
 /// Buffered output retained across all not-yet-created panes.
 pub(crate) const MAX_PENDING_OUTPUT_BYTES_TOTAL: usize = 16 * 1024 * 1024;
-/// Lifecycle events (exit, hold) retained per not-yet-created pane.
-pub(crate) const MAX_PENDING_LIFECYCLE_EVENTS_PER_PANE: usize = 4;
 /// Not-yet-created panes with anything buffered.
 pub(crate) const MAX_PENDING_PANES: usize = 1024;
+
+/// Appended once, as its own `PtyBytes`, the first time a pane's output is
+/// truncated. Not counted against the byte budget, so a full buffer can still
+/// carry it.
+const OUTPUT_TRUNCATION_NOTICE: &[u8] =
+    b"\r\n[zellij: output before this pane opened was cut off]\r\n";
+
+/// Terminals whose panes have been admitted but not yet installed.
+///
+/// Separate from [`PendingPaneEvents`] so the cap is enforced before spawn
+/// and so queue tests do not have to enroll.
+static ADMITTED_UNINSTALLED_TERMINALS: LazyLock<Mutex<HashSet<u32>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn admitted_terminals() -> std::sync::MutexGuard<'static, HashSet<u32>> {
+    ADMITTED_UNINSTALLED_TERMINALS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Reserve a slot for a terminal that is about to be spawned.
+///
+/// Idempotent for an id already reserved. A new id is refused once
+/// [`MAX_PENDING_PANES`] terminals are already admitted.
+pub(crate) fn try_admit_uninstalled_terminal(terminal_id: u32) -> bool {
+    let mut admitted = admitted_terminals();
+    if admitted.contains(&terminal_id) {
+        return true;
+    }
+    if admitted.len() >= MAX_PENDING_PANES {
+        return false;
+    }
+    admitted.insert(terminal_id);
+    true
+}
+
+/// Drop a reservation. Removing an id that was never admitted does nothing.
+pub(crate) fn release_uninstalled_terminal(terminal_id: u32) {
+    admitted_terminals().remove(&terminal_id);
+}
 
 #[derive(Default)]
 struct PendingPane {
     events: Vec<ScreenInstruction>,
     output_bytes: usize,
-    lifecycle_events: usize,
+    /// A truncation notice was already appended for this pane.
+    truncation_noted: bool,
+    /// The last event is the truncation notice, so later output must not be
+    /// coalesced into it.
+    truncation_notice_is_tail: bool,
 }
 
 #[derive(Default)]
 pub(crate) struct PendingPaneEvents {
     panes: HashMap<PaneId, PendingPane>,
-    /// Panes with buffered events, longest waiting first.
-    arrival_order: VecDeque<PaneId>,
     total_output_bytes: usize,
 }
 
 impl PendingPaneEvents {
     /// Buffer PTY output for a pane that does not exist yet.
     ///
-    /// When the output would exceed either budget, the pane's previously
-    /// buffered output is dropped (its lifecycle events are kept, in order)
-    /// and the new chunk is retained if it fits on its own. The pane then
-    /// starts from the most recent output instead of growing without bound.
+    /// When the chunk would exceed either budget, it is dropped and the
+    /// prefix already buffered is kept. The first time that happens, one
+    /// truncation notice is appended. Its bytes are not charged to the budget.
+    /// A chunk larger than the per-pane budget is never retained.
     pub fn push_output(&mut self, pid: PaneId, bytes: Vec<u8>) {
         let PaneId::Terminal(terminal_id) = pid else {
             return;
@@ -60,42 +107,40 @@ impl PendingPaneEvents {
         if len == 0 {
             return;
         }
-        let pane_bytes = self.panes.get(&pid).map(|p| p.output_bytes).unwrap_or(0);
-        if pane_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_PER_PANE
-            || self.total_output_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_TOTAL
-        {
-            self.drop_output(pid);
-            let fits = len <= MAX_PENDING_OUTPUT_BYTES_PER_PANE
-                && self.total_output_bytes.saturating_add(len) <= MAX_PENDING_OUTPUT_BYTES_TOTAL;
-            let dropped = if fits { pane_bytes } else { pane_bytes + len };
+        if self.output_exceeds_budget(pid, len) {
             log::warn!(
-                "dropping {dropped} bytes of output for not-yet-created pane {pid:?}: \
+                "dropping {len} new bytes of output for not-yet-created pane {pid:?}: \
                  pending output budget exceeded"
             );
-            if !fits {
-                return;
-            }
+            self.note_output_truncated(pid, terminal_id);
+            return;
         }
-        let pane = self.pane_entry(pid);
-        match pane.events.last_mut() {
-            Some(ScreenInstruction::PtyBytes(_, previous)) => previous.extend_from_slice(&bytes),
-            _ => pane
-                .events
-                .push(ScreenInstruction::PtyBytes(terminal_id, bytes)),
-        }
+        let Some(pane) = self.pane_entry(pid) else {
+            return;
+        };
+        Self::append_output(pane, terminal_id, bytes);
         pane.output_bytes += len;
         self.total_output_bytes += len;
     }
 
-    /// Buffer a lifecycle event (child exit, hold). Never dropped to make
-    /// room for output.
+    /// Buffer a lifecycle event (child exit, hold).
+    ///
+    /// `ClosePane` and `HoldPane` are settlement facts. A later event of the
+    /// same kind replaces the earlier one in place, so repeats cannot grow
+    /// the queue, but the fact is kept. A pane that already has an entry is
+    /// never refused. A new pane past the cap is not inserted.
     pub fn push_lifecycle(&mut self, pid: PaneId, event: ScreenInstruction) {
-        let pane = self.pane_entry(pid);
-        if pane.lifecycle_events >= MAX_PENDING_LIFECYCLE_EVENTS_PER_PANE {
-            log::warn!("dropping a lifecycle event for not-yet-created pane {pid:?}: too many");
+        let Some(pane) = self.pane_entry(pid) else {
+            return;
+        };
+        if let Some(existing) = pane
+            .events
+            .iter_mut()
+            .find(|existing| same_settlement(existing, &event))
+        {
+            *existing = event;
             return;
         }
-        pane.lifecycle_events += 1;
         pane.events.push(event);
     }
 
@@ -104,7 +149,6 @@ impl PendingPaneEvents {
         match self.panes.remove(&pid) {
             Some(pane) => {
                 self.total_output_bytes = self.total_output_bytes.saturating_sub(pane.output_bytes);
-                self.arrival_order.retain(|queued| *queued != pid);
                 pane.events
             },
             None => vec![],
@@ -116,45 +160,58 @@ impl PendingPaneEvents {
         let _ = self.take(pid);
     }
 
-    /// The pane's entry, created (evicting the longest waiting pane if too
-    /// many are pending) if it has nothing buffered yet.
-    fn pane_entry(&mut self, pid: PaneId) -> &mut PendingPane {
-        if !self.panes.contains_key(&pid) {
-            while self.panes.len() >= MAX_PENDING_PANES {
-                let Some(oldest) = self.arrival_order.front().copied() else {
-                    break;
-                };
-                log::warn!(
-                    "dropping the events buffered for not-yet-created pane {oldest:?}: \
-                     too many panes are pending"
-                );
-                self.discard(oldest);
-            }
-            self.arrival_order.push_back(pid);
-        }
-        self.panes.entry(pid).or_default()
+    fn output_exceeds_budget(&self, pid: PaneId, len: usize) -> bool {
+        let pane_bytes = self
+            .panes
+            .get(&pid)
+            .map(|pane| pane.output_bytes)
+            .unwrap_or(0);
+        len > MAX_PENDING_OUTPUT_BYTES_PER_PANE
+            || pane_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_PER_PANE
+            || self.total_output_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_TOTAL
     }
 
-    fn drop_output(&mut self, pid: PaneId) {
-        let Some(pane) = self.panes.get_mut(&pid) else {
+    fn note_output_truncated(&mut self, pid: PaneId, terminal_id: u32) {
+        let Some(pane) = self.pane_entry(pid) else {
             return;
         };
-        self.total_output_bytes = self.total_output_bytes.saturating_sub(pane.output_bytes);
-        pane.output_bytes = 0;
-        // Rebuild rather than retain in place so the dropped output's
-        // allocation is released along with its accounting.
-        let events = std::mem::take(&mut pane.events);
-        let mut kept = Vec::new();
-        for event in events {
-            if !matches!(event, ScreenInstruction::PtyBytes(..)) {
-                kept.push(event);
-            }
+        if pane.truncation_noted {
+            return;
         }
-        pane.events = kept;
-        if pane.events.is_empty() {
-            self.panes.remove(&pid);
-            self.arrival_order.retain(|queued| *queued != pid);
+        pane.truncation_noted = true;
+        pane.truncation_notice_is_tail = true;
+        pane.events.push(ScreenInstruction::PtyBytes(
+            terminal_id,
+            OUTPUT_TRUNCATION_NOTICE.to_vec(),
+        ));
+    }
+
+    fn append_output(pane: &mut PendingPane, terminal_id: u32, bytes: Vec<u8>) {
+        if pane.truncation_notice_is_tail {
+            pane.truncation_notice_is_tail = false;
+            pane.events
+                .push(ScreenInstruction::PtyBytes(terminal_id, bytes));
+            return;
         }
+        match pane.events.last_mut() {
+            Some(ScreenInstruction::PtyBytes(_, previous)) => previous.extend_from_slice(&bytes),
+            _ => pane
+                .events
+                .push(ScreenInstruction::PtyBytes(terminal_id, bytes)),
+        }
+    }
+
+    /// The pane's entry. A new id is not inserted once [`MAX_PENDING_PANES`]
+    /// panes are already buffered; nothing is evicted to make room.
+    fn pane_entry(&mut self, pid: PaneId) -> Option<&mut PendingPane> {
+        if !self.panes.contains_key(&pid) && self.panes.len() >= MAX_PENDING_PANES {
+            log::warn!(
+                "not buffering events for not-yet-created pane {pid:?}: \
+                 too many panes are pending"
+            );
+            return None;
+        }
+        Some(self.panes.entry(pid).or_default())
     }
 
     #[cfg(test)]
@@ -169,8 +226,24 @@ impl PendingPaneEvents {
 
     #[cfg(test)]
     pub fn buffered_event_count(&self, pid: PaneId) -> usize {
-        self.panes.get(&pid).map(|p| p.events.len()).unwrap_or(0)
+        self.panes
+            .get(&pid)
+            .map(|pane| pane.events.len())
+            .unwrap_or(0)
     }
+}
+
+fn same_settlement(existing: &ScreenInstruction, event: &ScreenInstruction) -> bool {
+    matches!(
+        (existing, event),
+        (
+            ScreenInstruction::ClosePane(..),
+            ScreenInstruction::ClosePane(..)
+        ) | (
+            ScreenInstruction::HoldPane(..),
+            ScreenInstruction::HoldPane(..)
+        )
+    )
 }
 
 #[cfg(test)]
@@ -197,6 +270,18 @@ mod tests {
             .collect()
     }
 
+    fn payload_byte_count(events: &[ScreenInstruction]) -> usize {
+        events
+            .iter()
+            .map(|event| match event {
+                ScreenInstruction::PtyBytes(_, bytes) => {
+                    bytes.iter().filter(|byte| **byte == b'x').count()
+                },
+                _ => 0,
+            })
+            .sum()
+    }
+
     #[test]
     fn events_replay_in_arrival_order() {
         let pid = PaneId::Terminal(1);
@@ -215,7 +300,8 @@ mod tests {
     #[test]
     fn overflowing_output_keeps_the_child_exit() {
         // A command that prints more than the budget and exits before its
-        // pane exists must still be replayed as exited.
+        // pane exists must still be replayed as exited. The prefix that fit
+        // stays; the chunk that does not fit is absent; a notice marks the cut.
         let pid = PaneId::Terminal(1);
         let mut pending = PendingPaneEvents::default();
         let chunk = MAX_PENDING_OUTPUT_BYTES_PER_PANE / 2;
@@ -223,10 +309,22 @@ mod tests {
         pending.push_lifecycle(pid, child_exit(pid, 3));
         pending.push_output(pid, output(chunk));
         pending.push_output(pid, output(chunk));
+        assert_eq!(pending.total_output_bytes(), chunk * 2);
+        let events = pending.take(pid);
         assert_eq!(
-            describe(&pending.take(pid)),
-            ["exit:Some(3)", &format!("out:{chunk}")]
+            describe(&events),
+            vec![
+                format!("out:{chunk}"),
+                "exit:Some(3)".to_owned(),
+                format!("out:{chunk}"),
+                format!("out:{}", OUTPUT_TRUNCATION_NOTICE.len()),
+            ]
         );
+        assert_eq!(payload_byte_count(&events), chunk * 2);
+        assert!(matches!(
+            events.last(),
+            Some(ScreenInstruction::PtyBytes(_, bytes)) if bytes.as_slice() == OUTPUT_TRUNCATION_NOTICE
+        ));
     }
 
     #[test]
@@ -242,7 +340,16 @@ mod tests {
         }
         // Panes that did not fit still keep their lifecycle facts.
         let last = PaneId::Terminal(panes as u32 - 1);
-        assert_eq!(describe(&pending.take(last)), ["exit:Some(0)"]);
+        let last_events = pending.take(last);
+        assert_eq!(
+            describe(&last_events),
+            vec![
+                "exit:Some(0)".to_owned(),
+                format!("out:{}", OUTPUT_TRUNCATION_NOTICE.len()),
+            ]
+        );
+        assert_eq!(payload_byte_count(&last_events), 0);
+        assert!(pending.total_output_bytes() <= MAX_PENDING_OUTPUT_BYTES_TOTAL);
     }
 
     #[test]
@@ -252,7 +359,16 @@ mod tests {
         let len = MAX_PENDING_OUTPUT_BYTES_PER_PANE + 1;
         pending.push_output(pid, output(len));
         assert_eq!(pending.total_output_bytes(), 0);
-        assert!(pending.take(pid).is_empty());
+        let events = pending.take(pid);
+        assert_eq!(payload_byte_count(&events), 0);
+        assert!(events.iter().all(|event| match event {
+            ScreenInstruction::PtyBytes(_, bytes) => bytes.as_slice() != output(len).as_slice(),
+            _ => true,
+        }));
+        assert!(matches!(
+            events.as_slice(),
+            [ScreenInstruction::PtyBytes(_, bytes)] if bytes.as_slice() == OUTPUT_TRUNCATION_NOTICE
+        ));
     }
 
     #[test]
@@ -282,39 +398,86 @@ mod tests {
     fn retained_instructions_are_bounded_when_output_alternates_with_exits() {
         let pid = PaneId::Terminal(1);
         let mut pending = PendingPaneEvents::default();
-        for _ in 0..1_000 {
+        for status in 0..1_000 {
             pending.push_output(pid, output(1));
-            pending.push_lifecycle(pid, child_exit(pid, 0));
+            pending.push_lifecycle(pid, child_exit(pid, status));
         }
-        assert!(pending.buffered_event_count(pid) <= 2 * MAX_PENDING_LIFECYCLE_EVENTS_PER_PANE + 1);
+        assert_eq!(pending.total_output_bytes(), 1_000);
+        // Exits collapse in place. Output coalesces only while it is adjacent,
+        // so the first byte stays on the other side of the exit.
+        assert_eq!(pending.buffered_event_count(pid), 3);
+        assert_eq!(
+            describe(&pending.take(pid)),
+            ["out:1", "exit:Some(999)", "out:999"]
+        );
     }
 
     #[test]
     fn the_number_of_pending_panes_is_bounded() {
-        // Lifecycle events for panes that never appear (e.g. the late exit of
-        // a long-closed terminal) must not accumulate forever.
+        // Lifecycle events for panes that never appear must not accumulate
+        // forever, and must not evict a pane that is already buffered.
         let mut pending = PendingPaneEvents::default();
         for id in 0..(MAX_PENDING_PANES as u32 * 3) {
             let pid = PaneId::Terminal(id);
             pending.push_lifecycle(pid, child_exit(pid, 0));
             assert!(pending.pending_pane_count() <= MAX_PENDING_PANES);
         }
-        // The longest waiting panes were the ones evicted.
-        assert!(pending.take(PaneId::Terminal(0)).is_empty());
-        let newest = PaneId::Terminal(MAX_PENDING_PANES as u32 * 3 - 1);
-        assert_eq!(describe(&pending.take(newest)), ["exit:Some(0)"]);
+        assert_eq!(pending.pending_pane_count(), MAX_PENDING_PANES);
+        assert_eq!(
+            describe(&pending.take(PaneId::Terminal(0))),
+            ["exit:Some(0)"]
+        );
+        assert!(pending
+            .take(PaneId::Terminal(MAX_PENDING_PANES as u32))
+            .is_empty());
+        assert!(pending.pending_pane_count() <= MAX_PENDING_PANES);
     }
 
     #[test]
     fn lifecycle_events_per_pane_are_bounded() {
         let pid = PaneId::Terminal(1);
         let mut pending = PendingPaneEvents::default();
-        for _ in 0..100 {
-            pending.push_lifecycle(pid, child_exit(pid, 0));
+        for status in 0..100 {
+            pending.push_lifecycle(pid, child_exit(pid, status));
         }
-        assert_eq!(
-            pending.take(pid).len(),
-            MAX_PENDING_LIFECYCLE_EVENTS_PER_PANE
-        );
+        assert_eq!(describe(&pending.take(pid)), ["exit:Some(99)"]);
+    }
+
+    #[test]
+    fn admitted_terminals_are_bounded_and_releasing_frees_a_slot() {
+        struct ClearAdmittedTerminals;
+        impl Drop for ClearAdmittedTerminals {
+            fn drop(&mut self) {
+                for id in 0..=MAX_PENDING_PANES as u32 + 1 {
+                    release_uninstalled_terminal(id);
+                }
+                release_uninstalled_terminal(u32::MAX);
+            }
+        }
+        let _clear = ClearAdmittedTerminals;
+
+        // Releasing an id that was never admitted is a no-op.
+        release_uninstalled_terminal(u32::MAX);
+
+        for id in 0..MAX_PENDING_PANES as u32 {
+            assert!(
+                try_admit_uninstalled_terminal(id),
+                "terminal {id} should be admitted"
+            );
+        }
+        // An id already reserved stays reserved at the cap.
+        assert!(try_admit_uninstalled_terminal(0));
+        let rejected = MAX_PENDING_PANES as u32;
+        assert!(!try_admit_uninstalled_terminal(rejected));
+        // Releasing an id that was refused must not free someone else's slot.
+        release_uninstalled_terminal(rejected);
+        assert!(!try_admit_uninstalled_terminal(rejected + 1));
+
+        release_uninstalled_terminal(0);
+        assert!(try_admit_uninstalled_terminal(rejected));
+        assert!(!try_admit_uninstalled_terminal(rejected + 1));
+        release_uninstalled_terminal(rejected);
+        assert!(try_admit_uninstalled_terminal(0));
+        assert!(!try_admit_uninstalled_terminal(rejected));
     }
 }

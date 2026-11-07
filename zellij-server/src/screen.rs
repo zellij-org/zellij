@@ -9505,12 +9505,28 @@ impl Screen {
         let _ = self.bus.senders.send_to_background_jobs(render_request);
         Ok(vte_bytes)
     }
+}
+
+pub(crate) fn try_admit_uninstalled_terminal(terminal_id: u32) -> bool {
+    pending_pane_events::try_admit_uninstalled_terminal(terminal_id)
+}
+
+pub(crate) fn release_uninstalled_terminal(terminal_id: u32) {
+    pending_pane_events::release_uninstalled_terminal(terminal_id)
+}
+
+impl Screen {
     fn finish_pane_creation(
         &mut self,
         pid: PaneId,
         completion: &mut Option<NotificationEnd>,
         pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
     ) {
+        // Admitted in spawn/reserve. Both installed and never-created terminal
+        // panes pass through here. Plugin panes are not in the set.
+        if let PaneId::Terminal(terminal_id) = pid {
+            release_uninstalled_terminal(terminal_id);
+        }
         if self.has_pane_with_pid(&pid) {
             self.pane_not_created_reasons.remove(&pid);
             for tab in self.tabs.values_mut() {

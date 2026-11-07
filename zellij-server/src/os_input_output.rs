@@ -763,13 +763,24 @@ impl ServerOsApi for ServerOsInputOutput {
             .context("no more terminal IDs left to allocate")?;
 
         self.pty_backend.reserve_terminal_id(terminal_id);
+        if !crate::screen::try_admit_uninstalled_terminal(terminal_id) {
+            self.pty_backend.clear_terminal_id(terminal_id);
+            return Err(anyhow!("too many panes are still opening"));
+        }
 
         let (cmd, failover_cmd) = build_command(terminal_action, default_editor, pane_env);
 
-        let (async_reader, child_fd) = self
-            .pty_backend
-            .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
-            .with_context(err_context)?;
+        let (async_reader, child_fd) =
+            match self
+                .pty_backend
+                .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
+            {
+                Ok(spawned) => spawned,
+                Err(err) => {
+                    crate::screen::release_uninstalled_terminal(terminal_id);
+                    return Err(err).with_context(err_context);
+                },
+            };
 
         Ok((terminal_id, async_reader, Some(child_fd as u32)))
     }
@@ -779,6 +790,10 @@ impl ServerOsApi for ServerOsInputOutput {
             .next_terminal_id()
             .context("no more terminal IDs available")?;
         self.pty_backend.reserve_terminal_id(terminal_id);
+        if !crate::screen::try_admit_uninstalled_terminal(terminal_id) {
+            self.pty_backend.clear_terminal_id(terminal_id);
+            return Err(anyhow!("too many panes are still opening"));
+        }
         Ok(terminal_id)
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
