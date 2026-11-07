@@ -1689,9 +1689,10 @@ impl InputParser {
                 InputState::Pasting(offset) => {
                     let end_paste = b"\x1b[201~";
                     if let Some(idx) = self.buf.find_subsequence(offset, end_paste) {
+                        let consumed = idx + end_paste.len();
                         let pasted =
                             String::from_utf8_lossy(&self.buf.as_slice()[0..idx]).to_string();
-                        self.buf.advance(pasted.len() + end_paste.len());
+                        self.buf.advance(consumed);
                         callback(InputEvent::Paste(pasted), self.buf.len());
                         self.state = InputState::Normal;
                     } else {
@@ -2549,6 +2550,28 @@ mod test {
         p.parse(input2, |e| inputs.push(e), false);
 
         assert_eq!(vec![InputEvent::Paste("12345678".to_owned())], inputs)
+    }
+
+    #[test]
+    fn bracketed_paste_with_invalid_utf8_preserves_following_input() {
+        let mut p = InputParser::new();
+
+        let input = b"\x1b[200~before\xa0after\x1b[201~x";
+
+        let mut inputs = vec![];
+
+        p.parse(input, |event| inputs.push(event), false);
+
+        assert_eq!(
+            vec![
+                InputEvent::Paste("before\u{fffd}after".to_owned()),
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('x'),
+                    modifiers: Modifiers::NONE,
+                }),
+            ],
+            inputs
+        );
     }
 
     #[test]
