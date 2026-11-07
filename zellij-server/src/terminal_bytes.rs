@@ -14,6 +14,9 @@ const READ_BUFFER_SIZE: usize = 65536;
 
 pub(crate) struct TerminalBytes {
     terminal_id: u32,
+    /// Process run these bytes belong to. The screen drops them when the
+    /// pane has moved on to another run.
+    run_generation: u64,
     session_id: String,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
@@ -24,6 +27,7 @@ pub(crate) struct TerminalBytes {
 impl TerminalBytes {
     pub fn new(
         terminal_id: u32,
+        run_generation: u64,
         session_id: String,
         async_reader: Box<dyn AsyncReader>,
         senders: ThreadSenders,
@@ -32,6 +36,7 @@ impl TerminalBytes {
     ) -> Self {
         TerminalBytes {
             terminal_id,
+            run_generation,
             session_id,
             senders,
             debug,
@@ -67,9 +72,13 @@ impl TerminalBytes {
                     if self.debug {
                         let _ = debug_to_file(&bytes, self.terminal_id as i32, &self.session_id);
                     }
-                    self.async_send_to_screen(ScreenInstruction::PtyBytes(self.terminal_id, bytes))
-                        .await
-                        .with_context(err_context)?;
+                    self.async_send_to_screen(ScreenInstruction::PtyRunBytes(
+                        self.terminal_id,
+                        self.run_generation,
+                        bytes,
+                    ))
+                    .await
+                    .with_context(err_context)?;
                 },
             }
         }
@@ -88,6 +97,14 @@ impl TerminalBytes {
         //
         // FIXME: Ideally we detect whether the application is being quit and only ignore the error
         // in that particular case?
+        // The child exit is applied only after this. Bytes already queued
+        // are ahead of it on the screen channel.
+        let _ = self
+            .async_send_to_screen(ScreenInstruction::PtyRunDrained(
+                self.terminal_id,
+                self.run_generation,
+            ))
+            .await;
         let _ = self.async_send_to_screen(ScreenInstruction::Render).await;
 
         Ok(())

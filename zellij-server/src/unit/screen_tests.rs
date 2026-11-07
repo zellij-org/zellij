@@ -9474,7 +9474,7 @@ fn fg_query_bel() -> HostQuery {
 }
 fn palette_query(index: u8) -> HostQuery {
     HostQuery::PaletteRegister {
-        index,
+        indices: vec![index],
         terminator: OscTerminator::St,
     }
 }

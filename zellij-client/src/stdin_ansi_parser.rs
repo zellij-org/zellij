@@ -71,6 +71,33 @@ pub enum HostReply {
     ProgramStatusSupport,
 }
 
+/// OSC 4 replies are `4 ; index ; color` repeated. One reply can carry
+/// every register from a batched query, so the host is not asked once per
+/// index. A color is `rgb:r/g/b` or `#rrggbb` and does not contain `;`.
+fn palette_registers(payload: &str) -> Option<Vec<(usize, String)>> {
+    let mut fields = payload.split(';');
+    if fields.next()? != "4" {
+        return None;
+    }
+    let mut registers = Vec::new();
+    loop {
+        let Some(index) = fields.next() else {
+            break;
+        };
+        let color = fields.next()?;
+        if index.is_empty() || color.is_empty() {
+            return None;
+        }
+        let index: usize = index.parse().ok()?;
+        registers.push((index, color.to_string()));
+    }
+    if registers.is_empty() {
+        None
+    } else {
+        Some(registers)
+    }
+}
+
 /// Retained alias for the pre-refactor type name used by other modules in
 /// the client. New code should prefer `HostReply`; the alias keeps the
 /// existing `InputInstruction::AnsiStdinInstructions(Vec<...>)` plumbing
@@ -87,8 +114,6 @@ impl HostReply {
             //   OSC 11 ; <color> ST
             static ref FG_RE: Regex = Regex::new(r"^10;(.*)$").unwrap();
             static ref BG_RE: Regex = Regex::new(r"^11;(.*)$").unwrap();
-            // OSC 4 ; N ; <color> — palette-register answer.
-            static ref COLOR_REGISTER_RE: Regex = Regex::new(r"^4;(\d+);(.*)$").unwrap();
         }
         let s = std::str::from_utf8(payload).ok()?;
         if s == "7501;?" || s.starts_with("7501;?:") {
@@ -100,10 +125,8 @@ impl HostReply {
         if let Some(caps) = FG_RE.captures(s) {
             return Some(HostReply::ForegroundColor(caps[1].to_string()));
         }
-        if let Some(caps) = COLOR_REGISTER_RE.captures(s) {
-            let index: usize = caps[1].parse().ok()?;
-            let color = caps[2].to_string();
-            return Some(HostReply::ColorRegisters(vec![(index, color)]));
+        if let Some(registers) = palette_registers(s) {
+            return Some(HostReply::ColorRegisters(registers));
         }
         None
     }

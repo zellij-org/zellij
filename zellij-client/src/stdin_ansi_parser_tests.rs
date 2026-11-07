@@ -931,6 +931,26 @@ fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
 }
 
 #[test]
+#[test]
+fn one_osc_4_reply_can_carry_every_requested_register() {
+    let mut p = StdinAnsiParser::new();
+    let fed = p.feed(b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x1b\\");
+    assert!(fed.residue.is_empty());
+    match &fed.replies[..] {
+        [HostReply::ColorRegisters(regs)] => {
+            assert_eq!(
+                regs,
+                &[
+                    (1, "rgb:1111/0000/0000".to_string()),
+                    (2, "rgb:0000/2222/0000".to_string()),
+                ]
+            );
+        },
+        other => panic!("expected one batched palette reply, got {other:?}"),
+    }
+}
+
+#[test]
 fn fragmented_osc4_reply_is_retained_not_leaked() {
     let mut p = StdinAnsiParser::new();
     let r1 = p.feed(b"\x1b]4;1;rgb:1111");

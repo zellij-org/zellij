@@ -38,6 +38,18 @@ use zellij_utils::{errors::prelude::*, input::command::RunCommand};
 
 pub use async_trait::async_trait;
 
+/// Send `signal` to `pid` and keep the syscall result.
+///
+/// `ESRCH` means the process is already gone, which is the outcome the
+/// caller wanted. Every other failure is returned.
+fn signal_pid(pid: u32, signal: Signal) -> Result<()> {
+    match kill(unistd::Pid::from_raw(pid as i32), Some(signal)) {
+        Ok(()) => Ok(()),
+        Err(errno) if errno == nix::errno::Errno::ESRCH => Ok(()),
+        Err(errno) => Err(anyhow!("failed to send {signal} to pid {pid}: {errno}")),
+    }
+}
+
 /// An `AsyncReader` that wraps a `RawFd` using epoll via `AsyncFd`.
 ///
 /// Construction sets O_NONBLOCK but defers `AsyncFd` registration to the first
@@ -206,7 +218,9 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
             continue;
         } else {
             // when I say whoa, I mean WHOA!
-            let _ = child.kill();
+            if let Err(err) = child.kill() {
+                log::warn!("failed to kill child {}: {err}", child.id());
+            }
             break 'handle_exit Ok(None);
         }
     }
@@ -547,18 +561,15 @@ impl UnixPtyBackend {
     }
 
     pub fn kill(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGHUP));
-        Ok(())
+        signal_pid(pid, Signal::SIGHUP)
     }
 
     pub fn force_kill(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGKILL));
-        Ok(())
+        signal_pid(pid, Signal::SIGKILL)
     }
 
     pub fn send_sigint(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGINT));
-        Ok(())
+        signal_pid(pid, Signal::SIGINT)
     }
 
     pub fn reserve_terminal_id(&self, terminal_id: u32) {

@@ -19,6 +19,11 @@ pub enum PtyWriteInstruction {
     ResizePty(u32, u16, u16, Option<u16>, Option<u16>),
     StartCachingResizes,
     ApplyCachedResizes,
+    /// The screen adopted `generation` as this terminal's current process.
+    /// The first adoption keeps writes that were queued before any run was
+    /// known. A later, different generation drops the queue: those bytes
+    /// were for the previous process.
+    AdoptRun(u32, u64),
     Exit,
 }
 
@@ -29,6 +34,7 @@ impl From<&PtyWriteInstruction> for PtyWriteContext {
             PtyWriteInstruction::ResizePty(..) => PtyWriteContext::ResizePty,
             PtyWriteInstruction::ApplyCachedResizes => PtyWriteContext::ApplyCachedResizes,
             PtyWriteInstruction::StartCachingResizes => PtyWriteContext::StartCachingResizes,
+            PtyWriteInstruction::AdoptRun(..) => PtyWriteContext::Write,
             PtyWriteInstruction::Exit => PtyWriteContext::Exit,
         }
     }
@@ -60,6 +66,10 @@ struct PendingWrite {
     bytes: Vec<u8>,
     offset: usize,
     completion: Option<NotificationEnd>,
+    /// `None` until a run has been adopted. Those writes are keystrokes from
+    /// before the screen processed `TerminalRunStarted` and are kept across
+    /// the first adoption.
+    run_generation: Option<u64>,
 }
 
 #[derive(Default)]
@@ -96,6 +106,34 @@ impl PendingQueue {
         }
     }
 
+    /// Drop the front write when it was stamped for a different run than the
+    /// one this terminal has adopted. Unstamped writes are keystrokes from
+    /// before the first adoption and stay in the queue.
+    fn reject_other_run(&mut self, adopted: Option<u64>) -> bool {
+        let stamp = match self.writes.front() {
+            Some(write) => write.run_generation,
+            None => return false,
+        };
+        let Some(stamp) = stamp else {
+            return false;
+        };
+        if adopted == Some(stamp) {
+            return false;
+        }
+        let mut write = match self.writes.pop_front() {
+            Some(write) => write,
+            None => return false,
+        };
+        let leftover = write.bytes.len().saturating_sub(write.offset);
+        self.remaining_bytes = self.remaining_bytes.saturating_sub(leftover);
+        if let Some(mut completion) = write.completion.take() {
+            completion.set_error_message(
+                "the pane started another command before this input was written".to_string(),
+            );
+        }
+        true
+    }
+
     /// Discard every queued write, reporting the discard as a truthful
     /// failure on each write's completion token instead of the silent
     /// success an unmarked drop would produce.
@@ -109,9 +147,27 @@ impl PendingQueue {
     }
 }
 
+/// Adopt `generation` for `terminal_id`. The first adoption keeps the queue.
+/// A different generation fails every queued write, including ones that were
+/// not stamped with a generation yet.
+fn adopt_run(
+    adopted_runs: &mut HashMap<u32, u64>,
+    pending: &mut HashMap<u32, PendingQueue>,
+    terminal_id: u32,
+    generation: u64,
+) {
+    let previous = adopted_runs.insert(terminal_id, generation);
+    if matches!(previous, Some(current) if current != generation) {
+        if let Some(queue) = pending.get_mut(&terminal_id) {
+            queue.fail_all("the pane started another command before this input was written");
+        }
+    }
+}
+
 pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut pending: HashMap<u32, PendingQueue> = HashMap::new();
+    let mut adopted_runs: HashMap<u32, u64> = HashMap::new();
     let mut drain_made_progress = false;
 
     loop {
@@ -147,6 +203,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             err_ctx.add_call(ContextType::PtyWrite((&event).into()));
             match event {
                 PtyWriteInstruction::Write(bytes, terminal_id, completion) => {
+                    let run_generation = adopted_runs.get(&terminal_id).copied();
                     let queue = pending.entry(terminal_id).or_default();
                     if queue.remaining_bytes.saturating_add(bytes.len()) > MAX_PENDING_BYTES {
                         log::error!(
@@ -172,6 +229,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                             bytes,
                             offset: 0,
                             completion,
+                            run_generation,
                         });
                         diagnostics::record_pty_pending_bytes(queue.remaining_bytes);
                     }
@@ -208,6 +266,9 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                 PtyWriteInstruction::ApplyCachedResizes => {
                     os_input.apply_cached_resizes();
                 },
+                PtyWriteInstruction::AdoptRun(terminal_id, generation) => {
+                    adopt_run(&mut adopted_runs, &mut pending, terminal_id, generation);
+                },
                 PtyWriteInstruction::Exit => {
                     return Ok(());
                 },
@@ -226,7 +287,8 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                 _ => continue,
             };
 
-            drain_made_progress |= drain_terminal_turn(queue, tid, os_input.as_ref());
+            let adopted = adopted_runs.get(&tid).copied();
+            drain_made_progress |= drain_terminal_turn(queue, tid, adopted, os_input.as_ref());
         }
         pending.retain(|_, q| !q.is_empty());
     }
@@ -240,12 +302,22 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
 /// The syscall cost of a turn is bounded as well: at most
 /// `MAX_DRAIN_CALLS_PER_TURN` calls, each issuing at most
 /// `MAX_WRITE_SYSCALLS_PER_CALL` write(2) calls in the Unix backend.
-fn drain_terminal_turn(queue: &mut PendingQueue, tid: u32, os_input: &dyn ServerOsApi) -> bool {
+fn drain_terminal_turn(
+    queue: &mut PendingQueue,
+    tid: u32,
+    adopted: Option<u64>,
+    os_input: &dyn ServerOsApi,
+) -> bool {
     let err_context = || "failed to write to pty".to_string();
     let mut progress = false;
     let mut turn_bytes = 0usize;
     let mut turn_calls = 0usize;
     while turn_calls < MAX_DRAIN_CALLS_PER_TURN && turn_bytes < MAX_DRAIN_BYTES_PER_TURN {
+        if queue.reject_other_run(adopted) {
+            turn_calls += 1;
+            progress = true;
+            continue;
+        }
         let Some(remaining) = queue.front_remaining() else {
             break;
         };
@@ -296,16 +368,19 @@ mod tests {
             bytes: b"done".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(ok_tx)),
+            run_generation: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"lost1".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(fail_tx1)),
+            run_generation: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"lost2".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(fail_tx2)),
+            run_generation: None,
         });
 
         queue.advance(4);
@@ -333,11 +408,13 @@ mod tests {
             bytes: vec![0u8; 10],
             offset: 0,
             completion: None,
+            run_generation: None,
         });
         queue.push_back(PendingWrite {
             bytes: vec![0u8; 5],
             offset: 0,
             completion: None,
+            run_generation: None,
         });
         assert_eq!(queue.remaining_bytes, 15);
         queue.advance(4);
@@ -347,6 +424,58 @@ mod tests {
         queue.advance(5);
         assert_eq!(queue.remaining_bytes, 0);
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn the_first_adoption_keeps_unstamped_writes_and_the_next_run_drops_them() {
+        let mut adopted = HashMap::new();
+        let mut pending = HashMap::new();
+        let mut queue = PendingQueue::default();
+        let (keep_tx, mut keep_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"typed-early".to_vec(),
+            offset: 0,
+            completion: Some(NotificationEnd::new(keep_tx)),
+            run_generation: None,
+        });
+        pending.insert(1, queue);
+
+        adopt_run(&mut adopted, &mut pending, 1, 7);
+        assert_eq!(pending.get(&1).map(|queue| queue.writes.len()), Some(1));
+        assert!(keep_rx.try_recv().is_err());
+
+        adopt_run(&mut adopted, &mut pending, 1, 7);
+        assert_eq!(pending.get(&1).map(|queue| queue.writes.len()), Some(1));
+
+        adopt_run(&mut adopted, &mut pending, 1, 8);
+        let discarded = keep_rx.blocking_recv().expect("discarded write resolves");
+        assert!(discarded.error_message.is_some());
+        assert!(pending.get(&1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_stamped_write_is_not_delivered_to_a_different_run() {
+        let mut queue = PendingQueue::default();
+        let (stale_tx, stale_rx) = oneshot::channel();
+        let (live_tx, mut live_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"stale".to_vec(),
+            offset: 0,
+            completion: Some(NotificationEnd::new(stale_tx)),
+            run_generation: Some(1),
+        });
+        queue.push_back(PendingWrite {
+            bytes: b"live".to_vec(),
+            offset: 0,
+            completion: Some(NotificationEnd::new(live_tx)),
+            run_generation: Some(2),
+        });
+        assert!(queue.reject_other_run(Some(2)));
+        assert_eq!(queue.front_remaining(), Some(&b"live"[..]));
+        let discarded = stale_rx.blocking_recv().expect("stale write resolves");
+        assert!(discarded.error_message.is_some());
+        assert!(!queue.reject_other_run(Some(2)));
+        assert!(live_rx.try_recv().is_err());
     }
 }
 

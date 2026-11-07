@@ -17270,7 +17270,12 @@ pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
     assert_eq!(tab.pending_vte_bytes_dropped(1), 0);
 
     tab.scroll_to_bottom_by_pane_id(pane_a).unwrap();
-    assert!(!tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    let mut scroll_guard = 0;
+    while tab.get_pane_with_id(pane_a).unwrap().is_scrolled() {
+        tab.advance_deferred_pane_work();
+        scroll_guard += 1;
+        assert!(scroll_guard < 10_000, "scroll to bottom did not finish");
+    }
     assert_eq!(tab.pending_vte_len(1), 0);
     let full = tab.get_pane_with_id(pane_a).unwrap().dump_screen(true, None);
     let mut previous = 0;

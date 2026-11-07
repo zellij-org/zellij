@@ -51,9 +51,13 @@ pub enum HostQuery {
     DefaultForeground { terminator: OscTerminator },
     /// `OSC 11 ; ? <term>` — default background colour.
     DefaultBackground { terminator: OscTerminator },
-    /// `OSC 4 ; N ; ? <term>` — palette register `N`.
+    /// `OSC 4 ; i ; ? ; j ; ? <term>` — one or more palette registers.
+    ///
+    /// Registers that arrived in one OSC, or as consecutive palette
+    /// queries in one PTY chunk, travel as one query so they take one
+    /// host round trip. Empty `indices` is not a query.
     PaletteRegister {
-        index: u8,
+        indices: Vec<u8>,
         terminator: OscTerminator,
     },
     ClipboardContent {
@@ -89,8 +93,14 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
-            HostQuery::PaletteRegister { index, terminator } => {
-                let mut v = format!("\x1b]4;{};?", index).into_bytes();
+            HostQuery::PaletteRegister { indices, terminator } => {
+                if indices.is_empty() {
+                    return Vec::new();
+                }
+                let mut v = b"\x1b]4".to_vec();
+                for index in indices {
+                    v.extend_from_slice(format!(";{index};?").as_bytes());
+                }
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
@@ -176,7 +186,7 @@ mod tests {
     fn palette_register_carries_index_and_terminator() {
         assert_eq!(
             HostQuery::PaletteRegister {
-                index: 5,
+                indices: vec![5],
                 terminator: OscTerminator::Bel,
             }
             .to_query_bytes(),
@@ -184,11 +194,31 @@ mod tests {
         );
         assert_eq!(
             HostQuery::PaletteRegister {
-                index: 255,
+                indices: vec![255],
                 terminator: OscTerminator::St,
             }
             .to_query_bytes(),
             b"\x1b]4;255;?\x1b\\",
+        );
+    }
+
+    #[test]
+    fn palette_registers_in_one_osc_are_one_query() {
+        assert_eq!(
+            HostQuery::PaletteRegister {
+                indices: vec![1, 2],
+                terminator: OscTerminator::St,
+            }
+            .to_query_bytes(),
+            b"\x1b]4;1;?;2;?\x1b\\",
+        );
+        assert!(
+            HostQuery::PaletteRegister {
+                indices: vec![],
+                terminator: OscTerminator::St,
+            }
+            .to_query_bytes()
+            .is_empty()
         );
     }
 

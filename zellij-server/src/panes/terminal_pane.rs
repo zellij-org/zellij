@@ -205,6 +205,28 @@ pub struct TerminalPane {
     held_escape: bool,
     kitty_interceptor: KittyApcInterceptor,
     mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
+    /// User asked to scroll to an end. One quantum runs per screen turn.
+    viewport_goal: Option<crate::tab::ViewportGoal>,
+    /// Output is being applied at the live bottom while the user's view
+    /// is held and restored in quanta. Renders stay locked until it ends.
+    output_catchup: Option<OutputCatchup>,
+}
+
+struct OutputCatchup {
+    anchor: crate::panes::grid::ViewportAnchor,
+    phase: CatchupPhase,
+    /// The held window was within one row quantum of the live bottom
+    /// before this parse. Restore it before the call returns. The extra
+    /// rows are ones this quantum appended, so the restore stays with the
+    /// quantum instead of leaving the live tail on screen.
+    restore_in_turn: bool,
+}
+
+#[derive(Clone, Copy)]
+enum CatchupPhase {
+    ToBottom,
+    Draining,
+    Restore,
 }
 
 impl Pane for TerminalPane {
@@ -270,11 +292,17 @@ impl Pane for TerminalPane {
             return;
         }
         // The cursor is in viewport coordinates. While the user is scrolled
-        // away from the live bottom, move there for this parse and put the
-        // same rows back afterwards so the historical view is not overwritten.
-        let viewport_anchor = self
-            .grid
-            .is_scrolled
+        // away from the live bottom, parse against that live screen and put
+        // the same rows back afterwards. Parking swaps in the live window
+        // without moving the rows in between. A catch-up parks before this
+        // call. `reset_viewport` is only the fallback when an image placement
+        // still depends on scrolling the whole gap.
+        let parked = self.output_catchup.is_none()
+            && self.grid.is_scrolled
+            && self.grid.park_at_live_bottom();
+        let viewport_anchor = (self.output_catchup.is_none()
+            && self.grid.is_scrolled
+            && !parked)
             .then(|| self.grid.viewport_anchor());
         if viewport_anchor.is_some() {
             self.grid.reset_viewport();
@@ -294,7 +322,9 @@ impl Pane for TerminalPane {
             self.append_pending_pty_input(&bytes);
             self.process_pending_pty_input();
         }
-        if let Some(viewport_anchor) = viewport_anchor {
+        if parked {
+            self.grid.unpark_live_bottom();
+        } else if let Some(viewport_anchor) = viewport_anchor {
             self.grid.restore_viewport_anchor(viewport_anchor);
         }
     }
@@ -772,10 +802,16 @@ impl Pane for TerminalPane {
         self.grid.clear_screen()
     }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
+        if self.nudge_catchup_anchor(-(count as isize)) {
+            return;
+        }
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
     }
     fn scroll_down(&mut self, count: usize, _client_id: ClientId) {
+        if self.nudge_catchup_anchor(count as isize) {
+            return;
+        }
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
@@ -808,11 +844,150 @@ impl Pane for TerminalPane {
         }
     }
     fn clear_scroll(&mut self) {
+        self.cancel_output_catchup();
+        self.viewport_goal = None;
         self.grid.reset_viewport();
         self.set_should_render(true);
     }
     fn is_scrolled(&self) -> bool {
         self.grid.is_scrolled
+    }
+    fn begin_viewport_goal(&mut self, goal: crate::tab::ViewportGoal) {
+        self.cancel_output_catchup();
+        self.viewport_goal = Some(goal);
+        let _ = self.advance_viewport_goal();
+    }
+    fn advance_viewport_goal(&mut self) -> bool {
+        let Some(goal) = self.viewport_goal else {
+            return false;
+        };
+        let done = match goal {
+            crate::tab::ViewportGoal::Bottom => {
+                self.grid.advance_to_bottom(crate::panes::grid::SCREEN_ROW_QUANTUM)
+            },
+            crate::tab::ViewportGoal::Top => {
+                self.grid.advance_toward_top(crate::panes::grid::SCREEN_ROW_QUANTUM)
+            },
+        };
+        self.set_should_render(true);
+        if done {
+            self.viewport_goal = None;
+        }
+        !done
+    }
+    fn viewport_goal_pending(&self) -> bool {
+        self.viewport_goal.is_some()
+    }
+    fn has_deferred_pane_work(&self) -> bool {
+        self.viewport_goal.is_some()
+            || self.output_catchup.is_some()
+            || self.grid.pending_search.is_some()
+            || self.grid.display_recount_pending()
+    }
+    fn advance_deferred_pane_work(&mut self) {
+        if self.viewport_goal.is_some() {
+            let _ = self.advance_viewport_goal();
+            return;
+        }
+        if self.output_catchup.is_some() {
+            let _ = self.prepare_scrolled_output(false);
+            return;
+        }
+        if self.grid.pending_search.is_some() {
+            let _ = self.grid.continue_pending_search();
+            self.set_should_render(true);
+            return;
+        }
+        if self.grid.display_recount_pending() {
+            let _ = self.grid.continue_display_row_recount();
+        }
+    }
+    fn prepare_scrolled_output(&mut self, has_queued_bytes: bool) -> bool {
+        if self.output_catchup.is_none() {
+            if !has_queued_bytes || !self.grid.is_scrolled {
+                return true;
+            }
+            self.grid.lock_renders();
+            let near_bottom = self.grid.scrolled_row_distance()
+                <= crate::panes::grid::SCREEN_ROW_QUANTUM;
+            self.output_catchup = Some(OutputCatchup {
+                anchor: self.grid.viewport_anchor(),
+                phase: CatchupPhase::ToBottom,
+                // A short user scroll stays on those rows while output is
+                // applied. The gap after a parse is the rows that parse
+                // appended, and the next quantum has to cross it in this
+                // turn or the backlog stops draining.
+                restore_in_turn: near_bottom,
+            });
+        }
+        let phase = match self.output_catchup.as_ref().map(|catchup| &catchup.phase) {
+            Some(phase) => match phase {
+                CatchupPhase::ToBottom => CatchupPhase::ToBottom,
+                CatchupPhase::Draining => CatchupPhase::Draining,
+                CatchupPhase::Restore => CatchupPhase::Restore,
+            },
+            None => return true,
+        };
+        match phase {
+            CatchupPhase::ToBottom => self.advance_catchup_to_bottom(),
+            CatchupPhase::Draining => {
+                if self.grid.is_scrolled {
+                    self.advance_catchup_to_bottom()
+                } else {
+                    true
+                }
+            },
+            CatchupPhase::Restore => {
+                if has_queued_bytes {
+                    if let Some(catchup) = self.output_catchup.as_mut() {
+                        catchup.phase = CatchupPhase::ToBottom;
+                    }
+                    false
+                } else {
+                    self.advance_catchup_restore();
+                    false
+                }
+            },
+        }
+    }
+    fn scrolled_backlog_idle(&mut self) {
+        let Some(catchup) = self.output_catchup.as_mut() else {
+            return;
+        };
+        if !matches!(catchup.phase, CatchupPhase::Draining) {
+            return;
+        }
+        catchup.phase = CatchupPhase::Restore;
+        self.advance_catchup_restore();
+    }
+    fn restore_short_output_catchup(&mut self) {
+        if self.grid.is_live_bottom_parked() {
+            // The held rows never left. Putting them back is O(viewport).
+            self.grid.unpark_live_bottom();
+            self.set_should_render(true);
+            return;
+        }
+        let Some(catchup) = self.output_catchup.as_ref() else {
+            return;
+        };
+        if !catchup.restore_in_turn {
+            return;
+        }
+        let anchor = catchup.anchor;
+        // Keep the catch-up. The backlog is not idle, and the next quantum
+        // has to know this view started within one row quantum of the bottom.
+        let mut guard = 0;
+        while self.grid.rows_to_restore_anchor(anchor).unwrap_or(0) > 0 {
+            let rows = self.grid.rows_to_restore_anchor(anchor).unwrap_or(0);
+            if self.grid.advance_toward_anchor(anchor, rows.max(1)) {
+                break;
+            }
+            guard += 1;
+            if guard > 8 {
+                break;
+            }
+        }
+        self.set_should_render(true);
     }
 
     fn active_at(&self) -> Instant {
@@ -1557,6 +1732,93 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    fn cancel_output_catchup(&mut self) {
+        if self.grid.is_live_bottom_parked() {
+            self.grid.unpark_live_bottom();
+        }
+        if self.output_catchup.take().is_some() {
+            self.grid.unlock_renders();
+        }
+    }
+
+    /// Record a user scroll against the held anchor. Returns true when a
+    /// catch-up owns the grid and the scroll was not applied to it.
+    fn nudge_catchup_anchor(&mut self, rows: isize) -> bool {
+        let Some(catchup) = self.output_catchup.as_mut() else {
+            return false;
+        };
+        catchup.anchor = catchup.anchor.nudge(rows);
+        true
+    }
+
+    fn advance_catchup_to_bottom(&mut self) -> bool {
+        if self.grid.is_live_bottom_parked() || self.grid.park_at_live_bottom() {
+            if let Some(catchup) = self.output_catchup.as_mut() {
+                catchup.phase = CatchupPhase::Draining;
+            }
+            return true;
+        }
+        let restore_in_turn = self
+            .output_catchup
+            .as_ref()
+            .is_some_and(|catchup| catchup.restore_in_turn);
+        // Parking was refused (an image still tracks scrollback coordinates).
+        // A deep scroll still moves one row quantum. A catch-up that started
+        // near the bottom has to cross the rows this parse will append, or
+        // the backlog stops draining.
+        let budget = if restore_in_turn {
+            usize::MAX
+        } else {
+            crate::panes::grid::SCREEN_ROW_QUANTUM
+        };
+        let at_bottom = self.grid.advance_to_bottom(budget);
+        if at_bottom {
+            if let Some(catchup) = self.output_catchup.as_mut() {
+                catchup.phase = CatchupPhase::Draining;
+            }
+        }
+        at_bottom
+    }
+    fn advance_catchup_restore(&mut self) {
+        if self.grid.is_live_bottom_parked() {
+            self.grid.unpark_live_bottom();
+        }
+        let Some(anchor) = self.output_catchup.as_ref().and_then(|catchup| {
+            matches!(catchup.phase, CatchupPhase::Restore).then_some(catchup.anchor)
+        }) else {
+            return;
+        };
+        // The parked path left the user's rows in place. Finish when that
+        // window is the anchor. A nudge moves one quantum and does not walk
+        // the rows under the viewport.
+        if !self.grid.lines_below.is_empty() {
+            if self.grid.nudge_toward_anchor(anchor, crate::panes::grid::SCREEN_ROW_QUANTUM)
+            {
+                self.grid.unlock_renders();
+                self.output_catchup = None;
+            }
+            self.set_should_render(true);
+            return;
+        }
+        let restore_in_turn = self
+            .output_catchup
+            .as_ref()
+            .is_some_and(|catchup| catchup.restore_in_turn);
+        let budget = if restore_in_turn {
+            self.grid
+                .rows_to_restore_anchor(anchor)
+                .unwrap_or(0)
+                .max(1)
+        } else {
+            crate::panes::grid::SCREEN_ROW_QUANTUM
+        };
+        if self.grid.advance_toward_anchor(anchor, budget) {
+            self.grid.unlock_renders();
+            self.output_catchup = None;
+        }
+        self.set_should_render(true);
+    }
+
     #[cfg(test)]
     pub(crate) fn pending_bytes_appended(&self) -> usize {
         self.pending_bytes_appended
@@ -1825,6 +2087,8 @@ impl TerminalPane {
             held_escape: false,
             kitty_interceptor: KittyApcInterceptor::new(),
             mirror_pinned_size: None,
+            viewport_goal: None,
+            output_catchup: None,
             program_resized_at: None,
         }
     }
@@ -1858,7 +2122,11 @@ impl TerminalPane {
         if (self.grid.height, self.grid.width) != (rows, cols) {
             self.program_resized_at = Some(Instant::now());
         }
-        self.grid.change_size(rows, cols);
+        // One recount quantum in this call. The screen loop continues the
+        // rest, so a resize does not scan the whole scrollback before the
+        // next pane can run. `Grid::change_size` still finishes, for callers
+        // that read the length immediately.
+        self.grid.resize_keeping_recount_open(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();

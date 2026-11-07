@@ -205,11 +205,13 @@ fn pending_queue_tracks_remaining_bytes_incrementally() {
         bytes: b"hello".to_vec(),
         offset: 0,
         completion: None,
+        run_generation: None,
     });
     queue.push_back(PendingWrite {
         bytes: b" world".to_vec(),
         offset: 2,
         completion: None,
+        run_generation: None,
     });
 
     assert_eq!(queue.remaining_bytes, 9);
@@ -511,15 +513,17 @@ fn empty_writes_spend_the_turn_budget() {
             bytes: Vec::new(),
             offset: 0,
             completion: None,
+            run_generation: None,
         });
     }
     queue.push_back(PendingWrite {
         bytes: b"tail".to_vec(),
         offset: 0,
         completion: None,
+        run_generation: None,
     });
 
-    assert!(drain_terminal_turn(&mut queue, 1, &mock));
+    assert!(drain_terminal_turn(&mut queue, 1, None, &mock));
     assert_eq!(
         queue.writes.len(),
         empties + 1 - MAX_DRAIN_CALLS_PER_TURN,
@@ -529,7 +533,7 @@ fn empty_writes_spend_the_turn_budget() {
 
     // Later turns finish the run and then deliver the real write.
     while !queue.is_empty() {
-        drain_terminal_turn(&mut queue, 1, &mock);
+        drain_terminal_turn(&mut queue, 1, None, &mock);
     }
     assert_eq!(mock_clone.get_written_bytes(1), b"tail");
 }

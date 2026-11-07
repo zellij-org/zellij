@@ -203,15 +203,83 @@ impl PendingPaneEvents {
 
     /// The pane's entry. A new id is not inserted once [`MAX_PENDING_PANES`]
     /// panes are already buffered; nothing is evicted to make room.
+    ///
+    /// An id that was admitted before spawn is inserted even at the cap. Its
+    /// exit has to land somewhere, and refusing it would drop the settlement
+    /// of a process that was allowed to start. The map can then hold about
+    /// twice the cap (admissions plus older buffered panes) and no more:
+    /// admissions themselves stop at the cap.
     fn pane_entry(&mut self, pid: PaneId) -> Option<&mut PendingPane> {
         if !self.panes.contains_key(&pid) && self.panes.len() >= MAX_PENDING_PANES {
-            log::warn!(
-                "not buffering events for not-yet-created pane {pid:?}: \
-                 too many panes are pending"
-            );
-            return None;
+            let admitted = match pid {
+                PaneId::Terminal(id) => admitted_terminals().contains(&id),
+                PaneId::Plugin(_) => false,
+            };
+            if !admitted {
+                log::warn!(
+                    "not buffering events for not-yet-created pane {pid:?}: \
+                     too many panes are pending"
+                );
+                return None;
+            }
         }
         Some(self.panes.entry(pid).or_default())
+    }
+
+    /// Buffer output that belongs to one run. Adjacent chunks of the same
+    /// terminal and generation coalesce. A different generation stays a
+    /// separate event so replay can drop it after the run changes.
+    pub fn push_run_output(&mut self, pid: PaneId, generation: u64, bytes: Vec<u8>) {
+        let PaneId::Terminal(terminal_id) = pid else {
+            return;
+        };
+        let len = bytes.len();
+        if len == 0 {
+            return;
+        }
+        if self.output_exceeds_budget(pid, len) {
+            log::warn!(
+                "dropping {len} new bytes of output for not-yet-created pane {pid:?}: \
+                 pending output budget exceeded"
+            );
+            self.note_output_truncated(pid, terminal_id);
+            return;
+        }
+        let Some(pane) = self.pane_entry(pid) else {
+            return;
+        };
+        Self::append_run_output(pane, terminal_id, generation, bytes);
+        pane.output_bytes += len;
+        self.total_output_bytes += len;
+    }
+
+    fn append_run_output(
+        pane: &mut PendingPane,
+        terminal_id: u32,
+        generation: u64,
+        bytes: Vec<u8>,
+    ) {
+        if pane.truncation_notice_is_tail {
+            pane.truncation_notice_is_tail = false;
+            pane.events.push(ScreenInstruction::PtyRunBytes(
+                terminal_id,
+                generation,
+                bytes,
+            ));
+            return;
+        }
+        match pane.events.last_mut() {
+            Some(ScreenInstruction::PtyRunBytes(id, existing, previous))
+                if *id == terminal_id && *existing == generation =>
+            {
+                previous.extend_from_slice(&bytes);
+            },
+            _ => pane.events.push(ScreenInstruction::PtyRunBytes(
+                terminal_id,
+                generation,
+                bytes,
+            )),
+        }
     }
 
     #[cfg(test)]
@@ -416,21 +484,57 @@ mod tests {
     fn the_number_of_pending_panes_is_bounded() {
         // Lifecycle events for panes that never appear must not accumulate
         // forever, and must not evict a pane that is already buffered.
+        // Ids sit above the admission test's range so a concurrent admission
+        // of the low ids cannot make this map accept an extra pane.
+        let base = 50_000u32;
         let mut pending = PendingPaneEvents::default();
-        for id in 0..(MAX_PENDING_PANES as u32 * 3) {
+        for id in base..(base + MAX_PENDING_PANES as u32 * 3) {
             let pid = PaneId::Terminal(id);
             pending.push_lifecycle(pid, child_exit(pid, 0));
             assert!(pending.pending_pane_count() <= MAX_PENDING_PANES);
         }
         assert_eq!(pending.pending_pane_count(), MAX_PENDING_PANES);
         assert_eq!(
-            describe(&pending.take(PaneId::Terminal(0))),
+            describe(&pending.take(PaneId::Terminal(base))),
             ["exit:Some(0)"]
         );
         assert!(pending
-            .take(PaneId::Terminal(MAX_PENDING_PANES as u32))
+            .take(PaneId::Terminal(base + MAX_PENDING_PANES as u32))
             .is_empty());
         assert!(pending.pending_pane_count() <= MAX_PENDING_PANES);
+    }
+
+    #[test]
+    fn an_admitted_terminal_can_settle_when_the_pending_map_is_full() {
+        const ADMITTED: u32 = 900_000;
+        struct ClearAdmitted;
+        impl Drop for ClearAdmitted {
+            fn drop(&mut self) {
+                release_uninstalled_terminal(ADMITTED);
+            }
+        }
+        let _clear = ClearAdmitted;
+
+        let base = 800_000u32;
+        let mut pending = PendingPaneEvents::default();
+        for id in base..(base + MAX_PENDING_PANES as u32) {
+            let pid = PaneId::Terminal(id);
+            pending.push_lifecycle(pid, child_exit(pid, 0));
+        }
+        assert_eq!(pending.pending_pane_count(), MAX_PENDING_PANES);
+        let refused = PaneId::Terminal(base + MAX_PENDING_PANES as u32);
+        pending.push_lifecycle(refused, child_exit(refused, 1));
+        assert!(pending.take(refused).is_empty());
+
+        assert!(try_admit_uninstalled_terminal(ADMITTED));
+        let pid = PaneId::Terminal(ADMITTED);
+        pending.push_lifecycle(pid, child_exit(pid, 7));
+        assert_eq!(describe(&pending.take(pid)), ["exit:Some(7)"]);
+        // The first of the already-buffered panes was not evicted to make room.
+        assert_eq!(
+            describe(&pending.take(PaneId::Terminal(base))),
+            ["exit:Some(0)"]
+        );
     }
 
     #[test]

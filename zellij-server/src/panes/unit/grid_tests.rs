@@ -2782,7 +2782,10 @@ fn search_stops_when_viewport_cannot_scroll() {
 
     grid.height += 1;
 
-    assert!(!grid.search_viewport_move(SearchDirection::Down));
+    assert_eq!(
+        grid.search_viewport_move(SearchDirection::Down),
+        Some(false)
+    );
 }
 
 #[test]
@@ -12093,6 +12096,148 @@ fn evicting_a_long_valid_run_inspects_each_row_a_small_number_of_times() {
         0,
         "a stored wrap that is still valid takes the fast path"
     );
+}
+
+#[test]
+fn park_at_live_bottom_keeps_the_scrolled_rows_and_appends_under_them() {
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(1);
+    assert!(grid.is_scrolled);
+    let viewed = grid.dump_screen(false);
+    let above = grid.lines_above.len();
+    let below_before = grid.lines_below.len();
+    assert!(grid.park_at_live_bottom());
+    feed_bytes(&mut grid, &b"NEW-LINE\r\n".repeat(40));
+    grid.unpark_live_bottom();
+    assert_eq!(grid.dump_screen(false), viewed);
+    assert_eq!(grid.lines_above.len(), above);
+    assert!(grid.is_scrolled);
+    assert!(grid.lines_below.len() > below_before);
+    let full_after_return = {
+        grid.reset_viewport();
+        grid.dump_screen(true)
+    };
+    assert!(
+        full_after_return.contains("NEW-LINE"),
+        "parsed output should be in the document, got {full_after_return:?}"
+    );
+}
+
+#[test]
+fn a_long_stale_scroll_up_waits_for_a_display_boundary() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.lines_above.clear();
+    let mut canonical = Row::from_columns(
+        std::iter::repeat(TerminalCharacter::new_styled('a', Default::default()))
+            .take(8)
+            .collect(),
+    )
+    .canonical();
+    let _ = canonical.width_cached();
+    grid.lines_above.push_back(canonical);
+    for _ in 0..200 {
+        let mut row = Row::from_columns(
+            std::iter::repeat(TerminalCharacter::new_styled('b', Default::default()))
+                .take(8)
+                .collect(),
+        );
+        let _ = row.width_cached();
+        row.is_canonical = false;
+        grid.lines_above.push_back(row);
+    }
+    // Stored rows are 8 columns wide. The pane is narrower, so the tail is stale.
+    grid.width = 3;
+    let before_cells: usize = grid
+        .lines_above
+        .iter()
+        .map(|row| row.columns.len())
+        .sum::<usize>()
+        + grid.viewport.iter().map(|row| row.columns.len()).sum::<usize>();
+    // The first turns only walk the prefix. That is not the top of the buffer.
+    assert!(
+        !grid.advance_toward_top(2),
+        "a paused scan must not report that the viewport is at the top"
+    );
+    assert!(grid.pending_line_reflow.is_some() || grid.lines_above.len() < 201);
+    let mut guard = 0;
+    while grid.pending_line_reflow.is_some() && guard < 20 {
+        let _ = grid.scroll_up_rows(2);
+        guard += 1;
+    }
+    assert!(
+        grid.pending_line_reflow.is_none(),
+        "the display-boundary scan did not finish"
+    );
+    let after_cells: usize = grid
+        .lines_above
+        .iter()
+        .map(|row| row.columns.len())
+        .sum::<usize>()
+        + grid
+            .viewport
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>()
+        + grid
+            .lines_below
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>();
+    assert_eq!(
+        before_cells, after_cells,
+        "reflow must keep every character"
+    );
+    let front = row_to_string(&grid.viewport[0]);
+    assert!(
+        front.chars().all(|character| character == 'b') && front.chars().count() <= 3,
+        "the revealed row should be the stale tail reflowed at the pane width, got {front:?}"
+    );
+}
+
+#[test]
+fn reset_viewport_moves_in_bulk_and_a_short_budget_stops() {
+    use super::{reset_scroll_down_one_line_call_count, scroll_down_one_line_call_count};
+
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(10);
+    assert!(grid.is_scrolled);
+    reset_scroll_down_one_line_call_count();
+    grid.reset_viewport();
+    assert!(!grid.is_scrolled);
+    assert!(grid.lines_below.is_empty());
+    assert_eq!(scroll_down_one_line_call_count(), 0);
+
+    grid.move_viewport_up(10);
+    reset_scroll_down_one_line_call_count();
+    assert!(
+        !grid.advance_to_bottom(2),
+        "two rows cannot finish a ten-row return to the bottom"
+    );
+    assert!(grid.is_scrolled);
+    assert!(!grid.lines_below.is_empty());
+    assert_eq!(scroll_down_one_line_call_count(), 0);
+}
+
+#[test]
+fn a_stale_line_reflow_stops_after_the_requested_rows() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+    use std::collections::VecDeque;
+
+    let mut rows = VecDeque::new();
+    let columns: Vec<_> = (0..500)
+        .map(|_| TerminalCharacter::new_styled('a', Default::default()))
+        .collect();
+    rows.push_back(Row::from_columns(columns).canonical());
+    let taken = super::take_reflow_prefix(&mut rows, 2, 10);
+    let taken_columns: usize = taken.iter().map(|row| row.columns.len()).sum();
+    assert_eq!(taken_columns, 20);
+    let left: usize = rows.iter().map(|row| row.columns.len()).sum();
+    assert_eq!(left, 480);
+    assert!(!rows.front().expect("remainder").is_canonical);
 }
 
 /// A grid `columns` cells wide whose scrollback holds `line_count`

@@ -19,6 +19,17 @@ fn read_fixture() -> Vec<u8> {
         .unwrap_or_else(|_| panic!("could not read fixture ../src/tests/fixtures/grid_copy"))
 }
 
+/// A search that crosses a narrow wrap pauses after one row quantum.
+/// Pump it to the same place one uninterrupted search used to land.
+fn finish_paused_search(terminal_pane: &mut TerminalPane) {
+    let mut guard = 0;
+    while terminal_pane.grid.pending_search.is_some() {
+        terminal_pane.grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 10_000, "search did not finish");
+    }
+}
+
 fn create_pane() -> TerminalPane {
     let mut fake_win_size = PaneGeom::default();
     fake_win_size.cols.set_inner(121);
@@ -316,6 +327,7 @@ pub fn searching_across_line_wrap() {
     );
 
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -324,6 +336,7 @@ pub fn searching_across_line_wrap() {
     // Wrap on
     terminal_pane.toggle_search_wrap();
     terminal_pane.search_down();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -333,6 +346,7 @@ pub fn searching_across_line_wrap() {
     terminal_pane.toggle_search_wrap();
     // Don't forget the current selection
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -341,6 +355,7 @@ pub fn searching_across_line_wrap() {
     // Wrap on
     terminal_pane.toggle_search_wrap();
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)

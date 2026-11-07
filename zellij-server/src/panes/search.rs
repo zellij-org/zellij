@@ -8,6 +8,28 @@ use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 
+/// A search that has moved the viewport and still has history to scan.
+/// One turn moves at most [`crate::panes::grid::SCREEN_ROW_QUANTUM`] rows.
+#[derive(Clone)]
+pub(crate) struct PendingSearch {
+    dir: SearchDirection,
+    phase: SearchPhase,
+    rows: isize,
+    origin: Option<Selection>,
+}
+
+#[derive(Clone, Copy)]
+enum SearchPhase {
+    /// Walking toward a hit from the current viewport.
+    Move,
+    /// Putting the viewport back after a scan that found nothing.
+    Undo,
+    /// Wrapped search is moving to the opposite end.
+    GoToEnd,
+    /// Wrapped to the opposite end and is walking back.
+    WrapBack,
+}
+
 fn is_word_boundary(x: &Option<char>) -> bool {
     x.map_or(true, |c| !c.is_alphanumeric() && c != '_')
 }
@@ -449,14 +471,27 @@ impl SearchResult {
 
 impl Grid {
     pub fn search_down(&mut self) {
+        self.pending_search = None;
         self.search_scrollbuffer(SearchDirection::Down);
     }
 
     pub fn search_up(&mut self) {
+        self.pending_search = None;
         self.search_scrollbuffer(SearchDirection::Up);
     }
 
+    /// Continue a search that stopped at the row quantum. Returns true
+    /// when more viewport movement is still queued.
+    pub(crate) fn continue_pending_search(&mut self) -> bool {
+        let Some(pending) = self.pending_search.clone() else {
+            return false;
+        };
+        self.search_scrollbuffer(pending.dir);
+        self.pending_search.is_some()
+    }
+
     pub fn clear_search(&mut self) {
+        self.pending_search = None;
         // Clearing all previous highlights
         for res in &self.search_results.selections {
             self.output_buffer
@@ -535,6 +570,25 @@ impl Grid {
     }
 
     fn search_scrollbuffer(&mut self, dir: SearchDirection) {
+        if let Some(pending) = self.pending_search.clone() {
+            match pending.phase {
+                SearchPhase::Move | SearchPhase::Undo => {
+                    match self.search_viewport_move(pending.dir) {
+                        None => return,
+                        Some(found_something) => {
+                            if !found_something && self.search_results.wrap_search {
+                                self.search_viewport_wrap(pending.dir);
+                            }
+                            return;
+                        },
+                    }
+                },
+                SearchPhase::GoToEnd | SearchPhase::WrapBack => {
+                    self.search_viewport_wrap(pending.dir);
+                    return;
+                },
+            }
+        }
         let first_sel = self.search_results.selections.first();
         let last_sel = self.search_results.selections.last();
 
@@ -553,12 +607,15 @@ impl Grid {
             // We can stay in the viewport and just move the active selection
             self.search_viewport_again(search_viewport_for_the_first_time, dir);
         } else {
-            // Need to move the viewport
-            let found_something = self.search_viewport_move(dir);
-
-            // We haven't found anything, but we are allowed to wrap around
-            if !found_something && self.search_results.wrap_search {
-                self.search_viewport_wrap(dir);
+            // Need to move the viewport. `None` means this turn hit the
+            // row quantum; the search stays pending and must not wrap yet.
+            match self.search_viewport_move(dir) {
+                None => {},
+                Some(found_something) => {
+                    if !found_something && self.search_results.wrap_search {
+                        self.search_viewport_wrap(dir);
+                    }
+                },
             }
         }
     }
@@ -599,14 +656,36 @@ impl Grid {
         }
     }
 
-    pub(super) fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
-        // We need to move the viewport
-        let mut rows = 0;
+    pub(super) fn search_viewport_move(&mut self, dir: SearchDirection) -> Option<bool> {
+        // We need to move the viewport. `None` means the row quantum was
+        // spent before the scan finished.
+        if let Some(pending) = self.pending_search.clone() {
+            if pending.dir == dir && matches!(pending.phase, SearchPhase::Undo) {
+                return self.undo_search_move(dir, pending.rows, pending.origin);
+            }
+        }
+        let resume = self.pending_search.clone().filter(|pending| {
+            pending.dir == dir && matches!(pending.phase, SearchPhase::Move)
+        });
+        let mut rows = resume.as_ref().map(|pending| pending.rows).unwrap_or(0);
         let mut found_something = false;
 
         // We might loose the current selection, if we can't find anything
-        let current_active_selection = self.search_results.active;
+        let current_active_selection = resume
+            .as_ref()
+            .map(|pending| pending.origin)
+            .unwrap_or(self.search_results.active);
+        let mut stepped = 0isize;
         while !found_something && !self.search_reached_opposite_end(dir) {
+            if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM as isize {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::Move,
+                    rows,
+                    origin: current_active_selection,
+                });
+                return None;
+            }
             let scroll_result = match dir {
                 SearchDirection::Up => self.scroll_up_one_line_with_progress(),
                 SearchDirection::Down => self.scroll_down_one_line_with_progress(),
@@ -615,22 +694,45 @@ impl Grid {
                 break;
             }
             rows += 1;
+            stepped += 1;
             found_something = scroll_result.found_something;
         }
-
         if found_something {
+            self.pending_search = None;
             self.search_adjust_to_new_selection(dir);
-        } else {
-            // We didn't find something, so we scroll back to the start
-            for _ in 0..rows {
-                match dir {
-                    SearchDirection::Up => self.scroll_down_one_line(),
-                    SearchDirection::Down => self.scroll_up_one_line(),
-                };
-            }
-            self.search_results.active = current_active_selection;
+            return Some(true);
         }
-        found_something
+        self.undo_search_move(dir, rows, current_active_selection)
+    }
+
+    fn undo_search_move(
+        &mut self,
+        dir: SearchDirection,
+        rows_left: isize,
+        origin: Option<Selection>,
+    ) -> Option<bool> {
+        // Scroll back in bulk quanta. A scan that crossed the whole
+        // history must not undo it one line at a time in this turn.
+        if rows_left > 0 {
+            let step = (rows_left as usize).min(crate::panes::grid::SCREEN_ROW_QUANTUM);
+            let moved = match dir {
+                SearchDirection::Up => self.scroll_down_rows(step),
+                SearchDirection::Down => self.scroll_up_rows(step),
+            };
+            let remaining = rows_left.saturating_sub(moved as isize);
+            if remaining > 0 && moved > 0 {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::Undo,
+                    rows: remaining,
+                    origin,
+                });
+                return None;
+            }
+        }
+        self.pending_search = None;
+        self.search_results.active = origin;
+        Some(false)
     }
 
     fn search_adjust_to_new_selection(&mut self, dir: SearchDirection) {
@@ -659,10 +761,31 @@ impl Grid {
 
     fn search_viewport_wrap(&mut self, dir: SearchDirection) {
         // We might loose the current selection, if we can't find anything
-        let current_active_selection = self.search_results.active;
+        let current_active_selection = self
+            .pending_search
+            .as_ref()
+            .filter(|pending| {
+                pending.dir == dir
+                    && matches!(pending.phase, SearchPhase::GoToEnd | SearchPhase::WrapBack)
+            })
+            .map(|pending| pending.origin)
+            .unwrap_or(self.search_results.active);
+        let resuming_walk = self.pending_search.as_ref().is_some_and(|pending| {
+            pending.dir == dir && matches!(pending.phase, SearchPhase::WrapBack)
+        });
         // UP
         // Go to the opposite end (bottom when searching up and top when searching down)
-        let mut rows = self.move_viewport_to_opposite_end(dir);
+        let mut rows = if resuming_walk {
+            self.pending_search
+                .as_ref()
+                .map(|pending| pending.rows)
+                .unwrap_or(0)
+        } else {
+            match self.move_viewport_to_opposite_end(dir, current_active_selection) {
+                Some(rows) => rows,
+                None => return,
+            }
+        };
 
         // We are at the bottom or top. Maybe we found already something there
         // If not, scroll back again, until we find something
@@ -673,8 +796,19 @@ impl Grid {
 
         // We didn't find anything at the opposing end of the scrollbuffer, so we scroll back until we find something
         if !found_something {
+            let mut stepped = 0isize;
             while rows >= 0 && !found_something {
+                if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM as isize {
+                    self.pending_search = Some(PendingSearch {
+                        dir,
+                        phase: SearchPhase::WrapBack,
+                        rows,
+                        origin: current_active_selection,
+                    });
+                    return;
+                }
                 rows -= 1;
+                stepped += 1;
                 let scroll_result = match dir {
                     SearchDirection::Up => self.scroll_up_one_line_with_progress(),
                     SearchDirection::Down => self.scroll_down_one_line_with_progress(),
@@ -685,6 +819,7 @@ impl Grid {
                 found_something = scroll_result.found_something;
             }
         }
+        self.pending_search = None;
         if found_something {
             self.search_results.active = match dir {
                 SearchDirection::Up => self.search_results.selections.last().cloned(),
@@ -707,28 +842,49 @@ impl Grid {
         }
     }
 
-    fn move_viewport_to_opposite_end(&mut self, dir: SearchDirection) -> isize {
-        let mut rows = 0;
-        match dir {
-            SearchDirection::Up => {
-                // Go to the bottom
-                while !self.lines_below.is_empty() {
-                    if !self.scroll_down_one_line_with_progress().moved {
-                        break;
-                    }
-                    rows += 1;
-                }
-            },
-            SearchDirection::Down => {
-                // Go to the top
-                while !self.lines_above.is_empty() {
-                    if !self.scroll_up_one_line_with_progress().moved {
-                        break;
-                    }
-                    rows += 1;
-                }
-            },
+    fn move_viewport_to_opposite_end(
+        &mut self,
+        dir: SearchDirection,
+        origin: Option<Selection>,
+    ) -> Option<isize> {
+        let mut rows = self
+            .pending_search
+            .as_ref()
+            .filter(|pending| {
+                pending.dir == dir && matches!(pending.phase, SearchPhase::GoToEnd)
+            })
+            .map(|pending| pending.rows)
+            .unwrap_or(0);
+        let mut stepped = 0usize;
+        loop {
+            let done = match dir {
+                SearchDirection::Up => self.lines_below.is_empty(),
+                SearchDirection::Down => self.lines_above.is_empty(),
+            };
+            if done {
+                self.pending_search = None;
+                return Some(rows);
+            }
+            if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::GoToEnd,
+                    rows,
+                    origin,
+                });
+                return None;
+            }
+            let budget = crate::panes::grid::SCREEN_ROW_QUANTUM - stepped;
+            let moved = match dir {
+                SearchDirection::Up => self.scroll_down_rows(budget),
+                SearchDirection::Down => self.scroll_up_rows(budget),
+            };
+            if moved == 0 {
+                self.pending_search = None;
+                return Some(rows);
+            }
+            rows += moved as isize;
+            stepped = stepped.saturating_add(moved);
         }
-        rows
     }
 }

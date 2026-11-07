@@ -310,26 +310,6 @@ fn get_top_non_canonical_rows(rows: &mut VecDeque<Row>) -> Vec<Row> {
     }
 }
 
-fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
-    let mut index_of_last_non_canonical_row = None;
-    for (i, row) in rows.iter().enumerate().rev() {
-        index_of_last_non_canonical_row = Some(i);
-        if row.is_canonical {
-            break;
-        }
-    }
-    match index_of_last_non_canonical_row {
-        Some(index_of_last_non_canonical_row) => rows
-            .drain(index_of_last_non_canonical_row..)
-            .map(|mut row| {
-                row.expand_trailing_blanks();
-                row
-            })
-            .collect(),
-        None => vec![],
-    }
-}
-
 fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut VecDeque<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
     for (i, row) in viewport.iter().enumerate().rev() {
@@ -344,6 +324,107 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut VecDeque<Row>) -> 
         },
         None => vec![],
     }
+}
+
+/// Width `rewrap_rows` will give this character. The prefix cut has to use
+/// the same width or it splits the line at the wrong column.
+fn fitted_character_width(character: &TerminalCharacter, max_row_length: usize) -> usize {
+    if max_row_length == 0 {
+        return character.width().max(1);
+    }
+    let old = character.width();
+    let natural = character.natural_width();
+    let logical = if old < natural { natural } else { old };
+    if logical > max_row_length {
+        max_row_length
+    } else {
+        logical
+    }
+}
+
+/// Characters of the front logical line that fill `max_output_rows` display
+/// rows at `width`. `None` when the whole line fits in that many rows.
+fn reflow_prefix_character_count(
+    rows: &VecDeque<Row>,
+    max_output_rows: usize,
+    width: usize,
+) -> Option<usize> {
+    if max_output_rows == 0 || width == 0 {
+        return None;
+    }
+    let mut seen_canonical = false;
+    let mut output_rows = 0usize;
+    let mut current_part_width = 0usize;
+    let mut consumed = 0usize;
+    for row in rows.iter() {
+        if row.is_canonical {
+            if seen_canonical {
+                break;
+            }
+            seen_canonical = true;
+        } else if !seen_canonical {
+            break;
+        }
+        for character in row.columns.iter() {
+            let character_width = fitted_character_width(character, width);
+            if current_part_width + character_width > width {
+                output_rows += 1;
+                if output_rows >= max_output_rows {
+                    return Some(consumed);
+                }
+                current_part_width = 0;
+            }
+            current_part_width += character_width;
+            consumed += 1;
+        }
+    }
+    None
+}
+
+/// Take only enough of the front logical line to reflow `max_output_rows`
+/// display rows. The rest stays at the front, still one logical line, so
+/// the next quantum continues the same reflow instead of rebuilding it.
+fn take_reflow_prefix(rows: &mut VecDeque<Row>, max_output_rows: usize, width: usize) -> Vec<Row> {
+    let Some(character_count) = reflow_prefix_character_count(rows, max_output_rows, width) else {
+        return get_top_canonical_row_and_wraps(rows);
+    };
+    if character_count == 0 {
+        return Vec::new();
+    }
+    let mut taken = Vec::new();
+    let mut remaining = character_count;
+    while remaining > 0 {
+        let Some(mut row) = rows.pop_front() else {
+            break;
+        };
+        if row.columns.len() <= remaining {
+            remaining -= row.columns.len();
+            taken.push(row);
+        } else {
+            let rest = row.split_off_columns(remaining);
+            taken.push(row);
+            rows.push_front(rest);
+            remaining = 0;
+        }
+    }
+    taken
+}
+
+/// Leading non-canonical rows, at most `max_rows`. A continuation longer
+/// than this quantum stays queued for the next one.
+fn take_leading_non_canonical_rows(rows: &mut VecDeque<Row>, max_rows: usize) -> Vec<Row> {
+    let mut taken = Vec::new();
+    while taken.len() < max_rows {
+        match rows.front() {
+            Some(row) if !row.is_canonical => {
+                if let Some(row) = rows.pop_front() {
+                    taken.push(row);
+                }
+            },
+            _ => break,
+        }
+    }
+    taken
 }
 
 fn get_top_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> Vec<Row> {
@@ -524,6 +605,152 @@ fn move_wrapped_continuation_rows_to_viewport(
     moved
 }
 
+/// Pop up to `max_rows` already-wrapped rows from the head of `lines_below`.
+///
+/// Returns `None` without removing rows when the stored wrap is stale, so
+/// the caller reflows that line. A valid line longer than `max_rows` yields
+/// only the prefix; the rest stays at the head for the next quantum.
+fn take_valid_wrapped_prefix(
+    lines_below: &mut VecDeque<Row>,
+    max_rows: usize,
+    width: usize,
+) -> Option<Vec<Row>> {
+    if max_rows == 0 || width == 0 || lines_below.is_empty() {
+        return None;
+    }
+    let mut previous_width: Option<usize> = None;
+    let mut valid = 0usize;
+    let inspect = lines_below.len().min(max_rows.saturating_add(1));
+    for index in 0..inspect {
+        let row = lines_below.get_mut(index)?;
+        if index > 0 && row.is_canonical {
+            break;
+        }
+        if index == 0 && !row.is_canonical {
+            return None;
+        }
+        let row_width = row.width_cached();
+        if row_width > width {
+            return None;
+        }
+        if let Some(previous) = previous_width {
+            if previous + first_character_width(row) <= width {
+                return None;
+            }
+        }
+        if index == max_rows {
+            // The next row still belongs to this line and the boundary
+            // checked out. Take only `max_rows`.
+            break;
+        }
+        previous_width = Some(row_width);
+        valid += 1;
+        let line_ends = index + 1 >= lines_below.len() || lines_below[index + 1].is_canonical;
+        if line_ends {
+            break;
+        }
+    }
+    if valid == 0 {
+        return None;
+    }
+    let mut taken = Vec::with_capacity(valid);
+    for _ in 0..valid {
+        let mut row = lines_below.pop_front()?;
+        row.expand_trailing_blanks();
+        taken.push(row);
+    }
+    Some(taken)
+}
+
+/// The whole logical line at the tail of `lines_above`, when it fits in
+/// `max_rows` stored rows. A longer line is left untouched: splitting it
+/// and reflowing the chunk from column 0 drops the wrap phase of the
+/// prefix. `None` means the caller scans that line across later turns.
+fn take_whole_line_if_within(rows: &mut VecDeque<Row>, max_rows: usize) -> Option<Vec<Row>> {
+    if max_rows == 0 || rows.is_empty() {
+        return None;
+    }
+    let mut seen = 0usize;
+    for row in rows.iter().rev() {
+        seen += 1;
+        if row.is_canonical {
+            break;
+        }
+        if seen > max_rows {
+            return None;
+        }
+    }
+    Some(take_lines_above_tail(rows, max_rows))
+}
+
+/// The tail of `lines_above` that joins the viewport on resize, capped so
+/// one logical line cannot be reflowed in full. A line longer than
+/// `max_rows` is split: the untaken prefix stays in scrollback at its
+/// stored wraps, and the first taken row becomes canonical. Scroll-up does
+/// not use this for a line that does not fit; it scans for a display-row
+/// boundary instead.
+fn take_lines_above_tail(rows: &mut VecDeque<Row>, max_rows: usize) -> Vec<Row> {
+    if max_rows == 0 || rows.is_empty() {
+        return vec![];
+    }
+    let mut start = rows.len();
+    let mut taken = 0usize;
+    for (index, row) in rows.iter().enumerate().rev() {
+        start = index;
+        taken += 1;
+        if row.is_canonical || taken == max_rows {
+            break;
+        }
+    }
+    let mut drained: Vec<Row> = rows.drain(start..).collect();
+    if let Some(first) = drained.first_mut() {
+        first.is_canonical = true;
+    }
+    drained
+}
+
+#[derive(Clone)]
+struct DisplayRowRecount {
+    index: usize,
+    accumulated: usize,
+    width: usize,
+    wrap: WrapState,
+    in_run: bool,
+}
+
+/// User viewport held off to the side while PTY bytes are applied to the
+/// live screen. `overlap_skip` is how many live rows still duplicate the
+/// tail of `held` and must not be appended under that view.
+#[derive(Clone)]
+struct LiveBottomPark {
+    held: VecDeque<Row>,
+    gap: VecDeque<Row>,
+    overlap_skip: usize,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum LineReflowPhase {
+    FindCanonical,
+    CountDisplay,
+    LocateCut,
+}
+
+#[derive(Clone)]
+struct PendingLineReflow {
+    phase: LineReflowPhase,
+    next_index: usize,
+    canonical: usize,
+    line_end: usize,
+    scan_index: usize,
+    expected_len: usize,
+    epoch: u64,
+    rows_needed: usize,
+    wrap: WrapState,
+    total_display_rows: usize,
+    cut_row: usize,
+    cut_char: usize,
+}
+
 fn scrollback_display_row_count(rows: &mut VecDeque<Row>, width: usize) -> usize {
     let mut display_rows = 0;
     let mut run_start = 0;
@@ -577,6 +804,60 @@ pub(crate) fn wrap_character_step_count() -> usize {
 #[cfg(test)]
 pub(crate) fn reset_wrap_character_step_count() {
     WRAP_CHARACTER_STEPS.with(|c| c.set(0));
+}
+
+/// Width `rewrap_rows` will use after `fit_character_widths_for_reflow`.
+fn reflow_character_width(character: &TerminalCharacter, pane: usize) -> usize {
+    if pane == 0 {
+        return 1;
+    }
+    let old = character.width();
+    let natural = character.natural_width();
+    let logical = if old < natural { natural } else { old };
+    if logical > pane {
+        pane
+    } else if logical == 0 {
+        1
+    } else {
+        logical
+    }
+}
+
+fn push_row_fitted(state: &mut WrapState, row: &Row, pane: usize) {
+    for character in &row.columns {
+        state.push_character(reflow_character_width(character, pane), pane);
+    }
+    state.push_single_width_cells(row.trailing_blanks as usize, pane);
+}
+
+/// `Some(index)` is the column where a new display row makes
+/// `completed_rows` reach `target`. `index >= columns.len()` means the
+/// boundary fell in the trailing blanks, so the suffix starts on the next
+/// stored row.
+fn locate_cut_in_row(
+    state: &mut WrapState,
+    row: &Row,
+    pane: usize,
+    target: usize,
+) -> Option<usize> {
+    if pane == 0 {
+        return None;
+    }
+    for (index, character) in row.columns.iter().enumerate() {
+        let before = state.completed_rows;
+        state.push_character(reflow_character_width(character, pane), pane);
+        if before < target && state.completed_rows >= target {
+            return Some(index);
+        }
+    }
+    for _ in 0..row.trailing_blanks {
+        let before = state.completed_rows;
+        state.push_character(1, pane);
+        if before < target && state.completed_rows >= target {
+            return Some(row.columns.len());
+        }
+    }
+    None
 }
 
 impl WrapState {
@@ -1162,8 +1443,18 @@ fn transfer_rows_from_lines_above_to_viewport(
                 }
             }
             // The drained run is the tail, not the cached front row.
+            // A line that fits in one row quantum is reflowed whole, so its
+            // first row is the real canonical start. A longer line is not
+            // split here; the scroll methods scan it across turns and cut
+            // on a display-row boundary.
+            let Some(mut canonical_run) = take_whole_line_if_within(lines_above, SCREEN_ROW_QUANTUM)
+            else {
+                break;
+            };
             front_run.clear();
-            let mut canonical_run = get_lines_above_bottom_canonical_row_and_wraps(lines_above);
+            for row in &mut canonical_run {
+                row.expand_trailing_blanks();
+            }
             *scrollback_cells = scrollback_cells.saturating_sub(
                 canonical_run
                     .iter()
@@ -1291,24 +1582,33 @@ fn transfer_rows_from_lines_below_to_viewport(
                 if rows_moved > 0 {
                     continue;
                 } else {
+                    let rows_needed = (target_viewport_len - viewport.len())
+                        .min(SCREEN_ROW_QUANTUM)
+                        .max(1);
                     let mut top_non_canonical_rows_in_lines_below =
-                        get_top_non_canonical_rows(lines_below);
+                        take_leading_non_canonical_rows(lines_below, rows_needed);
                     let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
                     canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
                     next_lines = Row::rewrap_rows(canonical_line, max_viewport_width);
                     reflowed = true;
                 }
-            } else if lines_below_head_is_wrapped_at(lines_below, max_viewport_width) {
-                // The stored run is already wrapped at this width, so
-                // the rows can move directly instead of being
-                // reconstructed — mirroring the lines_above fast path.
-                let mut stored_rows = get_top_canonical_row_and_wraps(lines_below);
-                for row in stored_rows.iter_mut() {
-                    row.expand_trailing_blanks();
+            } else if let Some(stored_rows) = take_valid_wrapped_prefix(
+                lines_below,
+                target_viewport_len - viewport.len(),
+                max_viewport_width,
+            ) {
+                // Already wrapped at this width. Only the rows this step
+                // needs are moved, so a logical line taller than the
+                // quantum is not reconstructed.
+                for row in stored_rows {
+                    viewport.push_back(row);
                 }
-                next_lines = stored_rows;
+                continue;
             } else {
-                let canonical_row = get_top_canonical_row_and_wraps(lines_below);
+                let rows_needed = (target_viewport_len - viewport.len())
+                    .min(SCREEN_ROW_QUANTUM)
+                    .max(1);
+                let canonical_row = take_reflow_prefix(lines_below, rows_needed, max_viewport_width);
                 next_lines = Row::rewrap_rows(canonical_row, max_viewport_width);
                 reflowed = true;
             }
@@ -1332,6 +1632,17 @@ const MAX_SERIALIZE_SNAPSHOT_CELLS: usize = 4 * 1024 * 1024;
 #[cfg(test)]
 thread_local! {
     static SERIALIZE_BUDGET_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static SCROLL_DOWN_ONE_LINE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn scroll_down_one_line_call_count() -> usize {
+    SCROLL_DOWN_ONE_LINE_CALLS.with(|calls| calls.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_scroll_down_one_line_call_count() {
+    SCROLL_DOWN_ONE_LINE_CALLS.with(|calls| calls.set(0));
 }
 
 #[cfg(test)]
@@ -1946,6 +2257,17 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_display_rows: usize,
+    /// Width recount still walking `lines_above`. Published into
+    /// `scrollback_display_rows` as it goes, one quantum per turn.
+    display_row_recount: Option<DisplayRowRecount>,
+    /// The user's viewport, held aside while bytes are parsed against the
+    /// live bottom. Rows that scroll off that live window join `gap`
+    /// instead of `lines_above`, so the history between the two windows
+    /// stays where it is.
+    live_bottom: Option<LiveBottomPark>,
+    /// Character-accurate scroll-up of a stale logical line that is longer
+    /// than one row quantum. The viewport does not move until the cut is known.
+    pending_line_reflow: Option<PendingLineReflow>,
     scrollback_cells: usize,
     /// Rows removed from the front of scrollback. Used to keep a scrolled
     /// viewport anchored while output is applied at the live bottom.
@@ -1961,6 +2283,8 @@ pub struct Grid {
     /// `pending_messages_to_pty` for this pane.
     pub color_palette_notification_enabled: bool,
     pub search_results: SearchResult,
+    /// A search that stopped at the row quantum and must continue.
+    pub(crate) pending_search: Option<crate::panes::search::PendingSearch>,
     pub pending_clipboard_update: Option<String>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
     pub pending_prompt_return: bool,
@@ -2013,10 +2337,26 @@ pub struct Grid {
 }
 
 /// Snapshot of the scrolled viewport's place in the buffer.
+#[derive(Clone, Copy)]
 pub(crate) struct ViewportAnchor {
-    rows_before_viewport: usize,
+    pub(crate) rows_before_viewport: usize,
     evicted_before: u64,
 }
+
+impl ViewportAnchor {
+    /// `rows` positive moves the remembered window down (more rows above it).
+    pub(crate) fn nudge(self, rows: isize) -> Self {
+        Self {
+            rows_before_viewport: self.rows_before_viewport.saturating_add_signed(rows),
+            evicted_before: self.evicted_before,
+        }
+    }
+}
+
+/// Rows one screen-thread turn may move while shifting the viewport,
+/// scanning for a search hit, or recounting scrollback after a resize.
+/// A longer distance continues on a later turn.
+pub(crate) const SCREEN_ROW_QUANTUM: usize = 128;
 
 impl Grid {
     pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
@@ -2357,6 +2697,9 @@ impl Grid {
             link_handler,
             ring_bell: false,
             scrollback_display_rows: 0,
+            display_row_recount: None,
+            live_bottom: None,
+            pending_line_reflow: None,
             scrollback_cells: 0,
             scrollback_rows_evicted: 0,
             mouse_mode: MouseMode::default(),
@@ -2365,6 +2708,7 @@ impl Grid {
             color_palette_notification_enabled: false,
             character_cell_size,
             search_results: Default::default(),
+            pending_search: None,
             sixel_grid,
             kitty_grid,
             kitty_parser: KittyCommandParser::new(),
@@ -2763,7 +3107,22 @@ impl Grid {
     }
 
     pub(super) fn scroll_up_one_line_with_progress(&mut self) -> ScrollResult {
+        self.restart_display_recount();
         let mut result = ScrollResult::default();
+        if self.viewport.len() == self.height
+            && (self.pending_line_reflow.is_some() || self.long_stale_tail())
+        {
+            if self.pending_line_reflow.is_none() {
+                self.arm_pending_scroll_up(1);
+            }
+            let added = self.drive_pending_scroll_up();
+            if added > 0 {
+                self.note_rows_scrolled_up(added, true);
+                result.moved = true;
+            }
+            self.output_buffer.update_all_lines();
+            return result;
+        }
         let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
@@ -2802,6 +3161,8 @@ impl Grid {
         self.scroll_up_one_line_with_progress().found_something
     }
     pub(super) fn scroll_down_one_line_with_progress(&mut self) -> ScrollResult {
+        #[cfg(test)]
+        SCROLL_DOWN_ONE_LINE_CALLS.with(|calls| calls.set(calls.get() + 1));
         let mut result = ScrollResult::default();
         let mut found_something = false;
         if !self.lines_below.is_empty()
@@ -2826,6 +3187,9 @@ impl Grid {
                 &mut self.scrollback_cells,
             );
             self.scrollback_rows_evicted += evicted_rows.len() as u64;
+            if !evicted_rows.is_empty() {
+                self.restart_display_recount();
+            }
             let width = self.width;
             let display_row_delta = 1 + evicted_rows_display_row_delta(
                 &mut self.lines_above,
@@ -2870,15 +3234,131 @@ impl Grid {
     }
     pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, true);
+        self.finish_display_row_recount();
     }
     fn apply_scrollback_display_row_delta(&mut self, delta: isize) {
+        if self.display_row_recount.is_some() {
+            // The in-progress scan counts the rows that are actually stored.
+            // Adding a delta on top of the previous width would publish a
+            // mix of two widths. Appending does not restart the scan; the
+            // new rows sit past `index`.
+            let _ = delta;
+            return;
+        }
         self.scrollback_display_rows = self.scrollback_display_rows.saturating_add_signed(delta);
+    }
+    fn restart_display_recount(&mut self) {
+        if let Some(job) = self.display_row_recount.as_mut() {
+            job.index = 0;
+            job.accumulated = 0;
+            job.wrap = WrapState::default();
+            job.in_run = false;
+        }
     }
     fn recount_scrollback_display_rows(&mut self, new_columns: usize) {
         self.scrollback_display_rows =
             scrollback_display_row_count(&mut self.lines_above, new_columns);
+        self.display_row_recount = None;
+    }
+    /// Start a width recount. Nothing is published until the scan finishes:
+    /// a partial sum is not a length. Each later turn walks at most one
+    /// row quantum, including through the middle of a long logical line.
+    pub(crate) fn start_display_row_recount(&mut self, new_columns: usize) {
+        if new_columns == 0 || self.lines_above.is_empty() {
+            self.scrollback_display_rows = 0;
+            self.display_row_recount = None;
+            return;
+        }
+        self.display_row_recount = Some(DisplayRowRecount {
+            index: 0,
+            accumulated: 0,
+            width: new_columns,
+            wrap: WrapState::default(),
+            in_run: false,
+        });
+    }
+    pub(crate) fn display_recount_pending(&self) -> bool {
+        self.display_row_recount.is_some()
+    }
+    /// Count at most one quantum of scrollback runs. Returns true when
+    /// the recount has finished.
+    pub(crate) fn continue_display_row_recount(&mut self) -> bool {
+        let Some(job) = self.display_row_recount.as_ref() else {
+            return true;
+        };
+        let width = job.width;
+        let mut index = job.index;
+        let mut accumulated = job.accumulated;
+        let mut wrap = job.wrap;
+        let mut in_run = job.in_run;
+        if width == 0 {
+            self.scrollback_display_rows = 0;
+            self.display_row_recount = None;
+            return true;
+        }
+        let end = index
+            .saturating_add(SCREEN_ROW_QUANTUM)
+            .min(self.lines_above.len());
+        while index < end {
+            let Some(row) = self.lines_above.get(index) else {
+                break;
+            };
+            if row.is_canonical && in_run {
+                accumulated += wrap.height();
+                wrap = WrapState::default();
+            }
+            in_run = true;
+            for character_width in row_display_widths(row) {
+                wrap.push_character(character_width, width);
+            }
+            index += 1;
+        }
+        let finished = index >= self.lines_above.len();
+        if finished && in_run {
+            accumulated += wrap.height();
+            in_run = false;
+        }
+        if finished {
+            self.scrollback_display_rows = accumulated;
+            self.display_row_recount = None;
+        } else if let Some(job) = self.display_row_recount.as_mut() {
+            job.index = index;
+            job.accumulated = accumulated;
+            job.wrap = wrap;
+            job.in_run = in_run;
+        }
+        finished
+    }
+    /// Finish a resize recount on the calling thread. Grid tests and any
+    /// caller that reads the length immediately use this. The screen thread
+    /// uses [`Self::continue_display_row_recount`] one quantum at a time.
+    pub(crate) fn finish_display_row_recount(&mut self) {
+        let mut guard = 0usize;
+        let limit = self.lines_above.len().saturating_add(2);
+        while self.display_row_recount.is_some() {
+            if self.continue_display_row_recount() {
+                break;
+            }
+            guard += 1;
+            if guard > limit {
+                let width = self
+                    .display_row_recount
+                    .as_ref()
+                    .map(|job| job.width)
+                    .unwrap_or(0);
+                self.recount_scrollback_display_rows(width);
+                break;
+            }
+        }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
+        self.resize_and_reflow(new_rows, new_columns, false);
+        self.finish_display_row_recount();
+        self.note_change();
+    }
+    /// Resize one row-quantum of the display-length recount and return.
+    /// The screen thread continues it from deferred pane work.
+    pub(crate) fn resize_keeping_recount_open(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, false);
         self.note_change();
     }
@@ -2896,6 +3376,7 @@ impl Grid {
         // Reflow rewrites stored widths, so a run that was valid at the
         // old width must be checked again.
         self.front_run_validity.clear();
+        self.pending_line_reflow = None;
         self.invalidate_scroll_offset();
         if self.alternate_screen_state.is_some() {
             // in alternate screen we do nothing but log the new size, the program in the terminal
@@ -2941,7 +3422,7 @@ impl Grid {
                     && !self.lines_above.is_empty()
                 {
                     let joined_rows =
-                        get_lines_above_bottom_canonical_row_and_wraps(&mut self.lines_above);
+                        take_lines_above_tail(&mut self.lines_above, SCREEN_ROW_QUANTUM);
                     // These rows leave scrollback for the viewport; debit
                     // them like every other removal path so the cell
                     // budget does not drift upward across reflows.
@@ -3180,7 +3661,12 @@ impl Grid {
         self.kitty_reproject_all_from_anchor();
         self.height = new_rows;
         self.width = new_columns;
-        self.recount_scrollback_display_rows(new_columns);
+        // Publish nothing until the scan has seen every stored row. One
+        // quantum runs here; `change_size` finishes the rest for callers
+        // that read the length before returning, and the screen thread
+        // continues the job on later turns.
+        self.start_display_row_recount(new_columns);
+        let _ = self.continue_display_row_recount();
         self.set_scroll_region_to_viewport_size();
         self.search_results.selections.clear();
         self.search_viewport();
@@ -3652,38 +4138,228 @@ impl Grid {
         }
     }
     pub fn reset_viewport(&mut self) {
+        // One bulk transfer of the rows below the viewport, repeated only
+        // while reflow puts rows back and the pass still moves. There is
+        // no one-line walk. The screen thread does not call this for a
+        // long distance; it uses `advance_to_bottom` with a row quantum.
+        let _ = self.advance_to_bottom(usize::MAX);
+    }
+    /// Move at most `row_budget` rows toward the live bottom, in bulk.
+    /// Returns true when the viewport is at the bottom (or cannot move).
+    pub(crate) fn advance_to_bottom(&mut self, row_budget: usize) -> bool {
         let should_clear_output_buffer = self.is_scrolled;
-        // A few bulk passes cover a reflow that pushes excess rows back.
-        // The one-line loop is only a leftover, not the path for a long scroll.
-        for _ in 0..4 {
-            if !self.is_scrolled {
-                break;
-            }
-            let distance = self.lines_below.len();
+        let mut moved_rows = 0usize;
+        while self.is_scrolled && moved_rows < row_budget {
+            let distance = self.lines_below.len().min(row_budget - moved_rows);
             if distance == 0 {
                 self.is_scrolled = false;
                 break;
             }
-            if self.scroll_down_rows(distance) == 0 {
+            let moved = self.scroll_down_rows(distance);
+            if moved == 0 {
                 break;
             }
+            moved_rows = moved_rows.saturating_add(moved);
         }
-        while self.is_scrolled {
-            if !self.scroll_down_one_line_with_progress().moved {
-                break;
-            }
-        }
-        if should_clear_output_buffer {
+        if should_clear_output_buffer && !self.is_scrolled {
             self.output_buffer.update_all_lines();
         }
+        !self.is_scrolled
+    }
+    /// Move at most `row_budget` rows toward the top. Returns true when
+    /// `lines_above` is empty or a pass moves nothing. A paused scan of a
+    /// long stale line is not the top: the viewport has not moved yet.
+    pub(crate) fn advance_toward_top(&mut self, row_budget: usize) -> bool {
+        if row_budget == 0 {
+            return true;
+        }
+        if self.lines_above.is_empty() && self.pending_line_reflow.is_none() {
+            return true;
+        }
+        let moved = self.scroll_up_rows(row_budget.min(self.lines_above.len().max(1)));
+        self.pending_line_reflow.is_none() && (self.lines_above.is_empty() || moved == 0)
+    }
+    /// Stored rows between the viewport and the live bottom.
+    pub(crate) fn scrolled_row_distance(&self) -> usize {
+        self.lines_below.len()
+    }
+    /// Rows to scroll up to put `anchor` back on screen, once the viewport
+    /// is already at the bottom. `None` while still scrolled.
+    pub(crate) fn rows_to_restore_anchor(&self, anchor: ViewportAnchor) -> Option<usize> {
+        if self.is_scrolled {
+            return None;
+        }
+        let height = self.viewport.len();
+        if height == 0 {
+            return Some(0);
+        }
+        let evicted = self
+            .scrollback_rows_evicted
+            .saturating_sub(anchor.evicted_before) as usize;
+        let start = anchor.rows_before_viewport.saturating_sub(evicted);
+        let total = self.lines_above.len() + height + self.lines_below.len();
+        if start >= total {
+            return Some(0);
+        }
+        let window_end = start.saturating_add(height).min(total);
+        Some(total - window_end)
+    }
+    /// Put the viewport back on `anchor` by at most `row_budget` rows.
+    /// Returns true when the anchor is restored or no further move is possible.
+    pub(crate) fn advance_toward_anchor(
+        &mut self,
+        anchor: ViewportAnchor,
+        row_budget: usize,
+    ) -> bool {
+        if self.is_scrolled && !self.advance_to_bottom(row_budget) {
+            return false;
+        }
+        let height = self.viewport.len();
+        if height == 0 || row_budget == 0 {
+            return true;
+        }
+        let evicted = self
+            .scrollback_rows_evicted
+            .saturating_sub(anchor.evicted_before) as usize;
+        let start = anchor.rows_before_viewport.saturating_sub(evicted);
+        let total = self.lines_above.len() + height + self.lines_below.len();
+        if start >= total {
+            return true;
+        }
+        let window_end = start.saturating_add(height).min(total);
+        let desired_below = total - window_end;
+        if desired_below == 0 {
+            return true;
+        }
+        let moved = self.scroll_up_rows(desired_below.min(row_budget));
+        moved == 0 || self.lines_below.len() >= desired_below || self.lines_above.is_empty()
+    }
+    fn anchor_rows_before(&self, anchor: ViewportAnchor) -> usize {
+        let evicted = self
+            .scrollback_rows_evicted
+            .saturating_sub(anchor.evicted_before) as usize;
+        anchor.rows_before_viewport.saturating_sub(evicted)
+    }
+    /// The viewport starts at the row `anchor` names.
+    pub(crate) fn viewport_is_anchor(&self, anchor: ViewportAnchor) -> bool {
+        self.lines_above.len() == self.anchor_rows_before(anchor)
+    }
+    /// Move at most `row_budget` rows toward `anchor` without walking the
+    /// gap between the viewport and the live bottom. True when the viewport
+    /// is on the anchor, or it cannot move and no line scan is in progress.
+    pub(crate) fn nudge_toward_anchor(
+        &mut self,
+        anchor: ViewportAnchor,
+        row_budget: usize,
+    ) -> bool {
+        let target = self.anchor_rows_before(anchor);
+        let current = self.lines_above.len();
+        if current == target || row_budget == 0 {
+            return true;
+        }
+        let moved = if current < target {
+            self.scroll_down_rows((target - current).min(row_budget))
+        } else {
+            self.scroll_up_rows((current - target).min(row_budget))
+        };
+        let now = self.lines_above.len();
+        let arrived = if current < target {
+            now >= target
+        } else {
+            now <= target
+        };
+        arrived || (moved == 0 && self.pending_line_reflow.is_none())
+    }
+    /// Replace the viewport with the live screen, in O(viewport height).
+    /// The rows between the user's window and that screen stay in `gap`.
+    /// False when the grid has nothing to hold aside, or an image placement
+    /// is using scrollback coordinates that this swap does not update.
+    pub(crate) fn park_at_live_bottom(&mut self) -> bool {
+        if self.live_bottom.is_some() {
+            return true;
+        }
+        if !self.is_scrolled
+            || self.alternate_screen_state.is_some()
+            || self.height == 0
+            || self.viewport.len() != self.height
+            || self.lines_below.is_empty()
+            || self.sixel_grid.has_images()
+            || !self.kitty_grid.placements().is_empty()
+        {
+            return false;
+        }
+        let height = self.viewport.len();
+        let below = self.lines_below.len();
+        let (held, mut live, gap, overlap_skip) = if below >= height {
+            let held = std::mem::take(&mut self.viewport);
+            let live = self.lines_below.split_off(below - height);
+            let gap = std::mem::take(&mut self.lines_below);
+            (held, live, gap, 0)
+        } else {
+            let held = self.viewport.clone();
+            let overlap_skip = height - below;
+            let mut live = self.viewport.split_off(below);
+            live.extend(self.lines_below.drain(..));
+            self.viewport.clear();
+            (held, live, VecDeque::new(), overlap_skip)
+        };
+        self.viewport = live;
+        self.lines_below.clear();
+        self.is_scrolled = false;
+        self.kitty_grid.invalidate_canonical_starts();
+        self.kitty_grid.note_rows_below_the_viewport(None);
+        self.live_bottom = Some(LiveBottomPark {
+            held,
+            gap,
+            overlap_skip,
+        });
+        true
+    }
+    pub(crate) fn is_live_bottom_parked(&self) -> bool {
+        self.live_bottom.is_some()
+    }
+    /// Put the held viewport back. Rows that scrolled off the live screen
+    /// land under it. Work is proportional to the viewport, not to the gap.
+    pub(crate) fn unpark_live_bottom(&mut self) {
+        let Some(mut park) = self.live_bottom.take() else {
+            return;
+        };
+        let skip = park.overlap_skip.min(self.viewport.len());
+        for _ in 0..skip {
+            self.viewport.pop_front();
+        }
+        park.gap.extend(self.viewport.drain(..));
+        self.viewport = park.held;
+        self.lines_below = park.gap;
+        self.is_scrolled = !self.lines_below.is_empty();
+        self.kitty_grid.invalidate_canonical_starts();
+        self.output_buffer.update_all_lines();
     }
     /// Scroll up by `count` rows in one transfer, then fix selection, search,
     /// and kitty once. Falls back to one row at a time when the viewport is
     /// not a full screen (the one-row path's precondition).
-    fn scroll_up_rows(&mut self, count: usize) -> usize {
-        if count == 0 || self.lines_above.is_empty() {
+    pub(crate) fn scroll_up_rows(&mut self, count: usize) -> usize {
+        if count == 0 || (self.lines_above.is_empty() && self.pending_line_reflow.is_none()) {
             return 0;
         }
+        if self.viewport.len() == self.height
+            && (self.pending_line_reflow.is_some() || self.long_stale_tail())
+        {
+            if self.pending_line_reflow.is_none() {
+                self.arm_pending_scroll_up(count);
+            }
+            let added = self.drive_pending_scroll_up();
+            if added > 0 {
+                self.note_rows_scrolled_up(added, true);
+            }
+            return added;
+        }
+        if self.lines_above.is_empty() {
+            return 0;
+        }
+        // Rows leave `lines_above`, so a recount cursor into that deque is
+        // no longer a position in the same buffer.
+        self.restart_display_recount();
         if self.viewport.len() != self.height {
             let mut moved = 0;
             while moved < count {
@@ -3728,7 +4404,7 @@ impl Grid {
         added
     }
     /// Scroll down by `count` rows in one transfer. See `scroll_up_rows`.
-    fn scroll_down_rows(&mut self, count: usize) -> usize {
+    pub(crate) fn scroll_down_rows(&mut self, count: usize) -> usize {
         let count = count.min(self.lines_below.len());
         if count == 0 {
             return 0;
@@ -3793,6 +4469,9 @@ impl Grid {
                 &mut self.scrollback_cells,
             );
             self.scrollback_rows_evicted += evicted_rows.len() as u64;
+            if !evicted_rows.is_empty() {
+                self.restart_display_recount();
+            }
             display_row_delta += evicted_rows_display_row_delta(
                 &mut self.lines_above,
                 evicted_rows,
@@ -3886,7 +4565,9 @@ impl Grid {
             && !self.viewport.is_empty()
         {
             self.transfer_rows_to_lines_above(1);
-            self.selection.move_up(1);
+            if self.live_bottom.is_none() {
+                self.selection.move_up(1);
+            }
             RegionRowsScrolled::IntoScrollback
         } else if at < self.viewport.len() {
             self.viewport.remove(at);
@@ -3971,13 +4652,19 @@ impl Grid {
             self.viewport.push_back(new_row);
             // A row inserted ahead of lines_below shifts every later start.
             // Noting an append is only exact when this row is the new end.
-            if self.lines_below.is_empty() {
-                self.kitty_grid
-                    .note_canonical_row_appended(self.lines_above.len() + self.viewport.len() - 1);
-            } else {
-                self.kitty_grid.invalidate_canonical_starts();
+            // A parked live window keeps those rows in the gap under the
+            // user's viewport, so the canonical index and the selection
+            // stay with the held view.
+            if self.live_bottom.is_none() {
+                if self.lines_below.is_empty() {
+                    self.kitty_grid.note_canonical_row_appended(
+                        self.lines_above.len() + self.viewport.len() - 1,
+                    );
+                } else {
+                    self.kitty_grid.invalidate_canonical_starts();
+                }
+                self.selection.move_up(1);
             }
-            self.selection.move_up(1);
         } else {
             self.scroll_region_content_up(
                 scroll_region_top,
@@ -5652,7 +6339,323 @@ impl Grid {
             self.title = Some(popped_title);
         }
     }
+    fn capture_live_scrolled_rows(&mut self, count: usize) {
+        let count = count.min(self.viewport.len());
+        if count == 0 {
+            return;
+        }
+        let drained: Vec<Row> = self.viewport.drain(..count).collect();
+        let Some(park) = self.live_bottom.as_mut() else {
+            return;
+        };
+        for row in drained {
+            if park.overlap_skip > 0 {
+                park.overlap_skip -= 1;
+            } else {
+                park.gap.push_back(row);
+            }
+        }
+    }
+    /// The tail line is stale at the current width and its canonical row is
+    /// more than one row quantum above the viewport.
+    fn long_stale_tail(&mut self) -> bool {
+        if self.lines_above.is_empty() || self.width == 0 || self.viewport.len() != self.height {
+            return false;
+        }
+        if scrollback_tail_is_wrapped_at(&mut self.lines_above, &self.viewport, self.width) {
+            return false;
+        }
+        let mut seen = 0usize;
+        for (index, row) in self.lines_above.iter().enumerate().rev() {
+            seen += 1;
+            if row.is_canonical {
+                return false;
+            }
+            if seen == SCREEN_ROW_QUANTUM {
+                return index > 0;
+            }
+        }
+        false
+    }
+    fn arm_pending_scroll_up(&mut self, count: usize) {
+        let len = self.lines_above.len();
+        if len <= SCREEN_ROW_QUANTUM {
+            return;
+        }
+        self.pending_line_reflow = Some(PendingLineReflow {
+            phase: LineReflowPhase::FindCanonical,
+            next_index: len - SCREEN_ROW_QUANTUM - 1,
+            canonical: 0,
+            line_end: len,
+            scan_index: 0,
+            expected_len: len,
+            epoch: self.scrollback_epoch,
+            rows_needed: count.max(1),
+            wrap: WrapState::default(),
+            total_display_rows: 0,
+            cut_row: 0,
+            cut_char: 0,
+        });
+    }
+    fn pending_reflow_still_valid(&self) -> bool {
+        match self.pending_line_reflow.as_ref() {
+            Some(job) => {
+                job.epoch == self.scrollback_epoch && job.expected_len == self.lines_above.len()
+            },
+            None => false,
+        }
+    }
+    /// One quantum of the stale-line scan. Returns the number of viewport
+    /// rows revealed when the scan finishes, otherwise 0.
+    fn drive_pending_scroll_up(&mut self) -> usize {
+        if !self.pending_reflow_still_valid() {
+            self.pending_line_reflow = None;
+            return 0;
+        }
+        let width = self.width;
+        if width == 0 {
+            self.pending_line_reflow = None;
+            return 0;
+        }
+        let mut budget = SCREEN_ROW_QUANTUM;
+        loop {
+            let phase = match self.pending_line_reflow.as_ref() {
+                Some(job) => job.phase,
+                None => return 0,
+            };
+            match phase {
+                LineReflowPhase::FindCanonical => {
+                    if budget == 0 {
+                        return 0;
+                    }
+                    let index = match self.pending_line_reflow.as_ref() {
+                        Some(job) => job.next_index,
+                        None => return 0,
+                    };
+                    if index >= self.lines_above.len() {
+                        self.pending_line_reflow = None;
+                        return 0;
+                    }
+                    let found = self.lines_above[index].is_canonical || index == 0;
+                    let Some(job) = self.pending_line_reflow.as_mut() else {
+                        return 0;
+                    };
+                    if found {
+                        job.canonical = index;
+                        job.line_end = job.expected_len;
+                        job.scan_index = index;
+                        job.wrap = WrapState::default();
+                        job.phase = LineReflowPhase::CountDisplay;
+                        continue;
+                    }
+                    job.next_index = index.saturating_sub(1);
+                    budget -= 1;
+                },
+                LineReflowPhase::CountDisplay => {
+                    if budget == 0 {
+                        return 0;
+                    }
+                    let (scan_index, canonical, line_end) = {
+                        let Some(job) = self.pending_line_reflow.as_ref() else {
+                            return 0;
+                        };
+                        (job.scan_index, job.canonical, job.line_end)
+                    };
+                    if scan_index >= line_end || scan_index >= self.lines_above.len() {
+                        let total = self
+                            .pending_line_reflow
+                            .as_ref()
+                            .map(|job| job.wrap.height())
+                            .unwrap_or(1);
+                        let Some(job) = self.pending_line_reflow.as_mut() else {
+                            return 0;
+                        };
+                        job.total_display_rows = total;
+                        job.line_end = scan_index.min(line_end);
+                        job.scan_index = job.canonical;
+                        job.wrap = WrapState::default();
+                        job.phase = LineReflowPhase::LocateCut;
+                        continue;
+                    }
+                    if scan_index > canonical && self.lines_above[scan_index].is_canonical {
+                        let Some(job) = self.pending_line_reflow.as_mut() else {
+                            return 0;
+                        };
+                        job.line_end = scan_index;
+                        job.total_display_rows = job.wrap.height();
+                        job.scan_index = job.canonical;
+                        job.wrap = WrapState::default();
+                        job.phase = LineReflowPhase::LocateCut;
+                        continue;
+                    }
+                    let mut wrap = match self.pending_line_reflow.as_ref() {
+                        Some(job) => job.wrap,
+                        None => return 0,
+                    };
+                    push_row_fitted(&mut wrap, &self.lines_above[scan_index], width);
+                    let Some(job) = self.pending_line_reflow.as_mut() else {
+                        return 0;
+                    };
+                    job.wrap = wrap;
+                    job.scan_index += 1;
+                    budget -= 1;
+                },
+                LineReflowPhase::LocateCut => {
+                    let (target, scan_index, line_end, canonical) = {
+                        let Some(job) = self.pending_line_reflow.as_ref() else {
+                            return 0;
+                        };
+                        (
+                            job.total_display_rows.saturating_sub(job.rows_needed),
+                            job.scan_index,
+                            job.line_end,
+                            job.canonical,
+                        )
+                    };
+                    if target == 0 && scan_index == canonical {
+                        return self.apply_scroll_up_suffix(canonical, 0);
+                    }
+                    if budget == 0 {
+                        return 0;
+                    }
+                    if scan_index >= line_end || scan_index >= self.lines_above.len() {
+                        return self.apply_scroll_up_suffix(canonical, 0);
+                    }
+                    let mut wrap = match self.pending_line_reflow.as_ref() {
+                        Some(job) => job.wrap,
+                        None => return 0,
+                    };
+                    let row_cut =
+                        locate_cut_in_row(&mut wrap, &self.lines_above[scan_index], width, target);
+                    if let Some(job) = self.pending_line_reflow.as_mut() {
+                        job.wrap = wrap;
+                    }
+                    if let Some(cut_char) = row_cut {
+                        return self.apply_scroll_up_suffix(scan_index, cut_char);
+                    }
+                    let Some(job) = self.pending_line_reflow.as_mut() else {
+                        return 0;
+                    };
+                    job.scan_index += 1;
+                    budget -= 1;
+                },
+            }
+        }
+    }
+    fn apply_scroll_up_suffix(&mut self, cut_row: usize, cut_char: usize) -> usize {
+        let Some(job) = self.pending_line_reflow.clone() else {
+            return 0;
+        };
+        self.pending_line_reflow = None;
+        let line_end = job.line_end.min(self.lines_above.len());
+        if job.canonical >= line_end || cut_row >= line_end || self.width == 0 {
+            return 0;
+        }
+        let mut suffix = Vec::new();
+        let drain_from = if cut_char == 0 {
+            cut_row
+        } else if cut_char < self.lines_above[cut_row].columns.len() {
+            let rest = self.lines_above[cut_row].split_off_columns(cut_char);
+            suffix.push(rest);
+            cut_row + 1
+        } else {
+            cut_row + 1
+        };
+        if drain_from < line_end {
+            suffix.extend(self.lines_above.drain(drain_from..line_end));
+        }
+        if suffix.is_empty() {
+            return 0;
+        }
+        if let Some(first) = suffix.first_mut() {
+            first.is_canonical = true;
+        }
+        for row in &mut suffix {
+            row.expand_trailing_blanks();
+        }
+        self.scrollback_cells = self.scrollback_cells.saturating_sub(
+            suffix.iter().map(|row| row.stored_cell_count()).sum::<usize>(),
+        );
+        let mut display_row_delta = -(run_display_height(
+            suffix.iter().flat_map(row_display_widths),
+            self.width,
+        ) as isize);
+        let rows_taken = suffix.len();
+        self.front_run_validity.clear();
+        self.restart_display_recount();
+        let mut top_non_canonical_rows = get_top_non_canonical_rows(&mut self.viewport);
+        let merged = top_non_canonical_rows.len();
+        suffix.append(&mut top_non_canonical_rows);
+        let mut next_lines = Row::rewrap_rows(suffix, self.width);
+        if next_lines.is_empty() {
+            return 0;
+        }
+        let row_count_delta =
+            next_lines.len() as isize - rows_taken as isize - merged as isize;
+        if row_count_delta > 0 {
+            self.kitty_grid
+                .split_line_start_into_rows(self.lines_above.len(), row_count_delta as usize);
+        } else if row_count_delta < 0 {
+            self.kitty_grid
+                .merge_rows_into_line_start(self.lines_above.len(), row_count_delta.unsigned_abs());
+        }
+        let mut lines_added = -(merged as isize);
+        let target = job.rows_needed as isize;
+        while lines_added < target {
+            let Some(row) = next_lines.pop() else {
+                break;
+            };
+            self.viewport.push_front(row);
+            lines_added += 1;
+        }
+        for excess_row in next_lines {
+            let evicted_rows = bounded_push(
+                &mut self.lines_above,
+                &mut self.sixel_grid,
+                &mut self.kitty_grid,
+                excess_row,
+                &mut self.scrollback_cells,
+            );
+            self.scrollback_rows_evicted += evicted_rows.len() as u64;
+            if !evicted_rows.is_empty() {
+                self.restart_display_recount();
+            }
+            display_row_delta += evicted_rows_display_row_delta(
+                &mut self.lines_above,
+                evicted_rows,
+                self.width,
+                &mut self.front_run_validity,
+            );
+            display_row_delta += 1;
+        }
+        self.apply_scrollback_display_row_delta(display_row_delta);
+        let added = lines_added.max(0) as usize;
+        for _ in 0..added {
+            if let Some(row) = self.viewport.pop_back() {
+                self.lines_below.push_front(row);
+            }
+        }
+        added
+    }
+    fn note_rows_scrolled_up(&mut self, added: usize, reflowed: bool) {
+        if added == 0 {
+            return;
+        }
+        self.is_scrolled = true;
+        self.selection.move_down(added);
+        if let Some(command_output_flash) = self.command_output_flash.as_mut() {
+            command_output_flash.move_down(added);
+        }
+        self.search_results
+            .move_down_rows(added, &self.viewport, self.height);
+        self.kitty_refresh_after_scroll_step(reflowed);
+        self.output_buffer.update_all_lines();
+    }
     fn transfer_rows_to_lines_above(&mut self, count: usize) {
+        if self.live_bottom.is_some() {
+            self.capture_live_scrolled_rows(count);
+            return;
+        }
         self.invalidate_scroll_offset();
         self.kitty_settle_placements_below_the_viewport();
         let width = self.width;
@@ -6913,6 +7916,7 @@ impl Handler for Grid {
 
             // Set color index.
             b"4" => {
+                let mut query_indices = Vec::new();
                 for chunk in params[1..].chunks(2) {
                     let index = chunk.get(0).and_then(|index| parse_number(index));
                     let color = chunk.get(1).and_then(|color| xparse_color(color));
@@ -6924,22 +7928,21 @@ impl Handler for Grid {
                         return;
                     } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
                         if let Some(index) = index {
-                            // Forward palette-register queries to the
-                            // host — apps want the actual host palette,
-                            // not Zellij's cached copy. (Zellij's cache
-                            // still auto-refreshes via double-dispatch
-                            // when the host's reply comes back.)
-                            self.pending_forwarded_queries.push(
-                                crate::host_query::HostQuery::PaletteRegister {
-                                    index,
-                                    terminator:
-                                        crate::host_query::OscTerminator::from_bell_terminated(
-                                            bell_terminated,
-                                        ),
-                                },
-                            );
+                            query_indices.push(index);
                         }
                     }
+                }
+                if !query_indices.is_empty() {
+                    // One OSC that names several registers is one query.
+                    // The host answers them in one round trip.
+                    self.pending_forwarded_queries.push(
+                        crate::host_query::HostQuery::PaletteRegister {
+                            indices: query_indices,
+                            terminator: crate::host_query::OscTerminator::from_bell_terminated(
+                                bell_terminated,
+                            ),
+                        },
+                    );
                 }
             },
 
@@ -8309,6 +9312,29 @@ impl Row {
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
         self
+    }
+    /// Keep the first `character_count` columns. The returned row is the
+    /// rest, including this row's trailing blanks, and is not canonical.
+    fn split_off_columns(&mut self, character_count: usize) -> Row {
+        let character_count = character_count.min(self.columns.len());
+        let rest_columns = self.columns.split_off(character_count);
+        self.mark_widths_changed();
+        let consumed_width: usize = self.columns.iter().map(|character| character.width()).sum();
+        let mut rest = Row::from_columns(rest_columns).with_bg_color(self.bg_color);
+        rest.may_have_groups = self.may_have_groups;
+        rest.trailing_blanks = self.trailing_blanks;
+        rest.is_canonical = false;
+        self.trailing_blanks = 0;
+        for marker in self.osc133_markers.take_all() {
+            if marker.column < consumed_width {
+                self.osc133_markers.push(marker);
+            } else {
+                let mut marker = marker;
+                marker.column -= consumed_width;
+                rest.osc133_markers.push(marker);
+            }
+        }
+        rest
     }
     pub(crate) fn invalidate_link_scan(&mut self) {
         self.link_prefix_scanned = 0;

@@ -8,7 +8,7 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
-    screen::{ClosePaneSource, ScreenInstruction, TabOverrideResult},
+    screen::{ScreenInstruction, TabOverrideResult},
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
@@ -1195,9 +1195,51 @@ impl Pty {
         run_generation
     }
     fn record_child_pid(&mut self, terminal_id: u32, child_pid: u32, run_generation: u64) {
-        self.id_to_child_pid.insert(terminal_id, child_pid);
+        self.remember_run(terminal_id, Some(child_pid), run_generation);
+    }
+    fn remember_run(&mut self, terminal_id: u32, child_pid: Option<u32>, run_generation: u64) {
         self.child_run_generations
             .insert(terminal_id, run_generation);
+        if let Some(child_pid) = child_pid {
+            self.id_to_child_pid.insert(terminal_id, child_pid);
+        }
+    }
+    fn announce_terminal_run(&self, terminal_id: u32, run_generation: u64) {
+        let _ = self.bus.senders.send_to_screen(ScreenInstruction::TerminalRunStarted(
+            terminal_id,
+            run_generation,
+        ));
+    }
+    fn spawn_terminal_reader(
+        &mut self,
+        terminal_id: u32,
+        reader: Box<dyn AsyncReader>,
+        run_generation: u64,
+        context: String,
+    ) {
+        self.announce_terminal_run(terminal_id, run_generation);
+        let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let activity_flag_for_task = activity_flag.clone();
+        let senders = self.bus.senders.clone();
+        let debug_to_file = self.debug_to_file;
+        let session_id = self.session_id.clone();
+        let terminal_bytes = async_runtime().spawn(async move {
+            TerminalBytes::new(
+                terminal_id,
+                run_generation,
+                session_id,
+                reader,
+                senders,
+                debug_to_file,
+                activity_flag_for_task,
+            )
+            .listen()
+            .await
+            .context(context)
+            .fatal();
+        });
+        self.task_handles.insert(terminal_id, terminal_bytes);
+        self.pane_activity_flags.insert(terminal_id, activity_flag);
     }
     fn forget_child_pid(&mut self, terminal_id: u32) -> Option<u32> {
         self.child_run_generations.remove(&terminal_id);
@@ -1312,21 +1354,13 @@ impl Pty {
                     }
                 }
 
-                if hold_on_close {
-                    let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
-                        pane_id,
-                        exit_status,
-                        command,
-                    ));
-                } else {
-                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
-                        pane_id,
-                        None,
-                        None,
-                        exit_status,
-                        ClosePaneSource::ChildExit,
-                    ));
-                }
+                send_child_run_exited(
+                    &senders,
+                    pane_id,
+                    exit_status,
+                    run_generation,
+                    if hold_on_close { Some(command) } else { None },
+                );
             }
         });
         let pane_env = pane_env_with_origin(&self.pane_env, origin_pane_id);
@@ -1358,36 +1392,16 @@ impl Pty {
         }
         let (terminal_id, reader, child_pid): (u32, Box<dyn AsyncReader>, Option<u32>) =
             spawn_result.with_context(err_context)?;
-        let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let terminal_bytes = async_runtime().spawn({
-            let err_context =
-                |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
-            let senders = self.bus.senders.clone();
-            let debug_to_file = self.debug_to_file;
-            let activity_flag = activity_flag.clone();
-            let session_id = self.session_id.clone();
-            async move {
-                TerminalBytes::new(
-                    terminal_id,
-                    session_id,
-                    reader,
-                    senders,
-                    debug_to_file,
-                    activity_flag,
-                )
-                .listen()
-                .await
-                .with_context(|| err_context(terminal_id))
-                .fatal();
-            }
-        });
-
-        self.task_handles.insert(terminal_id, terminal_bytes);
-        self.pane_activity_flags.insert(terminal_id, activity_flag);
+        self.remember_run(terminal_id, child_pid, run_generation);
         if let Some(child_pid) = child_pid {
-            self.record_child_pid(terminal_id, child_pid, run_generation);
             self.capture_initial_cwd(terminal_id, child_pid);
         }
+        self.spawn_terminal_reader(
+            terminal_id,
+            reader,
+            run_generation,
+            format!("failed to run async task for terminal {terminal_id}"),
+        );
 
         let starts_held = false;
         Ok((terminal_id, starts_held))
@@ -1569,30 +1583,20 @@ impl Pty {
             }
             match reader_result {
                 Ok(reader) => {
-                    let activity_flag =
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                    let terminal_bytes = async_runtime().spawn({
-                        let senders = self.bus.senders.clone();
-                        let debug_to_file = self.debug_to_file;
-                        let activity_flag = activity_flag.clone();
-                        let session_id = self.session_id.clone();
-                        async move {
-                            TerminalBytes::new(
-                                terminal_id,
-                                session_id,
-                                reader,
-                                senders,
-                                debug_to_file,
-                                activity_flag,
-                            )
-                            .listen()
-                            .await
-                            .context("failed to spawn terminals for layout")
-                            .fatal();
-                        }
-                    });
-                    self.task_handles.insert(terminal_id, terminal_bytes);
-                    self.pane_activity_flags.insert(terminal_id, activity_flag);
+                    let Some(run_generation) =
+                        self.child_run_generations.get(&terminal_id).copied()
+                    else {
+                        log::error!(
+                            "not reading terminal {terminal_id}: its run generation was not recorded"
+                        );
+                        continue;
+                    };
+                    self.spawn_terminal_reader(
+                        terminal_id,
+                        reader,
+                        run_generation,
+                        "failed to spawn terminals for layout".to_string(),
+                    );
                 },
                 _ => match run_command {
                     Some(run_command) => {
@@ -1749,30 +1753,20 @@ impl Pty {
             }
             match reader_result {
                 Ok(reader) => {
-                    let activity_flag =
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                    let terminal_bytes = async_runtime().spawn({
-                        let senders = self.bus.senders.clone();
-                        let debug_to_file = self.debug_to_file;
-                        let activity_flag = activity_flag.clone();
-                        let session_id = self.session_id.clone();
-                        async move {
-                            TerminalBytes::new(
-                                terminal_id,
-                                session_id,
-                                reader,
-                                senders,
-                                debug_to_file,
-                                activity_flag,
-                            )
-                            .listen()
-                            .await
-                            .context("failed to spawn terminals for layout")
-                            .fatal();
-                        }
-                    });
-                    self.task_handles.insert(terminal_id, terminal_bytes);
-                    self.pane_activity_flags.insert(terminal_id, activity_flag);
+                    let Some(run_generation) =
+                        self.child_run_generations.get(&terminal_id).copied()
+                    else {
+                        log::error!(
+                            "not reading terminal {terminal_id}: its run generation was not recorded"
+                        );
+                        continue;
+                    };
+                    self.spawn_terminal_reader(
+                        terminal_id,
+                        reader,
+                        run_generation,
+                        "failed to spawn terminals for layout".to_string(),
+                    );
                 },
                 _ => match run_command {
                     Some(run_command) => {
@@ -1838,13 +1832,13 @@ impl Pty {
                     pane_id,
                     run_generation,
                 ));
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
+                send_child_run_exited(
+                    &senders,
                     pane_id,
-                    None,
-                    None,
                     exit_status,
-                    ClosePaneSource::ChildExit,
-                ));
+                    run_generation,
+                    None,
+                );
             }
         });
 
@@ -1884,21 +1878,13 @@ impl Pty {
                             }
                         }
 
-                        if hold_on_close {
-                            let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
-                                pane_id,
-                                exit_status,
-                                command,
-                            ));
-                        } else {
-                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
-                                pane_id,
-                                None,
-                                None,
-                                exit_status,
-                                ClosePaneSource::ChildExit,
-                            ));
-                        }
+                        send_child_run_exited(
+                            &senders,
+                            pane_id,
+                            exit_status,
+                            run_generation,
+                            if hold_on_close { Some(command) } else { None },
+                        );
                     }
                 });
                 if command.cwd.is_none() {
@@ -1943,8 +1929,8 @@ impl Pty {
                         .with_context(err_context)
                     {
                         Ok((terminal_id, reader, child_pid)) => {
+                            self.remember_run(terminal_id, child_pid, run_generation);
                             if let Some(child_pid) = child_pid {
-                                self.record_child_pid(terminal_id, child_pid, run_generation);
                                 self.capture_initial_cwd(terminal_id, child_pid);
                             }
                             Ok(Some((
@@ -1983,8 +1969,8 @@ impl Pty {
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
+                        self.remember_run(terminal_id, child_pid, run_generation);
                         if let Some(child_pid) = child_pid {
-                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -2018,8 +2004,8 @@ impl Pty {
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
+                        self.remember_run(terminal_id, child_pid, run_generation);
                         if let Some(child_pid) = child_pid {
-                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -2049,8 +2035,8 @@ impl Pty {
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
+                        self.remember_run(terminal_id, child_pid, run_generation);
                         if let Some(child_pid) = child_pid {
-                            self.record_child_pid(terminal_id, child_pid, run_generation);
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
                         Ok(Some((terminal_id, starts_held, None, Ok(reader))))
@@ -2167,14 +2153,15 @@ impl Pty {
                 if let Some(originating_plugins) = self.originating_plugins.get(&id) {
                     run_command.originating_plugin = Some(originating_plugins.clone());
                 }
-                // The old reader task must be stopped, not just detached:
-                // a detached task keeps streaming the previous run's
-                // PtyBytes into the rerun pane under the same terminal id.
+                // Tell the screen which run is current before the old reader
+                // is stopped, so bytes it still delivers are dropped, and
+                // before the new reader is spawned.
+                let run_generation = self.mint_run_generation();
+                self.announce_terminal_run(id, run_generation);
                 if let Some(task) = self.task_handles.remove(&id) {
                     task.abort();
                 }
                 let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
-                let run_generation = self.mint_run_generation();
 
                 let hold_on_close = run_command.hold_on_close;
                 let command_text = run_command.to_string();
@@ -2202,21 +2189,13 @@ impl Pty {
                                 )]));
                             }
                         }
-                        if hold_on_close {
-                            let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
-                                pane_id,
-                                exit_status,
-                                command,
-                            ));
-                        } else {
-                            let _ = senders.send_to_screen(ScreenInstruction::ClosePane(
-                                pane_id,
-                                None,
-                                None,
-                                exit_status,
-                                ClosePaneSource::ChildExit,
-                            ));
-                        }
+                        send_child_run_exited(
+                            &senders,
+                            pane_id,
+                            exit_status,
+                            run_generation,
+                            if hold_on_close { Some(command) } else { None },
+                        );
                     }
                 });
                 let pane_env =
@@ -2230,36 +2209,16 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb, &pane_env)
                     })
                     .with_context(err_context)?;
-                let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                let terminal_bytes = async_runtime().spawn({
-                    let err_context =
-                        |pane_id| format!("failed to run async task for pane {pane_id:?}");
-                    let senders = self.bus.senders.clone();
-                    let debug_to_file = self.debug_to_file;
-                    let activity_flag = activity_flag.clone();
-                    let session_id = self.session_id.clone();
-                    async move {
-                        TerminalBytes::new(
-                            id,
-                            session_id,
-                            reader,
-                            senders,
-                            debug_to_file,
-                            activity_flag,
-                        )
-                        .listen()
-                        .await
-                        .with_context(|| err_context(pane_id))
-                        .fatal();
-                    }
-                });
-
-                self.task_handles.insert(id, terminal_bytes);
-                self.pane_activity_flags.insert(id, activity_flag);
+                self.remember_run(id, child_pid, run_generation);
                 if let Some(child_pid) = child_pid {
-                    self.record_child_pid(id, child_pid, run_generation);
                     self.capture_initial_cwd(id, child_pid);
                 }
+                self.spawn_terminal_reader(
+                    id,
+                    reader,
+                    run_generation,
+                    format!("failed to run async task for pane {pane_id:?}"),
+                );
                 let _ = self.bus.senders.send_to_screen(
                     ScreenInstruction::AttentionCommandPaneStarted(
                         PaneId::Terminal(id),
@@ -2766,6 +2725,21 @@ impl Drop for Pty {
                 .fatal();
         }
     }
+}
+
+fn send_child_run_exited(
+    senders: &ThreadSenders,
+    pane_id: PaneId,
+    exit_status: Option<i32>,
+    run_generation: u64,
+    hold_command: Option<RunCommand>,
+) {
+    let _ = senders.send_to_screen(ScreenInstruction::ChildRunExited {
+        pane_id,
+        exit_status,
+        run_generation,
+        hold_command,
+    });
 }
 
 fn send_command_not_found_to_screen(

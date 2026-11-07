@@ -377,6 +377,24 @@ pub enum ClosePaneSource {
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
+    /// PTY output that belongs to one run of the pane's process.
+    /// Bytes whose generation is not the pane's current run are dropped.
+    PtyRunBytes(u32, u64, VteBytes),
+    /// The pty thread is about to read a new process for this terminal.
+    /// Output and a deferred exit from the previous run no longer apply.
+    TerminalRunStarted(u32, u64),
+    /// The reader for this run has delivered every byte it will deliver.
+    /// A deferred child exit for the same generation may now close or hold.
+    PtyRunDrained(u32, u64),
+    /// The child exited. Applied only after `PtyRunDrained` for the same
+    /// generation, so the last bytes are parsed before the pane closes.
+    /// `hold_command` selects hold instead of close.
+    ChildRunExited {
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_generation: u64,
+        hold_command: Option<RunCommand>,
+    },
     /// Parse one quantum of scrolled PTY backlog for each pane that has one,
     /// then return so other panes' instructions can run. Re-queued while any
     /// backlog remains.
@@ -1271,10 +1289,113 @@ pub enum ScreenInstruction {
     SetAttentionConfig(zellij_utils::input::attention::AttentionConfig),
 }
 
+/// One process invocation of a terminal pane.
+struct TerminalRun {
+    generation: u64,
+    /// The reader has sent `PtyRunDrained` for this generation.
+    drained: bool,
+    /// Child exit waiting until the reader drains, so the last bytes are
+    /// parsed before the pane closes or holds.
+    deferred_exit: Option<ScreenInstruction>,
+}
+
+/// Record `generation` as the terminal's current run when nothing is recorded.
+/// Returns false when a different run is current: the caller drops the bytes.
+fn run_generation_accepts(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32, generation: u64) -> bool {
+    match runs.get(&terminal_id) {
+        Some(run) if run.generation != generation => false,
+        Some(_) => true,
+        None => {
+            runs.insert(
+                terminal_id,
+                TerminalRun {
+                    generation,
+                    drained: false,
+                    deferred_exit: None,
+                },
+            );
+            true
+        },
+    }
+}
+
+/// Hold a child exit until its run has drained. Returns the instruction when
+/// it should be applied now.
+fn stage_child_exit(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+    instruction: ScreenInstruction,
+) -> Option<ScreenInstruction> {
+    match runs.get_mut(&terminal_id) {
+        Some(run) if run.generation != generation => None,
+        Some(run) if run.drained => Some(instruction),
+        Some(run) => {
+            run.deferred_exit = Some(instruction);
+            None
+        },
+        None => {
+            runs.insert(
+                terminal_id,
+                TerminalRun {
+                    generation,
+                    drained: false,
+                    deferred_exit: Some(instruction),
+                },
+            );
+            None
+        },
+    }
+}
+
+/// Mark the run drained and take a deferred exit, if this generation is current.
+fn stage_run_drained(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> Option<ScreenInstruction> {
+    let run = runs.get_mut(&terminal_id)?;
+    if run.generation != generation {
+        return None;
+    }
+    run.drained = true;
+    run.deferred_exit.take()
+}
+
+/// A new process replaces the previous run. A deferred exit of the previous
+/// run is dropped: it must not close the process that just started.
+fn stage_run_started(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32, generation: u64) {
+    if let Some(run) = runs.get(&terminal_id) {
+        if run.generation == generation {
+            return;
+        }
+    }
+    runs.insert(
+        terminal_id,
+        TerminalRun {
+            generation,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+}
+
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
-            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::PtyBytes(..)
+            | ScreenInstruction::PtyRunBytes(..)
+            | ScreenInstruction::TerminalRunStarted(..)
+            | ScreenInstruction::PtyRunDrained(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::ChildRunExited {
+                ref hold_command, ..
+            } => {
+                if hold_command.is_some() {
+                    ScreenContext::HoldPane
+                } else {
+                    ScreenContext::ClosePane
+                }
+            },
             ScreenInstruction::ApplyScrolledPtyQuantum => ScreenContext::ApplyScrolledPtyQuantum,
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
@@ -2096,6 +2217,10 @@ pub(crate) struct Screen {
     render_waits_for_ack: bool,
     /// `ApplyScrolledPtyQuantum` is already sitting on the screen channel.
     scrolled_pty_continuation_queued: bool,
+    /// The process run each terminal is reading. Output and a child exit from
+    /// any other generation are dropped. The exit is held until that run's
+    /// reader reports it has delivered every byte.
+    terminal_runs: HashMap<u32, TerminalRun>,
     clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -2428,6 +2553,65 @@ mod typed_input_tests {
     }
 }
 
+#[cfg(test)]
+mod run_fence_tests {
+    use super::*;
+
+    fn child_close(terminal_id: u32) -> ScreenInstruction {
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(terminal_id),
+            None,
+            None,
+            Some(0),
+            ClosePaneSource::ChildExit,
+        )
+    }
+
+    #[test]
+    fn a_child_exit_waits_for_the_reader_to_drain() {
+        let mut runs = HashMap::new();
+        let held = stage_child_exit(&mut runs, 4, 1, child_close(4));
+        assert!(held.is_none());
+        assert!(stage_run_drained(&mut runs, 4, 1).is_some());
+    }
+
+    #[test]
+    fn an_exit_after_drain_is_applied_immediately() {
+        let mut runs = HashMap::new();
+        assert!(stage_run_drained(&mut runs, 4, 1).is_none());
+        // Drain of an unknown run does not invent one. The exit records it
+        // and, because nothing is drained yet, waits.
+        runs.insert(
+            4,
+            TerminalRun {
+                generation: 1,
+                drained: true,
+                deferred_exit: None,
+            },
+        );
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_some());
+    }
+
+    #[test]
+    fn a_new_run_drops_the_previous_runs_exit_and_bytes() {
+        let mut runs = HashMap::new();
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_none());
+        stage_run_started(&mut runs, 4, 2);
+        assert!(stage_run_drained(&mut runs, 4, 1).is_none());
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_none());
+        assert!(!run_generation_accepts(&mut runs, 4, 1));
+        assert!(run_generation_accepts(&mut runs, 4, 2));
+    }
+
+    #[test]
+    fn announcing_the_same_run_again_keeps_a_waiting_exit() {
+        let mut runs = HashMap::new();
+        assert!(stage_child_exit(&mut runs, 4, 2, child_close(4)).is_none());
+        stage_run_started(&mut runs, 4, 2);
+        assert!(stage_run_drained(&mut runs, 4, 2).is_some());
+    }
+}
+
 impl Screen {
     /// Creates and returns a new [`Screen`].
     pub fn new(
@@ -2496,6 +2680,7 @@ impl Screen {
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
             render_waits_for_ack: false,
             scrolled_pty_continuation_queued: false,
+            terminal_runs: HashMap::new(),
             clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
@@ -3990,6 +4175,13 @@ impl Screen {
             }
             return self.enqueue_clipboard_forward(pane_id, query);
         }
+        if self.merge_queued_palette_query(pane_id, &query) {
+            return self
+                .forward_queue
+                .back()
+                .map(|pending| pending.token)
+                .unwrap_or(STARTUP_SENTINEL_TOKEN);
+        }
         let token = self.next_forward_token;
         // Skip over the reserved sentinel (0) on wrap; allocate a fresh
         // u32 for every forward.
@@ -4007,6 +4199,44 @@ impl Screen {
             self.dispatch_forward(token, pane_id, query);
         }
         token
+    }
+
+    /// Fold a palette query into the tail of `forward_queue` when that tail
+    /// is already a palette query for the same pane and terminator.
+    ///
+    /// An in-flight query is left alone: its bytes are already on the wire.
+    /// A burst that arrives as separate instructions therefore becomes one
+    /// queued dispatch after the in-flight one, not one round trip per register.
+    fn merge_queued_palette_query(
+        &mut self,
+        pane_id: PaneId,
+        query: &crate::host_query::HostQuery,
+    ) -> bool {
+        use crate::host_query::HostQuery;
+        let HostQuery::PaletteRegister { indices, terminator } = query else {
+            return false;
+        };
+        if indices.is_empty() {
+            return false;
+        }
+        let indices = indices.clone();
+        let terminator = *terminator;
+        let Some(back) = self.forward_queue.back_mut() else {
+            return false;
+        };
+        if back.pane_id != pane_id {
+            return false;
+        }
+        match &mut back.query {
+            HostQuery::PaletteRegister {
+                indices: existing,
+                terminator: queued_terminator,
+            } if *queued_terminator == terminator => {
+                existing.extend(indices);
+                true
+            },
+            _ => false,
+        }
     }
 
     /// Register a query the pane has just been paused on. Output may have
@@ -5932,15 +6162,23 @@ impl Screen {
                     Vec::new()
                 }
             },
-            HostQuery::PaletteRegister { index, terminator } => {
+            HostQuery::PaletteRegister { indices, terminator } => {
                 let codes = self.terminal_emulator_color_codes.borrow();
-                if let Some(color) = codes.get(&(*index as usize)) {
-                    let mut out = format!("\x1b]4;{};{}", index, color).into_bytes();
-                    out.extend_from_slice(terminator.as_bytes());
-                    out
-                } else {
-                    Vec::new()
+                let mut parts = Vec::new();
+                for index in indices {
+                    if let Some(color) = codes.get(&(*index as usize)) {
+                        parts.push(format!("{index};{color}"));
+                    }
                 }
+                // A partial answer would not match the registers the app
+                // asked for. Missing any cached color falls through to an
+                // empty reply, the same as a single missing register did.
+                if parts.len() != indices.len() || parts.is_empty() {
+                    return Vec::new();
+                }
+                let mut out = format!("\x1b]4;{}", parts.join(";")).into_bytes();
+                out.extend_from_slice(terminator.as_bytes());
+                out
             },
             HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
             // Should not reach here: ColorPaletteMode short-circuits in
@@ -9473,6 +9711,59 @@ impl Screen {
         }
         stopped.map(|_| ()).non_fatal();
     }
+    fn accept_run_bytes(
+        &mut self,
+        terminal_id: u32,
+        generation: u64,
+        bytes: VteBytes,
+    ) -> Result<Option<VteBytes>> {
+        if !run_generation_accepts(&mut self.terminal_runs, terminal_id, generation) {
+            return Ok(None);
+        }
+        self.apply_pty_bytes(terminal_id, bytes)
+    }
+    fn note_terminal_run_started(&mut self, terminal_id: u32, generation: u64) {
+        stage_run_started(&mut self.terminal_runs, terminal_id, generation);
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::AdoptRun(terminal_id, generation));
+    }
+    fn note_pty_run_drained(&mut self, terminal_id: u32, generation: u64) {
+        if let Some(exit) = stage_run_drained(&mut self.terminal_runs, terminal_id, generation) {
+            let _ = self.bus.senders.send_to_screen(exit);
+        }
+    }
+    fn note_child_run_exited(
+        &mut self,
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_generation: u64,
+        hold_command: Option<RunCommand>,
+    ) {
+        let instruction = match hold_command {
+            Some(command) => ScreenInstruction::HoldPane(pane_id, exit_status, command),
+            None => ScreenInstruction::ClosePane(
+                pane_id,
+                None,
+                None,
+                exit_status,
+                ClosePaneSource::ChildExit,
+            ),
+        };
+        let PaneId::Terminal(terminal_id) = pane_id else {
+            let _ = self.bus.senders.send_to_screen(instruction);
+            return;
+        };
+        if let Some(instruction) = stage_child_exit(
+            &mut self.terminal_runs,
+            terminal_id,
+            run_generation,
+            instruction,
+        ) {
+            let _ = self.bus.senders.send_to_screen(instruction);
+        }
+    }
     fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
         self.pane_output_activity
             .insert(PaneId::Terminal(pid), Instant::now());
@@ -9521,7 +9812,11 @@ impl Screen {
         if self.scrolled_pty_continuation_queued {
             return;
         }
-        if !self.tabs.values().any(|tab| tab.has_pending_vte_bytes()) {
+        if !self
+            .tabs
+            .values()
+            .any(|tab| tab.has_deferred_screen_work())
+        {
             return;
         }
         match self
@@ -9591,6 +9886,10 @@ impl Screen {
             match event {
                 ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
                     self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
+                },
+                ScreenInstruction::PtyRunBytes(terminal_id, generation, vte_bytes) => {
+                    self.accept_run_bytes(terminal_id, generation, vte_bytes)
+                        .non_fatal();
                 },
                 event => {
                     self.bus.senders.send_to_screen(event).non_fatal();
@@ -11341,6 +11640,31 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
+            ScreenInstruction::PtyRunBytes(pid, generation, vte_bytes) => {
+                if let Some(vte_bytes) = screen.accept_run_bytes(pid, generation, vte_bytes)? {
+                    if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
+                        pending_events_waiting_for_pane.push_run_output(
+                            PaneId::Terminal(pid),
+                            generation,
+                            vte_bytes,
+                        );
+                    }
+                }
+            },
+            ScreenInstruction::TerminalRunStarted(terminal_id, generation) => {
+                screen.note_terminal_run_started(terminal_id, generation);
+            },
+            ScreenInstruction::PtyRunDrained(terminal_id, generation) => {
+                screen.note_pty_run_drained(terminal_id, generation);
+            },
+            ScreenInstruction::ChildRunExited {
+                pane_id,
+                exit_status,
+                run_generation,
+                hold_command,
+            } => {
+                screen.note_child_run_exited(pane_id, exit_status, run_generation, hold_command);
+            },
             ScreenInstruction::ApplyScrolledPtyQuantum => {
                 screen.scrolled_pty_continuation_queued = false;
                 for tab in screen.get_tabs_mut().values_mut() {
@@ -11348,6 +11672,7 @@ pub(crate) fn screen_thread_main(
                         tab.apply_pending_vte_quanta()
                             .context("failed to apply scrolled pty quanta")?;
                     }
+                    tab.advance_deferred_pane_work();
                 }
                 screen.schedule_scrolled_pty_continuation();
                 let _ = screen
@@ -12962,6 +13287,9 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::TerminalClosed(terminal_id) => {
+                // An aborted reader never drains. Dropping the run releases a
+                // deferred exit so it cannot pin the pane closed forever.
+                screen.terminal_runs.remove(&terminal_id);
                 let pid = PaneId::Terminal(terminal_id);
                 if !screen.has_pane_with_pid(&pid) {
                     screen.remember_terminal_closed(terminal_id);
@@ -16926,6 +17254,7 @@ pub(crate) fn screen_thread_main(
             },
         }
         screen.process_attention();
+        screen.schedule_scrolled_pty_continuation();
     }
     Ok(())
 }

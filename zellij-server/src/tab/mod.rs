@@ -173,6 +173,34 @@ pub(crate) const SCROLLED_PTY_QUANTUM_BYTES: usize = 64 * 1024;
 /// growing without a bound.
 pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 
+/// Consecutive palette-register queries with the same terminator become
+/// one query. Separate OSCs that are not adjacent, and queries of any
+/// other kind, keep their own replies.
+fn coalesce_palette_queries(
+    queries: Vec<crate::host_query::HostQuery>,
+) -> Vec<crate::host_query::HostQuery> {
+    use crate::host_query::HostQuery;
+    let mut coalesced = Vec::with_capacity(queries.len());
+    for query in queries {
+        match (coalesced.last_mut(), query) {
+            (
+                Some(HostQuery::PaletteRegister {
+                    indices,
+                    terminator,
+                }),
+                HostQuery::PaletteRegister {
+                    indices: more,
+                    terminator: next_terminator,
+                },
+            ) if *terminator == next_terminator => {
+                indices.extend(more);
+            },
+            (_, query) => coalesced.push(query),
+        }
+    }
+    coalesced
+}
+
 /// Unparsed PTY bytes for one scrolled pane, in arrival order. `head` is the
 /// consumed prefix of the first chunk so a quantum can split a chunk without
 /// copying the rest of the backlog.
@@ -632,6 +660,13 @@ pub(crate) struct Tab {
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
+/// Where a viewport shift should finish. Applied one row quantum per turn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewportGoal {
+    Bottom,
+    Top,
+}
+
 pub trait Pane {
     fn x(&self) -> usize;
     fn y(&self) -> usize;
@@ -740,6 +775,38 @@ pub trait Pane {
     fn clear_command_output_flash(&mut self) {}
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
+    /// Start moving this pane's viewport toward `goal`, one row quantum
+    /// per `advance_viewport_goal` call.
+    fn begin_viewport_goal(&mut self, _goal: ViewportGoal) {}
+    /// Move one quantum toward the viewport goal. Returns true when the
+    /// goal is still unfinished.
+    fn advance_viewport_goal(&mut self) -> bool {
+        false
+    }
+    fn viewport_goal_pending(&self) -> bool {
+        false
+    }
+    /// True when this pane still has a viewport shift, a search scan, or
+    /// a scrollback recount that must run on a later screen turn.
+    fn has_deferred_pane_work(&self) -> bool {
+        false
+    }
+    /// Perform one quantum of deferred pane work that is not PTY bytes.
+    fn advance_deferred_pane_work(&mut self) {}
+    /// `true` when queued PTY bytes may be parsed now. `false` means the
+    /// viewport is still moving toward the live bottom and the bytes must
+    /// stay queued.
+    fn prepare_scrolled_output(&mut self, _has_queued_bytes: bool) -> bool {
+        true
+    }
+    /// The scrolled backlog for this pane is empty. Restore the user's
+    /// viewport one quantum at a time.
+    fn scrolled_backlog_idle(&mut self) {}
+    /// Put a short scrolled view back after one parsed quantum. A distance
+    /// longer than one row quantum stays parked at the bottom with renders
+    /// locked until the backlog is idle, so the trip does not reverse
+    /// direction every turn.
+    fn restore_short_output_catchup(&mut self) {}
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
@@ -2874,6 +2941,39 @@ impl Tab {
             self.relayout_tiled_panes(search_backwards)?;
         }
         Ok(())
+    }
+    /// Keep the earliest output that arrived before the layout existed.
+    /// Bytes past [`MAX_PENDING_VTE_BYTES`] for one pane are dropped, so a
+    /// program that floods a tab that is still loading cannot grow this
+    /// vector without a limit.
+    fn buffer_pending_pty_bytes(&mut self, pid: u32, mut bytes: VteBytes) {
+        if bytes.is_empty() {
+            return;
+        }
+        let used = self
+            .pending_instructions
+            .iter()
+            .map(|instruction| match instruction {
+                BufferedTabInstruction::HandlePtyBytes(id, buffered) if *id == pid => {
+                    buffered.len()
+                },
+                _ => 0,
+            })
+            .sum::<usize>();
+        let room = MAX_PENDING_VTE_BYTES.saturating_sub(used);
+        if bytes.len() > room {
+            log::warn!(
+                "pane {pid} dropped {} bytes of output buffered before its tab was applied \
+                 to stay within {MAX_PENDING_VTE_BYTES} bytes",
+                bytes.len() - room
+            );
+            if room == 0 {
+                return;
+            }
+            bytes.truncate(room);
+        }
+        self.pending_instructions
+            .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
@@ -5253,8 +5353,7 @@ impl Tab {
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
-            self.pending_instructions
-                .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
+            self.buffer_pending_pty_bytes(pid, bytes);
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
@@ -5349,11 +5448,51 @@ impl Tab {
             self.pending_vte.remove(&pid);
             return Ok(());
         }
-        let bytes = self.take_pending_vte_quantum(pid);
-        if bytes.is_empty() {
+        let has_bytes = self.pending_vte_len(pid) > 0;
+        let parse_now = self
+            .get_pane_with_id_mut(PaneId::Terminal(pid))
+            .map(|pane| pane.prepare_scrolled_output(has_bytes))
+            .unwrap_or(true);
+        if !parse_now || !has_bytes {
             return Ok(());
         }
-        self.process_pty_bytes(pid, bytes)
+        let bytes = self.take_pending_vte_quantum(pid);
+        if bytes.is_empty() {
+            if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+                pane.scrolled_backlog_idle();
+            }
+            return Ok(());
+        }
+        self.process_pty_bytes(pid, bytes)?;
+        if self.pending_vte_len(pid) == 0 {
+            if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+                pane.scrolled_backlog_idle();
+            }
+        } else if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+            pane.restore_short_output_catchup();
+        }
+        Ok(())
+    }
+    pub(crate) fn has_deferred_screen_work(&self) -> bool {
+        self.has_pending_vte_bytes() || self.panes_have_deferred_work()
+    }
+    fn panes_have_deferred_work(&self) -> bool {
+        self.get_all_pane_ids()
+            .into_iter()
+            .any(|pane_id| {
+                self.get_pane_with_id(pane_id)
+                    .is_some_and(|pane| pane.has_deferred_pane_work())
+            })
+    }
+    pub(crate) fn advance_deferred_pane_work(&mut self) {
+        let pane_ids = self.get_all_pane_ids();
+        for pane_id in pane_ids {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                if pane.has_deferred_pane_work() {
+                    pane.advance_deferred_pane_work();
+                }
+            }
+        }
     }
     pub fn handle_plugin_bytes(
         &mut self,
@@ -5521,7 +5660,7 @@ impl Tab {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
             }
-            for query in forwarded_queries {
+            for query in coalesce_palette_queries(forwarded_queries) {
                 let _ = self
                     .senders
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
@@ -7994,42 +8133,33 @@ impl Tab {
 
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
+            active_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
 
     pub fn scroll_terminal_to_bottom(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            terminal_pane.clear_scroll();
+            terminal_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
     }
 
     pub fn scroll_active_terminal_to_top(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
-            if let Some(size) = active_pane.get_line_number() {
-                active_pane.scroll_up(size, client_id);
-            }
+            active_pane.begin_viewport_goal(ViewportGoal::Top);
         }
         Ok(())
     }
 
     pub fn scroll_terminal_to_top(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            terminal_pane.clear_scroll();
-            if let Some(size) = terminal_pane.get_line_number() {
-                let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                              // don't have an actual client id here
-                                              // TODO: traits were a mistake
-                terminal_pane.scroll_up(size, fictitious_client_id);
-            }
+            terminal_pane.begin_viewport_goal(ViewportGoal::Top);
         }
     }
 
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
+            active_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
@@ -9926,18 +10056,14 @@ impl Tab {
         Ok(())
     }
     pub fn scroll_to_top_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.clear_scroll();
-            if let Some(size) = pane.get_line_number() {
-                pane.scroll_up(size, fictitious_client_id);
-            }
+            pane.begin_viewport_goal(ViewportGoal::Top);
         }
         Ok(())
     }
     pub fn scroll_to_bottom_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.clear_scroll();
+            pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
