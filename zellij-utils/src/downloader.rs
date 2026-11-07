@@ -3,9 +3,9 @@ use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, AsyncBody, HttpClient, Request, Response};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use thiserror::Error;
 use tokio::{io::AsyncWriteExt as _, sync::Mutex};
 use tokio_stream::StreamExt as _;
@@ -139,88 +139,59 @@ impl Downloader {
             log::debug!("File already exists: {:?}", file_path);
             return Ok(());
         }
-        let file_part_path = self.location.join(format!("{}.part", file_name));
-        // Creating the file is not cancellable: it completes before the
-        // deadline starts, so it can never land after the lock is released.
-        let (mut target, file_part_size) = open_part_file(&file_part_path)?;
-        let fetched = tokio::time::timeout(
-            self.deadline,
-            Self::fetch_to_part_file(client, url, &mut target, file_part_size, self.deadline),
-        )
-        .await;
-        // A write or truncation the deadline cut short may still be running
-        // on the blocking pool after its future was dropped. Wait for it, so
-        // the partial file is complete before the lock is released and a
-        // later attempt reads its size as the resume offset.
-        let _ = target.flush().await;
+        // A fresh temp per attempt. Never reopen `{name}.part`: a saved
+        // prefix and a later suffix are not the same object, and that path
+        // is shared across processes. Creating the file is not cancellable:
+        // it completes before the deadline starts, so it can never land
+        // after the lock is released.
+        let temp_path = unique_temp_path(&self.location, &file_name);
+        let fetched = {
+            let mut target = create_new_download_file(&temp_path)?;
+            let fetched = tokio::time::timeout(
+                self.deadline,
+                Self::fetch_to_file(client, url, &mut target, self.deadline),
+            )
+            .await;
+            // A write the deadline cut short may still be running on the
+            // blocking pool after its future was dropped. Wait for it before
+            // deleting the temp or releasing the lock.
+            let _ = target.flush().await;
+            fetched
+        };
         match fetched {
             Ok(Ok(())) => {},
             Ok(Err(error)) => {
-                if matches!(error, DownloaderError::TooLarge) {
-                    let _ = tokio::fs::remove_file(&file_part_path).await;
-                }
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(error);
             },
-            // A timed-out partial file is kept so that a later attempt can
-            // resume it; its prefix is validated against Content-Range then.
-            Err(_) => return Err(DownloaderError::TimedOut),
+            Err(_) => {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return Err(DownloaderError::TimedOut);
+            },
         }
 
-        log::debug!("Download complete: {:?}", file_part_path);
-
-        tokio::fs::rename(file_part_path, file_path)
-            .await
-            .map_err(|e| DownloaderError::Io(e))?;
+        log::debug!("Download complete: {:?}", temp_path);
+        if let Err(error) = tokio::fs::rename(&temp_path, &file_path).await {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(DownloaderError::Io(error));
+        }
 
         Ok(())
     }
 
-    async fn fetch_to_part_file(
+    async fn fetch_to_file(
         client: &HttpClient,
         url: Url,
         target: &mut tokio::fs::File,
-        mut file_part_size: u64,
         deadline: Duration,
     ) -> Result<(), DownloaderError> {
         let started = Instant::now();
-        let mut res = send_following_redirects(
-            client,
-            &url,
-            (file_part_size > 0).then_some(file_part_size),
-            curl_budget(started, deadline)?,
-        )
-        .await?;
-        if file_part_size > 0 && res.status() == StatusCode::RANGE_NOT_SATISFIABLE {
-            // The partial file may be complete, stale or longer than the
-            // current artifact. None of that can be verified, so restart
-            // from an empty file rather than failing every later attempt.
-            log::debug!("Resume range not satisfiable; restarting download");
-            truncate_part_file(target).await?;
-            file_part_size = 0;
-            res = send_following_redirects(client, &url, None, curl_budget(started, deadline)?)
-                .await?;
-        } else if file_part_size > 0
-            && res.status() == StatusCode::PARTIAL_CONTENT
-            && content_range_start(&res) != Some(file_part_size)
-        {
-            // The server answered with a different range than requested, so
-            // its bytes do not continue the partial file.
-            truncate_part_file(target).await?;
-            file_part_size = 0;
-            res = send_following_redirects(client, &url, None, curl_budget(started, deadline)?)
-                .await?;
-        }
-        ensure_artifact_status(res.status(), file_part_size > 0)?;
-        if file_part_size > 0 && res.status() != StatusCode::PARTIAL_CONTENT {
-            // The server ignored the range and is sending the whole artifact:
-            // appending it to the partial file would cache a corrupt plugin.
-            truncate_part_file(target).await?;
-            file_part_size = 0;
-        }
+        let mut res =
+            send_following_redirects(client, &url, curl_budget(started, deadline)?).await?;
+        ensure_artifact_status(res.status())?;
         let body = res.body_mut();
         let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
-        let mut downloaded_bytes =
-            usize::try_from(file_part_size).map_err(|_| DownloaderError::TooLarge)?;
+        let mut downloaded_bytes = 0usize;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(DownloaderError::Io)?;
             downloaded_bytes = checked_download_total(downloaded_bytes, chunk.len())?;
@@ -250,9 +221,8 @@ impl Downloader {
         let downloaded_bytes = tokio::time::timeout(deadline, async {
             let started = Instant::now();
             let mut res =
-                send_following_redirects(client, &url, None, curl_budget(started, deadline)?)
-                    .await?;
-            ensure_artifact_status(res.status(), false)?;
+                send_following_redirects(client, &url, curl_budget(started, deadline)?).await?;
+            ensure_artifact_status(res.status())?;
             let mut downloaded_bytes: Vec<u8> = vec![];
             let body = res.body_mut();
             let mut stream = ReaderStream::with_capacity(body.compat(), STREAM_BUFFER_SIZE_BYTES);
@@ -353,18 +323,14 @@ impl Downloader {
 async fn send_following_redirects(
     client: &HttpClient,
     url: &Url,
-    range_start: Option<u64>,
     budget: Duration,
 ) -> Result<Response<AsyncBody>, DownloaderError> {
     let started = Instant::now();
     let mut current = url.clone();
     for _ in 0..=MAX_REDIRECTS {
-        let mut request = Request::get(current.as_str())
+        let request = Request::get(current.as_str())
             .timeout(remaining_budget(started, budget)?)
             .header("Content-Type", "application/octet-stream");
-        if let Some(start) = range_start {
-            request = request.header("Range", format!("bytes={}-", start));
-        }
         let res = client.send_async(request.body(())?).await?;
         if !res.status().is_redirection() {
             return Ok(res);
@@ -392,26 +358,30 @@ fn curl_budget(started: Instant, deadline: Duration) -> Result<Duration, Downloa
     Ok(remaining_budget(started, deadline)? + CURL_TIMEOUT_GRACE)
 }
 
-/// Open (or create) the partial file synchronously, returning it with its
-/// current size. The file is in append mode so that truncating it with
-/// `set_len(0)` later restarts the download without leaving a hole.
-fn open_part_file(path: &PathBuf) -> Result<(tokio::fs::File, u64), DownloaderError> {
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(DownloaderError::Io)?;
-    let size = file.metadata().map_err(DownloaderError::Io)?.len();
-    if size > 0 {
-        log::debug!("Resuming download from {} bytes", size);
-    }
-    Ok((tokio::fs::File::from_std(file), size))
+/// `{file_name}.{pid}.{nanos}.part` in the cache directory. Unique per
+/// attempt so a failed download is never a resume prefix for the next one.
+fn unique_temp_path(directory: &Path, file_name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+    directory.join(format!(
+        "{}.{}.{}.part",
+        file_name,
+        std::process::id(),
+        nanos
+    ))
 }
 
-/// Empty the partial file in place. If the deadline cancels this, the
-/// pending operation is still awaited by the `flush` in `download`.
-async fn truncate_part_file(target: &mut tokio::fs::File) -> Result<(), DownloaderError> {
-    target.set_len(0).await.map_err(DownloaderError::Io)
+/// Exclusive create. `create_new` does not append, and it does not open a
+/// pre-existing `{name}.part` left by an older version.
+fn create_new_download_file(path: &Path) -> Result<tokio::fs::File, DownloaderError> {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(DownloaderError::Io)?;
+    Ok(tokio::fs::File::from_std(file))
 }
 
 fn redirect_target(current: &Url, location: Option<&str>) -> Result<Url, DownloaderError> {
@@ -422,21 +392,11 @@ fn redirect_target(current: &Url, location: Option<&str>) -> Result<Url, Downloa
     ensure_allowed_download_url(next.as_str())
 }
 
-/// The first byte offset of a `Content-Range: bytes START-END/TOTAL` header.
-fn content_range_start<T>(res: &isahc::Response<T>) -> Option<u64> {
-    let value = res.headers().get("content-range")?.to_str().ok()?;
-    let range = value.trim().strip_prefix("bytes ")?;
-    let (start, _) = range.split_once('-')?;
-    start.trim().parse().ok()
-}
-
-/// Only a 200, or a 206 answering a resumed request, carries the artifact.
-/// Other 2xx statuses (204 No Content, 205, an unrequested 206, ...) would
-/// otherwise be cached as an empty or partial plugin.
-fn ensure_artifact_status(status: StatusCode, resuming: bool) -> Result<(), DownloaderError> {
+/// Only a 200 carries the artifact. Other statuses (204 No Content, 206
+/// Partial Content, 416, ...) must not be published as a plugin.
+fn ensure_artifact_status(status: StatusCode) -> Result<(), DownloaderError> {
     match status {
         StatusCode::OK => Ok(()),
-        StatusCode::PARTIAL_CONTENT if resuming => Ok(()),
         _ => Err(DownloaderError::UnexpectedStatus(status.as_u16())),
     }
 }
@@ -503,24 +463,26 @@ mod tests {
 
     #[test]
     fn artifact_statuses_are_accepted() {
-        assert!(ensure_artifact_status(StatusCode::OK, false).is_ok());
-        assert!(ensure_artifact_status(StatusCode::OK, true).is_ok());
-        assert!(ensure_artifact_status(StatusCode::PARTIAL_CONTENT, true).is_ok());
+        assert!(ensure_artifact_status(StatusCode::OK).is_ok());
     }
 
     #[test]
     fn non_success_statuses_are_rejected() {
         assert!(matches!(
-            ensure_artifact_status(StatusCode::NOT_FOUND, false),
+            ensure_artifact_status(StatusCode::NOT_FOUND),
             Err(DownloaderError::UnexpectedStatus(404))
         ));
         assert!(matches!(
-            ensure_artifact_status(StatusCode::NO_CONTENT, true),
+            ensure_artifact_status(StatusCode::NO_CONTENT),
             Err(DownloaderError::UnexpectedStatus(204))
         ));
         assert!(matches!(
-            ensure_artifact_status(StatusCode::PARTIAL_CONTENT, false),
+            ensure_artifact_status(StatusCode::PARTIAL_CONTENT),
             Err(DownloaderError::UnexpectedStatus(206))
+        ));
+        assert!(matches!(
+            ensure_artifact_status(StatusCode::RANGE_NOT_SATISFIABLE),
+            Err(DownloaderError::UnexpectedStatus(416))
         ));
     }
 
@@ -540,6 +502,7 @@ mod tests {
             result
         );
         assert!(!location.path().join("plugin.wasm").exists());
+        assert!(part_file_names(location.path()).is_empty());
     }
 
     #[test]
@@ -708,27 +671,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_redirected_resume_keeps_its_range() {
-        let (base, seen) = scripted_server(|head| {
-            let ranged = head.to_ascii_lowercase().contains("\r\nrange: bytes=4-");
-            if head.starts_with("GET /final ") && ranged {
-                Some(
-                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 4-7/8\r\n\
-                     Content-Length: 4\r\nConnection: close\r\n\r\nEBIN"
-                        .to_owned(),
-                )
-            } else if head.starts_with("GET /plugin.wasm ") {
-                Some(redirect_response("/final"))
-            } else {
-                Some("HTTP/1.1 500 X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned())
-            }
-        })
-        .await;
-        assert_eq!(download_over_partial(&base, b"WHOL").await, b"WHOLEBIN");
-        assert_eq!(seen.lock().unwrap().len(), 2);
-    }
-
-    #[tokio::test]
     async fn redirect_chains_are_bounded() {
         let (base, seen) = scripted_server(|_| Some(redirect_response("/again"))).await;
         let result = Downloader::download_without_cache(&format!("{}/start", base)).await;
@@ -771,6 +713,7 @@ mod tests {
             result
         );
         assert!(!location.path().join("plugin.wasm").exists());
+        assert!(part_file_names(location.path()).is_empty());
     }
 
     /// A raw listener that accepts connections and then says nothing.
@@ -816,7 +759,7 @@ mod tests {
         let client = build_client_with_low_speed_timeout(Duration::from_secs(1)).unwrap();
         let url = Url::parse(&format!("{}/plugin.wasm", base)).unwrap();
         let started = Instant::now();
-        let result = send_following_redirects(&client, &url, None, Duration::from_secs(600)).await;
+        let result = send_following_redirects(&client, &url, Duration::from_secs(600)).await;
         assert!(
             matches!(result, Err(DownloaderError::Request(_))),
             "unexpected result: {:?}",
@@ -831,8 +774,7 @@ mod tests {
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/plugin.wasm", base)).unwrap();
         let started = Instant::now();
-        let result =
-            send_following_redirects(&client, &url, None, Duration::from_millis(300)).await;
+        let result = send_following_redirects(&client, &url, Duration::from_millis(300)).await;
         match result {
             Err(DownloaderError::Request(error)) => {
                 assert_eq!(error.kind(), isahc::error::ErrorKind::Timeout)
@@ -842,145 +784,112 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(10));
     }
 
+    fn part_file_names(dir: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .expect("read download dir")
+            .map(|entry| {
+                entry
+                    .expect("dir entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.ends_with(".part"))
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn assert_no_range_header(head: &str) {
+        assert!(
+            !head.to_ascii_lowercase().contains("\r\nrange:"),
+            "request must not include a Range header: {}",
+            head
+        );
+    }
+
     #[tokio::test]
-    async fn the_partial_file_exists_and_is_intact_once_a_timed_out_download_returns() {
+    async fn a_download_does_not_send_range_or_mix_in_a_seeded_part_file() {
+        let (base, seen) = scripted_server(|_| Some(ok_response("CCCCDDDD"))).await;
+        let location = tempdir().expect("Failed to create temp directory");
+        let seeded = location.path().join("plugin.wasm.part");
+        std::fs::write(&seeded, b"AAAA").unwrap();
+        Downloader::new(location.path().to_path_buf())
+            .download(&format!("{}/plugin.wasm", base), Some("plugin.wasm"))
+            .await
+            .expect("download");
+        let heads = seen.lock().unwrap();
+        assert_eq!(heads.len(), 1);
+        assert_no_range_header(&heads[0]);
+        drop(heads);
+        assert_eq!(
+            std::fs::read(location.path().join("plugin.wasm")).unwrap(),
+            b"CCCCDDDD"
+        );
+        assert_eq!(std::fs::read(&seeded).unwrap(), b"AAAA");
+        assert_eq!(
+            part_file_names(location.path()),
+            vec!["plugin.wasm.part".to_owned()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_download_leaves_no_new_part_file() {
         let (base, _seen) = scripted_server(|_| None).await;
         for deadline in [Duration::ZERO, Duration::from_millis(200)] {
-            // fresh: the part file was created before the deadline started
             let location = tempdir().expect("Failed to create temp directory");
+            let seeded = location.path().join("plugin.wasm.part");
+            std::fs::write(&seeded, b"AAAA").unwrap();
             let downloader = Downloader {
                 client: build_client(),
                 location: location.path().to_path_buf(),
                 download_locks: Default::default(),
                 deadline,
             };
-            let url = format!("{}/plugin.wasm", base);
-            let result = downloader.download(&url, Some("plugin.wasm")).await;
-            assert!(matches!(result, Err(DownloaderError::TimedOut)));
-            let part = location.path().join("plugin.wasm.part");
+            let result = downloader
+                .download(&format!("{}/plugin.wasm", base), Some("plugin.wasm"))
+                .await;
             assert!(
-                part.exists(),
-                "part file must exist as soon as download returns"
+                matches!(result, Err(DownloaderError::TimedOut)),
+                "unexpected result: {:?}",
+                result
             );
-
-            // resume: the prefix survives a timed out attempt untouched
-            std::fs::write(&part, b"WHOL").unwrap();
-            let result = downloader.download(&url, Some("plugin.wasm")).await;
-            assert!(matches!(result, Err(DownloaderError::TimedOut)));
-            assert_eq!(std::fs::read(&part).unwrap(), b"WHOL");
+            assert!(!location.path().join("plugin.wasm").exists());
+            assert_eq!(std::fs::read(&seeded).unwrap(), b"AAAA");
+            assert_eq!(
+                part_file_names(location.path()),
+                vec!["plugin.wasm.part".to_owned()]
+            );
         }
     }
 
     #[tokio::test]
-    async fn a_timed_out_restart_leaves_a_complete_truncation_behind() {
-        // The server rejects the range (forcing a restart truncation) and
-        // then stalls. The truncation must be complete when download()
-        // returns, not still pending on the blocking pool.
-        let (base, _seen) = scripted_server(|head| {
-            if head.to_ascii_lowercase().contains("\r\nrange:") {
-                Some(
-                    "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\n\
-                     Connection: close\r\n\r\n"
-                        .to_owned(),
-                )
-            } else {
-                None
-            }
-        })
-        .await;
+    async fn two_sequential_attempts_publish_a_complete_body_without_concatenating() {
+        let (base, seen) = scripted_server(|_| Some(ok_response("CCCCDDDD"))).await;
         let location = tempdir().expect("Failed to create temp directory");
-        let part = location.path().join("plugin.wasm.part");
-        std::fs::write(&part, b"stale-prefix").unwrap();
-        let downloader = Downloader {
-            client: build_client(),
-            location: location.path().to_path_buf(),
-            download_locks: Default::default(),
-            deadline: Duration::from_millis(500),
-        };
-        let result = downloader
-            .download(&format!("{}/plugin.wasm", base), Some("plugin.wasm"))
-            .await;
-        assert!(matches!(result, Err(DownloaderError::TimedOut)));
-        assert_eq!(std::fs::read(&part).unwrap(), b"");
-    }
-
-    #[tokio::test]
-    async fn an_unsatisfiable_resume_restarts_from_an_empty_file() {
-        let (base, seen) = scripted_server(|head| {
-            if head.to_ascii_lowercase().contains("\r\nrange:") {
-                Some(
-                    "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */5\r\n\
-                     Content-Length: 0\r\nConnection: close\r\n\r\n"
-                        .to_owned(),
-                )
-            } else {
-                Some(ok_response("fresh"))
-            }
-        })
-        .await;
-        let location = tempdir().expect("Failed to create temp directory");
-        std::fs::write(
-            location.path().join("plugin.wasm.part"),
-            b"stale-and-too-long",
-        )
-        .expect("seed partial file");
         let downloader = Downloader::new(location.path().to_path_buf());
+        let url = format!("{}/plugin.wasm", base);
+        let published = location.path().join("plugin.wasm");
         downloader
-            .download(&format!("{}/plugin.wasm", base), Some("plugin.wasm"))
+            .download(&url, Some("plugin.wasm"))
             .await
-            .expect("restarted download");
-        assert_eq!(
-            std::fs::read(location.path().join("plugin.wasm")).unwrap(),
-            b"fresh"
-        );
-        assert!(!location.path().join("plugin.wasm.part").exists());
-        assert_eq!(seen.lock().unwrap().len(), 2);
-    }
-
-    /// Serve the same canned response to every request carrying a Range
-    /// header, and another to every request without one.
-    async fn ranged_server(with_range: &'static str, without_range: &'static str) -> String {
-        scripted_server(move |head| {
-            let ranged = head.to_ascii_lowercase().contains("\r\nrange:");
-            Some(if ranged { with_range } else { without_range }.to_owned())
-        })
-        .await
-        .0
-    }
-
-    async fn download_over_partial(base: &str, partial: &[u8]) -> Vec<u8> {
-        let location = tempdir().expect("Failed to create temp directory");
-        std::fs::write(location.path().join("plugin.wasm.part"), partial).unwrap();
-        Downloader::new(location.path().to_path_buf())
-            .download(&format!("{}/plugin.wasm", base), Some("plugin.wasm"))
+            .expect("first");
+        assert_eq!(std::fs::read(&published).unwrap(), b"CCCCDDDD");
+        // Drop the cache file so the second attempt transfers again instead
+        // of returning on the existence check.
+        std::fs::remove_file(&published).unwrap();
+        downloader
+            .download(&url, Some("plugin.wasm"))
             .await
-            .expect("download");
-        assert!(!location.path().join("plugin.wasm.part").exists());
-        std::fs::read(location.path().join("plugin.wasm")).unwrap()
-    }
-
-    #[tokio::test]
-    async fn a_resume_the_server_ignores_restarts_instead_of_appending() {
-        let full = "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nWHOLEBIN";
-        let base = ranged_server(full, full).await;
-        assert_eq!(download_over_partial(&base, b"WHOL").await, b"WHOLEBIN");
-    }
-
-    #[tokio::test]
-    async fn a_honoured_resume_appends_to_the_partial_file() {
-        let partial = "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 4-7/8\r\n\
-                       Content-Length: 4\r\nConnection: close\r\n\r\nEBIN";
-        let base = ranged_server(partial, "HTTP/1.1 500 X\r\nContent-Length: 0\r\n\r\n").await;
-        assert_eq!(download_over_partial(&base, b"WHOL").await, b"WHOLEBIN");
-    }
-
-    #[tokio::test]
-    async fn a_resume_answered_with_another_range_restarts() {
-        let wrong_range = "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-7/8\r\n\
-                           Content-Length: 8\r\nConnection: close\r\n\r\nWHOLEBIN";
-        let full = "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nWHOLEBIN";
-        let base = ranged_server(wrong_range, full).await;
-        assert_eq!(download_over_partial(&base, b"WHOL").await, b"WHOLEBIN");
+            .expect("second");
+        assert_eq!(std::fs::read(&published).unwrap(), b"CCCCDDDD");
+        let heads = seen.lock().unwrap();
+        assert_eq!(heads.len(), 2);
+        for head in heads.iter() {
+            assert_no_range_header(head);
+        }
+        drop(heads);
+        assert!(part_file_names(location.path()).is_empty());
     }
 
     #[ignore]
