@@ -15,9 +15,11 @@ use crate::screen::ScreenInstruction;
 use crate::ui::loading_indication::LoadingIndication;
 use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 use prost::Message;
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use wasmi::Engine;
 use zellij_utils::data::KeybindsVec;
 use zellij_utils::data::{
@@ -122,12 +124,53 @@ fn set_call_context(
 /// its executor thread forever. Engines without fuel metering (test
 /// fixtures) ignore the refuel.
 ///
-/// TODO(plugin-hardening): fuel only meters guest instructions. WASI `poll_oneoff` is capped
-/// separately (see `add_wasi_to_linker`), but other synchronous host functions that can block
-/// for long (reads from slow or special files, for example) still hold the executor thread and
-/// the execution lock without consuming fuel. Bounding them needs a deadline checked by those
-/// host functions, or running guest calls under a watchdog that can abandon the executor.
+/// TODO(plugin-hardening): fuel only meters guest instructions. WASI `poll_oneoff` now uses
+/// the callback host deadline below and does not rewrite guest clocks. Other blocking host
+/// calls still should consult that same deadline later; until they do, a slow read can hold
+/// the executor thread and the execution lock past the budget.
 pub const PLUGIN_CALLBACK_FUEL_BUDGET: u64 = 1_000_000_000;
+
+/// One wall-clock budget for blocking host calls inside a single plugin callback.
+/// Not a per-wait allowance: every host call in the callback shares this deadline.
+pub(crate) const PLUGIN_CALLBACK_HOST_BUDGET: Duration = Duration::from_millis(100);
+
+thread_local! {
+    static CALLBACK_HOST_DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// Start a fresh callback host budget. The deadline is now plus
+/// `PLUGIN_CALLBACK_HOST_BUDGET`.
+pub(crate) fn begin_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| {
+        slot.set(Some(Instant::now() + PLUGIN_CALLBACK_HOST_BUDGET));
+    });
+}
+
+/// Arm the budget if this thread does not already have one.
+/// `poll_oneoff` calls this so a callback that never refueled still shares a
+/// single deadline across repeated waits. An armed deadline is left alone.
+pub(crate) fn ensure_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| {
+        if slot.get().is_none() {
+            slot.set(Some(Instant::now() + PLUGIN_CALLBACK_HOST_BUDGET));
+        }
+    });
+}
+
+/// Time left until the callback host deadline, saturating at zero.
+/// If no deadline is armed, returns the full budget and does not arm one.
+/// An armed callback does not get a fresh budget on each call.
+pub(crate) fn callback_host_budget_remaining() -> Duration {
+    CALLBACK_HOST_DEADLINE.with(|slot| match slot.get() {
+        Some(deadline) => deadline.saturating_duration_since(Instant::now()),
+        None => PLUGIN_CALLBACK_HOST_BUDGET,
+    })
+}
+
+#[cfg(test)]
+fn clear_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| slot.set(None));
+}
 
 /// Whether a callback failed because it ran out of its fuel budget, as opposed to an ordinary
 /// failure. Contexts around the trap do not hide it.
@@ -142,6 +185,7 @@ pub fn is_out_of_fuel(error: &anyhow::Error) -> bool {
 
 pub fn refuel_for_callback<T>(store: &mut wasmi::Store<T>) {
     let _ = store.set_fuel(PLUGIN_CALLBACK_FUEL_BUDGET);
+    begin_callback_host_budget();
 }
 
 /// Instantiate a plugin module with a fresh callback budget. A new store
@@ -1065,5 +1109,40 @@ mod fuel_tests {
             store.get_fuel().unwrap(),
             super::PLUGIN_CALLBACK_FUEL_BUDGET
         );
+    }
+
+    #[test]
+    fn one_callback_shares_a_single_host_deadline() {
+        super::clear_callback_host_budget();
+        assert_eq!(
+            super::callback_host_budget_remaining(),
+            super::PLUGIN_CALLBACK_HOST_BUDGET,
+            "an unarmed thread reports the full budget"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(
+            super::callback_host_budget_remaining(),
+            super::PLUGIN_CALLBACK_HOST_BUDGET,
+            "reading the budget must not arm a deadline"
+        );
+
+        super::ensure_callback_host_budget();
+        let first = super::callback_host_budget_remaining();
+        assert!(first <= super::PLUGIN_CALLBACK_HOST_BUDGET);
+        assert!(first > std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        super::ensure_callback_host_budget();
+        let second = super::callback_host_budget_remaining();
+        assert!(
+            second < first,
+            "a later call in the same callback must keep the same deadline, not a fresh 100ms"
+        );
+
+        let engine = wasmi::Engine::default();
+        let mut store = Store::new(&engine, ());
+        refuel_for_callback(&mut store);
+        let refreshed = super::callback_host_budget_remaining();
+        assert!(refreshed > second);
+        assert!(refreshed <= super::PLUGIN_CALLBACK_HOST_BUDGET);
     }
 }

@@ -13,6 +13,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use wasmi::{Engine, Instance, Linker, Module, Store, StoreLimits};
 use wasmi_wasi::sync::WasiCtxBuilder;
@@ -653,62 +654,162 @@ impl PluginLoader {
     }
 }
 
-/// The longest a guest can make a WASI clock wait last. Fuel only meters guest instructions, and
-/// wasi-common implements `poll_oneoff` (what `sleep` uses) by blocking the calling thread, so
-/// an uncapped timeout would hold the plugin's executor thread and execution lock for as long
-/// as the guest asks without consuming any fuel.
-const MAX_GUEST_CLOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(100);
+/// WASI preview1 `errno::intr`. A clock event means the clock reached the guest's
+/// timestamp, so a long timer must not return success early. `poll_oneoff` returns
+/// this instead of blocking past the callback host budget, and does not write events.
+const WASI_ERRNO_INTR: i32 = 27;
 
+// preview1 `subscription` is 48 bytes: userdata u64, tag at byte 8, then the
+// clock payload (id u32 at 16, timeout u64 at 24, flags u16 at 40). Flag bit 0
+// is an absolute deadline. Clock id 0 is realtime, 1 is monotonic.
 const WASI_SUBSCRIPTION_SIZE: usize = 48;
 const WASI_SUBSCRIPTION_TAG_OFFSET: usize = 8;
 const WASI_EVENTTYPE_CLOCK: u8 = 0;
+const WASI_CLOCK_ID_OFFSET: usize = 16;
+const WASI_CLOCKID_REALTIME: u32 = 0;
+const WASI_CLOCKID_MONOTONIC: u32 = 1;
 const WASI_CLOCK_TIMEOUT_OFFSET: usize = 24;
 const WASI_CLOCK_FLAGS_OFFSET: usize = 40;
 const WASI_SUBCLOCKFLAGS_ABSTIME: u16 = 1;
 
-/// Shorten every clock subscription in a `poll_oneoff` request to `MAX_GUEST_CLOCK_WAIT`. A wait
-/// on an absolute deadline becomes a relative one, as the deadline cannot be compared with the
-/// clock here. The guest sees its wait end early, like any spurious wakeup.
-fn cap_poll_oneoff_clock_waits(memory: &mut [u8], subscriptions_ptr: u32, count: u32) {
-    let max_wait = MAX_GUEST_CLOCK_WAIT.as_nanos() as u64;
-    for index in 0..count as usize {
-        let Some(start) =
-            (subscriptions_ptr as usize).checked_add(index.saturating_mul(WASI_SUBSCRIPTION_SIZE))
-        else {
-            return;
-        };
-        let Some(subscription) = start
-            .checked_add(WASI_SUBSCRIPTION_SIZE)
-            .and_then(|end| memory.get_mut(start..end))
-        else {
-            return; // out of bounds: the real implementation reports the error
-        };
+/// Whether the real `poll_oneoff` may run. Guest subscription bytes are never written.
+#[derive(Debug, PartialEq, Eq)]
+enum PollOneoffDecision {
+    /// Call the real poll. `max_block` is how long it can block the host.
+    /// `None` means the real call reports an error or returns without blocking
+    /// (non-positive count, or a subscription range that is not in memory).
+    Run { max_block: Option<Duration> },
+    /// Return `EINTR` without calling poll and without writing events.
+    Interrupt,
+}
+
+enum GuestPollBound {
+    /// The real implementation owns this request and does not block on it.
+    Delegate,
+    /// Finite upper bound, including zero when a clock is already due.
+    Bounded(Duration),
+    /// No finite clock caps the wait (fd-only, or a clock whose time is unavailable).
+    Unbounded,
+}
+
+fn le_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
+}
+
+fn le_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+}
+
+fn le_u64(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+}
+
+/// How long one clock subscription can block. `None` means the current time is
+/// unavailable, so this subscription does not give a finite bound.
+fn clock_subscription_wait(
+    subscription: &[u8],
+    mut clock_now_nanos: impl FnMut(u32) -> Option<u64>,
+) -> Option<Duration> {
+    let timeout = le_u64(subscription, WASI_CLOCK_TIMEOUT_OFFSET);
+    let flags = le_u16(subscription, WASI_CLOCK_FLAGS_OFFSET);
+    if flags & WASI_SUBCLOCKFLAGS_ABSTIME == 0 {
+        return Some(Duration::from_nanos(timeout));
+    }
+    let now = clock_now_nanos(le_u32(subscription, WASI_CLOCK_ID_OFFSET))?;
+    Some(Duration::from_nanos(timeout.saturating_sub(now)))
+}
+
+/// Upper bound on how long the real poll can block. Does not write `memory`.
+fn guest_poll_bound(
+    memory: &[u8],
+    subscriptions_ptr: u32,
+    count: i32,
+    mut clock_now_nanos: impl FnMut(u32) -> Option<u64>,
+) -> GuestPollBound {
+    if count <= 0 {
+        return GuestPollBound::Delegate;
+    }
+    let count = count as usize;
+    let Some(region_len) = count.checked_mul(WASI_SUBSCRIPTION_SIZE) else {
+        return GuestPollBound::Delegate;
+    };
+    let start = subscriptions_ptr as usize;
+    let Some(end) = start.checked_add(region_len) else {
+        return GuestPollBound::Delegate;
+    };
+    if end > memory.len() {
+        return GuestPollBound::Delegate;
+    }
+
+    // The soonest finite clock caps the poll, including when fds are mixed in.
+    // A clock with no readable time does not cap anything; if it is the only
+    // bound, the wait is unbounded and must not run.
+    let mut soonest: Option<Duration> = None;
+    for subscription in memory[start..end].chunks_exact(WASI_SUBSCRIPTION_SIZE) {
         if subscription[WASI_SUBSCRIPTION_TAG_OFFSET] != WASI_EVENTTYPE_CLOCK {
             continue;
         }
-        let mut timeout_bytes = [0u8; 8];
-        timeout_bytes.copy_from_slice(
-            &subscription[WASI_CLOCK_TIMEOUT_OFFSET..WASI_CLOCK_TIMEOUT_OFFSET + 8],
-        );
-        let mut timeout = u64::from_le_bytes(timeout_bytes);
-        let mut flags_bytes = [0u8; 2];
-        flags_bytes
-            .copy_from_slice(&subscription[WASI_CLOCK_FLAGS_OFFSET..WASI_CLOCK_FLAGS_OFFSET + 2]);
-        let mut flags = u16::from_le_bytes(flags_bytes);
-        if flags & WASI_SUBCLOCKFLAGS_ABSTIME != 0 {
-            flags &= !WASI_SUBCLOCKFLAGS_ABSTIME;
-            timeout = max_wait;
-        } else {
-            timeout = timeout.min(max_wait);
-        }
-        subscription[WASI_CLOCK_TIMEOUT_OFFSET..WASI_CLOCK_TIMEOUT_OFFSET + 8]
-            .copy_from_slice(&timeout.to_le_bytes());
-        subscription[WASI_CLOCK_FLAGS_OFFSET..WASI_CLOCK_FLAGS_OFFSET + 2]
-            .copy_from_slice(&flags.to_le_bytes());
+        let Some(wait) = clock_subscription_wait(subscription, &mut clock_now_nanos) else {
+            continue;
+        };
+        soonest = Some(match soonest {
+            Some(previous) => previous.min(wait),
+            None => wait,
+        });
+    }
+    match soonest {
+        Some(wait) => GuestPollBound::Bounded(wait),
+        None => GuestPollBound::Unbounded,
     }
 }
 
-/// Add the WASI functions to the linker, with `poll_oneoff` limited by `MAX_GUEST_CLOCK_WAIT`.
+/// Read-only admission for one `poll_oneoff`. `remaining` is the callback host
+/// budget still left. A zero wait is admitted even when that budget is spent,
+/// because an expired deadline does not block. Each admitted bounded wait
+/// consumes its duration from the one callback budget when the real poll blocks.
+fn poll_oneoff_decision(
+    memory: &[u8],
+    subscriptions_ptr: u32,
+    count: i32,
+    remaining: Duration,
+    clock_now_nanos: impl FnMut(u32) -> Option<u64>,
+) -> PollOneoffDecision {
+    match guest_poll_bound(memory, subscriptions_ptr, count, clock_now_nanos) {
+        GuestPollBound::Delegate => PollOneoffDecision::Run { max_block: None },
+        GuestPollBound::Bounded(max_block) if max_block <= remaining => PollOneoffDecision::Run {
+            max_block: Some(max_block),
+        },
+        GuestPollBound::Bounded(_) | GuestPollBound::Unbounded => PollOneoffDecision::Interrupt,
+    }
+}
+
+/// Nanos of a WASI clock, matching preview1 `clock_time_get`. `None` if that
+/// clock cannot be read; the subscription is then treated as unbounded.
+fn wasi_clock_now_nanos(ctx: &WasiCtx, clock_id: u32) -> Option<u64> {
+    use wasmi_wasi::wasi_common::{WasiMonotonicClock, WasiSystemClock};
+    let precision = Duration::from_nanos(1);
+    let nanos = match clock_id {
+        WASI_CLOCKID_REALTIME => {
+            let clock = ctx.clocks.system().ok()?;
+            let now = WasiSystemClock::now(clock, precision).into_std();
+            now.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .ok()?
+                .as_nanos()
+        },
+        WASI_CLOCKID_MONOTONIC => {
+            let clock = ctx.clocks.monotonic().ok()?;
+            WasiMonotonicClock::now(clock.abs_clock.as_ref(), precision)
+                .duration_since(clock.creation_time)
+                .as_nanos()
+        },
+        _ => return None,
+    };
+    Some(u64::try_from(nanos).unwrap_or(u64::MAX))
+}
+
+/// Add the WASI functions to the linker. `poll_oneoff` is shadowed so a guest
+/// cannot block the executor past the callback host budget. Subscription bytes
+/// are only read.
 pub(crate) fn add_wasi_to_linker<T: 'static>(
     linker: &mut Linker<T>,
     wasi_ctx: impl Fn(&mut T) -> &mut WasiCtx + Send + Sync + Copy + 'static,
@@ -717,7 +818,6 @@ pub(crate) fn add_wasi_to_linker<T: 'static>(
     use wasmi_wasi::wasi_common::snapshots::preview_1::wasi_snapshot_preview1;
 
     wasmi_wasi::add_to_linker(linker, wasi_ctx).map_err(|e| anyhow!("{:?}", e))?;
-    // The replacement does what wasmi_wasi's own `poll_oneoff` does, after shortening the waits.
     linker.allow_shadowing(true);
     linker.func_wrap(
         "wasi_snapshot_preview1",
@@ -734,8 +834,26 @@ pub(crate) fn add_wasi_to_linker<T: 'static>(
                 )));
             };
             let (memory, data) = memory.data_and_store_mut(&mut caller);
-            cap_poll_oneoff_clock_waits(memory, subscriptions as u32, count as u32);
+            // Unit tests never refuel. Arm once so repeated waits in this call
+            // share one deadline instead of each seeing a fresh budget.
+            crate::plugins::shared::ensure_callback_host_budget();
             let ctx = wasi_ctx(data);
+            let realtime_now = wasi_clock_now_nanos(ctx, WASI_CLOCKID_REALTIME);
+            let monotonic_now = wasi_clock_now_nanos(ctx, WASI_CLOCKID_MONOTONIC);
+            let decision = poll_oneoff_decision(
+                memory,
+                subscriptions as u32,
+                count,
+                crate::plugins::shared::callback_host_budget_remaining(),
+                |clock_id| match clock_id {
+                    WASI_CLOCKID_REALTIME => realtime_now,
+                    WASI_CLOCKID_MONOTONIC => monotonic_now,
+                    _ => None,
+                },
+            );
+            if decision == PollOneoffDecision::Interrupt {
+                return Ok(WASI_ERRNO_INTR);
+            }
             let mut guest_memory = wasmi_wasi::WasmiGuestMemory::Unshared(memory);
             // the synchronous scheduler never leaves a future pending
             let future = wasi_snapshot_preview1::poll_oneoff(
@@ -787,8 +905,8 @@ fn create_optimized_store_limits() -> StoreLimits {
 #[cfg(test)]
 mod tests {
     use super::{
-        add_wasi_to_linker, cap_poll_oneoff_clock_waits, plugin_digest_from_bytes,
-        run_initialize_hook, MAX_GUEST_CLOCK_WAIT,
+        add_wasi_to_linker, plugin_digest_from_bytes, poll_oneoff_decision, run_initialize_hook,
+        PollOneoffDecision, WASI_ERRNO_INTR,
     };
     use wasmi::{Engine, Linker, Module, Store};
 
@@ -829,8 +947,14 @@ mod tests {
     }
 
     fn clock_subscription(timeout_nanos: u64, flags: u16) -> Vec<u8> {
+        clock_subscription_for(timeout_nanos, flags, super::WASI_CLOCKID_MONOTONIC)
+    }
+
+    fn clock_subscription_for(timeout_nanos: u64, flags: u16, clock_id: u32) -> Vec<u8> {
         let mut subscription = vec![0u8; super::WASI_SUBSCRIPTION_SIZE];
         subscription[super::WASI_SUBSCRIPTION_TAG_OFFSET] = super::WASI_EVENTTYPE_CLOCK;
+        subscription[super::WASI_CLOCK_ID_OFFSET..super::WASI_CLOCK_ID_OFFSET + 4]
+            .copy_from_slice(&clock_id.to_le_bytes());
         subscription[super::WASI_CLOCK_TIMEOUT_OFFSET..super::WASI_CLOCK_TIMEOUT_OFFSET + 8]
             .copy_from_slice(&timeout_nanos.to_le_bytes());
         subscription[super::WASI_CLOCK_FLAGS_OFFSET..super::WASI_CLOCK_FLAGS_OFFSET + 2]
@@ -838,43 +962,207 @@ mod tests {
         subscription
     }
 
-    fn timeout_and_flags(subscription: &[u8]) -> (u64, u16) {
-        let mut timeout = [0u8; 8];
-        timeout.copy_from_slice(
-            &subscription[super::WASI_CLOCK_TIMEOUT_OFFSET..super::WASI_CLOCK_TIMEOUT_OFFSET + 8],
-        );
-        let mut flags = [0u8; 2];
-        flags.copy_from_slice(
-            &subscription[super::WASI_CLOCK_FLAGS_OFFSET..super::WASI_CLOCK_FLAGS_OFFSET + 2],
-        );
-        (u64::from_le_bytes(timeout), u16::from_le_bytes(flags))
+    fn fd_subscription() -> Vec<u8> {
+        let mut subscription = vec![0u8; super::WASI_SUBSCRIPTION_SIZE];
+        subscription[super::WASI_SUBSCRIPTION_TAG_OFFSET] = 1;
+        subscription
+    }
+
+    fn host_budget() -> std::time::Duration {
+        crate::plugins::shared::PLUGIN_CALLBACK_HOST_BUDGET
     }
 
     #[test]
-    fn long_relative_clock_waits_are_shortened_and_short_ones_kept() {
-        let max = MAX_GUEST_CLOCK_WAIT.as_nanos() as u64;
+    fn long_relative_clock_waits_leave_subscriptions_unchanged() {
+        let memory = clock_subscription(60_000_000_000, 0);
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 1, host_budget(), |_| None);
+        assert_eq!(decision, PollOneoffDecision::Interrupt);
+        assert_eq!(memory, before);
+
+        // The soonest clock caps the poll. A short one beside a long one is admitted,
+        // and neither subscription is rewritten.
         let mut memory = clock_subscription(60_000_000_000, 0);
         memory.extend(clock_subscription(1_000, 0));
-        cap_poll_oneoff_clock_waits(&mut memory, 0, 2);
-        assert_eq!(timeout_and_flags(&memory[..48]), (max, 0));
-        assert_eq!(timeout_and_flags(&memory[48..]), (1_000, 0));
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 2, host_budget(), |_| {
+            panic!("relative waits do not read the clock");
+        });
+        assert_eq!(
+            decision,
+            PollOneoffDecision::Run {
+                max_block: Some(std::time::Duration::from_nanos(1_000)),
+            }
+        );
+        assert_eq!(memory, before);
     }
 
     #[test]
-    fn absolute_clock_waits_become_short_relative_ones() {
-        let max = MAX_GUEST_CLOCK_WAIT.as_nanos() as u64;
-        let mut memory = clock_subscription(u64::MAX, 1);
-        cap_poll_oneoff_clock_waits(&mut memory, 0, 1);
-        assert_eq!(timeout_and_flags(&memory), (max, 0));
+    fn an_expired_absolute_deadline_is_eligible_even_if_the_budget_is_spent() {
+        // Already behind the clock. The raw timeout is not a relative wait:
+        // with no budget left, a relative 1000ns would be refused.
+        let memory = clock_subscription_for(
+            1_000,
+            super::WASI_SUBCLOCKFLAGS_ABSTIME,
+            super::WASI_CLOCKID_MONOTONIC,
+        );
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 1, std::time::Duration::ZERO, |clock_id| {
+            assert_eq!(clock_id, super::WASI_CLOCKID_MONOTONIC);
+            Some(5_000)
+        });
+        assert_eq!(
+            decision,
+            PollOneoffDecision::Run {
+                max_block: Some(std::time::Duration::ZERO),
+            }
+        );
+        assert_eq!(memory, before);
+
+        let memory = clock_subscription_for(
+            0,
+            super::WASI_SUBCLOCKFLAGS_ABSTIME,
+            super::WASI_CLOCKID_REALTIME,
+        );
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 1, std::time::Duration::ZERO, |_| Some(1));
+        assert_eq!(
+            decision,
+            PollOneoffDecision::Run {
+                max_block: Some(std::time::Duration::ZERO),
+            }
+        );
+        assert_eq!(memory, before);
+    }
+
+    #[test]
+    fn fd_polls_are_bounded_only_by_a_clock() {
+        let memory = fd_subscription();
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 1, host_budget(), |_| Some(0));
+        assert_eq!(decision, PollOneoffDecision::Interrupt);
+        assert_eq!(memory, before);
+
+        let mut memory = fd_subscription();
+        memory.extend(clock_subscription(1_000_000, 0));
+        let decision = poll_oneoff_decision(&memory, 0, 2, host_budget(), |_| None);
+        assert_eq!(
+            decision,
+            PollOneoffDecision::Run {
+                max_block: Some(std::time::Duration::from_millis(1)),
+            }
+        );
+
+        let mut memory = fd_subscription();
+        memory.extend(clock_subscription(60_000_000_000, 0));
+        let before = memory.clone();
+        let decision = poll_oneoff_decision(&memory, 0, 2, host_budget(), |_| None);
+        assert_eq!(decision, PollOneoffDecision::Interrupt);
+        assert_eq!(memory, before);
     }
 
     #[test]
     fn subscriptions_outside_memory_are_left_to_the_real_implementation() {
-        let mut memory = clock_subscription(60_000_000_000, 0);
+        let memory = clock_subscription(60_000_000_000, 0);
         let before = memory.clone();
-        cap_poll_oneoff_clock_waits(&mut memory, 8, 1);
-        cap_poll_oneoff_clock_waits(&mut memory, u32::MAX, u32::MAX);
+        for (ptr, count) in [(8u32, 1i32), (u32::MAX, 1), (0, 0), (0, -1)] {
+            let decision = poll_oneoff_decision(&memory, ptr, count, host_budget(), |_| Some(0));
+            assert_eq!(
+                decision,
+                PollOneoffDecision::Run { max_block: None },
+                "ptr {ptr} count {count} must be delegated, not rewritten or interrupted"
+            );
+        }
         assert_eq!(memory, before);
+    }
+
+    #[test]
+    fn repeated_waits_cannot_evade_the_callback_budget() {
+        // One armed budget, not a fresh 100ms per wait. Charging each admitted
+        // wait by its duration is what the absolute deadline does when the real
+        // poll blocks for that long. Five 50ms waits then admit two and refuse three.
+        crate::plugins::shared::begin_callback_host_budget();
+        let started = std::time::Instant::now();
+        let memory = clock_subscription(50_000_000, 0);
+        let before = memory.clone();
+        let mut remaining = host_budget();
+        let mut admitted = 0;
+        let mut refused = 0;
+        for _ in 0..5 {
+            match poll_oneoff_decision(&memory, 0, 1, remaining, |_| None) {
+                PollOneoffDecision::Run {
+                    max_block: Some(block),
+                } => {
+                    assert_eq!(block, std::time::Duration::from_millis(50));
+                    admitted += 1;
+                    remaining = remaining.saturating_sub(block);
+                },
+                PollOneoffDecision::Interrupt => refused += 1,
+                PollOneoffDecision::Run { max_block: None } => {
+                    panic!("a 50ms clock wait is bounded");
+                },
+            }
+        }
+        assert_eq!(
+            admitted, 2,
+            "a 100ms budget admits two 50ms waits and no more"
+        );
+        assert_eq!(refused, 3);
+        assert_eq!(WASI_ERRNO_INTR, 27);
+        assert_eq!(memory, before);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "deciding the waits blocked the thread: {:?}",
+            started.elapsed()
+        );
+    }
+
+    fn memory_prefix<T>(store: &Store<T>, instance: &wasmi::Instance, len: usize) -> Vec<u8> {
+        let memory = instance.get_memory(store, "memory").unwrap();
+        let mut bytes = vec![0u8; len];
+        memory.read(store, 0, &mut bytes).unwrap();
+        bytes
+    }
+
+    fn call_exported_sleep(wat: &str) -> (i32, std::time::Duration, Vec<u8>, Vec<u8>) {
+        let engine = Engine::default();
+        let module = Module::new(&engine, wat::parse_str(wat).unwrap()).unwrap();
+        let mut store = Store::new(&engine, wasmi_wasi::sync::WasiCtxBuilder::new().build());
+        let mut linker = Linker::new(&engine);
+        add_wasi_to_linker(&mut linker, |ctx: &mut wasmi_wasi::WasiCtx| ctx).unwrap();
+        let instance = linker.instantiate_and_start(&mut store, &module).unwrap();
+        let before = memory_prefix(&store, &instance, super::WASI_SUBSCRIPTION_SIZE);
+        let sleep = instance
+            .get_typed_func::<(), i32>(&mut store, "sleep")
+            .unwrap();
+        let started = std::time::Instant::now();
+        let errno = sleep.call(&mut store, ()).unwrap();
+        let elapsed = started.elapsed();
+        let after = memory_prefix(&store, &instance, super::WASI_SUBSCRIPTION_SIZE);
+        (errno, elapsed, before, after)
+    }
+
+    #[test]
+    fn an_expired_absolute_clock_poll_returns_success_without_rewriting_subscriptions() {
+        // timeout 0, abstime flag, monotonic clock: already due
+        let wat = r#"(module
+            (import "wasi_snapshot_preview1" "poll_oneoff"
+                (func $poll_oneoff (param i32 i32 i32 i32) (result i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 16) "\01\00\00\00")
+            (data (i32.const 40) "\01\00")
+            (func (export "sleep") (result i32)
+                (call $poll_oneoff (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 128))))"#;
+        let (errno, elapsed, before, after) = call_exported_sleep(wat);
+        assert_eq!(before[16], 1, "monotonic clock id");
+        assert_eq!(before[40], super::WASI_SUBCLOCKFLAGS_ABSTIME as u8);
+        assert_eq!(&before[24..32], &[0; 8]);
+        assert_eq!(errno, 0);
+        assert_eq!(before, after);
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "an expired absolute deadline blocked the thread: {elapsed:?}"
+        );
     }
 
     #[test]
@@ -888,22 +1176,14 @@ mod tests {
             (data (i32.const 24) "\00\58\47\f8\0d\00\00\00")
             (func (export "sleep") (result i32)
                 (call $poll_oneoff (i32.const 0) (i32.const 64) (i32.const 1) (i32.const 128))))"#;
-        let engine = Engine::default();
-        let module = Module::new(&engine, wat::parse_str(wat).unwrap()).unwrap();
-        let mut store = Store::new(&engine, wasmi_wasi::sync::WasiCtxBuilder::new().build());
-        let mut linker = Linker::new(&engine);
-        add_wasi_to_linker(&mut linker, |ctx: &mut wasmi_wasi::WasiCtx| ctx).unwrap();
-        let instance = linker.instantiate_and_start(&mut store, &module).unwrap();
-        let sleep = instance
-            .get_typed_func::<(), i32>(&mut store, "sleep")
-            .unwrap();
-        let started = std::time::Instant::now();
-        let errno = sleep.call(&mut store, ()).unwrap();
-        assert_eq!(errno, 0);
+        let (errno, elapsed, before, after) = call_exported_sleep(wat);
+        assert_eq!(&before[24..32], &60_000_000_000u64.to_le_bytes());
+        assert_eq!(errno, 27);
+        assert_ne!(errno, 0);
+        assert_eq!(before, after);
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
-            "the sleep was not shortened: {:?}",
-            started.elapsed()
+            elapsed < std::time::Duration::from_secs(2),
+            "the 60s sleep was not interrupted: {elapsed:?}"
         );
     }
 
