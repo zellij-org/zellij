@@ -2789,12 +2789,6 @@ impl MouseHandler {
                 }
             } else {
                 pane.scroll_down(lines, client_id);
-                if !pane.is_scrolled() {
-                    if let PaneId::Terminal(pid) = pane.pid() {
-                        tab.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
-                }
             }
         }
         Ok(MouseEffect::default())
@@ -2860,12 +2854,6 @@ impl MouseHandler {
                     .with_context(err_context)?;
             } else {
                 pane.scroll_left(cols, client_id);
-                if !pane.is_scrolled() {
-                    if let PaneId::Terminal(pid) = pane.pid() {
-                        tab.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
-                }
             }
         }
         Ok(MouseEffect::default())
@@ -2896,12 +2884,6 @@ impl MouseHandler {
                     .with_context(err_context)?;
             } else {
                 pane.scroll_right(cols, client_id);
-                if !pane.is_scrolled() {
-                    if let PaneId::Terminal(pid) = pane.pid() {
-                        tab.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
-                }
             }
         }
         Ok(MouseEffect::default())

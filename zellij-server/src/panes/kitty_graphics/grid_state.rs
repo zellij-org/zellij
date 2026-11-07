@@ -89,6 +89,10 @@ pub struct KittyGrid {
     commands_handled: u64,
     previous_cell_size: Option<SizeInPixels>,
     rows_below_the_viewport: Option<KittyRowsBelowTheViewport>,
+    /// Wrapped-row index of each canonical line, top to bottom.
+    /// Rebuilt only when `canonical_starts_valid` is false.
+    canonical_starts: Vec<usize>,
+    canonical_starts_valid: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -138,6 +142,40 @@ impl KittyGrid {
             commands_handled: 0,
             previous_cell_size,
             rows_below_the_viewport: None,
+            canonical_starts: Vec::new(),
+            canonical_starts_valid: false,
+        }
+    }
+    pub fn invalidate_canonical_starts(&mut self) {
+        self.canonical_starts_valid = false;
+        self.canonical_starts.clear();
+    }
+    pub fn canonical_starts_valid(&self) -> bool {
+        self.canonical_starts_valid
+    }
+    pub fn set_canonical_starts(&mut self, starts: Vec<usize>) {
+        self.canonical_starts = starts;
+        self.canonical_starts_valid = true;
+    }
+    pub fn canonical_starts(&self) -> &[usize] {
+        &self.canonical_starts
+    }
+    /// One wrapped row left the front of the buffer.
+    pub fn note_front_row_removed(&mut self, was_canonical: bool) {
+        if !self.canonical_starts_valid {
+            return;
+        }
+        if was_canonical && self.canonical_starts.first() == Some(&0) {
+            self.canonical_starts.remove(0);
+        }
+        for start in &mut self.canonical_starts {
+            *start = start.saturating_sub(1);
+        }
+    }
+    /// A canonical row was appended at `wrapped_index`.
+    pub fn note_canonical_row_appended(&mut self, wrapped_index: usize) {
+        if self.canonical_starts_valid {
+            self.canonical_starts.push(wrapped_index);
         }
     }
     pub fn note_command_handled(&mut self) {

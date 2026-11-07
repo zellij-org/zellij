@@ -352,6 +352,92 @@ impl SearchResult {
         found_something
     }
 
+    /// `move_down` for a viewport that jumped `amount` rows in one transfer.
+    /// Existing hits shift by the whole distance; only lines still on screen
+    /// are searched, at their final indexes.
+    pub(crate) fn move_down_rows(
+        &mut self,
+        amount: usize,
+        viewport: &VecDeque<Row>,
+        grid_height: usize,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|selection| selection.move_down(amount));
+        self.adjust_selections_to_moved_viewport(grid_height);
+        if self.needle.is_empty() || viewport.is_empty() {
+            return;
+        }
+        let visible_new = amount.min(viewport.len());
+        for index in (0..visible_new).rev() {
+            let row = &viewport[index];
+            let mut tail = Vec::new();
+            loop {
+                let tail_idx = index + tail.len() + 1;
+                if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
+                    tail.push(&viewport[tail_idx]);
+                } else {
+                    break;
+                }
+            }
+            let selections = self.search_row(index, row, &tail);
+            for selection in selections.iter().rev() {
+                self.selections.insert(0, *selection);
+            }
+        }
+    }
+
+    /// `move_up` for a viewport that jumped `amount` rows in one transfer.
+    pub(crate) fn move_up_rows(
+        &mut self,
+        amount: usize,
+        viewport: &VecDeque<Row>,
+        lines_below: &VecDeque<Row>,
+        grid_height: usize,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|selection| selection.move_up(amount));
+        self.adjust_selections_to_moved_viewport(grid_height);
+        if self.needle.is_empty() || viewport.is_empty() {
+            return;
+        }
+        let start = viewport.len().saturating_sub(amount);
+        for index in start..viewport.len() {
+            let row = &viewport[index];
+            let mut tail = Vec::new();
+            loop {
+                let tail_idx = index + tail.len() + 1;
+                if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
+                    tail.push(&viewport[tail_idx]);
+                } else if tail_idx >= viewport.len() {
+                    let below_idx = tail_idx - viewport.len();
+                    if below_idx < lines_below.len() && !lines_below[below_idx].is_canonical {
+                        tail.push(&lines_below[below_idx]);
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            let selections = self.search_row(index, row, &tail);
+            for selection in selections {
+                if selection.start.line() as usize == index {
+                    self.selections.push(selection);
+                }
+            }
+        }
+    }
+
     fn adjust_selections_to_moved_viewport(&mut self, grid_height: usize) {
         // Throw out all search-results outside of the new viewport
         self.selections

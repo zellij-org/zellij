@@ -10797,9 +10797,9 @@ fn evicting_from_a_stale_long_wrapped_line_stays_cheap_and_exact() {
 
 #[test]
 fn evicting_from_a_stale_wide_character_run_is_bounded_per_eviction() {
-    // A run of width-2 characters is beyond the exact budget: each
-    // eviction steps at most a fixed number of characters, and the
-    // reported length may differ from a full recount by only a few rows.
+    // A stale run of width-2 characters is recomputed from the wrap rule.
+    // The two walks stop once they share an open row, so the work stays
+    // proportional to the pane width, and the reported length stays exact.
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
     let columns = 100;
     let run_rows = 1_500;
@@ -10817,16 +10817,15 @@ fn evicting_from_a_stale_wide_character_run_is_bounded_per_eviction() {
     let evictions = 300;
     feed_bytes(&mut grid, &repeated_lines(b"short", 100 + evictions));
     let steps = super::wrap_character_step_count();
-    let budget = super::EVICTION_WIDE_CHARACTER_BUDGET;
     assert!(
-        steps <= 2 * evictions * budget,
-        "wide-character stale runs must stay within the per-eviction budget: {steps} steps"
+        steps <= evictions * columns * 8,
+        "wide-character stale runs must stop once the wrap states meet: {steps} steps"
     );
     let reported = grid.scrollback_position_and_length().1;
     let recount = scrollback_recount(&mut grid);
-    assert!(
-        reported.abs_diff(recount) <= 2 * evictions,
-        "estimated eviction deltas may drift by a row at most each: reported {reported}, recount {recount}"
+    assert_eq!(
+        reported, recount,
+        "wide-character eviction deltas must match a full recount"
     );
     grid.change_size(5, columns);
     assert_eq!(
@@ -12194,9 +12193,9 @@ fn scrollback_cells_follow_a_recount_through_cell_eviction_clears_and_the_altern
         grid.lines_above.len()
     );
     assert!(grid.lines_above.len() < scroll_buffer_size);
-    // Eviction runs before the new row is added, so the ceiling can be
-    // exceeded by at most that one row.
-    assert!(grid.scrollback_cells <= cell_budget + columns);
+    // The ceiling includes the row just admitted. A single newest row
+    // may still exceed it; every row here fits, so the sum must not.
+    assert!(grid.scrollback_cells <= cell_budget);
     assert!(
         grid.scrollback_cells + columns > cell_budget,
         "eviction must stop as soon as the ceiling holds"
@@ -12205,7 +12204,7 @@ fn scrollback_cells_follow_a_recount_through_cell_eviction_clears_and_the_altern
 
     // The counter stays exact while eviction continues.
     feed_bytes(&mut grid, &repeated_lines(&wide_line, 100));
-    assert!(grid.scrollback_cells <= cell_budget + columns);
+    assert!(grid.scrollback_cells <= cell_budget);
     assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
 
     // Entering the alternate screen sets the scrollback aside; leaving
@@ -12388,7 +12387,10 @@ fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
         grid.scrollback_position_and_length().1,
         scrollback_recount(&mut grid)
     );
-    // Fill to just under the ceiling, then overshoot it by 1,500 cells.
+    // Fill to just under the ceiling. The next row is sized so one push
+    // must drop two 900-cell rows of the wrapped line before the
+    // retained total, including that row, fits. (Admitting it over the
+    // ceiling and evicting on a later short row is the old hole.)
     let line_of = |length: usize| {
         let mut line = vec![b'b'; length];
         line.extend_from_slice(b"\r\n");
@@ -12403,15 +12405,26 @@ fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
         feed_bytes(&mut grid, &line_of(remaining - 100));
         remaining = cell_budget - grid.scrollback_cells;
     }
-    feed_bytes(&mut grid, &line_of(remaining + 1_500));
-    assert_eq!(grid.scrollback_cells, cell_budget + 1_500);
+    assert!(remaining <= 500);
+    assert_eq!(grid.lines_above.front().unwrap().stored_cell_count(), 900);
+    assert_eq!(grid.lines_above[1].stored_cell_count(), 900);
+    let incoming = remaining + 1_400;
+    assert!(incoming <= 2_000, "the evicting line must be a single row");
     assert!(grid.lines_above.front().unwrap().is_canonical);
+    let rows_before = grid.lines_above.len();
     assert_eq!(
         grid.scrollback_position_and_length().1,
         scrollback_recount(&mut grid),
         "exact before the evicting push"
     );
-    feed_bytes(&mut grid, b"z\r\n");
+    feed_bytes(&mut grid, &line_of(incoming));
+    assert_eq!(
+        grid.lines_above.len(),
+        rows_before - 1,
+        "one push must evict two stored rows and keep the third"
+    );
+    assert!(grid.scrollback_cells <= cell_budget);
+    assert_eq!(grid.scrollback_cells, recounted_scrollback_cells(&grid));
     assert!(
         !grid.lines_above.front().unwrap().is_canonical,
         "two of the line's three stored rows must have been evicted at once"
@@ -12421,4 +12434,893 @@ fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
         scrollback_recount(&mut grid),
         "a multi-row eviction must account the height change of the shrinking line"
     );
+}
+fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = super::Row::new().canonical();
+    let blanks = if let Some(marker) = marker {
+        row.columns.push(TerminalCharacter::new(marker));
+        cells - 1
+    } else {
+        cells
+    };
+    row.trailing_blanks = u32::try_from(blanks).expect("cell count fits in trailing blanks");
+    row
+}
+
+fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
+    super::bounded_push(
+        &mut grid.lines_above,
+        &mut grid.sixel_grid,
+        &mut grid.kitty_grid,
+        row,
+        &mut grid.scrollback_cells,
+    );
+}
+
+fn assert_scrollback_admission_postcondition(grid: &Grid) {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    let budget = scroll_buffer_size.saturating_mul(super::MAX_SCROLLBACK_ROW_CELLS);
+    assert!(
+        grid.lines_above.len() <= scroll_buffer_size,
+        "scrollback held {} rows above the cap {scroll_buffer_size}",
+        grid.lines_above.len()
+    );
+    assert!(
+        grid.scrollback_cells <= budget || grid.lines_above.len() == 1,
+        "retained {} cells above the budget {budget} across {} rows",
+        grid.scrollback_cells,
+        grid.lines_above.len()
+    );
+    assert_eq!(
+        grid.scrollback_cells,
+        scrollback_cells_recount(grid),
+        "scrollback_cells drifted from the stored rows"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_holds_for_a_third_2048_cell_row() {
+    // Cap 4 makes the budget 4096, so 2048 + 2048 is already full and a
+    // third 2048 must evict. The live cap is larger and 2048 * 5000
+    // equals that budget; the same hole is one more 2048 on top of it.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    assert_eq!(budget % row_cells, 0);
+    let rows_at_budget = budget / row_cells;
+    assert!(rows_at_budget < scroll_buffer_size);
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('A')));
+    for _ in 1..rows_at_budget {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget);
+    assert_ne!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('A'),
+        "the oldest 2048-cell row has to leave to admit the third"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_exact_fit_evicts_nothing() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    let rows_before = budget / row_cells - 1;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('A')));
+    for _ in 1..rows_before {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells + row_cells, budget);
+    let rows_before = grid.lines_above.len();
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_before + 1);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('A'),
+        "a row that fits with zero spare cells must not evict"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_one_row_evicts_several_front_rows() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    let rows_at_budget = budget / row_cells;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    for marker in ['A', 'B', 'C', 'D'] {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some(marker)));
+    }
+    for _ in 4..rows_at_budget {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells, budget);
+    let incoming = row_cells * 3;
+    assert!(incoming <= budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(incoming, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget - 3 + 1);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('D'),
+        "three front rows have to leave, and the fourth stays"
+    );
+}
+
+#[test]
+fn scrollback_keeps_one_oversized_newest_row_when_empty() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    let oversized = budget + 2_048;
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(oversized, Some('W')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(grid.scrollback_cells, oversized);
+    assert!(grid.scrollback_cells > budget);
+}
+
+#[test]
+fn scrollback_later_smaller_row_evicts_the_oversized_row() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(
+        &mut grid,
+        scrollback_row_of_cells(budget + 2_048, Some('W')),
+    );
+    assert_eq!(grid.lines_above.len(), 1);
+    assert!(grid.scrollback_cells > budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(2_048, Some('S')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(grid.scrollback_cells, 2_048);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('S')
+    );
+}
+
+#[test]
+fn scrollback_row_cap_still_evicts_when_the_cell_budget_has_room() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(2, Some('A')));
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(3, Some('B')));
+    for _ in 2..scroll_buffer_size {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(1, None));
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert!(grid.scrollback_cells + 1 <= budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(1, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.scrollback_cells, scroll_buffer_size + 2);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('B'),
+        "only the oldest row is evicted when cells are under the budget"
+    );
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+    assert!(grid.scrollback_cells <= budget);
+}
+
+#[test]
+fn erasing_to_line_start_after_restoring_a_cursor_into_the_alternate_screen_does_not_panic() {
+    // the saved cursor survives the switch to the alternate screen, whose viewport is
+    // only one row tall until something is drawn on it
+    let mut grid = create_grid_with_size_and_raw(20, 40, b"\x1b[10;1H\x1b7\x1b[?1049h\x1b8\x1b[1K");
+    assert!(grid.cursor.y < grid.height);
+    assert!(grid.viewport.len() > grid.cursor.y);
+    feed_bytes(&mut grid, b"\x1b[1J\x1b[2K\x1b[1Kx");
+    assert!(grid.viewport.len() <= grid.height);
+}
+
+#[test]
+fn an_invalid_scroll_region_is_ignored() {
+    // top below bottom, top past the screen and a one line region are all invalid
+    for sequence in [
+        &b"\x1b[60000;50r"[..],
+        b"\x1b[5;3r",
+        b"\x1b[4;4r",
+        b"\x1b[25;30r",
+    ] {
+        let mut grid = create_grid_with_size_and_raw(10, 40, b"\x1b[2;8r\x1b[5;9H");
+        let cursor = (grid.cursor.x, grid.cursor.y);
+        feed_bytes(&mut grid, sequence);
+        assert_eq!(grid.scroll_region, (1, 7), "{:?}", sequence);
+        assert_eq!((grid.cursor.x, grid.cursor.y), cursor, "{:?}", sequence);
+    }
+}
+
+#[test]
+fn a_scroll_region_bottom_past_the_screen_is_clamped() {
+    let grid = create_grid_with_size_and_raw(10, 40, b"\x1b[3;60000r");
+    assert_eq!(grid.scroll_region, (2, 9));
+}
+
+#[test]
+fn scroll_region_operations_never_grow_the_viewport_beyond_the_screen() {
+    for region in [&b""[..], b"\x1b[60000;50r", b"\x1b[3;7r", b"\x1b[3;60000r"] {
+        for operation in [
+            &b"\x1b[65535S"[..],
+            b"\x1b[65535T",
+            b"\x1b[65535L",
+            b"\x1b[65535M",
+            b"\x1b[1;1H\x1b[65535L",
+            b"\x1b[5;1H\x1b[65535M",
+            b"\x1b[5;1H\x1b[65535L\x1b[65535S",
+        ] {
+            // a grid that has not drawn anything has a short viewport
+            let mut grid = create_grid_with_size_and_raw(10, 40, b"");
+            feed_bytes(&mut grid, region);
+            feed_bytes(&mut grid, operation);
+            assert!(
+                grid.viewport.len() <= grid.height,
+                "{:?} then {:?} left {} rows",
+                region,
+                operation,
+                grid.viewport.len()
+            );
+        }
+    }
+}
+
+#[test]
+fn scrolling_by_a_huge_count_adds_at_most_a_screenful_to_the_scrollback() {
+    for sequence in [
+        &b"\x1b[65535S"[..],
+        b"\x1b[65535T",
+        b"\x1b[65535M",
+        b"\x1b[65535L",
+        b"\x1b[3;8r\x1b[65535S",
+        b"\x1b[3;8r\x1b[3;1H\x1b[65535M",
+    ] {
+        let mut grid = create_grid_with_size_and_raw(10, 40, b"one\r\ntwo\r\nthree");
+        feed_bytes(&mut grid, sequence);
+        assert!(
+            grid.lines_above.len() <= grid.height,
+            "{:?} put {} lines in the scrollback",
+            sequence,
+            grid.lines_above.len()
+        );
+        assert!(grid.viewport.len() <= grid.height);
+    }
+}
+
+#[test]
+fn counts_larger_than_the_screen_still_have_their_full_effect() {
+    // SU: the whole screen scrolls into the scrollback and a blank one remains
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"one\r\ntwo\r\nthree");
+    feed_bytes(&mut grid, b"\x1b[65535S");
+    assert_eq!(grid.lines_above.len(), 5);
+    assert_eq!(scrollback_texts(&grid)[..3], ["one", "two", "three"]);
+    assert!(viewport_texts(&grid)
+        .iter()
+        .all(|row| row.trim().is_empty()));
+    // IL / DL stop at the end of the region
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"1\r\n2\r\n3\r\n4\r\n5\x1b[2;1H");
+    feed_bytes(&mut grid, b"\x1b[65535L");
+    assert_eq!(
+        viewport_texts(&grid)
+            .iter()
+            .map(|row| row.trim().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["1", "", "", "", ""]
+    );
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"1\r\n2\r\n3\r\n4\r\n5\x1b[2;1H");
+    feed_bytes(&mut grid, b"\x1b[65535M");
+    assert_eq!(
+        viewport_texts(&grid)
+            .iter()
+            .map(|row| row.trim().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["1", "", "", "", ""]
+    );
+    // ICH / DCH / ECH
+    let row_after = |sequence: &[u8]| {
+        let mut grid = create_grid_with_size_and_raw(5, 10, b"abcdefghij\x1b[1;3H");
+        feed_bytes(&mut grid, sequence);
+        row_text(&grid.viewport[0]).trim_end().to_owned()
+    };
+    assert_eq!(row_after(b"\x1b[3@"), "ab   cdefg");
+    assert_eq!(row_after(b"\x1b[65535@"), "ab");
+    assert_eq!(row_after(b"\x1b[2P"), "abefghij");
+    assert_eq!(row_after(b"\x1b[65535P"), "ab");
+    assert_eq!(row_after(b"\x1b[3X"), "ab   fghij");
+    assert_eq!(row_after(b"\x1b[65535X"), "ab");
+    // CHT / CBT
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"");
+    feed_bytes(&mut grid, b"\x1b[65535I");
+    assert_eq!(grid.cursor.x, 39);
+    feed_bytes(&mut grid, b"\x1b[65535Z");
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn repeating_a_character_wraps_like_typing_it() {
+    let typed = |count: usize, setup: &[u8]| {
+        let mut content = setup.to_vec();
+        content.extend(std::iter::repeat(b'a').take(count));
+        let grid = create_grid_with_size_and_raw(5, 10, &content);
+        (viewport_texts(&grid), grid.cursor.x, grid.cursor.y)
+    };
+    let repeated = |count: usize, setup: &[u8]| {
+        let mut content = setup.to_vec();
+        content.extend_from_slice(format!("a\x1b[{}b", count - 1).as_bytes());
+        let grid = create_grid_with_size_and_raw(5, 10, &content);
+        (viewport_texts(&grid), grid.cursor.x, grid.cursor.y)
+    };
+    for setup in [&b""[..], b"xyz\x1b[2;4H", b"\x1b[5;7H"] {
+        for count in [
+            2, 9, 10, 11, 25, 49, 59, 60, 61, 69, 70, 71, 72, 75, 81, 100, 1003, 65536,
+        ] {
+            assert_eq!(
+                typed(count, setup),
+                repeated(count, setup),
+                "count {} after {:?}",
+                count,
+                setup
+            );
+        }
+    }
+    // without line wrapping the repeat stops at the edge
+    let grid = create_grid_with_size_and_raw(5, 10, b"\x1b[?7la\x1b[65535b");
+    assert_eq!(viewport_texts(&grid)[0], "aaaaaaaaaa");
+    assert!(viewport_texts(&grid)[1..]
+        .iter()
+        .all(|row| row.trim().is_empty()));
+}
+
+#[test]
+fn huge_repeat_counts_cost_no_more_than_the_screen_allows() {
+    let mut grid = create_grid_with_size_and_raw(24, 80, b"abc");
+    let started = std::time::Instant::now();
+    for _ in 0..300 {
+        feed_bytes(
+            &mut grid,
+            b"\x1b[1;1H\x1b[65535@\x1b[65535P\x1b[65535X\x1b[65535I\x1b[65535Z",
+        );
+    }
+    for _ in 0..20 {
+        feed_bytes(&mut grid, b"a\x1b[65535b");
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_newline_below_the_scroll_region_on_the_last_line_does_not_add_a_row() {
+    let mut grid = create_grid_with_size_and_raw(10, 40, b"\x1b[1;3r\x1b[10;1H");
+    for _ in 0..5 {
+        feed_bytes(&mut grid, b"\n");
+        assert!(grid.viewport.len() <= grid.height);
+    }
+    assert_eq!(grid.cursor.y, 9);
+}
+
+const HOSTILE_UI_COMPONENTS: &[&[u8]] = &[
+    b"\x1bPztable;0;0;1\x1b\\",
+    b"\x1bPztext;0/0/70000/1;z\x1b\\",
+    b"\x1bPzdialog;0/0/1000000000/1000000000\x1b\\",
+];
+
+#[test]
+fn ui_component_sequences_are_ignored_in_a_terminal_pane() {
+    // an ordinary grid is what a terminal pane has: the sequence is an unknown DCS
+    let mut grid = new_grid_for_nested_frames();
+    feed_bytes(
+        &mut grid,
+        format!(
+            "\x1bPztext;{}\x1b\\after",
+            serialize_text_bytes("component")
+        )
+        .as_bytes(),
+    );
+    let screen = viewport_texts(&grid).join("\n");
+    assert!(!screen.contains("component"), "{:?}", screen);
+    assert!(screen.contains("after"), "{:?}", screen);
+    assert!(grid.ui_component_bytes.is_none());
+    for hostile in HOSTILE_UI_COMPONENTS {
+        feed_bytes(&mut grid, hostile);
+    }
+    assert!(grid.viewport.len() <= grid.height);
+    // while a grid that shows a plugin renders it
+    let grid = render_ui_component("text", &serialize_text_bytes("component"));
+    assert!(viewport_texts(&grid).join("\n").contains("component"));
+}
+
+#[test]
+fn no_row_is_wider_than_the_pane_after_it_shrinks_below_a_wide_character() {
+    // U+FF13 is two columns wide
+    let content = "\u{ff13}\r\n\u{ff13}ab\r\n\u{ff13}\r\n\u{ff13}\u{ff13}\u{ff13}\r\n\u{ff13}";
+    let mut grid = create_grid_with_size_and_raw(3, 10, content.as_bytes());
+    grid.change_size(1, 1);
+    let too_wide = |grid: &Grid| {
+        // (the lines above and below the screen are only reflowed as they come into it)
+        grid.viewport
+            .iter()
+            .map(|row| row.width())
+            .filter(|width| *width > 1)
+            .count()
+    };
+    assert_eq!(too_wide(&grid), 0);
+    // reflowing the lines kept above and below the screen into it must not bring any back
+    for _ in 0..20 {
+        grid.scroll_up_one_line();
+        assert_eq!(too_wide(&grid), 0);
+    }
+    for _ in 0..20 {
+        grid.scroll_down_one_line();
+        assert_eq!(too_wide(&grid), 0);
+    }
+    grid.change_size(3, 10);
+    assert!(grid.viewport.iter().all(|row| row.width() <= 10));
+}
+
+#[test]
+fn a_scroll_region_below_the_screen_cannot_make_scrolling_grow_the_viewport() {
+    let mut content = Vec::new();
+    for line in 0..24 {
+        content.extend_from_slice(format!("line {}\r\n", line).as_bytes());
+    }
+    for region in ["42;96", "100;200", "30;24", "25;30", "24;24", "1;1"] {
+        for operation in ["S", "T", "L", "M", "\n"] {
+            let mut grid = create_grid_with_size_and_raw(24, 80, &content);
+            let operation_bytes = if operation == "\n" {
+                operation.to_owned()
+            } else {
+                format!("\x1b[{}", operation)
+            };
+            feed_bytes(
+                &mut grid,
+                format!("\x1b[{}r{}", region, operation_bytes).as_bytes(),
+            );
+            assert_eq!(
+                grid.viewport.len(),
+                24,
+                "region {} then {:?}",
+                region,
+                operation
+            );
+        }
+    }
+}
+
+fn plugin_grid(rows: usize, cols: usize) -> Grid {
+    let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
+    grid.enable_ui_components();
+    grid
+}
+
+fn ui_component_stress_payloads() -> Vec<String> {
+    let max = usize::MAX.to_string();
+    let coordinates = [
+        String::new(),
+        "0/0/0/0".to_owned(),
+        "0/0/1/1".to_owned(),
+        "0/0/2/2".to_owned(),
+        "0/0/3/1".to_owned(),
+        "5/5/7/3".to_owned(),
+        "0/0/70000/1".to_owned(),
+        "0/0/65536/65536".to_owned(),
+        "1/1/1000000000/1000000000".to_owned(),
+        "99999/99999/99999/99999".to_owned(),
+        "0/0//".to_owned(),
+        "0/0/30/".to_owned(),
+        "0/0//30".to_owned(),
+        format!("0/0/{}/{}", max, max),
+        format!("{}/{}/1/1", max, max),
+        format!("{}/0/{}/1", max, max),
+    ];
+    let long_indentation = "|".repeat(70_000);
+    let long_text = "104,".repeat(70_000);
+    let medium_text = "104,".repeat(300);
+    let simple_bodies: Vec<(&str, Vec<String>)> = vec![
+        (
+            "table",
+            vec![
+                "0;0;1".to_owned(),
+                "0;0;104,105;106".to_owned(),
+                "1;1;104".to_owned(),
+                "2;3;104;105;106;107;108".to_owned(),
+                format!("{};1;104;105", max),
+                format!("1;1;{};104;105;106;107", long_text),
+            ],
+        ),
+        (
+            "text",
+            vec![
+                "104,105".to_owned(),
+                "zd104,105".to_owned(),
+                "z".to_owned(),
+                String::new(),
+                format!("z{}", medium_text),
+            ],
+        ),
+        (
+            "ribbon",
+            vec![
+                "104,105".to_owned(),
+                "x104,105".to_owned(),
+                format!("x{}", medium_text),
+            ],
+        ),
+        (
+            "nested_list",
+            vec![
+                "104".to_owned(),
+                "||104;|104;x104,105".to_owned(),
+                format!("{}104;104,105,106", long_indentation),
+                format!("104;{}", long_text),
+            ],
+        ),
+    ];
+    let states = [
+        String::new(),
+        "f,d,h,o,e,on,r,b,ind,bar,c,nm,ph,err,ab,la,hu,hd,he,bv,lmin,lmax".to_owned(),
+        format!(
+            "nb={m},sel={m},hb={m},bx={m},fr={m},hl={m},above={m},below={m},tot={m},off={m},cur={m},hov={m},lw={m}",
+            m = max
+        ),
+        "nb=3,sel=1,hb=2,bx=1,fr=1,hl=1,above=5,below=7,tot=100,off=50,cur=2,hov=1,lw=3,f,ind,bar,b,c"
+            .to_owned(),
+        "tot=1000000,off=999999,bar,f,above=1,below=1".to_owned(),
+        "lw=1000000000,bx=1000000000,fr=1000000000,nb=1000000000".to_owned(),
+    ];
+    let widget_fields = [
+        String::new(),
+        "104,105".to_owned(),
+        "104,105;106,107;108".to_owned(),
+        "104,105;;;;".to_owned(),
+        "-;m104,105:106/1,2/3;d104;104,105,106,107".to_owned(),
+        format!("{};{};{}", medium_text, medium_text, medium_text),
+        "$$$0$72,105;72,105;72,105".to_owned(),
+    ];
+    let widgets = [
+        "button",
+        "dialog",
+        "dropdown",
+        "menu",
+        "scroll_indicator",
+        "side_menu",
+        "stepper",
+        "text_input",
+        "toggle",
+    ];
+    let mut payloads = vec![];
+    for coordinate in &coordinates {
+        for (name, bodies) in &simple_bodies {
+            for body in bodies {
+                if coordinate.is_empty() {
+                    payloads.push(format!("{};{}", name, body));
+                } else if *name == "table" {
+                    // the table's two counts follow its coordinates
+                    payloads.push(format!("{};{};{}", name, coordinate, body));
+                } else {
+                    payloads.push(format!("{};{};{}", name, coordinate, body));
+                }
+            }
+        }
+        if coordinate.is_empty() {
+            continue; // widgets must have coordinates
+        }
+        for name in widgets {
+            for state in &states {
+                for fields in &widget_fields {
+                    payloads.push(format!("{};{};{};{}", name, coordinate, state, fields));
+                }
+            }
+        }
+    }
+    payloads
+}
+
+#[test]
+fn hostile_ui_component_parameters_neither_panic_nor_overgrow() {
+    let payloads = ui_component_stress_payloads();
+    let mut failures = vec![];
+    for (rows, cols) in [(1, 1), (3, 5), (24, 80)] {
+        for payload in &payloads {
+            let started = std::time::Instant::now();
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut grid = plugin_grid(rows, cols);
+                feed_bytes(&mut grid, format!("\x1bPz{}\x1b\\", payload).as_bytes());
+                (grid.viewport.len(), grid.lines_above.len())
+            }));
+            let summary = payload.chars().take(70).collect::<String>();
+            match outcome {
+                Err(_) => failures.push(format!("{}x{} panicked: {}", rows, cols, summary)),
+                Ok((viewport_rows, _)) if viewport_rows > rows => failures.push(format!(
+                    "{}x{} grew the viewport to {}: {}",
+                    rows, cols, viewport_rows, summary
+                )),
+                Ok(_) if started.elapsed() > std::time::Duration::from_secs(3) => {
+                    failures.push(format!(
+                        "{}x{} took {:?}: {}",
+                        rows,
+                        cols,
+                        started.elapsed(),
+                        summary
+                    ))
+                },
+                Ok(_) => {},
+            }
+        }
+    }
+    failures.dedup();
+    assert!(
+        failures.is_empty(),
+        "{} failures, first ones:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(40)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+fn render_in_a_plugin_grid(payload: &str) -> Grid {
+    let mut grid = plugin_grid(10, 40);
+    feed_bytes(&mut grid, format!("\x1bPz{}\x1b\\", payload).as_bytes());
+    assert!(grid.viewport.len() <= 10, "{}", payload);
+    assert!(
+        grid.viewport.iter().all(|row| row.width() <= 40),
+        "{}",
+        payload
+    );
+    grid
+}
+
+#[test]
+fn a_table_without_columns_is_rejected() {
+    // used to divide by zero
+    for payload in ["table;0;0;1", "table;0/0/10/10;0;0;1"] {
+        let grid = render_in_a_plugin_grid(payload);
+        assert!(viewport_texts(&grid).iter().all(|row| row.is_empty()));
+    }
+}
+
+#[test]
+fn a_component_wider_than_a_u16_cannot_panic_in_format() {
+    // used to panic in format!("{:width$}")
+    render_in_a_plugin_grid("text;0/0/70000/1;z");
+    render_in_a_plugin_grid(&format!(
+        "nested_list;{}104;104,105,106",
+        "|".repeat(70_000)
+    ));
+    render_in_a_plugin_grid(&format!("nested_list;{};104,105", "104,".repeat(70_000)));
+}
+
+fn render_quickly_in_a_plugin_grid(payload: &str) -> Grid {
+    let started = std::time::Instant::now();
+    let grid = render_in_a_plugin_grid(payload);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "took {:?}",
+        started.elapsed()
+    );
+    grid
+}
+
+#[test]
+fn a_huge_indentation_is_parsed_quickly() {
+    // the pipes used to be removed one at a time, which moves the rest of the string each time
+    let payload = format!("nested_list;{}104,105", "|".repeat(1_500_000));
+    render_quickly_in_a_plugin_grid(&payload);
+}
+
+#[test]
+fn components_without_a_size_are_not_padded_past_the_pane() {
+    // the size of these comes from their widest item or their number of items: with a wide item
+    // and a lot of others it is their product that gets written (gigabytes for an input of
+    // some hundred kilobytes)
+    let wide_item = "98,".repeat(20_000);
+    let many_items = vec!["97"; 30_000].join(";");
+    for payload in [
+        format!("nested_list;{};{}", wide_item, many_items),
+        format!("nested_list;0/0//;{};{}", wide_item, many_items),
+        format!("table;1;1;{};{}", wide_item, many_items),
+        format!("table;0/0//;1;1;{};{}", wide_item, many_items),
+        format!("table;0/0//;1;1;{};{}", many_items, wide_item),
+        format!("side_menu;0/0//;;{};{}", wide_item, many_items),
+        format!("menu;0/0//;;{};{}", wide_item, many_items),
+        format!("dialog;0/0//;;{};{}", wide_item, many_items),
+        format!("dialog;0/0//;;{}", ";".repeat(300_000)),
+    ] {
+        render_quickly_in_a_plugin_grid(&payload);
+    }
+}
+
+#[test]
+fn a_dialog_is_not_drawn_where_the_pane_has_no_room_for_it() {
+    // the smallest dialog is 8 columns by 4 rows
+    for (rows, columns) in [(3, 40), (10, 7), (1, 1)] {
+        let mut grid = plugin_grid(rows, columns);
+        feed_bytes(&mut grid, b"\x1bPzdialog;0/0//;;104\x1b\\");
+        assert!(viewport_texts(&grid).iter().all(|row| row.is_empty()));
+    }
+    // while it is drawn where there is room, whatever its size (40 columns by 5 rows by default)
+    let grid = render_in_a_plugin_grid("dialog;0/0//;;104");
+    assert!(viewport_texts(&grid)[0].starts_with('╭'));
+}
+
+#[test]
+fn components_are_limited_to_the_pane() {
+    // these used to allocate and loop for a billion rows
+    for payload in [
+        "dialog;0/0/1000000000/1000000000;;",
+        "dialog;1/1/1000000000/1000000000;;104",
+        "menu;0/0/1000000000/1000000000;b,lw=1000000000;104",
+    ] {
+        render_in_a_plugin_grid(payload);
+    }
+    // while a component that fits the pane is not moved
+    let grid = render_in_a_plugin_grid("text;3/2/20/1;104,105");
+    assert!(viewport_texts(&grid)[2].starts_with("   hi"));
+}
+
+#[test]
+fn wide_eviction_display_rows_match_the_wrap_rule() {
+    use super::{evicted_row_display_row_delta, run_display_height};
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::{RcCharacterStyles, TerminalCharacter};
+    use std::collections::VecDeque;
+    // Width 6 leaves a gap after each stored width-3 glyph, so the stored
+    // wrap is not valid and the delta has to follow the wrap rule.
+    let width = 6usize;
+    let mut lines_above = VecDeque::new();
+    let mut canonical = Row::from_columns(vec![TerminalCharacter::new_with_width(
+        'A',
+        3,
+        RcCharacterStyles::default(),
+    )])
+    .canonical();
+    canonical.width_cached();
+    lines_above.push_back(canonical);
+    for _ in 0..5000 {
+        let mut row = Row::from_columns(vec![TerminalCharacter::new_with_width(
+            'B',
+            3,
+            RcCharacterStyles::default(),
+        )]);
+        row.width_cached();
+        lines_above.push_back(row);
+    }
+    let mut evicted = lines_above.pop_front().unwrap();
+    let mut front = super::EvictionCache::default();
+    let delta = evicted_row_display_row_delta(&mut lines_above, &mut evicted, width, &mut front);
+    let with_height = run_display_height(
+        std::iter::once(3).chain(std::iter::repeat(3).take(5000)),
+        width,
+    );
+    let without_height = run_display_height(std::iter::repeat(3).take(5000), width);
+    assert_eq!(delta, without_height as isize - with_height as isize);
+    assert_ne!(
+        delta,
+        (5000 * 3 / width) as isize - ((5001 * 3) / width) as isize
+    );
+}
+
+#[test]
+fn deleting_a_full_ascii_row_moves_each_element_once() {
+    use super::{reset_row_edit_elements_moved, row_edit_elements_moved};
+    for width in [80usize, 200] {
+        let mut grid = create_grid_with_size_and_raw(2, width, &vec![b'x'; width]);
+        reset_row_edit_elements_moved();
+        // The raw fill leaves the cursor at the end of the row. CSI P
+        // deletes at the cursor, so move home first.
+        feed_bytes(&mut grid, format!("\x1b[H\x1b[{width}P").as_bytes());
+        let moved = row_edit_elements_moved();
+        assert!(moved <= 3 * width, "width {width} moved {moved} elements");
+        let lines = viewport_texts(&grid);
+        let text = lines[0].trim_end();
+        assert!(text.is_empty(), "{text:?}");
+    }
+}
+
+#[test]
+fn plugin_dot_highlight_maps_offsets_in_one_pass() {
+    use super::{highlight_offset_visits, reset_highlight_offset_visits};
+    let width = 200usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, &vec![b'a'; width]);
+    grid.set_plugin_regex_highlights(
+        1,
+        vec![RegexHighlight {
+            pattern: ".".into(),
+            style: HighlightStyle::Emphasis0,
+            layer: HighlightLayer::Hint,
+            context: BTreeMap::new(),
+            on_hover: false,
+            bold: false,
+            italic: false,
+            underline: false,
+            tooltip_text: None,
+        }],
+        &Style::default(),
+    );
+    reset_highlight_offset_visits();
+    let _ = grid.render(0, 0, &Style::default());
+    let visits = highlight_offset_visits();
+    assert!(
+        visits <= 4 * width,
+        "offset mapping visited {visits} characters"
+    );
+    assert!(grid.plugin_highlight_at(&Position::new(0, 0)).is_some());
+    assert!(grid
+        .plugin_highlight_at(&Position::new(0, width as u16 - 1))
+        .is_some());
+}
+
+#[test]
+fn newlines_with_a_kitty_placement_do_not_rescan_history() {
+    use super::{kitty_canonical_scan_rows, reset_kitty_canonical_scan_rows};
+    let (mut grid, _store) = new_kitty_grid(8, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,C=1", &rgb_raster(2, 2)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    for _ in 0..40 {
+        feed_bytes(&mut grid, b"line\r\n");
+    }
+    let before = grid.kitty_placements()[0].display_rect.y;
+    reset_kitty_canonical_scan_rows();
+    for _ in 0..30 {
+        feed_bytes(&mut grid, b"more\r\n");
+    }
+    let scanned = kitty_canonical_scan_rows();
+    assert!(
+        scanned <= 8 + 20,
+        "canonical-start scan visited {scanned} rows"
+    );
+    let after = grid.kitty_placements()[0].display_rect.y;
+    assert!(after <= before);
 }

@@ -4,6 +4,10 @@ use crate::panes::terminal_character::{LinkAnchor, RcCharacterStyles};
 use std::collections::VecDeque;
 
 const URL_SCHEMES: [&str; 4] = ["http://", "https://", "ftp://", "mailto:"];
+/// Automatic URLs longer than this are not linked. Scans keep at most this
+/// many cells, plus the characters added since the previous scan.
+const MAX_URL_CHARS: usize = 2048;
+const COLON_FREE_LOOKBEHIND: usize = 16;
 
 #[derive(Clone, Copy)]
 struct Cell {
@@ -43,6 +47,35 @@ fn row_mut<'a>(
 #[cfg(test)]
 thread_local! {
     static LINE_START_WALKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static HYPERLINK_CELLS_MATERIALIZED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static HYPERLINK_CELLS_VISITED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn note_cells_materialized(count: usize) {
+    #[cfg(test)]
+    HYPERLINK_CELLS_MATERIALIZED.with(|counter| counter.set(counter.get() + count));
+}
+
+fn note_cells_visited(count: usize) {
+    #[cfg(test)]
+    HYPERLINK_CELLS_VISITED.with(|counter| counter.set(counter.get() + count));
+}
+
+#[cfg(test)]
+pub(crate) fn hyperlink_cells_materialized() -> usize {
+    HYPERLINK_CELLS_MATERIALIZED.with(|counter| counter.get())
+}
+
+#[cfg(test)]
+pub(crate) fn hyperlink_cells_visited() -> usize {
+    HYPERLINK_CELLS_VISITED.with(|counter| counter.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_hyperlink_scan_counters() {
+    HYPERLINK_CELLS_MATERIALIZED.with(|counter| counter.set(0));
+    HYPERLINK_CELLS_VISITED.with(|counter| counter.set(0));
+    LINE_START_WALKS.with(|counter| counter.set(0));
 }
 
 fn line_start(lines_above: &VecDeque<Row>, viewport: &VecDeque<Row>, y: isize) -> isize {
@@ -136,36 +169,140 @@ pub fn link_urls_in_lines(
         let end = line_rows(lines_above, viewport, start);
         spans.push((start, end));
     }
-    let mut cells: Vec<Cell> = Vec::new();
     for (start, end) in spans {
-        for y in start..end {
-            if let Some(row) = row_mut(lines_above, viewport, y) {
-                row.link_scan_pending = false;
-            }
-        }
-        let has_colon = (start..end).any(|y| {
-            row_ref(lines_above, viewport, y)
-                .map(|row| row.columns.iter().any(|cell| cell.character == ':'))
-                .unwrap_or(false)
-        });
-        // Without a colon there is no URL to link, but a detected link whose
-        // text was overwritten may still need to be dropped.
-        if !has_colon
-            && !(start..end)
-                .any(|y| row_has_detected_anchor(lines_above, viewport, y, link_handler))
-        {
+        scan_logical_span(lines_above, viewport, start, end, cursor, link_handler);
+    }
+}
+
+/// Cells of one logical line, skipping `skip` cells and stopping after `max`.
+fn collect_span_cells(
+    lines_above: &VecDeque<Row>,
+    viewport: &VecDeque<Row>,
+    start: isize,
+    end: isize,
+    mut skip: usize,
+    max: usize,
+) -> Vec<Cell> {
+    let mut cells = Vec::new();
+    for y in start..end {
+        let Some(row) = row_ref(lines_above, viewport, y) else {
+            continue;
+        };
+        let len = row.columns.len();
+        if skip >= len {
+            skip -= len;
             continue;
         }
-        cells.clear();
-        for y in start..end {
-            if let Some(row) = row_ref(lines_above, viewport, y) {
-                cells.extend(row.columns.iter().enumerate().map(|(index, cell)| Cell {
-                    character: cell.character,
-                    y,
-                    index,
-                }));
+        for (index, cell) in row.columns[skip..].iter().enumerate() {
+            if cells.len() >= max {
+                return cells;
+            }
+            cells.push(Cell {
+                character: cell.character,
+                y,
+                index: index + skip,
+            });
+        }
+        skip = 0;
+    }
+    cells
+}
+
+fn scan_logical_span(
+    lines_above: &mut VecDeque<Row>,
+    viewport: &mut VecDeque<Row>,
+    start: isize,
+    end: isize,
+    cursor: Option<(usize, usize)>,
+    link_handler: &mut LinkHandler,
+) {
+    for y in start..end {
+        if let Some(row) = row_mut(lines_above, viewport, y) {
+            row.link_scan_pending = false;
+            if row.link_scan_dirty || row.link_prefix_scanned as usize > row.columns.len() {
+                row.link_prefix_scanned = 0;
+                row.link_prefix_has_colon = false;
+                row.link_scan_dirty = false;
             }
         }
+    }
+    let mut cell_offset = 0usize;
+    let mut resume_at = None;
+    let mut prior_colon = false;
+    for y in start..end {
+        let Some(row) = row_ref(lines_above, viewport, y) else {
+            continue;
+        };
+        let len = row.columns.len();
+        let scanned = (row.link_prefix_scanned as usize).min(len);
+        if scanned > 0 {
+            prior_colon |= row.link_prefix_has_colon;
+        }
+        if scanned < len {
+            resume_at = Some(cell_offset + scanned);
+            break;
+        }
+        cell_offset += len;
+    }
+    let Some(resume_at) = resume_at else {
+        return;
+    };
+    let mut suffix_has_colon = false;
+    let mut suffix_has_anchor = false;
+    {
+        // Jump by row length. A growing line must not re-walk cells the
+        // cursor already accepted.
+        let mut skip = resume_at;
+        for y in start..end {
+            let Some(row) = row_ref(lines_above, viewport, y) else {
+                continue;
+            };
+            let len = row.columns.len();
+            if skip >= len {
+                skip -= len;
+                continue;
+            }
+            for cell in &row.columns[skip..] {
+                note_cells_visited(1);
+                if cell.character == ':' {
+                    suffix_has_colon = true;
+                }
+                if link_handler.is_detected(cell.styles.link_anchor) {
+                    suffix_has_anchor = true;
+                }
+            }
+            skip = 0;
+        }
+    }
+    if !prior_colon && !suffix_has_colon && !suffix_has_anchor {
+        for y in start..end {
+            if let Some(row) = row_mut(lines_above, viewport, y) {
+                row.link_prefix_scanned = row.columns.len().min(u32::MAX as usize) as u32;
+                row.link_scan_dirty = false;
+            }
+        }
+        return;
+    }
+    let lookback = if prior_colon {
+        MAX_URL_CHARS
+    } else {
+        COLON_FREE_LOOKBEHIND
+    };
+    let mut window_start = resume_at.saturating_sub(lookback);
+    let mut deferred_line = false;
+    loop {
+        let cells = collect_span_cells(
+            lines_above,
+            viewport,
+            start,
+            end,
+            window_start,
+            MAX_URL_CHARS,
+        );
+        if cells.is_empty() {
+            break;
+        }
+        note_cells_materialized(cells.len());
         let cursor_cell = cursor
             .filter(|(_, cursor_y)| (start..end).contains(&(*cursor_y as isize)))
             .map(|(cursor_x, cursor_y)| {
@@ -176,9 +313,34 @@ pub fn link_urls_in_lines(
             });
         let deferred = link_urls_in_line(lines_above, viewport, &cells, cursor_cell, link_handler);
         if deferred {
+            deferred_line = true;
             if let Some(row) = row_mut(lines_above, viewport, end - 1) {
                 row.link_scan_pending = true;
             }
+        }
+        if cells.len() < MAX_URL_CHARS {
+            break;
+        }
+        let next = window_start + cells.len() - lookback.min(cells.len());
+        if next <= window_start {
+            break;
+        }
+        window_start = next;
+    }
+    // A URL the cursor may still extend was not linked. Leave the scan
+    // cursor where it was so the next pass still sees that candidate.
+    if deferred_line {
+        return;
+    }
+    for y in start..end {
+        if let Some(row) = row_mut(lines_above, viewport, y) {
+            let len = row.columns.len();
+            let scanned = (row.link_prefix_scanned as usize).min(len);
+            if row.columns[scanned..].iter().any(|cell| cell.character == ':') {
+                row.link_prefix_has_colon = true;
+            }
+            row.link_prefix_scanned = len.min(u32::MAX as usize) as u32;
+            row.link_scan_dirty = false;
         }
     }
 }
@@ -653,6 +815,7 @@ mod tests {
             viewport[0].columns[12 + index].character = character;
         }
         viewport[0].columns[12].styles = viewport[0].columns[0].styles.clone();
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         let marked = anchors(&viewport[0]);
         assert_ne!(marked[0], first);
@@ -670,6 +833,7 @@ mod tests {
         let mut handler = LinkHandler::new();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         viewport[0].columns[15].character = ' ';
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         let marked = anchors(&viewport[0]);
         assert!(marked[..15]
@@ -797,6 +961,7 @@ mod tests {
         for (cell, character) in viewport[0].columns.iter_mut().zip(changed_url.chars()) {
             cell.character = character;
         }
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
 
         assert!(anchors(&viewport[0]).iter().all(Option::is_none));
@@ -819,6 +984,7 @@ mod tests {
         }
         // An ordinary overwrite: the new character carries no link anchor.
         viewport[0].columns[12] = TerminalCharacter::new('X');
+        viewport[0].invalidate_link_scan();
         assert!(anchors(&viewport[0])[12].is_none());
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
 
@@ -835,6 +1001,7 @@ mod tests {
         let mut handler = LinkHandler::new();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         viewport[0].columns[15] = TerminalCharacter::new(' ');
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         let marked = anchors(&viewport[0]);
         assert!(marked[..15]
@@ -853,6 +1020,7 @@ mod tests {
 
         // the `h` is overwritten, so no URL starts here any more
         viewport[0].columns[4] = TerminalCharacter::new('X');
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
 
         assert!(
@@ -868,6 +1036,7 @@ mod tests {
         let mut handler = LinkHandler::new();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         viewport[0].columns[5] = TerminalCharacter::new('-');
+        viewport[0].invalidate_link_scan();
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         assert!(anchors(&viewport[0]).iter().all(Option::is_none));
     }
@@ -896,5 +1065,68 @@ mod tests {
         assert!(is_valid_url("https://sub.domain.example.com/path"));
         assert!(!is_valid_url("https://"));
         assert!(!is_valid_url("short"));
+    }
+
+    #[test]
+    fn incremental_append_does_not_rematerialize_the_prefix() {
+        let prefix = "http://example.org/";
+        // Width equals the prefix so the row is not padded with blanks.
+        // Appends stay on this row; each frame may copy at most one
+        // max-length lookback, not the whole growing line.
+        let mut viewport = screen(&[(prefix, true)], prefix.len());
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        reset_hyperlink_scan_counters();
+        let frames = 64;
+        let chunk = "a".repeat(64);
+        for _ in 0..frames {
+            let row = &mut viewport[0];
+            let scanned = row.link_prefix_scanned as usize;
+            for character in chunk.chars() {
+                row.columns.push(TerminalCharacter::new(character));
+            }
+            assert_eq!(row.link_prefix_scanned as usize, scanned);
+            link_urls_in_lines(
+                &mut VecDeque::new(),
+                &mut viewport,
+                &[0],
+                None,
+                &mut handler,
+            );
+        }
+        // A fresh copy of the growing prefix each frame is about
+        // sum_i (prefix + i*64) ≈ 134_000 cells. Lookback is capped.
+        assert!(
+            hyperlink_cells_materialized() < 120_000,
+            "materialized {}",
+            hyperlink_cells_materialized()
+        );
+        assert!(uris(&handler).iter().any(|uri| uri.starts_with("http://example.org/")));
+    }
+
+    #[test]
+    fn no_colon_append_does_not_walk_the_prefix() {
+        let mut viewport = screen(&[("hello", true)], 8_000);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        reset_hyperlink_scan_counters();
+        for _ in 0..48 {
+            for _ in 0..64 {
+                viewport[0].columns.push(TerminalCharacter::new('b'));
+            }
+            link_urls_in_lines(
+                &mut VecDeque::new(),
+                &mut viewport,
+                &[0],
+                None,
+                &mut handler,
+            );
+        }
+        assert!(
+            hyperlink_cells_visited() < 48 * 64 + 100,
+            "visited {}",
+            hyperlink_cells_visited()
+        );
+        assert_eq!(hyperlink_cells_materialized(), 0);
     }
 }

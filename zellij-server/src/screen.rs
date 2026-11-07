@@ -377,6 +377,10 @@ pub enum ClosePaneSource {
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
+    /// Parse one quantum of scrolled PTY backlog for each pane that has one,
+    /// then return so other panes' instructions can run. Re-queued while any
+    /// backlog remains.
+    ApplyScrolledPtyQuantum,
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
     RenderToClients,
@@ -1271,6 +1275,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::ApplyScrolledPtyQuantum => ScreenContext::ApplyScrolledPtyQuantum,
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::RenderToClients => ScreenContext::RenderToClients,
@@ -2089,6 +2094,8 @@ pub(crate) struct Screen {
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
     render_waits_for_ack: bool,
+    /// `ApplyScrolledPtyQuantum` is already sitting on the screen channel.
+    scrolled_pty_continuation_queued: bool,
     clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -2488,6 +2495,7 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
             render_waits_for_ack: false,
+            scrolled_pty_continuation_queued: false,
             clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
@@ -9503,7 +9511,29 @@ impl Screen {
             BackgroundJob::RenderToClients
         };
         let _ = self.bus.senders.send_to_background_jobs(render_request);
+        self.schedule_scrolled_pty_continuation();
         Ok(vte_bytes)
+    }
+    /// One continuation instruction drains one quantum per pane, then yields
+    /// so input already queued for other panes is not stuck behind the rest
+    /// of this backlog.
+    fn schedule_scrolled_pty_continuation(&mut self) {
+        if self.scrolled_pty_continuation_queued {
+            return;
+        }
+        if !self.tabs.values().any(|tab| tab.has_pending_vte_bytes()) {
+            return;
+        }
+        match self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::ApplyScrolledPtyQuantum)
+        {
+            Ok(()) => self.scrolled_pty_continuation_queued = true,
+            Err(error) => {
+                log::error!("failed to schedule scrolled pty continuation: {error}");
+            },
+        }
     }
 }
 
@@ -11310,6 +11340,20 @@ pub(crate) fn screen_thread_main(
                             .push_output(PaneId::Terminal(pid), vte_bytes);
                     }
                 }
+            },
+            ScreenInstruction::ApplyScrolledPtyQuantum => {
+                screen.scrolled_pty_continuation_queued = false;
+                for tab in screen.get_tabs_mut().values_mut() {
+                    if tab.has_pending_vte_bytes() {
+                        tab.apply_pending_vte_quanta()
+                            .context("failed to apply scrolled pty quanta")?;
+                    }
+                }
+                screen.schedule_scrolled_pty_continuation();
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {

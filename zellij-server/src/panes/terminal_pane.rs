@@ -269,6 +269,16 @@ impl Pane for TerminalPane {
             self.append_pending_pty_input(&bytes);
             return;
         }
+        // The cursor is in viewport coordinates. While the user is scrolled
+        // away from the live bottom, move there for this parse and put the
+        // same rows back afterwards so the historical view is not overwritten.
+        let viewport_anchor = self
+            .grid
+            .is_scrolled
+            .then(|| self.grid.viewport_anchor());
+        if viewport_anchor.is_some() {
+            self.grid.reset_viewport();
+        }
         if self.pending_pty_offset == self.pending_pty_input.len() {
             // Nothing is queued ahead of these bytes: feed them straight
             // from the caller's buffer and keep only what was not
@@ -280,10 +290,13 @@ impl Pane for TerminalPane {
             if consumed < bytes.len() {
                 self.append_pending_pty_input(&bytes[consumed..]);
             }
-            return;
+        } else {
+            self.append_pending_pty_input(&bytes);
+            self.process_pending_pty_input();
         }
-        self.append_pending_pty_input(&bytes);
-        self.process_pending_pty_input();
+        if let Some(viewport_anchor) = viewport_anchor {
+            self.grid.restore_viewport_anchor(viewport_anchor);
+        }
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)

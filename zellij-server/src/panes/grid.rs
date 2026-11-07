@@ -621,11 +621,6 @@ impl WrapState {
     }
 }
 
-/// Characters per eviction that may be wrapped one by one when the
-/// affected run holds non-single-width (wide or zero-width) characters.
-/// Beyond it the rest of the run is estimated from its cell count alone.
-const EVICTION_WIDE_CHARACTER_BUDGET: usize = 4096;
-
 /// A validated continuation run at the front of `lines_above`.
 ///
 /// Dropping the first row of a wrap that is still valid at `width`
@@ -651,28 +646,167 @@ fn note_evicted_row_inspection() {
     EVICTED_ROW_INSPECTIONS.with(|counter| counter.set(counter.get() + 1));
 }
 
+/// Heights of every suffix of one stale logical run, so later evictions
+/// subtract instead of walking the run again. `heights[i]` is the display
+/// height of the suffix starting at row `i`; `heights[len]` is 0.
+#[derive(Clone)]
+struct StaleEvictionRun {
+    width: usize,
+    len_at_front: usize,
+    index: usize,
+    next_columns: usize,
+    next_cells: usize,
+    heights: Vec<u32>,
+}
+
+#[derive(Clone, Default)]
+struct EvictionCache {
+    valid: Option<FrontRunValidity>,
+    stale: Option<Box<StaleEvictionRun>>,
+}
+
+impl EvictionCache {
+    fn clear(&mut self) {
+        self.valid = None;
+        self.stale = None;
+    }
+}
+
+/// Exact `count` pushes of a character of width `w` onto a wrap state.
+/// `None` when a character is wider than the pane or the open row is
+/// already past the pane: those stay on the character walk.
+fn repeated_wrap(
+    mut completed: usize,
+    mut current: usize,
+    w: usize,
+    mut n: usize,
+    pane: usize,
+) -> Option<(usize, usize)> {
+    if n == 0 || w == 0 {
+        return Some((completed, current));
+    }
+    if w > pane || current > pane {
+        return None;
+    }
+    if current > 0 {
+        let fit = (pane - current) / w;
+        if n <= fit {
+            return Some((completed, current + n * w));
+        }
+        n -= fit;
+        completed += 1;
+        n -= 1;
+        current = w;
+        if n == 0 {
+            return Some((completed, current));
+        }
+    } else {
+        n -= 1;
+        current = w;
+        if n == 0 {
+            return Some((completed, current));
+        }
+    }
+    let per = pane / w;
+    if per == 0 {
+        return None;
+    }
+    let cycles = n / per;
+    let rem = n % per;
+    completed += cycles;
+    if rem == 0 {
+        Some((completed, current))
+    } else {
+        Some((completed, w * (1 + rem)))
+    }
+}
+
+fn row_width_runs(row: &Row) -> Option<Vec<(usize, usize)>> {
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for character in &row.columns {
+        let w = character.width();
+        if w == 0 {
+            return None;
+        }
+        match runs.last_mut() {
+            Some(last) if last.0 == w => last.1 += 1,
+            _ => runs.push((w, 1)),
+        }
+    }
+    if row.trailing_blanks > 0 {
+        let n = row.trailing_blanks as usize;
+        match runs.last_mut() {
+            Some(last) if last.0 == 1 => last.1 += n,
+            _ => runs.push((1, n)),
+        }
+    }
+    Some(runs)
+}
+
+fn apply_width_runs(
+    mut completed: usize,
+    mut current: usize,
+    runs: &[(usize, usize)],
+    pane: usize,
+) -> Option<(usize, usize)> {
+    for &(w, n) in runs {
+        (completed, current) = repeated_wrap(completed, current, w, n, pane)?;
+    }
+    if current > pane {
+        return None;
+    }
+    Some((completed, current))
+}
+
+/// `None` if the run cannot be summarized in constant time per row.
+/// The table is one forward-composed height per suffix, built from the
+/// back so each eviction after the first is a subtraction.
+fn stale_suffix_heights(runs: &[Vec<(usize, usize)>], pane: usize) -> Option<Vec<u32>> {
+    if pane == 0 || pane > 4096 {
+        return None;
+    }
+    let n = runs.len();
+    let mut add = vec![0usize; pane + 1];
+    let mut end: Vec<usize> = (0..=pane).collect();
+    let mut heights = vec![0u32; n + 1];
+    for i in (0..n).rev() {
+        let mut new_add = vec![0usize; pane + 1];
+        let mut new_end = vec![0usize; pane + 1];
+        for start in 0..=pane {
+            let (completed, current) = apply_width_runs(0, start, &runs[i], pane)?;
+            new_add[start] = completed + add[current];
+            new_end[start] = end[current];
+        }
+        add = new_add;
+        end = new_end;
+        heights[i] = (add[0] + usize::from(end[0] > 0)) as u32;
+    }
+    Some(heights)
+}
+
 fn remember_front_run(
-    cache: &mut Option<FrontRunValidity>,
+    cache: &mut EvictionCache,
     lines_above: &mut VecDeque<Row>,
     width: usize,
     rows: usize,
 ) {
+    cache.stale = None;
     if rows == 0 {
-        *cache = None;
+        cache.valid = None;
         return;
     }
     let (next_columns, next_cells, canonical) = match lines_above.front_mut() {
         Some(next) => (next.columns.len(), next.width_cached(), next.is_canonical),
         None => {
-            *cache = None;
+            cache.valid = None;
             return;
         },
     };
     if canonical {
-        *cache = None;
+        cache.valid = None;
         return;
     }
-    *cache = Some(FrontRunValidity {
+    cache.valid = Some(FrontRunValidity {
         width,
         len_at_front: lines_above.len(),
         rows,
@@ -696,20 +830,74 @@ fn remember_front_run(
 /// exactly what the greedy wrap yields. The evicted row itself is
 /// always walked exactly (it leaves the scrollback, so that is
 /// amortized). Remaining rows with other widths are stepped character
-/// by character with at most `EVICTION_WIDE_CHARACTER_BUDGET`
-/// characters per eviction; the rest of such a run is then estimated
-/// from its cell count, which can be off by a row. The total is recomputed exactly by every resize, so
-/// that drift cannot outlive the next resize. The heights with and
-/// without the evicted row are advanced in lockstep and the walk stops
-/// as soon as both are in the same state, since the remainder then
-/// adds equally to both.
+/// by character. Their cell count is not a stand-in for display height:
+/// a row of wide glyphs can wrap to more rows than `ceil(cells / width)`.
+/// The two walks advance in lockstep and stop once they are in the same
+/// open state, since the remainder then adds equally to both.
+fn stale_heights_for_eviction(
+    evicted: &mut Row,
+    lines_above: &mut VecDeque<Row>,
+    run_rows: usize,
+    width: usize,
+) -> Option<Vec<u32>> {
+    let mut runs = Vec::with_capacity(run_rows + 1);
+    runs.push(row_width_runs(evicted)?);
+    for index in 0..run_rows {
+        let row = lines_above.get_mut(index)?;
+        runs.push(row_width_runs(row)?);
+    }
+    stale_suffix_heights(&runs, width)
+}
+
 fn evicted_row_display_row_delta(
     lines_above: &mut VecDeque<Row>,
     evicted: &mut Row,
     width: usize,
-    front_run: &mut Option<FrontRunValidity>,
+    front_run: &mut EvictionCache,
 ) -> isize {
-    if let Some(cached) = *front_run {
+    let stale_delta = match front_run.stale.as_mut() {
+        Some(stale)
+            if stale.width == width
+                && lines_above.len() == stale.len_at_front
+                && stale.index + 1 < stale.heights.len() =>
+        {
+            let evicted_cells = evicted.width_cached();
+            if !evicted.is_canonical
+                && evicted.columns.len() == stale.next_columns
+                && evicted_cells == stale.next_cells
+            {
+                note_evicted_row_inspection();
+                let delta =
+                    stale.heights[stale.index + 1] as isize - stale.heights[stale.index] as isize;
+                stale.index += 1;
+                Some(delta)
+            } else {
+                None
+            }
+        },
+        _ => None,
+    };
+    if let Some(delta) = stale_delta {
+        let finished = front_run
+            .stale
+            .as_ref()
+            .is_none_or(|stale| stale.index + 1 >= stale.heights.len());
+        if finished {
+            front_run.stale = None;
+        } else if let Some(stale) = front_run.stale.as_mut() {
+            match lines_above.front_mut() {
+                Some(next) if !next.is_canonical => {
+                    note_evicted_row_inspection();
+                    stale.next_columns = next.columns.len();
+                    stale.next_cells = next.width_cached();
+                },
+                _ => front_run.stale = None,
+            }
+        }
+        return delta;
+    }
+    front_run.stale = None;
+    if let Some(cached) = front_run.valid {
         let evicted_cells = evicted.width_cached();
         if cached.width == width
             && lines_above.len() == cached.len_at_front
@@ -722,14 +910,14 @@ fn evicted_row_display_row_delta(
             note_evicted_row_inspection();
             let rows_left = cached.rows - 1;
             remember_front_run(front_run, lines_above, width, rows_left);
-            if front_run.is_some() {
+            if front_run.valid.is_some() {
                 // The row just recorded is the one the next eviction pops.
                 note_evicted_row_inspection();
             }
             return -1;
         }
     }
-    *front_run = None;
+    front_run.clear();
 
     let mut remaining_run_rows = 0;
     loop {
@@ -787,7 +975,34 @@ fn evicted_row_display_row_delta(
     #[cfg(test)]
     EVICTED_RUN_RESCANS.with(|c| c.set(c.get() + 1));
 
-    let mut wide_budget = EVICTION_WIDE_CHARACTER_BUDGET;
+    if let Some(heights) =
+        stale_heights_for_eviction(evicted, lines_above, remaining_run_rows, width)
+    {
+        let delta = heights[1] as isize - heights[0] as isize;
+        if remaining_run_rows > 0 {
+            let len_at_front = lines_above.len();
+            let next_fingerprint = lines_above.front_mut().and_then(|next| {
+                if next.is_canonical {
+                    None
+                } else {
+                    Some((next.columns.len(), next.width_cached()))
+                }
+            });
+            if let Some((next_columns, next_cells)) = next_fingerprint {
+                front_run.stale = Some(Box::new(StaleEvictionRun {
+                    width,
+                    len_at_front,
+                    index: 1,
+                    next_columns,
+                    next_cells,
+                    heights,
+                }));
+                front_run.valid = None;
+            }
+        }
+        return delta;
+    }
+
     let mut with_evicted = WrapState::default();
     push_evicted_row_to_wrap_state(&mut with_evicted, evicted, width);
     if remaining_run_rows == 0 {
@@ -800,14 +1015,11 @@ fn evicted_row_display_row_delta(
             None => break,
         };
         note_evicted_row_inspection();
-        let single_width = row.is_single_width_cached();
-        let character_count = row.columns.len() + row.trailing_blanks as usize;
-        if single_width || character_count > wide_budget {
+        if row.is_single_width_cached() {
             let cells = row.width_cached();
             with_evicted.push_single_width_cells(cells, width);
             without_evicted.push_single_width_cells(cells, width);
         } else {
-            wide_budget -= character_count;
             for character_width in row_display_widths(row) {
                 with_evicted.push_character(character_width, width);
                 without_evicted.push_character(character_width, width);
@@ -835,15 +1047,15 @@ fn evicted_rows_display_row_delta(
     lines_above: &mut VecDeque<Row>,
     evicted: Vec<Row>,
     width: usize,
-    front_run: &mut Option<FrontRunValidity>,
+    front_run: &mut EvictionCache,
 ) -> isize {
     // One popped row is the case the cache describes. A burst removes
     // several front rows before any of them is measured, so a record
     // from the previous row would name the wrong successor.
     if evicted.len() != 1 {
-        *front_run = None;
+        front_run.clear();
     }
-    let mut discarded = None;
+    let mut discarded = EvictionCache::default();
     let cache = if evicted.len() == 1 {
         &mut *front_run
     } else {
@@ -918,7 +1130,8 @@ fn transfer_rows_from_lines_above_to_viewport(
     count: usize,
     max_viewport_width: usize,
     scrollback_cells: &mut usize,
-    front_run: &mut Option<FrontRunValidity>,
+    front_run: &mut EvictionCache,
+    rows_evicted: &mut u64,
 ) -> (isize, bool) {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
@@ -934,7 +1147,7 @@ fn transfer_rows_from_lines_above_to_viewport(
         if next_lines.is_empty() {
             if scrollback_tail_is_wrapped_at(lines_above, viewport, max_viewport_width) {
                 // The row leaves from the tail, which is not the cached front.
-                *front_run = None;
+                front_run.clear();
                 match lines_above.pop_back() {
                     Some(mut next_line) => {
                         *scrollback_cells =
@@ -949,7 +1162,7 @@ fn transfer_rows_from_lines_above_to_viewport(
                 }
             }
             // The drained run is the tail, not the cached front row.
-            *front_run = None;
+            front_run.clear();
             let mut canonical_run = get_lines_above_bottom_canonical_row_and_wraps(lines_above);
             *scrollback_cells = scrollback_cells.saturating_sub(
                 canonical_run
@@ -995,6 +1208,7 @@ fn transfer_rows_from_lines_above_to_viewport(
             excess_row,
             scrollback_cells,
         );
+        *rows_evicted += evicted_rows.len() as u64;
         display_row_delta += evicted_rows_display_row_delta(
             lines_above,
             evicted_rows,
@@ -1014,7 +1228,8 @@ fn transfer_rows_from_viewport_to_lines_above(
     count: usize,
     width: usize,
     scrollback_cells: &mut usize,
-    front_run: &mut Option<FrontRunValidity>,
+    front_run: &mut EvictionCache,
+    rows_evicted: &mut u64,
 ) -> isize {
     let mut display_row_delta: isize = 0;
     let drained_lines = std::cmp::min(count, viewport.len());
@@ -1026,6 +1241,7 @@ fn transfer_rows_from_viewport_to_lines_above(
             next_line,
             scrollback_cells,
         );
+        *rows_evicted += evicted_rows.len() as u64;
         display_row_delta +=
             evicted_rows_display_row_delta(lines_above, evicted_rows, width, front_run);
         display_row_delta += 1;
@@ -1133,6 +1349,9 @@ thread_local! {
     static REWRAP_ROWS_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static EVICTED_RUN_RESCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static EVICTED_ROW_INSPECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static KITTY_CANONICAL_SCAN_ROWS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static ROW_EDIT_ELEMENTS_MOVED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static HIGHLIGHT_OFFSET_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -1156,6 +1375,46 @@ pub(crate) fn evicted_row_inspection_count() -> usize {
 #[cfg(test)]
 pub(crate) fn reset_evicted_row_inspection_count() {
     EVICTED_ROW_INSPECTIONS.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn kitty_canonical_scan_rows() -> usize {
+    KITTY_CANONICAL_SCAN_ROWS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_kitty_canonical_scan_rows() {
+    KITTY_CANONICAL_SCAN_ROWS.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn row_edit_elements_moved() -> usize {
+    ROW_EDIT_ELEMENTS_MOVED.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_row_edit_elements_moved() {
+    ROW_EDIT_ELEMENTS_MOVED.with(|c| c.set(0));
+}
+
+fn note_row_edit_elements_moved(count: usize) {
+    #[cfg(test)]
+    ROW_EDIT_ELEMENTS_MOVED.with(|c| c.set(c.get() + count));
+}
+
+#[cfg(test)]
+pub(crate) fn highlight_offset_visits() -> usize {
+    HIGHLIGHT_OFFSET_VISITS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_highlight_offset_visits() {
+    HIGHLIGHT_OFFSET_VISITS.with(|c| c.set(0));
+}
+
+fn note_highlight_offset_visit() {
+    #[cfg(test)]
+    HIGHLIGHT_OFFSET_VISITS.with(|c| c.set(c.get() + 1));
 }
 
 #[cfg(test)]
@@ -1216,15 +1475,22 @@ fn bounded_push(
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
     let mut evicted_rows = Vec::new();
-    // Evict until both bounds hold: the row-count cap (one evict per
-    // push preserves it) and the retained-cell ceiling (may need
-    // several, e.g. after the pane widened). The newest row is never
-    // evicted by the cell rule even if it alone exceeds the budget.
-    while vec.len() >= scroll_buffer_size || (*scrollback_cells > cell_budget && vec.len() > 1) {
+    // Measure after trailing-blank compress. Evict on the prospective
+    // total, not the total before this row: rows that each fit the
+    // budget can still push the retained sum past it (2048 + 2048
+    // already at a 4096 budget, then another 2048). A cap of 0
+    // (`len >= 0`) still drains every older row and keeps the newest.
+    // One newest row may exceed the budget; stop once the buffer is
+    // empty and admit it anyway.
+    let incoming = value.stored_cell_count();
+    while vec.len() >= scroll_buffer_size
+        || (scrollback_cells.saturating_add(incoming) > cell_budget && !vec.is_empty())
+    {
         let line = vec.pop_front();
         if let Some(line) = line {
             *scrollback_cells = scrollback_cells.saturating_sub(line.stored_cell_count());
             sixel_grid.offset_grid_top();
+            kitty_grid.note_front_row_removed(line.is_canonical);
             kitty_grid.offset_grid_top();
             if line.is_canonical {
                 let first_canonical_row =
@@ -1479,15 +1745,67 @@ fn byte_offset_to_display_col(
     Some((row_idx, display_col))
 }
 
+#[derive(Default)]
+struct DisplayCursor {
+    boundary_idx: usize,
+    char_idx: usize,
+    bytes_in_row: usize,
+    display_col: usize,
+}
+
+/// Map `byte_offset` using a cursor that only moves forward. Ordered matches
+/// then cost one pass over the row instead of a prefix scan per boundary.
+fn advance_display_cursor(
+    cursor: &mut DisplayCursor,
+    byte_offset: usize,
+    boundaries: &[(usize, usize)],
+    viewport: &VecDeque<Row>,
+) -> Option<(usize, usize)> {
+    if boundaries.is_empty() {
+        return None;
+    }
+    if cursor.boundary_idx >= boundaries.len() {
+        cursor.boundary_idx = 0;
+        cursor.char_idx = 0;
+        cursor.bytes_in_row = 0;
+        cursor.display_col = 0;
+    }
+    while cursor.boundary_idx + 1 < boundaries.len()
+        && boundaries[cursor.boundary_idx + 1].1 <= byte_offset
+    {
+        cursor.boundary_idx += 1;
+        cursor.char_idx = 0;
+        cursor.bytes_in_row = 0;
+        cursor.display_col = 0;
+    }
+    let &(row_idx, row_byte_start) = boundaries.get(cursor.boundary_idx)?;
+    let intra = byte_offset.saturating_sub(row_byte_start);
+    if intra < cursor.bytes_in_row {
+        cursor.char_idx = 0;
+        cursor.bytes_in_row = 0;
+        cursor.display_col = 0;
+    }
+    let row = viewport.get(row_idx)?;
+    while cursor.char_idx < row.columns.len() && cursor.bytes_in_row < intra {
+        let character = &row.columns[cursor.char_idx];
+        cursor.bytes_in_row += character.utf8_len();
+        cursor.display_col += character.width();
+        cursor.char_idx += 1;
+        note_highlight_offset_visit();
+    }
+    Some((row_idx, cursor.display_col))
+}
+
 /// Convert a regex match into a `Selection` spanning the matched display region.
 /// Returns `None` if the boundary table or viewport lookup fails.
 fn match_to_selection(
     mat: &regex::Match,
     boundaries: &[(usize, usize)],
     viewport: &VecDeque<Row>,
+    cursor: &mut DisplayCursor,
 ) -> Option<(Selection, usize, usize, usize, usize)> {
-    let (start_row, start_col) = byte_offset_to_display_col(mat.start(), boundaries, viewport)?;
-    let (end_row, end_col) = byte_offset_to_display_col(mat.end(), boundaries, viewport)?;
+    let (start_row, start_col) = advance_display_cursor(cursor, mat.start(), boundaries, viewport)?;
+    let (end_row, end_col) = advance_display_cursor(cursor, mat.end(), boundaries, viewport)?;
     let mut sel = Selection::default();
     sel.set_start_and_end_positions(
         Position::new(start_row as i32, start_col as u16),
@@ -1581,7 +1899,7 @@ pub struct Grid {
     /// Valid continuation run at the front of `lines_above`, if the last
     /// single-row eviction proved one. Cleared when that proof no longer
     /// describes the front.
-    front_run_validity: Option<FrontRunValidity>,
+    front_run_validity: EvictionCache,
     pub(crate) viewport: VecDeque<Row>,
     pub(crate) lines_below: VecDeque<Row>,
     horizontal_tabstops: BTreeSet<usize>,
@@ -1629,6 +1947,9 @@ pub struct Grid {
     pub ring_bell: bool,
     scrollback_display_rows: usize,
     scrollback_cells: usize,
+    /// Rows removed from the front of scrollback. Used to keep a scrolled
+    /// viewport anchored while output is applied at the live bottom.
+    scrollback_rows_evicted: u64,
     scrollback_epoch: u64,
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
@@ -1689,6 +2010,12 @@ pub struct Grid {
     pub osc7_payload: Option<String>,
     pub shell_reports: crate::attention::signals::ShellReportState,
     unseen_output_mark: Option<(usize, usize)>,
+}
+
+/// Snapshot of the scrolled viewport's place in the buffer.
+pub(crate) struct ViewportAnchor {
+    rows_before_viewport: usize,
+    evicted_before: u64,
 }
 
 impl Grid {
@@ -1993,7 +2320,7 @@ impl Grid {
         Grid {
             scrollback_epoch: 0,
             lines_above: VecDeque::new(),
-            front_run_validity: None,
+            front_run_validity: EvictionCache::default(),
             viewport: VecDeque::from(vec![Row::new().canonical()]),
             lines_below: VecDeque::new(),
             horizontal_tabstops: create_horizontal_tabstops(columns),
@@ -2031,6 +2358,7 @@ impl Grid {
             ring_bell: false,
             scrollback_display_rows: 0,
             scrollback_cells: 0,
+            scrollback_rows_evicted: 0,
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
             focus_event_tracking: false,
@@ -2311,12 +2639,21 @@ impl Grid {
             .chain(self.viewport.iter())
             .chain(self.lines_below.iter())
         {
+            #[cfg(test)]
+            KITTY_CANONICAL_SCAN_ROWS.with(|counter| counter.set(counter.get() + 1));
             if row.is_canonical {
                 starts.push(wrapped_row);
             }
             wrapped_row += 1;
         }
         starts
+    }
+    fn kitty_starts(&mut self) -> &[usize] {
+        if !self.kitty_grid.canonical_starts_valid() {
+            let starts = self.kitty_canonical_line_starts();
+            self.kitty_grid.set_canonical_starts(starts);
+        }
+        self.kitty_grid.canonical_starts()
     }
     fn kitty_anchor_from_pixel_y(
         pixel_y: isize,
@@ -2380,6 +2717,7 @@ impl Grid {
     fn kitty_refresh_after_scroll_step(&mut self, canonical_structure_changed: bool) {
         self.kitty_settle_placements_below_the_viewport();
         if canonical_structure_changed {
+            self.kitty_grid.invalidate_canonical_starts();
             self.kitty_reanchor_canonical_structure();
         }
     }
@@ -2391,7 +2729,7 @@ impl Grid {
             Some(cell) => cell.height as isize,
             None => return,
         };
-        let starts = self.kitty_canonical_line_starts();
+        let starts = self.kitty_starts().to_vec();
         if starts.is_empty() {
             return;
         }
@@ -2411,7 +2749,7 @@ impl Grid {
             Some(cell) => cell.height as isize,
             None => return,
         };
-        let starts = self.kitty_canonical_line_starts();
+        let starts = self.kitty_starts().to_vec();
         let line_count = starts.len();
         self.kitty_grid
             .retain_placements(|placement| placement.vertical_anchor.canonical_line < line_count);
@@ -2442,6 +2780,7 @@ impl Grid {
                 self.width,
                 &mut self.scrollback_cells,
                 &mut self.front_run_validity,
+                &mut self.scrollback_rows_evicted,
             );
             self.apply_scrollback_display_row_delta(display_row_delta);
             self.kitty_refresh_after_scroll_step(reflowed);
@@ -2486,6 +2825,7 @@ impl Grid {
                 line_to_push_up,
                 &mut self.scrollback_cells,
             );
+            self.scrollback_rows_evicted += evicted_rows.len() as u64;
             let width = self.width;
             let display_row_delta = 1 + evicted_rows_display_row_delta(
                 &mut self.lines_above,
@@ -2555,7 +2895,7 @@ impl Grid {
         }
         // Reflow rewrites stored widths, so a run that was valid at the
         // old width must be checked again.
-        self.front_run_validity = None;
+        self.front_run_validity.clear();
         self.invalidate_scroll_offset();
         if self.alternate_screen_state.is_some() {
             // in alternate screen we do nothing but log the new size, the program in the terminal
@@ -2566,6 +2906,7 @@ impl Grid {
             // are kept on the screen. Without this the viewport keeps the
             // rows of the old size until the program exits.
             self.viewport.truncate(new_rows);
+            self.kitty_grid.invalidate_canonical_starts();
             let last_row = new_rows - 1;
             self.cursor.y = self.cursor.y.min(last_row);
             if let Some(saved_cursor) = self.saved_cursor_position.as_mut() {
@@ -2783,6 +3124,7 @@ impl Grid {
                         new_columns,
                         &mut self.scrollback_cells,
                         &mut self.front_run_validity,
+                        &mut self.scrollback_rows_evicted,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
@@ -2813,6 +3155,7 @@ impl Grid {
                         new_columns,
                         &mut self.scrollback_cells,
                         &mut self.front_run_validity,
+                        &mut self.scrollback_rows_evicted,
                     );
                 },
                 Ordering::Equal => {},
@@ -2833,6 +3176,7 @@ impl Grid {
                 }
             };
         }
+        self.kitty_grid.invalidate_canonical_starts();
         self.kitty_reproject_all_from_anchor();
         self.height = new_rows;
         self.width = new_columns;
@@ -3269,23 +3613,61 @@ impl Grid {
         scrollback
     }
     pub fn move_viewport_up(&mut self, count: usize) {
-        for _ in 0..count {
-            if !self.scroll_up_one_line_with_progress().moved {
-                break;
-            }
-        }
-        self.output_buffer.update_all_lines();
+        self.scroll_up_rows(count);
     }
     pub fn move_viewport_down(&mut self, count: usize) {
-        for _ in 0..count {
-            if !self.scroll_down_one_line_with_progress().moved {
-                break;
-            }
+        self.scroll_down_rows(count);
+    }
+    /// Where the viewport sat in the full buffer (`lines_above` length) and
+    /// how many scrollback rows had been evicted, so output applied at the
+    /// live bottom can put the same rows back on screen.
+    pub(crate) fn viewport_anchor(&self) -> ViewportAnchor {
+        ViewportAnchor {
+            rows_before_viewport: self.lines_above.len(),
+            evicted_before: self.scrollback_rows_evicted,
         }
-        self.output_buffer.update_all_lines();
+    }
+    /// Put the viewport back on the rows `anchor` named. Rows appended below
+    /// that window stay below it, so the user keeps looking at the same text.
+    pub(crate) fn restore_viewport_anchor(&mut self, anchor: ViewportAnchor) {
+        if self.is_scrolled {
+            self.reset_viewport();
+        }
+        let evicted = self
+            .scrollback_rows_evicted
+            .saturating_sub(anchor.evicted_before) as usize;
+        let start = anchor.rows_before_viewport.saturating_sub(evicted);
+        let height = self.viewport.len();
+        if height == 0 {
+            return;
+        }
+        let total = self.lines_above.len() + height + self.lines_below.len();
+        if start >= total {
+            return;
+        }
+        let window_end = start.saturating_add(height).min(total);
+        let desired_below = total - window_end;
+        if desired_below > 0 {
+            self.scroll_up_rows(desired_below);
+        }
     }
     pub fn reset_viewport(&mut self) {
         let should_clear_output_buffer = self.is_scrolled;
+        // A few bulk passes cover a reflow that pushes excess rows back.
+        // The one-line loop is only a leftover, not the path for a long scroll.
+        for _ in 0..4 {
+            if !self.is_scrolled {
+                break;
+            }
+            let distance = self.lines_below.len();
+            if distance == 0 {
+                self.is_scrolled = false;
+                break;
+            }
+            if self.scroll_down_rows(distance) == 0 {
+                break;
+            }
+        }
         while self.is_scrolled {
             if !self.scroll_down_one_line_with_progress().moved {
                 break;
@@ -3294,6 +3676,132 @@ impl Grid {
         if should_clear_output_buffer {
             self.output_buffer.update_all_lines();
         }
+    }
+    /// Scroll up by `count` rows in one transfer, then fix selection, search,
+    /// and kitty once. Falls back to one row at a time when the viewport is
+    /// not a full screen (the one-row path's precondition).
+    fn scroll_up_rows(&mut self, count: usize) -> usize {
+        if count == 0 || self.lines_above.is_empty() {
+            return 0;
+        }
+        if self.viewport.len() != self.height {
+            let mut moved = 0;
+            while moved < count {
+                if !self.scroll_up_one_line_with_progress().moved {
+                    break;
+                }
+                moved += 1;
+            }
+            return moved;
+        }
+        let before = self.viewport.len();
+        let (display_row_delta, reflowed) = transfer_rows_from_lines_above_to_viewport(
+            &mut self.lines_above,
+            &mut self.viewport,
+            &mut self.sixel_grid,
+            &mut self.kitty_grid,
+            count,
+            self.width,
+            &mut self.scrollback_cells,
+            &mut self.front_run_validity,
+            &mut self.scrollback_rows_evicted,
+        );
+        self.apply_scrollback_display_row_delta(display_row_delta);
+        let added = self.viewport.len().saturating_sub(before);
+        for _ in 0..added {
+            if let Some(row) = self.viewport.pop_back() {
+                self.lines_below.push_front(row);
+            }
+        }
+        if added == 0 {
+            return 0;
+        }
+        self.is_scrolled = true;
+        self.selection.move_down(added);
+        if let Some(command_output_flash) = self.command_output_flash.as_mut() {
+            command_output_flash.move_down(added);
+        }
+        self.search_results
+            .move_down_rows(added, &self.viewport, self.height);
+        self.kitty_refresh_after_scroll_step(reflowed);
+        self.output_buffer.update_all_lines();
+        added
+    }
+    /// Scroll down by `count` rows in one transfer. See `scroll_up_rows`.
+    fn scroll_down_rows(&mut self, count: usize) -> usize {
+        let count = count.min(self.lines_below.len());
+        if count == 0 {
+            return 0;
+        }
+        if self.viewport.len() != self.height || self.viewport.is_empty() {
+            let mut moved = 0;
+            while moved < count {
+                if !self.scroll_down_one_line_with_progress().moved {
+                    break;
+                }
+                moved += 1;
+            }
+            return moved;
+        }
+        let height = self.height;
+        let reflowed = transfer_rows_from_lines_below_to_viewport(
+            &mut self.lines_below,
+            &mut self.viewport,
+            count,
+            self.width,
+        );
+        let grown = self.viewport.len().saturating_sub(height);
+        self.push_viewport_front_to_scrollback(grown);
+        if grown == 0 {
+            return 0;
+        }
+        self.selection.move_up(grown);
+        if let Some(command_output_flash) = self.command_output_flash.as_mut() {
+            command_output_flash.move_up(grown);
+        }
+        self.search_results
+            .move_up_rows(grown, &self.viewport, &self.lines_below, self.height);
+        self.kitty_refresh_after_scroll_step(reflowed);
+        if self.lines_below.is_empty() {
+            self.is_scrolled = false;
+            self.lines_below.shrink_to_fit();
+        }
+        self.output_buffer.update_all_lines();
+        grown
+    }
+    fn push_viewport_front_to_scrollback(&mut self, count: usize) {
+        let count = count.min(self.viewport.len());
+        if count == 0 {
+            return;
+        }
+        let width = self.width;
+        let drained: Vec<Row> = self.viewport.drain(..count).collect();
+        let mut display_row_delta = 0isize;
+        for mut line in drained {
+            if !line.is_canonical && self.lines_above.is_empty() {
+                self.kitty_grid.insert_canonical_anchor_line_at_front();
+                line = line.canonical();
+                // This row just became its own logical line. The cached
+                // canonical starts still describe the old boundary.
+                self.kitty_grid.invalidate_canonical_starts();
+            }
+            let evicted_rows = bounded_push(
+                &mut self.lines_above,
+                &mut self.sixel_grid,
+                &mut self.kitty_grid,
+                line,
+                &mut self.scrollback_cells,
+            );
+            self.scrollback_rows_evicted += evicted_rows.len() as u64;
+            display_row_delta += evicted_rows_display_row_delta(
+                &mut self.lines_above,
+                evicted_rows,
+                width,
+                &mut self.front_run_validity,
+            );
+            display_row_delta += 1;
+        }
+        self.apply_scrollback_display_row_delta(display_row_delta);
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
@@ -3344,6 +3852,7 @@ impl Grid {
         } else {
             self.transfer_rows_to_lines_above(self.viewport.len())
         };
+        self.kitty_grid.invalidate_canonical_starts();
 
         for _ in 0..self.height {
             let columns = vec![character.clone(); self.width];
@@ -3416,6 +3925,10 @@ impl Grid {
         before: KittyRowSnapshot,
         preserve_above_region_top: bool,
     ) {
+        // Inserting or deleting rows inside the viewport shifts every
+        // canonical start after the edit. Rebuild once for this operation
+        // instead of guessing the shift from the pixel delta.
+        self.kitty_grid.invalidate_canonical_starts();
         let cell_size = { *self.character_cell_size.borrow() };
         if let Some(character_cell_size) = cell_size {
             let cell_h = character_cell_size.height as isize;
@@ -3452,9 +3965,18 @@ impl Grid {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else if !self.viewport.is_empty() {
-                self.viewport.pop_front();
+                let removed = self.viewport.pop_front().unwrap();
+                self.kitty_grid.note_front_row_removed(removed.is_canonical);
             }
             self.viewport.push_back(new_row);
+            // A row inserted ahead of lines_below shifts every later start.
+            // Noting an append is only exact when this row is the new end.
+            if self.lines_below.is_empty() {
+                self.kitty_grid
+                    .note_canonical_row_appended(self.lines_above.len() + self.viewport.len() - 1);
+            } else {
+                self.kitty_grid.invalidate_canonical_starts();
+            }
             self.selection.move_up(1);
         } else {
             self.scroll_region_content_up(
@@ -3493,6 +4015,7 @@ impl Grid {
             // it needs to be investigated and fixed
             let new_row = Row::with_capacity(self.width).canonical();
             self.viewport.push_back(new_row);
+            self.kitty_grid.invalidate_canonical_starts();
         }
         if self.cursor.y == self.height.saturating_sub(1) {
             self.output_buffer.update_all_lines();
@@ -3558,6 +4081,7 @@ impl Grid {
                 let mut new_row = Row::with_capacity(self.width).canonical();
                 new_row.add_character_at(terminal_character, self.cursor.x);
                 self.viewport.push_back(new_row);
+                self.kitty_grid.invalidate_canonical_starts();
                 self.output_buffer.update_line(self.cursor.y);
             },
         }
@@ -3781,18 +4305,23 @@ impl Grid {
             if self.viewport.len() <= self.cursor.y {
                 let line_wrapped_row = Row::with_capacity(self.width);
                 self.viewport.push_back(line_wrapped_row);
+                self.kitty_grid.invalidate_canonical_starts();
                 self.output_buffer.update_line(self.cursor.y);
             } else if let Some(current_line) = self.viewport.get_mut(self.cursor.y) {
                 current_line.is_canonical = false;
+                // Joining this row onto the previous logical line drops a
+                // canonical boundary. Later starts would name the wrong line.
+                self.kitty_grid.invalidate_canonical_starts();
             }
         }
     }
     fn clear_lines_above(&mut self) {
         self.invalidate_scroll_offset();
-        self.front_run_validity = None;
+        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
         self.scrollback_display_rows = 0;
         self.scrollback_cells = 0;
+        self.kitty_grid.invalidate_canonical_starts();
     }
 
     fn pad_current_line_until(&mut self, position: usize, pad_character: TerminalCharacter) {
@@ -3818,11 +4347,15 @@ impl Grid {
         }
     }
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
-        for _ in self.viewport.len()..=position {
+        let before = self.viewport.len();
+        for _ in before..=position {
             let columns = vec![pad_character.clone(); self.width];
             self.viewport
                 .push_back(Row::from_columns(columns).canonical());
             self.output_buffer.update_line(self.viewport.len() - 1);
+        }
+        if self.viewport.len() != before {
+            self.kitty_grid.invalidate_canonical_starts();
         }
     }
     pub fn move_cursor_to(&mut self, x: usize, y: usize, pad_character: TerminalCharacter) {
@@ -4010,9 +4543,7 @@ impl Grid {
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
         self.pad_current_line_until(pad_until, empty_character.clone());
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
-            for i in 0..count {
-                current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
-            }
+            current_row.fill_span(self.cursor.x, count, empty_character);
             self.output_buffer.update_line(self.cursor.y);
         }
     }
@@ -4028,17 +4559,7 @@ impl Grid {
                 let mut columns_padding = vec![EMPTY_TERMINAL_CHARACTER; padding_count];
                 current_row.columns.append(&mut columns_padding);
             }
-            for _ in 0..count {
-                let deleted_character = current_row.delete_and_return_character(self.cursor.x);
-                let excess_width = deleted_character
-                    .map(|terminal_character| terminal_character.width())
-                    .unwrap_or(0)
-                    .saturating_sub(1);
-                for _ in 0..excess_width {
-                    current_row.insert_character_at(empty_character.clone(), self.cursor.x);
-                }
-                current_row.push(empty_character.clone());
-            }
+            current_row.erase_span_and_pad(self.cursor.x, count, empty_character);
             self.output_buffer.update_line(self.cursor.y);
         }
     }
@@ -4055,7 +4576,7 @@ impl Grid {
             alternate_screen_state.kitty_grid.clear_all_placements();
         }
         self.invalidate_scroll_offset();
-        self.front_run_validity = None;
+        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
         self.scrollback_cells = 0;
         self.lines_below = VecDeque::new();
@@ -4189,9 +4710,10 @@ impl Grid {
         )> = None;
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
+                let mut display_cursor = DisplayCursor::default();
                 for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
-                        match_to_selection(&mat, &boundaries, &self.viewport)
+                        match_to_selection(&mat, &boundaries, &self.viewport, &mut display_cursor)
                     {
                         if position_in_span(
                             click_row, click_col, start_row, start_col, end_row, end_col,
@@ -4287,9 +4809,10 @@ impl Grid {
                 if !compiled.on_hover || compiled.tooltip_text.is_none() {
                     continue;
                 }
+                let mut display_cursor = DisplayCursor::default();
                 for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
-                        match_to_selection(&mat, &boundaries, &self.viewport)
+                        match_to_selection(&mat, &boundaries, &self.viewport, &mut display_cursor)
                     {
                         if position_in_span(
                             hover_row, hover_col, start_row, start_col, end_row, end_col,
@@ -4343,9 +4866,15 @@ impl Grid {
                                 if !compiled.on_hover || !compiled.has_visual_effect() {
                                     continue;
                                 }
+                                let mut display_cursor = DisplayCursor::default();
                                 for mat in highlight_matches(&compiled.regex, &logical_text) {
                                     if let Some((sel, start_row, start_col, end_row, end_col)) =
-                                        match_to_selection(&mat, &boundaries, &self.viewport)
+                                        match_to_selection(
+                                            &mat,
+                                            &boundaries,
+                                            &self.viewport,
+                                            &mut display_cursor,
+                                        )
                                     {
                                         if position_in_span(
                                             hover_row, hover_col, start_row, start_col, end_row,
@@ -4377,10 +4906,14 @@ impl Grid {
                     if compiled.on_hover || !compiled.has_visual_effect() {
                         continue;
                     }
+                    let mut display_cursor = DisplayCursor::default();
                     for mat in highlight_matches(&compiled.regex, &logical_text) {
-                        if let Some((sel, _, _, _, _)) =
-                            match_to_selection(&mat, &boundaries, &self.viewport)
-                        {
+                        if let Some((sel, _, _, _, _)) = match_to_selection(
+                            &mat,
+                            &boundaries,
+                            &self.viewport,
+                            &mut display_cursor,
+                        ) {
                             selections.push(HighlightSelection {
                                 selection: sel,
                                 bg: compiled.bg,
@@ -5132,6 +5665,7 @@ impl Grid {
             width,
             &mut self.scrollback_cells,
             &mut self.front_run_validity,
+            &mut self.scrollback_rows_evicted,
         );
         self.apply_scrollback_display_row_delta(display_row_delta);
         self.kitty_reanchor_all_from_pixels();
@@ -5321,7 +5855,7 @@ impl Grid {
                 let placement_top_px = (cursor_px.1
                     + std::cmp::min(command.cell_offset_y as usize, cell.height - 1))
                     as isize;
-                let starts = self.kitty_canonical_line_starts();
+                let starts = self.kitty_starts().to_vec();
                 let vertical_anchor = Self::kitty_anchor_from_pixel_y(
                     placement_top_px,
                     cell.height as isize,
@@ -5755,12 +6289,13 @@ impl Grid {
     }
     pub fn delete_viewport_and_scroll(&mut self) {
         self.invalidate_scroll_offset();
-        self.front_run_validity = None;
+        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
         self.scrollback_cells = 0;
         self.viewport.clear();
         self.lines_below = VecDeque::new();
         self.scrollback_display_rows = 0;
+        self.kitty_grid.invalidate_canonical_starts();
     }
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0, self.styled_underlines);
@@ -6936,7 +7471,7 @@ impl Handler for Grid {
                         },
                         1049 => {
                             // enter alternate buffer
-                            self.front_run_validity = None;
+                            self.front_run_validity.clear();
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
                             self.scrollback_cells = 0;
@@ -7222,10 +7757,18 @@ impl Handler for Grid {
         } else if c == '@' {
             // characters inserted past the end of the line are pushed off it
             let count = std::cmp::min(next_param_or(1), self.width.saturating_sub(self.cursor.x));
-            for _ in 0..count {
-                let mut pad_character = EMPTY_TERMINAL_CHARACTER;
-                pad_character.styles = self.cursor.pending_styles.clone();
-                self.add_character_at_cursor_position(pad_character, true);
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles.clone();
+            // Each inserted cell still punches a hole in a sixel that covers
+            // the cursor. The row itself is rebuilt once.
+            if self.sixel_grid.has_images() || self.viewport.get(self.cursor.y).is_none() {
+                for _ in 0..count {
+                    self.add_character_at_cursor_position(pad_character.clone(), true);
+                }
+            } else if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+                let pane_width = self.width;
+                row.insert_blanks_truncating(self.cursor.x, count, pad_character, pane_width);
+                self.output_buffer.update_line(self.cursor.y);
             }
         } else if c == 'b' {
             if let Some(c) = self.preceding_char.clone() {
@@ -7574,10 +8117,18 @@ pub struct Row {
     pub may_have_groups: bool,
     only_single_width: bool,
     pub link_scan_pending: bool,
+    /// Cells at the start of this row whose text the hyperlink scanner has
+    /// already accepted. A later append scans only the suffix plus a bounded
+    /// lookbehind. Zero means the row has not been scanned.
+    pub(crate) link_prefix_scanned: u32,
+    /// A mutation other than a suffix append. The next scan cannot trust
+    /// `link_prefix_scanned`.
+    pub(crate) link_scan_dirty: bool,
+    pub(crate) link_prefix_has_colon: bool,
 }
 
 #[cfg(target_arch = "x86_64")]
-const _: [(); 48] = [(); std::mem::size_of::<Row>()];
+const _: [(); 56] = [(); std::mem::size_of::<Row>()];
 
 fn encode_width(width: usize) -> Option<NonZeroU32> {
     u32::try_from(width)
@@ -7700,6 +8251,9 @@ impl Row {
             may_have_groups: false,
             only_single_width: false,
             link_scan_pending: false,
+            link_prefix_scanned: 0,
+            link_scan_dirty: false,
+            link_prefix_has_colon: false,
         }
     }
     pub fn with_capacity(capacity: usize) -> Self {
@@ -7713,6 +8267,9 @@ impl Row {
             may_have_groups: false,
             only_single_width: false,
             link_scan_pending: false,
+            link_prefix_scanned: 0,
+            link_scan_dirty: false,
+            link_prefix_has_colon: false,
         }
     }
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
@@ -7726,6 +8283,9 @@ impl Row {
             may_have_groups: false,
             only_single_width: false,
             link_scan_pending: false,
+            link_prefix_scanned: 0,
+            link_scan_dirty: false,
+            link_prefix_has_colon: false,
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -7749,6 +8309,11 @@ impl Row {
     pub fn canonical(mut self) -> Self {
         self.is_canonical = true;
         self
+    }
+    pub(crate) fn invalidate_link_scan(&mut self) {
+        self.link_prefix_scanned = 0;
+        self.link_scan_dirty = true;
+        self.link_prefix_has_colon = false;
     }
     pub fn with_bg_color(mut self, bg_color: Option<AnsiCode>) -> Self {
         self.bg_color = bg_color;
@@ -7994,6 +8559,7 @@ impl Row {
         x: usize,
         keep_marker_on_replaced_blank: bool,
     ) {
+        self.invalidate_link_scan();
         let character_width = terminal_character.width();
         if self.width.is_some() && self.only_single_width && character_width == 1 {
             if let Some(existing) = self.columns.get(x) {
@@ -8057,6 +8623,7 @@ impl Row {
         self.width = None;
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
+        self.invalidate_link_scan();
         let character_width = terminal_character.width();
         for marker in self.osc133_markers.iter_mut() {
             if marker.column > x {
@@ -8084,6 +8651,7 @@ impl Row {
         self.width = None;
     }
     pub fn replace_columns(&mut self, columns: Vec<TerminalCharacter>) {
+        self.invalidate_link_scan();
         self.columns = columns;
         self.osc133_markers.clear();
         self.width = None;
@@ -8093,6 +8661,7 @@ impl Row {
         self.width = None;
     }
     pub fn truncate(&mut self, x: usize) {
+        self.invalidate_link_scan();
         let truncate_position = self.character_index_and_start_column(x).0;
         if truncate_position < self.columns.len() {
             self.columns.truncate(truncate_position);
@@ -8120,6 +8689,7 @@ impl Row {
         to: usize,
         terminal_character: TerminalCharacter,
     ) {
+        self.invalidate_link_scan();
         self.osc133_markers.retain(|marker| marker.column <= from);
         let (from_index, _) = self.character_index_and_start_column(from);
         self.columns.truncate(from_index);
@@ -8140,6 +8710,7 @@ impl Row {
         self.width = None;
     }
     pub fn append(&mut self, to_append: &mut Row) {
+        self.invalidate_link_scan();
         self.expand_trailing_blanks();
         to_append.expand_trailing_blanks();
         if !to_append.osc133_markers.is_empty() {
@@ -8167,6 +8738,7 @@ impl Row {
         self.may_have_groups |= to_append.may_have_groups;
     }
     pub fn drain_until(&mut self, x: usize) -> Vec<TerminalCharacter> {
+        self.invalidate_link_scan();
         let mut drained_part_len = 0;
         let mut split_pos = 0;
         for next_character in self.columns.iter() {
@@ -8185,6 +8757,7 @@ impl Row {
         drained_part
     }
     pub fn replace_and_pad_beginning(&mut self, to: usize, terminal_character: TerminalCharacter) {
+        self.invalidate_link_scan();
         let (to_position_accounting_for_widechars, character_start_column) =
             self.character_index_and_start_column(to);
         let width_of_current_character = self
@@ -8213,7 +8786,244 @@ impl Row {
     pub fn is_empty(&self) -> bool {
         self.columns.is_empty()
     }
+    /// Delete `count` display columns at `x` the way CSI P does.
+    /// Each step removes the glyph covering `x`, puts that glyph's extra
+    /// columns back as blanks at `x`, and appends one blank. Single-width
+    /// rows splice once. Wider rows keep a cursor into the tail so each
+    /// glyph is moved once.
+    pub fn erase_span_and_pad(&mut self, x: usize, count: usize, blank: TerminalCharacter) {
+        if count == 0 {
+            return;
+        }
+        note_row_edit_elements_moved(self.columns.len());
+        // Trust the width cache the same way `delete_and_return_character`
+        // does. Refreshing it would change which cell a stale row deletes.
+        if self.width.is_some() && self.only_single_width {
+            let drop_from = x.min(self.columns.len());
+            let drop_to = (x + count).min(self.columns.len());
+            let removed = drop_to - drop_from;
+            self.columns.drain(drop_from..drop_to);
+            self.columns.extend(std::iter::repeat(blank).take(count));
+            if removed > 0 {
+                let end = x + removed;
+                self.osc133_markers.retain_mut(|marker| {
+                    if (x..end).contains(&marker.column) {
+                        false
+                    } else {
+                        if marker.column >= end {
+                            marker.column -= removed;
+                        }
+                        true
+                    }
+                });
+            }
+            self.width = None;
+            self.invalidate_link_scan();
+            return;
+        }
+        let mut before = Vec::with_capacity(self.columns.len() + count);
+        let mut after: VecDeque<TerminalCharacter> = self.columns.drain(..).collect();
+        let mut column = 0usize;
+        let pull = |column: &mut usize,
+                    before: &mut Vec<TerminalCharacter>,
+                    after: &mut VecDeque<TerminalCharacter>,
+                    x: usize| {
+            while let Some(front) = after.front() {
+                let width = front.width();
+                if *column + width > x {
+                    break;
+                }
+                *column += width;
+                before.push(after.pop_front().expect("front"));
+            }
+        };
+        for _ in 0..count {
+            pull(&mut column, &mut before, &mut after, x);
+            let deleted_width = if after
+                .front()
+                .is_some_and(|character| column + character.width() > x)
+            {
+                let deleted = after.pop_front().expect("cover");
+                let width = deleted.width();
+                let end = x + width;
+                self.osc133_markers.retain_mut(|marker| {
+                    if (x..end).contains(&marker.column) {
+                        false
+                    } else {
+                        if marker.column >= end {
+                            marker.column -= width;
+                        }
+                        true
+                    }
+                });
+                width
+            } else {
+                0
+            };
+            pull(&mut column, &mut before, &mut after, x);
+            for _ in 0..deleted_width.saturating_sub(1) {
+                let covers = after
+                    .front()
+                    .is_some_and(|character| column + character.width() > x);
+                if covers {
+                    after.push_front(blank.clone());
+                    if column + blank.width() <= x {
+                        let inserted = after.pop_front().expect("blank");
+                        column += inserted.width();
+                        before.push(inserted);
+                    }
+                } else {
+                    // The cursor is past the remaining cells. CSI P pads that
+                    // gap with plain empties, then inserts the blank at `x`.
+                    while column < x {
+                        before.push(EMPTY_TERMINAL_CHARACTER);
+                        column += EMPTY_TERMINAL_CHARACTER.width().max(1);
+                    }
+                    if column + blank.width() > x {
+                        after.push_front(blank.clone());
+                    } else {
+                        before.push(blank.clone());
+                        column += blank.width();
+                    }
+                }
+                let shift = blank.width();
+                if shift > 0 {
+                    for marker in self.osc133_markers.iter_mut() {
+                        if marker.column > x {
+                            marker.column += shift;
+                        }
+                    }
+                }
+            }
+            after.push_back(blank.clone());
+        }
+        before.extend(after);
+        self.only_single_width = before.iter().all(|character| character.width() == 1);
+        self.columns = before;
+        self.width = None;
+        self.invalidate_link_scan();
+    }
+    /// Replace `count` display columns at `x` with `blank` (CSI X).
+    /// A glyph the range cuts through is replaced entirely, including the
+    /// columns of that glyph that sit outside the range.
+    pub fn fill_span(&mut self, x: usize, count: usize, blank: TerminalCharacter) {
+        if count == 0 {
+            return;
+        }
+        let end_column = x + count;
+        // Same cache gate as `overwrite_at`: a cleared width cache means the
+        // single-width flag cannot be used as a column index.
+        if self.width.is_some() && self.only_single_width {
+            if x < self.columns.len() {
+                let end = end_column.min(self.columns.len());
+                note_row_edit_elements_moved(end - x);
+                for cell in &mut self.columns[x..end] {
+                    *cell = blank.clone();
+                }
+                self.osc133_markers
+                    .retain(|marker| marker.column < x || marker.column >= end);
+            }
+            self.width = None;
+            self.invalidate_link_scan();
+            return;
+        }
+        note_row_edit_elements_moved(self.columns.len());
+        let mut column = 0usize;
+        let mut out = Vec::with_capacity(self.columns.len());
+        let mut replaced: Vec<(usize, usize)> = Vec::new();
+        for character in std::mem::take(&mut self.columns) {
+            let width = character.width();
+            let character_end = column + width;
+            if width > 0 && character_end > x && column < end_column {
+                out.extend(std::iter::repeat(blank.clone()).take(width));
+                replaced.push((column, character_end));
+            } else {
+                out.push(character);
+            }
+            column = character_end;
+        }
+        self.columns = out;
+        if !replaced.is_empty() {
+            self.osc133_markers.retain(|marker| {
+                !replaced
+                    .iter()
+                    .any(|&(start, end)| marker.column >= start && marker.column < end)
+            });
+        }
+        self.width = None;
+        self.only_single_width = self.columns.iter().all(|character| character.width() == 1);
+        self.invalidate_link_scan();
+    }
+    /// Insert `count` copies of `blank` at display column `x`, truncating to
+    /// `pane_width` after each inserted cell the way CSI @ does.
+    pub fn insert_blanks_truncating(
+        &mut self,
+        x: usize,
+        count: usize,
+        blank: TerminalCharacter,
+        pane_width: usize,
+    ) {
+        if count == 0 {
+            return;
+        }
+        if self.trailing_blanks != 0 {
+            note_row_edit_elements_moved(self.columns.len().saturating_mul(count));
+            for _ in 0..count {
+                self.insert_character_at(blank.clone(), x);
+                if self.width() > pane_width {
+                    self.truncate(pane_width);
+                }
+            }
+            return;
+        }
+        let (mut index, _) = self.character_index_and_start_column(x);
+        if index > self.columns.len() {
+            self.columns.resize(index, EMPTY_TERMINAL_CHARACTER);
+            index = self.columns.len();
+        }
+        note_row_edit_elements_moved(self.columns.len() + count);
+        let tail: VecDeque<TerminalCharacter> = self.columns.drain(index..).collect();
+        let mut head = std::mem::take(&mut self.columns);
+        let mut blanks = 0usize;
+        let mut width: usize = head.iter().chain(tail.iter()).map(|c| c.width()).sum();
+        let mut tail = tail;
+        let blank_width = blank.width();
+        for _ in 0..count {
+            blanks += 1;
+            width += blank_width;
+            for marker in self.osc133_markers.iter_mut() {
+                if marker.column > x {
+                    marker.column += blank_width;
+                }
+            }
+            if width > pane_width {
+                while width > pane_width {
+                    let dropped = if let Some(cell) = tail.pop_back() {
+                        cell.width()
+                    } else if blanks > 0 {
+                        blanks -= 1;
+                        blank_width
+                    } else if let Some(cell) = head.pop() {
+                        cell.width()
+                    } else {
+                        break;
+                    };
+                    width = width.saturating_sub(dropped);
+                }
+                self.osc133_markers
+                    .retain(|marker| marker.column <= pane_width);
+            }
+        }
+        head.reserve(blanks + tail.len());
+        head.extend(std::iter::repeat(blank).take(blanks));
+        head.extend(tail);
+        self.only_single_width = head.iter().all(|character| character.width() == 1);
+        self.columns = head;
+        self.width = None;
+        self.invalidate_link_scan();
+    }
     pub fn delete_and_return_character(&mut self, x: usize) -> Option<TerminalCharacter> {
+        self.invalidate_link_scan();
         let erase_position = self.absolute_character_index(x);
         if erase_position < self.columns.len() {
             self.width = None;
@@ -8247,6 +9057,9 @@ impl Row {
             may_have_groups: false,
             only_single_width: false,
             link_scan_pending: false,
+            link_prefix_scanned: 0,
+            link_scan_dirty: false,
+            link_prefix_has_colon: false,
         };
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }

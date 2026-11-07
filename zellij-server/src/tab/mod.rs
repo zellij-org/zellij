@@ -73,7 +73,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     str,
     sync::Arc,
 };
@@ -163,8 +163,91 @@ macro_rules! resize_pty {
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
-const MAX_PENDING_VTE_EVENTS: usize = 7000;
-const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
+/// Bytes of a scrolled pane's PTY output parsed on one screen-thread turn.
+/// The rest stays pending and is continued by `ScreenInstruction::ApplyScrolledPtyQuantum`.
+pub(crate) const SCROLLED_PTY_QUANTUM_BYTES: usize = 64 * 1024;
+/// Hard ceiling on bytes not yet parsed for one pane. Quanta drain this in the
+/// steady state, so a busy scrolled pane does not replay its backlog in one
+/// turn. If the screen thread still cannot keep up, the oldest pending bytes
+/// are dropped and counted in `Tab::pending_vte_bytes_dropped` rather than
+/// growing without a bound.
+pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
+
+/// Unparsed PTY bytes for one scrolled pane, in arrival order. `head` is the
+/// consumed prefix of the first chunk so a quantum can split a chunk without
+/// copying the rest of the backlog.
+#[derive(Debug, Default)]
+struct PendingPtyBacklog {
+    chunks: VecDeque<Vec<u8>>,
+    head: usize,
+    len: usize,
+}
+
+impl PendingPtyBacklog {
+    fn push(&mut self, bytes: Vec<u8>) {
+        if bytes.is_empty() {
+            return;
+        }
+        self.len = self.len.saturating_add(bytes.len());
+        self.chunks.push_back(bytes);
+    }
+
+    fn drop_oldest(&mut self, mut count: usize) -> usize {
+        let mut dropped = 0;
+        while count > 0 {
+            let Some(front) = self.chunks.front() else {
+                break;
+            };
+            let available = front.len().saturating_sub(self.head);
+            if available == 0 {
+                self.chunks.pop_front();
+                self.head = 0;
+                continue;
+            }
+            if available <= count {
+                self.chunks.pop_front();
+                self.head = 0;
+                dropped += available;
+                count -= available;
+                self.len = self.len.saturating_sub(available);
+            } else {
+                self.head += count;
+                dropped += count;
+                self.len = self.len.saturating_sub(count);
+                count = 0;
+            }
+        }
+        if self.chunks.is_empty() {
+            self.head = 0;
+        }
+        dropped
+    }
+
+    fn take(&mut self, max: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        while out.len() < max {
+            let Some(front) = self.chunks.front() else {
+                break;
+            };
+            let available = front.len().saturating_sub(self.head);
+            if available == 0 {
+                self.chunks.pop_front();
+                self.head = 0;
+                continue;
+            }
+            let take_n = available.min(max - out.len());
+            let start = self.head;
+            out.extend_from_slice(&front[start..start + take_n]);
+            self.head += take_n;
+            self.len = self.len.saturating_sub(take_n);
+            if self.head >= front.len() {
+                self.chunks.pop_front();
+                self.head = 0;
+            }
+        }
+        out
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneNotCreatedReason {
     NoRoom,
@@ -467,8 +550,10 @@ pub(crate) struct Tab {
     pane_frame_style: PaneFrameStyle,
     hidden_bars: HiddenBars,
     auto_layout: bool,
-    pending_vte_events: HashMap<u32, Vec<VteBytes>>,
-    pending_vte_event_bytes: HashMap<u32, usize>,
+    pending_vte: HashMap<u32, PendingPtyBacklog>,
+    /// Oldest scrolled-output bytes dropped because `MAX_PENDING_VTE_BYTES`
+    /// was hit. Not the steady state: quanta are supposed to drain the backlog.
+    pending_vte_bytes_dropped: HashMap<u32, u64>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
     // Resolves link ids on chunks that carry no handler of their own (live
@@ -1362,8 +1447,8 @@ impl Tab {
             pane_frame_style,
             hidden_bars: HiddenBars::default(),
             auto_layout,
-            pending_vte_events: HashMap::new(),
-            pending_vte_event_bytes: HashMap::new(),
+            pending_vte: HashMap::new(),
+            pending_vte_bytes_dropped: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
             pane_being_resized_with_mouse: None,
@@ -5173,40 +5258,102 @@ impl Tab {
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
-        let bytes_len = bytes.len();
-        if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            })
-        {
-            // If the pane is scrolled buffer the vte events
-            if terminal_output.is_scrolled() {
-                self.pending_vte_events.entry(pid).or_default().push(bytes);
-                let pending_bytes = self.pending_vte_event_bytes.entry(pid).or_default();
-                *pending_bytes = pending_bytes.saturating_add(bytes_len);
-                let pending_event_count = self
-                    .pending_vte_events
-                    .get(&pid)
-                    .map(|events| events.len())
-                    .unwrap_or_default();
-                // Reset scroll - and process all pending events for this pane
-                if pending_event_count >= MAX_PENDING_VTE_EVENTS
-                    || *pending_bytes >= MAX_PENDING_VTE_BYTES
-                {
-                    terminal_output.clear_scroll();
-                    self.process_pending_vte_events(pid)
-                        .with_context(err_context)?;
-                }
-                return Ok(());
-            }
+        // A scrolled pane used to buffer every byte and then parse the whole
+        // backlog in this call. Parse at most one quantum now; the screen
+        // thread continues the rest on a later turn. Bytes that arrived while
+        // a backlog already exists stay behind it so order does not change.
+        if self.pending_vte_len(pid) > 0 || self.terminal_pane_is_scrolled(pid) {
+            self.enqueue_pending_vte(pid, bytes);
+            self.apply_one_pending_vte_quantum(pid)
+                .with_context(err_context)?;
+            return Ok(());
         }
         self.process_pty_bytes(pid, bytes).with_context(err_context)
+    }
+    fn terminal_pane_is_scrolled(&self, pid: u32) -> bool {
+        self.tiled_panes
+            .get_pane(PaneId::Terminal(pid))
+            .map(Box::as_ref)
+            .or_else(|| {
+                self.floating_panes
+                    .get_pane(PaneId::Terminal(pid))
+                    .map(Box::as_ref)
+            })
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .map(|s_p| s_p.1.as_ref())
+                    .find(|pane| pane.pid() == PaneId::Terminal(pid))
+            })
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false)
+    }
+    fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>) {
+        if bytes.is_empty() {
+            return;
+        }
+        let backlog = self.pending_vte.entry(pid).or_default();
+        backlog.push(bytes);
+        if backlog.len > MAX_PENDING_VTE_BYTES {
+            let overflow = backlog.len - MAX_PENDING_VTE_BYTES;
+            let dropped = backlog.drop_oldest(overflow);
+            if dropped > 0 {
+                *self.pending_vte_bytes_dropped.entry(pid).or_default() += dropped as u64;
+                log::warn!(
+                    "pane {pid} dropped {dropped} oldest bytes of scrolled output to stay within \
+                     the {MAX_PENDING_VTE_BYTES} byte pending ceiling"
+                );
+            }
+        }
+        if self.pending_vte.get(&pid).map(|backlog| backlog.len) == Some(0) {
+            self.pending_vte.remove(&pid);
+        }
+    }
+    fn take_pending_vte_quantum(&mut self, pid: u32) -> Vec<u8> {
+        let Some(backlog) = self.pending_vte.get_mut(&pid) else {
+            return Vec::new();
+        };
+        let bytes = backlog.take(SCROLLED_PTY_QUANTUM_BYTES);
+        if backlog.len == 0 {
+            self.pending_vte.remove(&pid);
+        }
+        bytes
+    }
+    pub(crate) fn pending_vte_len(&self, pid: u32) -> usize {
+        self.pending_vte
+            .get(&pid)
+            .map(|backlog| backlog.len)
+            .unwrap_or(0)
+    }
+    pub(crate) fn pending_vte_bytes_dropped(&self, pid: u32) -> u64 {
+        self.pending_vte_bytes_dropped
+            .get(&pid)
+            .copied()
+            .unwrap_or(0)
+    }
+    pub(crate) fn has_pending_vte_bytes(&self) -> bool {
+        self.pending_vte.values().any(|backlog| backlog.len > 0)
+    }
+    /// Parse at most one quantum of queued PTY bytes for every pane that has
+    /// some. Does not loop until the backlog is empty.
+    pub(crate) fn apply_pending_vte_quanta(&mut self) -> Result<()> {
+        let pids: Vec<u32> = self.pending_vte.keys().copied().collect();
+        for pid in pids {
+            self.apply_one_pending_vte_quantum(pid)
+                .context("failed to apply a scrolled pty quantum")?;
+        }
+        Ok(())
+    }
+    fn apply_one_pending_vte_quantum(&mut self, pid: u32) -> Result<()> {
+        if !self.has_terminal_pid(pid) {
+            self.pending_vte.remove(&pid);
+            return Ok(());
+        }
+        let bytes = self.take_pending_vte_quantum(pid);
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        self.process_pty_bytes(pid, bytes)
     }
     pub fn handle_plugin_bytes(
         &mut self,
@@ -5234,15 +5381,6 @@ impl Tab {
             })
         {
             plugin_pane.handle_plugin_bytes(client_id, bytes);
-        }
-        Ok(())
-    }
-    pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
-        let vte_events = self.pending_vte_events.remove(&pid).unwrap_or_default();
-        self.pending_vte_event_bytes.remove(&pid);
-        for vte_event in vte_events {
-            self.process_pty_bytes(pid, vte_event)
-                .context("failed to process pending vte events")?;
         }
         Ok(())
     }
@@ -7769,16 +7907,8 @@ impl Tab {
     }
 
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context = || format!("failed to scroll down active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_down(1, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -7802,15 +7932,8 @@ impl Tab {
             self.write_to_pane_id(&None, b"\x1b[B".to_vec(), false, pane_id, None, None)
                 .with_context(err_context)?;
         } else {
-            let needs_flush = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
                 pane.scroll_down(1, fictitious_client_id);
-                !pane.is_scrolled()
-            } else {
-                false
-            };
-            if needs_flush {
-                self.process_pending_vte_events(terminal_pane_id)
-                    .with_context(err_context)?;
             }
         }
         Ok(())
@@ -7836,18 +7959,9 @@ impl Tab {
     }
 
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll down one page in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let scroll_rows = active_pane.get_content_rows();
             active_pane.scroll_down(scroll_rows, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -7859,11 +7973,6 @@ impl Tab {
                                           // TODO: traits were a mistake
             let scroll_rows = terminal_pane.get_content_rows();
             terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !terminal_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
-                    self.process_pending_vte_events(raw_fd).non_fatal()
-                }
-            }
         }
     }
 
@@ -7876,34 +7985,16 @@ impl Tab {
     }
 
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll down half a page in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
             active_pane.scroll_down(scroll_rows, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
 
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll to bottom in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_scroll();
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -7911,11 +8002,6 @@ impl Tab {
     pub fn scroll_terminal_to_bottom(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
             terminal_pane.clear_scroll();
-            if !terminal_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
-                    self.process_pending_vte_events(raw_fd).non_fatal();
-                }
-            }
         }
     }
 
@@ -7942,18 +8028,8 @@ impl Tab {
     }
 
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
-        // TODO: is this a thing?
-        let err_context =
-            || format!("failed to clear scroll in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_scroll();
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -9846,11 +9922,6 @@ impl Tab {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.scroll_down(1, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
         }
         Ok(())
     }
@@ -9867,11 +9938,6 @@ impl Tab {
     pub fn scroll_to_bottom_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.clear_scroll();
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
         }
         Ok(())
     }
@@ -9887,11 +9953,6 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = pane.get_content_rows();
             pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
         }
         Ok(())
     }
@@ -9907,11 +9968,6 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
             pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
         }
         Ok(())
     }

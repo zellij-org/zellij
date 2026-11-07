@@ -214,6 +214,7 @@ impl Display for ContextType {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyBytes,
+    ApplyScrolledPtyQuantum,
     PluginBytes,
     Render,
     RenderToClients,

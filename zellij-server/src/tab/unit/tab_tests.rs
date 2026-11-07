@@ -17173,12 +17173,113 @@ pub fn pending_vte_bytes_are_bounded_while_scrolled() {
     tab.scroll_up_by_pane_id(pane_id);
     assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
 
-    tab.handle_pty_bytes(1, vec![b'\n'; super::MAX_PENDING_VTE_BYTES])
+    // The ceiling is a drop limit, not a signal to clear the scroll and parse
+    // the whole backlog. One call still parses only a quantum.
+    let overflow = 1000usize;
+    tab.handle_pty_bytes(1, vec![b'x'; super::MAX_PENDING_VTE_BYTES + overflow])
         .unwrap();
 
-    assert!(!tab.pending_vte_events.contains_key(&1));
-    assert!(!tab.pending_vte_event_bytes.contains_key(&1));
-    assert!(!tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+    assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+    assert_eq!(tab.pending_vte_bytes_dropped(1), overflow as u64);
+    assert_eq!(
+        tab.pending_vte_len(1),
+        super::MAX_PENDING_VTE_BYTES - super::SCROLLED_PTY_QUANTUM_BYTES
+    );
+}
+
+#[test]
+pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_a = PaneId::Terminal(1);
+    let pane_b = PaneId::Terminal(2);
+    for line in 0..40 {
+        tab.handle_pty_bytes(1, format!("hist {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.horizontal_split(pane_b, None, 1, None, None).unwrap();
+    tab.scroll_up_by_pane_id(pane_a);
+    assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    let viewport_before = tab
+        .get_pane_with_id(pane_a)
+        .unwrap()
+        .dump_screen(false, None);
+    assert!(
+        viewport_before.contains("hist"),
+        "scrolled viewport should show earlier output, got {viewport_before:?}"
+    );
+
+    let mut payload = Vec::new();
+    let mut ordered_lines = Vec::new();
+    let mut index = 0u32;
+    while payload.len() <= super::SCROLLED_PTY_QUANTUM_BYTES {
+        let line = format!("L{index:05}");
+        ordered_lines.push(line.clone());
+        payload.extend_from_slice(line.as_bytes());
+        payload.extend_from_slice(b"\r\n");
+        index += 1;
+    }
+    assert!(payload.len() > super::SCROLLED_PTY_QUANTUM_BYTES);
+
+    tab.handle_pty_bytes(1, payload.clone()).unwrap();
+    let pending_after_first = tab.pending_vte_len(1);
+    assert_eq!(
+        pending_after_first,
+        payload.len() - super::SCROLLED_PTY_QUANTUM_BYTES
+    );
+    assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    assert_eq!(
+        tab.get_pane_with_id(pane_a)
+            .unwrap()
+            .dump_screen(false, None),
+        viewport_before
+    );
+
+    // Pane B is handled while most of A's backlog is still unparsed.
+    let pending_before_b = tab.pending_vte_len(1);
+    tab.handle_pty_bytes(2, b"PANE-B-MARKER\r\n".to_vec())
+        .unwrap();
+    assert_eq!(tab.pending_vte_len(1), pending_before_b);
+    assert!(tab
+        .get_pane_with_id(pane_b)
+        .unwrap()
+        .dump_screen(true, None)
+        .contains("PANE-B-MARKER"));
+
+    let mut steps = 0;
+    while tab.pending_vte_len(1) > 0 {
+        let before = tab.pending_vte_len(1);
+        tab.apply_pending_vte_quanta().unwrap();
+        let after = tab.pending_vte_len(1);
+        assert!(before - after <= super::SCROLLED_PTY_QUANTUM_BYTES);
+        assert!(after < before);
+        assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+        assert_eq!(
+            tab.get_pane_with_id(pane_a)
+                .unwrap()
+                .dump_screen(false, None),
+            viewport_before
+        );
+        steps += 1;
+        assert!(steps < 8, "backlog should drain in a handful of quanta");
+    }
+    assert!(steps >= 1);
+    assert_eq!(tab.pending_vte_bytes_dropped(1), 0);
+
+    tab.scroll_to_bottom_by_pane_id(pane_a).unwrap();
+    assert!(!tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    assert_eq!(tab.pending_vte_len(1), 0);
+    let full = tab.get_pane_with_id(pane_a).unwrap().dump_screen(true, None);
+    let mut previous = 0;
+    for line in &ordered_lines {
+        let found = full[previous..]
+            .find(line.as_str())
+            .unwrap_or_else(|| panic!("{line} missing from scrolled output"));
+        previous += found + line.len();
+    }
 }
 
 #[test]
