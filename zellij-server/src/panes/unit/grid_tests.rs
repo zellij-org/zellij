@@ -12058,6 +12058,44 @@ fn evicting_validly_wrapped_rows_does_not_rescan_the_run() {
     );
 }
 
+#[test]
+fn evicting_a_long_valid_run_inspects_each_row_a_small_number_of_times() {
+    use crate::panes::grid::{
+        evicted_row_inspection_count, evicted_run_rescan_count, reset_evicted_row_inspection_count,
+        reset_evicted_run_rescan_count,
+    };
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let run_rows = 400;
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let mut content = vec![b'a'; 10 * run_rows];
+    content.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &content);
+    reset_evicted_row_inspection_count();
+    reset_evicted_run_rescan_count();
+    // Enough canonical rows to push the whole wrapped line out of the
+    // scrollback, one stored row at a time.
+    let mut more = Vec::new();
+    for _ in 0..scroll_buffer_size {
+        more.extend_from_slice(b"0123456789\r\n");
+    }
+    feed_bytes(&mut grid, &more);
+    let inspections = evicted_row_inspection_count();
+    // Without a remembered run, each of the `run_rows` evictions walks
+    // the rows still ahead of it. That is hundreds of inspections per
+    // eviction. With the cache, the run is walked once and each later
+    // row is a constant-time check, plus one check per canonical row.
+    let quadratic = run_rows * run_rows / 2;
+    assert!(
+        inspections < quadratic,
+        "inspected {inspections} rows while evicting a {run_rows}-row run (quadratic would be about {quadratic})"
+    );
+    assert_eq!(
+        evicted_run_rescan_count(),
+        0,
+        "a stored wrap that is still valid takes the fast path"
+    );
+}
+
 /// A grid `columns` cells wide whose scrollback holds `line_count`
 /// full-width rows, each starting with its five-digit index and an `x`
 /// after it, so that serialized output can be inspected by row.

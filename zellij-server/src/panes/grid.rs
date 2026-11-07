@@ -626,6 +626,61 @@ impl WrapState {
 /// Beyond it the rest of the run is estimated from its cell count alone.
 const EVICTION_WIDE_CHARACTER_BUDGET: usize = 4096;
 
+/// A validated continuation run at the front of `lines_above`.
+///
+/// Dropping the first row of a wrap that is still valid at `width`
+/// removes one display row. Remembering that fact, plus a fingerprint of
+/// the next row, lets later evictions of the same run skip the walk.
+/// A fingerprint miss rescans; it does not invent a delta.
+#[derive(Clone, Copy)]
+struct FrontRunValidity {
+    width: usize,
+    /// `lines_above.len()` as the delta function saw it. `bounded_push`
+    /// has already popped the evicted row and appended its replacement,
+    /// so the next single-row eviction observes the same length.
+    len_at_front: usize,
+    /// Continuation rows of this run still ahead, including the next
+    /// row to evict.
+    rows: usize,
+    next_columns: usize,
+    next_cells: usize,
+}
+
+fn note_evicted_row_inspection() {
+    #[cfg(test)]
+    EVICTED_ROW_INSPECTIONS.with(|counter| counter.set(counter.get() + 1));
+}
+
+fn remember_front_run(
+    cache: &mut Option<FrontRunValidity>,
+    lines_above: &mut VecDeque<Row>,
+    width: usize,
+    rows: usize,
+) {
+    if rows == 0 {
+        *cache = None;
+        return;
+    }
+    let (next_columns, next_cells, canonical) = match lines_above.front_mut() {
+        Some(next) => (next.columns.len(), next.width_cached(), next.is_canonical),
+        None => {
+            *cache = None;
+            return;
+        },
+    };
+    if canonical {
+        *cache = None;
+        return;
+    }
+    *cache = Some(FrontRunValidity {
+        width,
+        len_at_front: lines_above.len(),
+        rows,
+        next_columns,
+        next_cells,
+    });
+}
+
 /// Change in the scrollback's display-row total caused by evicting the
 /// front row `evicted` of `lines_above`, which has already been popped.
 /// The affected logical line is the evicted row plus the continuation
@@ -652,12 +707,41 @@ fn evicted_row_display_row_delta(
     lines_above: &mut VecDeque<Row>,
     evicted: &mut Row,
     width: usize,
+    front_run: &mut Option<FrontRunValidity>,
 ) -> isize {
+    if let Some(cached) = *front_run {
+        let evicted_cells = evicted.width_cached();
+        if cached.width == width
+            && lines_above.len() == cached.len_at_front
+            && cached.rows > 0
+            && !evicted.is_canonical
+            && evicted.columns.len() == cached.next_columns
+            && evicted_cells == cached.next_cells
+            && evicted_cells <= width
+        {
+            note_evicted_row_inspection();
+            let rows_left = cached.rows - 1;
+            remember_front_run(front_run, lines_above, width, rows_left);
+            if front_run.is_some() {
+                // The row just recorded is the one the next eviction pops.
+                note_evicted_row_inspection();
+            }
+            return -1;
+        }
+    }
+    *front_run = None;
+
     let mut remaining_run_rows = 0;
     loop {
         match lines_above.get(remaining_run_rows) {
-            Some(row) if !row.is_canonical => {},
-            _ => break,
+            Some(row) if !row.is_canonical => {
+                note_evicted_row_inspection();
+            },
+            Some(_) => {
+                note_evicted_row_inspection();
+                break;
+            },
+            None => break,
         }
         remaining_run_rows += 1;
     }
@@ -674,6 +758,7 @@ fn evicted_row_display_row_delta(
     // O(rows in the run) and never looks at individual characters.
     // Rows carrying wraps from before a resize fail the check and take
     // the bounded recomputation below.
+    note_evicted_row_inspection();
     let evicted_cells = evicted.width_cached();
     if remaining_run_rows == 0 && evicted_cells <= width {
         return -1;
@@ -686,6 +771,7 @@ fn evicted_row_display_row_delta(
                 Some(row) => row,
                 None => break,
             };
+            note_evicted_row_inspection();
             let row_width = row.width_cached();
             if row_width > width || previous_row_width + first_character_width(row) <= width {
                 stored_run_is_valid = false;
@@ -694,6 +780,7 @@ fn evicted_row_display_row_delta(
             previous_row_width = row_width;
         }
         if stored_run_is_valid {
+            remember_front_run(front_run, lines_above, width, remaining_run_rows);
             return -1;
         }
     }
@@ -712,6 +799,7 @@ fn evicted_row_display_row_delta(
             Some(row) => row,
             None => break,
         };
+        note_evicted_row_inspection();
         let single_width = row.is_single_width_cached();
         let character_count = row.columns.len() + row.trailing_blanks as usize;
         if single_width || character_count > wide_budget {
@@ -747,11 +835,24 @@ fn evicted_rows_display_row_delta(
     lines_above: &mut VecDeque<Row>,
     evicted: Vec<Row>,
     width: usize,
+    front_run: &mut Option<FrontRunValidity>,
 ) -> isize {
+    // One popped row is the case the cache describes. A burst removes
+    // several front rows before any of them is measured, so a record
+    // from the previous row would name the wrong successor.
+    if evicted.len() != 1 {
+        *front_run = None;
+    }
+    let mut discarded = None;
+    let cache = if evicted.len() == 1 {
+        &mut *front_run
+    } else {
+        &mut discarded
+    };
     let mut delta = 0;
     let mut restored = 0;
     for mut evicted_row in evicted.into_iter().rev() {
-        delta += evicted_row_display_row_delta(lines_above, &mut evicted_row, width);
+        delta += evicted_row_display_row_delta(lines_above, &mut evicted_row, width, cache);
         lines_above.push_front(evicted_row);
         restored += 1;
     }
@@ -817,6 +918,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     count: usize,
     max_viewport_width: usize,
     scrollback_cells: &mut usize,
+    front_run: &mut Option<FrontRunValidity>,
 ) -> (isize, bool) {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
@@ -831,6 +933,8 @@ fn transfer_rows_from_lines_above_to_viewport(
         }
         if next_lines.is_empty() {
             if scrollback_tail_is_wrapped_at(lines_above, viewport, max_viewport_width) {
+                // The row leaves from the tail, which is not the cached front.
+                *front_run = None;
                 match lines_above.pop_back() {
                     Some(mut next_line) => {
                         *scrollback_cells =
@@ -844,6 +948,8 @@ fn transfer_rows_from_lines_above_to_viewport(
                     None => break,
                 }
             }
+            // The drained run is the tail, not the cached front row.
+            *front_run = None;
             let mut canonical_run = get_lines_above_bottom_canonical_row_and_wraps(lines_above);
             *scrollback_cells = scrollback_cells.saturating_sub(
                 canonical_run
@@ -889,8 +995,12 @@ fn transfer_rows_from_lines_above_to_viewport(
             excess_row,
             scrollback_cells,
         );
-        display_row_delta +=
-            evicted_rows_display_row_delta(lines_above, evicted_rows, max_viewport_width);
+        display_row_delta += evicted_rows_display_row_delta(
+            lines_above,
+            evicted_rows,
+            max_viewport_width,
+            front_run,
+        );
         display_row_delta += 1;
     }
     (display_row_delta, reflowed)
@@ -904,6 +1014,7 @@ fn transfer_rows_from_viewport_to_lines_above(
     count: usize,
     width: usize,
     scrollback_cells: &mut usize,
+    front_run: &mut Option<FrontRunValidity>,
 ) -> isize {
     let mut display_row_delta: isize = 0;
     let drained_lines = std::cmp::min(count, viewport.len());
@@ -915,7 +1026,8 @@ fn transfer_rows_from_viewport_to_lines_above(
             next_line,
             scrollback_cells,
         );
-        display_row_delta += evicted_rows_display_row_delta(lines_above, evicted_rows, width);
+        display_row_delta +=
+            evicted_rows_display_row_delta(lines_above, evicted_rows, width, front_run);
         display_row_delta += 1;
     }
     display_row_delta
@@ -1020,6 +1132,7 @@ pub(crate) fn reset_serialize_budget_rows_scanned() {
 thread_local! {
     static REWRAP_ROWS_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static EVICTED_RUN_RESCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static EVICTED_ROW_INSPECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -1030,6 +1143,19 @@ pub(crate) fn evicted_run_rescan_count() -> usize {
 #[cfg(test)]
 pub(crate) fn reset_evicted_run_rescan_count() {
     EVICTED_RUN_RESCANS.with(|c| c.set(0));
+}
+
+/// Rows examined while deciding an eviction's display-row delta, including
+/// the fast path. A cache hit inspects the evicted row and, when the run
+/// continues, the next one. It does not walk the rest.
+#[cfg(test)]
+pub(crate) fn evicted_row_inspection_count() -> usize {
+    EVICTED_ROW_INSPECTIONS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_evicted_row_inspection_count() {
+    EVICTED_ROW_INSPECTIONS.with(|c| c.set(0));
 }
 
 #[cfg(test)]
@@ -1452,6 +1578,10 @@ pub(super) struct ScrollResult {
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
+    /// Valid continuation run at the front of `lines_above`, if the last
+    /// single-row eviction proved one. Cleared when that proof no longer
+    /// describes the front.
+    front_run_validity: Option<FrontRunValidity>,
     pub(crate) viewport: VecDeque<Row>,
     pub(crate) lines_below: VecDeque<Row>,
     horizontal_tabstops: BTreeSet<usize>,
@@ -1863,6 +1993,7 @@ impl Grid {
         Grid {
             scrollback_epoch: 0,
             lines_above: VecDeque::new(),
+            front_run_validity: None,
             viewport: VecDeque::from(vec![Row::new().canonical()]),
             lines_below: VecDeque::new(),
             horizontal_tabstops: create_horizontal_tabstops(columns),
@@ -2310,6 +2441,7 @@ impl Grid {
                 1,
                 self.width,
                 &mut self.scrollback_cells,
+                &mut self.front_run_validity,
             );
             self.apply_scrollback_display_row_delta(display_row_delta);
             self.kitty_refresh_after_scroll_step(reflowed);
@@ -2355,8 +2487,12 @@ impl Grid {
                 &mut self.scrollback_cells,
             );
             let width = self.width;
-            let display_row_delta =
-                1 + evicted_rows_display_row_delta(&mut self.lines_above, evicted_rows, width);
+            let display_row_delta = 1 + evicted_rows_display_row_delta(
+                &mut self.lines_above,
+                evicted_rows,
+                width,
+                &mut self.front_run_validity,
+            );
             self.apply_scrollback_display_row_delta(display_row_delta);
 
             let reflowed = transfer_rows_from_lines_below_to_viewport(
@@ -2417,6 +2553,9 @@ impl Grid {
         if new_columns == 0 || new_rows == 0 {
             return;
         }
+        // Reflow rewrites stored widths, so a run that was valid at the
+        // old width must be checked again.
+        self.front_run_validity = None;
         self.invalidate_scroll_offset();
         if self.alternate_screen_state.is_some() {
             // in alternate screen we do nothing but log the new size, the program in the terminal
@@ -2643,6 +2782,7 @@ impl Grid {
                         row_count_to_transfer,
                         new_columns,
                         &mut self.scrollback_cells,
+                        &mut self.front_run_validity,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
@@ -2672,6 +2812,7 @@ impl Grid {
                         row_count_to_transfer,
                         new_columns,
                         &mut self.scrollback_cells,
+                        &mut self.front_run_validity,
                     );
                 },
                 Ordering::Equal => {},
@@ -3648,6 +3789,7 @@ impl Grid {
     }
     fn clear_lines_above(&mut self) {
         self.invalidate_scroll_offset();
+        self.front_run_validity = None;
         self.lines_above = VecDeque::new();
         self.scrollback_display_rows = 0;
         self.scrollback_cells = 0;
@@ -3913,6 +4055,7 @@ impl Grid {
             alternate_screen_state.kitty_grid.clear_all_placements();
         }
         self.invalidate_scroll_offset();
+        self.front_run_validity = None;
         self.lines_above = VecDeque::new();
         self.scrollback_cells = 0;
         self.lines_below = VecDeque::new();
@@ -4988,6 +5131,7 @@ impl Grid {
             count,
             width,
             &mut self.scrollback_cells,
+            &mut self.front_run_validity,
         );
         self.apply_scrollback_display_row_delta(display_row_delta);
         self.kitty_reanchor_all_from_pixels();
@@ -5611,6 +5755,7 @@ impl Grid {
     }
     pub fn delete_viewport_and_scroll(&mut self) {
         self.invalidate_scroll_offset();
+        self.front_run_validity = None;
         self.lines_above = VecDeque::new();
         self.scrollback_cells = 0;
         self.viewport.clear();
@@ -6791,6 +6936,7 @@ impl Handler for Grid {
                         },
                         1049 => {
                             // enter alternate buffer
+                            self.front_run_validity = None;
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
                             self.scrollback_cells = 0;
