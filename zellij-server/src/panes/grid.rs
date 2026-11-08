@@ -2347,44 +2347,6 @@ fn collect_and_build_logical_line(
     Some((canonical, group_len, text, boundaries))
 }
 
-/// Map a byte offset in the concatenated logical-line string back to
-/// (viewport_row_idx, display_column).
-///
-/// display_column is the sum of character.width() for all characters
-/// before the target character in that row — NOT a char count or byte count.
-/// This correctly handles wide characters (CJK, emoji).
-///
-/// `boundaries` is the table produced by `collect_and_build_logical_line`.
-/// `viewport` is `&self.viewport`.
-fn byte_offset_to_display_col(
-    byte_offset: usize,
-    boundaries: &[(usize, usize)],
-    viewport: &VecDeque<Row>,
-) -> Option<(usize, usize)> {
-    if boundaries.is_empty() {
-        return None;
-    }
-    // Find which row the byte offset falls in (last boundary whose byte_start <= offset).
-    let boundary_idx = boundaries
-        .partition_point(|&(_, byte_start)| byte_start <= byte_offset)
-        .saturating_sub(1);
-    let &(row_idx, row_byte_start) = boundaries.get(boundary_idx)?;
-    let intra_byte_offset = byte_offset - row_byte_start;
-
-    // Count display columns up to (but not including) the character at intra_byte_offset.
-    let row = viewport.get(row_idx)?;
-    let mut display_col = 0usize;
-    let mut bytes_seen = 0usize;
-    for ch in &row.columns {
-        if bytes_seen >= intra_byte_offset {
-            break;
-        }
-        bytes_seen += ch.utf8_len();
-        display_col += ch.width();
-    }
-    Some((row_idx, display_col))
-}
-
 #[derive(Default)]
 struct DisplayCursor {
     boundary_idx: usize,
