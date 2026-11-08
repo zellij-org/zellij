@@ -130,6 +130,7 @@ pub(crate) enum LineDelta {
 }
 
 impl LineDelta {
+    #[cfg(test)]
     pub(crate) fn exact(self) -> Option<isize> {
         match self {
             LineDelta::Exact(delta) => Some(delta),
@@ -261,6 +262,7 @@ impl Line {
             .saturating_sub(self.cell_prefix[self.cell_prefix_base])
     }
 
+    #[cfg(test)]
     fn boundary_at(&self, relative_row: usize, width: usize) -> RowBoundary {
         if let Some(character_width) = self.uniform_character_width {
             uniform_boundary(self.suffix_cells(relative_row), character_width, width)
@@ -468,10 +470,12 @@ impl LineIndex {
         self.lines.len()
     }
 
+    #[cfg(test)]
     pub(crate) fn line_row_count(&self, line_index: usize) -> Option<usize> {
         self.lines.get(line_index).map(|line| line.row_count)
     }
 
+    #[cfg(test)]
     pub(crate) fn line_height(&self, line_index: usize) -> Option<usize> {
         self.lines
             .get(line_index)
@@ -487,6 +491,7 @@ impl LineIndex {
     }
 
     /// Exact only while every line has been measured at the current width.
+    #[cfg(test)]
     pub(crate) fn total_display_rows(&self) -> LineDelta {
         if self.is_fully_measured() {
             LineDelta::Exact(self.measured_display_rows as isize)
@@ -509,6 +514,7 @@ impl LineIndex {
     /// A width change invalidates every line summary; already measured lines
     /// are never silently reinterpreted at the new width.  The published
     /// total stays complete until the resumable measurement finishes.
+    #[cfg(test)]
     pub(crate) fn set_width(&mut self, width: usize) {
         if self.width == width {
             return;
@@ -706,6 +712,7 @@ impl LineIndex {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn remove_front(&mut self, rows: &mut VecDeque<Row>, count: usize) -> LineDelta {
         let count = count.min(rows.len());
         if count == 0 {
@@ -832,6 +839,7 @@ impl LineIndex {
     /// Prepend rows (viewport -> scrollback).  A non-canonical existing first
     /// row merges with the last prepended logical line; otherwise the groups
     /// stay separate.
+    #[cfg(test)]
     pub(crate) fn prepend_rows(
         &mut self,
         rows: &mut VecDeque<Row>,
@@ -931,6 +939,7 @@ impl LineIndex {
         LineDelta::Exact(delta)
     }
 
+    #[cfg(test)]
     fn ensure_line_measured(&mut self, rows: &VecDeque<Row>, line_index: usize) -> usize {
         if self
             .lines

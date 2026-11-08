@@ -34,14 +34,6 @@ impl WorkBudget {
         }
     }
 
-    pub(crate) fn remaining_cells(&self) -> usize {
-        self.cells
-    }
-
-    pub(crate) fn remaining_transitions(&self) -> usize {
-        self.transitions
-    }
-
     pub(crate) fn charge_row(&mut self) -> bool {
         self.charge_rows(1)
     }
