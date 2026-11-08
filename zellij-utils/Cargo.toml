@@ -40,7 +40,6 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
-libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 base64 = { version = "0.22", default-features = false, features = ["std"] }
@@ -59,7 +58,7 @@ rusqlite = { version = "0.30", default-features = false, features = ["bundled"] 
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["user"] }
+nix = { workspace = true, features = ["user", "fs", "hostname"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }

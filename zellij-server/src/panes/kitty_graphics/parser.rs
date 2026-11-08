@@ -578,23 +578,17 @@ fn is_forbidden_path(canonical_path: &Path) -> bool {
 #[cfg(unix)]
 #[cfg_attr(not(test), allow(dead_code))]
 fn openat_nofollow(
-    directory: std::os::fd::RawFd,
+    directory: impl std::os::fd::AsFd,
     name: &std::ffi::CStr,
-    flags: libc::c_int,
+    flags: nix::fcntl::OFlag,
 ) -> std::io::Result<std::os::fd::OwnedFd> {
-    use std::os::fd::FromRawFd;
-    let fd = unsafe {
-        libc::openat(
-            directory,
-            name.as_ptr(),
-            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if fd < 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) })
-    }
+    nix::fcntl::openat(
+        directory,
+        name,
+        flags | nix::fcntl::OFlag::O_NOFOLLOW | nix::fcntl::OFlag::O_CLOEXEC,
+        nix::sys::stat::Mode::empty(),
+    )
+    .map_err(std::io::Error::from)
 }
 
 // Opens an absolute path one component at a time, each with openat(2) and
@@ -608,7 +602,6 @@ fn openat_nofollow(
 fn open_without_following_symlinks(
     path: &Path,
 ) -> std::io::Result<(std::fs::File, std::os::fd::OwnedFd, std::ffi::CString)> {
-    use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
     use std::path::Component;
     let invalid = || std::io::Error::from(std::io::ErrorKind::InvalidInput);
@@ -627,18 +620,22 @@ fn open_without_following_symlinks(
     }
     let file_name = names.pop().ok_or_else(invalid)?;
     let root = std::ffi::CString::new("/").map_err(|_| invalid())?;
-    let mut directory = openat_nofollow(libc::AT_FDCWD, &root, libc::O_RDONLY | libc::O_DIRECTORY)?;
+    let mut directory = openat_nofollow(
+        nix::fcntl::AT_FDCWD,
+        &root,
+        nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
+    )?;
     for name in &names {
         directory = openat_nofollow(
-            directory.as_raw_fd(),
+            &directory,
             name,
-            libc::O_RDONLY | libc::O_DIRECTORY,
+            nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
         )?;
     }
     let file = openat_nofollow(
-        directory.as_raw_fd(),
+        &directory,
         &file_name,
-        libc::O_RDONLY | libc::O_NONBLOCK,
+        nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_NONBLOCK,
     )?;
     Ok((std::fs::File::from(file), directory, file_name))
 }
@@ -704,29 +701,27 @@ fn should_delete_temp_file(opened: &OpenedGraphicsFile) -> bool {
 fn delete_opened_file(opened: &OpenedGraphicsFile) {
     #[cfg(unix)]
     {
-        use std::os::fd::AsRawFd;
-        let mut read_stat: libc::stat = unsafe { std::mem::zeroed() };
-        let mut named_stat: libc::stat = unsafe { std::mem::zeroed() };
-        let (read_ok, named_ok) = unsafe {
-            (
-                libc::fstat(opened.file.as_raw_fd(), &mut read_stat) == 0,
-                libc::fstatat(
-                    opened.parent_dir.as_raw_fd(),
-                    opened.file_name.as_ptr(),
-                    &mut named_stat,
-                    libc::AT_SYMLINK_NOFOLLOW,
-                ) == 0,
-            )
+        let read_stat = nix::sys::stat::fstat(&opened.file);
+        let named_stat = nix::sys::stat::fstatat(
+            &opened.parent_dir,
+            opened.file_name.as_c_str(),
+            nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW,
+        );
+        let same_file = match (read_stat, named_stat) {
+            (Ok(read_stat), Ok(named_stat)) => {
+                (named_stat.st_mode & nix::sys::stat::SFlag::S_IFMT.bits())
+                    == nix::sys::stat::SFlag::S_IFREG.bits()
+                    && named_stat.st_dev == read_stat.st_dev
+                    && named_stat.st_ino == read_stat.st_ino
+            },
+            _ => false,
         };
-        let same_file = read_ok
-            && named_ok
-            && (named_stat.st_mode & libc::S_IFMT) == libc::S_IFREG
-            && named_stat.st_dev == read_stat.st_dev
-            && named_stat.st_ino == read_stat.st_ino;
         if same_file {
-            unsafe {
-                libc::unlinkat(opened.parent_dir.as_raw_fd(), opened.file_name.as_ptr(), 0);
-            }
+            let _ = nix::unistd::unlinkat(
+                &opened.parent_dir,
+                opened.file_name.as_c_str(),
+                nix::unistd::UnlinkatFlags::NoRemoveDir,
+            );
         }
     }
     #[cfg(not(unix))]

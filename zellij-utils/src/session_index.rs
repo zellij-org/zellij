@@ -156,14 +156,8 @@ pub fn default_index_path() -> PathBuf {
 pub fn hostname() -> Option<String> {
     #[cfg(unix)]
     {
-        let mut buffer = [0u8; 256];
-        let result =
-            unsafe { libc::gethostname(buffer.as_mut_ptr() as *mut libc::c_char, buffer.len()) };
-        if result != 0 {
-            return None;
-        }
-        let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
-        let name = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
+        let name = nix::unistd::gethostname().ok()?;
+        let name = name.to_string_lossy().trim().to_owned();
         if name.is_empty() {
             None
         } else {

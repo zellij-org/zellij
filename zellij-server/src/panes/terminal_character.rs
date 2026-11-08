@@ -1231,30 +1231,11 @@ impl TerminalCharacter {
         run: &[u8],
         styles: &RcCharacterStyles,
     ) {
-        let count = run.len();
-        if columns.capacity() - columns.len() < count {
-            columns.reserve(count);
-        }
-        let start = columns.len();
-        unsafe {
-            let destination = columns.as_mut_ptr().add(start);
-            let mut index = 0;
-            while index < count {
-                destination.add(index).write(TerminalCharacter {
-                    character: *run.get_unchecked(index) as char,
-                    styles: std::ptr::read(styles),
-                    packed: 1,
-                });
-                index += 1;
-            }
-            if let RcCharacterStyles::Rc(shared) = styles {
-                let pointer = Rc::as_ptr(shared);
-                for _ in 0..count {
-                    Rc::increment_strong_count(pointer);
-                }
-            }
-            columns.set_len(start + count);
-        }
+        columns.extend(run.iter().map(|&byte| TerminalCharacter {
+            character: byte as char,
+            styles: styles.clone(),
+            packed: 1,
+        }));
     }
 
     #[inline]

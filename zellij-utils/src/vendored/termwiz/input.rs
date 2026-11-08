@@ -1588,12 +1588,12 @@ impl InputParser {
             },
             Err(err) => {
                 let (valid, _after_valid) = bytes.split_at(err.valid_up_to());
-                if !valid.is_empty() {
-                    let s = unsafe { std::str::from_utf8_unchecked(valid) };
-                    let (c, len) = Self::first_char_and_len(s);
-                    Some((c, len))
-                } else {
-                    None
+                match std::str::from_utf8(valid) {
+                    Ok(s) if !s.is_empty() => {
+                        let (c, len) = Self::first_char_and_len(s);
+                        Some((c, len))
+                    },
+                    _ => None,
                 }
             },
         }

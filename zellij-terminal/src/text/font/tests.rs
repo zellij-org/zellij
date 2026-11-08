@@ -1476,18 +1476,6 @@ fn stacked_marks_are_placed_one_above_the_other() {
     assert!(stacked.height > single.height);
 }
 
-#[cfg(unix)]
-#[test]
-fn a_font_file_this_user_can_write_is_read_rather_than_mapped() {
-    let file = tempfile::NamedTempFile::new().unwrap();
-    assert!(!super::files::safe_to_map(file.path()));
-    let mut permissions = std::fs::metadata(file.path()).unwrap().permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(file.path(), permissions).unwrap();
-    let running_as_root = unsafe { libc::geteuid() } == 0;
-    assert_eq!(super::files::safe_to_map(file.path()), !running_as_root);
-}
-
 #[test]
 fn a_font_file_is_loaded_once_per_process() {
     let mut file = tempfile::NamedTempFile::new().unwrap();

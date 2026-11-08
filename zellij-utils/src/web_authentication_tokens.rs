@@ -632,13 +632,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn database_file_is_private_from_the_moment_it_is_created() {
+        use nix::sys::stat::{umask, Mode};
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("tokens.db");
         // a permissive umask must not leak into the new file
-        let old_umask = unsafe { libc::umask(0) };
+        let old_umask = umask(Mode::empty());
         let created = create_private_db_file(&db_path);
-        unsafe { libc::umask(old_umask) };
+        umask(old_umask);
         assert!(created.unwrap());
         let mode = std::fs::metadata(&db_path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);

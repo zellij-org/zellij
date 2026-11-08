@@ -408,20 +408,23 @@ mod fontconfig {
                 let listed = (api.font_list)(self.config, pattern, objects);
                 if !listed.is_null() {
                     let set = &*listed;
-                    for position in 0..set.nfont.max(0) as usize {
-                        let font = *set.fonts.add(position);
-                        let mut name: *mut u8 = std::ptr::null_mut();
-                        if !font.is_null()
-                            && (api.pattern_get_string)(
-                                font,
-                                FAMILY.as_ptr() as *const c_char,
-                                0,
-                                &mut name,
-                            ) == FC_RESULT_MATCH
-                            && !name.is_null()
-                        {
-                            if let Ok(name) = CStr::from_ptr(name as *const c_char).to_str() {
-                                families.push(name.to_owned());
+                    // A null font list with a positive count would walk off a null pointer.
+                    if !set.fonts.is_null() {
+                        for position in 0..set.nfont.max(0) as usize {
+                            let font = *set.fonts.add(position);
+                            let mut name: *mut u8 = std::ptr::null_mut();
+                            if !font.is_null()
+                                && (api.pattern_get_string)(
+                                    font,
+                                    FAMILY.as_ptr() as *const c_char,
+                                    0,
+                                    &mut name,
+                                ) == FC_RESULT_MATCH
+                                && !name.is_null()
+                            {
+                                if let Ok(name) = CStr::from_ptr(name as *const c_char).to_str() {
+                                    families.push(name.to_owned());
+                                }
                             }
                         }
                     }

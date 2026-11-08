@@ -16,36 +16,17 @@ pub(super) fn font_file(path: &Path) -> Option<&'static [u8]> {
     if let Some(data) = files.get(path) {
         return Some(*data);
     }
-    let data = map_font_file(path)
+    let data = read_font_file(path)
         .map_err(|e| report!("failed to read the font {:?}: {}", path, e))
         .ok()?;
     files.insert(path.to_path_buf(), data);
     Some(data)
 }
 
-pub(super) fn map_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
-    if !safe_to_map(path) {
-        return Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()));
-    }
-    let file = std::fs::File::open(path)?;
-    match unsafe { memmap2::Mmap::map(&file) } {
-        Ok(mapped) => Ok(&**Box::leak(Box::new(mapped))),
-        Err(_) => Ok(Box::leak(std::fs::read(path)?.into_boxed_slice())),
-    }
-}
-
-#[cfg(unix)]
-pub(super) fn safe_to_map(path: &Path) -> bool {
-    use std::os::unix::ffi::OsStrExt;
-    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    unsafe { libc::access(path.as_ptr(), libc::W_OK) != 0 }
-}
-
-#[cfg(not(unix))]
-pub(super) fn safe_to_map(_path: &Path) -> bool {
-    true
+/// Copies the font into the process. A mapping would be unsound if the file
+/// changed while that slice was still in use.
+pub(super) fn read_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
+    Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()))
 }
 
 pub(super) fn has_weight_axis(font: &FontRef<'_>) -> bool {

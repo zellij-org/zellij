@@ -1796,18 +1796,30 @@ impl<'a> FrameView<'a> {
     }
 
     fn blit(&self, record: RowRecord, at: usize, destination: &mut [WireCell], cols: usize) {
-        let start = record.y as usize * cols + record.x0 as usize;
         let len = record.len as usize;
-        let bytes = len * CELL_LEN;
-        if start + len > destination.len() {
+        let Some(start) = (record.y as usize)
+            .checked_mul(cols)
+            .and_then(|row| row.checked_add(record.x0 as usize))
+        else {
+            return;
+        };
+        let Some(end) = start.checked_add(len) else {
+            return;
+        };
+        if end > destination.len() {
             return;
         }
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                self.buffer.as_ptr().add(at),
-                destination.as_mut_ptr().add(start) as *mut u8,
-                bytes,
-            );
+        let Some(bytes) = len.checked_mul(CELL_LEN) else {
+            return;
+        };
+        let Some(src_end) = at.checked_add(bytes) else {
+            return;
+        };
+        if src_end > self.buffer.len() {
+            return;
+        }
+        for (offset, slot) in destination[start..end].iter_mut().enumerate() {
+            *slot = self.cell(at + offset * CELL_LEN);
         }
     }
 
