@@ -10881,6 +10881,30 @@ fn scrollback_recount(grid: &mut Grid) -> usize {
     super::scrollback_display_row_count(&mut grid.lines_above, width)
 }
 
+fn origin_aware_scrollback_recount(grid: &Grid) -> usize {
+    let mut row_start = 0;
+    let mut total = 0;
+    for line_index in 0..grid.line_index.line_count() {
+        let row_count = grid.line_index.line_row_count(line_index).unwrap();
+        let origin = grid.line_index.line_origin(line_index).unwrap();
+        let mut state = super::WrapState {
+            completed_rows: origin.completed_rows as usize,
+            current: origin.current as usize,
+        };
+        for row in grid.lines_above.range(row_start..row_start + row_count) {
+            for character_width in super::row_display_widths(row) {
+                state.push_character(character_width, grid.width);
+            }
+        }
+        total += state
+            .height()
+            .saturating_sub(origin.completed_rows as usize)
+            .max(1);
+        row_start += row_count;
+    }
+    total
+}
+
 fn filled_scrollback(rows: usize, cols: usize, line: &[u8], line_count: usize) -> Grid {
     let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
     let mut content: Vec<u8> = Vec::new();
@@ -13612,7 +13636,7 @@ fn evicting_a_row_whose_character_is_wider_than_the_pane_stays_exact() {
     grid.change_size(5, 1);
     assert_eq!(
         grid.scrollback_position_and_length().1,
-        scrollback_recount(&mut grid)
+        origin_aware_scrollback_recount(&grid)
     );
     let missing = scroll_buffer_size - grid.lines_above.len() - 1;
     feed_bytes(&mut grid, &repeated_lines(b"x", missing));
@@ -13620,7 +13644,7 @@ fn evicting_a_row_whose_character_is_wider_than_the_pane_stays_exact() {
         feed_bytes(&mut grid, b"x\r\n");
         assert_eq!(
             grid.scrollback_position_and_length().1,
-            scrollback_recount(&mut grid),
+            origin_aware_scrollback_recount(&grid),
             "after {} stored rows",
             grid.lines_above.len()
         );

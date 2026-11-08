@@ -135,6 +135,67 @@ fn reference_total(rows: &VecDeque<Row>, width: usize) -> usize {
     reference_heights(rows, width).into_iter().sum()
 }
 
+fn reference_height_from_rows(rows: &[Row], width: usize, origin: RowBoundary) -> usize {
+    if width == 0 {
+        return 1;
+    }
+    let mut completed = origin.completed_rows as usize;
+    let mut current = origin.current as usize;
+    let mut push = |character_width: usize| {
+        if current + character_width > width {
+            if current > 0 {
+                completed += 1;
+            }
+            current = 0;
+        }
+        current += character_width;
+    };
+    for row in rows {
+        for character in &row.columns {
+            push(character.width());
+        }
+        for _ in 0..(row.stored_cell_count() - row.columns.len()) {
+            push(1);
+        }
+    }
+    (completed + usize::from(current > 0))
+        .max(1)
+        .saturating_sub(origin.completed_rows as usize)
+        .max(1)
+}
+
+fn assert_origin_aware_total(fixture: &Fixture, width: usize) {
+    assert_eq!(
+        fixture.line_counts(),
+        reference_line_counts(&fixture.rows),
+        "logical-line grouping must match the reference model"
+    );
+    let mut row_start = 0;
+    let mut total = 0;
+    for (line_index, line) in fixture.index.lines.iter().enumerate() {
+        let rows = (row_start..row_start + line.row_count)
+            .map(|row| fixture.rows[row].clone())
+            .collect::<Vec<_>>();
+        let origin = if line.uniform_character_width.is_some() {
+            RowBoundary::default()
+        } else {
+            line.boundary_origin
+        };
+        let expected = reference_height_from_rows(&rows, width, origin);
+        assert_eq!(
+            fixture.index.line_height(line_index),
+            Some(expected),
+            "line {line_index} height"
+        );
+        total += expected;
+        row_start += line.row_count;
+    }
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::Exact(total as isize)
+    );
+}
+
 fn row_signature(row: &Row) -> (bool, Vec<usize>, usize) {
     (
         row.is_canonical,
@@ -372,6 +433,72 @@ fn partial_front_eviction_after_completed_rows_rebases_the_open_row() {
     assert_eq!(fixture.evict_front(2), LineDelta::Exact(-2));
     assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
     assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn mixed_width_partial_front_cuts_keep_absolute_origins_without_rewrapping() {
+    let width = 7;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("a\u{754c}b", true),
+            character_row("\u{754c}\u{754c}a", false),
+            character_row("ab\u{754c}", false),
+            character_row("\u{754c}a\u{754c}", false),
+            character_row("a\u{754c}\u{754c}a", false),
+        ],
+        width,
+    );
+    assert!(
+        fixture
+            .index
+            .lines
+            .front()
+            .unwrap()
+            .uniform_character_width
+            .is_none(),
+        "the fixture must exercise the mixed-width path"
+    );
+
+    for cut in 1..=4 {
+        let line = fixture.index.lines.front().unwrap();
+        let absolute_origin = line.boundaries[line.boundary_base + 1];
+        let surviving_rows = line.row_count - 1;
+        let old_height = line.height;
+        let rows = fixture
+            .rows
+            .iter()
+            .skip(1)
+            .take(surviving_rows)
+            .cloned()
+            .collect::<Vec<_>>();
+        let expected_height = reference_height_from_rows(&rows, width, absolute_origin);
+
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        assert_eq!(
+            fixture.evict_front(1).exact(),
+            Some(-(old_height as isize - expected_height as isize))
+        );
+        assert_eq!(row_visits(), 0, "cut {cut} visited rows");
+        assert_eq!(cell_visits(), 0, "cut {cut} visited cells");
+        assert_eq!(
+            boundary_discoveries(),
+            0,
+            "cut {cut} rediscovered boundaries"
+        );
+
+        let line = fixture.index.lines.front().unwrap();
+        assert_eq!(line.height, expected_height);
+        assert_eq!(
+            line.boundary_at(0, width),
+            RowBoundary {
+                completed_rows: 0,
+                current: absolute_origin.current,
+            }
+        );
+        assert_origin_aware_total(&fixture, width);
+    }
 }
 
 #[test]
@@ -635,7 +762,7 @@ fn randomized_operations_match_the_reference_model() {
             line.check_prefix(&format!("step {step} op {operation}"));
         }
         if fixture.index.is_fully_measured() {
-            assert_exact_total(&fixture, width);
+            assert_origin_aware_total(&fixture, width);
         } else {
             assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
         }

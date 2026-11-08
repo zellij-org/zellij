@@ -221,6 +221,11 @@ struct Line {
     /// front eviction keeps a suffix of the line.
     cell_prefix: Vec<usize>,
     cell_prefix_base: usize,
+    /// Absolute row boundaries remain valid when a front eviction keeps only
+    /// a suffix.  `boundary_base` selects the first surviving row and
+    /// `boundary_origin` is its original wrap state.
+    boundary_base: usize,
+    boundary_origin: RowBoundary,
     /// Single-width lines derive every boundary from `cell_prefix`, so a
     /// mid-line front eviction does not have to rewrite the whole line.
     uniform_character_width: Option<usize>,
@@ -236,6 +241,8 @@ impl Line {
             height: 0,
             cell_prefix: Vec::new(),
             cell_prefix_base: 0,
+            boundary_base: 0,
+            boundary_origin: RowBoundary::default(),
             uniform_character_width: None,
         }
     }
@@ -253,6 +260,8 @@ impl Line {
             height: measurement.height,
             cell_prefix: measurement.cell_prefix,
             cell_prefix_base: 0,
+            boundary_base: 0,
+            boundary_origin: RowBoundary::default(),
             uniform_character_width: measurement.uniform_character_width,
         }
     }
@@ -267,8 +276,18 @@ impl Line {
         if let Some(character_width) = self.uniform_character_width {
             uniform_boundary(self.suffix_cells(relative_row), character_width, width)
         } else {
-            self.boundaries[relative_row]
+            let absolute = self.boundaries[self.boundary_base + relative_row];
+            RowBoundary {
+                completed_rows: absolute
+                    .completed_rows
+                    .saturating_sub(self.boundary_origin.completed_rows),
+                current: absolute.current,
+            }
         }
+    }
+
+    fn height_after(&self, end: RowBoundary) -> usize {
+        line_height_from_origin(end, self.boundary_origin)
     }
 
     #[cfg(test)]
@@ -285,11 +304,21 @@ impl Line {
     }
 }
 
+fn line_height_from_origin(end: RowBoundary, origin: RowBoundary) -> usize {
+    end.height()
+        .saturating_sub(origin.completed_rows as usize)
+        .max(1)
+}
+
 enum PartialLine {
     SingleWidth {
         cut: usize,
         height: usize,
         end: RowBoundary,
+    },
+    MixedCut {
+        cut: usize,
+        height: usize,
     },
     Measured(LineMeasurement),
 }
@@ -482,6 +511,17 @@ impl LineIndex {
             .and_then(|line| (line.measured_width == Some(self.width)).then_some(line.height))
     }
 
+    #[cfg(test)]
+    pub(crate) fn line_origin(&self, line_index: usize) -> Option<RowBoundary> {
+        self.lines.get(line_index).map(|line| {
+            if line.uniform_character_width.is_some() {
+                RowBoundary::default()
+            } else {
+                line.boundary_origin
+            }
+        })
+    }
+
     pub(crate) fn is_fully_measured(&self) -> bool {
         self.measured_lines == self.lines.len()
     }
@@ -525,6 +565,8 @@ impl LineIndex {
             line.boundaries.clear();
             line.end = RowBoundary::default();
             line.height = 0;
+            line.boundary_base = 0;
+            line.boundary_origin = RowBoundary::default();
         }
         self.measured_lines = 0;
         self.measured_display_rows = 0;
@@ -593,7 +635,7 @@ impl LineIndex {
                 line.cell_prefix
                     .push(total.saturating_add(row.stored_cell_count()));
                 line.row_count += 1;
-                line.height = line.end.height();
+                line.height = line.height_after(line.end);
                 let delta = line.height as isize - old_height as isize;
                 rows.push_back(row);
                 self.measured_display_rows =
@@ -657,10 +699,10 @@ impl LineIndex {
                             },
                         ));
                     } else {
-                        let measurement =
-                            measure_rows(rows_after.iter().take(surviving_rows), self.width);
-                        measured_delta += measurement.height as isize - line.height as isize;
-                        partial = Some((surviving_rows, PartialLine::Measured(measurement)));
+                        let origin = line.boundaries[line.boundary_base + cut];
+                        let height = line_height_from_origin(line.end, origin);
+                        measured_delta += height as isize - line.height as isize;
+                        partial = Some((surviving_rows, PartialLine::MixedCut { cut, height }));
                     }
                 } else {
                     let measurement =
@@ -688,6 +730,12 @@ impl LineIndex {
                     line.end = end;
                     line.boundaries.clear();
                 },
+                PartialLine::MixedCut { cut, height } => {
+                    line.cell_prefix_base += cut;
+                    line.boundary_base += cut;
+                    line.boundary_origin = line.boundaries[line.boundary_base];
+                    line.height = height;
+                },
                 PartialLine::Measured(measurement) => {
                     line.boundaries = if measurement.uniform_character_width.is_some() {
                         Vec::new()
@@ -698,6 +746,8 @@ impl LineIndex {
                     line.height = measurement.height;
                     line.cell_prefix = measurement.cell_prefix;
                     line.cell_prefix_base = 0;
+                    line.boundary_base = 0;
+                    line.boundary_origin = RowBoundary::default();
                     line.uniform_character_width = measurement.uniform_character_width;
                 },
             }
@@ -760,7 +810,10 @@ impl LineIndex {
                             .saturating_sub(line.cell_prefix[line.cell_prefix_base]);
                         uniform_height(cells, character_width, self.width)
                     } else {
-                        line.boundaries[surviving_rows].height()
+                        line_height_from_origin(
+                            line.boundaries[line.boundary_base + surviving_rows],
+                            line.boundary_origin,
+                        )
                     }
                 } else {
                     exact = false;
@@ -791,8 +844,9 @@ impl LineIndex {
                     line.cell_prefix
                         .truncate(line.cell_prefix_base + surviving_rows + 1);
                 } else {
-                    line.end = line.boundaries[surviving_rows];
-                    line.boundaries.truncate(surviving_rows);
+                    line.end = line.boundaries[line.boundary_base + surviving_rows];
+                    line.boundaries
+                        .truncate(line.boundary_base + surviving_rows);
                     line.cell_prefix
                         .truncate(line.cell_prefix_base + surviving_rows + 1);
                 }
@@ -808,6 +862,8 @@ impl LineIndex {
                 line.end = measurement.end;
                 line.cell_prefix = measurement.cell_prefix;
                 line.cell_prefix_base = 0;
+                line.boundary_base = 0;
+                line.boundary_origin = RowBoundary::default();
                 line.uniform_character_width = measurement.uniform_character_width;
             }
             line.height = new_height;
@@ -924,6 +980,8 @@ impl LineIndex {
             line.height = combined_height;
             line.cell_prefix = merged.cell_prefix;
             line.cell_prefix_base = 0;
+            line.boundary_base = 0;
+            line.boundary_origin = RowBoundary::default();
             line.uniform_character_width = merged.uniform_character_width;
         }
 
@@ -986,6 +1044,8 @@ impl LineIndex {
         line.height = height;
         line.cell_prefix = measurement.cell_prefix;
         line.cell_prefix_base = 0;
+        line.boundary_base = 0;
+        line.boundary_origin = RowBoundary::default();
         line.uniform_character_width = measurement.uniform_character_width;
         self.measured_lines += 1;
         self.measured_display_rows += height;
@@ -1050,6 +1110,8 @@ impl LineIndex {
                 line.height = height;
                 line.cell_prefix = std::mem::take(&mut cursor.cell_prefix);
                 line.cell_prefix_base = 0;
+                line.boundary_base = 0;
+                line.boundary_origin = RowBoundary::default();
                 line.uniform_character_width = uniform_character_width;
                 self.measured_lines += 1;
                 self.measured_display_rows += height;
