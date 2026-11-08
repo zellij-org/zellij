@@ -5,7 +5,7 @@ use crate::{
     },
     data::SessionInfo,
     envs,
-    input::layout::{FloatingPaneLayout, Layout, TiledPaneLayout},
+    input::layout::Layout,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     session_index::{self, SessionIndex},
 };
@@ -669,8 +669,6 @@ pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Lay
     resurrection_layout_from_path_with_reader_barrier(&layout_file_name, || {})
 }
 
-const RESURRECTION_LAYOUT_READ_ATTEMPTS: usize = 8;
-
 /// Read a saved layout together with every pane-content file it references.
 ///
 /// Content files are content-addressed and may be reclaimed after later saves.
@@ -690,87 +688,38 @@ pub fn resurrection_layout_from_path_with_reader_barrier<F>(
 where
     F: FnMut(),
 {
-    let mut last_observation = None;
-    for _ in 0..RESURRECTION_LAYOUT_READ_ATTEMPTS {
-        let raw_layout = match std::fs::read_to_string(layout_file_name) {
-            Ok(raw_layout) => raw_layout,
-            Err(_) => return Ok(None),
-        };
+    let read_layout = || {
+        let raw_layout = fs::read_to_string(layout_file_name).map_err(|e| {
+            crate::input::config::ConfigError::IoPath(e, layout_file_name.to_path_buf())
+        })?;
         after_layout_read();
-        let expected_contents =
-            crate::session_serialization::session_layout_content_file_references(&raw_layout).len();
-        match Layout::from_kdl(
-            &raw_layout,
+        Ok((
             Some(layout_file_name.display().to_string()),
+            raw_layout,
             None,
-            None,
-        ) {
-            Ok(layout) => {
-                let loaded_contents = loaded_pane_initial_contents(&layout);
-                if loaded_contents == expected_contents {
-                    return Ok(Some(layout));
-                }
-                last_observation = Some((expected_contents, loaded_contents));
-            },
-            Err(e) => {
-                let error_text = crate::input::keybind_presets::config_error_text(&e);
-                log::error!(
-                    "Failed to parse resurrection layout file {}: {}",
-                    layout_file_name.display(),
-                    error_text
-                );
-                return Err(format!(
-                    "Failed to parse resurrection layout file {}: {}.",
-                    layout_file_name.display(),
-                    error_text
-                ));
-            },
-        }
+        ))
+    };
+    match crate::input::layout::read_layout_with_verified_contents(read_layout) {
+        Ok((layout, _raw_layout)) => Ok(Some(layout)),
+        Err(crate::input::config::ConfigError::IoPath(e, _))
+            if e.kind() == io::ErrorKind::NotFound =>
+        {
+            Ok(None)
+        },
+        Err(e) => {
+            let error_text = crate::input::keybind_presets::config_error_text(&e);
+            log::error!(
+                "Failed to read resurrection layout file {}: {}",
+                layout_file_name.display(),
+                error_text
+            );
+            Err(format!(
+                "Failed to read resurrection layout file {}: {}.",
+                layout_file_name.display(),
+                error_text
+            ))
+        },
     }
-    let detail = last_observation
-        .map(|(expected, loaded)| {
-            format!(" ({loaded} of {expected} pane content files were available)")
-        })
-        .unwrap_or_default();
-    Err(format!(
-        "Saved layout file {} kept changing while its pane contents were being read{}.",
-        layout_file_name.display(),
-        detail
-    ))
-}
-
-fn loaded_pane_initial_contents(layout: &Layout) -> usize {
-    fn tiled(pane: &TiledPaneLayout) -> usize {
-        pane.pane_initial_contents.is_some() as usize
-            + pane.children.iter().map(tiled).sum::<usize>()
-    }
-    fn floating(panes: &[FloatingPaneLayout]) -> usize {
-        panes
-            .iter()
-            .filter(|pane| pane.pane_initial_contents.is_some())
-            .count()
-    }
-    let mut loaded = layout
-        .tabs
-        .iter()
-        .map(|(_, tiled_pane, floating_panes)| tiled(tiled_pane) + floating(floating_panes))
-        .sum::<usize>();
-    if let Some((tiled_pane, floating_panes)) = layout.template.as_ref() {
-        loaded += tiled(tiled_pane) + floating(floating_panes);
-    }
-    for (tiled_pane, floating_panes) in &layout.swap_layouts {
-        loaded += tiled(tiled_pane) + floating(floating_panes);
-    }
-    for (tiled_layouts, _) in &layout.swap_tiled_layouts {
-        loaded += tiled_layouts.values().map(tiled).sum::<usize>();
-    }
-    for (floating_layouts, _) in &layout.swap_floating_layouts {
-        loaded += floating_layouts
-            .values()
-            .map(|panes| floating(panes))
-            .sum::<usize>();
-    }
-    loaded
 }
 
 pub fn assert_session(name: &str) {
@@ -1354,5 +1303,101 @@ mod layout_creation_time_tests {
             .or_else(|_| metadata.modified())
             .expect("the fixture file has a timestamp");
         assert_eq!(session_layout_creation_time(&layout).unwrap(), fallback);
+    }
+}
+
+#[cfg(test)]
+mod verified_layout_read_tests {
+    use super::*;
+    use crate::session_serialization::pane_contents_file_name;
+    use tempfile::tempdir;
+
+    fn layout_referencing(file_name: &str) -> String {
+        format!(
+            r#"
+layout {{
+    pane contents_file="{}"
+}}
+"#,
+            file_name
+        )
+    }
+
+    fn loaded_contents(layout: &Layout) -> Vec<String> {
+        fn tiled(pane: &crate::input::layout::TiledPaneLayout, contents: &mut Vec<String>) {
+            if let Some(pane_contents) = pane.pane_initial_contents.as_ref() {
+                contents.push(pane_contents.clone());
+            }
+            for child in &pane.children {
+                tiled(child, contents);
+            }
+        }
+        fn floating(
+            panes: &[crate::input::layout::FloatingPaneLayout],
+            contents: &mut Vec<String>,
+        ) {
+            for pane in panes {
+                if let Some(pane_contents) = pane.pane_initial_contents.as_ref() {
+                    contents.push(pane_contents.clone());
+                }
+            }
+        }
+        let mut contents = vec![];
+        for (_, tiled_pane, floating_panes) in &layout.tabs {
+            tiled(tiled_pane, &mut contents);
+            floating(floating_panes, &mut contents);
+        }
+        if let Some((tiled_pane, floating_panes)) = layout.template.as_ref() {
+            tiled(tiled_pane, &mut contents);
+            floating(floating_panes, &mut contents);
+        }
+        contents.sort();
+        contents
+    }
+
+    #[test]
+    fn a_stable_resurrection_layout_is_read_once() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("session-layout.kdl");
+        let contents_file = pane_contents_file_name("stable contents");
+        fs::write(dir.path().join(&contents_file), "stable contents").unwrap();
+        fs::write(&layout_path, layout_referencing(&contents_file)).unwrap();
+
+        let mut reads = 0;
+        let layout = resurrection_layout_from_path_with_reader_barrier(&layout_path, || {
+            reads += 1;
+        })
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(reads, 1);
+        assert_eq!(loaded_contents(&layout), vec!["stable contents".to_owned()]);
+    }
+
+    #[test]
+    fn resurrection_restarts_when_content_files_are_replaced_between_attempts() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("session-layout.kdl");
+        let replacement_path = dir.path().join("replacement-layout.kdl");
+        let old_contents_file = pane_contents_file_name("old contents");
+        let new_contents_file = pane_contents_file_name("new contents");
+        fs::write(dir.path().join(&old_contents_file), "old contents").unwrap();
+        fs::write(dir.path().join(&new_contents_file), "new contents").unwrap();
+        fs::write(&layout_path, layout_referencing(&old_contents_file)).unwrap();
+        fs::write(&replacement_path, layout_referencing(&new_contents_file)).unwrap();
+
+        let mut reads = 0;
+        let layout = resurrection_layout_from_path_with_reader_barrier(&layout_path, || {
+            reads += 1;
+            if reads == 1 {
+                fs::remove_file(dir.path().join(&old_contents_file)).unwrap();
+                fs::rename(&replacement_path, &layout_path).unwrap();
+            }
+        })
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(reads, 2);
+        assert_eq!(loaded_contents(&layout), vec!["new contents".to_owned()]);
     }
 }

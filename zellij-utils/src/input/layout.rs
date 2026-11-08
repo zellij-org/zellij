@@ -22,6 +22,7 @@ use crate::{
         options::StackListOrientation,
     },
     pane_size::{Constraint, Dimension, PaneGeom},
+    session_serialization::session_layout_content_file_references,
     setup::{self},
 };
 
@@ -1316,6 +1317,95 @@ impl Default for LayoutParts {
     }
 }
 
+const LAYOUT_CONTENT_FILE_READ_ATTEMPTS: usize = 8;
+
+pub(crate) type LayoutReadSource = (Option<String>, String, Option<(String, String)>);
+
+fn layout_from_read_source(
+    (path_to_raw_layout, raw_layout, raw_swap_layouts): LayoutReadSource,
+) -> Result<(Layout, String), ConfigError> {
+    let layout = Layout::from_kdl(
+        &raw_layout,
+        path_to_raw_layout,
+        raw_swap_layouts
+            .as_ref()
+            .map(|(r, f)| (r.as_str(), f.as_str())),
+        None,
+    )?;
+    Ok((layout, raw_layout))
+}
+
+/// Parse a path-backed layout together with every pane-content file it references.
+///
+/// Content-addressed files can be reclaimed between the layout read and the
+/// content loads. The parser represents a missing file as absent pane contents,
+/// so re-read the current layout whenever fewer contents were loaded than the
+/// layout references. Non-file layouts and layouts without content references
+/// are parsed once.
+pub(crate) fn read_layout_with_verified_contents<F>(
+    mut read_layout: F,
+) -> Result<(Layout, String), ConfigError>
+where
+    F: FnMut() -> Result<LayoutReadSource, ConfigError>,
+{
+    let mut last_observation = None;
+    for _ in 0..LAYOUT_CONTENT_FILE_READ_ATTEMPTS {
+        let source = read_layout()?;
+        let path_hint = source.0.clone();
+        let expected_contents = session_layout_content_file_references(&source.1).len();
+        let (layout, raw_layout) = layout_from_read_source(source)?;
+        let loaded_contents = loaded_pane_initial_contents(&layout);
+        if loaded_contents >= expected_contents {
+            return Ok((layout, raw_layout));
+        }
+        last_observation = Some((path_hint, expected_contents, loaded_contents));
+    }
+    let (path_hint, expected_contents, loaded_contents) = last_observation.unwrap_or_default();
+    let path_display = path_hint.clone().unwrap_or_else(|| "<unknown>".to_owned());
+    let message = format!(
+        "Layout file {} kept changing while its pane contents were being read ({} of {} pane content files were available).",
+        path_display, loaded_contents, expected_contents
+    );
+    Err(ConfigError::IoPath(
+        std::io::Error::new(std::io::ErrorKind::Other, message),
+        path_hint.map(PathBuf::from).unwrap_or_default(),
+    ))
+}
+
+fn loaded_pane_initial_contents(layout: &Layout) -> usize {
+    fn tiled(pane: &TiledPaneLayout) -> usize {
+        pane.pane_initial_contents.is_some() as usize
+            + pane.children.iter().map(tiled).sum::<usize>()
+    }
+    fn floating(panes: &[FloatingPaneLayout]) -> usize {
+        panes
+            .iter()
+            .filter(|pane| pane.pane_initial_contents.is_some())
+            .count()
+    }
+    let mut loaded = layout
+        .tabs
+        .iter()
+        .map(|(_, tiled_pane, floating_panes)| tiled(tiled_pane) + floating(floating_panes))
+        .sum::<usize>();
+    if let Some((tiled_pane, floating_panes)) = layout.template.as_ref() {
+        loaded += tiled(tiled_pane) + floating(floating_panes);
+    }
+    for (tiled_pane, floating_panes) in &layout.swap_layouts {
+        loaded += tiled(tiled_pane) + floating(floating_panes);
+    }
+    for (tiled_layouts, _) in &layout.swap_tiled_layouts {
+        loaded += tiled_layouts.values().map(tiled).sum::<usize>();
+    }
+    for (floating_layouts, _) in &layout.swap_floating_layouts {
+        loaded += floating_layouts
+            .values()
+            .map(|floating_panes| floating(floating_panes))
+            .sum::<usize>();
+    }
+    loaded
+}
+
 impl Layout {
     pub fn list_available_layouts(
         layout_dir: Option<PathBuf>,
@@ -1411,42 +1501,39 @@ impl Layout {
         layout_info: LayoutInfo,
     ) -> Result<Layout, ConfigError> {
         let mut should_start_layout_commands_suspended = false;
-        let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
+        let (mut layout, _raw_layout) = match layout_info {
             LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
-                let (path_to_layout, stringified_layout, swap_layouts) =
-                    Self::stringified_from_dir(
-                        &PathBuf::from(layout_name_without_extension),
-                        layout_dir.as_ref(),
-                    )?;
-                (Some(path_to_layout), stringified_layout, swap_layouts)
+                let layout_name = PathBuf::from(layout_name_without_extension);
+                read_layout_with_verified_contents(|| {
+                    Self::stringified_from_dir(&layout_name, layout_dir.as_ref()).map(
+                        |(path_to_layout, stringified_layout, swap_layouts)| {
+                            (Some(path_to_layout), stringified_layout, swap_layouts)
+                        },
+                    )
+                })?
             },
             LayoutInfo::BuiltIn(layout_name) => {
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
-                (Some(path_to_layout), stringified_layout, swap_layouts)
+                layout_from_read_source((Some(path_to_layout), stringified_layout, swap_layouts))?
             },
             LayoutInfo::Url(url) => {
                 should_start_layout_commands_suspended = true;
-                (Some(url.clone()), Self::stringified_from_url(&url)?, None)
+                layout_from_read_source((
+                    Some(url.clone()),
+                    Self::stringified_from_url(&url)?,
+                    None,
+                ))?
             },
-            LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
+            LayoutInfo::Stringified(stringified_layout) => {
+                layout_from_read_source((None, stringified_layout, None))?
+            },
         };
-        let mut layout = Layout::from_kdl(
-            &raw_layout,
-            path_to_raw_layout,
-            raw_swap_layouts
-                .as_ref()
-                .map(|(r, f)| (r.as_str(), f.as_str())),
-            None,
-        );
         if should_start_layout_commands_suspended {
-            layout
-                .iter_mut()
-                .next()
-                .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
+            layout.recursively_add_start_suspended_including_template(Some(true));
         }
-        layout
+        Ok(layout)
     }
     pub fn from_layout_info_with_config(
         layout_dir: &Option<PathBuf>,
@@ -1454,43 +1541,40 @@ impl Layout {
         config: Option<Config>,
     ) -> Result<(Layout, Config), ConfigError> {
         let mut should_start_layout_commands_suspended = false;
-        let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
+        let (mut layout, raw_layout) = match layout_info {
             LayoutInfo::File(layout_name_without_extension, _layout_metadata) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
-                let (path_to_layout, stringified_layout, swap_layouts) =
-                    Self::stringified_from_dir(
-                        &PathBuf::from(layout_name_without_extension),
-                        layout_dir.as_ref(),
-                    )?;
-                (Some(path_to_layout), stringified_layout, swap_layouts)
+                let layout_name = PathBuf::from(layout_name_without_extension);
+                read_layout_with_verified_contents(|| {
+                    Self::stringified_from_dir(&layout_name, layout_dir.as_ref()).map(
+                        |(path_to_layout, stringified_layout, swap_layouts)| {
+                            (Some(path_to_layout), stringified_layout, swap_layouts)
+                        },
+                    )
+                })?
             },
             LayoutInfo::BuiltIn(layout_name) => {
                 let (path_to_layout, stringified_layout, swap_layouts) =
                     Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
-                (Some(path_to_layout), stringified_layout, swap_layouts)
+                layout_from_read_source((Some(path_to_layout), stringified_layout, swap_layouts))?
             },
             LayoutInfo::Url(url) => {
                 should_start_layout_commands_suspended = true;
-                (Some(url.clone()), Self::stringified_from_url(&url)?, None)
+                layout_from_read_source((
+                    Some(url.clone()),
+                    Self::stringified_from_url(&url)?,
+                    None,
+                ))?
             },
-            LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout.clone(), None),
+            LayoutInfo::Stringified(stringified_layout) => {
+                layout_from_read_source((None, stringified_layout.clone(), None))?
+            },
         };
-        let mut layout = Layout::from_kdl(
-            &raw_layout,
-            path_to_raw_layout,
-            raw_swap_layouts
-                .as_ref()
-                .map(|(r, f)| (r.as_str(), f.as_str())),
-            None,
-        );
         if should_start_layout_commands_suspended {
-            layout
-                .iter_mut()
-                .next()
-                .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
+            layout.recursively_add_start_suspended_including_template(Some(true));
         }
         let config = Config::from_layout_kdl(&raw_layout, config)?; // this merges the two config, with
-        layout.map(|l| (l, config))
+        Ok((layout, config))
     }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
@@ -1528,33 +1612,27 @@ impl Layout {
         Ok(raw_layout)
     }
     pub fn from_path_without_config(layout_path: &PathBuf) -> Result<Layout, ConfigError> {
-        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
-        let (path_to_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_path(layout_path)?;
-        Layout::from_kdl(
-            &raw_layout,
-            Some(path_to_layout),
-            raw_swap_layouts
-                .as_ref()
-                .map(|(r, f)| (r.as_str(), f.as_str())),
-            None,
-        )
+        read_layout_with_verified_contents(|| {
+            Layout::stringified_from_path(layout_path).map(
+                |(path_to_layout, raw_layout, raw_swap_layouts)| {
+                    (Some(path_to_layout), raw_layout, raw_swap_layouts)
+                },
+            )
+        })
+        .map(|(layout, _raw_layout)| layout)
     }
     pub fn from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
-        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(
-            &raw_layout,
-            Some(path_to_raw_layout),
-            raw_swap_layouts
-                .as_ref()
-                .map(|(r, f)| (r.as_str(), f.as_str())),
-            None,
-        )?;
+        let (layout, raw_layout) = read_layout_with_verified_contents(|| {
+            Layout::stringified_from_path_or_default(layout_path, layout_dir.clone()).map(
+                |(path_to_layout, raw_layout, raw_swap_layouts)| {
+                    (Some(path_to_layout), raw_layout, raw_swap_layouts)
+                },
+            )
+        })?;
         let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
@@ -1585,17 +1663,14 @@ impl Layout {
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
     ) -> Result<Layout, ConfigError> {
-        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
-            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(
-            &raw_layout,
-            Some(path_to_raw_layout),
-            raw_swap_layouts
-                .as_ref()
-                .map(|(r, f)| (r.as_str(), f.as_str())),
-            None,
-        )?;
-        Ok(layout)
+        read_layout_with_verified_contents(|| {
+            Layout::stringified_from_path_or_default(layout_path, layout_dir.clone()).map(
+                |(path_to_layout, raw_layout, raw_swap_layouts)| {
+                    (Some(path_to_layout), raw_layout, raw_swap_layouts)
+                },
+            )
+        })
+        .map(|(layout, _raw_layout)| layout)
     }
     pub fn from_default_assets(
         layout_name: &Path,
@@ -2207,3 +2282,141 @@ impl FromStr for SplitSize {
 #[path = "./unit/layout_test.rs"]
 #[cfg(test)]
 mod layout_test;
+
+#[cfg(test)]
+mod verified_layout_read_tests {
+    use super::*;
+    use crate::session_serialization::pane_contents_file_name;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn layout_referencing(file_name: &str) -> String {
+        format!(
+            r#"
+layout {{
+    pane contents_file="{}"
+}}
+"#,
+            file_name
+        )
+    }
+
+    fn read_layout_file(path: &Path) -> Result<LayoutReadSource, ConfigError> {
+        let raw_layout =
+            fs::read_to_string(path).map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
+        Ok((Some(path.display().to_string()), raw_layout, None))
+    }
+
+    fn loaded_contents(layout: &Layout) -> Vec<String> {
+        fn tiled(pane: &TiledPaneLayout, contents: &mut Vec<String>) {
+            if let Some(pane_contents) = pane.pane_initial_contents.as_ref() {
+                contents.push(pane_contents.clone());
+            }
+            for child in &pane.children {
+                tiled(child, contents);
+            }
+        }
+        fn floating(panes: &[FloatingPaneLayout], contents: &mut Vec<String>) {
+            for pane in panes {
+                if let Some(pane_contents) = pane.pane_initial_contents.as_ref() {
+                    contents.push(pane_contents.clone());
+                }
+            }
+        }
+        let mut contents = vec![];
+        for (_, tiled_pane, floating_panes) in &layout.tabs {
+            tiled(tiled_pane, &mut contents);
+            floating(floating_panes, &mut contents);
+        }
+        if let Some((tiled_pane, floating_panes)) = layout.template.as_ref() {
+            tiled(tiled_pane, &mut contents);
+            floating(floating_panes, &mut contents);
+        }
+        contents.sort();
+        contents
+    }
+
+    #[test]
+    fn a_stable_layout_is_read_once() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("stable.kdl");
+        let contents_file = pane_contents_file_name("stable contents");
+        fs::write(dir.path().join(&contents_file), "stable contents").unwrap();
+        fs::write(&layout_path, layout_referencing(&contents_file)).unwrap();
+
+        let mut reads = 0;
+        let (layout, _) = read_layout_with_verified_contents(|| {
+            reads += 1;
+            read_layout_file(&layout_path)
+        })
+        .unwrap();
+
+        assert_eq!(reads, 1);
+        assert_eq!(loaded_contents(&layout), vec!["stable contents".to_owned()]);
+    }
+
+    #[test]
+    fn a_reader_restarts_when_content_files_are_replaced_between_attempts() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("session-layout.kdl");
+        let replacement_path = dir.path().join("replacement-layout.kdl");
+        let old_contents_file = pane_contents_file_name("old contents");
+        let new_contents_file = pane_contents_file_name("new contents");
+        fs::write(dir.path().join(&old_contents_file), "old contents").unwrap();
+        fs::write(dir.path().join(&new_contents_file), "new contents").unwrap();
+        fs::write(&layout_path, layout_referencing(&old_contents_file)).unwrap();
+        fs::write(&replacement_path, layout_referencing(&new_contents_file)).unwrap();
+
+        let mut reads = 0;
+        let mut replaced = false;
+        let (layout, _) = read_layout_with_verified_contents(|| {
+            reads += 1;
+            let source = read_layout_file(&layout_path)?;
+            if !replaced {
+                replaced = true;
+                fs::remove_file(dir.path().join(&old_contents_file)).unwrap();
+                fs::rename(&replacement_path, &layout_path).unwrap();
+            }
+            Ok(source)
+        })
+        .unwrap();
+
+        assert_eq!(reads, 2);
+        assert_eq!(loaded_contents(&layout), vec!["new contents".to_owned()]);
+    }
+
+    #[test]
+    fn a_generic_path_reader_rejects_contents_that_never_load() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("missing-contents.kdl");
+        let contents_file = pane_contents_file_name("missing contents");
+        fs::write(&layout_path, layout_referencing(&contents_file)).unwrap();
+
+        let error = Layout::from_path_without_config(&layout_path).unwrap_err();
+        let error_text = format!("{}", error);
+        assert!(
+            error_text.contains("0 of 1 pane content files were available"),
+            "{error_text}"
+        );
+    }
+
+    #[test]
+    fn layout_info_file_reads_verified_contents() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("stable.kdl");
+        let contents_file = pane_contents_file_name("layout info contents");
+        fs::write(dir.path().join(&contents_file), "layout info contents").unwrap();
+        fs::write(&layout_path, layout_referencing(&contents_file)).unwrap();
+
+        let layout = Layout::from_layout_info(
+            &Some(dir.path().to_path_buf()),
+            LayoutInfo::File("stable".to_owned(), LayoutMetadata::default()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            loaded_contents(&layout),
+            vec!["layout info contents".to_owned()]
+        );
+    }
+}
