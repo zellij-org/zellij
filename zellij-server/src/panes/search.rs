@@ -43,16 +43,26 @@ struct HaystackCell {
     width: usize,
 }
 
+struct HaystackRow {
+    byte_start: usize,
+    byte_end: usize,
+}
+
 struct Haystack {
     text: String,
     cells: Vec<HaystackCell>,
+    rows: Vec<HaystackRow>,
 }
 
 impl Haystack {
-    fn new(ridx: usize, row: &Row, tail: &[&Row]) -> Self {
+    fn new(ridx: usize, rows: &[&Row]) -> Self {
+        #[cfg(test)]
+        HAYSTACK_BUILDS.with(|count| count.set(count.get() + 1));
         let mut text = String::new();
         let mut cells = Vec::new();
-        for (offset, current) in std::iter::once(row).chain(tail.iter().copied()).enumerate() {
+        let mut haystack_rows = Vec::with_capacity(rows.len());
+        for (offset, current) in rows.iter().enumerate() {
+            let byte_start = text.len();
             let mut column = 0;
             for cell in &current.columns {
                 cells.push(HaystackCell {
@@ -64,8 +74,16 @@ impl Haystack {
                 cell.push_text_to(&mut text);
                 column += cell.width();
             }
+            haystack_rows.push(HaystackRow {
+                byte_start,
+                byte_end: text.len(),
+            });
         }
-        Haystack { text, cells }
+        Haystack {
+            text,
+            cells,
+            rows: haystack_rows,
+        }
     }
 
     fn cell_containing(&self, byte_offset: usize) -> Option<&HaystackCell> {
@@ -75,6 +93,56 @@ impl Haystack {
             .checked_sub(1)?;
         self.cells.get(index)
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static HAYSTACK_BUILDS: std::cell::Cell<usize> = std::cell::Cell::new(0);
+}
+
+#[cfg(test)]
+pub(crate) fn haystack_build_count() -> usize {
+    HAYSTACK_BUILDS.with(|count| count.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_haystack_build_count() {
+    HAYSTACK_BUILDS.with(|count| count.set(0));
+}
+
+/// The rows of the logical line that starts at `index`: the row itself plus
+/// the non-canonical rows that continue it.
+fn viewport_line<'a>(viewport: &'a VecDeque<Row>, index: usize) -> Vec<&'a Row> {
+    let mut rows = Vec::new();
+    for (offset, row) in viewport.iter().skip(index).enumerate() {
+        if offset > 0 && row.is_canonical {
+            break;
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+/// Like [`viewport_line`], but the line may continue into `lines_below`.
+fn viewport_line_with_below<'a>(
+    viewport: &'a VecDeque<Row>,
+    lines_below: &'a VecDeque<Row>,
+    index: usize,
+) -> Vec<&'a Row> {
+    let mut rows = Vec::new();
+    for (offset, row) in viewport.iter().skip(index).enumerate() {
+        if offset > 0 && row.is_canonical {
+            return rows;
+        }
+        rows.push(row);
+    }
+    for row in lines_below {
+        if row.is_canonical {
+            break;
+        }
+        rows.push(row);
+    }
+    rows
 }
 
 struct FoldedText {
@@ -103,10 +171,27 @@ impl FoldedText {
             .ok()
             .map(|index| self.original_starts[index].1)
     }
+
+    /// The offset in the folded text of a char boundary in the original text.
+    fn offset_of_original(&self, original_offset: usize) -> Option<usize> {
+        self.original_starts
+            .binary_search_by_key(&original_offset, |(_, original)| *original)
+            .ok()
+            .map(|index| self.original_starts[index].0)
+    }
 }
 
 fn fold_case(text: &str) -> String {
     text.chars().flat_map(|c| c.to_lowercase()).collect()
+}
+
+/// Round `offset` up to the next char boundary, clamped to `text.len()`.
+fn ceil_char_boundary(text: &str, offset: usize) -> usize {
+    let mut offset = offset.min(text.len());
+    while offset < text.len() && !text.is_char_boundary(offset) {
+        offset += 1;
+    }
+    offset
 }
 
 #[derive(Debug, Clone, Default)]
@@ -171,33 +256,53 @@ impl SearchResult {
         self.wrap_search || self.whole_word_only || self.case_insensitive
     }
 
-    fn find_matches_in(&self, haystack: &Haystack) -> Vec<(usize, usize)> {
-        let original = haystack.text.as_str();
+    /// Find the matches that start in one row of a haystack.
+    ///
+    /// The row is matched as if it were the first row of its own haystack: a
+    /// match must start before the row ends, non-overlapping matching restarts
+    /// at the row start, and that start counts as a grapheme/word boundary.
+    /// Matches may extend past the row into the rows below it.
+    fn find_matches_in_row(
+        &self,
+        original: &str,
+        row: &HaystackRow,
+        search_text: &str,
+        folded: Option<&FoldedText>,
+        needle: &str,
+    ) -> Vec<(usize, usize)> {
         let mut found = Vec::new();
-        let folded;
-        let folded_needle;
-        let (search_text, needle) = if self.case_insensitive {
-            folded = FoldedText::new(original);
-            folded_needle = fold_case(&self.needle);
-            (folded.text.as_str(), folded_needle.as_str())
-        } else {
-            folded = FoldedText {
-                text: String::new(),
-                original_starts: Vec::new(),
-            };
-            (original, self.needle.as_str())
-        };
         if needle.is_empty() {
             return found;
         }
-        let mut position = 0;
-        while position <= search_text.len() {
-            let Some(relative) = search_text[position..].find(needle) else {
+        let (search_start, search_end) = match folded {
+            Some(folded) => match (
+                folded.offset_of_original(row.byte_start),
+                folded.offset_of_original(row.byte_end),
+            ) {
+                (Some(start), Some(end)) => (start, end),
+                _ => return found,
+            },
+            None => (row.byte_start, row.byte_end),
+        };
+        // The match may start in this row and continue below it, so the window
+        // extends by up to a needle's length past the row boundary.
+        let window_end = ceil_char_boundary(
+            search_text,
+            search_text
+                .len()
+                .min(search_end.saturating_add(needle.len().saturating_sub(1))),
+        );
+        let mut position = search_start;
+        while position < search_end && position <= window_end {
+            let Some(relative) = search_text[position..window_end].find(needle) else {
                 break;
             };
             let start = position + relative;
+            if start >= search_end {
+                break;
+            }
             let end = start + needle.len();
-            let original_range = if self.case_insensitive {
+            let original_range = if let Some(folded) = folded {
                 folded
                     .original_offset(start)
                     .zip(folded.original_offset(end))
@@ -205,7 +310,7 @@ impl SearchResult {
                 Some((start, end))
             };
             let accepted = original_range.filter(|(original_start, original_end)| {
-                self.accepts_match(original, *original_start, *original_end)
+                self.accepts_match(original, *original_start, *original_end, row.byte_start)
             });
             match accepted {
                 Some(range) => {
@@ -225,16 +330,22 @@ impl SearchResult {
         found
     }
 
-    fn accepts_match(&self, text: &str, start: usize, end: usize) -> bool {
+    fn accepts_match(&self, text: &str, start: usize, end: usize, row_start: usize) -> bool {
         if start >= end {
             return false;
         }
-        if !grapheme_join::is_boundary_at(text, start) || !grapheme_join::is_boundary_at(text, end)
-        {
+        if start != row_start && !grapheme_join::is_boundary_at(text, start) {
+            return false;
+        }
+        if !grapheme_join::is_boundary_at(text, end) {
             return false;
         }
         if self.whole_word_only {
-            let before = text[..start].chars().next_back();
+            let before = if start == row_start {
+                None
+            } else {
+                text[..start].chars().next_back()
+            };
             let after = text[end..].chars().next();
             if !is_word_boundary(&before) || !is_word_boundary(&after) {
                 return false;
@@ -243,33 +354,59 @@ impl SearchResult {
         true
     }
 
+    /// Search the rows of one logical line, building its text once.
+    pub(crate) fn search_rows(&self, ridx: usize, rows: &[&Row]) -> Vec<Selection> {
+        let mut res = Vec::new();
+        if self.needle.is_empty() || rows.is_empty() {
+            return res;
+        }
+        let haystack = Haystack::new(ridx, rows);
+        if haystack.text.is_empty() {
+            return res;
+        }
+        let folded = self
+            .case_insensitive
+            .then(|| FoldedText::new(&haystack.text));
+        let folded_needle = self.case_insensitive.then(|| fold_case(&self.needle));
+        let (search_text, needle) = match (&folded, &folded_needle) {
+            (Some(folded), Some(needle)) => (folded.text.as_str(), needle.as_str()),
+            _ => (haystack.text.as_str(), self.needle.as_str()),
+        };
+        for row in &haystack.rows {
+            for (start, end) in
+                self.find_matches_in_row(&haystack.text, row, search_text, folded.as_ref(), needle)
+            {
+                let (Some(first), Some(last)) = (
+                    haystack.cell_containing(start),
+                    haystack.cell_containing(end - 1),
+                ) else {
+                    continue;
+                };
+                let mut selection = Selection::default();
+                selection.start(Position::new(first.row as i32, first.column as u16));
+                selection.end(Position::new(
+                    last.row as i32,
+                    (last.column + last.width) as u16,
+                ));
+                res.push(selection);
+            }
+        }
+        res
+    }
+
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
     pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
-        let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
-            return res;
+            return Vec::new();
         }
-        let haystack = Haystack::new(ridx, row, tail);
-        for (start, end) in self.find_matches_in(&haystack) {
-            let (Some(first), Some(last)) = (
-                haystack.cell_containing(start),
-                haystack.cell_containing(end - 1),
-            ) else {
-                continue;
-            };
-            if first.row != ridx {
-                continue;
-            }
-            let mut selection = Selection::default();
-            selection.start(Position::new(first.row as i32, first.column as u16));
-            selection.end(Position::new(
-                last.row as i32,
-                (last.column + last.width) as u16,
-            ));
-            res.push(selection);
-        }
-        res
+        let mut rows = Vec::with_capacity(tail.len() + 1);
+        rows.push(row);
+        rows.extend_from_slice(tail);
+        self.search_rows(ridx, &rows)
+            .into_iter()
+            .filter(|selection| selection.start.line() == ridx as isize)
+            .collect()
     }
 
     pub(crate) fn move_active_selection_to_next(&mut self) {
@@ -324,17 +461,9 @@ impl SearchResult {
 
         // Search the new line for our needle
         if !self.needle.is_empty() {
-            if let Some(row) = viewport.front() {
-                let mut tail = Vec::new();
-                loop {
-                    let tail_idx = 1 + tail.len();
-                    if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
-                        tail.push(&viewport[tail_idx]);
-                    } else {
-                        break;
-                    }
-                }
-                let selections = self.search_row(0, row, &tail);
+            if viewport.front().is_some() {
+                let rows = viewport_line(viewport, 0);
+                let selections = self.search_row(0, rows[0], &rows[1..]);
                 for selection in selections.iter().rev() {
                     self.selections.insert(0, *selection);
                     found_something = true;
@@ -361,9 +490,9 @@ impl SearchResult {
 
         // Search the new line for our needle
         if !self.needle.is_empty() {
-            if let Some(row) = viewport.back() {
-                let tail: Vec<&Row> = lines_below.iter().take_while(|r| !r.is_canonical).collect();
-                let selections = self.search_row(viewport.len() - 1, row, &tail);
+            if viewport.back().is_some() {
+                let rows = viewport_line_with_below(viewport, lines_below, viewport.len() - 1);
+                let selections = self.search_row(viewport.len() - 1, rows[0], &rows[1..]);
                 for selection in selections {
                     // We are only interested in results that start in the this new row
                     if selection.start.line() as usize == viewport.len() - 1 {
@@ -397,21 +526,19 @@ impl SearchResult {
             return;
         }
         let visible_new = amount.min(viewport.len());
-        for index in (0..visible_new).rev() {
-            let row = &viewport[index];
-            let mut tail = Vec::new();
-            loop {
-                let tail_idx = index + tail.len() + 1;
-                if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
-                    tail.push(&viewport[tail_idx]);
-                } else {
-                    break;
-                }
-            }
-            let selections = self.search_row(index, row, &tail);
-            for selection in selections.iter().rev() {
-                self.selections.insert(0, *selection);
-            }
+        let mut new_selections = Vec::new();
+        let mut index = 0;
+        while index < visible_new {
+            let rows = viewport_line(viewport, index);
+            new_selections.extend(
+                self.search_rows(index, &rows)
+                    .into_iter()
+                    .filter(|selection| (selection.start.line() as usize) < visible_new),
+            );
+            index += rows.len();
+        }
+        for selection in new_selections.into_iter().rev() {
+            self.selections.insert(0, selection);
         }
     }
 
@@ -435,30 +562,16 @@ impl SearchResult {
             return;
         }
         let start = viewport.len().saturating_sub(amount);
-        for index in start..viewport.len() {
-            let row = &viewport[index];
-            let mut tail = Vec::new();
-            loop {
-                let tail_idx = index + tail.len() + 1;
-                if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
-                    tail.push(&viewport[tail_idx]);
-                } else if tail_idx >= viewport.len() {
-                    let below_idx = tail_idx - viewport.len();
-                    if below_idx < lines_below.len() && !lines_below[below_idx].is_canonical {
-                        tail.push(&lines_below[below_idx]);
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            let selections = self.search_row(index, row, &tail);
-            for selection in selections {
-                if selection.start.line() as usize == index {
-                    self.selections.push(selection);
-                }
-            }
+        let mut index = start;
+        while index < viewport.len() {
+            let rows = viewport_line_with_below(viewport, lines_below, index);
+            let rows_in_viewport = viewport.len() - index;
+            self.selections.extend(
+                self.search_rows(index, &rows)
+                    .into_iter()
+                    .filter(|selection| (selection.start.line() as usize) < viewport.len()),
+            );
+            index += rows.len().min(rows_in_viewport);
         }
     }
 
@@ -529,27 +642,18 @@ impl Grid {
     }
 
     pub fn search_viewport(&mut self) {
-        for ridx in 0..self.viewport.len() {
-            let row = &self.viewport[ridx];
-            let mut tail = Vec::new();
-            loop {
-                let tail_idx = ridx + tail.len() + 1;
-                if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
-                    tail.push(&self.viewport[tail_idx]);
-                } else {
-                    break;
-                }
-            }
-            let selections = self.search_results.search_row(ridx, row, &tail);
+        let mut index = 0;
+        while index < self.viewport.len() {
+            let rows = viewport_line(&self.viewport, index);
+            let line_len = rows.len();
+            let selections = self.search_results.search_rows(index, &rows);
             for sel in &selections {
                 // Cast works because we can' be negative here
                 self.output_buffer
                     .update_lines(sel.start.line() as usize, sel.end.line() as usize);
             }
-
-            for selection in selections {
-                self.search_results.selections.push(selection);
-            }
+            self.search_results.selections.extend(selections);
+            index += line_len;
         }
     }
 

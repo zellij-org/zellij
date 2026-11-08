@@ -13,7 +13,9 @@ use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
 use uuid::Uuid;
@@ -94,18 +96,24 @@ fn session_name(names_by_id: &HashMap<String, String>, id: String) -> String {
     names_by_id.get(&id).cloned().unwrap_or(id)
 }
 
-fn session_entry(
-    file: &fs::DirEntry,
-    names_by_id: &HashMap<String, String>,
-) -> Option<(String, Duration)> {
+/// How long the socket of a single session may take to answer before that
+/// session is considered dead, and how long listing may take in total.
+const SESSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Upper bound on sockets probed at once, so a directory full of wedged
+/// sockets is scanned in parallel without one thread per entry.
+const MAX_CONCURRENT_SESSION_PROBES: usize = 8;
+
+/// The socket/named-pipe file name of a directory entry, if it could be a session.
+fn session_socket_id(file: &fs::DirEntry) -> Option<String> {
     let file_name = file.file_name().into_string().ok()?;
     let file_type = file.file_type().ok()?;
-    if crate::consts::is_app_socket_name(&file_name)
-        || !is_ipc_socket(&file_type)
-        || !assert_socket(&file_name)
-    {
+    if crate::consts::is_app_socket_name(&file_name) || !is_ipc_socket(&file_type) {
         return None;
     }
+    Some(file_name)
+}
+
+fn session_age(file: &fs::DirEntry) -> Duration {
     // Try to get creation time, falling back to modification time on platforms where it is not
     // supported (for example musl). These are almost always identical for sessions; name changes
     // are the notable exception.
@@ -114,35 +122,98 @@ fn session_entry(
         .and_then(|metadata| metadata.created().ok().or_else(|| metadata.modified().ok()))
         .and_then(|time| time.elapsed().ok())
         .unwrap_or_default();
-    Some((
-        session_name(names_by_id, file_name),
-        Duration::from_secs(age.as_secs()),
-    ))
+    Duration::from_secs(age.as_secs())
 }
 
-fn session_entry_mtime(file: &fs::DirEntry) -> Option<(String, SystemTime)> {
-    let file_name = file.file_name().into_string().ok()?;
-    let metadata = file.metadata().ok()?;
-    let modified_at = metadata.modified().ok()?;
-    let file_type = file.file_type().ok()?;
-    if crate::consts::is_app_socket_name(&file_name)
-        || !is_ipc_socket(&file_type)
-        || !assert_socket(&file_name)
-    {
-        return None;
+/// Probe `(id, name, payload)` candidates concurrently and return the live ones
+/// in candidate order. A single overall deadline bounds the whole call: when it
+/// expires, sockets that have not been probed yet are treated as dead.
+fn live_sessions<T: Clone + Send + Sync>(
+    dir: &Path,
+    candidates: Vec<(String, String, T)>,
+    deadline: Duration,
+) -> Vec<(String, T)> {
+    live_sessions_with(candidates, deadline, |id, remaining| {
+        assert_socket_in(dir, id, remaining)
+    })
+}
+
+fn live_sessions_with<T, F>(
+    candidates: Vec<(String, String, T)>,
+    deadline: Duration,
+    probe: F,
+) -> Vec<(String, T)>
+where
+    T: Clone + Send + Sync,
+    F: Fn(&str, Duration) -> bool + Sync,
+{
+    if candidates.is_empty() {
+        return Vec::new();
     }
-    Some((file_name, modified_at))
+    if candidates.len() == 1 {
+        let (id, name, payload) = candidates.into_iter().next().unwrap();
+        return if probe(&id, deadline) {
+            vec![(name, payload)]
+        } else {
+            Vec::new()
+        };
+    }
+    let results: Vec<Mutex<Option<(String, T)>>> =
+        candidates.iter().map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    let started = Instant::now();
+    let workers = candidates.len().min(MAX_CONCURRENT_SESSION_PROBES);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                let Some((id, name, _)) = candidates.get(index) else {
+                    break;
+                };
+                let remaining = deadline.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    break;
+                }
+                if probe(id, remaining) {
+                    let payload = candidates[index].2.clone();
+                    *results[index]
+                        .lock()
+                        .expect("session probe result lock poisoned") =
+                        Some((name.clone(), payload));
+                }
+            });
+        }
+    });
+    results
+        .into_iter()
+        .filter_map(|slot| slot.into_inner().unwrap_or_else(|e| e.into_inner()))
+        .collect()
 }
 
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+    get_sessions_in(&ZELLIJ_SOCK_DIR)
+}
+
+fn get_sessions_in(dir: &Path) -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+    get_sessions_in_with(dir, SESSION_PROBE_TIMEOUT)
+}
+
+fn get_sessions_in_with(
+    dir: &Path,
+    deadline: Duration,
+) -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+    match fs::read_dir(dir) {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
-            let sessions = files
+            let candidates = files
                 .flatten()
-                .filter_map(|file| session_entry(&file, &names_by_id))
+                .filter_map(|file| {
+                    let id = session_socket_id(&file)?;
+                    let name = session_name(&names_by_id, id.clone());
+                    Some((id, name, session_age(&file)))
+                })
                 .collect();
-            Ok(sessions)
+            Ok(live_sessions(dir, candidates, deadline))
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
         Err(_) => Ok(Vec::with_capacity(0)),
@@ -278,13 +349,17 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
-            let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
-            for (file_name, file_modified_at) in files
+            let candidates = files
                 .flatten()
-                .filter_map(|file| session_entry_mtime(&file))
-            {
-                sessions_with_mtime.push((session_name(&names_by_id, file_name), file_modified_at));
-            }
+                .filter_map(|file| {
+                    let id = session_socket_id(&file)?;
+                    let modified_at = file.metadata().ok()?.modified().ok()?;
+                    let name = session_name(&names_by_id, id.clone());
+                    Some((id, name, modified_at))
+                })
+                .collect();
+            let mut sessions_with_mtime =
+                live_sessions(&ZELLIJ_SOCK_DIR, candidates, SESSION_PROBE_TIMEOUT);
             sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
 
             let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
@@ -300,16 +375,19 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 /// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
 /// On Windows, reads the server PID from the marker file and checks process liveness.
 #[cfg(unix)]
-fn assert_socket(name: &str) -> bool {
+fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> bool {
     use crate::consts::ipc_connect;
-    let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match ipc_connect(path) {
+    if timeout.is_zero() {
+        return false;
+    }
+    let path = dir.join(name);
+    match ipc_connect(&path) {
         Ok(stream) => {
             // a wedged server accepts connections but never replies; without a
             // read timeout `zellij ls` would block forever on recv below
             {
                 use interprocess::local_socket::prelude::*;
-                let _ = stream.set_recv_timeout(Some(std::time::Duration::from_secs(5)));
+                let _ = stream.set_recv_timeout(Some(timeout));
             }
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
@@ -321,7 +399,7 @@ fn assert_socket(name: &str) -> bool {
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-            drop(fs::remove_file(path));
+            drop(fs::remove_file(&path));
             false
         },
         Err(_) => false,
@@ -331,15 +409,15 @@ fn assert_socket(name: &str) -> bool {
 /// On Windows, reads the server PID from the marker file and checks whether
 /// the process is still alive via `OpenProcess`. Cleans up stale marker files.
 #[cfg(windows)]
-fn assert_socket(name: &str) -> bool {
+fn assert_socket_in(dir: &Path, name: &str, _timeout: Duration) -> bool {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-    let path = &*ZELLIJ_SOCK_DIR.join(name);
-    let pid_str = match fs::read_to_string(path) {
+    let path = dir.join(name);
+    let pid_str = match fs::read_to_string(&path) {
         Ok(s) => s,
         Err(_) => {
-            drop(fs::remove_file(path));
+            drop(fs::remove_file(&path));
             return false;
         },
     };
@@ -348,7 +426,7 @@ fn assert_socket(name: &str) -> bool {
         Err(_) => {
             // Marker file exists but has no valid PID (e.g. empty from old version).
             // Treat as stale.
-            drop(fs::remove_file(path));
+            drop(fs::remove_file(&path));
             return false;
         },
     };
@@ -362,13 +440,13 @@ fn assert_socket(name: &str) -> bool {
         }
     };
     if !alive {
-        drop(fs::remove_file(path));
+        drop(fs::remove_file(&path));
     }
     alive
 }
 
 #[cfg(not(any(unix, windows)))]
-fn assert_socket(_name: &str) -> bool {
+fn assert_socket_in(_dir: &Path, _name: &str, _timeout: Duration) -> bool {
     true
 }
 
@@ -1054,12 +1132,88 @@ mod session_entry_tests {
         .unwrap();
         fs::write(directory.path().join("regular-file"), b"").unwrap();
 
-        let names_by_id = HashMap::new();
         for entry in fs::read_dir(directory.path()).unwrap() {
             let entry = entry.unwrap();
-            assert!(session_entry(&entry, &names_by_id).is_none());
-            assert!(session_entry_mtime(&entry).is_none());
+            assert!(session_socket_id(&entry).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod session_probe_tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn results_keep_candidate_order_when_probes_finish_out_of_order() {
+        let candidates = vec![
+            ("slow".to_owned(), "slow".to_owned(), ()),
+            ("fast".to_owned(), "fast".to_owned(), ()),
+        ];
+
+        let live = live_sessions_with(candidates, Duration::from_secs(2), |id, _| {
+            if id == "slow" {
+                thread::sleep(Duration::from_millis(300));
+            }
+            true
+        });
+
+        let names: Vec<&str> = live.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, vec!["slow", "fast"]);
+    }
+
+    #[test]
+    fn a_wedged_socket_does_not_hide_a_live_one() {
+        let candidates = vec![
+            ("wedged".to_owned(), "wedged".to_owned(), ()),
+            ("live".to_owned(), "live".to_owned(), ()),
+        ];
+
+        let started = Instant::now();
+        let sessions =
+            live_sessions_with(candidates, Duration::from_millis(500), |id, remaining| {
+                if id == "wedged" {
+                    thread::sleep(remaining);
+                    false
+                } else {
+                    true
+                }
+            });
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].0, "live");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "probing took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn many_wedged_sockets_finish_within_the_overall_deadline() {
+        let candidates: Vec<(String, String, ())> = (0..12)
+            .map(|index| {
+                let name = format!("wedged-{index}");
+                (name.clone(), name, ())
+            })
+            .collect();
+
+        let started = Instant::now();
+        let sessions =
+            live_sessions_with(candidates, Duration::from_millis(400), |_, remaining| {
+                // A wedged socket spends its whole budget waiting for a reply.
+                thread::sleep(remaining);
+                false
+            });
+        let elapsed = started.elapsed();
+
+        assert!(sessions.is_empty());
+        // Sequentially this would take twelve probe timeouts.
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "probing twelve wedged sockets took {:?}",
+            elapsed
+        );
     }
 }
 

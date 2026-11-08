@@ -363,6 +363,44 @@ pub fn searching_across_line_wrap() {
 }
 
 #[test]
+pub fn a_long_wrapped_line_is_materialized_once_per_search() {
+    use crate::panes::search::{haystack_build_count, reset_haystack_build_count};
+    let content: String = "0123456789".repeat(10);
+    let mut terminal_pane = create_pane_with_content(&content, 10);
+
+    reset_haystack_build_count();
+    terminal_pane.update_search_term("234");
+
+    assert!(!terminal_pane.grid.search_results.selections.is_empty());
+    let builds = haystack_build_count();
+    assert!(
+        builds <= 2,
+        "the wrapped line was materialized {builds} times instead of once per logical line"
+    );
+}
+
+#[test]
+pub fn matches_starting_on_the_first_row_of_a_wrapped_line_span_rows() {
+    let mut terminal_pane = create_pane_with_content("abcdefghijabcdefghijabcdefghij", 10);
+    terminal_pane.update_search_term("ijab");
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 8), (1, 2)), ((1, 8), (2, 2))]
+    );
+}
+
+#[test]
+pub fn a_match_starting_on_a_later_wrapped_row_is_still_found() {
+    // "aaaaaa" wraps into three two-column rows; each row restarts matching.
+    let mut terminal_pane = create_pane_with_content("aaaaaa", 2);
+    terminal_pane.update_search_term("aaa");
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (1, 1)), ((1, 0), (2, 1))]
+    );
+}
+
+#[test]
 pub fn searching_whole_word() {
     let mut terminal_pane = create_pane();
     terminal_pane.update_search_term("quam");
