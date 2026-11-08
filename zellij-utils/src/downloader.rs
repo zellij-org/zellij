@@ -44,6 +44,8 @@ pub enum DownloaderError {
     StdIoError(#[from] std::io::Error),
     #[error("File name cannot be found in URL: {0}")]
     NotFoundFileName(String),
+    #[error("Invalid download file name: {0}")]
+    InvalidFileName(String),
     #[error("Failed to parse URL body: {0}")]
     InvalidUrlBody(String),
     #[error("HTTP client could not be initialized")]
@@ -126,6 +128,9 @@ impl Downloader {
             Some(name) => name.to_string(),
             None => self.parse_name(url.as_str())?,
         };
+        if !valid_download_file_name(&file_name) {
+            return Err(DownloaderError::InvalidFileName(file_name));
+        }
 
         // we do this to make sure only one download of a specific url is happening at a time
         // otherwise the downloads corrupt each other (and we waste lots of system resources)
@@ -273,26 +278,56 @@ impl Downloader {
         deadline: Duration,
     ) -> Result<String, DownloaderError> {
         match tokio::runtime::Handle::try_current() {
-            Ok(handle) => handle.block_on(Downloader::download_without_cache_with(
-                client, url, deadline,
-            )),
+            Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| {
+                    handle.block_on(Downloader::download_without_cache_with(
+                        client, url, deadline,
+                    ))
+                })
+            },
+            // `Handle::block_on` panics when called from an async context, and
+            // `block_in_place` cannot be used on a current-thread runtime.
+            Ok(_) => Self::download_on_a_dedicated_thread(client, url, deadline),
             Err(e) if e.is_missing_context() => {
-                // `Handle::block_on` cannot drive the timer or IO of a
-                // `current_thread` runtime, so the deadline would never fire.
-                // Only `Runtime::block_on` on the runtime itself does.
-                let ephemeral_runtime = tokio::runtime::Builder::new_current_thread()
-                    .thread_name("ephemeral runtime for downloader implementation")
-                    .enable_all()
-                    .build()
-                    .map_err(DownloaderError::Io)?;
-                ephemeral_runtime.block_on(Downloader::download_without_cache_with(
-                    client, url, deadline,
-                ))
+                Self::download_with_ephemeral_runtime(client, url, deadline)
             },
             _ => Err(DownloaderError::Io(std::io::Error::other(
                 "failed to spawn runtime for download task",
             ))),
         }
+    }
+
+    fn download_on_a_dedicated_thread(
+        client: &HttpClient,
+        url: &str,
+        deadline: Duration,
+    ) -> Result<String, DownloaderError> {
+        let client = client.clone();
+        let url = url.to_owned();
+        std::thread::Builder::new()
+            .name("zellij downloader".to_owned())
+            .spawn(move || Self::download_with_ephemeral_runtime(&client, &url, deadline))
+            .map_err(DownloaderError::Io)?
+            .join()
+            .map_err(|_| DownloaderError::Io(std::io::Error::other("download thread panicked")))?
+    }
+
+    fn download_with_ephemeral_runtime(
+        client: &HttpClient,
+        url: &str,
+        deadline: Duration,
+    ) -> Result<String, DownloaderError> {
+        // `Handle::block_on` cannot drive the timer or IO of a
+        // `current_thread` runtime, so the deadline would never fire. Only
+        // `Runtime::block_on` on the runtime itself does.
+        let ephemeral_runtime = tokio::runtime::Builder::new_current_thread()
+            .thread_name("ephemeral runtime for downloader implementation")
+            .enable_all()
+            .build()
+            .map_err(DownloaderError::Io)?;
+        ephemeral_runtime.block_on(Downloader::download_without_cache_with(
+            client, url, deadline,
+        ))
     }
 
     fn parse_name(&self, url: &str) -> Result<String, DownloaderError> {
@@ -371,6 +406,13 @@ fn unique_temp_path(directory: &Path, file_name: &str) -> PathBuf {
         std::process::id(),
         nanos
     ))
+}
+
+fn valid_download_file_name(file_name: &str) -> bool {
+    Path::new(file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        == Some(file_name)
 }
 
 /// Exclusive create. `create_new` does not append, and it does not open a
@@ -464,6 +506,14 @@ mod tests {
     #[test]
     fn artifact_statuses_are_accepted() {
         assert!(ensure_artifact_status(StatusCode::OK).is_ok());
+    }
+
+    #[test]
+    fn download_file_names_cannot_escape_the_cache_directory() {
+        assert!(valid_download_file_name("plugin.wasm"));
+        for name in ["", ".", "..", "/tmp/plugin.wasm", "dir/plugin.wasm"] {
+            assert!(!valid_download_file_name(name), "{name:?}");
+        }
     }
 
     #[test]
@@ -748,6 +798,48 @@ mod tests {
         assert!(
             started.elapsed() < Duration::from_secs(4),
             "the deadline did not fire promptly"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_blocking_entry_point_works_inside_a_current_thread_runtime() {
+        let (url, listener) = silent_server();
+        let _server = std::thread::spawn(move || {
+            let held = listener.accept();
+            std::thread::sleep(Duration::from_secs(5));
+            drop(held);
+        });
+        let client = build_client().unwrap();
+        let result = Downloader::download_without_cache_blocking_with(
+            &client,
+            &url,
+            Duration::from_millis(300),
+        );
+        assert!(
+            matches!(result, Err(DownloaderError::TimedOut)),
+            "unexpected result: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_blocking_entry_point_works_inside_a_multi_thread_runtime() {
+        let (url, listener) = silent_server();
+        let _server = std::thread::spawn(move || {
+            let held = listener.accept();
+            std::thread::sleep(Duration::from_secs(5));
+            drop(held);
+        });
+        let client = build_client().unwrap();
+        let result = Downloader::download_without_cache_blocking_with(
+            &client,
+            &url,
+            Duration::from_millis(300),
+        );
+        assert!(
+            matches!(result, Err(DownloaderError::TimedOut)),
+            "unexpected result: {:?}",
+            result
         );
     }
 
