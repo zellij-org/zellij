@@ -2,6 +2,7 @@ use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
+use crate::panes::work::{JobProgress, ResumableJob, WorkBudget};
 use crate::vt_parser;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
@@ -18,6 +19,13 @@ use zellij_utils::{
 };
 
 use std::fmt::Write;
+
+fn exact_delta(delta: super::EvictionDelta) -> isize {
+    match delta {
+        super::EvictionDelta::Exact(value) => value,
+        super::EvictionDelta::NeedsRecount => panic!("expected an exact eviction delta"),
+    }
+}
 
 #[test]
 fn erase_line_end_pads_wide_characters_to_display_width() {
@@ -12760,6 +12768,189 @@ fn a_reset_retires_a_paused_display_row_recount() {
 }
 
 #[test]
+fn a_mutation_between_recount_steps_does_not_publish_a_partial_sum() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    let content = repeated_lines(b"012345678901234567890123456789", 400);
+    feed_bytes(&mut grid, &content);
+    assert!(
+        grid.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the recount must span more than one step"
+    );
+    grid.scrollback_display_rows = 12_345;
+    grid.start_display_row_recount(grid.width);
+    assert!(!grid.continue_display_row_recount());
+    assert!(grid.display_recount_pending());
+
+    // A public mutation between screen turns changes the document the
+    // paused job was counting.
+    grid.add_canonical_line();
+    let before = grid.scrollback_display_rows;
+    assert!(!grid.continue_display_row_recount());
+    assert_eq!(
+        grid.scrollback_display_rows, before,
+        "an invalidated recount must not publish its partial sum"
+    );
+    grid.finish_display_row_recount();
+    let expected = scrollback_recount(&mut grid);
+    assert_eq!(grid.scrollback_display_rows, expected);
+}
+
+#[test]
+fn an_invalid_recount_does_not_publish() {
+    let mut grid = create_grid_with_size_and_raw(2, 10, b"hello");
+    grid.scrollback_display_rows = 777;
+    let epoch = grid.content_epoch;
+    let mut job = super::DisplayRowRecount {
+        index: 0,
+        cell_index: 0,
+        row_started: false,
+        accumulated: 0,
+        width: grid.width,
+        wrap: super::WrapState::default(),
+        in_run: false,
+        epoch,
+    };
+    let mut budget = WorkBudget::new(4, 4, 4);
+    assert_eq!(
+        job.step(&mut grid, epoch.wrapping_add(1), &mut budget),
+        JobProgress::Invalid
+    );
+    assert_eq!(grid.scrollback_display_rows, 777);
+}
+
+#[test]
+fn recount_budget_charges_single_width_and_mixed_width_paths() {
+    let mut grid = create_grid_with_size_and_raw(2, 10, b"");
+    grid.lines_above.clear();
+    grid.lines_above.push_back(width_cells(20, 1));
+    let epoch = grid.content_epoch;
+    let mut single_width = super::DisplayRowRecount {
+        index: 0,
+        cell_index: 0,
+        row_started: false,
+        accumulated: 0,
+        width: grid.width,
+        wrap: super::WrapState::default(),
+        in_run: false,
+        epoch,
+    };
+    let mut budget = WorkBudget::new(4, 10, 10);
+    assert_eq!(
+        single_width.step(&mut grid, epoch, &mut budget),
+        JobProgress::Pending
+    );
+    assert_eq!(single_width.cell_index, 10);
+    assert_eq!(budget.remaining_cells(), 0);
+    assert_eq!(budget.remaining_transitions(), 0);
+
+    let mut grid = create_grid_with_size_and_raw(2, 10, b"");
+    grid.lines_above.clear();
+    grid.lines_above.push_back(alternating_row(10, false));
+    let epoch = grid.content_epoch;
+    let mut mixed_width = super::DisplayRowRecount {
+        index: 0,
+        cell_index: 0,
+        row_started: false,
+        accumulated: 0,
+        width: grid.width,
+        wrap: super::WrapState::default(),
+        in_run: false,
+        epoch,
+    };
+    let mut budget = WorkBudget::new(4, 1, 1);
+    assert_eq!(
+        mixed_width.step(&mut grid, epoch, &mut budget),
+        JobProgress::Pending
+    );
+    assert_eq!(mixed_width.cell_index, 1);
+    assert_eq!(budget.remaining_cells(), 0);
+    assert_eq!(budget.remaining_transitions(), 0);
+}
+
+#[test]
+fn a_mutation_between_reflow_steps_invalidates_the_scan() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.lines_above.clear();
+    let mut canonical = Row::from_columns(
+        std::iter::repeat(TerminalCharacter::new_styled('a', Default::default()))
+            .take(8)
+            .collect(),
+    )
+    .canonical();
+    let _ = canonical.width_cached();
+    grid.lines_above.push_back(canonical);
+    for _ in 0..200 {
+        let mut row = Row::from_columns(
+            std::iter::repeat(TerminalCharacter::new_styled('b', Default::default()))
+                .take(8)
+                .collect(),
+        );
+        let _ = row.width_cached();
+        row.is_canonical = false;
+        grid.lines_above.push_back(row);
+    }
+    grid.width = 3;
+    grid.arm_pending_scroll_up(1);
+    assert!(grid.pending_line_reflow.is_some());
+    assert_eq!(grid.drive_pending_scroll_up(), 0);
+    assert!(
+        grid.pending_line_reflow.is_some(),
+        "the scan must span more than one quantum"
+    );
+
+    grid.add_canonical_line();
+    let before_len = grid.lines_above.len();
+    assert_eq!(grid.drive_pending_scroll_up(), 0);
+    assert!(
+        grid.pending_line_reflow.is_none(),
+        "a stale reflow job must be dropped, not resumed"
+    );
+    assert_eq!(
+        grid.lines_above.len(),
+        before_len,
+        "an invalidated reflow job must not publish a cut"
+    );
+}
+
+#[test]
+fn a_suffix_table_job_is_invalid_at_a_new_content_epoch() {
+    let width = 121usize;
+    let run_rows = 2_200usize;
+    let cells = 40usize;
+    let mut lines = std::collections::VecDeque::new();
+    for _ in 0..(run_rows - 1) {
+        lines.push_back(width_cells(cells, 2));
+    }
+    let mut evicted = width_cells(cells, 2);
+    let mut cache = super::EvictionCache::default();
+    assert_eq!(
+        super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache, 0),
+        super::EvictionDelta::NeedsRecount
+    );
+    let mut job = cache.suffix_job.take().expect("partial suffix job");
+    assert!(job.composed > 0);
+    let mut ctx = super::SuffixTableContext {
+        lines_above: &mut lines,
+        width,
+        run_rows,
+    };
+    let mut budget = WorkBudget::new(
+        super::SUFFIX_TABLE_ROW_BUDGET,
+        super::SUFFIX_TABLE_CELL_BUDGET,
+        super::SUFFIX_TABLE_TRANSITION_BUDGET,
+    );
+    let stale_epoch = job.epoch.wrapping_add(1);
+    assert_eq!(
+        job.step(&mut ctx, stale_epoch, &mut budget),
+        JobProgress::Invalid,
+        "a job from an older content epoch must not resume"
+    );
+}
+
+#[test]
 fn alternate_screen_while_parked_saves_and_restores_the_primary_view() {
     let mut grid = create_grid_with_size_and_raw(4, 20, b"");
     let mut parser = vt_parser::Parser::new();
@@ -12977,7 +13168,7 @@ fn appending_a_continuation_invalidates_a_summarized_suffix() {
         std::collections::VecDeque::from([width_cells(4, 2), width_cells(4, 2), width_cells(3, 2)]);
     let mut evicted = width_cells(4, 2);
     let mut cache = super::EvictionCache::default();
-    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache, 0);
     let predicted = {
         let stale = cache
             .stale
@@ -12986,7 +13177,7 @@ fn appending_a_continuation_invalidates_a_summarized_suffix() {
         assert_eq!(stale.tail_rows, 0, "the run reached the end of the deque");
         stale.heights[stale.index + 1] as isize - stale.heights[stale.index] as isize
     };
-    cache.note_appended(false, false, 0, 0);
+    cache.note_appended(false, false, 0, 0, 1);
     assert!(
         cache.stale.is_none(),
         "a continuation of a summarized suffix must drop that summary"
@@ -12999,13 +13190,20 @@ fn appending_a_continuation_invalidates_a_summarized_suffix() {
     let mut fresh_lines = lines.clone();
     let mut fresh_evicted = evicted.clone();
     let mut fresh = super::EvictionCache::default();
-    let exact = super::evicted_row_display_row_delta(
+    let exact = exact_delta(super::evicted_row_display_row_delta(
         &mut fresh_lines,
         &mut fresh_evicted,
         width,
         &mut fresh,
-    );
-    let got = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+        0,
+    ));
+    let got = exact_delta(super::evicted_row_display_row_delta(
+        &mut lines,
+        &mut evicted,
+        width,
+        &mut cache,
+        0,
+    ));
     assert_eq!(got, exact);
     assert_ne!(exact, predicted, "the tail edit changes the cached delta");
 }
@@ -13038,9 +13236,14 @@ fn a_long_alternating_run_skips_the_suffix_table_and_stays_exact() {
         - run_display_height(with_widths, width) as isize;
     super::reset_suffix_table_transition_count();
     let mut cache = super::EvictionCache::default();
-    let delta = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    let delta = exact_delta(super::evicted_row_display_row_delta(
+        &mut lines,
+        &mut evicted,
+        width,
+        &mut cache,
+        0,
+    ));
     assert_eq!(delta, expected);
-    assert!(!cache.take_needs_recount());
     assert_eq!(super::suffix_table_transition_count(), 0);
 }
 
@@ -13063,11 +13266,19 @@ fn a_long_wide_run_chunks_the_suffix_table() {
     let expected = run_display_height(without_widths, width) as isize
         - run_display_height(with_widths, width) as isize;
     let mut cache = super::EvictionCache::default();
-    let mut delta = 0isize;
+    let mut delta = super::EvictionDelta::Exact(0);
+    let mut epoch = 0u64;
     let mut finished = false;
     for _ in 0..rows {
         super::reset_suffix_table_transition_count();
-        delta = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+        delta = super::evicted_row_display_row_delta(
+            &mut lines,
+            &mut evicted,
+            width,
+            &mut cache,
+            epoch,
+        );
+        epoch = epoch.wrapping_add(1);
         let transitions = super::suffix_table_transition_count();
         assert!(
             transitions <= super::SUFFIX_TABLE_TRANSITION_BUDGET,
@@ -13079,7 +13290,7 @@ fn a_long_wide_run_chunks_the_suffix_table() {
         }
     }
     assert!(finished, "the suffix table did not finish");
-    assert_eq!(delta, expected);
+    assert_eq!(exact_delta(delta), expected);
     // Later hits consume heights[index + 1] - heights[index], starting
     // at index 1. Pop one continuation and append a new canonical row so
     // the deque length, and therefore the cache key, stays put.
@@ -13088,12 +13299,15 @@ fn a_long_wide_run_chunks_the_suffix_table() {
         let mut tail = width_cells(1, 1);
         tail.is_canonical = true;
         lines.push_back(tail);
-        cache.note_appended(true, false, 0, 0);
+        cache.note_appended(true, false, 0, 0, epoch);
         let left = lines.iter().filter(|row| !row.is_canonical).count();
         let without = run_display_height(std::iter::repeat(2usize).take(cells * left), width);
         let with = run_display_height(std::iter::repeat(2usize).take(cells * (left + 1)), width);
         super::reset_suffix_table_transition_count();
-        let hit = super::evicted_row_display_row_delta(&mut lines, &mut next, width, &mut cache);
+        let hit = exact_delta(super::evicted_row_display_row_delta(
+            &mut lines, &mut next, width, &mut cache, epoch,
+        ));
+        epoch = epoch.wrapping_add(1);
         assert_eq!(
             super::suffix_table_transition_count(),
             0,
@@ -13123,8 +13337,13 @@ fn an_empty_continuation_still_occupies_one_display_row() {
             - run_display_height(std::iter::repeat(1usize).take(cells), width) as isize;
         assert_eq!(expected, 0, "width {width}");
         let mut cache = super::EvictionCache::default();
-        let delta =
-            super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+        let delta = exact_delta(super::evicted_row_display_row_delta(
+            &mut lines,
+            &mut evicted,
+            width,
+            &mut cache,
+            0,
+        ));
         assert_eq!(delta, expected, "width {width}");
         let next = {
             let stale = cache
@@ -13150,7 +13369,7 @@ fn a_short_alternating_run_builds_a_bounded_suffix_table() {
     let mut evicted = alternating_row(2, false);
     super::reset_suffix_table_transition_count();
     let mut cache = super::EvictionCache::default();
-    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache, 0);
     let transitions = super::suffix_table_transition_count();
     assert!(transitions > 0, "the short table should do real work");
     assert!(transitions <= 8_192, "transitions {transitions}");
@@ -13700,6 +13919,7 @@ fn a_multi_row_eviction_that_needs_a_recount_does_not_apply_a_partial_delta() {
         width_cells(40, 2),
         &mut grid.scrollback_cells,
         &mut grid.front_run_validity,
+        grid.content_epoch,
     );
     assert_eq!(evicted.len(), 2, "the fixture must evict a multi-row burst");
 
@@ -13709,7 +13929,9 @@ fn a_multi_row_eviction_that_needs_a_recount_does_not_apply_a_partial_delta() {
         evicted,
         width,
         &mut grid.front_run_validity,
+        grid.content_epoch,
     );
+    assert_eq!(delta, super::EvictionDelta::NeedsRecount);
     grid.apply_scrollback_display_row_delta(delta);
     assert!(
         grid.display_recount_pending(),
@@ -13875,6 +14097,8 @@ fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
 }
 
 fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
+    grid.content_epoch = grid.content_epoch.wrapping_add(1);
+    let epoch = grid.content_epoch;
     super::bounded_push(
         &mut grid.lines_above,
         &mut grid.sixel_grid,
@@ -13882,6 +14106,7 @@ fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
         row,
         &mut grid.scrollback_cells,
         &mut grid.front_run_validity,
+        epoch,
     );
 }
 
@@ -14659,7 +14884,13 @@ fn wide_eviction_display_rows_match_the_wrap_rule() {
     }
     let mut evicted = lines_above.pop_front().unwrap();
     let mut front = super::EvictionCache::default();
-    let delta = evicted_row_display_row_delta(&mut lines_above, &mut evicted, width, &mut front);
+    let delta = exact_delta(evicted_row_display_row_delta(
+        &mut lines_above,
+        &mut evicted,
+        width,
+        &mut front,
+        0,
+    ));
     let with_height = run_display_height(
         std::iter::once(3).chain(std::iter::repeat(3).take(5000)),
         width,
