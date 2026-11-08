@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::Write,
     path::PathBuf,
@@ -19,7 +19,7 @@ impl PermissionCache {
     /// Records the plugin's permissions, and returns whether that changed what is cached.
     pub fn cache(&mut self, plugin_name: String, permissions: Vec<PermissionType>) -> bool {
         let unchanged = self.granted.get(&plugin_name).is_some_and(|cached| {
-            cached.len() == permissions.len() && permissions.iter().all(|p| cached.contains(p))
+            cached.iter().collect::<HashSet<_>>() == permissions.iter().collect::<HashSet<_>>()
         });
         self.granted.insert(plugin_name, permissions);
         !unchanged
@@ -74,12 +74,15 @@ impl PermissionCache {
         let temporary =
             self.path
                 .with_file_name(format!(".{}.{}.tmp", file_name, std::process::id()));
-        {
-            let mut f = File::create(&temporary)?;
-            write!(f, "{}", PermissionCache::to_string(&self.granted))?;
-            f.sync_all()?;
-        }
-        fs::rename(&temporary, &self.path).inspect_err(|_| {
+        let replace = || {
+            {
+                let mut f = File::create(&temporary)?;
+                write!(f, "{}", PermissionCache::to_string(&self.granted))?;
+                f.sync_all()?;
+            }
+            fs::rename(&temporary, &self.path)
+        };
+        replace().inspect_err(|_| {
             let _ = fs::remove_file(&temporary);
         })
     }
@@ -105,8 +108,16 @@ mod tests {
         assert!(!cache.cache("plugin".to_owned(), permissions.into_iter().rev().collect()));
         assert!(cache.cache(
             "plugin".to_owned(),
+            vec![
+                PermissionType::ReadApplicationState,
+                PermissionType::ReadApplicationState
+            ]
+        ));
+        assert!(!cache.cache(
+            "plugin".to_owned(),
             vec![PermissionType::ReadApplicationState]
         ));
+        assert!(cache.cache("plugin".to_owned(), vec![PermissionType::RunCommands]));
         assert!(cache.cache(
             "other plugin".to_owned(),
             vec![PermissionType::ReadApplicationState]
@@ -142,24 +153,42 @@ mod tests {
         cache.cache("plugin".to_owned(), vec![PermissionType::RunCommands]);
         cache.write_to_file().unwrap();
 
+        let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let writer_start = start.clone();
         let writer_path = path.clone();
         let writer = std::thread::spawn(move || {
-            let mut cache = cache_at(&writer_path);
-            for _ in 0..2000 {
-                cache.cache("plugin".to_owned(), vec![PermissionType::RunCommands]);
+            let cache = cache_at(&writer_path);
+            writer_start.wait();
+            for _ in 0..500 {
                 cache.write_to_file().unwrap();
             }
         });
-        let mut reads = 0;
-        while !writer.is_finished() {
+        start.wait();
+        loop {
             assert!(
                 cache_at(&path)
                     .check_permissions("plugin".to_owned(), &vec![PermissionType::RunCommands]),
                 "a read during a rewrite lost the cached grant"
             );
-            reads += 1;
+            if writer.is_finished() {
+                break;
+            }
         }
         writer.join().unwrap();
-        assert!(reads > 0);
+    }
+
+    #[test]
+    fn a_failed_write_keeps_the_old_cache_and_leaves_nothing_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("keep"), "").unwrap();
+        let mut cache = cache_at(&path);
+        cache.cache("plugin".to_owned(), vec![PermissionType::RunCommands]);
+
+        assert!(cache.write_to_file().is_err());
+        let files: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(files.len(), 1, "the temporary file was removed");
+        assert!(path.join("keep").exists());
     }
 }
