@@ -91,7 +91,9 @@ impl LinkHandler {
     }
 
     pub fn dispatch_osc8(&mut self, params: &[&[u8]]) -> Option<LinkAnchor> {
-        let (link_params, uri) = (params[1], params[2]);
+        let [_osc, link_params, uri, ..] = params else {
+            return None;
+        };
         log::debug!(
             "dispatching osc8, params: {:?}, uri: {:?}",
             std::str::from_utf8(link_params),
@@ -215,6 +217,14 @@ mod tests {
 
         let expected = format!("\u{1b}]8;;{}", TERMINATOR);
         assert_eq!(link_handler.output_osc8(anchor).unwrap(), expected);
+    }
+
+    #[test]
+    fn dispatch_osc8_ignores_short_parameter_lists() {
+        let mut link_handler = LinkHandler::default();
+        assert_eq!(link_handler.dispatch_osc8(&[]), None);
+        assert_eq!(link_handler.dispatch_osc8(&[b"8"]), None);
+        assert_eq!(link_handler.dispatch_osc8(&[b"8", b"id=test"]), None);
     }
 
     #[test]

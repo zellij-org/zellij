@@ -162,6 +162,15 @@ pub fn link_urls_in_lines(
         .collect();
     dirty.sort_unstable();
     dirty.dedup();
+    if dirty.iter().all(|&y| {
+        row_ref(lines_above, viewport, y).is_some_and(|row| {
+            !row.link_scan_pending
+                && !row.link_scan_dirty
+                && row.link_prefix_scanned as usize == row.columns.len()
+        })
+    }) {
+        return;
+    }
     let mut spans: Vec<(isize, isize)> = Vec::with_capacity(dirty.len());
     for y in dirty {
         if spans.last().map(|&(_start, end)| y < end).unwrap_or(false) {
@@ -229,7 +238,7 @@ fn scan_logical_span(
         }
     }
     let mut cell_offset = 0usize;
-    let mut resume_at = None;
+    let mut resume = None;
     let mut prior_colon = false;
     for y in start..end {
         let Some(row) = row_ref(lines_above, viewport, y) else {
@@ -241,29 +250,29 @@ fn scan_logical_span(
             prior_colon |= row.link_prefix_has_colon;
         }
         if scanned < len {
-            resume_at = Some(cell_offset + scanned);
+            resume = Some((y, scanned));
             break;
         }
         cell_offset += len;
     }
-    let Some(resume_at) = resume_at else {
+    let Some((resume_y, resume_scanned)) = resume else {
         return;
     };
+    let resume_at = cell_offset + resume_scanned;
     let mut suffix_has_colon = false;
     let mut suffix_has_anchor = false;
+    let mut total_cells = cell_offset;
     {
-        // Jump by row length. A growing line must not re-walk cells the
-        // cursor already accepted.
-        let mut skip = resume_at;
-        for y in start..end {
+        // Continue at the first row with unscanned text. A growing line
+        // must not re-walk rows the cursor already accepted, and this
+        // pass also measures the line for the window loop below.
+        for (index, y) in (resume_y..end).enumerate() {
             let Some(row) = row_ref(lines_above, viewport, y) else {
                 continue;
             };
             let len = row.columns.len();
-            if skip >= len {
-                skip -= len;
-                continue;
-            }
+            total_cells += len;
+            let skip = if index == 0 { resume_scanned } else { 0 };
             for cell in &row.columns[skip..] {
                 note_cells_visited(1);
                 if cell.character == ':' {
@@ -273,7 +282,6 @@ fn scan_logical_span(
                     suffix_has_anchor = true;
                 }
             }
-            skip = 0;
         }
     }
     if !prior_colon && !suffix_has_colon && !suffix_has_anchor {
@@ -289,15 +297,6 @@ fn scan_logical_span(
         MAX_URL_CHARS
     } else {
         COLON_FREE_LOOKBEHIND
-    };
-    let total_cells = {
-        let mut total = 0usize;
-        for y in start..end {
-            if let Some(row) = row_ref(lines_above, viewport, y) {
-                total += row.columns.len();
-            }
-        }
-        total
     };
     if resume_at >= total_cells {
         return;
@@ -870,6 +869,29 @@ mod tests {
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
         assert_eq!(handler.links().len(), 1);
+    }
+
+    #[test]
+    fn scanning_an_already_scanned_row_does_not_walk_its_line() {
+        let mut viewport = screen(&[("x https://example.com y", true)], 40);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        LINE_START_WALKS.with(|counter| counter.set(0));
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert_eq!(LINE_START_WALKS.with(|counter| counter.get()), 0);
+    }
+
+    #[test]
+    fn a_watermark_past_a_shrunk_row_is_repaired_without_a_dirty_flag() {
+        let mut viewport = screen(&[("https://example.com", true)], 40);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        viewport[0].link_prefix_scanned = 1_000;
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert_eq!(
+            viewport[0].link_prefix_scanned as usize,
+            viewport[0].columns.len()
+        );
     }
 
     #[test]
