@@ -51,38 +51,98 @@ struct HaystackRow {
 struct Haystack {
     text: String,
     cells: Vec<HaystackCell>,
-    rows: Vec<HaystackRow>,
+    row: HaystackRow,
+    folded: Option<FoldedText>,
 }
 
 impl Haystack {
-    fn new(ridx: usize, rows: &[&Row]) -> Self {
-        #[cfg(test)]
-        HAYSTACK_BUILDS.with(|count| count.set(count.get() + 1));
+    /// Materialize `first` plus just enough continuation rows for a match that
+    /// starts in `first` to finish and see one boundary character after it.
+    fn new<'a>(
+        ridx: usize,
+        first: &Row,
+        below: impl Iterator<Item = &'a Row>,
+        needle_len: usize,
+        case_insensitive: bool,
+    ) -> Self {
         let mut text = String::new();
         let mut cells = Vec::new();
-        let mut haystack_rows = Vec::with_capacity(rows.len());
-        for (offset, current) in rows.iter().enumerate() {
-            let byte_start = text.len();
+        let mut folded = case_insensitive.then(FoldedTextBuilder::default);
+        let push_row = |text: &mut String,
+                        cells: &mut Vec<HaystackCell>,
+                        folded: &mut Option<FoldedTextBuilder>,
+                        row_offset: usize,
+                        current: &Row| {
             let mut column = 0;
             for cell in &current.columns {
                 cells.push(HaystackCell {
                     byte_start: text.len(),
-                    row: ridx + offset,
+                    row: ridx + row_offset,
                     column,
                     width: cell.width(),
                 });
-                cell.push_text_to(&mut text);
+                let cell_start = text.len();
+                cell.push_text_to(text);
+                if let Some(folded) = folded.as_mut() {
+                    for (offset, c) in text[cell_start..].char_indices() {
+                        folded.push_char(cell_start + offset, c);
+                    }
+                }
                 column += cell.width();
             }
-            haystack_rows.push(HaystackRow {
-                byte_start,
-                byte_end: text.len(),
-            });
+        };
+        push_row(&mut text, &mut cells, &mut folded, 0, first);
+        let row = HaystackRow {
+            byte_start: 0,
+            byte_end: text.len(),
+        };
+        let measure_len = |text: &String, folded: &Option<FoldedTextBuilder>| {
+            folded
+                .as_ref()
+                .map_or(text.len(), |folded| folded.text.len())
+        };
+        let target = measure_len(&text, &folded).saturating_add(needle_len);
+        let mut rows_pushed = 1;
+        let mut below = below;
+        let mut line_ended = false;
+        while measure_len(&text, &folded) < target {
+            match below.next() {
+                Some(row) if !row.is_canonical => {
+                    push_row(&mut text, &mut cells, &mut folded, rows_pushed, row);
+                    rows_pushed += 1;
+                },
+                _ => {
+                    line_ended = true;
+                    break;
+                },
+            }
         }
+        // A match can end exactly at `target`; keep one following character
+        // when the logical line continues so boundary checks see real context.
+        if !line_ended && measure_len(&text, &folded) == target {
+            if let Some(row) = below.next().filter(|row| !row.is_canonical) {
+                push_row(&mut text, &mut cells, &mut folded, rows_pushed, row);
+                rows_pushed += 1;
+            }
+        }
+        #[cfg(test)]
+        SEARCH_WORK.with(|counter| {
+            let work = counter.get();
+            counter.set(SearchWork {
+                windows: work.windows + 1,
+                rows: work.rows + rows_pushed,
+                cells: work.cells + cells.len(),
+                bytes: work.bytes + text.len(),
+            });
+        });
+        #[cfg(not(test))]
+        let _ = rows_pushed;
+        let original_len = text.len();
         Haystack {
             text,
             cells,
-            rows: haystack_rows,
+            row,
+            folded: folded.map(|folded| folded.finish(original_len)),
         }
     }
 
@@ -96,18 +156,32 @@ impl Haystack {
 }
 
 #[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SearchWork {
+    pub windows: usize,
+    pub rows: usize,
+    pub cells: usize,
+    pub bytes: usize,
+}
+
+#[cfg(test)]
 thread_local! {
-    static HAYSTACK_BUILDS: std::cell::Cell<usize> = std::cell::Cell::new(0);
+    static SEARCH_WORK: std::cell::Cell<SearchWork> = std::cell::Cell::new(SearchWork {
+        windows: 0,
+        rows: 0,
+        cells: 0,
+        bytes: 0,
+    });
 }
 
 #[cfg(test)]
-pub(crate) fn haystack_build_count() -> usize {
-    HAYSTACK_BUILDS.with(|count| count.get())
+pub(crate) fn search_work() -> SearchWork {
+    SEARCH_WORK.with(|work| work.get())
 }
 
 #[cfg(test)]
-pub(crate) fn reset_haystack_build_count() {
-    HAYSTACK_BUILDS.with(|count| count.set(0));
+pub(crate) fn reset_search_work() {
+    SEARCH_WORK.with(|work| work.set(SearchWork::default()));
 }
 
 /// The rows of the logical line that starts at `index`: the row itself plus
@@ -123,48 +197,34 @@ fn viewport_line<'a>(viewport: &'a VecDeque<Row>, index: usize) -> Vec<&'a Row> 
     rows
 }
 
-/// Like [`viewport_line`], but the line may continue into `lines_below`.
-fn viewport_line_with_below<'a>(
-    viewport: &'a VecDeque<Row>,
-    lines_below: &'a VecDeque<Row>,
-    index: usize,
-) -> Vec<&'a Row> {
-    let mut rows = Vec::new();
-    for (offset, row) in viewport.iter().skip(index).enumerate() {
-        if offset > 0 && row.is_canonical {
-            return rows;
-        }
-        rows.push(row);
-    }
-    for row in lines_below {
-        if row.is_canonical {
-            break;
-        }
-        rows.push(row);
-    }
-    rows
-}
-
 struct FoldedText {
     text: String,
     original_starts: Vec<(usize, usize)>,
 }
 
-impl FoldedText {
-    fn new(original: &str) -> Self {
-        let mut text = String::with_capacity(original.len());
-        let mut original_starts = Vec::with_capacity(original.len() + 1);
-        for (offset, c) in original.char_indices() {
-            original_starts.push((text.len(), offset));
-            text.extend(c.to_lowercase());
-        }
-        original_starts.push((text.len(), original.len()));
-        FoldedText {
-            text,
-            original_starts,
-        }
+#[derive(Default)]
+struct FoldedTextBuilder {
+    text: String,
+    original_starts: Vec<(usize, usize)>,
+}
+
+impl FoldedTextBuilder {
+    fn push_char(&mut self, original_offset: usize, c: char) {
+        self.original_starts
+            .push((self.text.len(), original_offset));
+        self.text.extend(c.to_lowercase());
     }
 
+    fn finish(mut self, original_len: usize) -> FoldedText {
+        self.original_starts.push((self.text.len(), original_len));
+        FoldedText {
+            text: self.text,
+            original_starts: self.original_starts,
+        }
+    }
+}
+
+impl FoldedText {
     fn original_offset(&self, folded_offset: usize) -> Option<usize> {
         self.original_starts
             .binary_search_by_key(&folded_offset, |(folded, _)| *folded)
@@ -354,42 +414,65 @@ impl SearchResult {
         true
     }
 
-    /// Search the rows of one logical line, building its text once.
+    /// Search the rows of one logical line, materializing one bounded window
+    /// per starting row instead of the whole continuation tail.
     pub(crate) fn search_rows(&self, ridx: usize, rows: &[&Row]) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || rows.is_empty() {
             return res;
         }
-        let haystack = Haystack::new(ridx, rows);
+        for (offset, row) in rows.iter().enumerate() {
+            let below = rows[offset + 1..]
+                .iter()
+                .copied()
+                .take_while(|row| !row.is_canonical);
+            res.extend(self.search_starting_row(ridx + offset, row, below));
+        }
+        res
+    }
+
+    pub(crate) fn search_starting_row<'a>(
+        &self,
+        ridx: usize,
+        row: &Row,
+        below: impl Iterator<Item = &'a Row>,
+    ) -> Vec<Selection> {
+        let mut res = Vec::new();
+        if self.needle.is_empty() || row.columns.is_empty() {
+            return res;
+        }
+        let folded_needle = self.case_insensitive.then(|| fold_case(&self.needle));
+        let needle_len = folded_needle
+            .as_ref()
+            .map_or(self.needle.len(), |needle| needle.len());
+        let haystack = Haystack::new(ridx, row, below, needle_len, self.case_insensitive);
         if haystack.text.is_empty() {
             return res;
         }
-        let folded = self
-            .case_insensitive
-            .then(|| FoldedText::new(&haystack.text));
-        let folded_needle = self.case_insensitive.then(|| fold_case(&self.needle));
-        let (search_text, needle) = match (&folded, &folded_needle) {
+        let (search_text, needle) = match (&haystack.folded, &folded_needle) {
             (Some(folded), Some(needle)) => (folded.text.as_str(), needle.as_str()),
             _ => (haystack.text.as_str(), self.needle.as_str()),
         };
-        for row in &haystack.rows {
-            for (start, end) in
-                self.find_matches_in_row(&haystack.text, row, search_text, folded.as_ref(), needle)
-            {
-                let (Some(first), Some(last)) = (
-                    haystack.cell_containing(start),
-                    haystack.cell_containing(end - 1),
-                ) else {
-                    continue;
-                };
-                let mut selection = Selection::default();
-                selection.start(Position::new(first.row as i32, first.column as u16));
-                selection.end(Position::new(
-                    last.row as i32,
-                    (last.column + last.width) as u16,
-                ));
-                res.push(selection);
-            }
+        for (start, end) in self.find_matches_in_row(
+            &haystack.text,
+            &haystack.row,
+            search_text,
+            haystack.folded.as_ref(),
+            needle,
+        ) {
+            let (Some(first), Some(last)) = (
+                haystack.cell_containing(start),
+                haystack.cell_containing(end - 1),
+            ) else {
+                continue;
+            };
+            let mut selection = Selection::default();
+            selection.start(Position::new(first.row as i32, first.column as u16));
+            selection.end(Position::new(
+                last.row as i32,
+                (last.column + last.width) as u16,
+            ));
+            res.push(selection);
         }
         res
     }
@@ -397,16 +480,11 @@ impl SearchResult {
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
     pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
-        if self.needle.is_empty() || row.columns.is_empty() {
-            return Vec::new();
-        }
-        let mut rows = Vec::with_capacity(tail.len() + 1);
-        rows.push(row);
-        rows.extend_from_slice(tail);
-        self.search_rows(ridx, &rows)
-            .into_iter()
-            .filter(|selection| selection.start.line() == ridx as isize)
-            .collect()
+        self.search_starting_row(
+            ridx,
+            row,
+            tail.iter().copied().take_while(|row| !row.is_canonical),
+        )
     }
 
     pub(crate) fn move_active_selection_to_next(&mut self) {
@@ -490,16 +568,11 @@ impl SearchResult {
 
         // Search the new line for our needle
         if !self.needle.is_empty() {
-            if viewport.back().is_some() {
-                let rows = viewport_line_with_below(viewport, lines_below, viewport.len() - 1);
-                let selections = self.search_row(viewport.len() - 1, rows[0], &rows[1..]);
-                for selection in selections {
-                    // We are only interested in results that start in the this new row
-                    if selection.start.line() as usize == viewport.len() - 1 {
-                        self.selections.push(selection);
-                        found_something = true;
-                    }
-                }
+            if let Some(row) = viewport.back() {
+                let below = lines_below.iter().take_while(|row| !row.is_canonical);
+                let selections = self.search_starting_row(viewport.len() - 1, row, below);
+                found_something = !selections.is_empty();
+                self.selections.extend(selections);
             }
         }
         found_something
@@ -564,14 +637,14 @@ impl SearchResult {
         let start = viewport.len().saturating_sub(amount);
         let mut index = start;
         while index < viewport.len() {
-            let rows = viewport_line_with_below(viewport, lines_below, index);
-            let rows_in_viewport = viewport.len() - index;
-            self.selections.extend(
-                self.search_rows(index, &rows)
-                    .into_iter()
-                    .filter(|selection| (selection.start.line() as usize) < viewport.len()),
-            );
-            index += rows.len().min(rows_in_viewport);
+            let below = viewport
+                .iter()
+                .skip(index + 1)
+                .take_while(|row| !row.is_canonical)
+                .chain(lines_below.iter().take_while(|row| !row.is_canonical));
+            self.selections
+                .extend(self.search_starting_row(index, &viewport[index], below));
+            index += 1;
         }
     }
 

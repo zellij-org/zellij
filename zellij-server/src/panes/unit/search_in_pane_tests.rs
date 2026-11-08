@@ -362,20 +362,178 @@ pub fn searching_across_line_wrap() {
     );
 }
 
+fn wrapped_row(text: &str) -> super::super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    super::super::Row::from_columns(text.chars().map(TerminalCharacter::new).collect::<Vec<_>>())
+}
+
+fn huge_continuation_tail() -> Vec<super::super::Row> {
+    (0..10_000)
+        .map(|_| wrapped_row("klmnopqrst"))
+        .collect::<Vec<_>>()
+}
+
 #[test]
-pub fn a_long_wrapped_line_is_materialized_once_per_search() {
-    use crate::panes::search::{haystack_build_count, reset_haystack_build_count};
+pub fn a_long_wrapped_line_is_searched_in_bounded_windows() {
+    use crate::panes::search::{reset_search_work, search_work};
     let content: String = "0123456789".repeat(10);
     let mut terminal_pane = create_pane_with_content(&content, 10);
 
-    reset_haystack_build_count();
+    reset_search_work();
     terminal_pane.update_search_term("234");
 
     assert!(!terminal_pane.grid.search_results.selections.is_empty());
-    let builds = haystack_build_count();
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
     assert!(
-        builds <= 2,
-        "the wrapped line was materialized {builds} times instead of once per logical line"
+        work.windows <= visible_rows,
+        "search built {} windows for {visible_rows} visible rows",
+        work.windows
+    );
+    assert!(
+        work.rows <= visible_rows * 2,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
+    );
+    assert!(
+        work.cells <= visible_rows * 20,
+        "search materialized {} cells for {visible_rows} visible rows",
+        work.cells
+    );
+}
+
+#[test]
+pub fn an_absent_needle_does_not_materialize_the_rest_of_a_wrapped_line() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "zz".to_owned();
+    let first = wrapped_row("abcdefghij");
+    let tail = huge_continuation_tail();
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+
+    reset_search_work();
+    let hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+
+    assert!(hits.is_empty());
+    let work = search_work();
+    assert_eq!(work.windows, 1);
+    assert!(
+        work.rows <= 2,
+        "an absent needle materialized {} rows of a 10,000-row tail",
+        work.rows
+    );
+    assert!(
+        work.cells <= 20,
+        "an absent needle materialized {} cells",
+        work.cells
+    );
+}
+
+#[test]
+pub fn a_cross_row_match_is_found_without_reading_the_whole_tail() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "defg".to_owned();
+    let first = wrapped_row("abcde");
+    let mut tail = vec![wrapped_row("fghij")];
+    tail.extend(huge_continuation_tail());
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+
+    reset_search_work();
+    let hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].start.line(), 0);
+    assert_eq!(hits[0].start.column(), 3);
+    assert_eq!(hits[0].end.line(), 1);
+    assert_eq!(hits[0].end.column(), 2);
+    let work = search_work();
+    assert!(
+        work.rows <= 2,
+        "a cross-row match materialized {} rows of a 10,000-row tail",
+        work.rows
+    );
+}
+
+#[test]
+pub fn bounded_search_preserves_whole_word_and_case_modes() {
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "def".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+    let first = wrapped_row("abc def");
+    let mut tail = vec![wrapped_row(" klmnopqrst")];
+    tail.extend(huge_continuation_tail());
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+    let whole_word_hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+    assert_eq!(whole_word_hits.len(), 1);
+
+    terminal_pane.grid.search_results.needle = "abcdef".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = false;
+    terminal_pane.grid.search_results.case_insensitive = true;
+    let first = wrapped_row("ABC");
+    let case_tail = vec![wrapped_row("DEF")];
+    let case_tail_refs = case_tail.iter().collect::<Vec<_>>();
+    let case_insensitive_hits =
+        terminal_pane
+            .grid
+            .search_results
+            .search_row(0, &first, &case_tail_refs);
+    assert_eq!(case_insensitive_hits.len(), 1);
+    assert_eq!(case_insensitive_hits[0].start.line(), 0);
+    assert_eq!(case_insensitive_hits[0].end.line(), 1);
+    assert_eq!(case_insensitive_hits[0].end.column(), 3);
+}
+
+#[test]
+pub fn a_match_on_a_late_visible_row_is_found_with_bounded_work() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let content = format!("{}needle{}", "a".repeat(44), "b".repeat(10));
+    let mut terminal_pane = create_pane_with_content(&content, 5);
+
+    reset_search_work();
+    terminal_pane.update_search_term("needle");
+
+    assert_eq!(found_ranges(&terminal_pane), vec![((6, 4), (7, 5))]);
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
+    assert!(
+        work.windows <= visible_rows,
+        "search built {} windows for {visible_rows} visible rows",
+        work.windows
+    );
+    assert!(
+        work.rows <= visible_rows * 4,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
+    );
+}
+
+#[test]
+pub fn a_long_wrapped_line_without_a_match_stays_within_the_viewport_window() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let content = format!("{}needle{}", "a".repeat(44), "b".repeat(10));
+    let mut terminal_pane = create_pane_with_content(&content, 5);
+
+    terminal_pane.grid.search_results.needle = "absent".to_owned();
+    reset_search_work();
+    terminal_pane.grid.search_viewport();
+
+    assert!(terminal_pane.grid.search_results.selections.is_empty());
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
+    assert!(
+        work.rows <= visible_rows * 4,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
     );
 }
 
