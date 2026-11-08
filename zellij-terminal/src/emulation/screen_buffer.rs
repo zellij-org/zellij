@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use zellij_utils::structured_render::{
     CursorState, FrameView, WireCell, ATTR_FAST_BLINK, ATTR_SLOW_BLINK, CURSOR_SHAPE_BEAM,
-    CURSOR_SHAPE_DEFAULT, CURSOR_SHAPE_UNDERLINE, LINK_NONE,
+    CURSOR_SHAPE_DEFAULT, CURSOR_SHAPE_UNDERLINE, LINK_NONE, MAX_VIEWPORT_CELLS,
+    MAX_VIEWPORT_COLUMNS, MAX_VIEWPORT_ROWS,
 };
 
 use crate::emulation::damage::Span;
@@ -59,6 +60,9 @@ pub enum ApplyError {
     DegenerateViewport {
         found: (usize, usize),
     },
+    ViewportTooLarge {
+        found: (usize, usize),
+    },
 }
 
 impl std::fmt::Display for ApplyError {
@@ -72,6 +76,11 @@ impl std::fmt::Display for ApplyError {
             ApplyError::DegenerateViewport { found } => write!(
                 f,
                 "a frame claimed a {}x{} viewport, which has no cells",
+                found.0, found.1
+            ),
+            ApplyError::ViewportTooLarge { found } => write!(
+                f,
+                "a frame claimed a {}x{} viewport, which is larger than the supported limit",
                 found.0, found.1
             ),
         }
@@ -280,6 +289,16 @@ impl ScreenBuffer {
         let (cols, rows) = (header.cols as usize, header.rows as usize);
         if cols == 0 || rows == 0 {
             return Err(ApplyError::DegenerateViewport {
+                found: (rows, cols),
+            });
+        }
+        if cols > MAX_VIEWPORT_COLUMNS
+            || rows > MAX_VIEWPORT_ROWS
+            || cols
+                .checked_mul(rows)
+                .map_or(true, |cells| cells > MAX_VIEWPORT_CELLS)
+        {
+            return Err(ApplyError::ViewportTooLarge {
                 found: (rows, cols),
             });
         }

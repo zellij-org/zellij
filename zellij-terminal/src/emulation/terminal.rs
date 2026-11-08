@@ -249,6 +249,32 @@ impl TerminalState {
                         continue;
                     }
                     let expected = *byte_len as usize;
+                    let Some(expected_pixels) = (*width as usize)
+                        .checked_mul(*height as usize)
+                        .and_then(|pixels| pixels.checked_mul(4))
+                    else {
+                        report!(
+                            "image {} declares dimensions {}x{} that overflow its pixel count",
+                            id,
+                            width,
+                            height
+                        );
+                        continue;
+                    };
+                    if *width == 0
+                        || *height == 0
+                        || expected_pixels != expected
+                        || expected_pixels > kitty::MAX_IMAGE_BYTES
+                    {
+                        report!(
+                            "image {} declares {}x{} pixels but carries {} bytes",
+                            id,
+                            width,
+                            height,
+                            expected
+                        );
+                        continue;
+                    }
                     let pixels = match medium {
                         GraphicsMedium::Inline => {
                             (data.len() >= expected).then(|| data[..expected].to_vec())
@@ -265,7 +291,7 @@ impl TerminalState {
                     let Some(pixels) = pixels else {
                         continue;
                     };
-                    if pixels.len() < *width as usize * *height as usize * 4 {
+                    if pixels.len() != expected_pixels {
                         report!(
                             "image {} carried {} bytes for {}x{}",
                             id,
@@ -877,6 +903,46 @@ mod tests {
             }],
         );
         assert!(state.graphics().image(5).is_none());
+    }
+
+    #[test]
+    fn a_residency_with_overflowing_or_inconsistent_dimensions_is_refused() {
+        let mut state = TerminalState::new(6, 12);
+        apply_graphics(
+            &mut state,
+            &[
+                GraphicsRecord::Residency {
+                    id: 6,
+                    width: 1 << 31,
+                    height: 1 << 31,
+                    format: GRAPHICS_FORMAT_RGBA8,
+                    medium: GraphicsMedium::Inline,
+                    byte_len: 0,
+                    data: Vec::new(),
+                },
+                GraphicsRecord::Residency {
+                    id: 7,
+                    width: 8,
+                    height: 8,
+                    format: GRAPHICS_FORMAT_RGBA8,
+                    medium: GraphicsMedium::Inline,
+                    byte_len: 16,
+                    data: rgba([1, 2, 3, 255], 4),
+                },
+                GraphicsRecord::Residency {
+                    id: 8,
+                    width: 10_000,
+                    height: 10_000,
+                    format: GRAPHICS_FORMAT_RGBA8,
+                    medium: GraphicsMedium::Inline,
+                    byte_len: 400_000_000,
+                    data: Vec::new(),
+                },
+            ],
+        );
+        assert!(state.graphics().image(6).is_none());
+        assert!(state.graphics().image(7).is_none());
+        assert!(state.graphics().image(8).is_none());
     }
 
     fn sixel_at(cell_y: u32, cell_x: u32, width: u32, bands: u32) -> GraphicsRecord {

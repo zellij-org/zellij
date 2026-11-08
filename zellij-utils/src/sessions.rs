@@ -94,31 +94,54 @@ fn session_name(names_by_id: &HashMap<String, String>, id: String) -> String {
     names_by_id.get(&id).cloned().unwrap_or(id)
 }
 
+fn session_entry(
+    file: &fs::DirEntry,
+    names_by_id: &HashMap<String, String>,
+) -> Option<(String, Duration)> {
+    let file_name = file.file_name().into_string().ok()?;
+    let file_type = file.file_type().ok()?;
+    if crate::consts::is_app_socket_name(&file_name)
+        || !is_ipc_socket(&file_type)
+        || !assert_socket(&file_name)
+    {
+        return None;
+    }
+    // Try to get creation time, falling back to modification time on platforms where it is not
+    // supported (for example musl). These are almost always identical for sessions; name changes
+    // are the notable exception.
+    let age = fs::metadata(file.path())
+        .ok()
+        .and_then(|metadata| metadata.created().ok().or_else(|| metadata.modified().ok()))
+        .and_then(|time| time.elapsed().ok())
+        .unwrap_or_default();
+    Some((
+        session_name(names_by_id, file_name),
+        Duration::from_secs(age.as_secs()),
+    ))
+}
+
+fn session_entry_mtime(file: &fs::DirEntry) -> Option<(String, SystemTime)> {
+    let file_name = file.file_name().into_string().ok()?;
+    let metadata = file.metadata().ok()?;
+    let modified_at = metadata.modified().ok()?;
+    let file_type = file.file_type().ok()?;
+    if crate::consts::is_app_socket_name(&file_name)
+        || !is_ipc_socket(&file_type)
+        || !assert_socket(&file_name)
+    {
+        return None;
+    }
+    Some((file_name, modified_at))
+}
+
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
-            let mut sessions = Vec::new();
-            files.for_each(|file| {
-                if let Ok(file) = file {
-                    let file_name = file.file_name().into_string().unwrap();
-                    // try to get creation time, fall back to modification time on platforms where it's not supported (e.g., musl)
-                    // for session creation time these are almost always identical (notable
-                    // exceptions are session name changes)
-                    let ctime = std::fs::metadata(&file.path())
-                        .ok()
-                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                        .and_then(|d| d.elapsed().ok())
-                        .unwrap_or_default();
-                    let duration = Duration::from_secs(ctime.as_secs());
-                    if !crate::consts::is_app_socket_name(&file_name)
-                        && is_ipc_socket(&file.file_type().unwrap())
-                        && assert_socket(&file_name)
-                    {
-                        sessions.push((session_name(&names_by_id, file_name), duration));
-                    }
-                }
-            });
+            let sessions = files
+                .flatten()
+                .filter_map(|file| session_entry(&file, &names_by_id))
+                .collect();
             Ok(sessions)
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
@@ -256,17 +279,11 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
             let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
-            for file in files {
-                let file = file?;
-                let file_name = file.file_name().into_string().unwrap();
-                let file_modified_at = file.metadata()?.modified()?;
-                if !crate::consts::is_app_socket_name(&file_name)
-                    && is_ipc_socket(&file.file_type()?)
-                    && assert_socket(&file_name)
-                {
-                    sessions_with_mtime
-                        .push((session_name(&names_by_id, file_name), file_modified_at));
-                }
+            for (file_name, file_modified_at) in files
+                .flatten()
+                .filter_map(|file| session_entry_mtime(&file))
+            {
+                sessions_with_mtime.push((session_name(&names_by_id, file_name), file_modified_at));
             }
             sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
 
@@ -608,7 +625,7 @@ pub fn assert_session(name: &str) {
             } else {
                 println!("No session named {:?} found.", name);
                 if let Some(sugg) = get_sessions()
-                    .unwrap()
+                    .unwrap_or_default()
                     .iter()
                     .map(|s| s.0.clone())
                     .collect::<Vec<_>>()
@@ -1016,6 +1033,33 @@ mod session_folder_name_tests {
     #[test]
     fn validate_session_name_rejects_backslash_on_windows() {
         assert!(validate_session_name("a\\b").is_err());
+    }
+}
+
+#[cfg(test)]
+mod session_entry_tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_and_non_socket_directory_entries_are_skipped() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join(OsString::from_vec(vec![b'n', 0xff])),
+            b"",
+        )
+        .unwrap();
+        fs::write(directory.path().join("regular-file"), b"").unwrap();
+
+        let names_by_id = HashMap::new();
+        for entry in fs::read_dir(directory.path()).unwrap() {
+            let entry = entry.unwrap();
+            assert!(session_entry(&entry, &names_by_id).is_none());
+            assert!(session_entry_mtime(&entry).is_none());
+        }
     }
 }
 

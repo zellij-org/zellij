@@ -15,7 +15,8 @@ const BASE64: GeneralPurpose = GeneralPurpose::new(
 const MAX_CSI_PARAMS: usize = 32;
 const MAX_FORWARDED: usize = 2;
 const MAX_OSC_LEN: usize = 8192;
-const MAX_IMAGE_BYTES: usize = 104_857_600;
+const MAX_CLIPBOARD_OSC_LEN: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_BYTES: usize = 104_857_600;
 const SHM_DIR: &str = "/dev/shm";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,6 +189,7 @@ pub struct ApcFilter {
     state: FilterState,
     params: Vec<u8>,
     osc: Vec<u8>,
+    osc_overflowed: bool,
 }
 
 impl ApcFilter {
@@ -196,6 +198,7 @@ impl ApcFilter {
             state: FilterState::Ground,
             params: Vec::new(),
             osc: Vec::new(),
+            osc_overflowed: false,
         }
     }
 
@@ -219,6 +222,7 @@ impl ApcFilter {
                 b']' => {
                     self.state = FilterState::OscForward;
                     self.osc.clear();
+                    self.osc_overflowed = false;
                     Step::forward(&[0x1b, b']'])
                 },
                 other => {
@@ -258,13 +262,23 @@ impl ApcFilter {
     }
 
     fn record_osc(&mut self, byte: u8) {
-        if self.osc.len() < MAX_OSC_LEN {
+        let limit = if self.osc.starts_with(b"52;") {
+            MAX_CLIPBOARD_OSC_LEN
+        } else {
+            MAX_OSC_LEN
+        };
+        if self.osc.len() < limit {
             self.osc.push(byte);
+        } else {
+            self.osc_overflowed = true;
         }
     }
 
     fn finish_osc(&mut self, terminator: &[u8]) -> Step {
         let body = std::mem::take(&mut self.osc);
+        if std::mem::take(&mut self.osc_overflowed) {
+            return Step::boundary(terminator);
+        }
         match osc_signal(&body) {
             Some(signal) => Step::signal(terminator, signal),
             None => Step::boundary(terminator),
@@ -631,6 +645,44 @@ mod tests {
                 Kind::Signal(_) => "signal",
             })
             .collect()
+    }
+
+    fn signal_of(stream: &[u8]) -> Option<OscSignal> {
+        let mut filter = ApcFilter::new();
+        let mut signal = None;
+        for byte in stream {
+            if let Kind::Signal(found) = filter.advance(*byte).kind {
+                signal = Some(found);
+            }
+        }
+        signal
+    }
+
+    #[test]
+    fn an_osc_past_the_apc_buffer_is_not_decoded_from_its_prefix() {
+        let mut stream = b"\x1b]0;".to_vec();
+        stream.extend(std::iter::repeat(b'a').take(MAX_OSC_LEN + 1));
+        stream.extend_from_slice(b"\x1b\\");
+        assert_eq!(signal_of(&stream), None);
+    }
+
+    #[test]
+    fn a_clipboard_larger_than_the_general_osc_buffer_is_decoded_intact() {
+        let text = "x".repeat(MAX_OSC_LEN);
+        let stream = format!("\x1b]52;c;{}\x1b\\", BASE64.encode(&text)).into_bytes();
+        assert_eq!(signal_of(&stream), Some(OscSignal::Clipboard(text)));
+    }
+
+    #[test]
+    fn a_clipboard_past_its_dedicated_buffer_is_rejected_rather_than_truncated() {
+        let mut filter = ApcFilter::new();
+        for byte in b"\x1b]52;c;" {
+            filter.advance(*byte);
+        }
+        for _ in 0..=MAX_CLIPBOARD_OSC_LEN {
+            filter.advance(b'A');
+        }
+        assert!(matches!(filter.advance(0x07).kind, Kind::Boundary));
     }
 
     #[test]

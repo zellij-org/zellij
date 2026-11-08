@@ -273,6 +273,8 @@ struct Raster {
     x: usize,
     band_y: usize,
     rows: Vec<Vec<[u8; 4]>>,
+    painted_width: usize,
+    painted_height: usize,
     background: [u8; 4],
     declared: Option<(usize, usize)>,
     refused: bool,
@@ -290,6 +292,8 @@ impl Raster {
             x: 0,
             band_y: 0,
             rows: Vec::new(),
+            painted_width: 0,
+            painted_height: 0,
             background,
             declared: None,
             refused: false,
@@ -393,6 +397,17 @@ impl Raster {
                 return;
             }
         }
+        let width = self
+            .declared
+            .map_or_else(|| self.painted_width.max(x + 1), |(width, _)| width);
+        let height = self
+            .declared
+            .map_or_else(|| self.painted_height.max(y + 1), |(_, height)| height);
+        let bytes = width.saturating_mul(height).saturating_mul(4);
+        if bytes > MAX_IMAGE_BYTES {
+            self.refuse(format!("a sixel image of {} bytes", bytes));
+            return;
+        }
         while self.rows.len() <= y {
             self.rows.push(Vec::new());
         }
@@ -401,6 +416,8 @@ impl Raster {
             row.resize(x + 1, self.background);
         }
         row[x] = color;
+        self.painted_width = self.painted_width.max(x + 1);
+        self.painted_height = self.painted_height.max(y + 1);
     }
 
     fn finish(self) -> Option<Image> {
@@ -663,6 +680,13 @@ mod tests {
         for _ in 0..MAX_IMAGE_BYTES / (MAX_DIMENSION * 4 * BAND) + 1 {
             body.push_str(&format!("-!{}~", MAX_DIMENSION));
         }
+        assert!(decode(&sixel(&body)).is_none());
+    }
+
+    #[test]
+    fn painting_refuses_an_undeclared_image_as_soon_as_its_extents_exceed_the_budget() {
+        let mut body = format!("#0;2;100;0;0!{}~", MAX_DIMENSION);
+        body.push_str(&"-@".repeat(MAX_IMAGE_BYTES / (MAX_DIMENSION * 4 * BAND) + 2));
         assert!(decode(&sixel(&body)).is_none());
     }
 
