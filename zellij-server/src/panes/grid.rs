@@ -966,6 +966,10 @@ struct SuffixTableJob {
 struct EvictionCache {
     valid: Option<FrontRunValidity>,
     stale: Option<Box<StaleEvictionRun>>,
+    /// Exact summary of the all-single-width continuation run at the front.
+    /// Greedy wrapping of single-width cells has a closed form, so a long
+    /// ASCII run can be debited in O(1) even while it keeps growing.
+    single_width_run: Option<SingleWidthRun>,
     /// Set when one synchronous table would exceed the transition budget.
     /// Absent once that table has been stored in `stale`.
     suffix_job: Option<Box<SuffixTableJob>>,
@@ -978,10 +982,22 @@ struct EvictionCache {
     needs_recount: bool,
 }
 
+/// The continuation run at the front of `lines_above`, when every row in it
+/// is single-width. `run_len`/`cells` include the row that will be evicted
+/// next; `first_columns`/`first_cells` fingerprint that row.
+#[derive(Clone, Copy)]
+struct SingleWidthRun {
+    run_len: usize,
+    cells: usize,
+    first_columns: usize,
+    first_cells: usize,
+}
+
 impl EvictionCache {
     fn clear(&mut self) {
         self.drop_summaries();
         self.suffix_job = None;
+        self.single_width_run = None;
     }
 
     /// Drop the published summaries but keep a table build that is still
@@ -1000,7 +1016,29 @@ impl EvictionCache {
 
     /// A row was appended to `lines_above`. Continuations of a summarized
     /// run that already reached the deque's end change that run's height.
-    fn note_appended(&mut self, is_canonical: bool) {
+    fn note_appended(
+        &mut self,
+        is_canonical: bool,
+        single_width: bool,
+        cells: usize,
+        previous_len: usize,
+    ) {
+        let mut clear_single_width_run = false;
+        if let Some(run) = self.single_width_run.as_mut() {
+            // Appends at the back only extend the measured run when it
+            // reached the end of the deque. A canonical row closes it.
+            if run.run_len == previous_len && !is_canonical {
+                if single_width {
+                    run.run_len += 1;
+                    run.cells = run.cells.saturating_add(cells);
+                } else {
+                    clear_single_width_run = true;
+                }
+            }
+        }
+        if clear_single_width_run {
+            self.single_width_run = None;
+        }
         let stale_grew = self
             .stale
             .as_ref()
@@ -1036,9 +1074,13 @@ impl EvictionCache {
 /// alternating history is built a budget at a time, from the back.
 const SUFFIX_TABLE_TRANSITION_BUDGET: usize = 262_144;
 /// Synchronized character steps one eviction may spend before the rest of
-/// the summary moves to the resumable table. Single-width rows are folded
-/// without counting, so a long plain line still resolves here.
+/// the summary moves to the resumable table.
 const SUFFIX_WALK_CHARACTER_BUDGET: usize = 8_192;
+/// Rows the synchronized walk may visit before it must hand the remaining
+/// suffix work to the resumable table. A single-width row folds in constant
+/// time, but a long run of them still advances the walk one row at a time;
+/// without this bound every eviction could rescan the whole history.
+const SUFFIX_WALK_ROW_BUDGET: usize = 512;
 
 /// Exact `count` pushes of a character of width `w` onto a wrap state.
 /// `None` when a character is wider than the pane or the open row is
@@ -1364,23 +1406,28 @@ fn synchronized_eviction_delta(
         return Some(-(with_evicted.height() as isize));
     }
     let mut without_evicted = WrapState::default();
-    let mut walked = 0usize;
+    let mut walked_characters = 0usize;
+    let mut walked_rows = 0usize;
     for index in 0..remaining_run_rows {
         let row = match lines_above.get_mut(index) {
             Some(row) => row,
             None => break,
         };
         note_evicted_row_inspection();
+        walked_rows += 1;
+        if walked_rows > SUFFIX_WALK_ROW_BUDGET {
+            return None;
+        }
         if row.is_single_width_cached() {
             let cells = row.width_cached();
             with_evicted.push_single_width_cells(cells, width);
             without_evicted.push_single_width_cells(cells, width);
         } else {
             for character_width in row_display_widths(row) {
-                if walked >= SUFFIX_WALK_CHARACTER_BUDGET {
+                if walked_characters >= SUFFIX_WALK_CHARACTER_BUDGET {
                     return None;
                 }
-                walked += 1;
+                walked_characters += 1;
                 with_evicted.push_character(character_width, width);
                 without_evicted.push_character(character_width, width);
                 if let Some(delta) = synchronized_delta(&with_evicted, &without_evicted) {
@@ -1480,12 +1527,69 @@ fn resume_suffix_table(
     Some(delta)
 }
 
+/// Display height of a non-empty suffix made entirely of single-width
+/// cells. Greedy wrapping starts a fresh row at every `width` cells.
+fn single_width_display_height(cells: usize, rows: usize, width: usize) -> isize {
+    if rows == 0 {
+        return 0;
+    }
+    if width == 0 {
+        return rows as isize;
+    }
+    cells.div_ceil(width).max(1) as isize
+}
+
+fn cached_single_width_run_delta(
+    lines_above: &mut VecDeque<Row>,
+    evicted: &mut Row,
+    width: usize,
+    front_run: &mut EvictionCache,
+) -> Option<isize> {
+    let summary = front_run.single_width_run?;
+    let evicted_cells = evicted.width_cached();
+    if summary.run_len == 0
+        || summary.run_len > lines_above.len() + 1
+        || summary.first_columns != evicted.columns.len()
+        || summary.first_cells != evicted_cells
+        || !evicted.is_single_width_cached()
+    {
+        front_run.single_width_run = None;
+        return None;
+    }
+    let without_len = summary.run_len - 1;
+    let without_cells = summary.cells.saturating_sub(evicted_cells);
+    let delta = single_width_display_height(without_cells, without_len, width)
+        - single_width_display_height(summary.cells, summary.run_len, width);
+    if without_len == 0 {
+        front_run.single_width_run = None;
+    } else if let Some(next) = lines_above.front_mut() {
+        if next.is_canonical {
+            front_run.single_width_run = None;
+        } else {
+            let next_cells = next.width_cached();
+            front_run.single_width_run = Some(SingleWidthRun {
+                run_len: without_len,
+                cells: without_cells,
+                first_columns: next.columns.len(),
+                first_cells: next_cells,
+            });
+        }
+    } else {
+        front_run.single_width_run = None;
+    }
+    note_evicted_row_inspection();
+    Some(delta)
+}
+
 fn evicted_row_display_row_delta(
     lines_above: &mut VecDeque<Row>,
     evicted: &mut Row,
     width: usize,
     front_run: &mut EvictionCache,
 ) -> isize {
+    if let Some(delta) = cached_single_width_run_delta(lines_above, evicted, width, front_run) {
+        return delta;
+    }
     let stale_delta = match front_run.stale.as_mut() {
         Some(stale)
             if stale.generation == front_run.generation
@@ -1558,10 +1662,16 @@ fn evicted_row_display_row_delta(
     front_run.miss();
 
     let mut remaining_run_rows = 0;
+    let mut remaining_cells = 0usize;
+    let mut remaining_all_single_width = true;
+    let mut remaining_has_empty_row = false;
     loop {
-        match lines_above.get(remaining_run_rows) {
+        match lines_above.get_mut(remaining_run_rows) {
             Some(row) if !row.is_canonical => {
                 note_evicted_row_inspection();
+                remaining_cells = remaining_cells.saturating_add(row.width_cached());
+                remaining_all_single_width &= row.is_single_width_cached();
+                remaining_has_empty_row |= row.stored_cell_count() == 0;
             },
             Some(_) => {
                 note_evicted_row_inspection();
@@ -1575,6 +1685,41 @@ fn evicted_row_display_row_delta(
         // Every logical line occupies exactly one row.
         return if remaining_run_rows == 0 { -1 } else { 0 };
     }
+    // Single-width cells have a closed-form greedy wrap. This makes a long
+    // ASCII run O(1) per eviction, including while it keeps growing, and
+    // avoids falling into the suffix table for the common case.
+    let evicted_cells = evicted.width_cached();
+    if remaining_all_single_width
+        && !remaining_has_empty_row
+        && evicted.stored_cell_count() > 0
+        && evicted.is_single_width_cached()
+    {
+        let with_len = remaining_run_rows + 1;
+        let with_cells = remaining_cells.saturating_add(evicted_cells);
+        let delta = single_width_display_height(remaining_cells, remaining_run_rows, width)
+            - single_width_display_height(with_cells, with_len, width);
+        if remaining_run_rows > 0 {
+            if let Some(next) = lines_above.front_mut() {
+                if next.is_canonical {
+                    front_run.single_width_run = None;
+                } else {
+                    let next_cells = next.width_cached();
+                    front_run.single_width_run = Some(SingleWidthRun {
+                        run_len: remaining_run_rows,
+                        cells: remaining_cells,
+                        first_columns: next.columns.len(),
+                        first_cells: next_cells,
+                    });
+                }
+            } else {
+                front_run.single_width_run = None;
+            }
+        } else {
+            front_run.single_width_run = None;
+        }
+        return delta;
+    }
+    front_run.single_width_run = None;
     // Fast path: when the stored wrap of the affected run is still
     // valid at this width, dropping its first row removes exactly one
     // display row — the remaining stored rows are already the greedy
@@ -1585,7 +1730,6 @@ fn evicted_row_display_row_delta(
     // Rows carrying wraps from before a resize fail the check and take
     // the bounded recomputation below.
     note_evicted_row_inspection();
-    let evicted_cells = evicted.width_cached();
     if remaining_run_rows == 0 && evicted_cells <= width {
         return -1;
     }
@@ -1664,27 +1808,36 @@ fn evicted_rows_display_row_delta(
     width: usize,
     front_run: &mut EvictionCache,
 ) -> isize {
+    if evicted.len() == 1 {
+        let mut evicted_row = evicted.into_iter().next().expect("one evicted row");
+        return evicted_row_display_row_delta(lines_above, &mut evicted_row, width, front_run);
+    }
     // One popped row is the case the cache describes. A burst removes
     // several front rows before any of them is measured, so a record
     // from the previous row would name the wrong successor.
-    if evicted.len() != 1 {
-        front_run.clear();
-    }
+    front_run.clear();
     let mut discarded = EvictionCache::default();
-    let cache = if evicted.len() == 1 {
-        &mut *front_run
-    } else {
-        &mut discarded
-    };
     let mut delta = 0;
     let mut restored = 0;
+    let mut needs_recount = false;
     for mut evicted_row in evicted.into_iter().rev() {
-        delta += evicted_row_display_row_delta(lines_above, &mut evicted_row, width, cache);
+        delta +=
+            evicted_row_display_row_delta(lines_above, &mut evicted_row, width, &mut discarded);
+        // The next row's measurement may reset the temporary cache, so
+        // remember the validity of any incomplete delta now.
+        needs_recount |= discarded.take_needs_recount();
         lines_above.push_front(evicted_row);
         restored += 1;
     }
     for _ in 0..restored {
         lines_above.pop_front();
+    }
+    // A burst measures with a temporary cache because the single-row
+    // record cannot describe the reversed traversal. If that cache hit
+    // its budget, the numeric delta is incomplete; the caller must
+    // recount instead of treating the sum as exact.
+    if needs_recount {
+        front_run.needs_recount = true;
     }
     delta
 }
@@ -2171,6 +2324,19 @@ fn bounded_push(
         exact.append(&mut value.columns);
         recycle_columns(std::mem::replace(&mut value.columns, exact));
     }
+    let appended_canonical = value.is_canonical;
+    let appended_single_width = value.is_single_width_cached();
+    let appended_cells = value.width_cached();
+    let previous_len = vec.len();
+    // Record the append before any front rows leave. The single-width
+    // summary keys off the run reaching the end of the deque, which is a
+    // property of the deque the new row will join.
+    front_run.note_appended(
+        appended_canonical,
+        appended_single_width,
+        appended_cells,
+        previous_len,
+    );
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
     let mut evicted_rows = Vec::new();
@@ -2194,10 +2360,8 @@ fn bounded_push(
         let doubled = vec.capacity().max(8);
         vec.reserve_exact(doubled.min(scroll_buffer_size - vec.len()));
     }
-    let appended_canonical = value.is_canonical;
     *scrollback_cells += value.stored_cell_count();
     vec.push_back(value);
-    front_run.note_appended(appended_canonical);
     evicted_rows
 }
 
@@ -4885,8 +5049,21 @@ impl Grid {
         };
         let skip = park.overlap_skip.min(self.viewport.len());
         for _ in 0..skip {
-            self.viewport.pop_front();
+            let Some(row) = self.viewport.pop_front() else {
+                break;
+            };
+            // The live window and the held view share these rows. The live
+            // copy is authoritative: it saw this turn's edits, erases,
+            // inserts, style changes, and markers.
+            let held_index = park.held.len() as isize - park.overlap_skip as isize;
+            park.overlap_skip = park.overlap_skip.saturating_sub(1);
+            if held_index >= 0 {
+                if let Some(held_row) = park.held.get_mut(held_index as usize) {
+                    *held_row = row;
+                }
+            }
         }
+        park.overlap_skip = 0;
         let mut gap_cells = park.gap_cells;
         for row in self.viewport.drain(..) {
             gap_cells = gap_cells.saturating_add(row.stored_cell_count());
@@ -5847,6 +6024,11 @@ impl Grid {
         self.live_bottom = None;
         self.history_truncated = false;
         self.pending_search = None;
+        // A recount describes the history that is being cleared. Letting an
+        // old continuing scan publish into the fresh document would mix its
+        // accumulated count and open wrap with bytes that replaced it.
+        self.display_row_recount = None;
+        self.pending_line_reflow = None;
         if let Some(alternate_screen_state) = self.alternate_screen_state.as_mut() {
             alternate_screen_state.kitty_grid.clear_all_placements();
         }
@@ -6936,18 +7118,45 @@ impl Grid {
             return;
         }
         let drained: Vec<Row> = self.viewport.drain(..count).collect();
+        for row in drained {
+            let Some(mut row) = self.reconcile_parked_overlap_row(row) else {
+                continue;
+            };
+            let Some(park) = self.live_bottom.as_mut() else {
+                return;
+            };
+            row.compress_trailing_blanks();
+            park.gap_cells = park.gap_cells.saturating_add(row.stored_cell_count());
+            park.gap.push_back(row);
+        }
+    }
+    /// A row leaving the front of the live window still duplicates one row
+    /// of the held view. Write the live copy back before dropping it, so a
+    /// short scroll does not keep a stale clone of an edited live row.
+    /// Returns the row unchanged when it is past the overlap and belongs in
+    /// the gap, or `None` once its place in the held view has been updated.
+    fn reconcile_parked_overlap_row(&mut self, row: Row) -> Option<Row> {
         let Some(park) = self.live_bottom.as_mut() else {
-            return;
+            return Some(row);
         };
-        for mut row in drained {
-            if park.overlap_skip > 0 {
-                park.overlap_skip -= 1;
-            } else {
-                row.compress_trailing_blanks();
-                park.gap_cells = park.gap_cells.saturating_add(row.stored_cell_count());
-                park.gap.push_back(row);
+        if park.overlap_skip == 0 {
+            return Some(row);
+        }
+        // Only the last `overlap_skip` rows of `held` still have a live
+        // counterpart. Retention may already have dropped the earliest
+        // ones, in which case this live row has no slot to restore.
+        let held_index = park.held.len() as isize - park.overlap_skip as isize;
+        park.overlap_skip -= 1;
+        if held_index >= 0 {
+            if let Some(held_row) = park.held.get_mut(held_index as usize) {
+                park.held_cells = park
+                    .held_cells
+                    .saturating_sub(held_row.stored_cell_count())
+                    .saturating_add(row.stored_cell_count());
+                *held_row = row;
             }
         }
+        None
     }
     /// The tail line is stale at the current width and its canonical row is
     /// more than one row quantum above the viewport.
@@ -9606,16 +9815,9 @@ impl Handler for Grid {
                     // everything past the edge of the line is dropped
                     std::cmp::min(count, self.width.saturating_sub(self.cursor.x))
                 } else {
-                    // once the repeat has filled the screen, more characters only move the
-                    // cursor along the last line: skip whole lines of them, keeping the
-                    // position within the line the repeat would have ended at
-                    let per_line = std::cmp::max(1, self.width / std::cmp::max(1, c.width()));
-                    let screenful = per_line.saturating_mul(self.height.saturating_add(1));
-                    if count > screenful.saturating_add(per_line) {
-                        screenful + count % per_line
-                    } else {
-                        count
-                    }
+                    // Every repeated cell can enter retained history on the
+                    // primary screen, so the whole count has to be written.
+                    count
                 };
                 for _ in 0..count {
                     self.add_character(c.clone());

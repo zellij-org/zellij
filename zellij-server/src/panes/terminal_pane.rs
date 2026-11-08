@@ -1860,6 +1860,11 @@ impl TerminalPane {
         self.pending_bytes_appended
     }
 
+    #[cfg(test)]
+    pub(crate) fn handle_pty_bytes_for_test(&mut self, bytes: Vec<u8>) {
+        self.handle_pty_bytes(bytes);
+    }
+
     fn append_pending_pty_input(&mut self, bytes: &[u8]) {
         #[cfg(test)]
         {

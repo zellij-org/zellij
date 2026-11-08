@@ -12354,6 +12354,161 @@ fn parking_reuses_the_gap_cell_count_between_output_chunks() {
     );
 }
 
+fn overlap_park_pane(scrolled: bool) -> crate::panes::TerminalPane {
+    use crate::tab::Pane;
+    use zellij_utils::pane_size::PaneGeom;
+
+    let mut geom = PaneGeom::default();
+    geom.rows.set_inner(3);
+    geom.cols.set_inner(40);
+    let mut pane = crate::panes::TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    );
+    let mut content = Vec::new();
+    for index in 0..12 {
+        content.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    pane.handle_pty_bytes_for_test(content);
+    if scrolled {
+        pane.scroll_up(1, 1);
+        assert!(pane.grid.is_scrolled, "the fixture must be scrolled");
+    }
+    pane
+}
+
+fn grid_document_snapshot(grid: &Grid) -> Vec<String> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .map(|row| {
+            let mut snapshot = String::new();
+            for cell in &row.columns {
+                snapshot.push_str(&format!("{:?}{:?}", cell, cell.styles));
+            }
+            snapshot.push_str(&format!(
+                "|trailing={}|bg={:?}|canonical={}|markers={:?}",
+                row.trailing_blanks,
+                row.bg_color,
+                row.is_canonical,
+                row.osc133_markers.as_slice(),
+            ));
+            snapshot
+        })
+        .collect()
+}
+
+#[test]
+fn a_short_scroll_keeps_edits_to_the_overlapping_live_rows() {
+    use crate::tab::Pane;
+
+    // These hit the overlap rows through the live window: overwrite, styles,
+    // erase, prompt markers, insert/delete line, a partial scroll region, and
+    // a final overwrite after those shifts.
+    let operations: &[&[u8]] = &[
+        b"\x1b[1;1Hoverwritten",
+        b"\x1b[2;1H\x1b[31mstyled\x1b[0m",
+        b"\x1b[3;1H\x1b[K",
+        b"\x1b[2;1H\x1b]133;A\x07\x1b]133;B\x07prompt\x1b]133;C\x07",
+        b"\x1b[1;1H\x1b[L",
+        b"\x1b[2;1H\x1b[M",
+        b"\x1b[2;3r\x1b[3;1H\n\x1b[r",
+        b"\x1b[1;1Hlast",
+    ];
+
+    let mut plain = overlap_park_pane(false);
+    let mut parked = overlap_park_pane(true);
+    for operation in operations {
+        plain.handle_pty_bytes_for_test(operation.to_vec());
+        parked.handle_pty_bytes_for_test(operation.to_vec());
+    }
+    plain.clear_scroll();
+    parked.clear_scroll();
+
+    assert!(plain.grid.lines_below.is_empty());
+    assert!(parked.grid.lines_below.is_empty());
+    assert_eq!(
+        grid_document_snapshot(&plain.grid),
+        grid_document_snapshot(&parked.grid),
+        "a pinned view one row above the bottom changed the live document"
+    );
+    assert_eq!(
+        format!("{:?}", plain.grid.cursor),
+        format!("{:?}", parked.grid.cursor)
+    );
+}
+
+fn assert_rep_matches_literals(
+    width: usize,
+    height: usize,
+    margin: Option<(usize, usize)>,
+    seed: char,
+    count: usize,
+) {
+    let mut rep_grid = create_grid_with_size_and_raw(height, width, b"");
+    let mut literal_grid = create_grid_with_size_and_raw(height, width, b"");
+    let mut prefix = Vec::new();
+    if let Some((top, bottom)) = margin {
+        prefix.extend_from_slice(format!("\x1b[{};{}r", top, bottom).as_bytes());
+    }
+    prefix.extend_from_slice(b"\x1b]133;A\x07");
+    let mut seed_buffer = [0u8; 4];
+    prefix.extend_from_slice(seed.encode_utf8(&mut seed_buffer).as_bytes());
+
+    let mut rep = prefix.clone();
+    rep.extend_from_slice(format!("\x1b[{}b", count).as_bytes());
+    let mut literal = prefix;
+    for _ in 0..count {
+        literal.extend_from_slice(seed.encode_utf8(&mut seed_buffer).as_bytes());
+    }
+    feed_bytes(&mut rep_grid, &rep);
+    feed_bytes(&mut literal_grid, &literal);
+
+    assert_eq!(
+        grid_document_snapshot(&rep_grid),
+        grid_document_snapshot(&literal_grid),
+        "REP diverged from literal output at width {width}, height {height}, margin {margin:?}, seed {seed:?}, count {count}"
+    );
+    assert_eq!(
+        format!("{:?}", rep_grid.cursor),
+        format!("{:?}", literal_grid.cursor)
+    );
+    assert_eq!(rep_grid.scroll_region, literal_grid.scroll_region);
+    assert_eq!(
+        rep_grid.scrollback_position_and_length(),
+        literal_grid.scrollback_position_and_length()
+    );
+    assert_eq!(rep_grid.scrollback_cells, literal_grid.scrollback_cells);
+}
+
+#[test]
+fn rep_matches_literal_repetition_across_widths_and_margins() {
+    for width in [4usize, 10, 80] {
+        for margin in [None, Some((1, 3)), Some((2, 3))] {
+            assert_rep_matches_literals(width, 4, margin, 'A', 100);
+        }
+    }
+    assert_rep_matches_literals(7, 3, None, '\u{4f60}', 17);
+    assert_rep_matches_literals(5, 3, Some((1, 2)), '\u{4f60}', 23);
+}
+
 #[test]
 fn a_partially_truncated_park_takes_rows_from_the_gap_instead_of_inserting_blanks() {
     let cap = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
@@ -12572,6 +12727,39 @@ fn reset_across_chunks_drops_the_park_before_the_next_chunk() {
 }
 
 #[test]
+fn a_reset_retires_a_paused_display_row_recount() {
+    let mut paused = create_grid_with_size_and_raw(5, 20, b"");
+    let mut old_content = Vec::new();
+    for index in 0..400 {
+        old_content.extend_from_slice(format!("old-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut paused, &old_content);
+    assert!(
+        paused.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the recount must span more than one quantum"
+    );
+    paused.start_display_row_recount(11);
+    assert!(!paused.continue_display_row_recount());
+    assert!(paused.display_recount_pending());
+
+    let fresh_content = repeated_lines(b"fresh-line", 60);
+    feed_bytes(&mut paused, b"\x1bc");
+    feed_bytes(&mut paused, &fresh_content);
+    while paused.display_recount_pending() {
+        paused.continue_display_row_recount();
+    }
+
+    let mut fresh = create_grid_with_size_and_raw(5, 20, b"");
+    feed_bytes(&mut fresh, &fresh_content);
+    assert_eq!(
+        paused.scrollback_position_and_length(),
+        fresh.scrollback_position_and_length(),
+        "the reset publishes a recount that belongs to the retired history"
+    );
+    assert_eq!(paused.dump_screen(true), fresh.dump_screen(true));
+}
+
+#[test]
 fn alternate_screen_while_parked_saves_and_restores_the_primary_view() {
     let mut grid = create_grid_with_size_and_raw(4, 20, b"");
     let mut parser = vt_parser::Parser::new();
@@ -12780,15 +12968,14 @@ fn width_cells(count: usize, width: u8) -> super::super::Row {
 
 #[test]
 fn appending_a_continuation_invalidates_a_summarized_suffix() {
-    // The source witness: three stored rows of four cells and one of three,
-    // measured at width 3. The cached next delta is -1. Replacing the tail
-    // with a width-2 continuation, while the deque length and the next
-    // row's fingerprint stay put, makes the exact delta -2. `bounded_push`
-    // drops that summary before the delta is read.
-    let width = 3usize;
+    // A non-single-width run so the suffix table is the one summarizing.
+    // The cached next delta is taken from the original tail. Replacing the
+    // tail while the deque length and the next row's fingerprint stay put
+    // must not let that cached delta survive.
+    let width = 7usize;
     let mut lines =
-        std::collections::VecDeque::from([width_cells(4, 1), width_cells(4, 1), width_cells(3, 1)]);
-    let mut evicted = width_cells(4, 1);
+        std::collections::VecDeque::from([width_cells(4, 2), width_cells(4, 2), width_cells(3, 2)]);
+    let mut evicted = width_cells(4, 2);
     let mut cache = super::EvictionCache::default();
     let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
     let predicted = {
@@ -12799,17 +12986,16 @@ fn appending_a_continuation_invalidates_a_summarized_suffix() {
         assert_eq!(stale.tail_rows, 0, "the run reached the end of the deque");
         stale.heights[stale.index + 1] as isize - stale.heights[stale.index] as isize
     };
-    assert_eq!(predicted, -1, "the witness's cached next delta");
-    cache.note_appended(false);
+    cache.note_appended(false, false, 0, 0);
     assert!(
         cache.stale.is_none(),
         "a continuation of a summarized suffix must drop that summary"
     );
-    // Same length and the same next row (four cells). The rows behind it
-    // are the witness's edited tail, which the dropped summary must not use.
+    // Same length and the same next-row fingerprint. The rows behind it are
+    // the witness's edited tail, which the dropped summary must not use.
     let mut lines =
-        std::collections::VecDeque::from([width_cells(4, 1), width_cells(3, 1), width_cells(1, 2)]);
-    let mut evicted = width_cells(4, 1);
+        std::collections::VecDeque::from([width_cells(4, 2), width_cells(4, 2), width_cells(4, 2)]);
+    let mut evicted = width_cells(4, 2);
     let mut fresh_lines = lines.clone();
     let mut fresh_evicted = evicted.clone();
     let mut fresh = super::EvictionCache::default();
@@ -12821,10 +13007,7 @@ fn appending_a_continuation_invalidates_a_summarized_suffix() {
     );
     let got = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
     assert_eq!(got, exact);
-    assert_eq!(
-        exact, -2,
-        "the tail edit changes the delta the cache had stored"
-    );
+    assert_ne!(exact, predicted, "the tail edit changes the cached delta");
 }
 
 fn alternating_row(pairs: usize, canonical: bool) -> super::super::Row {
@@ -12905,7 +13088,7 @@ fn a_long_wide_run_chunks_the_suffix_table() {
         let mut tail = width_cells(1, 1);
         tail.is_canonical = true;
         lines.push_back(tail);
-        cache.note_appended(true);
+        cache.note_appended(true, false, 0, 0);
         let left = lines.iter().filter(|row| !row.is_canonical).count();
         let without = run_display_height(std::iter::repeat(2usize).take(cells * left), width);
         let with = run_display_height(std::iter::repeat(2usize).take(cells * (left + 1)), width);
@@ -13490,6 +13673,194 @@ fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
         "a multi-row eviction must account the height change of the shrinking line"
     );
 }
+#[test]
+fn a_multi_row_eviction_that_needs_a_recount_does_not_apply_a_partial_delta() {
+    let width = 121usize;
+    let mut grid = create_grid_with_size_and_raw(1, width, b"");
+    // A long continuation run whose suffix table cannot finish inside one
+    // eviction's transition budget. The rows do not meet in the synchronized
+    // character walk either, so the burst's temporary cache requests a
+    // recount instead of publishing an incomplete delta.
+    let run_rows = 2_305usize;
+    for _ in 0..run_rows {
+        grid.lines_above.push_back(width_cells(40, 2));
+    }
+    for _ in 0..4_955 {
+        grid.lines_above
+            .push_back(scrollback_row_of_cells(2_048, None));
+    }
+    grid.scrollback_cells = recounted_scrollback_cells(&grid);
+    let cell_budget = *SCROLL_BUFFER_SIZE.get().unwrap() * super::MAX_SCROLLBACK_ROW_CELLS;
+    assert_eq!(grid.scrollback_cells, cell_budget + 40);
+
+    let evicted = super::bounded_push(
+        &mut grid.lines_above,
+        &mut grid.sixel_grid,
+        &mut grid.kitty_grid,
+        width_cells(40, 2),
+        &mut grid.scrollback_cells,
+        &mut grid.front_run_validity,
+    );
+    assert_eq!(evicted.len(), 2, "the fixture must evict a multi-row burst");
+
+    grid.scrollback_display_rows = 7;
+    let delta = super::evicted_rows_display_row_delta(
+        &mut grid.lines_above,
+        evicted,
+        width,
+        &mut grid.front_run_validity,
+    );
+    grid.apply_scrollback_display_row_delta(delta);
+    assert!(
+        grid.display_recount_pending(),
+        "an over-budget inner delta must schedule a recount"
+    );
+    assert_eq!(
+        grid.scrollback_display_rows, 7,
+        "the incomplete numeric delta must not be applied as exact"
+    );
+    grid.finish_display_row_recount();
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+}
+
+#[test]
+fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
+    use crate::panes::grid::{
+        evicted_row_inspection_count, evicted_run_rescan_count, reset_evicted_row_inspection_count,
+        reset_evicted_run_rescan_count, reset_suffix_table_transition_count,
+        suffix_table_transition_count,
+    };
+
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    // One unbroken logical line fills and then starts evicting the
+    // scrollback, so its canonical head is gone and the front is a run of
+    // 80-cell continuation rows.
+    let line_rows = scroll_buffer_size + 2_000;
+    let mut line = vec![b'a'; line_rows * width];
+    line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &line);
+    feed_bytes(&mut grid, b"x\r\n");
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "the canonical head must have been evicted"
+    );
+    let front_run = grid
+        .lines_above
+        .iter()
+        .take_while(|row| !row.is_canonical)
+        .count();
+    assert!(front_run > 1_000, "front run was only {front_run}");
+
+    grid.change_size(2, width + 1);
+    reset_evicted_row_inspection_count();
+    reset_evicted_run_rescan_count();
+    reset_suffix_table_transition_count();
+    let evictions = 500usize;
+    let mut more = Vec::new();
+    for _ in 0..evictions {
+        more.extend_from_slice(b"x\r\n");
+    }
+    feed_bytes(&mut grid, &more);
+
+    let inspections = evicted_row_inspection_count();
+    let rescans = evicted_run_rescan_count();
+    let transitions = suffix_table_transition_count();
+    grid.finish_display_row_recount();
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "the eviction deltas and the recount must agree"
+    );
+    assert!(
+        inspections < 50_000,
+        "inspected {inspections} rows while evicting {evictions} rows of a {front_run}-row run"
+    );
+    assert!(
+        rescans <= 6,
+        "rescanned the run {rescans} times instead of summarizing it once"
+    );
+    assert_eq!(
+        transitions, 0,
+        "the single-width run should not build a suffix table"
+    );
+}
+
+#[test]
+fn a_growing_long_ascii_run_evicts_with_bounded_row_visits() {
+    use crate::panes::grid::{
+        evicted_row_inspection_count, evicted_run_rescan_count, reset_evicted_row_inspection_count,
+        reset_evicted_run_rescan_count, reset_suffix_table_transition_count,
+        suffix_table_transition_count,
+    };
+
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    let line_rows = scroll_buffer_size + 2_000;
+    let mut line = vec![b'a'; line_rows * width];
+    line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &line);
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "the canonical head must have been evicted"
+    );
+    grid.change_size(2, width + 1);
+
+    reset_evicted_row_inspection_count();
+    reset_evicted_run_rescan_count();
+    reset_suffix_table_transition_count();
+    let growth_rows = 500usize;
+    for _ in 0..growth_rows {
+        let evicted_before = grid.scrollback_rows_evicted;
+        feed_bytes(&mut grid, &vec![b'a'; width + 1]);
+        if grid.scrollback_rows_evicted == evicted_before {
+            continue;
+        }
+        let summary = grid
+            .front_run_validity
+            .single_width_run
+            .expect("the growing ASCII run keeps a summary once it evicts");
+        let actual_run: Vec<_> = grid
+            .lines_above
+            .iter()
+            .take_while(|row| !row.is_canonical)
+            .collect();
+        assert_eq!(summary.run_len, actual_run.len());
+        assert_eq!(
+            summary.cells,
+            actual_run
+                .iter()
+                .map(|row| row.stored_cell_count())
+                .sum::<usize>()
+        );
+    }
+
+    let inspections = evicted_row_inspection_count();
+    let rescans = evicted_run_rescan_count();
+    let transitions = suffix_table_transition_count();
+    grid.finish_display_row_recount();
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a growing single-width run must stay exact"
+    );
+    assert!(
+        inspections < 20_000,
+        "inspected {inspections} rows while the ASCII run grew by {growth_rows} rows"
+    );
+    assert!(rescans <= 2, "rescanned the growing run {rescans} times");
+    assert_eq!(
+        transitions, 0,
+        "the single-width run should not build a suffix table"
+    );
+}
+
 fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
     use crate::panes::terminal_character::TerminalCharacter;
     let mut row = super::Row::new().canonical();
