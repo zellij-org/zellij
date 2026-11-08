@@ -84,7 +84,7 @@ impl MessageSink for IpcSink {
             .map_err(|_| anyhow!("sender mutex was poisoned"))?;
         sender
             .send_client_msg(msg)
-            .map_err(|e| anyhow!("failed to send message to server: {:?}", e))
+            .map_err(|e| e.context("failed to send message to server"))
     }
 }
 

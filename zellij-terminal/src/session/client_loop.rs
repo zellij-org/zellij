@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -192,6 +193,9 @@ pub fn run_with_sink(
             Ok(Flow::Continue) => {},
             Ok(Flow::Stop) => break,
             Err(e) => {
+                if is_connection_lost(&e) {
+                    break;
+                }
                 served.failure = Some(e);
                 break;
             },
@@ -499,6 +503,22 @@ fn ending_of(
         Some(reason) => Ending::Exited(reason.clone()),
         None => Ending::Lost,
     }
+}
+
+fn is_connection_lost(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|error| {
+            matches!(
+                error.kind(),
+                ErrorKind::BrokenPipe
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::NotConnected
+                    | ErrorKind::UnexpectedEof
+            )
+        })
 }
 
 #[cfg_attr(windows, path = "client_loop/console_events.rs")]
