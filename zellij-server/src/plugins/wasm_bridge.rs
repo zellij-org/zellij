@@ -2314,11 +2314,16 @@ impl WasmBridge {
             return Ok(());
         }
 
+        // A plugin whose permissions are already cached arrives here on every load, so only
+        // write when something changed.
         let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-        permission_cache.cache(
+        let changed = permission_cache.cache(
             running_plugin.store.data().plugin.location.to_string(),
             permissions,
         );
+        if !changed {
+            return Ok(());
+        }
 
         permission_cache.write_to_file().with_context(err_context)
     }
