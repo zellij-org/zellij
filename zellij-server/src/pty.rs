@@ -9,7 +9,7 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction},
-    screen::{ScreenInstruction, TabOverrideResult},
+    screen::{ClosePaneSource, ScreenInstruction, TabOverrideResult},
     session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
@@ -39,6 +39,14 @@ use zellij_utils::{
 
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
+
+type PreparedTerminal = (
+    u32,
+    bool,
+    Option<RunCommand>,
+    Result<Box<dyn AsyncReader>>,
+    u64,
+);
 
 const ORIGIN_PANE_ID_ENV_VAR: &str = "ZELLIJ_ORIGIN_PANE_ID";
 const PANE_ID_ENV_VAR: &str = "ZELLIJ_PANE_ID";
@@ -605,7 +613,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 } else {
                     floating_panes_layout
                 };
-                pty.spawn_terminals_for_layout(
+                if let Err(err) = pty.spawn_terminals_for_layout(
                     cwd,
                     tab_layout.unwrap_or_else(|| layout.new_tab().0),
                     floating_panes_layout,
@@ -617,8 +625,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
                     completion_tx,
-                )
-                .with_context(err_context)?;
+                ) {
+                    Err::<(), _>(err).with_context(err_context).non_fatal();
+                }
             },
             PtyInstruction::OverrideLayout(
                 cwd,
@@ -1461,6 +1470,48 @@ impl Pty {
         let starts_held = false;
         Ok((terminal_id, starts_held))
     }
+    fn rollback_unapplied_layout_terminals(&mut self, terminal_ids: Vec<u32>) {
+        for terminal_id in terminal_ids {
+            if let Err(err) = self.close_pane(PaneId::Terminal(terminal_id)) {
+                log::error!(
+                    "failed to release terminal {terminal_id} while rolling back a layout: {err:#}"
+                );
+            }
+            crate::screen::release_uninstalled_terminal(terminal_id);
+            let _ = self
+                .bus
+                .senders
+                .send_to_screen(ScreenInstruction::TerminalClosed(terminal_id));
+        }
+    }
+    fn fail_layout_spawn(
+        &mut self,
+        error: anyError,
+        terminal_ids: Vec<u32>,
+        mut completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        self.rollback_unapplied_layout_terminals(terminal_ids);
+        if let Some(completion_tx) = completion_tx.as_mut() {
+            completion_tx.set_error_message(format!("{error:#}"));
+        }
+        Err(error)
+    }
+    fn close_unstarted_layout_terminal(&mut self, terminal_id: u32, run_generation: u64) {
+        if let Err(err) = self.close_pane(PaneId::Terminal(terminal_id)) {
+            log::error!("failed to close unstarted layout terminal {terminal_id}: {err:#}");
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::ClosePane(
+                PaneId::Terminal(terminal_id),
+                None,
+                None,
+                Some(2),
+                ClosePaneSource::External,
+                Some(run_generation),
+            ));
+    }
     pub fn spawn_terminals_for_layout(
         &mut self,
         cwd: Option<PathBuf>,
@@ -1511,22 +1562,11 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<Box<dyn AsyncReader>>)> =
-            vec![]; // (terminal_id,
-                    // starts_held,
-                    // run_command,
-                    // file_descriptor)
-
-        let mut new_floating_panes_pids: Vec<(
-            u32,
-            bool,
-            Option<RunCommand>,
-            Result<Box<dyn AsyncReader>>,
-        )> = vec![]; // same
-                     // as
-                     // new_pane_pids
+        let mut new_pane_pids: Vec<PreparedTerminal> = vec![];
+        let mut new_floating_panes_pids: Vec<PreparedTerminal> = vec![];
 
         let mut originating_plugins_to_inform = vec![];
+        let mut spawn_error = None;
 
         for run_instruction in extracted_run_instructions {
             let originating_plugin = run_instruction.as_ref().and_then(|r| {
@@ -1536,43 +1576,59 @@ impl Pty {
                     None
                 }
             });
-            let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
-            {
-                terminal_id = Some(new_pane_data.0);
-                new_pane_pids.push(new_pane_data);
-            }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
-            {
-                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            match self.apply_run_instruction(run_instruction, default_shell.clone()) {
+                Ok(Some(new_pane_data)) => {
+                    let terminal_id = new_pane_data.0;
+                    new_pane_pids.push(new_pane_data);
+                    if let Some(originating_plugin) = originating_plugin {
+                        originating_plugins_to_inform.push((terminal_id, originating_plugin));
+                    }
+                },
+                Ok(None) => {},
+                Err(err) => {
+                    spawn_error = Some(err);
+                    break;
+                },
             }
         }
-        for run_instruction in extracted_floating_run_instructions {
-            let originating_plugin = run_instruction.as_ref().and_then(|r| {
-                if let Run::Command(run_command) = r {
-                    run_command.originating_plugin.clone()
-                } else {
-                    None
+        if spawn_error.is_none() {
+            for run_instruction in extracted_floating_run_instructions {
+                let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                    if let Run::Command(run_command) = r {
+                        run_command.originating_plugin.clone()
+                    } else {
+                        None
+                    }
+                });
+                match self.apply_run_instruction(run_instruction, default_shell.clone()) {
+                    Ok(Some(new_pane_data)) => {
+                        let terminal_id = new_pane_data.0;
+                        new_floating_panes_pids.push(new_pane_data);
+                        if let Some(originating_plugin) = originating_plugin {
+                            originating_plugins_to_inform.push((terminal_id, originating_plugin));
+                        }
+                    },
+                    Ok(None) => {},
+                    Err(err) => {
+                        spawn_error = Some(err);
+                        break;
+                    },
                 }
-            });
-            let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
-            {
-                terminal_id = Some(new_pane_data.0);
-                new_floating_panes_pids.push(new_pane_data);
             }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
-            {
-                originating_plugins_to_inform.push((terminal_id, originating_plugin));
-            }
+        }
+        if let Some(error) = spawn_error {
+            let terminal_ids = new_pane_pids
+                .iter()
+                .chain(new_floating_panes_pids.iter())
+                .map(|pane| pane.0)
+                .collect();
+            return self.fail_layout_spawn(error, terminal_ids, completion_tx);
         }
 
         // Option<RunCommand> should only be Some if the pane starts held
         let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
             .iter()
-            .map(|(terminal_id, starts_held, run_command, _)| {
+            .map(|(terminal_id, starts_held, run_command, _, _)| {
                 if *starts_held {
                     (*terminal_id, run_command.clone())
                 } else {
@@ -1582,7 +1638,7 @@ impl Pty {
             .collect();
         let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_panes_pids
             .iter()
-            .map(|(terminal_id, starts_held, run_command, _)| {
+            .map(|(terminal_id, starts_held, run_command, _, _)| {
                 if *starts_held {
                     (*terminal_id, run_command.clone())
                 } else {
@@ -1612,7 +1668,8 @@ impl Pty {
             new_tab_pane_ids.len(),
             new_tab_floating_pane_ids.len()
         );
-        self.bus
+        if let Err(error) = self
+            .bus
             .senders
             .send_to_screen(ScreenInstruction::ApplyLayout(
                 layout,
@@ -1626,12 +1683,22 @@ impl Pty {
                 direct_completion_tx,
                 blocking_terminal,
             ))
-            .with_context(err_context)?;
+        {
+            let terminal_ids = new_pane_pids
+                .iter()
+                .chain(new_floating_panes_pids.iter())
+                .map(|pane| pane.0)
+                .collect();
+            self.rollback_unapplied_layout_terminals(terminal_ids);
+            return Err(error).with_context(err_context);
+        }
         let mut terminals_to_start = vec![];
 
         terminals_to_start.append(&mut new_pane_pids);
         terminals_to_start.append(&mut new_floating_panes_pids);
-        for (terminal_id, starts_held, run_command, reader_result) in terminals_to_start {
+        for (terminal_id, starts_held, run_command, reader_result, run_generation) in
+            terminals_to_start
+        {
             if starts_held {
                 // we do not run a command or start listening for bytes on held panes
                 continue;
@@ -1661,17 +1728,15 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
-                                None,
+                                Some(run_generation),
                             )
-                            .with_context(err_context)?;
+                            .non_fatal();
                         } else {
-                            self.close_pane(PaneId::Terminal(terminal_id))
-                                .with_context(err_context)?;
+                            self.close_unstarted_layout_terminal(terminal_id, run_generation);
                         }
                     },
                     None => {
-                        self.close_pane(PaneId::Terminal(terminal_id))
-                            .with_context(err_context)?;
+                        self.close_unstarted_layout_terminal(terminal_id, run_generation);
                     },
                 },
             }
@@ -1696,8 +1761,6 @@ impl Pty {
         _retain_existing_terminal_panes: bool,
         _retain_existing_plugin_panes: bool,
     ) -> Result<TabOverrideResult> {
-        let err_context = || format!("failed to spawn terminals for layout for");
-
         let mut default_shell =
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         self.fill_cwd(&mut default_shell, client_id);
@@ -1707,22 +1770,11 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<Box<dyn AsyncReader>>)> =
-            vec![]; // (terminal_id,
-                    // starts_held,
-                    // run_command,
-                    // file_descriptor)
-
-        let mut new_floating_panes_pids: Vec<(
-            u32,
-            bool,
-            Option<RunCommand>,
-            Result<Box<dyn AsyncReader>>,
-        )> = vec![]; // same
-                     // as
-                     // new_pane_pids
+        let mut new_pane_pids: Vec<PreparedTerminal> = vec![];
+        let mut new_floating_panes_pids: Vec<PreparedTerminal> = vec![];
 
         let mut originating_plugins_to_inform = vec![];
+        let mut spawn_error = None;
 
         for run_instruction in extracted_run_instructions {
             let originating_plugin = run_instruction.as_ref().and_then(|r| {
@@ -1732,43 +1784,60 @@ impl Pty {
                     None
                 }
             });
-            let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
-            {
-                terminal_id = Some(new_pane_data.0);
-                new_pane_pids.push(new_pane_data);
-            }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
-            {
-                originating_plugins_to_inform.push((terminal_id, originating_plugin));
+            match self.apply_run_instruction(run_instruction, default_shell.clone()) {
+                Ok(Some(new_pane_data)) => {
+                    let terminal_id = new_pane_data.0;
+                    new_pane_pids.push(new_pane_data);
+                    if let Some(originating_plugin) = originating_plugin {
+                        originating_plugins_to_inform.push((terminal_id, originating_plugin));
+                    }
+                },
+                Ok(None) => {},
+                Err(err) => {
+                    spawn_error = Some(err);
+                    break;
+                },
             }
         }
-        for run_instruction in extracted_floating_run_instructions {
-            let originating_plugin = run_instruction.as_ref().and_then(|r| {
-                if let Run::Command(run_command) = r {
-                    run_command.originating_plugin.clone()
-                } else {
-                    None
+        if spawn_error.is_none() {
+            for run_instruction in extracted_floating_run_instructions {
+                let originating_plugin = run_instruction.as_ref().and_then(|r| {
+                    if let Run::Command(run_command) = r {
+                        run_command.originating_plugin.clone()
+                    } else {
+                        None
+                    }
+                });
+                match self.apply_run_instruction(run_instruction, default_shell.clone()) {
+                    Ok(Some(new_pane_data)) => {
+                        let terminal_id = new_pane_data.0;
+                        new_floating_panes_pids.push(new_pane_data);
+                        if let Some(originating_plugin) = originating_plugin {
+                            originating_plugins_to_inform.push((terminal_id, originating_plugin));
+                        }
+                    },
+                    Ok(None) => {},
+                    Err(err) => {
+                        spawn_error = Some(err);
+                        break;
+                    },
                 }
-            });
-            let mut terminal_id = None;
-            if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
-            {
-                terminal_id = Some(new_pane_data.0);
-                new_floating_panes_pids.push(new_pane_data);
             }
-            if let (Some(originating_plugin), Some(terminal_id)) = (originating_plugin, terminal_id)
-            {
-                originating_plugins_to_inform.push((terminal_id, originating_plugin));
-            }
+        }
+        if let Some(error) = spawn_error {
+            let terminal_ids = new_pane_pids
+                .iter()
+                .chain(new_floating_panes_pids.iter())
+                .map(|pane| pane.0)
+                .collect();
+            self.rollback_unapplied_layout_terminals(terminal_ids);
+            return Err(error);
         }
 
         // Option<RunCommand> should only be Some if the pane starts held
         let new_tab_pane_ids: Vec<(u32, Option<RunCommand>)> = new_pane_pids
             .iter()
-            .map(|(terminal_id, starts_held, run_command, _)| {
+            .map(|(terminal_id, starts_held, run_command, _, _)| {
                 if *starts_held {
                     (*terminal_id, run_command.clone())
                 } else {
@@ -1778,7 +1847,7 @@ impl Pty {
             .collect();
         let new_tab_floating_pane_ids: Vec<(u32, Option<RunCommand>)> = new_floating_panes_pids
             .iter()
-            .map(|(terminal_id, starts_held, run_command, _)| {
+            .map(|(terminal_id, starts_held, run_command, _, _)| {
                 if *starts_held {
                     (*terminal_id, run_command.clone())
                 } else {
@@ -1803,7 +1872,9 @@ impl Pty {
 
         terminals_to_start.append(&mut new_pane_pids);
         terminals_to_start.append(&mut new_floating_panes_pids);
-        for (terminal_id, starts_held, run_command, reader_result) in terminals_to_start {
+        for (terminal_id, starts_held, run_command, reader_result, run_generation) in
+            terminals_to_start
+        {
             if starts_held {
                 // we do not run a command or start listening for bytes on held panes
                 continue;
@@ -1833,17 +1904,15 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
-                                None,
+                                Some(run_generation),
                             )
-                            .with_context(err_context)?;
+                            .non_fatal();
                         } else {
-                            self.close_pane(PaneId::Terminal(terminal_id))
-                                .with_context(err_context)?;
+                            self.close_unstarted_layout_terminal(terminal_id, run_generation);
                         }
                     },
                     None => {
-                        self.close_pane(PaneId::Terminal(terminal_id))
-                            .with_context(err_context)?;
+                        self.close_unstarted_layout_terminal(terminal_id, run_generation);
                     },
                 },
             }
@@ -1875,11 +1944,12 @@ impl Pty {
         &mut self,
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
-    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<Box<dyn AsyncReader>>)>> {
+    ) -> Result<Option<PreparedTerminal>> {
         // terminal_id,
         // starts_held,
         // command
         // successfully opened
+        // run_generation
         let err_context = || format!("failed to apply run instruction");
         let run_generation = self.mint_run_generation();
         let quit_cb = Box::new({
@@ -1962,6 +2032,7 @@ impl Pty {
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(Box::new(NullAsyncReader) as Box<dyn AsyncReader>), // placeholder, never used for held panes
+                                run_generation,
                             )))
                         },
                         Err(e) => Err(e),
@@ -1991,15 +2062,18 @@ impl Pty {
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(reader),
+                                run_generation,
                             )))
                         },
-                        Err(err) => {
-                            match err.downcast_ref::<ZellijError>() {
-                                Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some(
-                                    (*terminal_id, starts_held, Some(command.clone()), Err(err)),
-                                )),
-                                _ => Err(err),
-                            }
+                        Err(err) => match err.downcast_ref::<ZellijError>() {
+                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some((
+                                *terminal_id,
+                                starts_held,
+                                Some(command.clone()),
+                                Err(err),
+                                run_generation,
+                            ))),
+                            _ => Err(err),
                         },
                     }
                 }
@@ -2026,12 +2100,22 @@ impl Pty {
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
-                        Ok(Some((terminal_id, starts_held, None, Ok(reader))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(reader),
+                            run_generation,
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            Ok(Some((*terminal_id, starts_held, None, Err(err))))
-                        },
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some((
+                            *terminal_id,
+                            starts_held,
+                            None,
+                            Err(err),
+                            run_generation,
+                        ))),
                         _ => Err(err),
                     },
                 }
@@ -2061,12 +2145,22 @@ impl Pty {
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
-                        Ok(Some((terminal_id, starts_held, None, Ok(reader))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(reader),
+                            run_generation,
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            Ok(Some((*terminal_id, starts_held, None, Err(err))))
-                        },
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some((
+                            *terminal_id,
+                            starts_held,
+                            None,
+                            Err(err),
+                            run_generation,
+                        ))),
                         _ => Err(err),
                     },
                 }
@@ -2092,12 +2186,22 @@ impl Pty {
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
-                        Ok(Some((terminal_id, starts_held, None, Ok(reader))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(reader),
+                            run_generation,
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            Ok(Some((*terminal_id, starts_held, None, Err(err))))
-                        },
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some((
+                            *terminal_id,
+                            starts_held,
+                            None,
+                            Err(err),
+                            run_generation,
+                        ))),
                         _ => Err(err),
                     },
                 }

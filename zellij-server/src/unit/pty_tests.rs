@@ -3,7 +3,7 @@ use crate::os_input_output::ServerOsApi;
 use crate::plugins::PluginInstruction;
 use crate::thread_bus::Bus;
 use interprocess::local_socket::Stream as LocalSocketStream;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -12,6 +12,12 @@ use zellij_utils::data::{Event, Palette};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
+
+enum MockSpawnOutcome {
+    Success { terminal_id: u32, child_pid: u32 },
+    Error(String),
+    CommandNotFound { terminal_id: u32, command: String },
+}
 
 #[derive(Clone)]
 struct MockOsApi {
@@ -23,6 +29,8 @@ struct MockOsApi {
     // pid handed out by spawn_terminal, and the quit callback it was given
     spawn_pid: Arc<Mutex<Option<u32>>>,
     spawn_error: Arc<Mutex<Option<String>>>,
+    spawn_plan: Arc<Mutex<VecDeque<MockSpawnOutcome>>>,
+    cleared_terminal_ids: Arc<Mutex<Vec<u32>>>,
     quit_cb: Arc<Mutex<Option<Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>>>>,
 }
 
@@ -35,6 +43,8 @@ impl MockOsApi {
             signals: Arc::new(Mutex::new(Vec::new())),
             spawn_pid: Arc::new(Mutex::new(None)),
             spawn_error: Arc::new(Mutex::new(None)),
+            spawn_plan: Arc::new(Mutex::new(VecDeque::new())),
+            cleared_terminal_ids: Arc::new(Mutex::new(Vec::new())),
             quit_cb: Arc::new(Mutex::new(None)),
         }
     }
@@ -59,6 +69,12 @@ impl MockOsApi {
     fn set_spawn_error(&self, message: &str) {
         *self.spawn_error.lock().unwrap() = Some(message.to_string());
     }
+    fn plan_spawns(&self, outcomes: Vec<MockSpawnOutcome>) {
+        *self.spawn_plan.lock().unwrap() = outcomes.into();
+    }
+    fn cleared_terminal_ids(&self) -> Vec<u32> {
+        self.cleared_terminal_ids.lock().unwrap().clone()
+    }
 }
 
 impl ServerOsApi for MockOsApi {
@@ -79,6 +95,30 @@ impl ServerOsApi for MockOsApi {
         _: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+        if let Some(outcome) = self.spawn_plan.lock().unwrap().pop_front() {
+            return match outcome {
+                MockSpawnOutcome::Success {
+                    terminal_id,
+                    child_pid,
+                } => {
+                    *self.quit_cb.lock().unwrap() = Some(quit_cb);
+                    Ok((
+                        terminal_id,
+                        Box::new(crate::os_input_output::NullAsyncReader),
+                        Some(child_pid),
+                    ))
+                },
+                MockSpawnOutcome::Error(message) => Err(anyhow::anyhow!(message)),
+                MockSpawnOutcome::CommandNotFound {
+                    terminal_id,
+                    command,
+                } => Err(zellij_utils::errors::ZellijError::CommandNotFound {
+                    terminal_id,
+                    command,
+                }
+                .into()),
+            };
+        }
         if let Some(message) = self.spawn_error.lock().unwrap().clone() {
             return Err(anyhow::anyhow!(message));
         }
@@ -185,7 +225,8 @@ impl ServerOsApi for MockOsApi {
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
-    fn clear_terminal_id(&self, _: u32) -> anyhow::Result<()> {
+    fn clear_terminal_id(&self, terminal_id: u32) -> anyhow::Result<()> {
+        self.cleared_terminal_ids.lock().unwrap().push(terminal_id);
         Ok(())
     }
 }
@@ -984,4 +1025,198 @@ fn a_generic_spawn_failure_reports_an_error_completion() {
 
     let _ = pty_sender.send(PtyInstruction::Exit);
     pty_thread.join().unwrap();
+}
+
+fn run_with_hold(command: &str, hold_on_close: bool) -> Run {
+    let mut run_command = RunCommand::new(PathBuf::from(command));
+    run_command.hold_on_close = hold_on_close;
+    Run::Command(run_command)
+}
+
+fn tiled_layout_with_runs(runs: Vec<Run>) -> TiledPaneLayout {
+    let mut layout = TiledPaneLayout::default();
+    layout.children = runs
+        .into_iter()
+        .map(|run| TiledPaneLayout {
+            run: Some(run),
+            ..Default::default()
+        })
+        .collect();
+    layout
+}
+
+#[test]
+fn a_mid_layout_spawn_failure_rolls_everything_back_without_stopping_the_pty_thread() {
+    let mock = MockOsApi::new();
+    mock.plan_spawns(vec![
+        MockSpawnOutcome::Success {
+            terminal_id: 7,
+            child_pid: 4242,
+        },
+        MockSpawnOutcome::Error("simulated layout spawn failure".to_string()),
+    ]);
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let (screen_tx, screen_rx) = channels::unbounded();
+    let (writer_tx, writer_rx) = channels::unbounded();
+    let pty_sender = SenderWithContext::new(pty_tx);
+    let screen_sender: SenderWithContext<ScreenInstruction> = SenderWithContext::new(screen_tx);
+    let writer_sender: SenderWithContext<PtyWriteInstruction> = SenderWithContext::new(writer_tx);
+    let bus = Bus::new(
+        vec![pty_rx],
+        Some(&screen_sender),
+        None,
+        None,
+        None,
+        Some(&writer_sender),
+        None,
+        Some(Box::new(mock.clone())),
+    )
+    .should_silently_fail();
+    let pty = Pty::new(bus, false, None, None, Default::default());
+    let pty_thread = std::thread::spawn(move || {
+        pty_thread_main(pty, Box::new(Layout::default()), "test-session".to_owned()).unwrap()
+    });
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+
+    pty_sender
+        .send(PtyInstruction::NewTab(
+            None,
+            None,
+            Some(tiled_layout_with_runs(vec![
+                run_with_hold("first-pane", false),
+                run_with_hold("second-pane", false),
+            ])),
+            vec![],
+            3,
+            HashMap::new(),
+            None,
+            false,
+            false,
+            (0, false),
+            Some(NotificationEnd::new(completion_tx)),
+        ))
+        .unwrap();
+
+    let result = completion_rx
+        .blocking_recv()
+        .expect("the failed layout must complete the action");
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("simulated layout spawn failure")),
+        "the completion must carry the layout spawn failure: {:?}",
+        result.error_message
+    );
+    assert_eq!(
+        mock.signals(),
+        vec![("SIGHUP", 4242)],
+        "the pane spawned before the failure must be terminated"
+    );
+    assert_eq!(
+        mock.cleared_terminal_ids(),
+        vec![7],
+        "the pane spawned before the failure must release its terminal id"
+    );
+
+    let writer_instructions: Vec<PtyWriteInstruction> = std::iter::from_fn(|| {
+        writer_rx
+            .try_recv()
+            .ok()
+            .map(|(instruction, _)| instruction)
+    })
+    .collect();
+    assert!(writer_instructions
+        .iter()
+        .any(|instruction| matches!(instruction, PtyWriteInstruction::AdoptRun(7, _))));
+    assert!(writer_instructions
+        .iter()
+        .any(|instruction| matches!(instruction, PtyWriteInstruction::ForgetRun(7))));
+
+    let screen_instructions: Vec<ScreenInstruction> = std::iter::from_fn(|| {
+        screen_rx
+            .try_recv()
+            .ok()
+            .map(|(instruction, _)| instruction)
+    })
+    .collect();
+    assert!(
+        !screen_instructions
+            .iter()
+            .any(|instruction| matches!(instruction, ScreenInstruction::ApplyLayout(..))),
+        "a failed layout must not be applied partially"
+    );
+    assert!(screen_instructions
+        .iter()
+        .any(|instruction| matches!(instruction, ScreenInstruction::TerminalClosed(7))));
+
+    let _ = pty_sender.send(PtyInstruction::Exit);
+    pty_thread.join().unwrap();
+}
+
+#[test]
+fn command_not_found_layout_panes_are_stamped_and_get_a_close_event() {
+    let mock = MockOsApi::new();
+    mock.plan_spawns(vec![
+        MockSpawnOutcome::CommandNotFound {
+            terminal_id: 7,
+            command: "missing-held".to_string(),
+        },
+        MockSpawnOutcome::CommandNotFound {
+            terminal_id: 8,
+            command: "missing-closed".to_string(),
+        },
+    ]);
+    let (screen_tx, screen_rx) = channels::unbounded();
+    let mut bus = Bus::empty().should_silently_fail();
+    bus.os_input = Some(Box::new(mock));
+    bus.senders.to_screen = Some(SenderWithContext::new(screen_tx));
+    let mut pty = Pty::new(bus, false, None, None, Default::default());
+
+    pty.spawn_terminals_for_layout(
+        None,
+        tiled_layout_with_runs(vec![
+            run_with_hold("missing-held", true),
+            run_with_hold("missing-closed", false),
+        ]),
+        vec![],
+        None,
+        HashMap::new(),
+        None,
+        0,
+        false,
+        false,
+        (0, false),
+        None,
+    )
+    .unwrap();
+
+    let screen_instructions: Vec<ScreenInstruction> = std::iter::from_fn(|| {
+        screen_rx
+            .try_recv()
+            .ok()
+            .map(|(instruction, _)| instruction)
+    })
+    .collect();
+    let applied_terminal_ids: Vec<u32> = screen_instructions
+        .iter()
+        .find_map(|instruction| match instruction {
+            ScreenInstruction::ApplyLayout(_, _, tiled, _, ..) => {
+                Some(tiled.iter().map(|(terminal_id, _)| *terminal_id).collect())
+            },
+            _ => None,
+        })
+        .expect("command-not-found panes still participate in the layout");
+    assert_eq!(applied_terminal_ids, vec![7, 8]);
+    assert!(screen_instructions
+        .iter()
+        .any(|instruction| matches!(instruction, ScreenInstruction::PtyRunBytes(7, 0, _))));
+    assert!(screen_instructions.iter().any(|instruction| matches!(
+        instruction,
+        ScreenInstruction::HoldPane(PaneId::Terminal(7), Some(2), _, Some(0))
+    )));
+    assert!(screen_instructions.iter().any(|instruction| matches!(
+        instruction,
+        ScreenInstruction::ClosePane(PaneId::Terminal(8), _, _, _, _, Some(1))
+    )));
 }
