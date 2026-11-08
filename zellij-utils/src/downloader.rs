@@ -4,7 +4,7 @@ use isahc::{config::RedirectPolicy, AsyncBody, HttpClient, Request, Response};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant, SystemTime};
 use thiserror::Error;
 use tokio::{io::AsyncWriteExt as _, sync::Mutex};
@@ -73,7 +73,7 @@ pub struct Downloader {
     // the whole thing is an Arc/Mutex so that Downloader is thread safe, and the individual values of
     // the HashMap are Arc/Mutexes (Mutexi?) to represent that individual downloads should not
     // happen concurrently
-    download_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    download_locks: Arc<Mutex<HashMap<String, Weak<Mutex<()>>>>>,
     deadline: Duration,
 }
 
@@ -341,10 +341,13 @@ impl Downloader {
     }
     async fn acquire_download_lock(&self, file_name: &String) -> Arc<Mutex<()>> {
         let mut lock_dict = self.download_locks.lock().await;
-        let download_lock = lock_dict
-            .entry(file_name.clone())
-            .or_insert_with(|| Default::default());
-        download_lock.clone()
+        lock_dict.retain(|_, download_lock| download_lock.strong_count() > 0);
+        if let Some(download_lock) = lock_dict.get(file_name).and_then(Weak::upgrade) {
+            return download_lock;
+        }
+        let download_lock = Arc::new(Mutex::new(()));
+        lock_dict.insert(file_name.clone(), Arc::downgrade(&download_lock));
+        download_lock
     }
 }
 
@@ -595,6 +598,29 @@ mod tests {
                 .await,
             Err(DownloaderError::ClientUnavailable)
         ));
+    }
+
+    #[tokio::test]
+    async fn download_locks_are_pruned_once_no_holder_remains() {
+        let downloader = Downloader::new(PathBuf::new());
+
+        let held = downloader
+            .acquire_download_lock(&"plugin.wasm".to_string())
+            .await;
+        let same = downloader
+            .acquire_download_lock(&"plugin.wasm".to_string())
+            .await;
+        assert!(Arc::ptr_eq(&held, &same));
+        assert_eq!(downloader.download_locks.lock().await.len(), 1);
+
+        drop((held, same));
+        let other = downloader
+            .acquire_download_lock(&"other.wasm".to_string())
+            .await;
+        let locks = downloader.download_locks.lock().await;
+        assert_eq!(locks.len(), 1);
+        assert!(locks.contains_key("other.wasm"));
+        drop((locks, other));
     }
 
     /// Minimal scripted HTTP/1.1 server on loopback. `respond` maps the

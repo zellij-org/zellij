@@ -34,6 +34,12 @@ pub struct KittyKeyboardParser {
     modifier_bytes: Vec<u8>,
 }
 
+/// Bound on one number/modifier field. Real key codes are `u32` and modifier
+/// values are `u8`, so this is far above anything the protocol produces;
+/// without it a client could grow the vectors forever with an unterminated
+/// `ESC [` sequence.
+const MAX_KITTY_FIELD_BYTES: usize = 16;
+
 /// CSI final-byte range (0x40..=0x7E), minus `u` and `~` which trigger
 /// the explicit `DoneParsingWith{U,Tilde}` states inside the parser.
 /// A trailing letter in this range while still in
@@ -171,9 +177,15 @@ impl KittyKeyboardParser {
                 self.state = KittyKeysParsingState::DoneParsingWithTilde;
             },
             (KittyKeysParsingState::ParsingNumber, _) => {
+                if self.number_bytes.len() >= MAX_KITTY_FIELD_BYTES {
+                    return false;
+                }
                 self.number_bytes.push(byte);
             },
             (KittyKeysParsingState::ParsingModifiers, _) => {
+                if self.modifier_bytes.len() >= MAX_KITTY_FIELD_BYTES {
+                    return false;
+                }
                 self.modifier_bytes.push(byte);
             },
             (_, _) => {
@@ -2054,4 +2066,31 @@ fn non_kitty_bytes_yield_nomatch_and_reset() {
     // immediately rather than buffering forever.
     let mut p = KittyKeyboardParser::new();
     assert!(matches!(p.feed(b"hello"), KittyParseOutcome::NoMatch));
+}
+
+#[test]
+fn unterminated_kitty_fields_are_bounded_and_reset() {
+    let mut p = KittyKeyboardParser::new();
+    assert!(matches!(p.feed(b"\x1b["), KittyParseOutcome::Incomplete));
+    for _ in 0..MAX_KITTY_FIELD_BYTES {
+        assert!(matches!(p.feed(b"1"), KittyParseOutcome::Incomplete));
+    }
+    assert_eq!(p.number_bytes.len(), MAX_KITTY_FIELD_BYTES);
+    assert!(matches!(p.feed(b"1"), KittyParseOutcome::NoMatch));
+    assert!(p.number_bytes.is_empty());
+
+    let mut p = KittyKeyboardParser::new();
+    assert!(matches!(p.feed(b"\x1b[1;"), KittyParseOutcome::Incomplete));
+    for _ in 0..MAX_KITTY_FIELD_BYTES {
+        assert!(matches!(p.feed(b"1"), KittyParseOutcome::Incomplete));
+    }
+    assert_eq!(p.modifier_bytes.len(), MAX_KITTY_FIELD_BYTES);
+    assert!(matches!(p.feed(b"1"), KittyParseOutcome::NoMatch));
+    assert!(p.modifier_bytes.is_empty());
+
+    // the reset parser is still usable for a following real sequence
+    assert!(matches!(
+        p.feed(b"\x1b[97u"),
+        KittyParseOutcome::Complete(_)
+    ));
 }

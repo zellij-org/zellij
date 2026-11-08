@@ -46,20 +46,34 @@ pub fn should_use_https(
     }
 }
 
-pub fn parse_cookies<T>(request: &Request<T>) -> HashMap<String, String> {
+const SESSION_TOKEN_COOKIE: &str = "session_token";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DuplicateSessionCookie;
+
+pub fn parse_cookies<T>(
+    request: &Request<T>,
+) -> Result<HashMap<String, String>, DuplicateSessionCookie> {
     let mut cookies = HashMap::new();
 
     for cookie_header in request.headers().get_all("cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {
             for cookie_part in cookie_str.split(';') {
                 if let Ok(cookie) = Cookie::parse(cookie_part.trim()) {
-                    cookies.insert(cookie.name().to_string(), cookie.value().to_string());
+                    let name = cookie.name();
+                    // A sibling subdomain can add a second, domain-scoped
+                    // session cookie. Never let one silently displace the
+                    // other; the request is ambiguous.
+                    if name == SESSION_TOKEN_COOKIE && cookies.contains_key(name) {
+                        return Err(DuplicateSessionCookie);
+                    }
+                    cookies.insert(name.to_string(), cookie.value().to_string());
                 }
             }
         }
     }
 
-    cookies
+    Ok(cookies)
 }
 
 pub fn terminal_init_messages() -> Vec<&'static str> {
@@ -348,5 +362,47 @@ mod should_use_https_tests {
     fn dangerous_allowance_does_not_change_loopback_behavior() {
         assert_eq!(should_use_https(localhost(), false, false, true), Ok(false));
         assert_eq!(should_use_https(localhost(), true, false, true), Ok(true));
+    }
+}
+
+#[cfg(test)]
+mod cookie_tests {
+    use super::{parse_cookies, DuplicateSessionCookie};
+    use axum::http::Request;
+
+    fn request_with_cookie_headers(headers: &[&'static str]) -> Request<()> {
+        let mut builder = Request::builder();
+        for value in headers {
+            builder = builder.header("cookie", *value);
+        }
+        builder.body(()).unwrap()
+    }
+
+    #[test]
+    fn cookies_from_several_headers_are_merged() {
+        let request =
+            request_with_cookie_headers(&["session_token=abc; theme=dark", "other=value"]);
+        let cookies = parse_cookies(&request).unwrap();
+        assert_eq!(
+            cookies.get("session_token").map(String::as_str),
+            Some("abc")
+        );
+        assert_eq!(cookies.get("theme").map(String::as_str), Some("dark"));
+        assert_eq!(cookies.get("other").map(String::as_str), Some("value"));
+    }
+
+    #[test]
+    fn duplicate_session_cookies_in_one_header_are_rejected() {
+        let request = request_with_cookie_headers(&["session_token=first; session_token=second"]);
+        assert_eq!(parse_cookies(&request), Err(DuplicateSessionCookie));
+    }
+
+    #[test]
+    fn duplicate_session_cookies_across_headers_are_rejected() {
+        let request = request_with_cookie_headers(&[
+            "session_token=first; theme=dark",
+            "session_token=second",
+        ]);
+        assert_eq!(parse_cookies(&request), Err(DuplicateSessionCookie));
     }
 }

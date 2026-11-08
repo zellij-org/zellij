@@ -12,7 +12,12 @@ pub struct SessionTokenHash(pub String);
 pub struct IsReadOnly(pub bool);
 
 pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
-    let cookies = parse_cookies(&request);
+    let cookies = match parse_cookies(&request) {
+        Ok(cookies) => cookies,
+        // ambiguous session cookies are treated as unauthenticated rather
+        // than picking one of them
+        Err(_) => return Ok(unauthorized_and_clear_session_cookies()),
+    };
 
     let session_token = match cookies.get("session_token") {
         Some(token) => token.clone(),
@@ -47,38 +52,41 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
         },
         Ok(None) | Err(_) => {
             // revoke session_token as if it exists it's no longer valid
-            let mut response = Response::builder()
-                .status(StatusCode::UNAUTHORIZED)
-                .body(Body::empty())
-                .unwrap();
-
-            // Clear both secure and non-secure versions
-            // in case the user was on http before and is now on https
-            // or vice versa
-            let clear_cookies = [
-                Cookie::build(("session_token", ""))
-                    .http_only(true)
-                    .secure(false)
-                    .same_site(SameSite::Strict)
-                    .path("/")
-                    .max_age(time::Duration::seconds(0))
-                    .build(),
-                Cookie::build(("session_token", ""))
-                    .http_only(true)
-                    .secure(true)
-                    .same_site(SameSite::Strict)
-                    .path("/")
-                    .max_age(time::Duration::seconds(0))
-                    .build(),
-            ];
-
-            for cookie in clear_cookies {
-                response
-                    .headers_mut()
-                    .append(SET_COOKIE, cookie.to_string().parse().unwrap());
-            }
-
-            Ok(response)
+            Ok(unauthorized_and_clear_session_cookies())
         },
     }
+}
+
+fn unauthorized_and_clear_session_cookies() -> Response {
+    let mut response = Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(Body::empty())
+        .unwrap();
+
+    // Clear both secure and non-secure versions
+    // in case the user was on http before and is now on https
+    // or vice versa
+    let clear_cookies = [
+        Cookie::build(("session_token", ""))
+            .http_only(true)
+            .secure(false)
+            .same_site(SameSite::Strict)
+            .path("/")
+            .max_age(time::Duration::seconds(0))
+            .build(),
+        Cookie::build(("session_token", ""))
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Strict)
+            .path("/")
+            .max_age(time::Duration::seconds(0))
+            .build(),
+    ];
+
+    for cookie in clear_cookies {
+        response
+            .headers_mut()
+            .append(SET_COOKIE, cookie.to_string().parse().unwrap());
+    }
+    response
 }

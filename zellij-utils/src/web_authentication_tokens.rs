@@ -215,28 +215,70 @@ pub fn hash_token(token: &str) -> String {
 
 pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, String)> {
     let conn = open_db()?;
+    create_token_on(&conn, name, read_only)
+}
 
+fn create_token_on(
+    conn: &Connection,
+    name: Option<String>,
+    read_only: bool,
+) -> Result<(String, String)> {
     let token = Uuid::new_v4().to_string();
     let token_hash = hash_token(&token);
 
-    let token_name = if let Some(n) = name {
-        n.to_string()
-    } else {
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM tokens", [], |row| row.get(0))?;
-        format!("token_{}", count + 1)
+    let token_name = match name {
+        Some(name) => {
+            insert_token_on(conn, &token_hash, &name, read_only)?;
+            name
+        },
+        None => loop {
+            let name = first_free_token_name(conn)?;
+            match insert_token_on(conn, &token_hash, &name, read_only) {
+                Ok(()) => break name,
+                // another writer may have taken the name in between
+                Err(TokenError::DuplicateName(_)) => continue,
+                Err(e) => return Err(e),
+            }
+        },
     };
 
+    Ok((token, token_name))
+}
+
+fn insert_token_on(
+    conn: &Connection,
+    token_hash: &str,
+    token_name: &str,
+    read_only: bool,
+) -> Result<()> {
     match conn.execute(
         "INSERT INTO tokens (token_hash, name, read_only) VALUES (?1, ?2, ?3)",
-        [&token_hash, &token_name, &(read_only as i64).to_string()],
+        rusqlite::params![token_hash, token_name, read_only as i64],
     ) {
         Err(rusqlite::Error::SqliteFailure(ffi_error, _))
             if ffi_error.code == rusqlite::ErrorCode::ConstraintViolation =>
         {
-            Err(TokenError::DuplicateName(token_name))
+            Err(TokenError::DuplicateName(token_name.to_string()))
         },
         Err(e) => Err(TokenError::Database(e)),
-        Ok(_) => Ok((token, token_name)),
+        Ok(_) => Ok(()),
+    }
+}
+
+/// The lowest `token_N` name that is not in use. Deletions leave gaps, so
+/// `COUNT(*) + 1` would collide with an existing name.
+fn first_free_token_name(conn: &Connection) -> Result<String> {
+    let mut stmt = conn.prepare("SELECT name FROM tokens")?;
+    let names: HashSet<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut suffix = 1u64;
+    loop {
+        let candidate = format!("token_{}", suffix);
+        if !names.contains(&candidate) {
+            return Ok(candidate);
+        }
+        suffix += 1;
     }
 }
 
@@ -299,16 +341,29 @@ pub fn session_token_status(session_token: &str) -> Result<Option<bool>> {
     session_token_status_on(&open_db()?, session_token)
 }
 
+/// Rows of sessions that may still be used.
+///
+/// A session without "remember me" is a browser-session cookie: its short
+/// `expires_at` only bounds the login handshake, and it stays valid until the
+/// row is cleaned up after `SHORT_SESSION_ROW_RETENTION`. This is the same
+/// predicate `session_allows_live_connection_on` uses, so HTTP requests and
+/// already-open websockets agree on when a session ended.
+// Keep the non-remember bound in sync with `SHORT_SESSION_ROW_RETENTION`.
+const LIVE_SESSION_PREDICATE: &str = concat!(
+    "(expires_at > datetime('now') OR ",
+    "(remember_me = 0 AND expires_at > datetime('now', '-28 days')))"
+);
+
 fn session_token_status_on(conn: &Connection, session_token: &str) -> Result<Option<bool>> {
     let session_token_hash = hash_token(session_token);
 
-    match conn.query_row(
+    let query = format!(
         "SELECT COALESCE(t.read_only, 1) FROM session_tokens st
          LEFT JOIN tokens t ON t.token_hash = st.auth_token_hash
-         WHERE st.session_token_hash = ?1 AND st.expires_at > datetime('now')",
-        [&session_token_hash],
-        |row| row.get::<_, i64>(0),
-    ) {
+         WHERE st.session_token_hash = ?1 AND {}",
+        LIVE_SESSION_PREDICATE
+    );
+    match conn.query_row(&query, [&session_token_hash], |row| row.get::<_, i64>(0)) {
         Ok(read_only) => Ok(Some(read_only != 0)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(TokenError::Database(e)),
@@ -339,13 +394,12 @@ pub fn session_allows_live_connection(session_token_hash: &str) -> Result<bool> 
 }
 
 fn session_allows_live_connection_on(conn: &Connection, session_token_hash: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
+    let query = format!(
         "SELECT COUNT(*) FROM session_tokens
-         WHERE session_token_hash = ?1
-         AND (expires_at > datetime('now') OR remember_me = 0)",
-        [&session_token_hash],
-        |row| row.get(0),
-    )?;
+         WHERE session_token_hash = ?1 AND {}",
+        LIVE_SESSION_PREDICATE
+    );
+    let count: i64 = conn.query_row(&query, [&session_token_hash], |row| row.get(0))?;
     Ok(count > 0)
 }
 
@@ -683,6 +737,59 @@ mod tests {
         .unwrap();
         assert_eq!(session_token_status_on(&conn, &session).unwrap(), None);
         assert_eq!(session_token_status_on(&conn, "unknown").unwrap(), None);
+    }
+
+    #[test]
+    fn short_lived_sessions_stay_valid_for_http_past_their_login_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+        conn.execute(
+            "INSERT INTO tokens (token_hash, name) VALUES (?1, 'auth')",
+            [hash_token("the-auth-token")],
+        )
+        .unwrap();
+        let session = create_session_token_on(&conn, "the-auth-token", false).unwrap();
+        conn.execute(
+            "UPDATE session_tokens SET expires_at = datetime('now', '-1 hour')",
+            [],
+        )
+        .unwrap();
+
+        // the same session may still keep its websocket alive, so HTTP auth
+        // (a reload, a reconnect) must accept it as well
+        let session_hash = hash_token(&session);
+        assert!(session_allows_live_connection_on(&conn, &session_hash).unwrap());
+        assert_eq!(
+            session_token_status_on(&conn, &session).unwrap(),
+            Some(false)
+        );
+
+        // once past the row retention, even a non-remember session is dead
+        conn.execute(
+            "UPDATE session_tokens SET expires_at = datetime('now', '-29 days')",
+            [],
+        )
+        .unwrap();
+        assert!(!session_allows_live_connection_on(&conn, &session_hash).unwrap());
+        assert_eq!(session_token_status_on(&conn, &session).unwrap(), None);
+    }
+
+    #[test]
+    fn default_token_names_skip_the_gaps_left_by_deleted_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+
+        let (_, first) = create_token_on(&conn, None, false).unwrap();
+        let (_, second) = create_token_on(&conn, None, false).unwrap();
+        assert_eq!(first, "token_1");
+        assert_eq!(second, "token_2");
+
+        conn.execute("DELETE FROM tokens WHERE name = 'token_1'", [])
+            .unwrap();
+        let (_, reused) = create_token_on(&conn, None, false).unwrap();
+        assert_eq!(reused, "token_1");
+        let (_, next) = create_token_on(&conn, None, false).unwrap();
+        assert_eq!(next, "token_3");
     }
 
     #[cfg(unix)]
