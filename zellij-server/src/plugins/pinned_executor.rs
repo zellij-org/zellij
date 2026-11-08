@@ -66,17 +66,20 @@ impl PinnedExecutor {
     ) -> Self {
         let max_threads = max_threads.max(1); // At least 1
 
-        let thread_0 = Self::spawn_thread(
+        let mut execution_threads = HashMap::new();
+        if let Some(thread_0) = Self::spawn_thread(
             0,
             senders.clone(),
             plugin_map.clone(),
             connected_clients.clone(),
             plugin_cache.clone(),
             engine.clone(),
-        );
+        ) {
+            execution_threads.insert(0, thread_0);
+        }
 
         PinnedExecutor {
-            execution_threads: Arc::new(Mutex::new(HashMap::from([(0, thread_0)]))),
+            execution_threads: Arc::new(Mutex::new(execution_threads)),
             plugin_assignments: Arc::new(Mutex::new(HashMap::new())),
             thread_plugins: Arc::new(Mutex::new(HashMap::new())),
             next_thread_idx: AtomicUsize::new(1), // Next will be index 1
@@ -96,7 +99,7 @@ impl PinnedExecutor {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         plugin_cache: PluginCache,
         engine: Engine,
-    ) -> ExecutionThread {
+    ) -> Option<ExecutionThread> {
         let (sender, receiver) = channel::<Job>();
         let jobs_in_flight = Arc::new(AtomicUsize::new(0));
         let jobs_in_flight_clone = jobs_in_flight.clone();
@@ -127,13 +130,15 @@ impl PinnedExecutor {
                     }
                 }
             });
-        if let Err(e) = thread_handle {
-            log::error!("Failed to spawn plugin execution thread: {}", e);
-        }
-
-        ExecutionThread {
-            sender,
-            jobs_in_flight,
+        match thread_handle {
+            Ok(_) => Some(ExecutionThread {
+                sender,
+                jobs_in_flight,
+            }),
+            Err(e) => {
+                log::error!("Failed to spawn plugin execution thread: {}", e);
+                None
+            },
         }
     }
 
@@ -170,32 +175,27 @@ impl PinnedExecutor {
 
         let thread_idx = if let Some((idx, _)) = best_thread {
             // Found a non-busy thread
-            idx
+            Some(idx)
         } else {
             // All threads are busy - need to expand
             if threads.len() < self.max_threads {
                 // Spawn a new thread
                 let new_idx = self.next_thread_idx.fetch_add(1, Ordering::SeqCst);
                 drop(threads); // Release lock before spawning
-                self.add_thread(new_idx);
-                new_idx
+                if self.add_thread(new_idx) {
+                    Some(new_idx)
+                } else {
+                    let threads = self.execution_threads.lock().unwrap();
+                    Self::least_loaded_thread(&threads, &thread_plugins)
+                }
             } else {
                 // At max capacity, assign to least-loaded thread
-                threads
-                    .keys()
-                    .min_by_key(|idx| {
-                        (
-                            thread_plugins.get(*idx).map(|s| s.len()).unwrap_or(0),
-                            **idx,
-                        )
-                    })
-                    .copied()
-                    .unwrap_or_else(|| {
-                        log::error!("Failed to find free thread to run the plugin!");
-                        0 // this is a misconfiguration, but we don't want to crash the app
-                          // if it happens
-                    })
+                Self::least_loaded_thread(&threads, &thread_plugins)
             }
+        };
+        let Some(thread_idx) = thread_idx else {
+            log::error!("Failed to find or spawn a thread to run the plugin!");
+            return 0;
         };
 
         // Update mappings
@@ -208,18 +208,36 @@ impl PinnedExecutor {
         thread_idx
     }
 
-    fn add_thread(&self, thread_idx: usize) {
+    fn least_loaded_thread(
+        threads: &HashMap<usize, ExecutionThread>,
+        thread_plugins: &HashMap<usize, HashSet<u32>>,
+    ) -> Option<usize> {
+        threads
+            .keys()
+            .min_by_key(|idx| {
+                (
+                    thread_plugins.get(*idx).map(|s| s.len()).unwrap_or(0),
+                    **idx,
+                )
+            })
+            .copied()
+    }
+
+    fn add_thread(&self, thread_idx: usize) -> bool {
         let mut threads = self.execution_threads.lock().unwrap();
-        let new_thread = Self::spawn_thread(
+        let Some(new_thread) = Self::spawn_thread(
             thread_idx,
             self.senders.clone(),
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             self.plugin_cache.clone(),
             self.engine.clone(),
-        );
+        ) else {
+            return false;
+        };
 
         threads.insert(thread_idx, new_thread);
+        true
     }
 
     /// Execute job pinned to plugin's assigned thread
@@ -235,11 +253,11 @@ impl PinnedExecutor {
             + 'static,
     {
         // Look up assigned thread
-        let thread_idx = {
-            let assignments = self.plugin_assignments.lock().unwrap();
-            assignments.get(&plugin_id).copied()
-        };
-        let Some(thread_idx) = thread_idx else {
+        // Keep the assignment lock until the job is queued. Unregistering takes this lock before
+        // it can empty the thread's plugin set and shrink the pool, so the thread cannot be
+        // retired between the lookup and the send.
+        let assignments = self.plugin_assignments.lock().unwrap();
+        let Some(thread_idx) = assignments.get(&plugin_id).copied() else {
             log::error!("Failed to find thread for plugin with id: {}", plugin_id);
             return;
         };

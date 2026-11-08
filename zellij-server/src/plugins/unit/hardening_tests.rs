@@ -140,12 +140,18 @@ fn a_fatal_error_in_a_shared_slot_quarantines_the_whole_instance() {
     let (mut bridge, _dir, screen_receiver, _plugin_receiver) = test_bridge();
     let run = RunPlugin::from_url("file:/nonexistent/shared.wasm").unwrap();
     register_fake_shared_instance(&mut bridge, &run, 10, 11);
+    let key = WasmBridge::shared_key_of(&run);
+    assert_eq!(bridge.shared_keys.get(&key), Some(&10));
     bridge.connected_clients.lock().unwrap().push(1);
 
     bridge.quarantine_plugin(11, 100);
 
     assert!(bridge.quarantine.contains(&11));
     assert!(bridge.quarantine.contains(&10));
+    assert!(
+        !bridge.shared_keys.contains_key(&key),
+        "a quarantined instance must not receive new slots"
+    );
     // the intercept of a shared plugin is held under the instance id
     assert_eq!(
         released_intercepts(&screen_receiver),
@@ -163,6 +169,21 @@ fn an_error_reported_for_the_instance_alone_quarantines_it() {
     bridge.quarantine_plugin(10, 100);
 
     assert!(bridge.quarantine.contains(&10));
+}
+
+#[test]
+fn a_failed_shared_load_removes_the_dead_instance_and_its_slots() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let run = RunPlugin::from_url("file:/nonexistent/shared.wasm").unwrap();
+    register_fake_shared_instance(&mut bridge, &run, 10, 11);
+    let key = WasmBridge::shared_key_of(&run);
+
+    bridge.shared_instance_load_failed(10);
+
+    assert!(!bridge.shared_instances.contains_key(&10));
+    assert!(!bridge.shared_keys.contains_key(&key));
+    assert!(!bridge.shared_slot_owner.contains_key(&11));
+    assert!(bridge.plugin_map.lock().unwrap().metadata(11).is_none());
 }
 
 #[test]
@@ -205,6 +226,39 @@ fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
         &mut notification_end,
     );
     assert!(bridge.pending_pipes.is_pending("after-reload"));
+}
+
+#[test]
+fn worker_messages_are_dropped_for_a_quarantined_plugin() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    bridge.quarantine.report_fatal(7, 1);
+    bridge
+        .post_messages_to_plugin_worker(
+            7,
+            1,
+            "worker".to_owned(),
+            vec![("message".to_owned(), "payload".to_owned())],
+        )
+        .unwrap();
+    assert!(bridge.cached_worker_messages.is_empty());
+}
+
+#[test]
+fn quarantine_marks_the_running_instance_for_already_queued_callbacks() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "plugin.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+    let (generation, _) = running_module_identity(&bridge, plugin_id);
+
+    bridge.quarantine_plugin(plugin_id, generation);
+
+    let running_plugin = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .get_running_plugin(plugin_id, Some(1))
+        .unwrap();
+    assert!(running_plugin.lock().unwrap().is_quarantined());
 }
 
 #[test]
@@ -287,6 +341,11 @@ fn a_permission_answer_only_counts_for_the_module_that_was_prompted() {
 
     bridge.cache_plugin_events(plugin_id, generation, digest.clone());
     assert!(bridge.permission_prompt_is_current(plugin_id, Some(1)));
+    bridge.clear_permission_prompt(plugin_id);
+    assert!(
+        !bridge.permission_prompt_is_current(plugin_id, Some(1)),
+        "a consumed prompt must not accept a duplicate answer"
+    );
 
     // a prompt that belonged to different bytes
     bridge.cache_plugin_events(plugin_id, generation, "another-digest".to_owned());

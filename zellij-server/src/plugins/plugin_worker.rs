@@ -55,6 +55,14 @@ pub fn plugin_worker(mut worker: RunningWorker) -> UnboundedSender<MessageToWork
     crate::global_async_runtime::get_tokio_runtime().spawn({
         async move {
             loop {
+                if worker
+                    .store
+                    .data()
+                    .quarantined
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    break;
+                }
                 match receiver.recv().await {
                     Some(MessageToWorker::Message(message, payload)) => {
                         if let Err(e) = worker.send_message(message, payload) {
@@ -73,6 +81,7 @@ pub fn plugin_worker(mut worker: RunningWorker) -> UnboundedSender<MessageToWork
                                     format!("{:?}", e).replace("\n", "\n\r"),
                                     data.senders.clone(),
                                 );
+                                break;
                             }
                         }
                     },

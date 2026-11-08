@@ -50,8 +50,10 @@ pub struct PluginMetadata {
 #[derive(Default)]
 pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
+    plugin_quarantine_flags: HashMap<PluginKey, Arc<AtomicBool>>,
     plugin_metadata: HashMap<PluginId, PluginMetadata>,
     shared_assets: HashMap<PluginId, PluginAssets>,
+    shared_quarantine_flags: HashMap<PluginId, Arc<AtomicBool>>,
     shared_blocking_calls: HashMap<PluginId, Arc<AtomicBool>>,
     // plugins whose loader is still publishing instances, and which of those were unloaded
     // meanwhile
@@ -68,6 +70,7 @@ impl PluginMap {
         plugin_id: PluginId,
         client_id: ClientId,
     ) -> Option<PluginAssets> {
+        self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
         self.plugin_assets.remove(&(plugin_id, client_id))
     }
     /// A loader starts publishing instances of the plugin.
@@ -94,6 +97,7 @@ impl PluginMap {
         let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
+                self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
                     removed.insert((plugin_id, client_id), plugin_asset);
                 }
@@ -106,6 +110,7 @@ impl PluginMap {
         let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for key in ids_in_plugin_map {
             if key.1 == client_id {
+                self.plugin_quarantine_flags.remove(&key);
                 if let Some(plugin_asset) = self.plugin_assets.remove(&key) {
                     removed.insert(key, plugin_asset);
                 }
@@ -119,6 +124,8 @@ impl PluginMap {
         assets: PluginAssets,
         in_blocking_call: Option<Arc<AtomicBool>>,
     ) {
+        self.shared_quarantine_flags
+            .insert(instance_id, assets.0.lock().unwrap().quarantine_flag());
         self.shared_assets.insert(instance_id, assets);
         match in_blocking_call {
             Some(in_blocking_call) => {
@@ -131,8 +138,19 @@ impl PluginMap {
         }
     }
     pub fn remove_shared(&mut self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_quarantine_flags.remove(&instance_id);
         self.shared_blocking_calls.remove(&instance_id);
         self.shared_assets.remove(&instance_id)
+    }
+    pub fn mark_quarantined(&mut self, plugin_id: PluginId) {
+        for ((pid, _), flag) in &self.plugin_quarantine_flags {
+            if *pid == plugin_id {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+        if let Some(flag) = self.shared_quarantine_flags.get(&plugin_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
     }
     pub fn has_instance_of(&self, plugin_id: PluginId) -> bool {
         self.plugin_assets.keys().any(|(pid, _)| *pid == plugin_id)
@@ -287,11 +305,18 @@ impl PluginMap {
         &self,
     ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>
     {
+        let assets: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self
+            .plugin_assets
+            .iter()
+            .map(|((plugin_id, client_id), (running_plugin, _, _))| {
+                (*plugin_id, *client_id, running_plugin.clone())
+            })
+            .collect();
         let mut cloned_plugin_assets: HashMap<
             RunPluginLocation,
             HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>,
         > = HashMap::new();
-        for ((plugin_id, client_id), (running_plugin, _, _)) in self.plugin_assets.iter() {
+        for (plugin_id, client_id, running_plugin) in assets {
             let running_plugin = running_plugin.lock().unwrap();
             let plugin_config = &running_plugin.store.data().plugin;
             let running_plugin_location = &plugin_config.location;
@@ -299,12 +324,12 @@ impl PluginMap {
             match cloned_plugin_assets.get_mut(running_plugin_location) {
                 Some(location_map) => match location_map.get_mut(running_plugin_configuration) {
                     Some(plugin_instances_info) => {
-                        plugin_instances_info.push((*plugin_id, *client_id));
+                        plugin_instances_info.push((plugin_id, client_id));
                     },
                     None => {
                         location_map.insert(
                             running_plugin_configuration.clone(),
-                            vec![(*plugin_id, *client_id)],
+                            vec![(plugin_id, client_id)],
                         );
                     },
                 },
@@ -312,7 +337,7 @@ impl PluginMap {
                     let mut location_map = HashMap::new();
                     location_map.insert(
                         running_plugin_configuration.clone(),
-                        vec![(*plugin_id, *client_id)],
+                        vec![(plugin_id, client_id)],
                     );
                     cloned_plugin_assets.insert(running_plugin_location.clone(), location_map);
                 },
@@ -337,6 +362,10 @@ impl PluginMap {
         subscriptions: Arc<Mutex<Subscriptions>>,
         running_workers: HashMap<String, UnboundedSender<MessageToWorker>>,
     ) {
+        self.plugin_quarantine_flags.insert(
+            (plugin_id, client_id),
+            running_plugin.lock().unwrap().quarantine_flag(),
+        );
         self.plugin_assets.insert(
             (plugin_id, client_id),
             (running_plugin, subscriptions, running_workers),
@@ -386,6 +415,7 @@ pub struct PluginEnv {
     pub plugin: PluginConfig,
     pub plugin_digest: String,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
+    pub quarantined: Arc<AtomicBool>,
     pub senders: ThreadSenders,
     pub wasi_ctx: WasiCtx,
     pub client_id: ClientId,
@@ -555,6 +585,7 @@ pub struct RunningPlugin {
     pub instance: Instance,
     pub rows: usize,
     pub columns: usize,
+    quarantined: Arc<AtomicBool>,
     next_event_ids: HashMap<AtomicEvent, usize>,
     last_applied_event_ids: HashMap<AtomicEvent, usize>,
     pub built_against_0_45: bool,
@@ -563,11 +594,13 @@ pub struct RunningPlugin {
 impl RunningPlugin {
     pub fn new(store: Store<PluginEnv>, instance: Instance, rows: usize, columns: usize) -> Self {
         let built_against_0_45 = built_against_0_45(&store, &instance);
+        let quarantined = store.data().quarantined.clone();
         RunningPlugin {
             store,
             instance,
             rows,
             columns,
+            quarantined,
             next_event_ids: HashMap::new(),
             last_applied_event_ids: HashMap::new(),
             built_against_0_45,
@@ -609,6 +642,12 @@ impl RunningPlugin {
     }
     pub fn intercepting_key_presses(&self) -> bool {
         self.store.data().intercepting_key_presses
+    }
+    pub fn quarantine_flag(&self) -> Arc<AtomicBool> {
+        self.quarantined.clone()
+    }
+    pub fn is_quarantined(&self) -> bool {
+        self.quarantined.load(Ordering::SeqCst)
     }
 }
 

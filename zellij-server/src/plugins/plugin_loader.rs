@@ -111,9 +111,21 @@ pub struct PluginLoader {
     // exactly the module (and digest) of the first instance rather than looking the path up
     // again, where a concurrent load of the same path may have put something else.
     module: Option<Module>,
+    // Bytes read for shared/non-shared classification, compiled and hashed by this load instead
+    // of being read again (possibly after the file changed).
+    wasm_bytes: Option<Vec<u8>>,
+    // Instances this loader published, so a failure only rolls back its own work.
+    published_instances: Vec<(ClientId, Arc<Mutex<RunningPlugin>>)>,
+    published_shared_instance: Option<Arc<Mutex<RunningPlugin>>>,
+    quarantined: Arc<std::sync::atomic::AtomicBool>,
     // Set when the plugin was unloaded while this loader was still publishing instances.
     unloaded_during_load: bool,
     connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
+}
+
+struct LoadSnapshot {
+    metadata: Option<PluginMetadata>,
+    had_instance: bool,
 }
 
 impl PluginLoader {
@@ -156,6 +168,10 @@ impl PluginLoader {
             plugin_map,
             plugin_digest: String::new(),
             module: None,
+            wasm_bytes: loading_context.wasm_bytes,
+            published_instances: Vec::new(),
+            published_shared_instance: None,
+            quarantined: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             unloaded_during_load: false,
             connected_clients: Some(connected_clients),
             loading_indication,
@@ -166,8 +182,16 @@ impl PluginLoader {
         self
     }
     pub fn start_plugin(&mut self) -> Result<()> {
+        let snapshot = self.load_snapshot();
         self.plugin_map.lock().unwrap().begin_load(self.plugin_id);
         let result = self.start_plugin_instances();
+        if result.is_err() {
+            if self.unloaded_during_load {
+                self.remove_failed_load_data_dir_if_unused(&snapshot);
+            } else {
+                self.rollback_failed_load(&snapshot);
+            }
+        }
         self.plugin_map.lock().unwrap().end_load(self.plugin_id);
         match result {
             // the plugin is gone, there is nothing left to report
@@ -184,10 +208,25 @@ impl PluginLoader {
         Ok(())
     }
     pub fn start_shared_plugin(&mut self) -> Result<Arc<Mutex<RunningPlugin>>> {
-        let module = self.load_module()?;
-        let (mut store, instance) = self.create_plugin_environment(module)?;
-        store.data_mut().shared = Some(SharedEnv::default());
-        self.load_plugin_instance(store, &instance, true)
+        let snapshot = self.load_snapshot();
+        let result = (|| {
+            let module = self.load_module()?;
+            let (mut store, instance) = self.create_plugin_environment(module)?;
+            store.data_mut().shared = Some(SharedEnv::default());
+            self.load_plugin_instance(store, &instance, true)
+        })();
+        if result.is_err() {
+            self.rollback_failed_load(&snapshot);
+        }
+        result
+    }
+    fn load_snapshot(&self) -> LoadSnapshot {
+        let plugin_map = self.plugin_map.lock().unwrap();
+        LoadSnapshot {
+            metadata: plugin_map.metadata(self.plugin_id).cloned(),
+            had_instance: plugin_map.has_instance_of(self.plugin_id)
+                || plugin_map.shared_running_plugin(self.plugin_id).is_some(),
+        }
     }
     fn record_plugin_metadata(&mut self) {
         self.plugin_map.lock().unwrap().insert_metadata(
@@ -213,7 +252,10 @@ impl PluginLoader {
         if let Some(module) = &self.module {
             return Ok(module.clone());
         }
-        let wasm_bytes = self.plugin_config.resolve_wasm_bytes(&self.plugin_dir)?;
+        let wasm_bytes = match self.wasm_bytes.take() {
+            Some(wasm_bytes) => wasm_bytes,
+            None => self.plugin_config.resolve_wasm_bytes(&self.plugin_dir)?,
+        };
         self.plugin_digest = plugin_digest_from_bytes(&wasm_bytes);
         let cached_module = if self.skip_cache {
             None
@@ -302,7 +344,7 @@ impl PluginLoader {
             self.size.rows,
             self.size.cols,
         )));
-        let replaced_existing_instance = {
+        {
             let mut plugin_map = self.plugin_map.lock().unwrap();
             // Checked under the same lock as the insert, which an unload also takes: either the
             // unload sees this instance and cleans it up, or this load sees the unload.
@@ -317,11 +359,6 @@ impl PluginLoader {
                     self.plugin_id
                 ));
             }
-            let replaced_existing_instance = if shared {
-                plugin_map.shared_running_plugin(self.plugin_id).is_some()
-            } else {
-                plugin_map.contains(self.plugin_id, self.client_id)
-            };
             if shared {
                 plugin_map.insert_shared(
                     self.plugin_id,
@@ -337,7 +374,12 @@ impl PluginLoader {
                     workers,
                 );
             }
-            replaced_existing_instance
+            if shared {
+                self.published_shared_instance = Some(plugin.clone());
+            } else {
+                self.published_instances
+                    .push((self.client_id, plugin.clone()));
+            }
         };
 
         // The instance is already published in plugin_map at this point
@@ -366,27 +408,53 @@ impl PluginLoader {
             Ok(())
         })();
         if let Err(e) = init_result {
-            self.retire_provisional_instance(shared, replaced_existing_instance);
             return Err(e);
         }
 
         Ok(plugin)
     }
 
-    /// Remove a provisional plugin instance and retire its workers after
-    /// a failed _start/load so no runnable entry, worker or pending
-    /// pipe survives the failed initialization.
-    fn retire_provisional_instance(&mut self, shared: bool, replaced_existing_instance: bool) {
+    /// Roll back only the instances this loader published. A concurrent load of the same plugin
+    /// id may have replaced any of them already, so each entry is matched by identity first.
+    fn rollback_failed_load(&mut self, snapshot: &LoadSnapshot) {
         let (removed, other_instances_remain) = {
             let mut plugin_map = self.plugin_map.lock().unwrap();
-            if shared {
-                (plugin_map.remove_shared(self.plugin_id), false)
-            } else {
-                let removed = plugin_map.remove_plugin_instance(self.plugin_id, self.client_id);
-                (removed, plugin_map.has_instance_of(self.plugin_id))
+            let mut removed = Vec::new();
+            for (client_id, published) in self.published_instances.drain(..) {
+                let still_published = plugin_map
+                    .get_running_plugin(self.plugin_id, Some(client_id))
+                    .map(|current| Arc::ptr_eq(&current, &published))
+                    .unwrap_or(false);
+                if still_published {
+                    if let Some(assets) =
+                        plugin_map.remove_plugin_instance(self.plugin_id, client_id)
+                    {
+                        removed.push(assets);
+                    }
+                }
             }
+            if let Some(published) = self.published_shared_instance.take() {
+                let still_published = plugin_map
+                    .shared_running_plugin(self.plugin_id)
+                    .map(|(current, _)| Arc::ptr_eq(&current, &published))
+                    .unwrap_or(false);
+                if still_published {
+                    if let Some(assets) = plugin_map.remove_shared(self.plugin_id) {
+                        removed.push(assets);
+                    }
+                }
+            }
+            let other_instances_remain = plugin_map.has_instance_of(self.plugin_id)
+                || plugin_map.shared_running_plugin(self.plugin_id).is_some();
+            if !other_instances_remain {
+                match snapshot.metadata.clone() {
+                    Some(metadata) => plugin_map.insert_metadata(self.plugin_id, metadata),
+                    None => plugin_map.remove_metadata(self.plugin_id),
+                }
+            }
+            (removed, other_instances_remain)
         };
-        if let Some((_running_plugin, _subscriptions, workers)) = removed {
+        for (_running_plugin, _subscriptions, workers) in removed {
             for (_worker_name, worker_sender) in workers {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
@@ -395,8 +463,27 @@ impl PluginLoader {
         // would stay behind for good. The directory is shared by all instances of the plugin
         // and outlives a reload, so it is only removed when this was a first load that left no
         // instance behind.
-        if !replaced_existing_instance && !other_instances_remain {
-            if let Err(e) = fs::remove_dir_all(&self.plugin_own_data_dir) {
+        if !snapshot.had_instance && !other_instances_remain {
+            self.remove_data_dir();
+        }
+    }
+    fn remove_failed_load_data_dir_if_unused(&self, snapshot: &LoadSnapshot) {
+        if snapshot.had_instance {
+            return;
+        }
+        let unused = {
+            let plugin_map = self.plugin_map.lock().unwrap();
+            !plugin_map.has_instance_of(self.plugin_id)
+                && plugin_map.shared_running_plugin(self.plugin_id).is_none()
+                && plugin_map.metadata(self.plugin_id).is_none()
+        };
+        if unused {
+            self.remove_data_dir();
+        }
+    }
+    fn remove_data_dir(&self) {
+        if let Err(e) = fs::remove_dir_all(&self.plugin_own_data_dir) {
+            if e.kind() != std::io::ErrorKind::NotFound {
                 log::error!(
                     "Failed to remove data dir of plugin {} after a failed load: {:?}",
                     self.plugin_id,
@@ -437,6 +524,7 @@ impl PluginLoader {
             plugin: self.plugin_config.clone(), // TODO: change field name in PluginEnv to plugin_config
             plugin_digest: self.plugin_digest.clone(),
             permissions: Arc::new(Mutex::new(None)),
+            quarantined: self.quarantined.clone(),
             senders: self.senders.clone(),
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
@@ -553,6 +641,7 @@ impl PluginLoader {
             plugin: plugin_config,
             plugin_digest: self.plugin_digest.clone(),
             permissions: Arc::new(Mutex::new(None)),
+            quarantined: self.quarantined.clone(),
             senders: self.senders.clone(),
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
@@ -675,10 +764,8 @@ const WASI_SUBCLOCKFLAGS_ABSTIME: u16 = 1;
 /// Whether the real `poll_oneoff` may run. Guest subscription bytes are never written.
 #[derive(Debug, PartialEq, Eq)]
 enum PollOneoffDecision {
-    /// Call the real poll. `max_block` is how long it can block the host.
-    /// `None` means the real call reports an error or returns without blocking
-    /// (non-positive count, or a subscription range that is not in memory).
-    Run { max_block: Option<Duration> },
+    /// Call the real poll.
+    Run,
     /// Return `EINTR` without calling poll and without writing events.
     Interrupt,
 }
@@ -775,10 +862,8 @@ fn poll_oneoff_decision(
     clock_now_nanos: impl FnMut(u32) -> Option<u64>,
 ) -> PollOneoffDecision {
     match guest_poll_bound(memory, subscriptions_ptr, count, clock_now_nanos) {
-        GuestPollBound::Delegate => PollOneoffDecision::Run { max_block: None },
-        GuestPollBound::Bounded(max_block) if max_block <= remaining => PollOneoffDecision::Run {
-            max_block: Some(max_block),
-        },
+        GuestPollBound::Delegate => PollOneoffDecision::Run,
+        GuestPollBound::Bounded(max_block) if max_block <= remaining => PollOneoffDecision::Run,
         GuestPollBound::Bounded(_) | GuestPollBound::Unbounded => PollOneoffDecision::Interrupt,
     }
 }
@@ -885,10 +970,14 @@ pub(crate) fn add_wasi_to_linker<T: 'static>(
 }
 
 pub(crate) fn plugin_digest_from_bytes(wasm_bytes: &[u8]) -> String {
-    Sha256::digest(wasm_bytes)
-        .iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect()
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(wasm_bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    hex
 }
 
 fn create_optimized_store_limits() -> StoreLimits {
@@ -905,8 +994,8 @@ fn create_optimized_store_limits() -> StoreLimits {
 #[cfg(test)]
 mod tests {
     use super::{
-        add_wasi_to_linker, plugin_digest_from_bytes, poll_oneoff_decision, run_initialize_hook,
-        PollOneoffDecision, WASI_ERRNO_INTR,
+        add_wasi_to_linker, guest_poll_bound, plugin_digest_from_bytes, poll_oneoff_decision,
+        run_initialize_hook, GuestPollBound, PollOneoffDecision, WASI_ERRNO_INTR,
     };
     use wasmi::{Engine, Linker, Module, Store};
 
@@ -988,12 +1077,7 @@ mod tests {
         let decision = poll_oneoff_decision(&memory, 0, 2, host_budget(), |_| {
             panic!("relative waits do not read the clock");
         });
-        assert_eq!(
-            decision,
-            PollOneoffDecision::Run {
-                max_block: Some(std::time::Duration::from_nanos(1_000)),
-            }
-        );
+        assert_eq!(decision, PollOneoffDecision::Run);
         assert_eq!(memory, before);
     }
 
@@ -1011,12 +1095,7 @@ mod tests {
             assert_eq!(clock_id, super::WASI_CLOCKID_MONOTONIC);
             Some(5_000)
         });
-        assert_eq!(
-            decision,
-            PollOneoffDecision::Run {
-                max_block: Some(std::time::Duration::ZERO),
-            }
-        );
+        assert_eq!(decision, PollOneoffDecision::Run);
         assert_eq!(memory, before);
 
         let memory = clock_subscription_for(
@@ -1026,12 +1105,7 @@ mod tests {
         );
         let before = memory.clone();
         let decision = poll_oneoff_decision(&memory, 0, 1, std::time::Duration::ZERO, |_| Some(1));
-        assert_eq!(
-            decision,
-            PollOneoffDecision::Run {
-                max_block: Some(std::time::Duration::ZERO),
-            }
-        );
+        assert_eq!(decision, PollOneoffDecision::Run);
         assert_eq!(memory, before);
     }
 
@@ -1046,12 +1120,7 @@ mod tests {
         let mut memory = fd_subscription();
         memory.extend(clock_subscription(1_000_000, 0));
         let decision = poll_oneoff_decision(&memory, 0, 2, host_budget(), |_| None);
-        assert_eq!(
-            decision,
-            PollOneoffDecision::Run {
-                max_block: Some(std::time::Duration::from_millis(1)),
-            }
-        );
+        assert_eq!(decision, PollOneoffDecision::Run);
 
         let mut memory = fd_subscription();
         memory.extend(clock_subscription(60_000_000_000, 0));
@@ -1069,7 +1138,7 @@ mod tests {
             let decision = poll_oneoff_decision(&memory, ptr, count, host_budget(), |_| Some(0));
             assert_eq!(
                 decision,
-                PollOneoffDecision::Run { max_block: None },
+                PollOneoffDecision::Run,
                 "ptr {ptr} count {count} must be delegated, not rewritten or interrupted"
             );
         }
@@ -1089,18 +1158,19 @@ mod tests {
         let mut admitted = 0;
         let mut refused = 0;
         for _ in 0..5 {
+            let block = match guest_poll_bound(&memory, 0, 1, |_| None) {
+                GuestPollBound::Bounded(block) => block,
+                GuestPollBound::Delegate | GuestPollBound::Unbounded => {
+                    panic!("a 50ms clock wait is bounded");
+                },
+            };
             match poll_oneoff_decision(&memory, 0, 1, remaining, |_| None) {
-                PollOneoffDecision::Run {
-                    max_block: Some(block),
-                } => {
+                PollOneoffDecision::Run => {
                     assert_eq!(block, std::time::Duration::from_millis(50));
                     admitted += 1;
                     remaining = remaining.saturating_sub(block);
                 },
                 PollOneoffDecision::Interrupt => refused += 1,
-                PollOneoffDecision::Run { max_block: None } => {
-                    panic!("a 50ms clock wait is bounded");
-                },
             }
         }
         assert_eq!(
@@ -1273,6 +1343,99 @@ mod tests {
 
         assert!(!data_dir.exists());
         assert!(!fixture.plugin_map.lock().unwrap().has_instance_of(5));
+    }
+
+    #[test]
+    fn a_failure_before_publication_rolls_back_metadata_and_data_dir() {
+        let fixture = LoaderFixture::new(NOOP_PLUGIN, 5, 1, &[]);
+        let data_dir = fixture.loading_context.plugin_own_data_dir.clone();
+        std::fs::write(
+            &fixture.loading_context.plugin_config.path,
+            b"not a wasm module",
+        )
+        .unwrap();
+
+        assert!(fixture.loader().start_plugin().is_err());
+
+        let plugin_map = fixture.plugin_map.lock().unwrap();
+        assert!(!data_dir.exists());
+        assert!(plugin_map.metadata(5).is_none());
+        assert!(!plugin_map.has_instance_of(5));
+    }
+
+    #[test]
+    fn rollback_removes_only_the_instances_this_loader_published() {
+        let fixture = LoaderFixture::new(NOOP_PLUGIN, 5, 1, &[]);
+        fixture.loader().start_plugin().unwrap();
+        let mut second_context = fixture.loading_context.clone();
+        second_context.client_id = 2;
+        let mut second = super::PluginLoader::new(
+            false,
+            second_context,
+            crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            fixture.engine.clone(),
+            fixture.plugin_cache.clone(),
+            fixture.plugin_map.clone(),
+            fixture.connected_clients.clone(),
+        );
+        let snapshot = second.load_snapshot();
+        second.record_plugin_metadata();
+        let module = second.load_module().unwrap();
+        let (store, instance) = second.create_plugin_environment(module).unwrap();
+        second
+            .load_plugin_instance(store, &instance, false)
+            .unwrap();
+        assert!(fixture.plugin_map.lock().unwrap().contains(5, 2));
+
+        second.rollback_failed_load(&snapshot);
+
+        let plugin_map = fixture.plugin_map.lock().unwrap();
+        assert!(plugin_map.contains(5, 1));
+        assert!(plugin_map.metadata(5).is_some());
+        assert!(!plugin_map.contains(5, 2));
+        assert!(fixture.loading_context.plugin_own_data_dir.exists());
+    }
+
+    #[test]
+    fn a_preloaded_module_is_not_read_from_disk_again() {
+        let fixture = LoaderFixture::new(NOOP_PLUGIN, 5, 1, &[]);
+        let original_wasm = std::fs::read(&fixture.loading_context.plugin_config.path).unwrap();
+        let expected_digest = super::plugin_digest_from_bytes(&original_wasm);
+        let mut loading_context = fixture.loading_context.clone();
+        loading_context.wasm_bytes = Some(original_wasm);
+        std::fs::write(
+            &fixture.loading_context.plugin_config.path,
+            b"not a wasm module",
+        )
+        .unwrap();
+        let mut loader = super::PluginLoader::new(
+            false,
+            loading_context,
+            crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            fixture.engine.clone(),
+            fixture.plugin_cache.clone(),
+            fixture.plugin_map.clone(),
+            fixture.connected_clients.clone(),
+        );
+
+        loader.start_plugin().unwrap();
+
+        let running_plugin = fixture
+            .plugin_map
+            .lock()
+            .unwrap()
+            .get_running_plugin(5, Some(1))
+            .unwrap();
+        assert_eq!(
+            running_plugin.lock().unwrap().store.data().plugin_digest,
+            expected_digest
+        );
     }
 
     #[test]

@@ -13868,6 +13868,7 @@ fn plugin_env_without_read_pane_contents() -> super::plugin_map::PluginEnv {
         },
         plugin_digest: "test-digest".to_owned(),
         permissions: Arc::new(Mutex::new(Some(permissions))),
+        quarantined: Default::default(),
         senders: Default::default(),
         wasi_ctx,
         plugin_own_data_dir: dir.clone(),

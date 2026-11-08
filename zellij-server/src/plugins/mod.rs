@@ -83,6 +83,7 @@ pub enum PluginInstruction {
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(PluginId),                                         // plugin_id
     Quarantine(PluginId, u64), // plugin id, generation of the instance that hit a fatal error
+    SharedInstanceLoadFailed(PluginId),
     Reload(
         Option<bool>,   // should float
         Option<String>, // pane title
@@ -305,6 +306,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Quarantine(..) => PluginContext::Unload,
+            PluginInstruction::SharedInstanceLoadFailed(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
             PluginInstruction::ReloadPluginWithId(..) => PluginContext::ReloadPluginWithId,
             PluginInstruction::Resize(..) => PluginContext::Resize,
@@ -613,6 +615,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
+            },
+            PluginInstruction::SharedInstanceLoadFailed(instance_id) => {
+                wasm_bridge.shared_instance_load_failed(instance_id);
             },
             PluginInstruction::Quarantine(pid, generation) => {
                 wasm_bridge.quarantine_plugin(pid, generation);
@@ -994,7 +999,7 @@ pub(crate) fn plugin_thread_main(
                 // reloaded, possibly from different bytes, while the prompt was open) must not
                 // grant anything to its successor.
                 if wasm_bridge.permission_prompt_is_current(plugin_id, client_id) {
-                    apply_permission_result(
+                    let result = apply_permission_result(
                         &mut wasm_bridge,
                         plugin_id,
                         client_id,
@@ -1002,7 +1007,9 @@ pub(crate) fn plugin_thread_main(
                         status,
                         cache_path,
                         &shutdown_send,
-                    )?;
+                    );
+                    wasm_bridge.clear_permission_prompt(plugin_id);
+                    result?;
                 } else {
                     log::warn!(
                         "Ignoring a permission response for plugin {}: its prompt belongs to a module that is no longer running",

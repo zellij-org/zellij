@@ -556,6 +556,9 @@ pub fn apply_events_job(
     };
     let subscriptions = subscriptions.lock().unwrap().clone();
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     let mut render = RenderResponse::Nothing;
     let strip_keybinds = subscriptions.contains(&EventType::InitialKeybinds);
     for (mut event, context, mut keybinds) in events {
@@ -638,6 +641,9 @@ pub fn apply_pipes_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     let mut render = RenderResponse::Nothing;
     let mut messages = messages.into_iter();
     while let Some((pipe_message, context)) = messages.next() {
@@ -686,6 +692,18 @@ pub fn add_slot_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        let mut loading_indication = LoadingIndication::new(String::new());
+        handle_plugin_loading_failure(
+            &senders,
+            slot_id,
+            &mut loading_indication,
+            "Shared plugin instance is quarantined",
+            None,
+        );
+        let _ = slot_added.send(());
+        return;
+    }
     let added = call_slot_added(&mut running_plugin, slot_id, slot);
     let _ = slot_added.send(());
     let result = added.and_then(|_| {
@@ -697,6 +715,7 @@ pub fn add_slot_job(
     });
     match result {
         Ok(()) => {
+            drop(running_plugin);
             let plugin_list = plugin_map.lock().unwrap().list_plugins();
             handle_plugin_successful_loading(&senders, slot_id, plugin_list);
         },
@@ -723,12 +742,14 @@ pub fn remove_slot_job(
 ) {
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
         let mut running_plugin = running_plugin.lock().unwrap();
-        if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
-            log::error!(
-                "Failed to remove slot {} from shared plugin: {:?}",
-                slot_id,
-                e
-            );
+        if !running_plugin.is_quarantined() {
+            if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
+                log::error!(
+                    "Failed to remove slot {} from shared plugin: {:?}",
+                    slot_id,
+                    e
+                );
+            }
         }
     }
     if tear_down {
@@ -753,7 +774,7 @@ fn tear_down_instance(
         .unwrap()
         .contains(&EventType::BeforeClose);
     let mut running_plugin = running_plugin.lock().unwrap();
-    if needs_before_close {
+    if needs_before_close && !running_plugin.is_quarantined() {
         if let Err(e) = call_update(
             &mut running_plugin,
             &Event::BeforeClose,
@@ -797,6 +818,9 @@ pub fn client_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     let result = if connected {
         call_client_connected(&mut running_plugin, client_id).and_then(|_| {
             render_request(
@@ -825,6 +849,9 @@ pub fn resize_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     let changed = match running_plugin.store.data_mut().shared.as_mut() {
         Some(shared) => match shared.slots.get_mut(&slot_id) {
             Some(slot) => {
@@ -858,6 +885,9 @@ pub fn visibility_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     let before: HashSet<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
         .into_iter()
         .collect();
@@ -884,10 +914,15 @@ pub fn host_settings_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
+    if running_plugin.is_quarantined() {
+        return;
+    }
     running_plugin.update_default_shell(default_shell);
     running_plugin.update_layout_dir(layout_dir);
 }
 
+/// Returns whether the shared instance was published. Callers use this to retire the executor
+/// assignment only when there is no instance left that could run.
 pub fn start_instance_job(
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -898,7 +933,7 @@ pub fn start_instance_job(
     skip_cache: bool,
     instance_id: PluginId,
     initial_slots: BTreeMap<PluginId, SharedSlot>,
-) {
+) -> bool {
     let mut initial_slots = initial_slots;
     let previous = plugin_map.lock().unwrap().remove_shared(instance_id);
     let previous_visible_slots = match previous {
@@ -944,7 +979,7 @@ pub fn start_instance_job(
                     None,
                 );
             }
-            return;
+            return false;
         },
     };
     let mut running_plugin = running_plugin.lock().unwrap();
@@ -968,10 +1003,12 @@ pub fn start_instance_job(
     }
     match result {
         Ok(()) => {
+            drop(running_plugin);
             let plugin_list = plugin_map.lock().unwrap().list_plugins();
             for slot_id in initial_slots.keys() {
                 handle_plugin_successful_loading(&senders, *slot_id, plugin_list.clone());
             }
+            true
         },
         Err(e) => {
             for slot_id in initial_slots.keys() {
@@ -979,6 +1016,7 @@ pub fn start_instance_job(
                     .send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(*slot_id));
             }
             report_instance_error(&senders, &running_plugin, e);
+            true
         },
     }
 }
