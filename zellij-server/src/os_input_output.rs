@@ -175,11 +175,9 @@ fn build_command(
             if !command.is_dir() {
                 separate_command_arguments(&mut command, &mut args);
             }
-            let file_to_open = payload
-                .path
-                .into_os_string()
-                .into_string()
-                .expect("Not valid Utf8 Encoding");
+            // `RunCommand::args` is UTF-8, so a non-UTF-8 path can only be
+            // passed lossily here. Never panic the PTY thread on such a path.
+            let file_to_open = payload.path.to_string_lossy().into_owned();
             if let Some(line_number) = payload.line_number {
                 if command.ends_with("vim")
                     || command.ends_with("nvim")
@@ -713,6 +711,17 @@ pub trait ServerOsApi: Send + Sync {
     fn force_kill(&self, pid: u32) -> Result<()>;
     /// Send SIGINT to the process with process ID `pid`
     fn send_sigint(&self, pid: u32) -> Result<()>;
+    /// Send SIGINT to the terminal's foreground process group, falling back
+    /// to `pid` when the group cannot be determined. The default signals the
+    /// pid directly so backends without terminal introspection still work.
+    fn send_sigint_to_terminal(&self, _terminal_id: u32, pid: u32) -> Result<()> {
+        self.send_sigint(pid)
+    }
+    /// Force-kill the terminal's foreground process group, falling back to
+    /// `pid` when the group cannot be determined.
+    fn force_kill_terminal(&self, _terminal_id: u32, pid: u32) -> Result<()> {
+        self.force_kill(pid)
+    }
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
@@ -884,6 +893,14 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn send_sigint(&self, pid: u32) -> Result<()> {
         self.pty_backend.send_sigint(pid)
+    }
+    #[cfg(unix)]
+    fn send_sigint_to_terminal(&self, terminal_id: u32, pid: u32) -> Result<()> {
+        self.pty_backend.send_sigint_to_terminal(terminal_id, pid)
+    }
+    #[cfg(unix)]
+    fn force_kill_terminal(&self, terminal_id: u32, pid: u32) -> Result<()> {
+        self.pty_backend.force_kill_terminal(terminal_id, pid)
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || format!("failed to send message to client {client_id}");

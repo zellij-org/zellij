@@ -5,7 +5,7 @@ use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     pty::{openpty, OpenptyResult, Winsize},
     sys::{
-        signal::{kill, Signal},
+        signal::{kill, killpg, Signal},
         termios,
     },
     unistd,
@@ -202,11 +202,27 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
         )
     };
 
+    let mut signals = match signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]) {
+        Ok(signals) => signals,
+        Err(error) => {
+            // Without a signal iterator we cannot forward shutdown signals.
+            // Fall back to a plain wait instead of failing the pane's exit
+            // watcher, which would panic the PTY thread.
+            log::warn!(
+                "failed to install signal handler for child process pid {}: {}",
+                id,
+                error
+            );
+            return child
+                .wait()
+                .map(|status| status.code())
+                .with_context(err_context);
+        },
+    };
+
     // returns the exit status, if any
     let mut should_exit = false;
     let mut attempts = 3;
-    let mut signals =
-        signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).with_context(err_context)?;
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {
@@ -242,6 +258,9 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
             if let Err(err) = child.kill() {
                 log::warn!("failed to kill child {}: {err}", child.id());
             }
+            // This function owns the wait, so reap the killed child before
+            // reporting it. Otherwise the pane leaves a zombie behind.
+            let _ = child.wait();
             break 'handle_exit Ok(None);
         }
     }
@@ -304,7 +323,7 @@ fn handle_openpty(
             })
             .spawn()
     };
-    let mut child = match spawn_result {
+    let child = match spawn_result {
         Ok(child) => child,
         Err(e) => {
             let _ = unistd::close(pid_primary);
@@ -315,7 +334,6 @@ fn handle_openpty(
 
     let child_id = child.id();
     thread::spawn(move || {
-        child.wait().with_context(|| err_context(&cmd)).fatal();
         let exit_status = handle_command_exit(child)
             .with_context(|| err_context(&cmd))
             .fatal();
@@ -481,10 +499,10 @@ impl UnixPtyBackend {
     }
 
     /// Duplicate the primary side with `duplicate` and register the owned copy
-    /// for `terminal_id`. When duplication fails, drop the registry entry
-    /// (the reserved placeholder, or the previous owner's descriptor on a
-    /// rerun) and close the primary side before reporting the error, so no
-    /// stale endpoint stays registered for a pane that never started.
+    /// for `terminal_id`. When duplication fails, drop a reserved placeholder
+    /// but keep a previously bound endpoint: a failed rerun must leave the old
+    /// run addressable. The new primary side is closed before reporting the
+    /// error, so no stale descriptor stays open.
     fn retain_primary_handle(
         &self,
         terminal_id: u32,
@@ -508,7 +526,11 @@ impl UnixPtyBackend {
             },
             Err(e) => {
                 if let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() {
-                    registry.remove(&terminal_id);
+                    // `Some(Some(_))` is the previous run's bound endpoint on
+                    // a rerun; only remove a placeholder or a missing entry.
+                    if !matches!(registry.get(&terminal_id), Some(Some(_))) {
+                        registry.remove(&terminal_id);
+                    }
                 }
                 let _ = unistd::close(pid_primary);
                 Err(anyhow::anyhow!(
@@ -673,6 +695,34 @@ impl UnixPtyBackend {
         signal_pid(pid, Signal::SIGINT)
     }
 
+    pub fn send_sigint_to_terminal(&self, terminal_id: u32, shell_pid: u32) -> Result<()> {
+        self.signal_terminal_foreground(terminal_id, shell_pid, Signal::SIGINT)
+    }
+
+    pub fn force_kill_terminal(&self, terminal_id: u32, shell_pid: u32) -> Result<()> {
+        self.signal_terminal_foreground(terminal_id, shell_pid, Signal::SIGKILL)
+    }
+
+    /// Signal the terminal's foreground process group so applications such
+    /// as `vim` receive it, falling back to the shell pid when the group
+    /// cannot be determined or signalled.
+    fn signal_terminal_foreground(
+        &self,
+        terminal_id: u32,
+        shell_pid: u32,
+        signal: Signal,
+    ) -> Result<()> {
+        if let Some(pgid) = self.tcgetpgrp(terminal_id).filter(|pgid| *pgid > 0) {
+            match killpg(unistd::Pid::from_raw(pgid), Some(signal)) {
+                Ok(()) | Err(nix::errno::Errno::ESRCH) => return Ok(()),
+                Err(error) => log::debug!(
+                    "failed to send {signal} to foreground process group {pgid} of terminal {terminal_id}: {error}; falling back to shell pid {shell_pid}"
+                ),
+            }
+        }
+        signal_pid(shell_pid, signal)
+    }
+
     pub fn reserve_terminal_id(&self, terminal_id: u32) {
         self.terminal_id_to_raw_fd
             .lock()
@@ -751,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_handle_duplication_unregisters_the_terminal_and_closes_the_primary() {
+    fn failed_handle_duplication_keeps_the_previous_endpoint_and_closes_the_primary() {
         let backend = UnixPtyBackend::new().expect("backend");
         let (read_end, write_end) = nonblocking_pipe();
 
@@ -775,7 +825,10 @@ mod tests {
         assert!(result.is_err());
 
         let registry = backend.terminal_id_to_raw_fd.lock().unwrap();
-        assert!(!registry.contains_key(&9), "stale entry must be removed");
+        assert!(
+            registry.contains_key(&9),
+            "a failed rerun must leave the previous run addressable"
+        );
         assert!(registry.contains_key(&10));
         drop(registry);
         let mut buf = [0u8; 1];

@@ -316,8 +316,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let run_generation = pty.mint_run_generation();
                 match pty
-                    .spawn_terminal(terminal_action, client_or_tab_index, origin_pane_id)
+                    .spawn_terminal(
+                        terminal_action,
+                        client_or_tab_index,
+                        origin_pane_id,
+                        run_generation,
+                    )
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
@@ -401,11 +407,15 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         pty.bus.senders.clone(),
                                         *terminal_id,
                                         run_command.clone(),
+                                        Some(run_generation),
                                     )
                                     .with_context(err_context)?;
                                 }
                             } else {
                                 log::error!("Failed to spawn terminal: {:?}", err);
+                                if let Some(mut completion_tx) = completion_tx {
+                                    completion_tx.set_error_message(format!("{err:#}"));
+                                }
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
                                     .with_context(err_context)?;
                             }
@@ -456,11 +466,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let run_generation = pty.mint_run_generation();
                 match pty
                     .spawn_terminal(
                         terminal_action,
                         client_id_tab_index_or_pane_id,
                         origin_pane_id,
+                        run_generation,
                     )
                     .with_context(err_context)
                 {
@@ -500,11 +512,15 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         pty.bus.senders.clone(),
                                         *terminal_id,
                                         run_command.clone(),
+                                        Some(run_generation),
                                     )
                                     .with_context(err_context)?;
                                 }
                             } else {
                                 log::error!("Failed to spawn terminal: {:?}", err);
+                                if let Some(mut completion_tx) = completion_tx {
+                                    completion_tx.set_error_message(format!("{err:#}"));
+                                }
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
                                     .with_context(err_context)?;
                             }
@@ -522,10 +538,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 temp_file,
                 line_number,
                 client_tab_index_or_pane_id,
-                _completion_tx,
+                completion_tx,
             ) => {
                 let err_context = || format!("failed to open in-place editor for client");
 
+                let run_generation = pty.mint_run_generation();
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(OpenFilePayload::new(
                         temp_file,
@@ -534,6 +551,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     ))),
                     client_tab_index_or_pane_id,
                     None,
+                    run_generation,
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
@@ -545,6 +563,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             .with_context(err_context)?;
                     },
                     Err(e) => {
+                        if let Some(mut completion_tx) = completion_tx {
+                            completion_tx.set_error_message(format!("{e:#}"));
+                        }
                         Err::<(), _>(e).with_context(err_context).non_fatal();
                     },
                 }
@@ -686,21 +707,23 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     })
                     .context("failed to close tabs")?;
             },
-            PtyInstruction::ReRunCommandInPane(pane_id, run_command, _completion_tx) => {
+            PtyInstruction::ReRunCommandInPane(pane_id, run_command, completion_tx) => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
+                let run_generation = pty.mint_run_generation();
 
                 match pty
-                    .rerun_command_in_pane(pane_id, run_command.clone())
+                    .rerun_command_in_pane(pane_id, run_command.clone(), run_generation)
                     .with_context(err_context)
                 {
-                    Ok(..) => {},
+                    Ok(..) => drop(completion_tx),
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             if run_command.hold_on_close {
                                 pty.bus
                                     .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
+                                    .send_to_screen(ScreenInstruction::PtyRunBytes(
                                         *terminal_id,
+                                        run_generation,
                                         format!(
                                             "Command not found: {}",
                                             run_command.command.display()
@@ -715,12 +738,20 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         PaneId::Terminal(*terminal_id),
                                         Some(2), // exit status
                                         run_command,
-                                        None,
+                                        Some(run_generation),
                                     ))
                                     .with_context(err_context)?;
+                                drop(completion_tx);
+                            } else if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
                             }
                         },
-                        _ => Err::<(), _>(err).non_fatal(),
+                        _ => {
+                            if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
+                            }
+                            Err::<(), _>(err).non_fatal();
+                        },
                     },
                 }
             },
@@ -728,9 +759,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 pane_id,
                 shell,
                 working_dir,
-                completion_tx: _completion_tx,
+                completion_tx,
             } => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
+                let run_generation = pty.mint_run_generation();
 
                 // TODO: get configured default_shell from screen/tab as an option and default to
                 // this otherwise (also look for a place that turns get_default_shell into a
@@ -743,37 +775,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     ..Default::default()
                 };
                 match pty
-                    .rerun_command_in_pane(pane_id, run_command.clone())
+                    .rerun_command_in_pane(pane_id, run_command.clone(), run_generation)
                     .with_context(err_context)
                 {
-                    Ok(..) => {},
+                    Ok(..) => drop(completion_tx),
                     Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            if run_command.hold_on_close {
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
-                                        *terminal_id,
-                                        format!(
-                                            "Command not found: {}",
-                                            run_command.command.display()
-                                        )
-                                        .as_bytes()
-                                        .to_vec(),
-                                    ))
-                                    .with_context(err_context)?;
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HoldPane(
-                                        PaneId::Terminal(*terminal_id),
-                                        Some(2), // exit status
-                                        run_command,
-                                        None,
-                                    ))
-                                    .with_context(err_context)?;
+                        Some(ZellijError::CommandNotFound { .. }) => {
+                            if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
                             }
                         },
-                        _ => Err::<(), _>(err).non_fatal(),
+                        _ => {
+                            if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
+                            }
+                            Err::<(), _>(err).non_fatal();
+                        },
                     },
                 }
             },
@@ -1008,10 +1025,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 client_id,
                 origin_pane_id,
                 completion_tx,
-            } => {
-                pty.run_in_background(command, client_id, origin_pane_id)
-                    .non_fatal();
-                drop(completion_tx);
+            } => match pty.run_in_background(command, client_id, origin_pane_id) {
+                Ok(()) => drop(completion_tx),
+                Err(e) => {
+                    if let Some(mut completion_tx) = completion_tx {
+                        completion_tx.set_error_message(format!("{e:#}"));
+                    }
+                    Err::<(), _>(e).non_fatal();
+                },
             },
             PtyInstruction::SetResurrectCommand {
                 terminal_id,
@@ -1291,10 +1312,10 @@ impl Pty {
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientTabIndexOrPaneId,
         origin_pane_id: Option<PaneId>,
+        run_generation: u64,
     ) -> Result<(u32, bool)> {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
-        let run_generation = self.mint_run_generation();
 
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
@@ -1640,6 +1661,7 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
+                                None,
                             )
                             .with_context(err_context)?;
                         } else {
@@ -1811,6 +1833,7 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
+                                None,
                             )
                             .with_context(err_context)?;
                         } else {
@@ -2119,6 +2142,8 @@ impl Pty {
                 self.terminal_cmds.remove(&id);
                 self.terminal_foreground_cmds.remove(&id);
                 self.terminals_with_shell_cwd.remove(&id);
+                self.terminals_with_prompt_markers.remove(&id);
+                self.originating_plugins.remove(&id);
                 self.resurrect_commands.remove(&id);
                 self.origin_pane_ids.remove(&id);
                 self.bus
@@ -2179,6 +2204,7 @@ impl Pty {
         &mut self,
         pane_id: PaneId,
         mut run_command: RunCommand,
+        run_generation: u64,
     ) -> Result<()> {
         let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
@@ -2187,7 +2213,6 @@ impl Pty {
                 if let Some(originating_plugins) = self.originating_plugins.get(&id) {
                     run_command.originating_plugin = Some(originating_plugins.clone());
                 }
-                let run_generation = self.mint_run_generation();
 
                 let hold_on_close = run_command.hold_on_close;
                 let command_text = run_command.to_string();
@@ -2622,7 +2647,9 @@ impl Pty {
                         .os_input
                         .as_ref()
                         .context("no OS I/O interface found")
-                        .and_then(|os_input| os_input.send_sigint(child_pid))
+                        .and_then(|os_input| {
+                            os_input.send_sigint_to_terminal(terminal_id, child_pid)
+                        })
                         .with_context(err_context)
                         .non_fatal();
                 } else {
@@ -2645,7 +2672,7 @@ impl Pty {
                         .os_input
                         .as_ref()
                         .context("no OS I/O interface found")
-                        .and_then(|os_input| os_input.force_kill(child_pid))
+                        .and_then(|os_input| os_input.force_kill_terminal(terminal_id, child_pid))
                         .with_context(err_context)
                         .non_fatal();
                 } else {
@@ -2780,22 +2807,26 @@ fn send_command_not_found_to_screen(
     senders: ThreadSenders,
     terminal_id: u32,
     run_command: RunCommand,
+    run_generation: Option<u64>,
 ) -> Result<()> {
     let err_context = || format!("failed to send command_not_fount for terminal {terminal_id}");
-    senders
-        .send_to_screen(ScreenInstruction::PtyBytes(
+    let message = format!("Command not found: {}\n\rIf you were including arguments as part of the command, try including them as 'args' instead.", run_command.command.display())
+        .into_bytes();
+    match run_generation {
+        Some(run_generation) => senders.send_to_screen(ScreenInstruction::PtyRunBytes(
             terminal_id,
-            format!("Command not found: {}\n\rIf you were including arguments as part of the command, try including them as 'args' instead.", run_command.command.display())
-                .as_bytes()
-                .to_vec(),
-        ))
-        .with_context(err_context)?;
+            run_generation,
+            message,
+        )),
+        None => senders.send_to_screen(ScreenInstruction::PtyBytes(terminal_id, message)),
+    }
+    .with_context(err_context)?;
     senders
         .send_to_screen(ScreenInstruction::HoldPane(
             PaneId::Terminal(terminal_id),
             Some(2),
-            run_command.clone(),
-            None,
+            run_command,
+            run_generation,
         ))
         .with_context(err_context)?;
     Ok(())

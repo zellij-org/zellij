@@ -671,6 +671,45 @@ fn closing_pane_removes_resurrect_command() {
 }
 
 #[test]
+fn closing_pane_forgets_plugin_and_prompt_marker_state() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+    pty.terminals_with_prompt_markers.insert(1);
+    pty.originating_plugins
+        .insert(1, OriginatingPlugin::new(7, 0, Default::default()));
+
+    pty.close_pane(PaneId::Terminal(1)).unwrap();
+
+    assert!(!pty.terminals_with_prompt_markers.contains(&1));
+    assert!(!pty.originating_plugins.contains_key(&1));
+}
+
+#[test]
+fn command_not_found_output_is_stamped_with_the_run_generation() {
+    let (screen_tx, screen_rx) = channels::unbounded();
+    let senders = ThreadSenders {
+        to_screen: Some(SenderWithContext::new(screen_tx)),
+        ..Default::default()
+    };
+    let run_command = RunCommand {
+        command: PathBuf::from("zellij-command-that-does-not-exist"),
+        ..Default::default()
+    };
+
+    send_command_not_found_to_screen(senders, 7, run_command, Some(42)).unwrap();
+
+    let first = screen_rx.try_recv().unwrap().0;
+    let second = screen_rx.try_recv().unwrap().0;
+    assert!(matches!(first, ScreenInstruction::PtyRunBytes(7, 42, _)));
+    assert!(matches!(
+        second,
+        ScreenInstruction::HoldPane(PaneId::Terminal(7), Some(2), _, Some(42))
+    ));
+}
+
+#[test]
 fn resurrect_command_for_unknown_terminal_is_rejected() {
     let mock = MockOsApi::new();
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
@@ -761,11 +800,13 @@ fn spawn_plain_command(
         use_terminal_title: false,
         notify: false,
     };
+    let run_generation = pty.mint_run_generation();
     let (terminal_id, _starts_held) = pty
         .spawn_terminal(
             Some(TerminalAction::RunCommand(run_command)),
             ClientTabIndexOrPaneId::TabIndex(0),
             None,
+            run_generation,
         )
         .unwrap();
     assert_eq!(terminal_id, 7);

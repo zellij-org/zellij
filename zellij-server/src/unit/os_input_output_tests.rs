@@ -1,5 +1,5 @@
 use super::*;
-use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::command::{OpenFilePayload, RunCommand};
 
 fn make_server() -> ServerOsInputOutput {
     get_server_os_input().expect("failed to create server os input")
@@ -60,6 +60,23 @@ fn stdin_reader_cmd() -> Command {
     cmd.stdin(std::process::Stdio::piped());
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     cmd
+}
+
+#[cfg(unix)]
+#[test]
+fn opening_a_non_utf8_path_does_not_panic() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = PathBuf::from(OsString::from_vec(b"/tmp/zellij-\xff".to_vec()));
+    let (command, _) = build_command(
+        TerminalAction::OpenFile(OpenFilePayload::new(path, None, None)),
+        Some(PathBuf::from("vi")),
+        &PaneEnv::new(),
+    );
+
+    assert_eq!(command.args.len(), 1);
+    assert!(command.args[0].contains("zellij-"));
 }
 
 #[test]
