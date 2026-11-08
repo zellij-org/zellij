@@ -62,14 +62,22 @@ pub fn menu(
     style: &Style,
     coordinates: &Coordinates,
 ) -> Vec<u8> {
+    let requested_border = state.flag("b");
+    let requested_indicators = state.flag("ind") && !requested_border;
+    let available_height = coordinates
+        .height
+        .map(|height| height.min(coordinates.max_height))
+        .unwrap_or(coordinates.max_height);
+    let show_chrome = available_height >= 2 && (requested_border || requested_indicators);
+    let border = requested_border && show_chrome;
+    let indicators = requested_indicators && show_chrome;
+    let chrome_height = if show_chrome { 2 } else { 0 };
     // rows past the bottom of the pane are not seen, whatever their number
     let rows: Vec<MenuRow> = fields
         .iter()
-        .take(coordinates.max_height)
+        .take(available_height - chrome_height)
         .map(|f| parse_menu_row(f))
         .collect();
-    let border = state.flag("b");
-    let indicators = state.flag("ind") && !border;
     let focused = state.flag("f");
     let mark_column = !state.flag("nm");
     let highlighted = state.number("hl");
@@ -599,5 +607,95 @@ mod tests {
                 paint(plain, "c")
             )
         );
+    }
+
+    fn rendered_rows(output: &[u8]) -> Vec<usize> {
+        let mut rows = Vec::new();
+        let mut at = 0;
+        while at + 2 < output.len() {
+            if output[at] == 0x1b && output[at + 1] == b'[' {
+                let start = at + 2;
+                let mut end = start;
+                while end < output.len() && (output[end].is_ascii_digit() || output[end] == b';') {
+                    end += 1;
+                }
+                if end < output.len() && output[end] == b'H' {
+                    if let Some(row) = std::str::from_utf8(&output[start..end])
+                        .ok()
+                        .and_then(|params| params.split(';').next())
+                        .and_then(|row| row.parse::<usize>().ok())
+                    {
+                        rows.push(row);
+                        at = end + 1;
+                        continue;
+                    }
+                }
+            }
+            at += 1;
+        }
+        rows
+    }
+
+    fn fields(count: usize) -> Vec<String> {
+        (0..count)
+            .map(|index| (b'a' + index as u8).to_string())
+            .collect()
+    }
+
+    #[test]
+    fn menu_height_includes_its_border_rows() {
+        let coordinates = Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(12),
+            height: Some(4),
+            max_width: 12,
+            max_height: 10,
+        };
+        let output = menu(
+            &WidgetState::parse("b"),
+            &fields(5),
+            &Style::default(),
+            &coordinates,
+        );
+        assert_eq!(rendered_rows(&output), vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn menu_height_includes_its_indicator_rows() {
+        let coordinates = Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(12),
+            height: Some(2),
+            max_width: 12,
+            max_height: 10,
+        };
+        let output = menu(
+            &WidgetState::parse("ind,above=1,below=3"),
+            &fields(5),
+            &Style::default(),
+            &coordinates,
+        );
+        assert_eq!(rendered_rows(&output), vec![1, 2]);
+    }
+
+    #[test]
+    fn menu_drops_chrome_that_does_not_fit() {
+        let coordinates = Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(12),
+            height: Some(1),
+            max_width: 12,
+            max_height: 10,
+        };
+        let output = menu(
+            &WidgetState::parse("b"),
+            &fields(5),
+            &Style::default(),
+            &coordinates,
+        );
+        assert_eq!(rendered_rows(&output), vec![1]);
     }
 }
