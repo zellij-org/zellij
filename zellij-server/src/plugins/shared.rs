@@ -635,10 +635,10 @@ pub fn apply_pipes_job(
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
-    messages: Vec<(PipeMessage, EventContext)>,
+    messages: Arc<Vec<(PipeMessage, EventContext)>>,
 ) {
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
-        for (pipe_message, _) in &messages {
+        for (pipe_message, _) in messages.iter() {
             release_pipe(&senders, instance_id, pipe_message);
         }
         return;
@@ -648,9 +648,9 @@ pub fn apply_pipes_job(
         return;
     }
     let mut render = RenderResponse::Nothing;
-    let mut messages = messages.into_iter();
+    let mut messages = messages.iter();
     while let Some((pipe_message, context)) = messages.next() {
-        match call_pipe(&mut running_plugin, &pipe_message, context) {
+        match call_pipe(&mut running_plugin, pipe_message, context.clone()) {
             Ok(requested) => {
                 render = render.merge(requested);
                 send_pipe_changes(
@@ -661,9 +661,9 @@ pub fn apply_pipes_job(
                 );
             },
             Err(e) => {
-                release_pipe(&senders, instance_id, &pipe_message);
+                release_pipe(&senders, instance_id, pipe_message);
                 for (remaining, _) in messages {
-                    release_pipe(&senders, instance_id, &remaining);
+                    release_pipe(&senders, instance_id, remaining);
                 }
                 report_instance_error(&senders, &running_plugin, e);
                 return;

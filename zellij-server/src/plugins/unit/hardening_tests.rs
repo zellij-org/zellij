@@ -334,7 +334,10 @@ fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
         &mut notification_end,
     );
     assert!(legacy.is_empty());
-    assert!(bridge.pending_pipes.is_pending("before"));
+    // The fake instance has no executor assignment. Admission fails explicitly and
+    // releases the caller instead of leaving the pipe pending forever.
+    assert!(!bridge.pending_pipes.is_pending("before"));
+    assert!(bridge.pending_pipes.is_finished("before"));
 
     bridge.quarantine_plugin(11, 100);
     let legacy = bridge.dispatch_shared_pipes(
@@ -360,7 +363,8 @@ fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
         shutdown_sender,
         &mut notification_end,
     );
-    assert!(bridge.pending_pipes.is_pending("after-reload"));
+    assert!(!bridge.pending_pipes.is_pending("after-reload"));
+    assert!(bridge.pending_pipes.is_finished("after-reload"));
 }
 
 #[test]

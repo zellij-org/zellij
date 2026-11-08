@@ -1,4 +1,4 @@
-use super::pinned_executor::PluginWork;
+use super::pinned_executor::{JobClass, PluginWork};
 use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
@@ -85,6 +85,169 @@ fn make_plugin_url_path_safe(url: String) -> String {
 pub enum EventOrPipeMessage {
     Event(Event, Option<ClientId>),
     PipeMessage(PipeMessage, Option<ClientId>),
+}
+
+const REPLACEABLE_RESIZE: u64 = 1;
+const REPLACEABLE_HOST_DIR: u64 = 2;
+const REPLACEABLE_SHARED_SETTINGS: u64 = 3;
+const REPLACEABLE_PLUGIN_SETTINGS: u64 = 4;
+const REPLACEABLE_VISIBILITY: u64 = 5;
+
+fn replaceable_resize_key(slot_id: PluginId) -> u64 {
+    ((slot_id as u64) << 32) | REPLACEABLE_RESIZE
+}
+
+fn string_map_bytes(map: &BTreeMap<String, String>) -> usize {
+    map.iter()
+        .map(|(key, value)| key.len().saturating_add(value.len()).saturating_add(48))
+        .fold(0usize, usize::saturating_add)
+}
+
+fn pane_contents_bytes(contents: &PaneContents) -> usize {
+    contents
+        .lines_above_viewport
+        .iter()
+        .chain(contents.lines_below_viewport.iter())
+        .chain(contents.viewport.iter())
+        .map(|line| line.len().saturating_add(32))
+        .fold(std::mem::size_of::<PaneContents>(), usize::saturating_add)
+}
+
+fn pane_render_report_bytes(panes: &HashMap<zellij_utils::data::PaneId, PaneContents>) -> usize {
+    panes.values().map(pane_contents_bytes).fold(
+        std::mem::size_of::<PaneRenderReport>(),
+        usize::saturating_add,
+    )
+}
+
+fn keybinds_vec_bytes(keybinds: &KeybindsVec) -> usize {
+    keybinds
+        .iter()
+        .map(|(_, bindings)| {
+            bindings
+                .iter()
+                .map(|(_, actions)| {
+                    std::mem::size_of::<((), Vec<()>)>()
+                        .saturating_add(actions.len().saturating_mul(96))
+                })
+                .fold(0usize, usize::saturating_add)
+        })
+        .fold(std::mem::size_of::<KeybindsVec>(), usize::saturating_add)
+}
+
+fn event_payload_bytes(event: &Event) -> usize {
+    let extra = match event {
+        Event::TabUpdate(tabs) => tabs
+            .iter()
+            .map(|tab| tab.name.len().saturating_add(256))
+            .fold(0usize, usize::saturating_add),
+        Event::PaneUpdate(manifest) => manifest
+            .panes
+            .values()
+            .flatten()
+            .map(|pane| pane.title.len().saturating_add(192))
+            .fold(0usize, usize::saturating_add),
+        Event::CustomMessage(message, payload) => message.len().saturating_add(payload.len()),
+        Event::FileSystemCreate(entries)
+        | Event::FileSystemRead(entries)
+        | Event::FileSystemUpdate(entries)
+        | Event::FileSystemDelete(entries) => entries
+            .iter()
+            .map(|(path, _)| path.as_os_str().len().saturating_add(64))
+            .fold(0usize, usize::saturating_add),
+        Event::SessionUpdate(sessions, resurrectable) => sessions
+            .iter()
+            .map(|session| session.name.len().saturating_add(512))
+            .chain(
+                resurrectable
+                    .iter()
+                    .map(|(name, _)| name.len().saturating_add(64)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::RunCommandResult(_, stdout, stderr, context) => stdout
+            .len()
+            .saturating_add(stderr.len())
+            .saturating_add(string_map_bytes(context)),
+        Event::WebRequestResult(_, headers, body, context) => body
+            .len()
+            .saturating_add(string_map_bytes(headers))
+            .saturating_add(string_map_bytes(context)),
+        Event::ListClients(clients) => clients.len().saturating_mul(256),
+        Event::PastedText(text) => text.len(),
+        Event::HostFolderChanged(path) | Event::CwdChanged(_, path, _) => path.as_os_str().len(),
+        Event::FailedToChangeHostFolder(error) | Event::FailedToWriteConfigToDisk(error) => {
+            error.as_ref().map(|error| error.len()).unwrap_or(0)
+        },
+        Event::CommandChanged(_, command, _, _) => command
+            .iter()
+            .map(|part| part.len().saturating_add(16))
+            .fold(0usize, usize::saturating_add),
+        Event::PaneRenderReport(report) => pane_render_report_bytes(report),
+        Event::ActionComplete(_, _, context) => string_map_bytes(context),
+        Event::AvailableLayoutInfo(layouts, errors) => layouts
+            .iter()
+            .map(|layout| layout.name().len().saturating_add(64))
+            .chain(
+                errors
+                    .iter()
+                    .map(|error| error.layout_name.len().saturating_add(256)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::PluginConfigurationChanged(configuration) => string_map_bytes(configuration),
+        Event::HighlightClicked {
+            pattern,
+            matched_string,
+            context,
+            ..
+        } => pattern
+            .len()
+            .saturating_add(matched_string.len())
+            .saturating_add(string_map_bytes(context)),
+        Event::InitialKeybinds(keybinds) => keybinds_vec_bytes(keybinds),
+        Event::HintText(hints) => hints
+            .values()
+            .map(|hint| {
+                hint.text
+                    .len()
+                    .saturating_add(hint.indices.iter().map(Vec::len).sum())
+            })
+            .fold(0usize, usize::saturating_add),
+        Event::ContextMenu(_, entries) => entries.len().saturating_mul(256),
+        Event::AvailableKeybindPresets(presets, errors) => presets
+            .iter()
+            .map(|preset| preset.name.len().saturating_add(128))
+            .chain(
+                errors
+                    .iter()
+                    .map(|error| error.error.len().saturating_add(128)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::NestedSessionModeUpdate { session_path, .. } => session_path
+            .iter()
+            .map(|part| part.len().saturating_add(16))
+            .fold(0usize, usize::saturating_add),
+        _ => 0,
+    };
+    std::mem::size_of::<Event>().saturating_add(extra)
+}
+
+fn pipe_message_payload_bytes(message: &PipeMessage) -> usize {
+    let source_bytes = match &message.source {
+        PipeSource::Cli(pipe_id) => pipe_id.len(),
+        _ => 0,
+    };
+    source_bytes
+        .saturating_add(message.name.len())
+        .saturating_add(message.payload.as_ref().map(String::len).unwrap_or(0))
+        .saturating_add(string_map_bytes(&message.args))
+        .saturating_add(std::mem::size_of::<PipeMessage>())
+}
+
+fn event_or_pipe_message_bytes(entry: &EventOrPipeMessage) -> usize {
+    match entry {
+        EventOrPipeMessage::Event(event, _) => event_payload_bytes(event),
+        EventOrPipeMessage::PipeMessage(message, _) => pipe_message_payload_bytes(message),
+    }
 }
 
 pub const PIPE_POPUP_CLOSED_EXIT_CODE: i32 = 1;
@@ -633,9 +796,15 @@ impl WasmBridge {
                             }
                         }
 
+                        let load_bytes = loading_context
+                            .wasm_bytes
+                            .as_ref()
+                            .map(Vec::len)
+                            .unwrap_or(0);
                         let executor = plugin_executor.clone();
-                        plugin_executor.execute_plugin_load(
+                        plugin_executor.execute_plugin_load_with_payload(
                             plugin_id,
+                            load_bytes,
                             move |senders: ThreadSenders,
                                   plugin_map: Arc<Mutex<PluginMap>>,
                                   connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -685,9 +854,15 @@ impl WasmBridge {
                         .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                     let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
+                    let load_bytes = loading_context
+                        .wasm_bytes
+                        .as_ref()
+                        .map(Vec::len)
+                        .unwrap_or(0);
                     let executor = self.plugin_executor.clone();
-                    self.plugin_executor.execute_plugin_load(
+                    self.plugin_executor.execute_plugin_load_with_payload(
                         plugin_id,
+                        load_bytes,
                         move |senders,
                               plugin_map,
                               connected_clients,
@@ -1012,9 +1187,16 @@ impl WasmBridge {
         // reports from the instance being replaced must not quarantine its successor
         self.quarantine
             .begin_generation(plugin_id, loading_context.generation);
+        let load_bytes = loading_context
+            .wasm_bytes
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0);
 
-        plugin_executor.execute_for_plugin(
+        plugin_executor.execute_for_plugin_with(
             plugin_id,
+            JobClass::Lifecycle,
+            load_bytes,
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 let skip_cache = true; // we want to explicitly reload the plugin
                 match PluginLoader::new(
@@ -1147,8 +1329,10 @@ impl WasmBridge {
                 size,
             );
 
-            plugin_executor.execute_for_plugin(
+            plugin_executor.execute_for_plugin_with(
                 plugin_id,
+                JobClass::Lifecycle,
+                0,
                 move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                     let skip_cache = false;
                     match PluginLoader::new(
@@ -1192,7 +1376,7 @@ impl WasmBridge {
                         },
                     }
                 },
-            )
+            );
         }
         Ok(())
     }
@@ -1214,8 +1398,10 @@ impl WasmBridge {
         }
         if let Some(instance_id) = self.shared_slot_owner.get(&pid).copied() {
             let _s = shutdown_sender.clone();
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(replaceable_resize_key(pid)),
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
                     resize_job(senders, plugin_map, instance_id, pid, new_rows, new_columns);
@@ -1244,84 +1430,92 @@ impl WasmBridge {
                     .unwrap()
                     .next_event_id(AtomicEvent::Resize);
                 // Execute directly on pinned thread (no async I/O needed for resize/render)
-                self.plugin_executor.execute_for_plugin(plugin_id, {
-                    // let senders = self.senders.clone();
-                    let running_plugin = running_plugin.clone();
-                    let _s = shutdown_sender.clone();
-                    move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                        let mut running_plugin = running_plugin.lock().unwrap();
-                        let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                        if running_plugin.is_quarantined() {
-                            return;
-                        }
-                        if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
-                            let old_rows = running_plugin.rows;
-                            let old_columns = running_plugin.columns;
-                            running_plugin.rows = new_rows;
-                            running_plugin.columns = new_columns;
+                self.plugin_executor.execute_for_plugin_with(
+                    plugin_id,
+                    JobClass::Replaceable(replaceable_resize_key(pid)),
+                    0,
+                    {
+                        // let senders = self.senders.clone();
+                        let running_plugin = running_plugin.clone();
+                        let _s = shutdown_sender.clone();
+                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                            let mut running_plugin = running_plugin.lock().unwrap();
+                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                            if running_plugin.is_quarantined() {
+                                return;
+                            }
+                            if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
+                                let old_rows = running_plugin.rows;
+                                let old_columns = running_plugin.columns;
+                                running_plugin.rows = new_rows;
+                                running_plugin.columns = new_columns;
 
-                            // in the below conditional, we check if event_id == 0 so that we'll
-                            // make sure to always render on the first resize event
-                            if old_rows != new_rows || old_columns != new_columns || event_id == 0 {
-                                crate::plugins::shared::refuel_for_callback(
-                                    &mut running_plugin.store,
-                                );
-                                let rendered_bytes = running_plugin
-                                    .instance
-                                    .clone()
-                                    .get_typed_func::<(i32, i32), ()>(
+                                // in the below conditional, we check if event_id == 0 so that we'll
+                                // make sure to always render on the first resize event
+                                if old_rows != new_rows
+                                    || old_columns != new_columns
+                                    || event_id == 0
+                                {
+                                    crate::plugins::shared::refuel_for_callback(
                                         &mut running_plugin.store,
-                                        "render",
-                                    )
-                                    .and_then(|render| {
-                                        render.call(
+                                    );
+                                    let rendered_bytes = running_plugin
+                                        .instance
+                                        .clone()
+                                        .get_typed_func::<(i32, i32), ()>(
                                             &mut running_plugin.store,
-                                            (new_rows as i32, new_columns as i32),
+                                            "render",
                                         )
-                                    })
-                                    .map_err(|e| anyhow!(e))
-                                    .and_then(|_| {
-                                        wasi_read_string(running_plugin.store.data())
-                                            .map_err(|e| anyhow!(e))
-                                    })
-                                    .with_context(err_context);
-                                match rendered_bytes {
-                                    Ok(rendered_bytes) => {
-                                        let plugin_render_asset = PluginRenderAsset::new(
-                                            plugin_id,
-                                            client_id,
-                                            rendered_bytes.as_bytes().to_vec(),
-                                        )
-                                        .rendered_at(new_rows, new_columns);
-                                        senders
-                                            .send_to_screen(ScreenInstruction::PluginBytes(vec![
-                                                plugin_render_asset,
-                                            ]))
-                                            .unwrap();
-                                    },
-                                    Err(e) => {
-                                        log::error!("{}", e);
-                                        // Other render failures only skip this frame, as they
-                                        // always have; a plugin that exhausts its fuel while
-                                        // rendering is stopped like one that does so in an
-                                        // event handler.
-                                        // TODO(plugin-hardening): a render that traps for any
-                                        // other reason is still only logged here.
-                                        if crate::plugins::shared::is_out_of_fuel(&e) {
-                                            running_plugin.mark_quarantined();
-                                            handle_plugin_crash(
+                                        .and_then(|render| {
+                                            render.call(
+                                                &mut running_plugin.store,
+                                                (new_rows as i32, new_columns as i32),
+                                            )
+                                        })
+                                        .map_err(|e| anyhow!(e))
+                                        .and_then(|_| {
+                                            wasi_read_string(running_plugin.store.data())
+                                                .map_err(|e| anyhow!(e))
+                                        })
+                                        .with_context(err_context);
+                                    match rendered_bytes {
+                                        Ok(rendered_bytes) => {
+                                            let plugin_render_asset = PluginRenderAsset::new(
                                                 plugin_id,
-                                                running_plugin.store.data().generation,
-                                                format!("{:?}", e).replace("\n", "\n\r"),
-                                                senders.clone(),
-                                            );
-                                        }
-                                    },
+                                                client_id,
+                                                rendered_bytes.as_bytes().to_vec(),
+                                            )
+                                            .rendered_at(new_rows, new_columns);
+                                            senders
+                                                .send_to_screen(ScreenInstruction::PluginBytes(
+                                                    vec![plugin_render_asset],
+                                                ))
+                                                .unwrap();
+                                        },
+                                        Err(e) => {
+                                            log::error!("{}", e);
+                                            // Other render failures only skip this frame, as they
+                                            // always have; a plugin that exhausts its fuel while
+                                            // rendering is stopped like one that does so in an
+                                            // event handler.
+                                            // TODO(plugin-hardening): a render that traps for any
+                                            // other reason is still only logged here.
+                                            if crate::plugins::shared::is_out_of_fuel(&e) {
+                                                running_plugin.mark_quarantined();
+                                                handle_plugin_crash(
+                                                    plugin_id,
+                                                    running_plugin.store.data().generation,
+                                                    format!("{:?}", e).replace("\n", "\n\r"),
+                                                    senders.clone(),
+                                                );
+                                            }
+                                        },
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    },
+                );
             }
         }
         for (plugin_id, current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
@@ -1369,6 +1563,7 @@ impl WasmBridge {
         let plugin_executor = self.plugin_executor.clone();
         // let senders = self.senders.clone();
         for (pid, cid, event) in updates.clone().into_iter() {
+            let event_bytes = event_payload_bytes(&event);
             for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
@@ -1389,65 +1584,72 @@ impl WasmBridge {
                         };
                         let latest_hovers = self.latest_hovers.clone();
                         // Execute directly on pinned thread (no async I/O needed for event processing)
-                        plugin_executor.execute_for_plugin(*plugin_id, {
-                            let plugin_id = *plugin_id;
-                            let client_id = *client_id;
-                            let running_plugin = running_plugin.clone();
-                            let event = event.clone();
-                            let _s = shutdown_sender.clone();
-                            let plugin_subs = subs.clone();
-                            move |senders,
-                                  _plugin_map,
-                                  _connected_clients,
-                                  _plugin_cache,
-                                  _engine| {
-                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                                if let Some(generation) = hover_generation {
-                                    let superseded = latest_hovers
-                                        .lock()
-                                        .unwrap()
-                                        .is_superseded(plugin_id, client_id, generation);
-                                    if superseded {
+                        plugin_executor.execute_for_plugin_with(
+                            *plugin_id,
+                            JobClass::Ordered,
+                            event_bytes,
+                            {
+                                let plugin_id = *plugin_id;
+                                let client_id = *client_id;
+                                let running_plugin = running_plugin.clone();
+                                let event = event.clone();
+                                let _s = shutdown_sender.clone();
+                                let plugin_subs = subs.clone();
+                                move |senders,
+                                      _plugin_map,
+                                      _connected_clients,
+                                      _plugin_cache,
+                                      _engine| {
+                                    let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                    if let Some(generation) = hover_generation {
+                                        let superseded = latest_hovers
+                                            .lock()
+                                            .unwrap()
+                                            .is_superseded(plugin_id, client_id, generation);
+                                        if superseded {
+                                            return;
+                                        }
+                                    }
+                                    let mut running_plugin = running_plugin.lock().unwrap();
+                                    if running_plugin.is_quarantined() {
                                         return;
                                     }
-                                }
-                                let mut running_plugin = running_plugin.lock().unwrap();
-                                if running_plugin.is_quarantined() {
-                                    return;
-                                }
-                                let mut plugin_render_assets = vec![];
-                                match apply_event_to_plugin(
-                                    plugin_id,
-                                    client_id,
-                                    &mut running_plugin,
-                                    &event,
-                                    &mut plugin_render_assets,
-                                    senders.clone(),
-                                    &plugin_subs,
-                                ) {
-                                    Ok(()) => {
-                                        let _ = senders.send_to_screen(
-                                            ScreenInstruction::PluginBytes(plugin_render_assets),
-                                        );
-                                    },
-                                    Err(e) => {
-                                        log::error!("{:?}", e);
+                                    let mut plugin_render_assets = vec![];
+                                    match apply_event_to_plugin(
+                                        plugin_id,
+                                        client_id,
+                                        &mut running_plugin,
+                                        &event,
+                                        &mut plugin_render_assets,
+                                        senders.clone(),
+                                        &plugin_subs,
+                                    ) {
+                                        Ok(()) => {
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::PluginBytes(
+                                                    plugin_render_assets,
+                                                ),
+                                            );
+                                        },
+                                        Err(e) => {
+                                            log::error!("{:?}", e);
 
-                                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                                        let stringified_error =
-                                            format!("{:?}", e).replace("\n", "\n\r");
+                                            // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                            let stringified_error =
+                                                format!("{:?}", e).replace("\n", "\n\r");
 
-                                        running_plugin.mark_quarantined();
-                                        handle_plugin_crash(
-                                            plugin_id,
-                                            running_plugin.store.data().generation,
-                                            stringified_error,
-                                            senders.clone(),
-                                        );
-                                    },
+                                            running_plugin.mark_quarantined();
+                                            handle_plugin_crash(
+                                                plugin_id,
+                                                running_plugin.store.data().generation,
+                                                stringified_error,
+                                                senders.clone(),
+                                            );
+                                        },
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 }
             }
@@ -1510,9 +1712,12 @@ impl WasmBridge {
         plugin_id_to_update: PluginId,
         client_id_to_update: ClientId,
     ) -> Result<()> {
+        let host_dir_bytes = new_host_dir.as_os_str().len();
         if let Some(instance_id) = self.shared_instance_of(plugin_id_to_update) {
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(REPLACEABLE_HOST_DIR),
+                host_dir_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let running_plugin = plugin_map
                         .lock()
@@ -1559,8 +1764,11 @@ impl WasmBridge {
             .collect();
 
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
-        self.plugin_executor
-            .execute_for_plugin(plugin_id_to_update, {
+        self.plugin_executor.execute_for_plugin_with(
+            plugin_id_to_update,
+            JobClass::Replaceable(REPLACEABLE_HOST_DIR),
+            host_dir_bytes,
+            {
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     match new_host_dir.try_exists() {
                         Ok(false) => {
@@ -1644,7 +1852,8 @@ impl WasmBridge {
                         }
                     }
                 }
-            });
+            },
+        );
         Ok(())
     }
     pub fn pipe_messages(
@@ -1685,57 +1894,70 @@ impl WasmBridge {
                     plugin_id,
                     client_id,
                 ) {
+                    let pipe_bytes = pipe_message_payload_bytes(&pipe_message);
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         self.pending_pipes
                             .mark_being_processed(pipe_id, plugin_id, client_id);
                     }
                     // Execute directly on pinned thread (no async I/O needed for pipe message processing)
-                    plugin_executor.execute_for_plugin(*plugin_id, {
-                        let running_plugin = running_plugin.clone();
-                        let pipe_message = pipe_message.clone();
-                        let plugin_id = *plugin_id;
-                        let client_id = *client_id;
-                        let _s = shutdown_sender.clone();
-                        let notification_end = notification_end.take();
-                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let mut running_plugin = running_plugin.lock().unwrap();
-                            if running_plugin.is_quarantined() {
-                                return;
-                            }
-                            let mut plugin_render_assets = vec![];
-                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                            match apply_pipe_message_to_plugin(
-                                plugin_id,
-                                client_id,
-                                &mut running_plugin,
-                                &pipe_message,
-                                &mut plugin_render_assets,
-                                &senders,
-                            ) {
-                                Ok(()) => {
-                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
-                                        plugin_render_assets,
-                                    ));
-                                },
-                                Err(e) => {
-                                    log::error!("{:?}", e);
+                    if let Err(e) = plugin_executor.try_execute_for_plugin(
+                        *plugin_id,
+                        JobClass::Ordered,
+                        pipe_bytes,
+                        {
+                            let running_plugin = running_plugin.clone();
+                            let pipe_message = pipe_message.clone();
+                            let plugin_id = *plugin_id;
+                            let client_id = *client_id;
+                            let _s = shutdown_sender.clone();
+                            let notification_end = notification_end.take();
+                            move |senders,
+                                  _plugin_map,
+                                  _connected_clients,
+                                  _plugin_cache,
+                                  _engine| {
+                                let mut running_plugin = running_plugin.lock().unwrap();
+                                if running_plugin.is_quarantined() {
+                                    return;
+                                }
+                                let mut plugin_render_assets = vec![];
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                match apply_pipe_message_to_plugin(
+                                    plugin_id,
+                                    client_id,
+                                    &mut running_plugin,
+                                    &pipe_message,
+                                    &mut plugin_render_assets,
+                                    &senders,
+                                ) {
+                                    Ok(()) => {
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::PluginBytes(plugin_render_assets),
+                                        );
+                                    },
+                                    Err(e) => {
+                                        log::error!("{:?}", e);
 
-                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
-                                    let stringified_error =
-                                        format!("{:?}", e).replace("\n", "\n\r");
+                                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
+                                        let stringified_error =
+                                            format!("{:?}", e).replace("\n", "\n\r");
 
-                                    running_plugin.mark_quarantined();
-                                    handle_plugin_crash(
-                                        plugin_id,
-                                        running_plugin.store.data().generation,
-                                        stringified_error,
-                                        senders.clone(),
-                                    );
-                                },
+                                        running_plugin.mark_quarantined();
+                                        handle_plugin_crash(
+                                            plugin_id,
+                                            running_plugin.store.data().generation,
+                                            stringified_error,
+                                            senders.clone(),
+                                        );
+                                    },
+                                }
+                                drop(notification_end);
                             }
-                            drop(notification_end);
-                        }
-                    });
+                        },
+                    ) {
+                        log::warn!("Plugin executor rejected a pipe for {}: {}", plugin_id, e);
+                        self.release_cli_pipe_with_error(&pipe_message);
+                    }
                 }
             }
             let all_connected_clients: Vec<ClientId> = self
@@ -1877,7 +2099,10 @@ impl WasmBridge {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
 
-            self.plugin_executor.execute_for_plugin(plugin_id, {
+            self.plugin_executor.execute_for_plugin_with(
+                plugin_id,
+                JobClass::Lifecycle,
+                0,
                 move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let cache_dir = running_plugin
                         .lock()
@@ -1891,8 +2116,8 @@ impl WasmBridge {
                     }
                     drop(running_plugin);
                     drop(subscriptions);
-                }
-            });
+                },
+            );
 
             let pipes_to_release = self
                 .pending_pipes
@@ -2156,12 +2381,24 @@ impl WasmBridge {
         }
         self.default_shell = default_shell.clone();
         self.layout_dir = layout_dir.clone();
+        let reconfigure_bytes = keybinds
+            .as_ref()
+            .map(|keybinds| keybinds_vec_bytes(keybinds.as_ref()))
+            .unwrap_or(0)
+            .saturating_add(
+                layout_dir
+                    .as_ref()
+                    .map(|path| path.as_os_str().len())
+                    .unwrap_or(0),
+            );
         let shared_instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in shared_instance_ids {
             let default_shell = default_shell.clone();
             let layout_dir = layout_dir.clone();
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(REPLACEABLE_SHARED_SETTINGS),
+                reconfigure_bytes,
                 move |_senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     host_settings_job(plugin_map, instance_id, default_shell, layout_dir);
                 },
@@ -2193,23 +2430,28 @@ impl WasmBridge {
         };
 
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
-            self.plugin_executor.execute_for_plugin(plugin_id, {
-                let running_plugin = running_plugin.clone();
-                let keybinds = keybinds.clone();
-                let default_shell = default_shell.clone();
-                let layout_dir = layout_dir.clone();
-                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let mut running_plugin = running_plugin.lock().unwrap();
-                    if let Some(keybinds) = keybinds {
-                        running_plugin.update_keybinds(keybinds);
+            self.plugin_executor.execute_for_plugin_with(
+                plugin_id,
+                JobClass::Replaceable(REPLACEABLE_PLUGIN_SETTINGS),
+                reconfigure_bytes,
+                {
+                    let running_plugin = running_plugin.clone();
+                    let keybinds = keybinds.clone();
+                    let default_shell = default_shell.clone();
+                    let layout_dir = layout_dir.clone();
+                    move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                        let mut running_plugin = running_plugin.lock().unwrap();
+                        if let Some(keybinds) = keybinds {
+                            running_plugin.update_keybinds(keybinds);
+                        }
+                        if let Some(default_mode) = default_mode {
+                            running_plugin.update_default_mode(default_mode);
+                        }
+                        running_plugin.update_default_shell(default_shell);
+                        running_plugin.update_layout_dir(layout_dir);
                     }
-                    if let Some(default_mode) = default_mode {
-                        running_plugin.update_default_mode(default_mode);
-                    }
-                    running_plugin.update_default_shell(default_shell);
-                    running_plugin.update_layout_dir(layout_dir);
-                }
-            });
+                },
+            );
         }
         // Send InitialKeybinds to subscribed plugins after reconfiguration
         if let Some(keybinds) = keybinds.as_ref() {
@@ -2236,6 +2478,10 @@ impl WasmBridge {
         if let Some(events_or_pipe_messages) =
             self.cached_events_for_pending_plugins.remove(&plugin_id)
         {
+            let cached_bytes = events_or_pipe_messages
+                .iter()
+                .map(event_or_pipe_message_bytes)
+                .fold(0usize, usize::saturating_add);
             let plugin_instances = self.plugin_map.lock().unwrap().all_plugin_ids();
             // A failed load leaves no instance to answer the pipes cached for it. Release them
             // instead of dropping them and leaving their callers blocked.
@@ -2245,6 +2491,7 @@ impl WasmBridge {
             {
                 self.release_cached_cli_pipes_with_error(&events_or_pipe_messages);
             }
+            let mut replay_was_rejected = false;
             for (instance_plugin_id, client_id) in plugin_instances {
                 if instance_plugin_id != plugin_id {
                     continue;
@@ -2256,126 +2503,148 @@ impl WasmBridge {
                     .get_running_plugin_and_subscriptions(plugin_id, client_id)
                 {
                     let subs = subscriptions.lock().unwrap().clone();
-                    self.plugin_executor.execute_for_plugin(plugin_id, {
-                        let running_plugin = running_plugin.clone();
-                        let _s = shutdown_sender.clone();
-                        let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                            if running_plugin.lock().unwrap().is_quarantined() {
-                                return;
-                            }
-                            for event_or_pipe_message in events_or_pipe_messages {
-                                match event_or_pipe_message {
-                                    EventOrPipeMessage::Event(event, target_client_id) => {
-                                        if target_client_id
-                                            .map(|target| target != client_id)
-                                            .unwrap_or(false)
-                                        {
-                                            continue;
-                                        }
-                                        match subscription_event_type(&event)
-                                            .with_context(err_context)
-                                        {
-                                            Ok(event_type) => {
-                                                if !subs.contains(&event_type) {
-                                                    continue;
-                                                }
-                                                let mut running_plugin =
-                                                    running_plugin.lock().unwrap();
-                                                if running_plugin.is_quarantined() {
-                                                    break;
-                                                }
-                                                let mut plugin_render_assets = vec![];
-                                                match apply_event_to_plugin(
-                                                    plugin_id,
-                                                    client_id,
-                                                    &mut running_plugin,
-                                                    &event,
-                                                    &mut plugin_render_assets,
-                                                    senders.clone(),
-                                                    &subs,
-                                                ) {
-                                                    Ok(()) => {
-                                                        let _ = senders.send_to_screen(
-                                                            ScreenInstruction::PluginBytes(
-                                                                plugin_render_assets,
-                                                            ),
-                                                        );
-                                                    },
-                                                    Err(e) => {
-                                                        log::error!("{:?}", e);
-                                                        running_plugin.mark_quarantined();
-                                                        handle_plugin_crash(
-                                                            plugin_id,
-                                                            running_plugin.store.data().generation,
-                                                            format!("{:?}", e)
-                                                                .replace("\n", "\n\r"),
-                                                            senders.clone(),
-                                                        );
+                    if let Err(e) = self.plugin_executor.try_execute_for_plugin(
+                        plugin_id,
+                        JobClass::Lifecycle,
+                        cached_bytes,
+                        {
+                            let running_plugin = running_plugin.clone();
+                            let _s = shutdown_sender.clone();
+                            let events_or_pipe_messages = events_or_pipe_messages.clone();
+                            move |senders,
+                                  _plugin_map,
+                                  _connected_clients,
+                                  _plugin_cache,
+                                  _engine| {
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                if running_plugin.lock().unwrap().is_quarantined() {
+                                    return;
+                                }
+                                for event_or_pipe_message in events_or_pipe_messages {
+                                    match event_or_pipe_message {
+                                        EventOrPipeMessage::Event(event, target_client_id) => {
+                                            if target_client_id
+                                                .map(|target| target != client_id)
+                                                .unwrap_or(false)
+                                            {
+                                                continue;
+                                            }
+                                            match subscription_event_type(&event)
+                                                .with_context(err_context)
+                                            {
+                                                Ok(event_type) => {
+                                                    if !subs.contains(&event_type) {
+                                                        continue;
+                                                    }
+                                                    let mut running_plugin =
+                                                        running_plugin.lock().unwrap();
+                                                    if running_plugin.is_quarantined() {
                                                         break;
-                                                    },
-                                                }
-                                            },
-                                            Err(e) => {
-                                                log::error!("Failed to apply event: {:?}", e);
-                                            },
-                                        }
-                                    },
-                                    EventOrPipeMessage::PipeMessage(
-                                        pipe_message,
-                                        target_client_id,
-                                    ) => {
-                                        if target_client_id
-                                            .map(|target| target != client_id)
-                                            .unwrap_or(false)
-                                        {
-                                            continue;
-                                        }
-                                        let mut running_plugin = running_plugin.lock().unwrap();
-                                        if running_plugin.is_quarantined() {
-                                            break;
-                                        }
-                                        let mut plugin_render_assets = vec![];
-
-                                        match apply_pipe_message_to_plugin(
-                                            plugin_id,
-                                            client_id,
-                                            &mut running_plugin,
-                                            &pipe_message,
-                                            &mut plugin_render_assets,
-                                            &senders,
-                                        ) {
-                                            Ok(()) => {
-                                                let _ = senders.send_to_screen(
-                                                    ScreenInstruction::PluginBytes(
-                                                        plugin_render_assets,
-                                                    ),
-                                                );
-                                            },
-                                            Err(e) => {
-                                                log::error!("{:?}", e);
-                                                running_plugin.mark_quarantined();
-
-                                                // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                                                let stringified_error =
-                                                    format!("{:?}", e).replace("\n", "\n\r");
-
-                                                handle_plugin_crash(
-                                                    plugin_id,
-                                                    running_plugin.store.data().generation,
-                                                    stringified_error,
-                                                    senders.clone(),
-                                                );
+                                                    }
+                                                    let mut plugin_render_assets = vec![];
+                                                    match apply_event_to_plugin(
+                                                        plugin_id,
+                                                        client_id,
+                                                        &mut running_plugin,
+                                                        &event,
+                                                        &mut plugin_render_assets,
+                                                        senders.clone(),
+                                                        &subs,
+                                                    ) {
+                                                        Ok(()) => {
+                                                            let _ = senders.send_to_screen(
+                                                                ScreenInstruction::PluginBytes(
+                                                                    plugin_render_assets,
+                                                                ),
+                                                            );
+                                                        },
+                                                        Err(e) => {
+                                                            log::error!("{:?}", e);
+                                                            running_plugin.mark_quarantined();
+                                                            handle_plugin_crash(
+                                                                plugin_id,
+                                                                running_plugin
+                                                                    .store
+                                                                    .data()
+                                                                    .generation,
+                                                                format!("{:?}", e)
+                                                                    .replace("\n", "\n\r"),
+                                                                senders.clone(),
+                                                            );
+                                                            break;
+                                                        },
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Failed to apply event: {:?}", e);
+                                                },
+                                            }
+                                        },
+                                        EventOrPipeMessage::PipeMessage(
+                                            pipe_message,
+                                            target_client_id,
+                                        ) => {
+                                            if target_client_id
+                                                .map(|target| target != client_id)
+                                                .unwrap_or(false)
+                                            {
+                                                continue;
+                                            }
+                                            let mut running_plugin = running_plugin.lock().unwrap();
+                                            if running_plugin.is_quarantined() {
                                                 break;
-                                            },
-                                        }
-                                    },
+                                            }
+                                            let mut plugin_render_assets = vec![];
+
+                                            match apply_pipe_message_to_plugin(
+                                                plugin_id,
+                                                client_id,
+                                                &mut running_plugin,
+                                                &pipe_message,
+                                                &mut plugin_render_assets,
+                                                &senders,
+                                            ) {
+                                                Ok(()) => {
+                                                    let _ = senders.send_to_screen(
+                                                        ScreenInstruction::PluginBytes(
+                                                            plugin_render_assets,
+                                                        ),
+                                                    );
+                                                },
+                                                Err(e) => {
+                                                    log::error!("{:?}", e);
+                                                    running_plugin.mark_quarantined();
+
+                                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                                    let stringified_error =
+                                                        format!("{:?}", e).replace("\n", "\n\r");
+
+                                                    handle_plugin_crash(
+                                                        plugin_id,
+                                                        running_plugin.store.data().generation,
+                                                        stringified_error,
+                                                        senders.clone(),
+                                                    );
+                                                    break;
+                                                },
+                                            }
+                                        },
+                                    }
                                 }
                             }
-                        }
-                    });
+                        },
+                    ) {
+                        log::error!(
+                            "Plugin executor rejected cached event replay for {}: {}",
+                            plugin_id,
+                            e
+                        );
+                        replay_was_rejected = true;
+                    }
                 }
+            }
+            if replay_was_rejected {
+                self.release_cached_cli_pipes_with_error(&events_or_pipe_messages);
             }
         }
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
@@ -3243,8 +3512,11 @@ impl WasmBridge {
                     .unwrap()
                     .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
-                self.plugin_executor.execute_for_plugin(
+                let slot_bytes = string_map_bytes(&slot.configuration);
+                self.plugin_executor.execute_for_plugin_with(
                     instance_id,
+                    JobClass::Lifecycle,
+                    slot_bytes,
                     move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                         add_slot_job(
                             senders,
@@ -3298,9 +3570,15 @@ impl WasmBridge {
                 self.register_shared_slot(instance_id, slot_id, kind);
                 let mut initial_slots = BTreeMap::new();
                 initial_slots.insert(slot_id, slot);
+                let load_bytes = loading_context
+                    .wasm_bytes
+                    .as_ref()
+                    .map(Vec::len)
+                    .unwrap_or(0);
                 let executor = self.plugin_executor.clone();
-                self.plugin_executor.execute_plugin_load(
+                self.plugin_executor.execute_plugin_load_with_payload(
                     instance_id,
+                    load_bytes,
                     move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                         let failure_senders = senders.clone();
                         if !start_instance_job(
@@ -3413,8 +3691,10 @@ impl WasmBridge {
             self.apply_prompt_actions(prompt_actions);
             self.settings_entries_changed(|entries| entries.plugin_unloaded(instance_id));
         } else {
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Lifecycle,
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     remove_slot_job(senders, plugin_map, instance_id, slot_id, false);
                 },
@@ -3480,8 +3760,15 @@ impl WasmBridge {
         let loading_indication =
             LoadingIndication::new(loading_context.plugin_config.location.to_string());
         self.start_plugin_loading_indication(&slot_ids, &loading_indication);
-        self.plugin_executor.execute_for_plugin(
+        let reload_bytes = loading_context
+            .wasm_bytes
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0);
+        self.plugin_executor.execute_for_plugin_with(
             instance_id,
+            JobClass::Lifecycle,
+            reload_bytes,
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 let _ = start_instance_job(
                     senders,
@@ -3570,8 +3857,10 @@ impl WasmBridge {
     fn add_client_to_shared_instances(&mut self, client_id: ClientId) {
         let instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in instance_ids {
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Lifecycle,
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     client_job(senders, plugin_map, instance_id, client_id, true);
                 },
@@ -3589,8 +3878,10 @@ impl WasmBridge {
     fn remove_client_from_shared_instances(&mut self, client_id: ClientId) {
         let instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in instance_ids {
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Lifecycle,
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     client_job(senders, plugin_map, instance_id, client_id, false);
                 },
@@ -3627,8 +3918,14 @@ impl WasmBridge {
                     )
                 })
                 .collect();
-            self.plugin_executor.execute_for_plugin(
+            let visibility_bytes = visible_slots
+                .values()
+                .map(|slots| slots.len().saturating_mul(8).saturating_add(64))
+                .fold(0usize, usize::saturating_add);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(REPLACEABLE_VISIBILITY),
+                visibility_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     visibility_job(senders, plugin_map, instance_id, visible_slots);
                 },
@@ -3735,8 +4032,21 @@ impl WasmBridge {
         }
         for (instance_id, events) in batches {
             let _s = shutdown_sender.clone();
-            self.plugin_executor.execute_for_plugin(
+            let events_bytes = events
+                .iter()
+                .map(|(event, _, keybinds)| {
+                    event_payload_bytes(event).saturating_add(
+                        keybinds
+                            .as_ref()
+                            .map(|keybinds| keybinds_vec_bytes(keybinds.as_ref()))
+                            .unwrap_or(0),
+                    )
+                })
+                .fold(0usize, usize::saturating_add);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Ordered,
+                events_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
                     apply_events_job(senders, plugin_map, instance_id, events);
@@ -3811,14 +4121,32 @@ impl WasmBridge {
         for (instance_id, messages) in batches {
             let _s = shutdown_sender.clone();
             let notification_end = notification_end.take();
-            self.plugin_executor.execute_for_plugin(
+            let messages_bytes = messages
+                .iter()
+                .map(|(message, _)| pipe_message_payload_bytes(message))
+                .fold(0usize, usize::saturating_add);
+            let messages = Arc::new(messages);
+            let worker_messages = messages.clone();
+            let failure_messages = messages.clone();
+            if let Err(e) = self.plugin_executor.try_execute_for_plugin(
                 instance_id,
+                JobClass::Ordered,
+                messages_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
-                    apply_pipes_job(senders, plugin_map, instance_id, messages);
+                    apply_pipes_job(senders, plugin_map, instance_id, worker_messages);
                     drop(notification_end);
                 },
-            );
+            ) {
+                log::warn!(
+                    "Plugin executor rejected shared pipes for {}: {}",
+                    instance_id,
+                    e
+                );
+                for (pipe_message, _) in failure_messages.iter() {
+                    self.release_cli_pipe_with_error(pipe_message);
+                }
+            }
         }
         legacy_messages
     }
