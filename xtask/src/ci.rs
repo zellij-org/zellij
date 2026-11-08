@@ -232,7 +232,7 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
 
     crate::cargo()
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} install cross")
+            cmd!(sh, "{cargo} install cross --locked")
                 .run()
                 .map_err(anyhow::Error::new)
         })

@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: create_release
         id: create_release
-        uses: actions/create-release@v1
+        uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Create desktop files archive
         run: |
@@ -44,7 +44,7 @@ jobs:
           sha256sum zellij-desktop-files.tar.gz > zellij-desktop-files.sha256sum
 
       - name: Upload desktop files archive
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -54,7 +54,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload desktop files checksum
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -119,26 +119,20 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           target: "${{ matrix.target }},wasm32-wasip1"
           cache: false
@@ -146,7 +140,7 @@ jobs:
 
       - name: Install NASM (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@v1
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
 
       - name: Build release binary (cross-compiled)
         if: matrix.build != 'windows x64'
@@ -199,7 +193,7 @@ jobs:
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -209,7 +203,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload checksum
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -249,7 +243,7 @@ jobs:
 
       - name: Upload MSI installer
         if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -260,7 +254,7 @@ jobs:
 
       - name: Upload MSI checksum
         if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -325,26 +319,20 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
 
       - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           target: "${{ matrix.target }},wasm32-wasip1"
           cache: false
@@ -352,7 +340,7 @@ jobs:
 
       - name: Install NASM (Windows)
         if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@v1
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
 
       - name: Build release binary (cross-compiled, no-web)
         if: matrix.build != 'windows x64'
@@ -405,7 +393,7 @@ jobs:
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -415,7 +403,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload checksum
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -455,7 +443,7 @@ jobs:
 
       - name: Upload MSI installer (no-web)
         if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -466,7 +454,7 @@ jobs:
 
       - name: Upload MSI checksum (no-web)
         if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1.0.2
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

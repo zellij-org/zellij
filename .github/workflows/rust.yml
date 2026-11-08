@@ -15,10 +15,10 @@ jobs:
     name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -39,22 +39,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -66,28 +60,22 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           target: wasm32-wasip1
           rustflags: ""
 
       - name: Install NASM
-        uses: ilammy/setup-nasm@v1
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
 
       - name: Build
         run: cargo xtask build
@@ -103,22 +91,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -130,22 +112,16 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -169,27 +145,21 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
 
@@ -201,19 +171,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Install a virtual display and software rendering
         run: |
@@ -221,12 +185,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends xvfb libxkbcommon-x11-0 libegl1 libgl1-mesa-dri
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest
 
@@ -240,22 +204,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install Protoc
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-            macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-            Windows) asset=protoc-23.4-win64.zip ;;
-          esac
-          curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-          unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+          bash "$RUNNER_TEMP/install-protoc.sh"
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -267,10 +225,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
@@ -285,7 +243,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Install validators
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
@@ -301,10 +259,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Setup toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           rustflags: ""
 
