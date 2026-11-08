@@ -1774,8 +1774,24 @@ impl TerminalPane {
     fn reset_grid_state(&mut self) {
         self.cancel_output_catchup();
         self.viewport_goal = None;
+        self.forward_paused = false;
+        self.frame.clear();
+        self.fake_cursor_locations.clear();
         self.discard_unfinished_input();
+        self.grid.clear_forward_hold();
+        self.grid.pending_forwarded_queries.clear();
+        self.grid.pending_messages_to_pty.clear();
+        self.grid.pending_clipboard_update = None;
+        self.grid.pending_osc7_cwd = None;
+        self.grid.pending_prompt_return = false;
+        self.grid.pending_desktop_notifications.clear();
+        self.grid.pending_nested_session_messages.clear();
+        self.grid.unlock_renders();
         self.grid.reset_terminal_state();
+        #[cfg(test)]
+        {
+            self.pending_bytes_appended = 0;
+        }
     }
 
     /// Record a user scroll against the held anchor. Returns true when a

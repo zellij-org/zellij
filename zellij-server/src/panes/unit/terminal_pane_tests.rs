@@ -1522,3 +1522,22 @@ fn resetting_the_grid_cancels_output_catchup() {
     assert_eq!(pane.pending_pty_offset, 0);
     assert!(!pane.has_deferred_pane_work());
 }
+
+#[test]
+fn resetting_the_grid_drops_output_buffered_behind_a_forward_pause() {
+    let mut pane = pane_for_split_test();
+    pane.arm_forward_pause();
+    pane.handle_pty_bytes(b"stale output from the old run".to_vec());
+    assert!(pane.is_forward_paused());
+    assert!(pane.has_pending_pty_input());
+
+    pane.reset_grid_state();
+    assert!(!pane.is_forward_paused());
+    assert!(!pane.has_pending_pty_input());
+    assert_eq!(pane.pending_bytes_appended(), 0);
+
+    pane.handle_pty_bytes(b"fresh output".to_vec());
+    let screen = pane.grid.dump_screen(false);
+    assert!(screen.contains("fresh output"), "{screen}");
+    assert!(!screen.contains("stale output"), "{screen}");
+}

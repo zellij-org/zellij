@@ -106,6 +106,15 @@ impl PendingPaneEvents {
     /// pane is marked truncated. No notice is written into the byte stream.
     /// A chunk larger than the per-pane budget is never retained.
     pub fn push_output(&mut self, pid: PaneId, bytes: Vec<u8>) {
+        self.push_output_with(pid, bytes, Self::append_output);
+    }
+
+    fn push_output_with(
+        &mut self,
+        pid: PaneId,
+        bytes: Vec<u8>,
+        append: impl FnOnce(&mut PendingPane, u32, Vec<u8>),
+    ) {
         let PaneId::Terminal(terminal_id) = pid else {
             return;
         };
@@ -118,13 +127,13 @@ impl PendingPaneEvents {
                 "dropping {len} new bytes of output for not-yet-created pane {pid:?}: \
                  pending output budget exceeded"
             );
-            self.note_output_truncated(pid, terminal_id);
+            self.note_output_truncated(pid);
             return;
         }
         let Some(pane) = self.pane_entry(pid) else {
             return;
         };
-        Self::append_output(pane, terminal_id, bytes);
+        append(pane, terminal_id, bytes);
         pane.output_bytes += len;
         self.total_output_bytes += len;
     }
@@ -200,7 +209,7 @@ impl PendingPaneEvents {
             || self.total_output_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_TOTAL
     }
 
-    fn note_output_truncated(&mut self, pid: PaneId, _terminal_id: u32) {
+    fn note_output_truncated(&mut self, pid: PaneId) {
         let Some(pane) = self.pane_entry(pid) else {
             return;
         };
@@ -260,27 +269,9 @@ impl PendingPaneEvents {
     /// terminal and generation coalesce. A different generation stays a
     /// separate event so replay can drop it after the run changes.
     pub fn push_run_output(&mut self, pid: PaneId, generation: u64, bytes: Vec<u8>) {
-        let PaneId::Terminal(terminal_id) = pid else {
-            return;
-        };
-        let len = bytes.len();
-        if len == 0 {
-            return;
-        }
-        if self.output_exceeds_budget(pid, len) {
-            log::warn!(
-                "dropping {len} new bytes of output for not-yet-created pane {pid:?}: \
-                 pending output budget exceeded"
-            );
-            self.note_output_truncated(pid, terminal_id);
-            return;
-        }
-        let Some(pane) = self.pane_entry(pid) else {
-            return;
-        };
-        Self::append_run_output(pane, terminal_id, generation, bytes);
-        pane.output_bytes += len;
-        self.total_output_bytes += len;
+        self.push_output_with(pid, bytes, |pane, terminal_id, bytes| {
+            Self::append_run_output(pane, terminal_id, generation, bytes)
+        });
     }
 
     fn append_run_output(
@@ -593,6 +584,30 @@ mod tests {
         assert_eq!(pending.buffered_event_count(pid), 1);
         assert_eq!(pending.total_output_bytes(), 10_000);
         assert_eq!(describe(&pending.take(pid)), ["out:10000"]);
+    }
+
+    #[test]
+    fn run_output_uses_the_shared_admission_and_coalesces_per_generation() {
+        let pid = PaneId::Terminal(60_000);
+        let mut pending = PendingPaneEvents::default();
+        pending.push_run_output(pid, 7, output(3));
+        pending.push_run_output(pid, 7, output(4));
+        pending.push_run_output(pid, 8, output(5));
+        assert_eq!(pending.buffered_event_count(pid), 2);
+        assert_eq!(pending.total_output_bytes(), 12);
+        assert!(matches!(
+            pending.take(pid).as_slice(),
+            [
+                ScreenInstruction::PtyRunBytes(60_000, 7, first),
+                ScreenInstruction::PtyRunBytes(60_000, 8, second),
+            ] if first.len() == 7 && second.len() == 5
+        ));
+
+        pending.push_run_output(pid, 9, vec![]);
+        assert_eq!(pending.pending_pane_count(), 0);
+        pending.push_run_output(pid, 9, output(MAX_PENDING_OUTPUT_BYTES_PER_PANE + 1));
+        assert_eq!(pending.total_output_bytes(), 0);
+        assert!(pending.output_was_truncated(pid));
     }
 
     #[test]

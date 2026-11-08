@@ -1,13 +1,17 @@
 use crate::tab::Pane;
 
-use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
+use crate::{
+    os_input_output::ServerOsApi, panes::PaneId, pty_writer::PtyWriteInstruction, ClientId,
+};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use zellij_utils::channels::SenderWithContext;
 
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
+    pty_writer: Option<SenderWithContext<PtyWriteInstruction>>,
 }
 
 impl std::fmt::Debug for ActivePanes {
@@ -23,7 +27,16 @@ impl ActivePanes {
             active_panes: HashMap::new(),
             last_panes: HashMap::new(),
             os_api,
+            pty_writer: None,
         }
+    }
+    pub fn with_pty_writer(
+        os_api: &Box<dyn ServerOsApi>,
+        pty_writer: SenderWithContext<PtyWriteInstruction>,
+    ) -> Self {
+        let mut active_panes = Self::new(os_api);
+        active_panes.pty_writer = Some(pty_writer);
+        active_panes
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
         self.active_panes.get(client_id)
@@ -119,19 +132,28 @@ impl ActivePanes {
     fn unfocus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.unfocus_event()) {
-                let _ = self
-                    .os_api
-                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                self.send_focus_event(terminal_id, focus_event);
             }
         }
     }
     fn focus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.focus_event()) {
-                let _ = self
-                    .os_api
-                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                self.send_focus_event(terminal_id, focus_event);
             }
+        }
+    }
+    fn send_focus_event(&self, terminal_id: u32, focus_event: String) {
+        if let Some(pty_writer) = &self.pty_writer {
+            let _ = pty_writer.send(PtyWriteInstruction::Write(
+                focus_event.into_bytes(),
+                terminal_id,
+                None,
+            ));
+        } else {
+            let _ = self
+                .os_api
+                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
         }
     }
     pub fn pane_id_is_focused(&self, pane_id: &PaneId) -> bool {
@@ -139,5 +161,179 @@ impl ActivePanes {
             .values()
             .find(|p_id| **p_id == *pane_id)
             .is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::os_input_output::AsyncReader;
+    use crate::panes::kitty_graphics::KittyImageStore;
+    use crate::panes::sixel::SixelImageStore;
+    use crate::panes::terminal_pane::TerminalPane;
+    use crate::tab::test_panes::FocusReportingPane;
+    use interprocess::local_socket::Stream as LocalSocketStream;
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
+    use zellij_utils::channels::{unbounded, ChannelWithContext};
+    use zellij_utils::data::{Palette, Style};
+    use zellij_utils::errors::prelude::*;
+    use zellij_utils::input::command::{RunCommand, TerminalAction};
+    use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
+    use zellij_utils::pane_size::PaneGeom;
+
+    #[derive(Clone, Default)]
+    struct TestOsApi {
+        writes: Arc<Mutex<Vec<(u32, String)>>>,
+    }
+
+    impl ServerOsApi for TestOsApi {
+        fn set_terminal_size_using_terminal_id(
+            &self,
+            _id: u32,
+            _cols: u16,
+            _rows: u16,
+            _width_in_pixels: Option<u16>,
+            _height_in_pixels: Option<u16>,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn spawn_terminal(
+            &self,
+            _terminal_action: TerminalAction,
+            _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+            _default_editor: Option<PathBuf>,
+            _pane_env: &crate::os_input_output::PaneEnv,
+        ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+            unimplemented!()
+        }
+        fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+            self.writes
+                .lock()
+                .unwrap()
+                .push((terminal_id, String::from_utf8_lossy(buf).into_owned()));
+            Ok(buf.len())
+        }
+        fn tcdrain(&self, _terminal_id: u32) -> Result<()> {
+            Ok(())
+        }
+        fn kill(&self, _pid: u32) -> Result<()> {
+            Ok(())
+        }
+        fn force_kill(&self, _pid: u32) -> Result<()> {
+            Ok(())
+        }
+        fn send_sigint(&self, _pid: u32) -> Result<()> {
+            Ok(())
+        }
+        fn box_clone(&self) -> Box<dyn ServerOsApi> {
+            Box::new(self.clone())
+        }
+        fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
+            Ok(())
+        }
+        fn register_client(
+            &mut self,
+            _client_id: ClientId,
+            _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn register_client_with_reply(
+            &mut self,
+            _client_id: ClientId,
+            _reply_stream: LocalSocketStream,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
+            Ok(())
+        }
+        fn load_palette(&self) -> Palette {
+            Palette::default()
+        }
+        fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
+            None
+        }
+        fn write_to_file(&mut self, _buf: String, _file: Option<String>) -> Result<()> {
+            Ok(())
+        }
+        fn re_run_command_in_terminal(
+            &self,
+            _terminal_id: u32,
+            _run_command: RunCommand,
+            _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+            _pane_env: &crate::os_input_output::PaneEnv,
+        ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+            unimplemented!()
+        }
+        fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn focus_reporting_pane(id: u32) -> Box<dyn Pane> {
+        let mut geom = PaneGeom::default();
+        geom.cols.set_inner(20);
+        geom.rows.set_inner(5);
+        Box::new(FocusReportingPane {
+            inner: Box::new(TerminalPane::new(
+                id,
+                geom,
+                Style::default(),
+                0,
+                String::new(),
+                Rc::new(RefCell::new(None)),
+                Rc::new(RefCell::new(SixelImageStore::default())),
+                Rc::new(RefCell::new(KittyImageStore::default())),
+                Rc::new(RefCell::new(Palette::default())),
+                Rc::new(RefCell::new(HashMap::new())),
+                None,
+                None,
+                false,
+                true,
+                true,
+                true,
+                false,
+                None,
+            )),
+        })
+    }
+
+    #[test]
+    fn focus_events_use_the_configured_pty_writer_and_fall_back_without_one() {
+        let os_api = TestOsApi::default();
+        let writes = os_api.writes.clone();
+        let boxed_os_api: Box<dyn ServerOsApi> = Box::new(os_api);
+        let mut panes = BTreeMap::from([(PaneId::Terminal(2), focus_reporting_pane(2))]);
+        let (to_pty_writer, pty_writer_instructions): ChannelWithContext<PtyWriteInstruction> =
+            unbounded();
+        let mut active_panes =
+            ActivePanes::with_pty_writer(&boxed_os_api, SenderWithContext::new(to_pty_writer));
+
+        active_panes.insert(1, PaneId::Terminal(2), &mut panes);
+        let (instruction, _) = pty_writer_instructions.try_recv().unwrap();
+        assert!(
+            matches!(
+                instruction,
+                PtyWriteInstruction::Write(bytes, 2, None) if bytes == b"focus-in"
+            ),
+            "focus event did not go through the pty writer"
+        );
+        assert!(writes.lock().unwrap().is_empty());
+
+        active_panes.clear(&mut panes);
+        let (instruction, _) = pty_writer_instructions.try_recv().unwrap();
+        assert!(matches!(
+            instruction,
+            PtyWriteInstruction::Write(bytes, 2, None) if bytes == b"focus-out"
+        ));
+        assert!(writes.lock().unwrap().is_empty());
+
+        let mut writerless = ActivePanes::new(&boxed_os_api);
+        writerless.insert(1, PaneId::Terminal(2), &mut panes);
+        assert_eq!(*writes.lock().unwrap(), vec![(2, "focus-in".to_owned())]);
     }
 }

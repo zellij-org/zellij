@@ -122,6 +122,10 @@ impl TiledPanes {
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
+        let active_panes = match senders.to_pty_writer.clone() {
+            Some(pty_writer) => ActivePanes::with_pty_writer(&os_api, pty_writer),
+            None => ActivePanes::new(&os_api),
+        };
         TiledPanes {
             panes: BTreeMap::new(),
             live_views: Default::default(),
@@ -137,7 +141,7 @@ impl TiledPanes {
             default_mode,
             style,
             session_is_mirrored,
-            active_panes: ActivePanes::new(&os_api),
+            active_panes,
             pane_frame_style,
             panes_to_hide: PanesToHide::default(),
             fullscreen_is_active: None,

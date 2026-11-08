@@ -89,6 +89,10 @@ impl FloatingPanes {
         os_input: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
+        let active_panes = match senders.to_pty_writer.clone() {
+            Some(pty_writer) => ActivePanes::with_pty_writer(&os_input, pty_writer),
+            None => ActivePanes::new(&os_input),
+        };
         FloatingPanes {
             panes: BTreeMap::new(),
             live_views: Default::default(),
@@ -105,7 +109,7 @@ impl FloatingPanes {
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
-            active_panes: ActivePanes::new(&os_input),
+            active_panes,
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
