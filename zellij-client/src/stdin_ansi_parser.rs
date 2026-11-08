@@ -268,6 +268,11 @@ pub struct ParseOutput {
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
+    /// Ranges of `residue` that are inside a bracketed paste (including
+    /// the paste start/end markers). Pasted content must reach the
+    /// keyboard parser verbatim: it is literal text, not key or focus
+    /// reports.
+    pub paste_spans: Vec<std::ops::Range<usize>>,
     pub nested_frames: Vec<Vec<u8>>,
     /// `true` when the parser still holds buffered partial OSC/CSI
     /// bytes that need an idle-flush to release. The caller uses this
@@ -754,8 +759,10 @@ impl StdinAnsiParser {
         // other bytes pass through unchanged. The walk is stateful so
         // an OSC/CSI sequence split across `feed()` calls is buffered
         // rather than leaking into residue.
-        residue.extend(self.strip_replies(&sanitized));
+        let (residue_from_replies, paste_spans) = self.strip_replies(&sanitized);
+        residue.extend(residue_from_replies);
         out.residue = residue;
+        out.paste_spans = paste_spans;
         out.has_partial_state = !self.partial_osc.is_empty()
             || !self.partial_csi.is_empty()
             || !self.partial_paste.is_empty()
@@ -934,7 +941,7 @@ impl StdinAnsiParser {
     /// next call's input — so the corresponding bytes never reach
     /// residue (and never appear as spurious keypresses) while waiting
     /// for the rest of the sequence.
-    fn strip_replies(&mut self, bytes: &[u8]) -> Vec<u8> {
+    fn strip_replies(&mut self, bytes: &[u8]) -> (Vec<u8>, Vec<std::ops::Range<usize>>) {
         // At most one partial is non-empty. Move it and append only the
         // new bytes. A long unterminated OSC is resumed from
         // `partial_scanned` so each fragment is scanned once.
@@ -950,6 +957,12 @@ impl StdinAnsiParser {
         working.extend_from_slice(bytes);
 
         let mut out = Vec::with_capacity(working.len());
+        let mut paste_spans: Vec<std::ops::Range<usize>> = Vec::new();
+        let mut paste_span_start = if self.in_bracketed_paste {
+            Some(0usize)
+        } else {
+            None
+        };
         let mut i = 0;
         if scanned >= 2 && working.len() >= 2 && working[0] == 0x1b && working[1] == b']' {
             match osc_status_from(&working, scanned) {
@@ -960,7 +973,7 @@ impl StdinAnsiParser {
                         self.partial_scanned = working.len();
                         self.partial_osc = working;
                     }
-                    return out;
+                    return (out, paste_spans);
                 },
                 SeqStatus::Complete(len) => i = len,
                 SeqStatus::Malformed => {},
@@ -974,17 +987,27 @@ impl StdinAnsiParser {
                         MarkerMatch::Complete => {
                             out.extend_from_slice(PASTE_END_MARKER);
                             self.in_bracketed_paste = false;
+                            if let Some(start) = paste_span_start.take() {
+                                if out.len() > start {
+                                    paste_spans.push(start..out.len());
+                                }
+                            }
                             i += PASTE_END_MARKER.len();
                             continue;
                         },
                         MarkerMatch::Prefix => {
-                            let tail = rest.to_vec();
+                            let tail = working.split_off(i);
                             if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                                 out.extend_from_slice(&tail);
                             } else {
                                 self.partial_paste = tail;
                             }
-                            return out;
+                            if let Some(start) = paste_span_start.take() {
+                                if out.len() > start {
+                                    paste_spans.push(start..out.len());
+                                }
+                            }
+                            return (out, paste_spans);
                         },
                         MarkerMatch::No => {},
                     }
@@ -995,8 +1018,10 @@ impl StdinAnsiParser {
             }
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'[' {
                 if let MarkerMatch::Complete = marker_match(rest, PASTE_START_MARKER) {
+                    let start = out.len();
                     out.extend_from_slice(PASTE_START_MARKER);
                     self.in_bracketed_paste = true;
+                    paste_span_start = Some(start);
                     i += PASTE_START_MARKER.len();
                     continue;
                 }
@@ -1021,7 +1046,7 @@ impl StdinAnsiParser {
                             self.partial_scanned = tail.len();
                             self.partial_osc = tail;
                         }
-                        return out;
+                        return (out, paste_spans);
                     },
                     SeqStatus::Malformed => {
                         out.push(working[i]);
@@ -1038,13 +1063,13 @@ impl StdinAnsiParser {
                         continue;
                     },
                     SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
+                        let tail = take_tail(&mut working, i);
                         if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                             out.extend_from_slice(&tail);
                         } else {
                             self.partial_csi = tail;
                         }
-                        return out;
+                        return (out, paste_spans);
                     },
                     SeqStatus::Malformed => {
                         out.push(working[i]);
@@ -1059,12 +1084,17 @@ impl StdinAnsiParser {
             // walker re-routes based on the actual second byte.
             if rest.len() == 1 && rest[0] == 0x1b {
                 self.partial_osc = vec![0x1b];
-                return out;
+                return (out, paste_spans);
             }
             out.push(working[i]);
             i += 1;
         }
-        out
+        if let Some(start) = paste_span_start.take() {
+            if out.len() > start {
+                paste_spans.push(start..out.len());
+            }
+        }
+        (out, paste_spans)
     }
 }
 

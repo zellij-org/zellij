@@ -520,14 +520,20 @@ pub fn encode_keybinds_reply_payload(
 
 enum FrameScanStatus {
     Complete(usize),
-    NeedMore,
+    /// `usize` is the length of the prefix already known not to contain a
+    /// terminator. The next scan can resume there instead of restarting.
+    NeedMore(usize),
     Diverged,
 }
 
 fn frame_scan_status(buf: &[u8]) -> FrameScanStatus {
+    frame_scan_status_from(buf, 0)
+}
+
+fn frame_scan_status_from(buf: &[u8], scanned: usize) -> FrameScanStatus {
     if buf.len() < NESTED_FRAME_HEADER.len() {
         return if NESTED_FRAME_HEADER.starts_with(buf) {
-            FrameScanStatus::NeedMore
+            FrameScanStatus::NeedMore(0)
         } else {
             FrameScanStatus::Diverged
         };
@@ -535,23 +541,28 @@ fn frame_scan_status(buf: &[u8]) -> FrameScanStatus {
     if &buf[..NESTED_FRAME_HEADER.len()] != NESTED_FRAME_HEADER {
         return FrameScanStatus::Diverged;
     }
-    let mut i = NESTED_FRAME_HEADER.len();
+    let mut i = scanned.max(NESTED_FRAME_HEADER.len());
+    // A trailing ESC was deferred pending the next byte; recheck it.
+    if i > NESTED_FRAME_HEADER.len() && buf.get(i - 1) == Some(&0x1b) {
+        i -= 1;
+    }
     while i < buf.len() {
         match buf[i] {
             0x1b => match buf.get(i + 1) {
                 Some(&b'\\') => return FrameScanStatus::Complete(i + 2),
                 Some(_) => return FrameScanStatus::Diverged,
-                None => return FrameScanStatus::NeedMore,
+                None => return FrameScanStatus::NeedMore(buf.len()),
             },
             _ => i += 1,
         }
     }
-    FrameScanStatus::NeedMore
+    FrameScanStatus::NeedMore(buf.len())
 }
 
 #[derive(Debug, Default)]
 pub struct NestedFrameExtractor {
     partial_frame: Vec<u8>,
+    partial_scanned: usize,
 }
 
 impl NestedFrameExtractor {
@@ -564,6 +575,12 @@ impl NestedFrameExtractor {
         if self.partial_frame.is_empty() && !bytes.contains(&0x1b) {
             return (bytes.to_vec(), decoded_payloads);
         }
+        let scanned = if self.partial_frame.is_empty() {
+            0
+        } else {
+            self.partial_scanned
+        };
+        self.partial_scanned = 0;
         let mut working = std::mem::take(&mut self.partial_frame);
         working.extend_from_slice(bytes);
         let mut cleaned = Vec::with_capacity(working.len());
@@ -571,7 +588,12 @@ impl NestedFrameExtractor {
         while i < working.len() {
             let rest = &working[i..];
             if rest[0] == 0x1b {
-                match frame_scan_status(rest) {
+                let status = if i == 0 {
+                    frame_scan_status_from(rest, scanned)
+                } else {
+                    frame_scan_status(rest)
+                };
+                match status {
                     FrameScanStatus::Complete(len) => {
                         let encoded_payload =
                             &rest[NESTED_FRAME_HEADER.len()..len - NESTED_FRAME_TERMINATOR.len()];
@@ -581,11 +603,12 @@ impl NestedFrameExtractor {
                         i += len;
                         continue;
                     },
-                    FrameScanStatus::NeedMore => {
-                        let tail = rest.to_vec();
+                    FrameScanStatus::NeedMore(resume) => {
+                        let tail = working.split_off(i);
                         if tail.len() > MAX_PARTIAL_FRAME_BYTES {
                             cleaned.extend_from_slice(&tail);
                         } else {
+                            self.partial_scanned = resume;
                             self.partial_frame = tail;
                         }
                         return (cleaned, decoded_payloads);
@@ -604,6 +627,7 @@ impl NestedFrameExtractor {
     }
 
     pub fn take_partial(&mut self) -> Vec<u8> {
+        self.partial_scanned = 0;
         std::mem::take(&mut self.partial_frame)
     }
 }
@@ -1042,6 +1066,29 @@ mod tests {
         let (cleaned_second, payloads_second) = extractor.extract(&frame[split_at.len()..]);
         assert!(cleaned_second.is_empty());
         assert_eq!(payloads_second, vec![payload]);
+    }
+
+    #[test]
+    fn partial_frame_scan_resumes_instead_of_restarting() {
+        let mut extractor = NestedFrameExtractor::new();
+        let (cleaned, payloads) = extractor.extract(NESTED_FRAME_HEADER);
+        assert!(cleaned.is_empty());
+        assert!(payloads.is_empty());
+        assert_eq!(extractor.partial_scanned, NESTED_FRAME_HEADER.len());
+
+        let (cleaned, payloads) = extractor.extract(b"AAAA");
+        assert!(cleaned.is_empty());
+        assert!(payloads.is_empty());
+        assert_eq!(
+            extractor.partial_scanned,
+            NESTED_FRAME_HEADER.len() + 4,
+            "the already-scanned body must not be rescanned"
+        );
+
+        let (cleaned, payloads) = extractor.extract(NESTED_FRAME_TERMINATOR);
+        assert!(cleaned.is_empty());
+        assert_eq!(payloads, vec![vec![0, 0, 0]]);
+        assert_eq!(extractor.partial_scanned, 0);
     }
 
     fn test_scheduler(now: Instant) -> ReannounceScheduler {

@@ -647,7 +647,15 @@ impl KeyWithModifier {
         let encoded = match self.bare_key {
             BareKey::Char(c) if !(alt || ctrl || sup) => {
                 if shift {
-                    c.to_uppercase().collect()
+                    let mut uppercase = c.to_uppercase();
+                    match (uppercase.next(), uppercase.next()) {
+                        (Some(upper), None) => upper.to_string(),
+                        // Some characters (e.g. ß -> SS) cannot be
+                        // represented by a single shifted character; use
+                        // the explicit kitty form instead of emitting
+                        // multiple characters.
+                        _ => csi_u(c as u32, mods),
+                    }
                 } else {
                     c.to_string()
                 }
@@ -6395,6 +6403,17 @@ mod kitty_serialization_tests {
         assert_eq!(kitty("Ctrl v").as_deref(), Some("\u{1b}[118;5u"));
         assert_eq!(kitty("Ctrl Space").as_deref(), Some("\u{1b}[32;5u"));
         assert_eq!(kitty("Alt !").as_deref(), Some("\u{1b}[33;3u"));
+    }
+
+    #[test]
+    fn shift_only_uses_text_when_uppercase_is_one_character() {
+        assert_eq!(
+            KeyWithModifier::new(BareKey::Char('ß'))
+                .with_shift_modifier()
+                .serialize_kitty()
+                .as_deref(),
+            Some("\u{1b}[223;2u")
+        );
     }
 
     #[test]

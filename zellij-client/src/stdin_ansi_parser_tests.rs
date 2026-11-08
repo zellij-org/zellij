@@ -1526,6 +1526,30 @@ fn bracketed_paste_preserves_embedded_escape_content() {
         out.residue.windows(6).any(|w| w == b"\x1b]0;hi"),
         "the embedded OSC bytes must survive in residue"
     );
+    assert_eq!(
+        out.paste_spans,
+        vec![0..out.residue.len()],
+        "the whole paste region must be marked so keyboard parsing skips it"
+    );
+}
+
+#[test]
+fn fragmented_paste_marks_each_chunk_as_paste() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[200~body");
+    assert_eq!(r1.residue, b"\x1b[200~body");
+    assert_eq!(r1.paste_spans, vec![0..r1.residue.len()]);
+
+    let r2 = p.feed(b"-more\x1b[201~");
+    assert_eq!(r2.residue, b"-more\x1b[201~");
+    assert_eq!(r2.paste_spans, vec![0..r2.residue.len()]);
+
+    let r3 = p.feed(b"x");
+    assert_eq!(r3.residue, b"x");
+    assert!(
+        r3.paste_spans.is_empty(),
+        "bytes after the paste end marker are ordinary input"
+    );
 }
 
 #[test]

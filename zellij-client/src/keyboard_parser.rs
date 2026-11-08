@@ -71,24 +71,68 @@ impl KittyKeyboardParser {
     /// * preserves state on `Incomplete`, so a sequence split across
     ///   chunks still resolves on a follow-up call.
     ///
-    /// The existing `parse()` wrapper is retained for the unit tests in
-    /// this file, which construct `::new()` per assertion.
+    /// This wrapper only accepts a chunk that is exactly one sequence
+    /// (or a prefix of one). Callers that may see several sequences in
+    /// one chunk must use [`feed_with_consumed`] so trailing bytes are
+    /// not silently dropped.
     pub fn feed(&mut self, bytes: &[u8]) -> KittyParseOutcome {
-        for byte in bytes {
+        match self.feed_with_consumed(bytes) {
+            (KittyParseOutcome::NoMatch, _) => KittyParseOutcome::NoMatch,
+            (outcome, consumed) if consumed == bytes.len() => outcome,
+            // The parser stopped before the end of the chunk. Legacy
+            // callers cannot represent a partially consumed slice, so
+            // leave the trailing bytes to the fallback parser.
+            (_, _) => {
+                self.reset();
+                KittyParseOutcome::NoMatch
+            },
+        }
+    }
+
+    /// Like [`feed`], but also reports how many bytes of `bytes` belonged
+    /// to the returned outcome. On `Complete` the parser stops at the end
+    /// of the first sequence, so the caller can keep parsing the
+    /// remainder instead of losing every following key in the same read.
+    pub fn feed_with_consumed(&mut self, bytes: &[u8]) -> (KittyParseOutcome, usize) {
+        for (index, byte) in bytes.iter().enumerate() {
             if !self.advance(*byte) {
                 self.reset();
-                return KittyParseOutcome::NoMatch;
+                return (KittyParseOutcome::NoMatch, 0);
+            }
+            if let Some(outcome) = self.take_completed_sequence() {
+                let consumed = index + 1;
+                return match outcome {
+                    Some(key) => (KittyParseOutcome::Complete(key), consumed),
+                    // A syntactically complete sequence whose payload is
+                    // invalid: let the fallback parser look at it.
+                    None => (KittyParseOutcome::NoMatch, 0),
+                };
             }
         }
+        let outcome = match self.state {
+            KittyKeysParsingState::Ground => KittyParseOutcome::NoMatch,
+            KittyKeysParsingState::ReceivedEscapeCharacter
+            | KittyKeysParsingState::ParsingNumber
+            | KittyKeysParsingState::ParsingModifiers => KittyParseOutcome::Incomplete,
+            // `take_completed_sequence` handles these immediately after
+            // the byte that produced them.
+            KittyKeysParsingState::DoneParsingWithU
+            | KittyKeysParsingState::DoneParsingWithTilde => KittyParseOutcome::Incomplete,
+        };
+        (outcome, bytes.len())
+    }
+
+    /// Evaluate a terminal state reached by `advance`. Returns:
+    /// * `Some(Some(key))` for a valid complete sequence,
+    /// * `Some(None)` for a complete sequence with an invalid payload,
+    /// * `None` while the sequence is still incomplete.
+    fn take_completed_sequence(&mut self) -> Option<Option<KeyWithModifier>> {
         match self.state {
             KittyKeysParsingState::DoneParsingWithU => {
                 let result =
                     KeyWithModifier::from_bytes_with_u(&self.number_bytes, &self.modifier_bytes);
                 self.reset();
-                match result {
-                    Some(k) => KittyParseOutcome::Complete(k),
-                    None => KittyParseOutcome::NoMatch,
-                }
+                Some(result)
             },
             KittyKeysParsingState::DoneParsingWithTilde => {
                 let result = KeyWithModifier::from_bytes_with_tilde(
@@ -96,10 +140,7 @@ impl KittyKeyboardParser {
                     &self.modifier_bytes,
                 );
                 self.reset();
-                match result {
-                    Some(k) => KittyParseOutcome::Complete(k),
-                    None => KittyParseOutcome::NoMatch,
-                }
+                Some(result)
             },
             KittyKeysParsingState::ParsingNumber => {
                 // ParsingNumber holds either a digit run waiting for a
@@ -112,12 +153,9 @@ impl KittyKeyboardParser {
                             &self.modifier_bytes,
                         );
                         self.reset();
-                        match result {
-                            Some(k) => KittyParseOutcome::Complete(k),
-                            None => KittyParseOutcome::NoMatch,
-                        }
+                        Some(result)
                     },
-                    _ => KittyParseOutcome::Incomplete,
+                    _ => None,
                 }
             },
             KittyKeysParsingState::ParsingModifiers => {
@@ -133,16 +171,12 @@ impl KittyKeyboardParser {
                             &self.modifier_bytes,
                         );
                         self.reset();
-                        match result {
-                            Some(k) => KittyParseOutcome::Complete(k),
-                            None => KittyParseOutcome::NoMatch,
-                        }
+                        Some(result)
                     },
-                    _ => KittyParseOutcome::Incomplete,
+                    _ => None,
                 }
             },
-            KittyKeysParsingState::ReceivedEscapeCharacter => KittyParseOutcome::Incomplete,
-            KittyKeysParsingState::Ground => KittyParseOutcome::NoMatch,
+            KittyKeysParsingState::Ground | KittyKeysParsingState::ReceivedEscapeCharacter => None,
         }
     }
 
@@ -2034,6 +2068,28 @@ fn fragmented_kitty_csi_u_emits_one_event() {
         },
         other => panic!("expected Complete, got {:?}", other),
     }
+}
+
+#[test]
+fn feed_with_consumed_stops_at_the_first_sequence() {
+    use zellij_utils::data::BareKey;
+    let mut p = KittyKeyboardParser::new();
+    let bytes = b"\x1b[97u\x1b[98u";
+    let (first, consumed) = p.feed_with_consumed(bytes);
+    assert_eq!(consumed, 5);
+    assert!(matches!(
+        first,
+        KittyParseOutcome::Complete(ref key)
+            if *key == KeyWithModifier::new(BareKey::Char('a'))
+    ));
+
+    let (second, consumed) = p.feed_with_consumed(&bytes[consumed..]);
+    assert_eq!(consumed, 5);
+    assert!(matches!(
+        second,
+        KittyParseOutcome::Complete(ref key)
+            if *key == KeyWithModifier::new(BareKey::Char('b'))
+    ));
 }
 
 #[test]
