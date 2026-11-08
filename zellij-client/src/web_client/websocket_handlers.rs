@@ -247,12 +247,16 @@ async fn handle_ws_control(
 
     let (control_channel_tx, control_channel_rx) =
         client_channel(CONTROL_CHANNEL_MAX_MESSAGES, CONTROL_CHANNEL_MAX_BYTES);
-    send_control_messages_to_client(control_channel_rx, control_socket_tx);
-    let heartbeat_tx = control_channel_tx.clone();
-
     // Cancelled when the client is dropped (say, for not keeping up) or when a
     // newer control websocket takes over this client id.
     let cancellation_token = CancellationToken::new();
+    send_control_messages_to_client(
+        control_channel_rx,
+        control_socket_tx,
+        cancellation_token.clone(),
+    );
+    let heartbeat_tx = control_channel_tx.clone();
+
     let registered = state
         .connection_table
         .lock()
@@ -684,6 +688,11 @@ async fn handle_ws_terminal(
             },
         }
     }
+    state
+        .connection_table
+        .lock()
+        .unwrap()
+        .remove_client(&web_client_id);
     os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
 

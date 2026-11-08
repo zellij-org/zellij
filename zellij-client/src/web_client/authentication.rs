@@ -3,9 +3,7 @@ use axum::body::Body;
 use axum::http::header::SET_COOKIE;
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use zellij_utils::web_authentication_tokens::{
-    hash_token, is_session_token_read_only, validate_session_token,
-};
+use zellij_utils::web_authentication_tokens::{hash_token, session_token_status};
 
 #[derive(Clone)]
 pub struct SessionTokenHash(pub String);
@@ -25,15 +23,7 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
     // async workers that serve every other connection
     let lookup = {
         let session_token = session_token.clone();
-        tokio::task::spawn_blocking(move || match validate_session_token(&session_token) {
-            // a token we cannot classify is treated as read-only
-            Ok(true) => Ok(Some(
-                is_session_token_read_only(&session_token).unwrap_or(true),
-            )),
-            Ok(false) => Ok(None),
-            Err(e) => Err(e),
-        })
-        .await
+        tokio::task::spawn_blocking(move || session_token_status(&session_token)).await
     };
     let lookup = match lookup {
         Ok(lookup) => lookup,

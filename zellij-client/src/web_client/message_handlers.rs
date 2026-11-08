@@ -217,7 +217,10 @@ pub fn render_to_client(
             match write_unless_cancelled(&mut client_channel_tx, message, &cancellation_token).await
             {
                 WriteOutcome::Sent => {},
-                WriteOutcome::Failed => break,
+                WriteOutcome::Failed => {
+                    cancellation_token.cancel();
+                    break;
+                },
                 // the next pass round the loop sends the close frame
                 WriteOutcome::Cancelled => continue,
             }
@@ -228,12 +231,14 @@ pub fn render_to_client(
 pub fn send_control_messages_to_client(
     mut control_channel_rx: ClientReceiver,
     mut socket_channel_tx: SplitSink<WebSocket, Message>,
+    cancellation_token: CancellationToken,
 ) {
     tokio::spawn(async move {
         while let Some(message) = control_channel_rx.recv().await {
             let write =
                 tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, socket_channel_tx.send(message));
             if !matches!(write.await, Ok(Ok(()))) {
+                cancellation_token.cancel();
                 break;
             }
         }

@@ -218,36 +218,47 @@ impl ClientConnectionBus {
         }
         match self.stdout_channel_tx.as_ref() {
             Some(stdout_channel_tx) => {
-                if let Err(SendFailure::Full) = stdout_channel_tx.try_send(message) {
-                    self.disconnect_slow_client("terminal output");
+                if let Err(failure) = stdout_channel_tx.try_send(message) {
+                    self.disconnect_after_send_failure("terminal output", failure);
                 }
             },
             None => log::error!("Failed to send STDOUT message to client"),
         }
     }
 
-    /// The client is not reading what we send it. Rather than queue output for it
-    /// without bound, drop the connection (the browser reconnects with a fresh
-    /// screen if it is still there).
-    fn disconnect_slow_client(&mut self, what: &str) {
+    fn disconnect_after_send_failure(&mut self, what: &str, failure: SendFailure) {
+        let reason = match failure {
+            SendFailure::Full => "is not keeping up with its",
+            SendFailure::Closed => "closed its",
+        };
         log::warn!(
-            "Web client {} is not keeping up with its {} queue, disconnecting it",
+            "Web client {} {} {} queue, disconnecting it",
             self.web_client_id,
-            what
+            reason,
+            what,
         );
         self.close_connection();
     }
 
     pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
         let message = Message::Text(serde_json::to_string(&message).unwrap().into());
-        if self.control_channel_tx.is_none() {
-            self.get_control_channel_tx();
-        }
-        match self.control_channel_tx.as_ref() {
-            Some(control_channel_tx) => {
-                if let Err(SendFailure::Full) = control_channel_tx.try_send(message) {
-                    self.disconnect_slow_client("control message");
-                }
+        let control_channel_tx = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_client_control_tx(&self.web_client_id);
+        match control_channel_tx {
+            Some(control_channel_tx) => match control_channel_tx.try_send(message.clone()) {
+                Ok(()) => {},
+                Err(SendFailure::Full) => {
+                    self.disconnect_after_send_failure("control message", SendFailure::Full);
+                },
+                Err(SendFailure::Closed) => {
+                    self.connection_table
+                        .lock()
+                        .unwrap()
+                        .queue_client_control_message(&self.web_client_id, message);
+                },
             },
             None => {
                 self.connection_table
@@ -275,10 +286,12 @@ impl ClientConnectionBus {
             reason: "Connection closed".into(),
         };
         let close_message = Message::Close(Some(close_frame));
-        if self.control_channel_tx.is_none() {
-            self.get_control_channel_tx();
-        }
-        match self.control_channel_tx.as_ref() {
+        let control_channel_tx = self
+            .connection_table
+            .lock()
+            .unwrap()
+            .get_client_control_tx(&self.web_client_id);
+        match control_channel_tx {
             // if the queue is full the client is being dropped anyway
             Some(control_channel_tx) => {
                 let _ = control_channel_tx.try_send(close_message);
@@ -301,17 +314,6 @@ impl ClientConnectionBus {
             flag.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         self.close_connection();
-    }
-
-    fn get_control_channel_tx(&mut self) {
-        if let Some(control_channel_tx) = self
-            .connection_table
-            .lock()
-            .unwrap()
-            .get_client_control_tx(&self.web_client_id)
-        {
-            self.control_channel_tx = Some(control_channel_tx);
-        }
     }
 
     fn get_stdout_channel_tx(&mut self) {
@@ -453,6 +455,59 @@ mod tests {
         let message = control_channel_rx
             .try_recv()
             .expect("a registered control channel must receive messages directly");
+        assert!(message_text(&message).contains("QueryTerminalSize"));
+    }
+
+    #[test]
+    fn control_messages_follow_a_replaced_control_channel() {
+        let connection_table = connection_table_with_client("client");
+        let (first_tx, mut first_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            first_tx,
+            CancellationToken::new(),
+        );
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+        assert!(first_rx.try_recv().is_ok());
+
+        let (second_tx, mut second_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            second_tx,
+            CancellationToken::new(),
+        );
+        bus.send_control(WebServerToWebClientControlMessage::SetSoftKeyboard { on: true });
+
+        let message = second_rx
+            .try_recv()
+            .expect("the replacement control channel receives the next message");
+        assert!(message_text(&message).contains("SetSoftKeyboard"));
+        assert!(first_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_closed_control_channel_is_replaced_and_queued_messages_are_flushed() {
+        let connection_table = connection_table_with_client("client");
+        let (closed_tx, closed_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            closed_tx,
+            CancellationToken::new(),
+        );
+        drop(closed_rx);
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+
+        let (replacement_tx, mut replacement_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            replacement_tx,
+            CancellationToken::new(),
+        );
+        let message = replacement_rx
+            .try_recv()
+            .expect("the queued message is flushed to the replacement channel");
         assert!(message_text(&message).contains("QueryTerminalSize"));
     }
 

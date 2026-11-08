@@ -4004,11 +4004,10 @@ mod web_client_tests {
             "a modest message must not close the control websocket"
         );
 
-        client
+        let _ = client
             .control_sink
             .send(Message::Text("x".repeat(3 * 1024 * 1024).into()))
-            .await
-            .unwrap();
+            .await;
         assert!(
             closes_within(&mut client.control_stream, Duration::from_secs(5)).await,
             "an oversized message must close the control websocket"

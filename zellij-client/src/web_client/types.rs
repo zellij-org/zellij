@@ -210,7 +210,6 @@ impl ClientChannels {
 pub struct ClientConnectionBus {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
     pub stdout_channel_tx: Option<ClientSender>,
-    pub control_channel_tx: Option<ClientSender>,
     pub web_client_id: String,
 }
 
@@ -218,17 +217,13 @@ impl ClientConnectionBus {
     pub fn new(web_client_id: &str, connection_table: &Arc<Mutex<ConnectionTable>>) -> Self {
         let connection_table = connection_table.clone();
         let web_client_id = web_client_id.to_owned();
-        let (stdout_channel_tx, control_channel_tx) = {
-            let connection_table = connection_table.lock().unwrap();
-            (
-                connection_table.get_client_terminal_tx(&web_client_id),
-                connection_table.get_client_control_tx(&web_client_id),
-            )
-        };
+        let stdout_channel_tx = connection_table
+            .lock()
+            .unwrap()
+            .get_client_terminal_tx(&web_client_id);
         ClientConnectionBus {
             connection_table,
             stdout_channel_tx,
-            control_channel_tx,
             web_client_id,
         }
     }

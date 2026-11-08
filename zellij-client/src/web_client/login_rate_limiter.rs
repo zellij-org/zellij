@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::net::{IpAddr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -23,6 +23,7 @@ struct Bucket {
 #[derive(Debug, Default)]
 pub struct LoginRateLimiter {
     buckets: HashMap<IpAddr, Bucket>,
+    by_last_seen: BTreeSet<(Instant, IpAddr)>,
 }
 
 impl LoginRateLimiter {
@@ -41,6 +42,9 @@ impl LoginRateLimiter {
         if !self.buckets.contains_key(&address) && self.buckets.len() >= MAX_TRACKED_ADDRESSES {
             self.make_room(now);
         }
+        if let Some(last_seen) = self.buckets.get(&address).map(|bucket| bucket.last_seen) {
+            self.by_last_seen.remove(&(last_seen, address));
+        }
         let bucket = self.buckets.entry(address).or_insert(Bucket {
             tokens: LOGIN_BURST as f64,
             last_seen: now,
@@ -51,7 +55,7 @@ impl LoginRateLimiter {
             / LOGIN_REFILL_INTERVAL.as_secs_f64();
         bucket.tokens = (bucket.tokens + earned).min(LOGIN_BURST as f64);
         bucket.last_seen = now;
-        if bucket.tokens >= 1.0 {
+        let verdict = if bucket.tokens >= 1.0 {
             bucket.tokens -= 1.0;
             Ok(())
         } else {
@@ -59,21 +63,23 @@ impl LoginRateLimiter {
             Err(Duration::from_secs_f64(
                 missing * LOGIN_REFILL_INTERVAL.as_secs_f64(),
             ))
-        }
+        };
+        self.by_last_seen.insert((now, address));
+        verdict
     }
 
     fn make_room(&mut self, now: Instant) {
         // addresses that have fully recovered carry no information
         let full_after = LOGIN_REFILL_INTERVAL * LOGIN_BURST;
-        self.buckets
-            .retain(|_, bucket| now.saturating_duration_since(bucket.last_seen) < full_after);
+        while let Some(&(last_seen, address)) = self.by_last_seen.first() {
+            if now.saturating_duration_since(last_seen) < full_after {
+                break;
+            }
+            self.by_last_seen.pop_first();
+            self.buckets.remove(&address);
+        }
         if self.buckets.len() >= MAX_TRACKED_ADDRESSES {
-            if let Some(oldest) = self
-                .buckets
-                .iter()
-                .min_by_key(|(_, bucket)| bucket.last_seen)
-                .map(|(address, _)| *address)
-            {
+            if let Some((_, oldest)) = self.by_last_seen.pop_first() {
                 self.buckets.remove(&oldest);
             }
         }
@@ -160,5 +166,7 @@ mod tests {
             let _ = limiter.check_at(address, now + Duration::from_millis(n as u64));
         }
         assert!(limiter.buckets.len() <= MAX_TRACKED_ADDRESSES);
+        assert_eq!(limiter.by_last_seen.len(), limiter.buckets.len());
+        assert!(!limiter.buckets.contains_key(&IpAddr::V4(Ipv4Addr::from(0))));
     }
 }

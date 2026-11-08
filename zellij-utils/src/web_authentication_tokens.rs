@@ -19,7 +19,6 @@ pub struct TokenInfo {
 pub enum TokenError {
     Database(rusqlite::Error),
     Io(std::io::Error),
-    InvalidPath,
     DuplicateName(String),
     TokenNotFound(String),
     InvalidToken,
@@ -30,7 +29,6 @@ impl std::fmt::Display for TokenError {
         match self {
             TokenError::Database(e) => write!(f, "Database error: {}", e),
             TokenError::Io(e) => write!(f, "IO error: {}", e),
-            TokenError::InvalidPath => write!(f, "Invalid path"),
             TokenError::DuplicateName(name) => write!(f, "Token name '{}' already exists", name),
             TokenError::TokenNotFound(name) => write!(f, "Token '{}' not found", name),
             TokenError::InvalidToken => write!(f, "Invalid token"),
@@ -132,9 +130,32 @@ fn create_private_db_file(db_path: &Path) -> Result<bool> {
     }
     match options.open(db_path) {
         Ok(_) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            repair_private_db_file_permissions(db_path)?;
+            Ok(false)
+        },
         Err(e) => Err(e.into()),
     }
+}
+
+#[cfg(unix)]
+fn repair_private_db_file_permissions(db_path: &Path) -> Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
+        .open(db_path)?;
+    if file.metadata()?.permissions().mode() & 0o777 != 0o600 {
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn repair_private_db_file_permissions(_db_path: &Path) -> Result<()> {
+    Ok(())
 }
 
 fn init_db(conn: &Connection) -> Result<()> {
@@ -182,11 +203,14 @@ fn init_db(conn: &Connection) -> Result<()> {
 pub fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
-    hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect()
+    let digest = hasher.finalize();
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hash = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        hash.push(HEX[(byte >> 4) as usize] as char);
+        hash.push(HEX[(byte & 0xf) as usize] as char);
+    }
+    hash
 }
 
 pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, String)> {
@@ -271,18 +295,32 @@ fn create_session_token_on(
     Ok(session_token)
 }
 
-pub fn validate_session_token(session_token: &str) -> Result<bool> {
-    let conn = open_db()?;
+pub fn session_token_status(session_token: &str) -> Result<Option<bool>> {
+    session_token_status_on(&open_db()?, session_token)
+}
 
+fn session_token_status_on(conn: &Connection, session_token: &str) -> Result<Option<bool>> {
     let session_token_hash = hash_token(session_token);
 
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM session_tokens WHERE session_token_hash = ?1 AND expires_at > datetime('now')",
+    match conn.query_row(
+        "SELECT COALESCE(t.read_only, 1) FROM session_tokens st
+         LEFT JOIN tokens t ON t.token_hash = st.auth_token_hash
+         WHERE st.session_token_hash = ?1 AND st.expires_at > datetime('now')",
         [&session_token_hash],
-        |row| row.get(0),
-    )?;
+        |row| row.get::<_, i64>(0),
+    ) {
+        Ok(read_only) => Ok(Some(read_only != 0)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(TokenError::Database(e)),
+    }
+}
 
-    Ok(count > 0)
+pub fn validate_session_token(session_token: &str) -> Result<bool> {
+    Ok(session_token_status(session_token)?.is_some())
+}
+
+pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
+    session_token_status(session_token)?.ok_or(TokenError::InvalidToken)
 }
 
 /// Whether the session identified by `session_token_hash` may stay connected.
@@ -309,27 +347,6 @@ fn session_allows_live_connection_on(conn: &Connection, session_token_hash: &str
         |row| row.get(0),
     )?;
     Ok(count > 0)
-}
-
-pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
-    let conn = open_db()?;
-
-    let session_token_hash = hash_token(session_token);
-
-    // Join session_tokens to tokens table to get read_only flag
-    let read_only: i64 = match conn.query_row(
-        "SELECT t.read_only FROM tokens t
-         JOIN session_tokens st ON st.auth_token_hash = t.token_hash
-         WHERE st.session_token_hash = ?1 AND st.expires_at > datetime('now')",
-        [&session_token_hash],
-        |row| row.get(0),
-    ) {
-        Ok(val) => val,
-        Err(rusqlite::Error::QueryReturnedNoRows) => return Err(TokenError::InvalidToken),
-        Err(e) => return Err(TokenError::Database(e)),
-    };
-
-    Ok(read_only != 0)
 }
 
 /// How long the row of an expired session without "remember me" is kept.
@@ -501,6 +518,14 @@ mod tests {
     }
 
     #[test]
+    fn hashes_are_lowercase_hex_sha256() {
+        assert_eq!(
+            hash_token("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
     fn schema_is_set_up_once_per_database_file() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("tokens.db");
@@ -629,6 +654,37 @@ mod tests {
         assert!(allowed());
     }
 
+    #[test]
+    fn session_status_returns_validity_and_read_only_in_one_query() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+        conn.execute(
+            "INSERT INTO tokens (token_hash, name, read_only) VALUES (?1, 'auth', 1)",
+            [hash_token("the-auth-token")],
+        )
+        .unwrap();
+        let session = create_session_token_on(&conn, "the-auth-token", true).unwrap();
+
+        assert_eq!(
+            session_token_status_on(&conn, &session).unwrap(),
+            Some(true)
+        );
+
+        conn.execute("UPDATE tokens SET read_only = 0", []).unwrap();
+        assert_eq!(
+            session_token_status_on(&conn, &session).unwrap(),
+            Some(false)
+        );
+
+        conn.execute(
+            "UPDATE session_tokens SET expires_at = datetime('now', '-1 hour')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(session_token_status_on(&conn, &session).unwrap(), None);
+        assert_eq!(session_token_status_on(&conn, "unknown").unwrap(), None);
+    }
+
     #[cfg(unix)]
     #[test]
     fn database_file_is_private_from_the_moment_it_is_created() {
@@ -645,5 +701,19 @@ mod tests {
         assert_eq!(mode & 0o777, 0o600);
         // creating it a second time reports that it already existed
         assert!(!create_private_db_file(&db_path).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_database_file_permissions_are_repaired() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tokens.db");
+        std::fs::write(&db_path, b"").unwrap();
+        std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(!create_private_db_file(&db_path).unwrap());
+        let mode = std::fs::metadata(&db_path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

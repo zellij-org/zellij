@@ -7,7 +7,7 @@ use crate::web_client::types::{
 use crate::web_client::utils::get_mime_type;
 use axum::{
     extract::{ConnectInfo, Path as AxumPath, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -40,6 +40,7 @@ pub async fn serve_html() -> impl IntoResponse {
 pub async fn login_handler(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(login_request): Json<LoginRequest>,
 ) -> impl IntoResponse {
     // this endpoint is unauthenticated and every attempt costs a database
@@ -69,7 +70,7 @@ pub async fn login_handler(
     };
     match session_token {
         Ok(session_token) => {
-            let is_https = state.is_https;
+            let is_https = request_is_https(&headers, state.is_https);
             let cookie = if remember_me {
                 // Persistent cookie for remember_me
                 Cookie::build(("session_token", session_token))
@@ -110,6 +111,19 @@ pub async fn login_handler(
         )
             .into_response(),
     }
+}
+
+/// A TLS-terminating proxy reports the browser-facing scheme through
+/// `X-Forwarded-Proto`. Trusting it only ever upgrades the cookie to `Secure`
+/// (a direct plain-http client that sends the header merely keeps its own
+/// cookie from being stored), never downgrades a TLS server's cookie.
+fn request_is_https(headers: &HeaderMap, is_https: bool) -> bool {
+    is_https
+        || headers
+            .get("x-forwarded-proto")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .is_some_and(|scheme| scheme.trim().eq_ignore_ascii_case("https"))
 }
 
 pub async fn create_new_client(
@@ -239,4 +253,25 @@ pub async fn get_static_asset(AxumPath(path): AxumPath<String>) -> impl IntoResp
 
 pub async fn version_handler() -> &'static str {
     VERSION
+}
+
+#[cfg(test)]
+mod tests {
+    use super::request_is_https;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    #[test]
+    fn a_forwarded_https_scheme_marks_the_session_cookie_secure() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("HTTPS, http"));
+        assert!(request_is_https(&headers, false));
+    }
+
+    #[test]
+    fn a_forwarded_plain_scheme_does_not_downgrade_a_tls_server() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("http"));
+        assert!(!request_is_https(&headers, false));
+        assert!(request_is_https(&headers, true));
+    }
 }
