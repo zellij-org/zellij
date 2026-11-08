@@ -1308,7 +1308,23 @@ fn run_generation_accepts(
     generation: u64,
 ) -> bool {
     match runs.get(&terminal_id) {
-        Some(run) if run.generation != generation => false,
+        Some(run) if run.generation != generation => {
+            if generation > run.generation {
+                // The new process can produce output before the screen sees
+                // its `TerminalRunStarted`; accept it as the current run.
+                runs.insert(
+                    terminal_id,
+                    TerminalRun {
+                        generation,
+                        drained: false,
+                        deferred_exit: None,
+                    },
+                );
+                true
+            } else {
+                false
+            }
+        },
         Some(_) => true,
         None => {
             runs.insert(
@@ -1344,12 +1360,30 @@ fn stage_child_exit(
     generation: u64,
     instruction: ScreenInstruction,
 ) -> Option<ScreenInstruction> {
-    match runs.get_mut(&terminal_id) {
-        Some(run) if run.generation != generation => None,
-        Some(run) if run.drained => Some(instruction),
-        Some(run) => {
-            run.deferred_exit = Some(instruction);
+    match runs.get(&terminal_id).map(|run| run.generation) {
+        Some(current) if current != generation => {
+            if generation > current {
+                // A restarted process can exit before its `TerminalRunStarted`.
+                // Remember the exit for the generation that is about to start.
+                runs.insert(
+                    terminal_id,
+                    TerminalRun {
+                        generation,
+                        drained: false,
+                        deferred_exit: Some(instruction),
+                    },
+                );
+            }
             None
+        },
+        Some(_) => {
+            let run = runs.get_mut(&terminal_id).expect("run exists");
+            if run.drained {
+                Some(instruction)
+            } else {
+                run.deferred_exit = Some(instruction);
+                None
+            }
         },
         None => {
             runs.insert(
@@ -1383,7 +1417,9 @@ fn stage_run_drained(
 /// run is dropped: it must not close the process that just started.
 fn stage_run_started(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32, generation: u64) {
     if let Some(run) = runs.get(&terminal_id) {
-        if run.generation == generation {
+        // A late start for an older run must not replace a newer run that
+        // already produced bytes or exited.
+        if run.generation >= generation {
             return;
         }
     }
@@ -4198,6 +4234,7 @@ impl Screen {
         if query.is_noop() {
             // Nothing to ask and nothing to wait for. Treat it as a local
             // no-op rather than pausing the pane until the forward timeout.
+            let _ = self.resume_pane_after_forward(pane_id, Vec::new());
             return STARTUP_SENTINEL_TOKEN;
         }
         if let crate::host_query::HostQuery::ClipboardContent { .. } = query {

@@ -6,6 +6,7 @@ use interprocess::local_socket::Stream as LocalSocketStream;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::sync::oneshot;
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::data::Palette;
 
@@ -330,6 +331,54 @@ fn eagain_on_one_terminal_does_not_block_another() {
 
     // Terminal 1 data is lost (stuck until Exit, then dropped)
     // — this is expected behavior; no assertion on terminal 1
+}
+
+#[test]
+fn exit_fails_writes_still_waiting_to_be_sent() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptNone);
+    let (bus, sender) = make_test_bus(mock);
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    run_pty_writer(
+        bus,
+        sender,
+        vec![PtyWriteInstruction::Write(
+            b"never sent".to_vec(),
+            1,
+            Some(NotificationEnd::new(completion_tx)),
+        )],
+    );
+
+    let result = completion_rx.blocking_recv().expect("write resolves");
+    assert_eq!(
+        result.error_message.as_deref(),
+        Some("the pty writer shut down before this input was written")
+    );
+}
+
+#[test]
+fn a_disconnected_writer_fails_writes_still_waiting_to_be_sent() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptNone);
+    let (bus, sender) = make_test_bus(mock);
+    let (completion_tx, completion_rx) = oneshot::channel();
+
+    sender
+        .send(PtyWriteInstruction::Write(
+            b"never sent".to_vec(),
+            1,
+            Some(NotificationEnd::new(completion_tx)),
+        ))
+        .unwrap();
+    drop(sender);
+    pty_writer_main(bus).unwrap();
+
+    let result = completion_rx.blocking_recv().expect("write resolves");
+    assert_eq!(
+        result.error_message.as_deref(),
+        Some("the pty writer disconnected before this input was written")
+    );
 }
 
 #[test]

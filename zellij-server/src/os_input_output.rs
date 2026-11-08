@@ -824,6 +824,7 @@ impl ServerOsApi for ServerOsInputOutput {
             {
                 Ok(spawned) => spawned,
                 Err(err) => {
+                    self.pty_backend.clear_terminal_id(terminal_id);
                     crate::screen::release_uninstalled_terminal(terminal_id);
                     return Err(err).with_context(err_context);
                 },

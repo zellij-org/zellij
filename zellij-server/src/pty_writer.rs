@@ -217,6 +217,12 @@ fn adopt_run(
     }
 }
 
+fn fail_pending_writes(pending: &mut HashMap<u32, PendingQueue>, reason: &str) {
+    for queue in pending.values_mut() {
+        queue.fail_all(reason);
+    }
+}
+
 pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut pending: HashMap<u32, PendingQueue> = HashMap::new();
@@ -239,7 +245,13 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             match bus.recv_timeout(timeout) {
                 Ok(pair) => Some(pair),
                 Err(channels::RecvTimeoutError::Timeout) => None,
-                Err(channels::RecvTimeoutError::Disconnected) => return Ok(()),
+                Err(channels::RecvTimeoutError::Disconnected) => {
+                    fail_pending_writes(
+                        &mut pending,
+                        "the pty writer disconnected before this input was written",
+                    );
+                    return Ok(());
+                },
             }
         } else {
             Some(bus.recv().with_context(err_context)?)
@@ -326,6 +338,10 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                     adopted_runs.remove(&terminal_id);
                 },
                 PtyWriteInstruction::Exit => {
+                    fail_pending_writes(
+                        &mut pending,
+                        "the pty writer shut down before this input was written",
+                    );
                     return Ok(());
                 },
             }

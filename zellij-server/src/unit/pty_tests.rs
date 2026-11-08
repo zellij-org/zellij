@@ -22,6 +22,7 @@ struct MockOsApi {
     signals: Arc<Mutex<Vec<(&'static str, u32)>>>,
     // pid handed out by spawn_terminal, and the quit callback it was given
     spawn_pid: Arc<Mutex<Option<u32>>>,
+    spawn_error: Arc<Mutex<Option<String>>>,
     quit_cb: Arc<Mutex<Option<Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>>>>,
 }
 
@@ -33,6 +34,7 @@ impl MockOsApi {
             cmds_by_ppid: Arc::new(Mutex::new(HashMap::new())),
             signals: Arc::new(Mutex::new(Vec::new())),
             spawn_pid: Arc::new(Mutex::new(None)),
+            spawn_error: Arc::new(Mutex::new(None)),
             quit_cb: Arc::new(Mutex::new(None)),
         }
     }
@@ -54,6 +56,9 @@ impl MockOsApi {
     fn clear_foreground_cmd(&self, ppid: u32) {
         self.cmds_by_ppid.lock().unwrap().remove(&ppid.to_string());
     }
+    fn set_spawn_error(&self, message: &str) {
+        *self.spawn_error.lock().unwrap() = Some(message.to_string());
+    }
 }
 
 impl ServerOsApi for MockOsApi {
@@ -74,6 +79,9 @@ impl ServerOsApi for MockOsApi {
         _: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+        if let Some(message) = self.spawn_error.lock().unwrap().clone() {
+            return Err(anyhow::anyhow!(message));
+        }
         let child_pid = self
             .spawn_pid
             .lock()
@@ -883,4 +891,56 @@ fn the_plugin_that_started_a_command_hears_of_it_only_after_its_pane_was_queued(
         pane_was_queued,
         "the plugin was told of the command before its pane was queued for the screen"
     );
+}
+
+#[test]
+fn a_generic_spawn_failure_reports_an_error_completion() {
+    let mock = MockOsApi::new();
+    mock.set_spawn_error("simulated spawn failure");
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let pty_sender = SenderWithContext::new(pty_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_rx],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(Box::new(mock)),
+    )
+    .should_silently_fail();
+    let pty = Pty::new(bus, false, None, None, Default::default());
+    let pty_thread = std::thread::spawn(move || {
+        pty_thread_main(pty, Box::new(Layout::default()), "test-session".to_owned()).unwrap()
+    });
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+
+    pty_sender
+        .send(PtyInstruction::SpawnTerminal(
+            None,
+            None,
+            Default::default(),
+            false,
+            ClientTabIndexOrPaneId::TabIndex(0),
+            Some(NotificationEnd::new(completion_tx)),
+            false,
+            None,
+        ))
+        .unwrap();
+
+    let result = completion_rx
+        .blocking_recv()
+        .expect("the failed spawn must complete the action");
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("simulated spawn failure")),
+        "the completion must carry the underlying spawn failure: {:?}",
+        result.error_message
+    );
+
+    let _ = pty_sender.send(PtyInstruction::Exit);
+    pty_thread.join().unwrap();
 }

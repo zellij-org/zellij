@@ -410,7 +410,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                     .with_context(err_context)?;
                             }
                         },
-                        _ => Err::<(), _>(err).non_fatal(),
+                        _ => {
+                            if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
+                            }
+                            Err::<(), _>(err).non_fatal();
+                        },
                     },
                 }
             },
@@ -504,7 +509,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                     .with_context(err_context)?;
                             }
                         },
-                        _ => Err::<(), _>(err).non_fatal(),
+                        _ => {
+                            if let Some(mut completion_tx) = completion_tx {
+                                completion_tx.set_error_message(format!("{err:#}"));
+                            }
+                            Err::<(), _>(err).non_fatal();
+                        },
                     },
                 }
             },
@@ -2177,15 +2187,7 @@ impl Pty {
                 if let Some(originating_plugins) = self.originating_plugins.get(&id) {
                     run_command.originating_plugin = Some(originating_plugins.clone());
                 }
-                // Tell the screen which run is current before the old reader
-                // is stopped, so bytes it still delivers are dropped, and
-                // before the new reader is spawned.
                 let run_generation = self.mint_run_generation();
-                self.announce_terminal_run(id, run_generation);
-                if let Some(task) = self.task_handles.remove(&id) {
-                    task.abort();
-                }
-                let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
 
                 let hold_on_close = run_command.hold_on_close;
                 let command_text = run_command.to_string();
@@ -2233,6 +2235,13 @@ impl Pty {
                         os_input.re_run_command_in_terminal(id, run_command, quit_cb, &pane_env)
                     })
                     .with_context(err_context)?;
+                // Only replace the current run after the new process exists.
+                // A failed spawn leaves the old generation and reader intact.
+                self.announce_terminal_run(id, run_generation);
+                if let Some(task) = self.task_handles.remove(&id) {
+                    task.abort();
+                }
+                let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
                 self.remember_run(id, child_pid, run_generation);
                 if let Some(child_pid) = child_pid {
                     self.capture_initial_cwd(id, child_pid);

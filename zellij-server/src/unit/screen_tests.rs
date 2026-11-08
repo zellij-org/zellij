@@ -9529,6 +9529,33 @@ fn an_empty_palette_query_is_not_dispatched_or_queued() {
 }
 
 #[test]
+fn a_noop_query_resumes_a_pane_tab_already_paused() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .get_pane_with_id_mut(pane_id)
+        .unwrap()
+        .arm_forward_pause();
+    assert!(pane_is_forward_paused(&mut screen, pane_id));
+
+    let token = screen.forward_host_query(
+        pane_id,
+        HostQuery::PaletteRegister {
+            indices: Vec::new(),
+            terminator: OscTerminator::St,
+        },
+    );
+
+    assert_eq!(token, crate::screen::STARTUP_SENTINEL_TOKEN);
+    assert!(!pane_is_forward_paused(&mut screen, pane_id));
+    assert!(capture.drain_forward_queries().is_empty());
+}
+
+#[test]
 fn forward_host_query_when_busy_queues_instead_of_dispatching() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
@@ -21347,4 +21374,30 @@ fn unloading_one_plugin_keeps_the_key_intercept_of_another() {
         })
         .collect();
     assert_eq!(intercepted_by, vec![intercepting_plugin]);
+}
+
+#[test]
+fn a_newer_run_is_accepted_before_its_start_is_announced() {
+    use std::collections::HashMap;
+
+    let mut runs = HashMap::new();
+    assert!(super::run_generation_accepts(&mut runs, 1, 1));
+    assert!(super::run_generation_accepts(&mut runs, 1, 2));
+    assert_eq!(runs[&1].generation, 2);
+    assert!(!super::run_generation_accepts(&mut runs, 1, 1));
+}
+
+#[test]
+fn a_newer_run_exit_before_its_start_is_not_lost() {
+    use std::collections::HashMap;
+
+    let mut runs = HashMap::new();
+    super::stage_run_started(&mut runs, 1, 1);
+    let exit = ScreenInstruction::TerminalRunStarted(1, 2);
+    assert!(super::stage_child_exit(&mut runs, 1, 2, exit).is_none());
+    super::stage_run_started(&mut runs, 1, 2);
+    // a late start for the old generation must not replace the exited run
+    super::stage_run_started(&mut runs, 1, 1);
+    assert_eq!(runs[&1].generation, 2);
+    assert!(super::stage_run_drained(&mut runs, 1, 2).is_some());
 }

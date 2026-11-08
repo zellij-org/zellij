@@ -576,22 +576,13 @@ pub(crate) fn background_jobs_main(
                     if *stopped_guard {
                         false
                     } else {
-                        let mut all_persisted = !stage_failed;
-                        for (path, file) in staged {
-                            match persist_atomic_write(file, &path) {
-                                Ok(()) => {
-                                    published.insert(path.clone(), hashes[&path]);
-                                },
-                                Err(error) => {
-                                    all_persisted = false;
-                                    log::error!(
-                                        "Failed to publish session state file {}: {:?}",
-                                        path.display(),
-                                        error
-                                    );
-                                },
-                            }
-                        }
+                        let all_persisted = publish_staged_session_state(
+                            &session_layout_cache_file_name(&session_id),
+                            staged,
+                            &hashes,
+                            &mut published,
+                            !stage_failed,
+                        );
                         if all_persisted && layout_present {
                             report_session_saved(&senders);
                             reported_saved = true;
@@ -1418,16 +1409,18 @@ fn collect_dirty_session_state_writes(
         current_session_info.to_string().as_bytes(),
     );
     if !current_session_layout.is_empty() {
-        consider(
-            session_layout_cache_file_name(session_id),
-            current_session_layout.as_bytes(),
-        );
+        // The layout names these files, so publish them before it. If one of
+        // them fails, the layout stays unpublished and the next tick retries.
         for (external_file_name, external_file_contents) in layout_files_to_write {
             consider(
                 session_info_folder.join(external_file_name),
                 external_file_contents.as_bytes(),
             );
         }
+        consider(
+            session_layout_cache_file_name(session_id),
+            current_session_layout.as_bytes(),
+        );
     }
     (writes, hashes)
 }
@@ -1441,7 +1434,7 @@ pub fn write_session_state_to_disk(
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
     let mut first_error = None;
-    let mut write_if_changed = |path: PathBuf, contents: &[u8]| {
+    let mut write_if_changed = |path: PathBuf, contents: &[u8]| -> bool {
         if file_content_changed(&path, contents) {
             if let Err(error) = write_file_atomically(&path, contents) {
                 log::error!(
@@ -1450,25 +1443,34 @@ pub fn write_session_state_to_disk(
                     error
                 );
                 first_error.get_or_insert(error);
+                return false;
             }
         }
+        true
     };
-    write_if_changed(metadata_cache_file_name, new_metadata.as_bytes());
+    let _ = write_if_changed(metadata_cache_file_name, new_metadata.as_bytes());
 
     if !current_session_layout.is_empty() {
-        let layout_cache_file_name = session_layout_cache_file_name(&session_id);
-        if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
-            // replacing the file gives it a new creation time; keep the
-            // session's own
-            zellij_utils::sessions::record_session_layout_creation_time(&layout_cache_file_name);
-        }
-        write_if_changed(layout_cache_file_name, current_session_layout.as_bytes());
         let session_info_folder = session_info_folder_for_session(&session_id);
+        let mut content_persisted = true;
         for (external_file_name, external_file_contents) in layout_files_to_write {
-            write_if_changed(
+            content_persisted &= write_if_changed(
                 session_info_folder.join(&external_file_name),
                 external_file_contents.as_bytes(),
             );
+        }
+        // The layout names these files, so never publish it after one of them
+        // failed; the next save retries the whole set.
+        if content_persisted {
+            let layout_cache_file_name = session_layout_cache_file_name(&session_id);
+            if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
+                // replacing the file gives it a new creation time; keep the
+                // session's own
+                zellij_utils::sessions::record_session_layout_creation_time(
+                    &layout_cache_file_name,
+                );
+            }
+            write_if_changed(layout_cache_file_name, current_session_layout.as_bytes());
         }
     }
     match first_error {
@@ -1503,15 +1505,67 @@ fn persist_atomic_write(file: tempfile::NamedTempFile, path: &Path) -> std::io::
     sync_parent_directory(path)
 }
 
+/// Publish staged session artifacts. `layout_path` is written last and only
+/// after every artifact before it succeeded, so a layout never names content
+/// that failed to publish. Returns whether every staged file was published.
+fn publish_staged_session_state(
+    layout_path: &Path,
+    staged: Vec<(PathBuf, tempfile::NamedTempFile)>,
+    hashes: &HashMap<PathBuf, u64>,
+    published: &mut HashMap<PathBuf, u64>,
+    mut dependencies_persisted: bool,
+) -> bool {
+    let mut all_persisted = dependencies_persisted;
+    for (path, file) in staged {
+        if path == layout_path && !dependencies_persisted {
+            all_persisted = false;
+            continue;
+        }
+        if path == layout_path {
+            zellij_utils::sessions::record_session_layout_creation_time(&path);
+        }
+        match persist_atomic_write(file, &path) {
+            Ok(()) => {
+                published.insert(path.clone(), hashes[&path]);
+            },
+            Err(error) => {
+                all_persisted = false;
+                if path != layout_path {
+                    dependencies_persisted = false;
+                }
+                log::error!(
+                    "Failed to publish session state file {}: {:?}",
+                    path.display(),
+                    error
+                );
+            },
+        }
+    }
+    all_persisted
+}
+
 #[cfg(unix)]
 fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        fs::File::open(parent)?.sync_all()?;
+        let directory = fs::File::open(parent)?;
+        match directory.sync_all() {
+            Ok(()) => {},
+            Err(error) if directory_sync_unsupported(&error) => {},
+            Err(error) => return Err(error),
+        }
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn directory_sync_unsupported(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(code) if code == libc::EINVAL || code == libc::ENOTSUP
+    )
 }
 
 #[cfg(not(unix))]
@@ -1744,6 +1798,53 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_parent_directory_sync_is_not_a_save_failure() {
+        use std::io::Error;
+
+        assert!(directory_sync_unsupported(&Error::from_raw_os_error(
+            libc::EINVAL
+        )));
+        assert!(directory_sync_unsupported(&Error::from_raw_os_error(
+            libc::ENOTSUP
+        )));
+        assert!(!directory_sync_unsupported(&Error::from_raw_os_error(
+            libc::EIO
+        )));
+    }
+
+    #[test]
+    fn a_failed_content_write_leaves_the_layout_unpublished() {
+        let dir = tempdir().unwrap();
+        let content_path = dir.path().join("pane-1.txt");
+        let layout_path = dir.path().join("session-layout.kdl");
+        // A directory at the content path makes the staged file impossible to
+        // publish while leaving staging itself successful.
+        std::fs::create_dir(&content_path).unwrap();
+        let content_file = stage_atomic_write(&content_path, b"content").unwrap();
+        let layout_file = stage_atomic_write(&layout_path, b"layout").unwrap();
+        let hashes = HashMap::from([
+            (content_path.clone(), content_hash(b"content")),
+            (layout_path.clone(), content_hash(b"layout")),
+        ]);
+        let mut published = HashMap::new();
+
+        let all_persisted = publish_staged_session_state(
+            &layout_path,
+            vec![
+                (content_path, content_file),
+                (layout_path.clone(), layout_file),
+            ],
+            &hashes,
+            &mut published,
+            true,
+        );
+
+        assert!(!all_persisted);
+        assert!(!layout_path.exists());
+        assert!(!published.contains_key(&layout_path));
+    }
+
+    #[test]
     fn concurrent_atomic_writes_never_expose_mixed_contents() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("session-state");
@@ -1784,6 +1885,14 @@ mod tests {
         let (writes, published) =
             collect_dirty_session_state_writes(session_id, &info, &layout, &HashMap::new());
         assert_eq!(writes.len(), 3);
+        assert_eq!(
+            writes
+                .iter()
+                .map(|(path, _)| path.file_name().unwrap().to_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["session-metadata.kdl", "pane-1.txt", "session-layout.kdl"],
+            "the layout must be published after the content it references"
+        );
         for (path, contents) in &writes {
             write_file_atomically(path, contents).unwrap();
         }
