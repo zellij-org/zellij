@@ -1053,6 +1053,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     scrollback_cells: &mut usize,
     rows_evicted: &mut u64,
     content_epoch: &mut u64,
+    history_truncated: &mut bool,
 ) -> bool {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
@@ -1128,6 +1129,7 @@ fn transfer_rows_from_lines_above_to_viewport(
             excess_row,
             scrollback_cells,
             line_index,
+            history_truncated,
         );
         *rows_evicted += evicted as u64;
         *content_epoch = content_epoch.wrapping_add(1);
@@ -1145,6 +1147,7 @@ fn transfer_rows_from_viewport_to_lines_above(
     scrollback_cells: &mut usize,
     rows_evicted: &mut u64,
     content_epoch: &mut u64,
+    history_truncated: &mut bool,
 ) {
     let drained_lines = std::cmp::min(count, viewport.len());
     for next_line in viewport.drain(..drained_lines) {
@@ -1156,6 +1159,7 @@ fn transfer_rows_from_viewport_to_lines_above(
             next_line,
             scrollback_cells,
             line_index,
+            history_truncated,
         );
         *rows_evicted += evicted as u64;
         *content_epoch = content_epoch.wrapping_add(1);
@@ -1411,6 +1415,7 @@ fn bounded_push(
     mut value: Row,
     scrollback_cells: &mut usize,
     line_index: &mut LineIndex,
+    history_truncated: &mut bool,
 ) -> usize {
     value.compress_trailing_blanks();
     if value.columns.capacity() > value.columns.len() {
@@ -1423,9 +1428,9 @@ fn bounded_push(
     // While the oldest line is being measured, evicting it would move the
     // measurement origin and restart the job. Admit a bounded reserve of new
     // rows instead; the recount trims back to the normal cap when it finishes.
-    // If output outruns the recount, evictions resume at the 2x ceiling. Each
-    // completed recount still publishes the exact length, so this is a
-    // bounded-work cycle, not a stuck measurement.
+    // If output outruns the recount, drop the newest retained rows at the 2x
+    // ceiling: the oldest line keeps its measurement origin, memory stays
+    // bounded, and the loss is reported as truncated history.
     let reserving_for_recount =
         line_index.front_line_unmeasured() && line_index.measurement_active();
     let row_limit = if reserving_for_recount {
@@ -1439,6 +1444,19 @@ fn bounded_push(
         cell_budget
     };
     let mut evicted = 0usize;
+    let may_drop_back = !sixel_grid.has_images() && kitty_grid.placements().is_empty();
+    let front_line_rows = line_index.front_line_row_count().unwrap_or(0);
+    let front_line_fills_scrollback =
+        scroll_buffer_size > 0 && front_line_rows >= scroll_buffer_size;
+    // Once one logical line occupies the whole retention window, every front
+    // eviction moves its origin. Keep the line stable and shed newest rows
+    // instead. When the producer starts a new line, drop the overlong line
+    // whole so ordinary rolling retention resumes.
+    let mut freeze_overlong_front = may_drop_back
+        && !reserving_for_recount
+        && front_line_fills_scrollback
+        && line_index.front_line_is_measured()
+        && !line_index.front_row_cut_is_exact();
     // Measure after trailing-blank compress. Evict on the prospective
     // total, not the total before this row: rows that each fit the
     // budget can still push the retained sum past it (2048 + 2048
@@ -1450,6 +1468,37 @@ fn bounded_push(
     while vec.len() >= row_limit
         || (scrollback_cells.saturating_add(incoming) > cell_limit && !vec.is_empty())
     {
+        if reserving_for_recount && may_drop_back {
+            let Some(row) = vec.pop_back() else {
+                break;
+            };
+            *scrollback_cells = scrollback_cells.saturating_sub(row.stored_cell_count());
+            line_index.note_back_rows_removed(vec, 1);
+            *history_truncated = true;
+            continue;
+        }
+        if freeze_overlong_front {
+            if value.is_canonical {
+                let removed = front_line_rows.min(vec.len());
+                for _ in 0..removed {
+                    if retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells)
+                        .is_none()
+                    {
+                        break;
+                    }
+                    evicted += 1;
+                }
+                freeze_overlong_front = false;
+            } else {
+                let Some(row) = vec.pop_back() else {
+                    break;
+                };
+                *scrollback_cells = scrollback_cells.saturating_sub(row.stored_cell_count());
+                line_index.note_back_rows_removed(vec, 1);
+            }
+            *history_truncated = true;
+            continue;
+        }
         match retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells) {
             Some(_) => evicted += 1,
             None => break,
@@ -2805,6 +2854,7 @@ impl Grid {
                 &mut self.scrollback_cells,
                 &mut self.scrollback_rows_evicted,
                 &mut self.content_epoch,
+                &mut self.history_truncated,
             );
             self.kitty_refresh_after_scroll_step(reflowed);
 
@@ -2851,6 +2901,7 @@ impl Grid {
                 line_to_push_up,
                 &mut self.scrollback_cells,
                 &mut self.line_index,
+                &mut self.history_truncated,
             );
             self.scrollback_rows_evicted += evicted as u64;
             self.content_epoch = self.content_epoch.wrapping_add(1);
@@ -2901,7 +2952,7 @@ impl Grid {
         self.line_index.regroup(&self.lines_above, new_columns);
     }
     pub(crate) fn display_recount_pending(&self) -> bool {
-        !self.line_index.is_fully_measured()
+        !self.line_index.is_fully_measured() || self.scrollback_over_budget()
     }
     /// Whether the bounded scrollback reserve is open because the front line
     /// is actively being remeasured.
@@ -2910,40 +2961,70 @@ impl Grid {
         self.line_index.front_line_unmeasured() && self.line_index.measurement_active()
     }
     /// Measure at most one line/chunk of scrollback. Returns true when the
-    /// recount has finished.
+    /// recount has finished, including the bounded trim back to the normal
+    /// retention cap.
     pub(crate) fn continue_display_row_recount(&mut self) -> bool {
-        let done = self.line_index.measure_next(
-            &self.lines_above,
-            MeasureBudget::new(SCREEN_ROW_QUANTUM, DISPLAY_RECOUNT_CELL_BUDGET),
-        ) == MeasureProgress::Done;
-        if done {
-            self.trim_scrollback_to_budget();
+        if !self.line_index.is_fully_measured()
+            && self.line_index.measure_next(
+                &self.lines_above,
+                MeasureBudget::new(SCREEN_ROW_QUANTUM, DISPLAY_RECOUNT_CELL_BUDGET),
+            ) == MeasureProgress::Pending
+        {
+            return false;
         }
-        done
+        // The reserve is admitted in row quanta, so retirement is too. A
+        // single completion call must not evict an entire 2x reserve.
+        let _ = self.trim_scrollback_to_budget(SCREEN_ROW_QUANTUM);
+        !self.display_recount_pending()
     }
     /// Finish a resize recount on the calling thread. Grid tests and any
     /// caller that reads the length immediately use this. The screen thread
     /// uses [`Self::continue_display_row_recount`] one quantum at a time.
     pub(crate) fn finish_display_row_recount(&mut self) {
         self.line_index.measure_all(&self.lines_above);
-        self.trim_scrollback_to_budget();
+        let _ = self.trim_scrollback_to_budget(usize::MAX);
     }
     /// Drop the bounded evacuation reserve admitted while a recount owned the
     /// front line. Only called once every line has an exact summary.
-    fn trim_scrollback_to_budget(&mut self) {
-        let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
-        let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
-        while self.lines_above.len() > scroll_buffer_size
-            || (self.scrollback_cells > cell_budget && !self.lines_above.is_empty())
-        {
-            if !self.evict_one_scrollback_row() {
+    fn trim_scrollback_to_budget(&mut self, max_rows: usize) -> bool {
+        for _ in 0..max_rows {
+            if !self.scrollback_over_budget() {
+                break;
+            }
+            let images = self.sixel_grid.has_images() || !self.kitty_grid.placements().is_empty();
+            let trimmed = if self.line_index.front_row_cut_is_exact() || images {
+                self.evict_one_scrollback_row()
+            } else {
+                // Dropping the oldest rows of a mixed-width line would
+                // invalidate the summary that just finished. Shed the newest
+                // reserve rows instead; the loss is reported as truncation.
+                self.pop_scrollback_back_row()
+            };
+            if !trimmed {
                 break;
             }
         }
-        if self.lines_above.capacity() > self.lines_above.len().saturating_mul(2).saturating_add(64)
-        {
-            self.lines_above.shrink_to_fit();
-        }
+        !self.scrollback_over_budget()
+    }
+    fn pop_scrollback_back_row(&mut self) -> bool {
+        let Some(row) = self.lines_above.pop_back() else {
+            return false;
+        };
+        self.scrollback_cells = self
+            .scrollback_cells
+            .saturating_sub(row.stored_cell_count());
+        self.line_index.note_back_rows_removed(&self.lines_above, 1);
+        self.history_truncated = true;
+        self.content_epoch = self.content_epoch.wrapping_add(1);
+        true
+    }
+    fn scrollback_over_budget(&self) -> bool {
+        let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+        let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
+        // A single newest row may exceed the cell budget; `bounded_push`
+        // admits it rather than losing the only retained row.
+        self.lines_above.len() > scroll_buffer_size
+            || (self.scrollback_cells > cell_budget && self.lines_above.len() > 1)
     }
     pub(crate) fn rep_pending(&self) -> bool {
         self.pending_rep.is_some()
@@ -3253,6 +3334,7 @@ impl Grid {
                         &mut self.scrollback_cells,
                         &mut self.scrollback_rows_evicted,
                         &mut self.content_epoch,
+                        &mut self.history_truncated,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
@@ -3284,6 +3366,7 @@ impl Grid {
                         &mut self.scrollback_cells,
                         &mut self.scrollback_rows_evicted,
                         &mut self.content_epoch,
+                        &mut self.history_truncated,
                     );
                 },
                 Ordering::Equal => {},
@@ -4100,6 +4183,7 @@ impl Grid {
                 row,
                 &mut self.scrollback_cells,
                 &mut self.line_index,
+                &mut self.history_truncated,
             );
             self.scrollback_rows_evicted += evicted as u64;
             self.content_epoch = self.content_epoch.wrapping_add(1);
@@ -4201,6 +4285,7 @@ impl Grid {
             &mut self.scrollback_cells,
             &mut self.scrollback_rows_evicted,
             &mut self.content_epoch,
+            &mut self.history_truncated,
         );
         let added = self.viewport.len().saturating_sub(before);
         for _ in 0..added {
@@ -4292,6 +4377,7 @@ impl Grid {
                 line,
                 &mut self.scrollback_cells,
                 &mut self.line_index,
+                &mut self.history_truncated,
             );
             self.scrollback_rows_evicted += evicted as u64;
             self.content_epoch = self.content_epoch.wrapping_add(1);
@@ -6378,6 +6464,7 @@ impl Grid {
                 excess_row,
                 &mut self.scrollback_cells,
                 &mut self.line_index,
+                &mut self.history_truncated,
             );
             self.scrollback_rows_evicted += evicted as u64;
             self.content_epoch = self.content_epoch.wrapping_add(1);
@@ -6434,6 +6521,7 @@ impl Grid {
             &mut self.scrollback_cells,
             &mut self.scrollback_rows_evicted,
             &mut self.content_epoch,
+            &mut self.history_truncated,
         );
         self.kitty_reanchor_all_from_pixels();
     }

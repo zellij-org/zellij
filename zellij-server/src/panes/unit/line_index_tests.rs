@@ -813,6 +813,36 @@ fn empty_continuation_rows_do_not_change_height_but_can_be_transferred() {
 }
 
 #[test]
+fn back_cut_retires_a_partially_scanned_removed_row() {
+    let width = 2;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("ab", true),
+            character_row("cd", false),
+            character_row("ef", false),
+        ],
+        80,
+    );
+    fixture.set_width(width);
+    assert_eq!(fixture.measure_next(8, 3), MeasureProgress::Pending);
+    let cursor = fixture
+        .index
+        .measure
+        .as_ref()
+        .expect("partially scanned line");
+    assert_eq!(cursor.row_index, 1);
+    assert_eq!(cursor.cell_index, 1);
+
+    let (taken, _) = fixture.take_back(2);
+    assert_eq!(taken.len(), 2);
+    assert_eq!(fixture.rows.len(), 1);
+    fixture.measure_all();
+
+    assert_eq!(reference_total(&fixture.rows, width), 1);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
 fn transferring_every_row_empties_the_index() {
     let width = 5;
     let mut fixture = Fixture::new(

@@ -224,11 +224,46 @@ fn rep_paused_output_is_bounded_and_dropped_oldest() {
 
 #[test]
 fn image_capable_chunks_do_not_park_scrolled_panes() {
-    let pane = terminal_pane_with_size(4, 20);
-    assert!(pane.parking_is_safe(b"plain text"));
-    assert!(!pane.parking_is_safe(b"\x1bPq#0;2;0;0;0"));
-    assert!(!pane.parking_is_safe(b"\x1b_Ga=t,f=24;AAAA\x1b\\"));
-    assert!(!pane.parking_is_safe(b"\x1b]1337;File=inline=1:AAAA\x07"));
+    let mut pane = terminal_pane_with_size(4, 20);
+    assert!(pane.input_is_parkable(b"plain text"));
+    assert!(!pane.input_is_parkable(b"\x1bPq#0;2;0;0;0"));
+    assert!(!pane.input_is_parkable(b"\x1b_Ga=t,f=24;AAAA\x1b\\"));
+    assert!(!pane.input_is_parkable(b"\x1b]1337;File=inline=1:AAAA\x07"));
+    pane.pending_pty_input = b"queued \x1b_Ga=t,f=24;AAAA\x1b\\".to_vec();
+    assert!(
+        !pane.input_is_parkable(b""),
+        "a queued image suffix must revoke parking"
+    );
+    pane.pending_pty_input.clear();
+    pane.held_escape = true;
+    assert!(
+        !pane.input_is_parkable(b"text"),
+        "a retained escape prefix must revoke parking"
+    );
+}
+
+#[test]
+fn backlog_overflow_rejects_the_whole_queue_instead_of_splicing_a_suffix() {
+    for (prefix, suffix) in [
+        (b"\x1b]2;secret".as_slice(), b"VISIBLE\x07".as_slice()),
+        (b"\x1b[31".as_slice(), b"mVISIBLE".as_slice()),
+        (b"\x1bPq".as_slice(), b"#0;2;0;0;0".as_slice()),
+        (b"\x1b_Ga=t,f=24;".as_slice(), b"AAAA\x1b\\".as_slice()),
+        (b"\xe2\x82".as_slice(), b"\xac".as_slice()),
+    ] {
+        let mut pane = terminal_pane_with_size(4, 20);
+        pane.append_pending_pty_input(prefix);
+        let queued = pane.pending_pty_input.len();
+        pane.append_pending_pty_input(&vec![b'x'; MAX_PENDING_PTY_BYTES - queued + 1]);
+        assert!(!pane.has_pending_pty_input(), "queue survived overflow");
+        assert!(pane.vte_parser.is_ground(), "parser retained a prefix");
+        assert!(pane.output_truncated);
+        pane.handle_pty_bytes_for_test(suffix.to_vec());
+        assert!(
+            pane.grid.title.is_none(),
+            "suffix completed the discarded title sequence"
+        );
+    }
 }
 
 #[test]
@@ -253,6 +288,28 @@ fn scrolled_image_output_does_not_resume_in_history() {
     assert!(
         contains_x,
         "output after a scrolled image landed in history instead of the live model"
+    );
+}
+
+#[test]
+fn image_input_revokes_a_park_created_by_an_earlier_text_quantum() {
+    let mut pane = terminal_pane_with_size(5, 20);
+    for _ in 0..30 {
+        pane.handle_pty_bytes_for_test(b"HHHHHHHHHHHHHHHHHHHH\r\n".to_vec());
+    }
+    pane.scroll_up(2, 1);
+    assert!(pane.grid.park_at_live_bottom());
+
+    pane.with_live_terminal(b"\x1b_Ga=t,f=24;AAAA\x1b\\", |pane| {
+        assert!(
+            !pane.grid.is_live_bottom_parked(),
+            "image input must leave the parked historical projection"
+        );
+        assert!(!pane.grid.is_scrolled);
+    });
+    assert!(
+        !pane.grid.is_live_bottom_parked(),
+        "the historical view must be restored without a live-model park"
     );
 }
 
@@ -1651,8 +1708,8 @@ fn pane_frame_color_override_reports_change_only_on_real_delta() {
 fn truncation_is_reported_on_the_title_and_not_as_terminal_bytes() {
     let mut pane = pane_for_split_test();
     pane.pane_name = "shell".to_owned();
-    pane.note_preopen_output_truncated();
-    pane.note_preopen_output_truncated();
+    pane.note_output_truncated();
+    pane.note_output_truncated();
     let title = pane.current_title();
     assert_eq!(title.matches(" [output cut off]").count(), 1, "{title}");
     assert!(title.starts_with("shell"), "{title}");

@@ -354,6 +354,13 @@ impl Parser {
         ) || (matches!(self.state, State::OscString) && self.osc.starts_with(b"1337;"))
     }
 
+    /// Whether the stream is between complete sequences, including any
+    /// retained escape prefix. Parking around a fragmented sequence would
+    /// make the discontinuity depend on which caller happened to supply it.
+    pub fn is_ground(&self) -> bool {
+        matches!(self.state, State::Ground) && self.carry_len == 0
+    }
+
     #[cfg(test)]
     pub(crate) fn without_shortcuts() -> Self {
         Parser {

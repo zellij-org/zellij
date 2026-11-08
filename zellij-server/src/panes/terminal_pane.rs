@@ -224,7 +224,7 @@ pub struct TerminalPane {
     output_catchup: Option<OutputCatchup>,
     /// Bytes from before this pane existed were dropped. Shown in the title,
     /// never written into the PTY stream.
-    preopen_output_truncated: bool,
+    output_truncated: bool,
 }
 
 struct OutputCatchup {
@@ -312,8 +312,7 @@ impl Pane for TerminalPane {
             self.append_pending_pty_input(&bytes);
             return;
         }
-        let allow_park = self.parking_is_safe(&bytes) && self.pending_input_parking_is_safe();
-        self.with_live_terminal(allow_park, |pane| pane.feed_terminal_bytes(&bytes));
+        self.with_live_terminal(&bytes, |pane| pane.feed_terminal_bytes(&bytes));
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
@@ -877,7 +876,7 @@ impl Pane for TerminalPane {
     }
     fn advance_deferred_pane_work(&mut self) {
         if self.grid.rep_pending() {
-            self.with_live_terminal(self.parking_is_safe(&[]), |pane| {
+            self.with_live_terminal(&[], |pane| {
                 let done = pane.grid.continue_pending_rep();
                 if done {
                     // Resume the bytes the parser left behind the repeat.
@@ -888,8 +887,7 @@ impl Pane for TerminalPane {
             return;
         }
         if !self.forward_paused && self.has_pending_pty_input() {
-            let allow_park = self.parking_is_safe(&[]) && self.pending_input_parking_is_safe();
-            self.with_live_terminal(allow_park, |pane| pane.process_pending_pty_input());
+            self.with_live_terminal(&[], |pane| pane.process_pending_pty_input());
             self.set_should_render(true);
             return;
         }
@@ -1490,7 +1488,7 @@ impl Pane for TerminalPane {
         } else {
             self.pane_name.to_owned()
         };
-        if self.preopen_output_truncated {
+        if self.output_truncated {
             title.push_str(" [output cut off]");
         }
         if self.grid.history_was_truncated() {
@@ -1498,21 +1496,25 @@ impl Pane for TerminalPane {
         }
         title
     }
-    fn note_preopen_output_truncated(&mut self) {
-        if !self.preopen_output_truncated {
-            self.preopen_output_truncated = true;
+    fn note_output_truncated(&mut self) {
+        if !self.output_truncated {
+            self.output_truncated = true;
             self.set_should_render(true);
         }
     }
     fn discard_unfinished_input(&mut self) {
-        self.held_escape = false;
-        self.kitty_interceptor.reset();
-        self.vte_parser.discard_unfinished();
-        self.grid.abandon_unfinished_control_sequence();
+        self.reset_unfinished_input_state();
         // Bytes the prefix left queued must not be fed next to the output
         // that follows the gap.
         self.pending_pty_input.clear();
         self.pending_pty_offset = 0;
+    }
+    fn reject_unparsed_input(&mut self) {
+        self.reset_unfinished_input_state();
+        self.pending_pty_input.clear();
+        self.pending_pty_offset = 0;
+        self.note_output_truncated();
+        self.scrolled_backlog_idle();
     }
     fn stack_list_entry_label(&self) -> String {
         match self.attention_marker_text() {
@@ -1781,6 +1783,13 @@ impl TerminalPane {
     /// Apply terminal operations against the live model even when the user
     /// is looking at history. The held view is restored afterwards, so a
     /// deferred REP quantum and the bytes behind it cannot land in history.
+    fn reset_unfinished_input_state(&mut self) {
+        self.held_escape = false;
+        self.kitty_interceptor.reset();
+        self.vte_parser.discard_unfinished();
+        self.grid.abandon_unfinished_control_sequence();
+    }
+
     fn bytes_may_place_image(bytes: &[u8]) -> bool {
         const INTRODUCERS: [&[u8]; 3] = [b"\x1bP", b"\x1b_", b"\x1b]1337;"];
         INTRODUCERS
@@ -1788,31 +1797,36 @@ impl TerminalPane {
             .any(|introducer| memchr::memmem::find(bytes, introducer).is_some())
     }
 
-    fn parking_is_safe(&self, bytes: &[u8]) -> bool {
+    fn input_is_parkable(&self, bytes: &[u8]) -> bool {
         self.kitty_interceptor.is_ground()
-            && !self.vte_parser.in_image_capable_string()
+            && self.vte_parser.is_ground()
+            && !self.held_escape
             && !Self::bytes_may_place_image(bytes)
-    }
-
-    fn pending_input_parking_is_safe(&self) -> bool {
-        !Self::bytes_may_place_image(&self.pending_pty_input[self.pending_pty_offset..])
+            && !Self::bytes_may_place_image(&self.pending_pty_input[self.pending_pty_offset..])
     }
 
     fn with_live_terminal<R>(
         &mut self,
-        allow_park: bool,
+        input_bytes: &[u8],
         operation: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        if !self.grid.is_scrolled || self.grid.is_live_bottom_parked() {
+        let allow_park = self.input_is_parkable(input_bytes);
+        if !self.grid.is_scrolled && !self.grid.is_live_bottom_parked() {
             return operation(self);
         }
-        if allow_park && self.grid.park_at_live_bottom() {
-            let result = operation(self);
+        if allow_park {
+            if self.grid.is_live_bottom_parked() || self.grid.park_at_live_bottom() {
+                let result = operation(self);
+                if self.grid.is_live_bottom_parked() {
+                    self.grid.unpark_live_bottom();
+                }
+                return result;
+            }
+        } else if self.grid.is_live_bottom_parked() {
+            // A park created by an earlier text quantum is not permission to
+            // parse an image-capable suffix against the historical window.
             self.grid.unpark_live_bottom();
-            return result;
         }
-        // An image placement still depends on scrollback coordinates; use
-        // the same anchor fallback the direct PTY path uses.
         let alternate_before = self.grid.is_alternate_mode_active();
         let viewport_anchor = self.grid.viewport_anchor();
         self.grid.reset_viewport();
@@ -1970,30 +1984,18 @@ impl TerminalPane {
             .pending_pty_input
             .len()
             .saturating_sub(self.pending_pty_offset);
-        let excess = unparsed
-            .saturating_add(bytes.len())
-            .saturating_sub(MAX_PENDING_PTY_BYTES);
-        let mut new_bytes = bytes;
-        if excess > 0 {
-            let drop_existing = excess.min(unparsed);
-            if drop_existing > 0 {
-                let start = self.pending_pty_offset;
-                self.pending_pty_input.drain(start..start + drop_existing);
-                log::warn!(
-                    "pane dropped {drop_existing} oldest bytes of output buffered behind \
-                     unfinished terminal work to stay within {MAX_PENDING_PTY_BYTES} bytes"
-                );
-            }
-            let excess_after = excess.saturating_sub(drop_existing);
-            if excess_after > 0 {
-                log::warn!(
-                    "pane dropped {excess_after} bytes of new output to stay within \
-                     {MAX_PENDING_PTY_BYTES} bytes"
-                );
-                new_bytes = &new_bytes[excess_after..];
-            }
+        if unparsed.saturating_add(bytes.len()) > MAX_PENDING_PTY_BYTES {
+            // Keep the decoder and the bytes it sees on the same side of the
+            // gap. A suffix of a control string is not independent output.
+            let dropped = unparsed.saturating_add(bytes.len());
+            self.reject_unparsed_input();
+            log::warn!(
+                "pane rejected {dropped} bytes of buffered output at the \
+                 {MAX_PENDING_PTY_BYTES} byte ceiling and reset the parser"
+            );
+            return;
         }
-        self.pending_pty_input.extend_from_slice(new_bytes);
+        self.pending_pty_input.extend_from_slice(bytes);
     }
 
     /// Feed the queued PTY bytes to vte front to back. Only the bytes
@@ -2266,7 +2268,7 @@ impl TerminalPane {
             mirror_pinned_size: None,
             viewport_goal: None,
             output_catchup: None,
-            preopen_output_truncated: false,
+            output_truncated: false,
             program_resized_at: None,
         }
     }

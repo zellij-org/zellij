@@ -168,9 +168,10 @@ pub const MIN_TERMINAL_WIDTH: usize = 5;
 pub(crate) const SCROLLED_PTY_QUANTUM_BYTES: usize = 64 * 1024;
 /// Hard ceiling on bytes not yet parsed for one pane. Quanta drain this in the
 /// steady state, so a busy scrolled pane does not replay its backlog in one
-/// turn. If the screen thread still cannot keep up, the oldest pending bytes
-/// are dropped and counted in `Tab::pending_vte_bytes_dropped` rather than
-/// growing without a bound.
+/// turn. If the screen thread still cannot keep up, the pane's whole unparsed
+/// queue is rejected and its parser reset, so a suffix cannot complete a
+/// sequence from before the gap. The loss is counted in
+/// `Tab::pending_vte_bytes_dropped` and shown in the pane title.
 pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 
 /// Unparsed PTY bytes for one scrolled pane, in arrival order. `head` is the
@@ -190,37 +191,6 @@ impl PendingPtyBacklog {
         }
         self.len = self.len.saturating_add(bytes.len());
         self.chunks.push_back(bytes);
-    }
-
-    fn drop_oldest(&mut self, mut count: usize) -> usize {
-        let mut dropped = 0;
-        while count > 0 {
-            let Some(front) = self.chunks.front() else {
-                break;
-            };
-            let available = front.len().saturating_sub(self.head);
-            if available == 0 {
-                self.chunks.pop_front();
-                self.head = 0;
-                continue;
-            }
-            if available <= count {
-                self.chunks.pop_front();
-                self.head = 0;
-                dropped += available;
-                count -= available;
-                self.len = self.len.saturating_sub(available);
-            } else {
-                self.head += count;
-                dropped += count;
-                self.len = self.len.saturating_sub(count);
-                count = 0;
-            }
-        }
-        if self.chunks.is_empty() {
-            self.head = 0;
-        }
-        dropped
     }
 
     fn take(&mut self, max: usize) -> Vec<u8> {
@@ -246,6 +216,14 @@ impl PendingPtyBacklog {
             }
         }
         out
+    }
+
+    fn clear(&mut self) -> usize {
+        let dropped = self.len;
+        self.chunks.clear();
+        self.head = 0;
+        self.len = 0;
+        dropped
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -533,6 +511,7 @@ enum StackListRemoval {
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
+    NoteOutputTruncated(u32),
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
@@ -1218,9 +1197,12 @@ pub trait Pane {
     }
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
-    /// Output that arrived before this pane existed was cut. The notice is
-    /// pane state, not bytes in the terminal stream.
-    fn note_preopen_output_truncated(&mut self) {}
+    /// Output for this pane was cut. The notice is pane state, not bytes in
+    /// the terminal stream.
+    fn note_output_truncated(&mut self) {}
+    /// Drop every unparsed byte for this pane and reset the decoder, so the
+    /// bytes after an admission gap cannot complete a sequence from before it.
+    fn reject_unparsed_input(&mut self) {}
     /// Drop a control sequence the parser had not finished, without
     /// dispatching it. Used at a pre-open output gap.
     fn discard_unfinished_input(&mut self) {}
@@ -2961,22 +2943,38 @@ impl Tab {
     /// Bytes past [`MAX_PENDING_VTE_BYTES`] for one pane are dropped, so a
     /// program that floods a tab that is still loading cannot grow this
     /// vector without a limit.
-    fn buffer_pending_pty_bytes(&mut self, pid: u32, mut bytes: VteBytes) {
+    fn buffer_pending_pty_bytes(&mut self, pid: u32, bytes: VteBytes) {
         if bytes.is_empty() {
             return;
         }
         let used = self.pending_pty_bytes.get(&pid).copied().unwrap_or(0);
-        let room = MAX_PENDING_VTE_BYTES.saturating_sub(used);
-        if bytes.len() > room {
+        if used.saturating_add(bytes.len()) > MAX_PENDING_VTE_BYTES {
+            // The pane does not exist yet, so there is no decoder to resume.
+            // Drop the buffered prefix instead of replaying a suffix that
+            // may start inside a control sequence, and note the gap.
+            let mut dropped = 0usize;
+            self.pending_instructions
+                .retain(|instruction| match instruction {
+                    BufferedTabInstruction::HandlePtyBytes(buffered_pid, buffered)
+                        if *buffered_pid == pid =>
+                    {
+                        dropped = dropped.saturating_add(buffered.len());
+                        false
+                    },
+                    BufferedTabInstruction::NoteOutputTruncated(buffered_pid)
+                        if *buffered_pid == pid =>
+                    {
+                        false
+                    },
+                    _ => true,
+                });
+            self.pending_pty_bytes.remove(&pid);
             log::warn!(
-                "pane {pid} dropped {} bytes of output buffered before its tab was applied \
-                 to stay within {MAX_PENDING_VTE_BYTES} bytes",
-                bytes.len() - room
+                "pane {pid} rejected {dropped} bytes of output buffered before its tab was \
+                 applied at the {MAX_PENDING_VTE_BYTES} byte ceiling"
             );
-            if room == 0 {
-                return;
-            }
-            bytes.truncate(room);
+            self.pending_instructions
+                .push(BufferedTabInstruction::NoteOutputTruncated(pid));
         }
         *self.pending_pty_bytes.entry(pid).or_default() += bytes.len();
         if let Some(BufferedTabInstruction::HandlePtyBytes(last_pid, buffered)) =
@@ -3001,6 +2999,11 @@ impl Tab {
                 },
                 BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
                     self.handle_pty_bytes(terminal_id, bytes)?;
+                },
+                BufferedTabInstruction::NoteOutputTruncated(terminal_id) => {
+                    if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(terminal_id)) {
+                        pane.note_output_truncated();
+                    }
                 },
                 BufferedTabInstruction::HoldPane(
                     terminal_id,
@@ -5459,20 +5462,31 @@ impl Tab {
         if bytes.is_empty() {
             return;
         }
-        let backlog = self.pending_vte.entry(pid).or_default();
-        backlog.push(bytes);
-        if backlog.len > MAX_PENDING_VTE_BYTES {
-            let overflow = backlog.len - MAX_PENDING_VTE_BYTES;
-            let dropped = backlog.drop_oldest(overflow);
+        let overflowed = {
+            let backlog = self.pending_vte.entry(pid).or_default();
+            backlog.push(bytes);
+            backlog.len > MAX_PENDING_VTE_BYTES
+        };
+        if overflowed {
+            // Reject the pane's whole unparsed queue rather than splicing a
+            // suffix onto parser state from before an arbitrary byte gap.
+            let dropped = self
+                .pending_vte
+                .remove(&pid)
+                .map(|mut backlog| backlog.clear())
+                .unwrap_or(0);
             if dropped > 0 {
                 #[cfg(test)]
                 {
                     *self.pending_vte_bytes_dropped.entry(pid).or_default() += dropped as u64;
                 }
                 log::warn!(
-                    "pane {pid} dropped {dropped} oldest bytes of scrolled output to stay within \
-                     the {MAX_PENDING_VTE_BYTES} byte pending ceiling"
+                    "pane {pid} rejected {dropped} bytes of scrolled output at the \
+                     {MAX_PENDING_VTE_BYTES} byte pending ceiling and reset the parser"
                 );
+            }
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                pane.reject_unparsed_input();
             }
         }
         if self.pending_vte.get(&pid).map(|backlog| backlog.len) == Some(0) {

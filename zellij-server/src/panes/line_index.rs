@@ -185,8 +185,38 @@ struct MeasureCursor {
     state: RowBoundary,
     boundaries: Vec<RowBoundary>,
     cell_prefix: VecDeque<usize>,
-    row_uniform_widths: Vec<(usize, Option<usize>)>,
+    uniform_state: UniformState,
+    /// Uniform-width merge state at the start of each entered row.
+    uniform_prefix: Vec<UniformState>,
     width: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct UniformState {
+    width: Option<usize>,
+    saw_content: bool,
+}
+
+impl UniformState {
+    fn observe(&mut self, cells: usize, width: Option<usize>) {
+        if cells == 0 {
+            return;
+        }
+        if self.saw_content {
+            self.width = merge_uniform_width(self.width, width);
+        } else {
+            self.width = width;
+            self.saw_content = true;
+        }
+    }
+
+    fn resolved(self) -> Option<usize> {
+        if self.saw_content {
+            self.width
+        } else {
+            Some(1)
+        }
+    }
 }
 
 impl MeasureCursor {
@@ -201,7 +231,8 @@ impl MeasureCursor {
             state: RowBoundary::default(),
             boundaries: Vec::new(),
             cell_prefix,
-            row_uniform_widths: Vec::new(),
+            uniform_state: UniformState::default(),
+            uniform_prefix: Vec::new(),
             width,
         }
     }
@@ -215,7 +246,8 @@ impl MeasureCursor {
         self.boundaries.clear();
         self.cell_prefix.clear();
         self.cell_prefix.push_back(0);
-        self.row_uniform_widths.clear();
+        self.uniform_state = UniformState::default();
+        self.uniform_prefix.clear();
     }
 }
 
@@ -566,8 +598,28 @@ impl LineIndex {
             .is_some_and(|line| line.measured_width != Some(self.width))
     }
 
+    pub(crate) fn front_line_row_count(&self) -> Option<usize> {
+        self.lines.front().map(|line| line.row_count)
+    }
+
+    pub(crate) fn front_line_is_measured(&self) -> bool {
+        self.lines
+            .front()
+            .is_some_and(|line| line.measured_width == Some(self.width))
+    }
+
     pub(crate) fn measurement_active(&self) -> bool {
         self.measure.is_some()
+    }
+
+    /// Whether removing one row from the front keeps every summary exact.
+    /// Uniform lines rebase cheaply and a one-row line disappears whole; a
+    /// partial mixed-width cut has to remeasure from its new origin.
+    pub(crate) fn front_row_cut_is_exact(&self) -> bool {
+        self.lines.front().map_or(true, |line| {
+            line.measured_width == Some(self.width)
+                && (line.uniform_character_width.is_some() || line.row_count == 1)
+        })
     }
 
     /// Drop one line's summary after its stored rows changed in a way that
@@ -625,7 +677,11 @@ impl LineIndex {
 
     /// Keep an in-flight measurement job valid after rows left the back.
     /// Full lines removed after the cursor do not move it. If the cursor's
-    /// own line lost rows it had already accounted for, restart that line.
+    /// own line lost rows it had already accounted for, retreat to the last
+    /// surviving row boundary. A cursor part-way through a row carries that
+    /// row's cells in `state` and its staged metadata, so equality with the
+    /// surviving row count is only safe when the cursor has not consumed any
+    /// cells from the removed row.
     fn clamp_measure_after_back_removal(&mut self) {
         let Some(cursor) = self.measure.as_mut() else {
             return;
@@ -634,10 +690,28 @@ impl LineIndex {
             self.measure = None;
             return;
         };
-        if cursor.row_index > line.row_count {
+        let surviving_rows = line.row_count;
+        let removed_consumed_row = cursor.row_index > surviving_rows
+            || (cursor.row_index == surviving_rows && cursor.cell_index > 0);
+        if removed_consumed_row {
             let line_index = cursor.line_index;
             let row_start = cursor.row_start;
-            cursor.reset_for_line(line_index, row_start);
+            if surviving_rows == 0 {
+                cursor.reset_for_line(line_index, row_start);
+            } else {
+                // `boundaries[row]` is the state at the start of that row, so
+                // the first removed row's boundary is the end of the retained
+                // content. Keep the completed prefix instead of restarting.
+                let boundary = cursor.boundaries[surviving_rows];
+                let uniform_state = cursor.uniform_prefix[surviving_rows];
+                cursor.boundaries.truncate(surviving_rows);
+                cursor.cell_prefix.truncate(surviving_rows + 1);
+                cursor.uniform_prefix.truncate(surviving_rows);
+                cursor.state = boundary;
+                cursor.uniform_state = uniform_state;
+                cursor.row_index = surviving_rows;
+                cursor.cell_index = 0;
+            }
         }
     }
 
@@ -1230,8 +1304,7 @@ impl LineIndex {
                     self.measured_display_rows -= line.height;
                     self.measured_lines -= 1;
                 }
-                let uniform_character_width =
-                    measured_uniform_width_rows(&cursor.row_uniform_widths);
+                let uniform_character_width = cursor.uniform_state.resolved();
                 line.measured_width = Some(self.width);
                 line.boundaries = if uniform_character_width.is_some() {
                     Vec::new()
@@ -1285,9 +1358,10 @@ impl LineIndex {
                     cursor
                         .cell_prefix
                         .push_back(total.saturating_add(row.stored_cell_count()));
+                    cursor.uniform_prefix.push(cursor.uniform_state);
                     cursor
-                        .row_uniform_widths
-                        .push((row.stored_cell_count(), row_uniform_character_width(row)));
+                        .uniform_state
+                        .observe(row.stored_cell_count(), row_uniform_character_width(row));
                 }
                 cursor
                     .boundaries
@@ -1318,9 +1392,10 @@ impl LineIndex {
                 cursor
                     .cell_prefix
                     .push_back(total.saturating_add(total_cells));
+                cursor.uniform_prefix.push(cursor.uniform_state);
                 cursor
-                    .row_uniform_widths
-                    .push((total_cells, row_uniform_character_width(row)));
+                    .uniform_state
+                    .observe(total_cells, row_uniform_character_width(row));
             }
             if cursor.cell_index >= total_cells {
                 cursor.row_index += 1;

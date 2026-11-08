@@ -17173,18 +17173,23 @@ pub fn pending_vte_bytes_are_bounded_while_scrolled() {
     tab.scroll_up_by_pane_id(pane_id);
     assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
 
-    // The ceiling is a drop limit, not a signal to clear the scroll and parse
-    // the whole backlog. One call still parses only a quantum.
+    // The ceiling rejects the pane's whole unparsed queue so the suffix can
+    // never complete a sequence from before the gap.
     let overflow = 1000usize;
     tab.handle_pty_bytes(1, vec![b'x'; super::MAX_PENDING_VTE_BYTES + overflow])
         .unwrap();
 
     assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
-    assert_eq!(tab.pending_vte_bytes_dropped(1), overflow as u64);
     assert_eq!(
-        tab.pending_vte_len(1),
-        super::MAX_PENDING_VTE_BYTES - super::SCROLLED_PTY_QUANTUM_BYTES
+        tab.pending_vte_bytes_dropped(1),
+        (super::MAX_PENDING_VTE_BYTES + overflow) as u64
     );
+    assert_eq!(tab.pending_vte_len(1), 0);
+    assert!(tab
+        .get_pane_with_id(pane_id)
+        .unwrap()
+        .current_title()
+        .contains("[output cut off]"));
 }
 
 #[test]
@@ -17195,18 +17200,19 @@ pub fn pre_layout_pty_output_is_coalesced_and_bounded() {
     tab.buffer_pending_pty_bytes(1, b"dropped".to_vec());
     tab.buffer_pending_pty_bytes(2, b"other".to_vec());
 
-    assert_eq!(tab.pending_instructions.len(), 2);
+    assert_eq!(tab.pending_instructions.len(), 3);
     match &tab.pending_instructions[0] {
+        super::BufferedTabInstruction::NoteOutputTruncated(pid) => assert_eq!(*pid, 1),
+        _ => panic!("expected a truncation marker"),
+    }
+    match &tab.pending_instructions[1] {
         super::BufferedTabInstruction::HandlePtyBytes(pid, bytes) => {
             assert_eq!(*pid, 1);
-            assert_eq!(bytes.len(), super::MAX_PENDING_VTE_BYTES);
+            assert_eq!(bytes, b"dropped");
         },
-        _ => panic!("expected buffered PTY bytes"),
+        _ => panic!("expected the post-gap bytes"),
     }
-    assert_eq!(
-        tab.pending_pty_bytes.get(&1).copied(),
-        Some(super::MAX_PENDING_VTE_BYTES)
-    );
+    assert_eq!(tab.pending_pty_bytes.get(&1).copied(), Some(7));
     assert_eq!(tab.pending_pty_bytes.get(&2).copied(), Some(5));
 }
 

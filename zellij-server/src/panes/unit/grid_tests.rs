@@ -13835,6 +13835,40 @@ fn deferred_recount_reserves_room_instead_of_starving_under_churn() {
         "the recount reserve was not trimmed: {} > {scroll_buffer_size}",
         grid.lines_above.len()
     );
+    assert!(
+        grid.history_was_truncated(),
+        "shedding the overlong line's reserve must report truncated history"
+    );
+}
+
+#[test]
+fn a_finished_overlong_line_is_dropped_whole_when_the_next_line_arrives() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let pattern = "\u{754c}a";
+    feed_bytes(
+        &mut grid,
+        pattern.repeat(scroll_buffer_size * 4 + 5_000).as_bytes(),
+    );
+    grid.resize_keeping_recount_open(5, 11);
+    let mut turns = 0;
+    while grid.display_recount_pending() && turns < 1_000 {
+        let _ = grid.continue_display_row_recount();
+        turns += 1;
+    }
+    assert!(!grid.display_recount_pending());
+    assert_eq!(grid.line_index.line_count(), 1);
+
+    feed_bytes(&mut grid, b"\r\nnext line\r\n");
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "dropping the finished overlong line must stay exact"
+    );
+    assert!(
+        grid.line_index.line_count() > 1 || grid.lines_above.len() < scroll_buffer_size,
+        "the overlong line must not keep the retention window frozen"
+    );
 }
 
 fn line_index_counters() -> (usize, usize, usize) {
@@ -14058,6 +14092,7 @@ fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
         row,
         &mut grid.scrollback_cells,
         &mut grid.line_index,
+        &mut grid.history_truncated,
     );
 }
 

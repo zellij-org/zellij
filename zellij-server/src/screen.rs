@@ -10069,7 +10069,7 @@ impl Screen {
             self.discard_unfinished_pane_input(pid);
         }
         if truncated {
-            self.note_pane_preopen_output_truncated(pid);
+            self.note_pane_output_truncated(pid);
         }
     }
     fn discard_unfinished_pane_input(&mut self, pid: PaneId) {
@@ -10080,10 +10080,10 @@ impl Screen {
             }
         }
     }
-    fn note_pane_preopen_output_truncated(&mut self, pid: PaneId) {
+    fn note_pane_output_truncated(&mut self, pid: PaneId) {
         for tab in self.tabs.values_mut() {
             if let Some(pane) = tab.get_pane_with_id_mut(pid) {
-                pane.note_preopen_output_truncated();
+                pane.note_output_truncated();
                 return;
             }
         }
