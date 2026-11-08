@@ -6332,6 +6332,12 @@ pub fn denied_permission_request_result() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let mut earlier_grant = PermissionCache::from_path_or_default(Some(cache_path.clone()));
+    earlier_grant.cache(
+        PathBuf::from(&*PLUGIN_FIXTURE).display().to_string(),
+        vec![PermissionType::RunCommands],
+    );
+    earlier_grant.write_to_file().unwrap();
 
     let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder), None);

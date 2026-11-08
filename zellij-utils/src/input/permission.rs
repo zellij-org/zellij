@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, File},
     io::Write,
     path::PathBuf,
@@ -16,13 +16,17 @@ pub struct PermissionCache {
 }
 
 impl PermissionCache {
-    /// Records the plugin's permissions, and returns whether that changed what is cached.
+    /// Adds the permissions to the plugin's cached grant, and returns whether that changed the cache.
     pub fn cache(&mut self, plugin_name: String, permissions: Vec<PermissionType>) -> bool {
-        let unchanged = self.granted.get(&plugin_name).is_some_and(|cached| {
-            cached.iter().collect::<HashSet<_>>() == permissions.iter().collect::<HashSet<_>>()
-        });
-        self.granted.insert(plugin_name, permissions);
-        !unchanged
+        let mut added = !self.granted.contains_key(&plugin_name);
+        let cached = self.granted.entry(plugin_name).or_default();
+        for permission in permissions {
+            if !cached.contains(&permission) {
+                cached.push(permission);
+                added = true;
+            }
+        }
+        added
     }
 
     pub fn get_permissions(&self, plugin_name: String) -> Option<&Vec<PermissionType>> {
@@ -97,31 +101,44 @@ mod tests {
     }
 
     #[test]
-    fn caching_the_permissions_already_cached_reports_no_change() {
+    fn caching_adds_to_the_plugins_grant_and_reports_whether_it_grew() {
         let dir = tempfile::tempdir().unwrap();
         let mut cache = cache_at(&dir.path().join("permissions.kdl"));
-        let permissions = vec![
-            PermissionType::ReadApplicationState,
-            PermissionType::RunCommands,
-        ];
-        assert!(cache.cache("plugin".to_owned(), permissions.clone()));
-        assert!(!cache.cache("plugin".to_owned(), permissions.into_iter().rev().collect()));
+        let plugin = || "plugin".to_owned();
+        assert!(cache.cache(plugin(), vec![PermissionType::ReadApplicationState]));
         assert!(cache.cache(
-            "plugin".to_owned(),
+            plugin(),
+            vec![PermissionType::RunCommands, PermissionType::RunCommands]
+        ));
+        assert!(!cache.cache(
+            plugin(),
             vec![
-                PermissionType::ReadApplicationState,
+                PermissionType::RunCommands,
                 PermissionType::ReadApplicationState
             ]
         ));
-        assert!(!cache.cache(
-            "plugin".to_owned(),
-            vec![PermissionType::ReadApplicationState]
-        ));
-        assert!(cache.cache("plugin".to_owned(), vec![PermissionType::RunCommands]));
+        assert!(!cache.cache(plugin(), vec![PermissionType::ReadApplicationState]));
+        assert_eq!(
+            cache.get_permissions(plugin()),
+            Some(&vec![
+                PermissionType::ReadApplicationState,
+                PermissionType::RunCommands
+            ])
+        );
+
         assert!(cache.cache(
             "other plugin".to_owned(),
-            vec![PermissionType::ReadApplicationState]
+            vec![PermissionType::WriteToStdin]
         ));
+        assert!(!cache.check_permissions(
+            "other plugin".to_owned(),
+            &vec![PermissionType::RunCommands]
+        ));
+        assert_eq!(cache.get_permissions(plugin()).map(Vec::len), Some(2));
+
+        assert!(cache.cache("empty plugin".to_owned(), vec![]));
+        assert!(!cache.cache("empty plugin".to_owned(), vec![]));
+        assert!(cache.check_permissions("empty plugin".to_owned(), &vec![]));
     }
 
     #[test]
