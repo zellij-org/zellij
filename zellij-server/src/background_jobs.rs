@@ -518,6 +518,7 @@ pub(crate) fn background_jobs_main(
             ticker.tick().await;
             // path -> hash of the bytes we last published there
             let mut published: HashMap<PathBuf, u64> = HashMap::new();
+            let mut reported_saved = false;
             loop {
                 ticker.tick().await;
                 if *stopped.lock().unwrap() {
@@ -543,11 +544,15 @@ pub(crate) fn background_jobs_main(
                     // Every file was last published with the current contents
                     // and still has that size on disk, so the state counts as
                     // saved now.
-                    if layout_present {
+                    if layout_present && !reported_saved {
                         report_session_saved(&senders);
+                        reported_saved = true;
+                    } else if !layout_present {
+                        reported_saved = false;
                     }
                     continue;
                 }
+                reported_saved = false;
                 // Stage the writes outside the stop mutex so a slow filesystem
                 // cannot block Exit, then publish under it so a shutdown that
                 // lands mid-write still fences the on-disk files.
@@ -573,8 +578,8 @@ pub(crate) fn background_jobs_main(
                     } else {
                         let mut all_persisted = !stage_failed;
                         for (path, file) in staged {
-                            match file.persist(&path) {
-                                Ok(_) => {
+                            match persist_atomic_write(file, &path) {
+                                Ok(()) => {
                                     published.insert(path.clone(), hashes[&path]);
                                 },
                                 Err(error) => {
@@ -589,6 +594,7 @@ pub(crate) fn background_jobs_main(
                         }
                         if all_persisted && layout_present {
                             report_session_saved(&senders);
+                            reported_saved = true;
                         }
                         true
                     }
@@ -614,6 +620,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(
                     BackgroundJob::DisplayPaneError(pane_ids.clone(), text.clone()),
                     &mut running_jobs,
+                    LONG_FLASH_DURATION_MS,
                 ) {
                     continue;
                 }
@@ -855,6 +862,7 @@ pub(crate) fn background_jobs_main(
                 if job_already_running(
                     BackgroundJob::HighlightPanesWithMessage(pane_ids.clone(), text.clone()),
                     &mut running_jobs,
+                    FLASH_DURATION_MS,
                 ) {
                     continue;
                 }
@@ -1332,12 +1340,11 @@ pub(crate) fn background_jobs_main(
 fn job_already_running(
     job: BackgroundJob,
     running_jobs: &mut HashMap<BackgroundJob, Instant>,
+    cooldown_ms: u64,
 ) -> bool {
     match running_jobs.get_mut(&job) {
         Some(current_running_job_start_time) => {
-            if current_running_job_start_time.elapsed()
-                > Duration::from_millis(LONG_FLASH_DURATION_MS)
-            {
+            if current_running_job_start_time.elapsed() > Duration::from_millis(cooldown_ms) {
                 *current_running_job_start_time = Instant::now();
                 false
             } else {
@@ -1487,10 +1494,29 @@ fn stage_atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<tempfile:
 }
 
 fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
-    stage_atomic_write(path, contents)?
-        .persist(path)
-        .map(|_| ())
-        .map_err(|error| error.error)
+    let file = stage_atomic_write(path, contents)?;
+    persist_atomic_write(file, path)
+}
+
+fn persist_atomic_write(file: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    file.persist(path).map_err(|error| error.error)?;
+    sync_parent_directory(path)
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 pub fn scan_session_list(

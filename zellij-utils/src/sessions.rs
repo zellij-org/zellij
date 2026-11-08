@@ -165,7 +165,9 @@ pub fn session_layout_creation_time(layout_file: &Path) -> io::Result<SystemTime
         .ok()
         .and_then(|contents| contents.trim().parse::<u64>().ok())
     {
-        return Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(recorded));
+        if let Some(created) = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(recorded)) {
+            return Ok(created);
+        }
     }
     metadata.created().or_else(|_| metadata.modified())
 }
@@ -1062,5 +1064,19 @@ mod layout_creation_time_tests {
         std::thread::sleep(Duration::from_millis(1100));
         record_session_layout_creation_time(&layout);
         assert_eq!(session_layout_creation_time(&layout).unwrap(), first);
+    }
+
+    #[test]
+    fn an_out_of_range_recorded_time_falls_back_to_file_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = dir.path().join("session-layout.kdl");
+        fs::write(&layout, "layout { }").unwrap();
+        fs::write(session_layout_created_marker(&layout), u64::MAX.to_string()).unwrap();
+        let metadata = fs::metadata(&layout).unwrap();
+        let fallback = metadata
+            .created()
+            .or_else(|_| metadata.modified())
+            .expect("the fixture file has a timestamp");
+        assert_eq!(session_layout_creation_time(&layout).unwrap(), fallback);
     }
 }

@@ -301,9 +301,9 @@ pub fn extract_plugin_and_config(
                 Some(run_plugin.configuration.clone()),
             ),
             RunPluginOrAlias::Alias(plugin_alias) => {
-                // in this case, the aliases should already be populated by the RunPlugins they
-                // translate to - if they are not, the alias either does not exist or this is some
-                // sort of bug
+                // An unresolved alias serializes under its name. Reload resolves
+                // it again from the alias table. A resolved alias serializes the
+                // plugin it points at, including that plugin's configuration.
                 let name = plugin_alias
                     .run_plugin
                     .as_ref()
