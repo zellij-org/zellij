@@ -115,6 +115,205 @@ fn cli_pipe(pipe_id: &str) -> PipeMessage {
     )
 }
 
+fn wait_until(condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(
+            Instant::now() < deadline,
+            "condition was not met before the test deadline"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn block_executor(executor: &Arc<PinnedExecutor>, owner: PluginId) -> std::sync::mpsc::Sender<()> {
+    use std::sync::mpsc::channel;
+    let (started_tx, started_rx) = channel();
+    let (release_tx, release_rx) = channel();
+    let release_rx = Arc::new(Mutex::new(release_rx));
+    executor
+        .try_execute_for_plugin(owner, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+            started_tx.send(()).unwrap();
+            let _ = release_rx.lock().unwrap().recv();
+        })
+        .unwrap();
+    started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    release_tx
+}
+
+#[test]
+fn adjacent_client_specific_replaceable_jobs_both_run() {
+    let (bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let executor = bridge.plugin_executor.clone();
+    executor.register_plugin(1);
+    let release = block_executor(&executor, 1);
+
+    let executed = Arc::new(Mutex::new(Vec::new()));
+    for client_id in [11, 12] {
+        let executed = executed.clone();
+        executor
+            .try_execute_for_plugin(
+                1,
+                JobClass::Replaceable(replaceable_host_dir_key(client_id, 0)),
+                PathBuf::from("/tmp").as_os_str().len(),
+                move |_s, _p, _c, _ca, _e| executed.lock().unwrap().push(client_id),
+            )
+            .unwrap();
+    }
+
+    release.send(()).unwrap();
+    wait_until(|| executor.queued_jobs() == 0);
+    assert_eq!(*executed.lock().unwrap(), vec![11, 12]);
+}
+
+#[test]
+fn replaceable_keys_include_destination_and_generation() {
+    assert_ne!(
+        replaceable_host_dir_key(11, 0),
+        replaceable_host_dir_key(12, 0)
+    );
+    assert_ne!(
+        replaceable_host_dir_key(11, 1),
+        replaceable_host_dir_key(11, 2)
+    );
+    assert_ne!(
+        replaceable_plugin_settings_key(11, 0),
+        replaceable_host_dir_key(11, 0)
+    );
+}
+
+#[test]
+fn client_specific_host_dir_changes_reach_both_instances() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "host-dir.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+
+    bridge.add_client(2).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (instruction, _) = plugin_receiver.recv_deadline(deadline).unwrap();
+        if let PluginInstruction::ApplyCachedEvents { plugin_ids, .. } = instruction {
+            if plugin_ids.contains(&plugin_id)
+                && bridge.plugin_map.lock().unwrap().contains(plugin_id, 2)
+            {
+                break;
+            }
+        }
+    }
+
+    let client_one_dir = dir.path().join("client-one");
+    let client_two_dir = dir.path().join("client-two");
+    std::fs::create_dir_all(&client_one_dir).unwrap();
+    std::fs::create_dir_all(&client_two_dir).unwrap();
+
+    let executor = bridge.plugin_executor.clone();
+    let release = block_executor(&executor, plugin_id);
+    bridge
+        .change_plugin_host_dir(client_one_dir.clone(), plugin_id, 1)
+        .unwrap();
+    bridge
+        .change_plugin_host_dir(client_two_dir.clone(), plugin_id, 2)
+        .unwrap();
+    release.send(()).unwrap();
+
+    let cwd_for = |client_id| {
+        bridge
+            .plugin_map
+            .lock()
+            .unwrap()
+            .get_running_plugin(plugin_id, Some(client_id))
+            .map(|plugin| plugin.lock().unwrap().store.data().plugin_cwd.clone())
+    };
+    wait_until(|| {
+        cwd_for(1).as_ref() == Some(&client_one_dir) && cwd_for(2).as_ref() == Some(&client_two_dir)
+    });
+}
+
+#[test]
+fn pending_permission_cache_is_bounded_by_bytes_and_entries() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let plugin_id = 7;
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+
+    let oversized = Event::PastedText("x".repeat(MAX_PENDING_CACHE_BYTES_PER_PLUGIN + 1));
+    assert!(matches!(
+        bridge.cached_events_for_pending_plugins.try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(oversized, None),
+            false,
+        ),
+        Err(PendingCacheRejection::ByteLimit)
+    ));
+
+    for _ in 0..MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN {
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None),
+                false,
+            )
+            .unwrap();
+    }
+    assert!(matches!(
+        bridge.cached_events_for_pending_plugins.try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None),
+            false,
+        ),
+        Err(PendingCacheRejection::EntryLimit)
+    ));
+}
+
+#[test]
+fn a_rejected_load_admission_rolls_back_pending_state() {
+    let (mut bridge, dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let plugin_cache: PluginCache = Arc::new(Mutex::new(HashMap::new()));
+    bridge.plugin_executor = Arc::new(PinnedExecutor::new_with_tiny_limits_for_test(
+        1,
+        &bridge.senders,
+        &bridge.plugin_map,
+        &bridge.connected_clients,
+        &plugin_cache,
+        &wasmi::Engine::default(),
+    ));
+    let executor = bridge.plugin_executor.clone();
+    executor.register_plugin(999);
+    let release = block_executor(&executor, 999);
+
+    let run = write_noop_plugin(dir.path(), "rejected.wasm");
+    let plugin_id = bridge.next_plugin_id;
+    bridge
+        .load_plugin_with_kind(
+            &Some(run),
+            None,
+            Size { rows: 5, cols: 80 },
+            None,
+            false,
+            Some(1),
+            true,
+        )
+        .expect_err("a rejected admission must not report a successful load");
+
+    assert!(!executor.is_registered(plugin_id));
+    assert!(!bridge
+        .cached_events_for_pending_plugins
+        .contains(&plugin_id));
+    assert!(!bridge
+        .cached_resizes_for_pending_plugins
+        .contains_key(&plugin_id));
+    assert!(!bridge.plugins_with_unfinished_load.contains(&plugin_id));
+    assert!(!bridge
+        .loading_plugins
+        .iter()
+        .any(|(loading_plugin_id, _)| *loading_plugin_id == plugin_id));
+
+    release.send(()).unwrap();
+    wait_until(|| executor.queued_jobs() == 0);
+}
+
 #[test]
 fn quarantining_a_plugin_releases_its_key_intercept_for_every_client() {
     let (mut bridge, _dir, screen_receiver, _plugin_receiver) = test_bridge();
@@ -261,13 +460,15 @@ fn cached_cli_pipes_are_released_when_the_plugin_load_failed() {
     bridge
         .pending_pipes
         .mark_being_processed("failed-load", &7, &1);
-    bridge.cached_events_for_pending_plugins.insert(
-        7,
-        vec![EventOrPipeMessage::PipeMessage(
-            cli_pipe("failed-load"),
-            Some(1),
-        )],
-    );
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_entries_for_test(
+            7,
+            vec![EventOrPipeMessage::PipeMessage(
+                cli_pipe("failed-load"),
+                Some(1),
+            )],
+        );
     let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
 
     bridge
@@ -309,7 +510,7 @@ fn a_failed_load_for_a_new_client_clears_its_pending_state() {
 
     assert!(!bridge
         .cached_events_for_pending_plugins
-        .contains_key(&plugin_id));
+        .contains(&plugin_id));
     assert!(!bridge
         .cached_resizes_for_pending_plugins
         .contains_key(&plugin_id));
