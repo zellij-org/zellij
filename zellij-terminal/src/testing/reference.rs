@@ -64,7 +64,7 @@ impl Stores {
             true,
             false,
         );
-        grid.ui_components_enabled = true;
+        grid.enable_ui_components();
         grid
     }
 }

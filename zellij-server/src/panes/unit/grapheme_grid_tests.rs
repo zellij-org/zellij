@@ -268,6 +268,10 @@ fn grapheme_mode_widening_without_auto_wrap_keeps_the_width() {
     feed(&mut grid, "\u{1b}[?2027h\u{1b}[?7labcd\u{26A0}\u{FE0F}");
     assert_eq!(cells(&grid, 0)[4], cell("\u{26A0}\u{FE0F}", 1));
     assert_eq!(grid.viewport.len(), 1);
+
+    // the clip is remembered, so a wider pane restores the two columns
+    grid.change_size(5, 10);
+    assert_eq!(cells(&grid, 0)[4], cell("\u{26A0}\u{FE0F}", 2));
 }
 
 #[test]

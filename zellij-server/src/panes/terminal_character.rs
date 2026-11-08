@@ -24,6 +24,12 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
 pub const MAX_CODE_POINTS_PER_CELL: usize = 32;
 const EXTRA_TAG: u32 = 1 << 23;
 const EXTRA_VALUE_MASK: u32 = EXTRA_TAG - 1;
+const WIDTH_MASK: u32 = 0x7f;
+/// This width was clipped by a reflow because the pane was narrower than the
+/// glyph, so a later reflow with room restores `natural_width()`. A cell that
+/// is narrower than its natural width for another reason (a VS16 cluster from
+/// a client without grapheme mode) keeps the width it was stored with.
+const WIDTH_CLIPPED: u32 = 0x80;
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     foreground: Some(AnsiCode::Reset),
@@ -1133,7 +1139,8 @@ pub struct TerminalCharacter {
     // Width and any code points attached after `character`, packed into one u32 so the cell
     // stays 16 bytes:
     //
-    //   bits 0..8   width in columns (0-255), see `width()`
+    //   bits 0..8   width in columns (0-127) plus the `WIDTH_CLIPPED` flag,
+    //               see `width()`
     //   bits 8..32  the "extra" value, see `extra_value()` and `attached()`:
     //     0                        nothing attached; the cell is just `character`
     //     bit 31 (EXTRA_TAG) clear one attached code point, stored as its scalar value
@@ -1208,7 +1215,7 @@ impl TerminalCharacter {
             cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
         }
         self.character = character;
-        self.packed = width as u32;
+        self.packed = (width as u32).min(WIDTH_MASK);
     }
 
     #[inline]
@@ -1221,7 +1228,7 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            packed: character.width().unwrap_or(0) as u32 & 0xff,
+            packed: (character.width().unwrap_or(0) as u32).min(WIDTH_MASK),
         }
     }
 
@@ -1243,7 +1250,7 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            packed: width as u32,
+            packed: (width as u32).min(WIDTH_MASK),
         }
     }
 
@@ -1253,7 +1260,7 @@ impl TerminalCharacter {
         let mut cell = TerminalCharacter {
             character: first,
             styles,
-            packed: width.min(u8::MAX as usize) as u32,
+            packed: width.min(WIDTH_MASK as usize) as u32,
         };
         for c in chars {
             if !cell.attach(c) {
@@ -1279,11 +1286,24 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn width(&self) -> usize {
-        (self.packed & 0xff) as usize
+        (self.packed & WIDTH_MASK) as usize
     }
 
     pub(crate) fn set_width(&mut self, width: u8) {
-        self.packed = (self.packed & !0xff) | width as u32;
+        self.packed =
+            (self.packed & !(WIDTH_MASK | WIDTH_CLIPPED)) | (width as u32).min(WIDTH_MASK);
+    }
+
+    pub(crate) fn width_was_clipped(&self) -> bool {
+        self.packed & WIDTH_CLIPPED != 0
+    }
+
+    pub(crate) fn set_width_was_clipped(&mut self, clipped: bool) {
+        if clipped {
+            self.packed |= WIDTH_CLIPPED;
+        } else {
+            self.packed &= !WIDTH_CLIPPED;
+        }
     }
 
     #[inline]
@@ -1450,6 +1470,19 @@ impl TerminalCharacter {
             return self.character.width().unwrap_or(0);
         }
         UnicodeWidthStr::width(self.text().as_ref())
+    }
+
+    pub(crate) fn contains_code_point(&self, target: char) -> bool {
+        if self.character == target {
+            return true;
+        }
+        match self.attached() {
+            Attached::None => false,
+            Attached::Inline(c) => c == target,
+            Attached::Table(id) => {
+                cluster_table::text(id).is_some_and(|text| text.contains(target))
+            },
+        }
     }
 
     pub fn summed_code_point_width(&self) -> usize {

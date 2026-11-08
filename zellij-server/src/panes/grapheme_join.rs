@@ -1760,7 +1760,7 @@ pub const JOIN_CLASS_TABLE: &[(u32, u32, u8)] = &[
 ];
 
 // Caps on one group, so a hostile stream (e.g. an endless ZWJ chain) can't make a single
-// unit unbounded. 255 columns is also the largest width a cell can carry on the wire.
+// unit unbounded. 255 columns also bounds the width a group is allowed to paint.
 pub const MAX_GROUP_CELLS: usize = 32;
 pub const MAX_GROUP_COLUMNS: usize = 255;
 

@@ -150,6 +150,36 @@ fn a_narrow_soft_wrapped_wide_character_regains_its_width() {
 }
 
 #[test]
+fn reflow_keeps_a_vs16_cluster_at_its_stored_width_unless_reflow_clipped_it() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut stored_narrow = TerminalCharacter::new_with_width('⚠', 1, Default::default());
+    assert!(stored_narrow.attach('\u{FE0F}'));
+    assert_eq!(stored_narrow.natural_width(), 2);
+    let wide = Row::rewrap_rows(vec![Row::from_columns(vec![stored_narrow])], 80);
+    assert_eq!(wide[0].columns[0].width(), 1);
+    let narrow = Row::rewrap_rows(wide, 1);
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    let widened = Row::rewrap_rows(narrow, 80);
+    assert_eq!(widened[0].columns[0].width(), 1);
+
+    let mut keycap = TerminalCharacter::new_with_width('1', 1, Default::default());
+    assert!(keycap.attach('\u{FE0F}'));
+    assert!(keycap.attach('\u{20E3}'));
+    assert_eq!(keycap.natural_width(), 2);
+    let keycap = Row::rewrap_rows(vec![Row::from_columns(vec![keycap])], 80);
+    assert_eq!(keycap[0].columns[0].width(), 1);
+
+    let mut clipped = TerminalCharacter::new_with_width('⚠', 2, Default::default());
+    assert!(clipped.attach('\u{FE0F}'));
+    let narrow = Row::rewrap_rows(vec![Row::from_columns(vec![clipped])], 1);
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    let widened = Row::rewrap_rows(narrow, 80);
+    assert_eq!(widened[0].columns[0].width(), 2);
+}
+
+#[test]
 fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
     use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
 

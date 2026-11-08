@@ -326,15 +326,31 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut VecDeque<Row>) -> 
     }
 }
 
+/// Stored width, replaced by `natural_width()` when an earlier reflow clipped
+/// the glyph. A VS16 cluster is only as wide as its base character until the
+/// client opts into grapheme mode, so reflowing it must not widen it: that
+/// would make the structured frame disagree with the ANSI dialect such a
+/// client replays. Other cells keep the width they were stored with.
+fn logical_reflow_width(character: &TerminalCharacter) -> (usize, usize) {
+    let stored = character.width();
+    let natural = character.natural_width();
+    let logical = if stored < natural
+        && (character.width_was_clipped() || !character.contains_code_point('\u{FE0F}'))
+    {
+        natural
+    } else {
+        stored
+    };
+    (logical, natural)
+}
+
 /// Width `rewrap_rows` will give this character. The prefix cut has to use
 /// the same width or it splits the line at the wrong column.
 fn fitted_character_width(character: &TerminalCharacter, max_row_length: usize) -> usize {
     if max_row_length == 0 {
         return character.width().max(1);
     }
-    let old = character.width();
-    let natural = character.natural_width();
-    let logical = if old < natural { natural } else { old };
+    let (logical, _) = logical_reflow_width(character);
     if logical > max_row_length {
         max_row_length
     } else {
@@ -775,15 +791,11 @@ fn reflow_character_width(character: &TerminalCharacter, pane: usize) -> usize {
     if pane == 0 {
         return 1;
     }
-    let old = character.width();
-    let natural = character.natural_width();
-    let logical = if old < natural { natural } else { old };
-    if logical > pane {
-        pane
-    } else if logical == 0 {
+    let fitted = fitted_character_width(character, pane);
+    if fitted == 0 {
         1
     } else {
-        logical
+        fitted
     }
 }
 
@@ -5427,6 +5439,10 @@ impl Grid {
                         .splice(index..=index, std::iter::repeat(blank).take(old_width));
                     row.mark_widths_changed();
                     wrapped_cell = Some(moved);
+                } else {
+                    // Without autowrap the cell keeps its narrow width; remember
+                    // that a wider pane may restore the width it now lacks.
+                    row.columns[index].set_width_was_clipped(true);
                 }
             } else if new_width < old_width {
                 row.resize_cell(index, start, new_width, insert_mode);
@@ -10902,9 +10918,10 @@ impl Row {
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }
     /// Fit each stored width to `max_row_length` without dropping the character.
-    /// `width()` is what the wrap loop uses; `natural_width()` is restored when
-    /// a later reflow is wide enough. Markers at or after a character's old end
-    /// column move by the width delta, in the row's old column coordinates.
+    /// A width this reflow clips is restored on a later, wider reflow. A cell
+    /// that is already narrower than its natural width for another reason
+    /// keeps that width. Markers at or after a character's old end column
+    /// move by the width delta, in the row's old column coordinates.
     fn fit_character_widths_for_reflow(&mut self, max_row_length: usize) {
         if max_row_length == 0 {
             return;
@@ -10914,15 +10931,17 @@ impl Row {
         let mut adjustments: Vec<(usize, isize)> = Vec::new();
         for character in self.columns.iter_mut() {
             let old = character.width();
-            let natural = character.natural_width();
-            let logical = if old < natural { natural } else { old };
+            let (logical, natural) = logical_reflow_width(character);
             let new = if logical > max_row_length {
                 max_row_length
             } else {
                 logical
             };
             if new != old {
+                // `set_width` clears the clip flag. Record a clip only when this
+                // reflow itself stored fewer columns than the glyph's natural width.
                 character.set_width(new as u8);
+                character.set_width_was_clipped(new < natural);
                 adjustments.push((old_column + old, new as isize - old as isize));
             }
             old_column += old;
