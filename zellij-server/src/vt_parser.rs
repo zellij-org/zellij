@@ -129,6 +129,13 @@ pub trait Handler {
         false
     }
 
+    /// Make one bounded step toward clearing the condition reported by
+    /// `paused`. Return true when progress was made. `feed` calls this
+    /// synchronously; `feed_until_paused` leaves the decision to the caller.
+    fn resume_paused(&mut self) -> bool {
+        false
+    }
+
     /// When parsing with `feed_until_paused`, return true to leave `bytes`
     /// unconsumed. The handler has an open host-query batch and this escape
     /// must wait until that batch's reply has been written.
@@ -338,7 +345,23 @@ impl Parser {
     }
 
     pub fn feed<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
-        self.run(handler, bytes, false);
+        let mut at = 0;
+        loop {
+            let before = at;
+            at += self.feed_until_paused(handler, &bytes[at..]);
+            if handler.paused() {
+                if handler.resume_paused() {
+                    continue;
+                }
+                break;
+            }
+            if at >= bytes.len() {
+                break;
+            }
+            if at == before && !handler.resume_paused() {
+                break;
+            }
+        }
     }
 
     pub fn feed_until_paused<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) -> usize {

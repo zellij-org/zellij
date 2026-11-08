@@ -3,6 +3,7 @@ use super::kitty_graphics::{
     KittyError, KittyErrorCode, KittyGrid, KittyHostSupport, KittyImageChunk, KittyImageStore,
     KittyPlacement, KittyReplyData, KittyRowsBelowTheViewport, KittyVerticalAnchor,
 };
+use super::line_index::{LineIndex, MeasureBudget, MeasureProgress};
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use super::work::{JobProgress, ResumableJob, WorkBudget};
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
@@ -757,6 +758,14 @@ struct PendingLineReflow {
     wrap: WrapState,
     total_display_rows: usize,
     result: usize,
+}
+
+/// Remaining cells of an `ESC [ Ps b` repeat.  The parser pauses before
+/// consuming later bytes until this is drained, so ordering is preserved.
+#[derive(Clone)]
+struct PendingRep {
+    character: TerminalCharacter,
+    remaining: usize,
 }
 
 #[cfg(test)]
@@ -2226,16 +2235,15 @@ fn transfer_rows_from_lines_above_to_viewport(
     viewport: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
+    line_index: &mut LineIndex,
     count: usize,
     max_viewport_width: usize,
     scrollback_cells: &mut usize,
-    front_run: &mut EvictionCache,
     rows_evicted: &mut u64,
     content_epoch: &mut u64,
-) -> (EvictionDelta, bool) {
+) -> bool {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
-    let mut display_row_delta = EvictionDelta::Exact(0);
     // Whether the canonical structure changed (a logical line was
     // rewrapped across the boundary). Consumers use this to decide
     // whether canonical-space anchors must be re-derived.
@@ -2246,32 +2254,24 @@ fn transfer_rows_from_lines_above_to_viewport(
         }
         if next_lines.is_empty() {
             if scrollback_tail_is_wrapped_at(lines_above, viewport, max_viewport_width) {
-                // The row leaves from the tail, which is not the cached front.
-                front_run.clear();
-                match lines_above.pop_back() {
-                    Some(mut next_line) => {
-                        *scrollback_cells =
-                            scrollback_cells.saturating_sub(next_line.stored_cell_count());
-                        next_line.expand_trailing_blanks();
-                        viewport.push_front(next_line);
-                        lines_added_to_viewport += 1;
-                        display_row_delta = display_row_delta.plus_exact(-1);
-                        continue;
-                    },
-                    None => break,
-                }
+                let (mut rows, _) = line_index.take_back(lines_above, 1);
+                let Some(mut next_line) = rows.pop() else {
+                    break;
+                };
+                *scrollback_cells = scrollback_cells.saturating_sub(next_line.stored_cell_count());
+                next_line.expand_trailing_blanks();
+                viewport.push_front(next_line);
+                lines_added_to_viewport += 1;
+                continue;
             }
-            // The drained run is the tail, not the cached front row.
-            // A line that fits in one row quantum is reflowed whole, so its
-            // first row is the real canonical start. A longer line is not
-            // split here; the scroll methods scan it across turns and cut
-            // on a display-row boundary.
             let Some(mut canonical_run) =
                 take_whole_line_if_within(lines_above, SCREEN_ROW_QUANTUM)
             else {
                 break;
             };
-            front_run.clear();
+            if !canonical_run.is_empty() {
+                line_index.note_back_rows_removed(lines_above, canonical_run.len());
+            }
             for row in &mut canonical_run {
                 row.expand_trailing_blanks();
             }
@@ -2285,12 +2285,6 @@ fn transfer_rows_from_lines_above_to_viewport(
                 break;
             }
             let rows_taken_from_lines_above = canonical_run.len();
-            display_row_delta = display_row_delta.plus_exact(
-                -(run_display_height(
-                    canonical_run.iter().flat_map(row_display_widths),
-                    max_viewport_width,
-                ) as isize),
-            );
             let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(viewport);
             let merged_row_count = top_non_canonical_rows_in_dst.len();
             lines_added_to_viewport -= merged_row_count as isize;
@@ -2314,30 +2308,19 @@ fn transfer_rows_from_lines_above_to_viewport(
         lines_added_to_viewport += 1;
     }
     for excess_row in next_lines {
-        let admitted = stored_row_display_contribution(&excess_row);
-        let epoch = content_epoch.wrapping_add(1);
-        *content_epoch = epoch;
-        let evicted_rows = bounded_push(
+        *content_epoch = content_epoch.wrapping_add(1);
+        let evicted = bounded_push(
             lines_above,
             sixel_grid,
             kitty_grid,
             excess_row,
             scrollback_cells,
-            front_run,
-            epoch,
+            line_index,
         );
-        *rows_evicted += evicted_rows.len() as u64;
-        display_row_delta = display_row_delta.plus(evicted_rows_display_row_delta(
-            lines_above,
-            evicted_rows,
-            max_viewport_width,
-            front_run,
-            epoch,
-        ));
-        *content_epoch = epoch.wrapping_add(1);
-        display_row_delta = display_row_delta.plus_exact(admitted);
+        *rows_evicted += evicted as u64;
+        *content_epoch = content_epoch.wrapping_add(1);
     }
-    (display_row_delta, reflowed)
+    reflowed
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
@@ -2345,40 +2328,26 @@ fn transfer_rows_from_viewport_to_lines_above(
     lines_above: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
+    line_index: &mut LineIndex,
     count: usize,
-    width: usize,
     scrollback_cells: &mut usize,
-    front_run: &mut EvictionCache,
     rows_evicted: &mut u64,
     content_epoch: &mut u64,
-) -> EvictionDelta {
-    let mut display_row_delta = EvictionDelta::Exact(0);
+) {
     let drained_lines = std::cmp::min(count, viewport.len());
     for next_line in viewport.drain(..drained_lines) {
-        let admitted = stored_row_display_contribution(&next_line);
-        let epoch = content_epoch.wrapping_add(1);
-        *content_epoch = epoch;
-        let evicted_rows = bounded_push(
+        *content_epoch = content_epoch.wrapping_add(1);
+        let evicted = bounded_push(
             lines_above,
             sixel_grid,
             kitty_grid,
             next_line,
             scrollback_cells,
-            front_run,
-            epoch,
+            line_index,
         );
-        *rows_evicted += evicted_rows.len() as u64;
-        display_row_delta = display_row_delta.plus(evicted_rows_display_row_delta(
-            lines_above,
-            evicted_rows,
-            width,
-            front_run,
-            epoch,
-        ));
-        *content_epoch = epoch.wrapping_add(1);
-        display_row_delta = display_row_delta.plus_exact(admitted);
+        *rows_evicted += evicted as u64;
+        *content_epoch = content_epoch.wrapping_add(1);
     }
-    display_row_delta
 }
 
 fn transfer_rows_from_lines_below_to_viewport(
@@ -2665,32 +2634,17 @@ fn bounded_push(
     kitty_grid: &mut KittyGrid,
     mut value: Row,
     scrollback_cells: &mut usize,
-    front_run: &mut EvictionCache,
-    content_epoch: u64,
-) -> Vec<Row> {
+    line_index: &mut LineIndex,
+) -> usize {
     value.compress_trailing_blanks();
     if value.columns.capacity() > value.columns.len() {
         let mut exact = Vec::with_capacity(value.columns.len());
         exact.append(&mut value.columns);
         recycle_columns(std::mem::replace(&mut value.columns, exact));
     }
-    let appended_canonical = value.is_canonical;
-    let appended_single_width = value.is_single_width_cached();
-    let appended_cells = value.width_cached();
-    let previous_len = vec.len();
-    // Record the append before any front rows leave. The single-width
-    // summary keys off the run reaching the end of the deque, which is a
-    // property of the deque the new row will join.
-    front_run.note_appended(
-        appended_canonical,
-        appended_single_width,
-        appended_cells,
-        previous_len,
-        content_epoch,
-    );
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
-    let mut evicted_rows = Vec::new();
+    let mut evicted = 0usize;
     // Measure after trailing-blank compress. Evict on the prospective
     // total, not the total before this row: rows that each fit the
     // budget can still push the retained sum past it (2048 + 2048
@@ -2703,17 +2657,20 @@ fn bounded_push(
         || (scrollback_cells.saturating_add(incoming) > cell_budget && !vec.is_empty())
     {
         match retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells) {
-            Some(line) => evicted_rows.push(line),
+            Some(_) => evicted += 1,
             None => break,
         }
+    }
+    if evicted > 0 {
+        line_index.note_front_rows_removed(vec, evicted);
     }
     if vec.len() == vec.capacity() && vec.len() < scroll_buffer_size {
         let doubled = vec.capacity().max(8);
         vec.reserve_exact(doubled.min(scroll_buffer_size - vec.len()));
     }
     *scrollback_cells += value.stored_cell_count();
-    vec.push_back(value);
-    evicted_rows
+    line_index.append_row(vec, value);
+    evicted
 }
 
 pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
@@ -3057,9 +3014,12 @@ pub(super) struct ScrollResult {
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
-    /// Valid continuation run at the front of `lines_above`, if the last
-    /// single-row eviction proved one. Cleared when that proof no longer
-    /// describes the front.
+    /// Authoritative scrollback line summaries. Every `lines_above` mutation
+    /// is routed through this index.
+    line_index: LineIndex,
+    /// Legacy eviction cache. Production paths no longer consult it; the
+    /// focused legacy tests still construct it directly.
+    #[allow(dead_code)]
     front_run_validity: EvictionCache,
     pub(crate) viewport: VecDeque<Row>,
     pub(crate) lines_below: VecDeque<Row>,
@@ -3110,9 +3070,11 @@ pub struct Grid {
     pub is_scrolled: bool,
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
+    /// Legacy mirrors retained for the old focused tests. The published
+    /// scrollback length now comes from `line_index`.
+    #[allow(dead_code)]
     scrollback_display_rows: usize,
-    /// Width recount still walking `lines_above`. Published into
-    /// `scrollback_display_rows` as it goes, one quantum per turn.
+    #[allow(dead_code)]
     display_row_recount: Option<DisplayRowRecount>,
     /// The user's viewport, held aside while bytes are parsed against the
     /// live bottom. Rows that scroll off that live window join `gap`
@@ -3124,6 +3086,7 @@ pub struct Grid {
     /// Character-accurate scroll-up of a stale logical line that is longer
     /// than one row quantum. The viewport does not move until the cut is known.
     pending_line_reflow: Option<PendingLineReflow>,
+    pending_rep: Option<PendingRep>,
     scrollback_cells: usize,
     /// Rows removed from the front of scrollback. Used to keep a scrolled
     /// viewport anchored while output is applied at the live bottom.
@@ -3221,6 +3184,8 @@ impl ViewportAnchor {
 /// scanning for a search hit, or recounting scrollback after a resize.
 /// A longer distance continues on a later turn.
 pub(crate) const SCREEN_ROW_QUANTUM: usize = 128;
+/// Repeated cells applied synchronously before REP becomes deferred work.
+pub(crate) const REP_STEP_CHARACTER_BUDGET: usize = 1024;
 
 impl Grid {
     pub fn set_pane_default_colors(&mut self, fg: Option<String>, bg: Option<String>) {
@@ -3525,6 +3490,7 @@ impl Grid {
             scrollback_epoch: 0,
             content_epoch: 0,
             lines_above: VecDeque::new(),
+            line_index: LineIndex::new(columns),
             front_run_validity: EvictionCache::default(),
             viewport: VecDeque::from(vec![Row::new().canonical()]),
             lines_below: VecDeque::new(),
@@ -3567,6 +3533,7 @@ impl Grid {
             live_bottom: None,
             history_truncated: false,
             pending_line_reflow: None,
+            pending_rep: None,
             scrollback_cells: 0,
             scrollback_rows_evicted: 0,
             mouse_mode: MouseMode::default(),
@@ -3739,8 +3706,13 @@ impl Grid {
         // (position, length)
         (
             self.lines_below.len(),
-            (self.scrollback_display_rows + self.lines_below.len()),
+            (self.line_index.published_display_rows() + self.lines_below.len()),
         )
+    }
+    /// Physical rows retained above the viewport. Test/diagnostic use; the
+    /// user-facing scrollback length is measured in display rows.
+    pub fn scrollback_stored_rows(&self) -> usize {
+        self.lines_above.len()
     }
 
     fn set_horizontal_tabstop(&mut self) {
@@ -4015,7 +3987,6 @@ impl Grid {
     }
 
     pub(super) fn scroll_up_one_line_with_progress(&mut self) -> ScrollResult {
-        self.restart_display_recount();
         let mut result = ScrollResult::default();
         if self.viewport.len() == self.height
             && (self.pending_line_reflow.is_some() || self.long_stale_tail())
@@ -4040,19 +4011,18 @@ impl Grid {
             self.lines_below_cells = None;
             self.note_content_mutation();
 
-            let (display_row_delta, reflowed) = transfer_rows_from_lines_above_to_viewport(
+            let reflowed = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
+                &mut self.line_index,
                 1,
                 self.width,
                 &mut self.scrollback_cells,
-                &mut self.front_run_validity,
                 &mut self.scrollback_rows_evicted,
                 &mut self.content_epoch,
             );
-            self.apply_scrollback_display_row_delta(display_row_delta);
             self.kitty_refresh_after_scroll_step(reflowed);
 
             self.selection.move_down(1);
@@ -4091,30 +4061,16 @@ impl Grid {
             };
 
             self.note_content_mutation();
-            let epoch = self.content_epoch;
-            let evicted_rows = bounded_push(
+            let evicted = bounded_push(
                 &mut self.lines_above,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 line_to_push_up,
                 &mut self.scrollback_cells,
-                &mut self.front_run_validity,
-                epoch,
+                &mut self.line_index,
             );
-            self.scrollback_rows_evicted += evicted_rows.len() as u64;
-            if !evicted_rows.is_empty() {
-                self.restart_display_recount();
-            }
-            let width = self.width;
-            let display_row_delta = EvictionDelta::Exact(1).plus(evicted_rows_display_row_delta(
-                &mut self.lines_above,
-                evicted_rows,
-                width,
-                &mut self.front_run_validity,
-                epoch,
-            ));
-            self.content_epoch = epoch.wrapping_add(1);
-            self.apply_scrollback_display_row_delta(display_row_delta);
+            self.scrollback_rows_evicted += evicted as u64;
+            self.content_epoch = self.content_epoch.wrapping_add(1);
 
             self.note_content_mutation();
             let reflowed = transfer_rows_from_lines_below_to_viewport(
@@ -4155,92 +4111,61 @@ impl Grid {
         self.resize_and_reflow(new_rows, new_columns, true);
         self.finish_display_row_recount();
     }
-    fn apply_scrollback_display_row_delta(&mut self, delta: EvictionDelta) {
-        match delta {
-            EvictionDelta::NeedsRecount => {
-                if self.display_row_recount.is_none() {
-                    self.start_display_row_recount(self.width);
-                } else {
-                    self.restart_display_recount();
-                }
-            },
-            EvictionDelta::Exact(delta) => {
-                if self.display_row_recount.is_some() {
-                    // The in-progress scan counts the rows that are
-                    // actually stored. A delta measured against the old
-                    // document must not be added on top of it.
-                    return;
-                }
-                self.scrollback_display_rows =
-                    self.scrollback_display_rows.saturating_add_signed(delta);
-            },
-        }
-    }
-    fn restart_display_recount(&mut self) {
-        if let Some(job) = self.display_row_recount.as_mut() {
-            job.restart(self.content_epoch, self.width);
-        }
-    }
-    /// Start a width recount. Nothing is published until the scan finishes:
-    /// a partial sum is not a length. Each later turn walks at most one
-    /// row quantum, including through the middle of a long logical line.
+    /// Start a width recount. Nothing is published until every line has been
+    /// measured: a partial sum is not a length.
     pub(crate) fn start_display_row_recount(&mut self, new_columns: usize) {
-        if new_columns == 0 || self.lines_above.is_empty() {
-            self.scrollback_display_rows = 0;
-            self.display_row_recount = None;
-            return;
-        }
-        self.display_row_recount = Some(DisplayRowRecount {
-            index: 0,
-            cell_index: 0,
-            row_started: false,
-            accumulated: 0,
-            width: new_columns,
-            wrap: WrapState::default(),
-            in_run: false,
-            epoch: self.content_epoch,
-        });
+        self.line_index.regroup(&self.lines_above, new_columns);
     }
     pub(crate) fn display_recount_pending(&self) -> bool {
-        self.display_row_recount.is_some()
+        !self.line_index.is_fully_measured()
     }
-    /// Count at most one quantum of scrollback runs. Returns true when
-    /// the recount has finished.
+    /// Measure at most one line/chunk of scrollback. Returns true when the
+    /// recount has finished.
     pub(crate) fn continue_display_row_recount(&mut self) -> bool {
-        let Some(mut job) = self.display_row_recount.take() else {
-            return true;
-        };
-        let mut budget = WorkBudget::new(
-            SCREEN_ROW_QUANTUM,
-            DISPLAY_RECOUNT_CELL_BUDGET,
-            DISPLAY_RECOUNT_TRANSITION_BUDGET,
-        );
-        match job.step(self, self.content_epoch, &mut budget) {
-            JobProgress::Done => true,
-            JobProgress::Pending => {
-                self.display_row_recount = Some(job);
-                false
-            },
-            JobProgress::Invalid => {
-                if self.lines_above.is_empty() || self.width == 0 {
-                    self.scrollback_display_rows = 0;
-                    true
-                } else {
-                    job.restart(self.content_epoch, self.width);
-                    self.display_row_recount = Some(job);
-                    false
-                }
-            },
-        }
+        self.line_index.measure_next(
+            &self.lines_above,
+            MeasureBudget::new(SCREEN_ROW_QUANTUM, DISPLAY_RECOUNT_CELL_BUDGET),
+        ) == MeasureProgress::Done
     }
     /// Finish a resize recount on the calling thread. Grid tests and any
     /// caller that reads the length immediately use this. The screen thread
     /// uses [`Self::continue_display_row_recount`] one quantum at a time.
     pub(crate) fn finish_display_row_recount(&mut self) {
-        while self.display_row_recount.is_some() {
-            if self.continue_display_row_recount() {
-                break;
+        self.line_index.measure_all(&self.lines_above);
+    }
+    pub(crate) fn rep_pending(&self) -> bool {
+        self.pending_rep.is_some()
+    }
+    #[cfg(test)]
+    pub(crate) fn pending_rep_remaining(&self) -> Option<usize> {
+        self.pending_rep.as_ref().map(|rep| rep.remaining)
+    }
+    /// Apply one bounded REP quantum. Returns true when the repeat is done.
+    pub(crate) fn continue_pending_rep(&mut self) -> bool {
+        let Some(mut rep) = self.pending_rep.take() else {
+            return true;
+        };
+        let mut budget = WorkBudget::new(1, REP_STEP_CHARACTER_BUDGET, REP_STEP_CHARACTER_BUDGET);
+        while rep.remaining > 0 {
+            if !budget.charge_cell() || !budget.charge_transition() {
+                self.pending_rep = Some(rep);
+                return false;
             }
+            self.add_character(rep.character.clone());
+            rep.remaining -= 1;
+        }
+        true
+    }
+    fn start_rep(&mut self, character: TerminalCharacter, count: usize) {
+        let immediate = count.min(REP_STEP_CHARACTER_BUDGET);
+        for _ in 0..immediate {
+            self.add_character(character.clone());
+        }
+        if count > immediate {
+            self.pending_rep = Some(PendingRep {
+                character,
+                remaining: count - immediate,
+            });
         }
     }
     pub fn change_size(&mut self, new_rows: usize, new_columns: usize) {
@@ -4269,9 +4194,6 @@ impl Grid {
         // Reflow owns one document. Put the pinned view back first so the
         // parked gap is not a second history the resize never sees.
         self.unpark_live_bottom();
-        // Reflow rewrites stored widths, so a run that was valid at the
-        // old width must be checked again.
-        self.front_run_validity.clear();
         self.pending_line_reflow = None;
         self.pending_search = None;
         self.invalidate_scroll_offset();
@@ -4408,6 +4330,10 @@ impl Grid {
             }
 
             self.viewport = VecDeque::from(new_viewport_rows);
+            // The viewport drain may have taken a tail from `lines_above`
+            // and the width is changing; rebuild grouping before the
+            // transfer paths below update it incrementally.
+            self.line_index.regroup(&self.lines_above, new_columns);
 
             let cursor_line_first_y =
                 self.canonical_line_y_coordinates(cursor_canonical_line_index);
@@ -4504,10 +4430,10 @@ impl Grid {
                         &mut self.viewport,
                         &mut self.sixel_grid,
                         &mut self.kitty_grid,
+                        &mut self.line_index,
                         row_count_to_transfer,
                         new_columns,
                         &mut self.scrollback_cells,
-                        &mut self.front_run_validity,
                         &mut self.scrollback_rows_evicted,
                         &mut self.content_epoch,
                     );
@@ -4536,10 +4462,9 @@ impl Grid {
                         &mut self.lines_above,
                         &mut self.sixel_grid,
                         &mut self.kitty_grid,
+                        &mut self.line_index,
                         row_count_to_transfer,
-                        new_columns,
                         &mut self.scrollback_cells,
-                        &mut self.front_run_validity,
                         &mut self.scrollback_rows_evicted,
                         &mut self.content_epoch,
                     );
@@ -5256,7 +5181,7 @@ impl Grid {
         (rows, cells)
     }
     fn evict_one_scrollback_row(&mut self) -> bool {
-        let Some(line) = retire_scrollback_front(
+        let Some(_line) = retire_scrollback_front(
             &mut self.lines_above,
             &mut self.sixel_grid,
             &mut self.kitty_grid,
@@ -5264,18 +5189,10 @@ impl Grid {
         ) else {
             return false;
         };
+        self.line_index
+            .note_front_rows_removed(&self.lines_above, 1);
         self.scrollback_rows_evicted = self.scrollback_rows_evicted.saturating_add(1);
-        let width = self.width;
-        let epoch = self.content_epoch;
-        let delta = evicted_rows_display_row_delta(
-            &mut self.lines_above,
-            vec![line],
-            width,
-            &mut self.front_run_validity,
-            epoch,
-        );
-        self.content_epoch = epoch.wrapping_add(1);
-        self.apply_scrollback_display_row_delta(delta);
+        self.content_epoch = self.content_epoch.wrapping_add(1);
         true
     }
     /// Drop the oldest retained row until `lines_above`, the pinned view,
@@ -5357,28 +5274,17 @@ impl Grid {
         self.history_truncated = true;
         self.note_content_mutation();
         for row in park.gap {
-            let admitted = stored_row_display_contribution(&row);
-            let epoch = self.content_epoch;
-            let evicted_rows = bounded_push(
+            self.content_epoch = self.content_epoch.wrapping_add(1);
+            let evicted = bounded_push(
                 &mut self.lines_above,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 row,
                 &mut self.scrollback_cells,
-                &mut self.front_run_validity,
-                epoch,
+                &mut self.line_index,
             );
-            self.scrollback_rows_evicted += evicted_rows.len() as u64;
-            let width = self.width;
-            let delta = evicted_rows_display_row_delta(
-                &mut self.lines_above,
-                evicted_rows,
-                width,
-                &mut self.front_run_validity,
-                epoch,
-            );
-            self.content_epoch = epoch.wrapping_add(1);
-            self.apply_scrollback_display_row_delta(delta.plus_exact(admitted));
+            self.scrollback_rows_evicted += evicted as u64;
+            self.content_epoch = self.content_epoch.wrapping_add(1);
         }
         self.is_scrolled = false;
         self.lines_below.clear();
@@ -5454,9 +5360,6 @@ impl Grid {
         if self.lines_above.is_empty() {
             return 0;
         }
-        // Rows leave `lines_above`, so a recount cursor into that deque is
-        // no longer a position in the same buffer.
-        self.restart_display_recount();
         if self.viewport.len() != self.height {
             let mut moved = 0;
             while moved < count {
@@ -5469,19 +5372,18 @@ impl Grid {
         }
         let before = self.viewport.len();
         self.note_content_mutation();
-        let (display_row_delta, reflowed) = transfer_rows_from_lines_above_to_viewport(
+        let reflowed = transfer_rows_from_lines_above_to_viewport(
             &mut self.lines_above,
             &mut self.viewport,
             &mut self.sixel_grid,
             &mut self.kitty_grid,
+            &mut self.line_index,
             count,
             self.width,
             &mut self.scrollback_cells,
-            &mut self.front_run_validity,
             &mut self.scrollback_rows_evicted,
             &mut self.content_epoch,
         );
-        self.apply_scrollback_display_row_delta(display_row_delta);
         let added = self.viewport.len().saturating_sub(before);
         for _ in 0..added {
             if let Some(row) = self.viewport.pop_back() {
@@ -5555,9 +5457,7 @@ impl Grid {
             return;
         }
         self.note_content_mutation();
-        let width = self.width;
         let drained: Vec<Row> = self.viewport.drain(..count).collect();
-        let mut display_row_delta = EvictionDelta::Exact(0);
         for mut line in drained {
             if !line.is_canonical && self.lines_above.is_empty() {
                 self.kitty_grid.insert_canonical_anchor_line_at_front();
@@ -5566,32 +5466,18 @@ impl Grid {
                 // canonical starts still describe the old boundary.
                 self.kitty_grid.invalidate_canonical_starts();
             }
-            let admitted = stored_row_display_contribution(&line);
-            let epoch = self.content_epoch;
-            let evicted_rows = bounded_push(
+            self.content_epoch = self.content_epoch.wrapping_add(1);
+            let evicted = bounded_push(
                 &mut self.lines_above,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 line,
                 &mut self.scrollback_cells,
-                &mut self.front_run_validity,
-                epoch,
+                &mut self.line_index,
             );
-            self.scrollback_rows_evicted += evicted_rows.len() as u64;
-            if !evicted_rows.is_empty() {
-                self.restart_display_recount();
-            }
-            display_row_delta = display_row_delta.plus(evicted_rows_display_row_delta(
-                &mut self.lines_above,
-                evicted_rows,
-                width,
-                &mut self.front_run_validity,
-                epoch,
-            ));
-            self.content_epoch = epoch.wrapping_add(1);
-            display_row_delta = display_row_delta.plus_exact(admitted);
+            self.scrollback_rows_evicted += evicted as u64;
+            self.content_epoch = self.content_epoch.wrapping_add(1);
         }
-        self.apply_scrollback_display_row_delta(display_row_delta);
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         self.note_content_mutation();
@@ -6131,9 +6017,8 @@ impl Grid {
     }
     fn clear_lines_above(&mut self) {
         self.invalidate_scroll_offset();
-        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
-        self.scrollback_display_rows = 0;
+        self.line_index.clear();
         self.scrollback_cells = 0;
         self.kitty_grid.invalidate_canonical_starts();
     }
@@ -6402,17 +6287,14 @@ impl Grid {
         self.live_bottom = None;
         self.history_truncated = false;
         self.pending_search = None;
-        // A recount describes the history that is being cleared. Letting an
-        // old continuing scan publish into the fresh document would mix its
-        // accumulated count and open wrap with bytes that replaced it.
-        self.display_row_recount = None;
         self.pending_line_reflow = None;
+        self.pending_rep = None;
         if let Some(alternate_screen_state) = self.alternate_screen_state.as_mut() {
             alternate_screen_state.kitty_grid.clear_all_placements();
         }
         self.invalidate_scroll_offset();
-        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
+        self.line_index.clear();
         self.scrollback_cells = 0;
         self.lines_below = VecDeque::new();
         self.lines_below_cells = Some(0);
@@ -6433,7 +6315,6 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
         self.search_results = Default::default();
-        self.scrollback_display_rows = 0;
         self.sixel_scrolling = false;
         self.mouse_mode = MouseMode::NoEncoding;
         self.mouse_tracking = MouseTracking::Off;
@@ -7617,8 +7498,18 @@ impl Grid {
         } else {
             cut_row + 1
         };
-        if drain_from < line_end {
+        let drained_rows = line_end.saturating_sub(drain_from);
+        if drained_rows > 0 {
             suffix.extend(self.lines_above.drain(drain_from..line_end));
+        }
+        if drained_rows > 0 {
+            self.line_index
+                .note_back_rows_removed(&self.lines_above, drained_rows);
+        }
+        if cut_char > 0 {
+            if let Some(last_line) = self.line_index.line_count().checked_sub(1) {
+                self.line_index.measure_line(&self.lines_above, last_line);
+            }
         }
         if suffix.is_empty() {
             return 0;
@@ -7635,12 +7526,7 @@ impl Grid {
                 .map(|row| row.stored_cell_count())
                 .sum::<usize>(),
         );
-        let mut display_row_delta = EvictionDelta::exact(
-            -(run_display_height(suffix.iter().flat_map(row_display_widths), self.width) as isize),
-        );
         let rows_taken = suffix.len();
-        self.front_run_validity.clear();
-        self.restart_display_recount();
         let mut top_non_canonical_rows = get_top_non_canonical_rows(&mut self.viewport);
         let merged = top_non_canonical_rows.len();
         suffix.append(&mut top_non_canonical_rows);
@@ -7666,32 +7552,18 @@ impl Grid {
             lines_added += 1;
         }
         for excess_row in next_lines {
-            let admitted = stored_row_display_contribution(&excess_row);
-            let epoch = self.content_epoch;
-            let evicted_rows = bounded_push(
+            self.content_epoch = self.content_epoch.wrapping_add(1);
+            let evicted = bounded_push(
                 &mut self.lines_above,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 excess_row,
                 &mut self.scrollback_cells,
-                &mut self.front_run_validity,
-                epoch,
+                &mut self.line_index,
             );
-            self.scrollback_rows_evicted += evicted_rows.len() as u64;
-            if !evicted_rows.is_empty() {
-                self.restart_display_recount();
-            }
-            display_row_delta = display_row_delta.plus(evicted_rows_display_row_delta(
-                &mut self.lines_above,
-                evicted_rows,
-                self.width,
-                &mut self.front_run_validity,
-                epoch,
-            ));
-            self.content_epoch = epoch.wrapping_add(1);
-            display_row_delta = display_row_delta.plus_exact(admitted);
+            self.scrollback_rows_evicted += evicted as u64;
+            self.content_epoch = self.content_epoch.wrapping_add(1);
         }
-        self.apply_scrollback_display_row_delta(display_row_delta);
         let added = lines_added.max(0) as usize;
         for _ in 0..added {
             if let Some(row) = self.viewport.pop_back() {
@@ -7733,21 +7605,18 @@ impl Grid {
         }
         self.invalidate_scroll_offset();
         self.kitty_settle_placements_below_the_viewport();
-        let width = self.width;
         self.note_content_mutation();
-        let display_row_delta = transfer_rows_from_viewport_to_lines_above(
+        transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
             &mut self.sixel_grid,
             &mut self.kitty_grid,
+            &mut self.line_index,
             count,
-            width,
             &mut self.scrollback_cells,
-            &mut self.front_run_validity,
             &mut self.scrollback_rows_evicted,
             &mut self.content_epoch,
         );
-        self.apply_scrollback_display_row_delta(display_row_delta);
         self.kitty_reanchor_all_from_pixels();
     }
     fn move_cursor_down_by_pixels(&mut self, pixel_count: usize) {
@@ -8382,14 +8251,14 @@ impl Grid {
     }
     pub fn delete_viewport_and_scroll(&mut self) {
         self.note_content_mutation();
+        self.pending_rep = None;
         self.invalidate_scroll_offset();
-        self.front_run_validity.clear();
         self.lines_above = VecDeque::new();
+        self.line_index.clear();
         self.scrollback_cells = 0;
         self.viewport.clear();
         self.lines_below = VecDeque::new();
         self.lines_below_cells = Some(0);
-        self.scrollback_display_rows = 0;
         self.kitty_grid.invalidate_canonical_starts();
     }
     pub fn reset_cursor_position(&mut self) {
@@ -9680,6 +9549,7 @@ impl Handler for Grid {
                                     .iter()
                                     .map(|row| row.stored_cell_count())
                                     .sum();
+                                self.line_index.regroup(&self.lines_above, self.width);
                             }
                             self.alternate_screen_state = None;
                             self.shell_reports.push(
@@ -9777,9 +9647,9 @@ impl Handler for Grid {
                             // The parked view is part of the primary screen.
                             // Save that screen, not the live window alone.
                             self.unpark_live_bottom();
-                            self.front_run_validity.clear();
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
+                            self.line_index.clear();
                             let current_lines_below = std::mem::take(&mut self.lines_below);
                             self.lines_below_cells = None;
                             let was_scrolled = self.is_scrolled;
@@ -9821,7 +9691,6 @@ impl Handler for Grid {
                             self.shell_reports
                                 .push(crate::attention::signals::PaneSignal::AlternateScreen(true));
                             self.clear_viewport_before_rendering = true;
-                            self.scrollback_display_rows = 0;
                             self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
                         },
                         1 => {
@@ -10093,9 +9962,7 @@ impl Handler for Grid {
                     // primary screen, so the whole count has to be written.
                     count
                 };
-                for _ in 0..count {
-                    self.add_character(c.clone());
-                }
+                self.start_rep(c, count as usize);
             }
         } else if c == 'E' {
             // Moves cursor to beginning of the line n (default 1) lines down.
@@ -10360,11 +10227,34 @@ impl Handler for Grid {
     }
 
     fn paused(&self) -> bool {
-        self.hold_for_forward
+        self.pending_rep.is_some()
+            || self.hold_for_forward
             || self
                 .pending_forwarded_queries
                 .iter()
                 .any(|query| !query.shares_da_barrier())
+    }
+
+    fn resume_paused(&mut self) -> bool {
+        if self.pending_rep.is_some() {
+            let _ = self.continue_pending_rep();
+            return true;
+        }
+        if self.batch_is_open()
+            || self.hold_for_forward
+            || self
+                .pending_forwarded_queries
+                .iter()
+                .any(|query| !query.shares_da_barrier())
+        {
+            // Synchronous `Parser::feed` has no host-reply channel. Drop the
+            // unanswered batch so replay harnesses can consume the stream;
+            // production `feed_until_paused` callers never take this path.
+            self.hold_for_forward = false;
+            self.pending_forwarded_queries.clear();
+            return true;
+        }
+        false
     }
 
     fn defer_pending_escape(&mut self, bytes: &[u8]) -> bool {

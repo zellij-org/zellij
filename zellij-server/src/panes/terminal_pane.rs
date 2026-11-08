@@ -882,12 +882,22 @@ impl Pane for TerminalPane {
         self.viewport_goal.is_some()
     }
     fn has_deferred_pane_work(&self) -> bool {
-        self.viewport_goal.is_some()
+        self.grid.rep_pending()
+            || self.viewport_goal.is_some()
             || self.output_catchup.is_some()
             || self.grid.pending_search.is_some()
             || self.grid.display_recount_pending()
     }
     fn advance_deferred_pane_work(&mut self) {
+        if self.grid.rep_pending() {
+            let done = self.grid.continue_pending_rep();
+            if done {
+                // Resume the bytes the parser left behind the repeat.
+                self.process_pending_pty_input();
+            }
+            self.set_should_render(true);
+            return;
+        }
         if self.viewport_goal.is_some() {
             let _ = self.advance_viewport_goal();
             return;

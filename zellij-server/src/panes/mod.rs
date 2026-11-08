@@ -4,6 +4,7 @@ pub mod grapheme_join;
 pub mod grid;
 pub mod hyperlink_tracker;
 pub mod kitty_graphics;
+pub(crate) mod line_index;
 pub mod link_handler;
 pub mod nested_session_modal;
 pub mod selection;

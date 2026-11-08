@@ -327,6 +327,10 @@ impl Emitter {
         self.grid.scrollback_position_and_length().1
     }
 
+    pub fn scrollback_stored_rows(&self) -> usize {
+        self.grid.scrollback_stored_rows()
+    }
+
     pub fn scroll_up(&mut self, rows: usize) -> usize {
         let before = self.grid.scrollback_position_and_length().0;
         self.grid.move_viewport_up(rows);

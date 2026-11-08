@@ -75,6 +75,59 @@ pub fn scrolling_inside_a_pane() {
 }
 
 #[test]
+fn maximum_rep_resumes_from_deferred_terminal_pane_work() {
+    let mut geom = PaneGeom::default();
+    geom.cols.set_inner(10);
+    geom.rows.set_inner(4);
+    let mut pane = TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    );
+    pane.handle_pty_bytes(b"a\x1b[65535bZ".to_vec());
+    assert!(pane.grid.rep_pending());
+    assert!(pane.has_pending_pty_input());
+
+    let mut steps = 0;
+    while pane.has_deferred_pane_work() || pane.has_pending_pty_input() {
+        if pane.has_deferred_pane_work() {
+            pane.advance_deferred_pane_work();
+        } else {
+            pane.handle_pty_bytes(Vec::new());
+        }
+        steps += 1;
+        assert!(steps < 100_000, "REP deferred work did not settle");
+    }
+    assert!(steps > 1, "maximum REP must span multiple pane turns");
+    assert!(!pane.grid.rep_pending());
+    assert!(!pane.has_pending_pty_input());
+    assert!(
+        pane.grid
+            .lines_above
+            .iter()
+            .chain(pane.grid.viewport.iter())
+            .flat_map(|row| row.columns.iter())
+            .any(|cell| cell.character == 'Z'),
+        "bytes after REP must be applied after the repeat settles"
+    );
+}
+
+#[test]
 pub fn sixel_image_inside_terminal_pane() {
     let mut fake_win_size = PaneGeom::default();
     fake_win_size.cols.set_inner(121);

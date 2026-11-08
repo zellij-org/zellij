@@ -6098,7 +6098,6 @@ fn viewport_texts(grid: &Grid) -> Vec<String> {
 }
 
 fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Grid {
-    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -6117,13 +6116,27 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         true,
         false,
     );
-    vte_parser.feed(&mut grid, &content);
+    feed_bytes(&mut grid, content);
     grid
 }
 
 fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(grid, bytes);
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let consumed = vte_parser.feed_until_paused(grid, &bytes[offset..]);
+        offset += consumed;
+        if grid.rep_pending() {
+            while grid.rep_pending() {
+                let _ = grid.continue_pending_rep();
+            }
+            continue;
+        }
+        if consumed == 0 {
+            vte_parser.feed(grid, &bytes[offset..]);
+            break;
+        }
+    }
 }
 
 // All tests below use a 10-row, 40-col grid with scroll region 1;8
@@ -7004,7 +7017,8 @@ fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
     use crate::host_query::HostQuery;
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.feed(&mut grid, b"\x1b[?996n");
+    let query = b"\x1b[?996n";
+    assert_eq!(parser.feed_until_paused(&mut grid, query), query.len());
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![HostQuery::ColorPaletteMode],
@@ -9602,7 +9616,8 @@ fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
 fn osc_52_read_is_forwarded_to_the_host() {
     let mut grid = new_grid_for_forwarding_test();
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(&mut grid, b"\x1b]52;c;?\x07");
+    let query = b"\x1b]52;c;?\x07";
+    assert_eq!(vte_parser.feed_until_paused(&mut grid, query), query.len());
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "clipboard reads must never be answered locally"
@@ -9620,7 +9635,8 @@ fn osc_52_read_is_forwarded_to_the_host() {
 fn osc_52_read_keeps_the_selection_and_terminator_of_the_query() {
     let mut grid = new_grid_for_forwarding_test();
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(&mut grid, b"\x1b]52;p;?\x1b\\");
+    let query = b"\x1b]52;p;?\x1b\\";
+    assert!(vte_parser.feed_until_paused(&mut grid, query) > 0);
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![crate::host_query::HostQuery::ClipboardContent {
@@ -11635,6 +11651,15 @@ impl<'a> vt_parser::Handler for OneCharAtATime<'a> {
     fn esc_dispatch(&mut self, sequence: &vt_parser::Sequence) {
         self.0.esc_dispatch(sequence)
     }
+    fn paused(&self) -> bool {
+        self.0.paused()
+    }
+    fn resume_paused(&mut self) -> bool {
+        self.0.resume_paused()
+    }
+    fn defer_pending_escape(&mut self, bytes: &[u8]) -> bool {
+        self.0.defer_pending_escape(bytes)
+    }
 }
 
 fn empty_grid(rows: usize, cols: usize, grapheme_mode: bool) -> Grid {
@@ -12515,6 +12540,197 @@ fn rep_matches_literal_repetition_across_widths_and_margins() {
     }
     assert_rep_matches_literals(7, 3, None, '\u{4f60}', 17);
     assert_rep_matches_literals(5, 3, Some((1, 2)), '\u{4f60}', 23);
+    assert_rep_matches_literals(10, 4, Some((1, 3)), 'A', 5_000);
+    assert_rep_matches_literals(7, 3, None, '\u{4f60}', 2_000);
+}
+
+fn feed_ordered_rep(grid: &mut Grid, parser: &mut vt_parser::Parser, bytes: &[u8]) {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let consumed = parser.feed_until_paused(grid, &bytes[offset..]);
+        offset += consumed;
+        if grid.rep_pending() {
+            while grid.rep_pending() {
+                let _ = grid.continue_pending_rep();
+            }
+            continue;
+        }
+        if consumed == 0 {
+            break;
+        }
+    }
+}
+
+fn document_contains(grid: &Grid, needle: char) -> bool {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .flat_map(|row| row.columns.iter())
+        .any(|cell| cell.character == needle)
+}
+
+#[test]
+fn maximum_rep_is_resumable_ordered_and_matches_literal_output() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let input = b"a\x1b[65535bX";
+    let consumed = parser.feed_until_paused(&mut grid, input);
+    assert!(consumed < input.len());
+    assert!(grid.rep_pending());
+    assert!(grid.pending_rep_remaining().unwrap() > 0);
+    assert!(!document_contains(&grid, 'X'));
+
+    let mut steps = 0;
+    while grid.rep_pending() {
+        let _ = grid.continue_pending_rep();
+        steps += 1;
+    }
+    assert!(steps > 1, "a maximum REP must be spread over steps");
+    assert!(!document_contains(&grid, 'X'));
+
+    let consumed_rest = parser.feed_until_paused(&mut grid, &input[consumed..]);
+    assert_eq!(consumed_rest, input.len() - consumed);
+    assert!(document_contains(&grid, 'X'));
+
+    let mut literal = create_grid_with_size_and_raw(4, 20, b"");
+    let mut literal_input = vec![b'a'; 65_536];
+    literal_input.push(b'X');
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal),
+        "maximum REP diverged from literal output"
+    );
+    assert_eq!(
+        format!("{:?}", grid.cursor),
+        format!("{:?}", literal.cursor)
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length(),
+        literal.scrollback_position_and_length()
+    );
+    assert_eq!(grid.scrollback_cells, literal.scrollback_cells);
+}
+
+#[test]
+fn rep_orders_trailing_bytes_and_is_partition_invariant() {
+    let input = b"a\x1b[3000bBC";
+    let mut whole = create_grid_with_size_and_raw(5, 11, b"");
+    let mut whole_parser = vt_parser::Parser::new();
+    feed_ordered_rep(&mut whole, &mut whole_parser, input);
+
+    let mut bytewise = create_grid_with_size_and_raw(5, 11, b"");
+    let mut bytewise_parser = vt_parser::Parser::new();
+    for byte in input {
+        feed_ordered_rep(&mut bytewise, &mut bytewise_parser, &[*byte]);
+    }
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&bytewise),
+        "REP must be invariant across byte-by-byte partitioning"
+    );
+    assert_eq!(
+        format!("{:?}", whole.cursor),
+        format!("{:?}", bytewise.cursor)
+    );
+
+    let mut delayed = create_grid_with_size_and_raw(5, 11, b"");
+    let mut delayed_parser = vt_parser::Parser::new();
+    let first = b"a\x1b[3000b";
+    assert_eq!(
+        delayed_parser.feed_until_paused(&mut delayed, first),
+        first.len()
+    );
+    assert!(delayed.rep_pending());
+    assert_eq!(
+        delayed_parser.feed_until_paused(&mut delayed, b"BC"),
+        0,
+        "later bytes must not run before the repeat finishes"
+    );
+    assert!(!document_contains(&delayed, 'B'));
+    assert!(!document_contains(&delayed, 'C'));
+    while delayed.rep_pending() {
+        let _ = delayed.continue_pending_rep();
+    }
+    assert_eq!(delayed_parser.feed_until_paused(&mut delayed, b"BC"), 2);
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&delayed),
+        "delayed trailing bytes must land in order"
+    );
+
+    let mut literal = create_grid_with_size_and_raw(5, 11, b"");
+    let mut literal_input = vec![b'a'; 3_001];
+    literal_input.extend_from_slice(b"BC");
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&literal)
+    );
+}
+
+#[test]
+fn synchronous_feed_drains_rep_before_consuming_trailing_bytes() {
+    let mut grid = create_grid_with_size_and_raw(4, 10, b"");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"a\x1b[65535bBC");
+    assert!(!grid.rep_pending(), "synchronous feed left REP pending");
+    assert!(document_contains(&grid, 'B'));
+    assert!(document_contains(&grid, 'C'));
+
+    let mut literal = create_grid_with_size_and_raw(4, 10, b"");
+    let mut input = vec![b'a'; 65_536];
+    input.extend_from_slice(b"BC");
+    feed_bytes(&mut literal, &input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal),
+        "synchronous feed must not overtake pending REP work"
+    );
+    assert_eq!(
+        format!("{:?}", grid.cursor),
+        format!("{:?}", literal.cursor)
+    );
+}
+
+#[test]
+fn reset_cancels_pending_rep_and_clears_its_effect() {
+    let mut grid = create_grid_with_size_and_raw(4, 10, b"");
+    let mut parser = vt_parser::Parser::new();
+    assert_eq!(parser.feed_until_paused(&mut grid, b"a\x1b[65535b"), 9);
+    assert!(grid.rep_pending());
+    grid.reset_terminal_state();
+    assert!(!grid.rep_pending());
+    assert!(grid.lines_above.is_empty());
+    assert!(!document_contains(&grid, 'a'));
+
+    assert_eq!(
+        parser.feed_until_paused(&mut grid, b"Z"),
+        1,
+        "bytes after an externally cancelled REP start cleanly"
+    );
+    assert!(document_contains(&grid, 'Z'));
+}
+
+#[test]
+fn rep_without_autowrap_matches_literal_past_the_edge() {
+    let mut rep_grid = create_grid_with_size_and_raw(3, 10, b"");
+    let mut literal_grid = create_grid_with_size_and_raw(3, 10, b"");
+    let mut rep = b"\x1b[?7lA".to_vec();
+    rep.extend_from_slice(b"\x1b[10000b");
+    let mut literal = b"\x1b[?7lA".to_vec();
+    literal.extend(std::iter::repeat_n(b'A', 10_000));
+    feed_bytes(&mut rep_grid, &rep);
+    feed_bytes(&mut literal_grid, &literal);
+    assert_eq!(
+        grid_document_snapshot(&rep_grid),
+        grid_document_snapshot(&literal_grid)
+    );
+    assert_eq!(
+        format!("{:?}", rep_grid.cursor),
+        format!("{:?}", literal_grid.cursor)
+    );
 }
 
 #[test]
@@ -12776,23 +12992,21 @@ fn a_mutation_between_recount_steps_does_not_publish_a_partial_sum() {
         grid.lines_above.len() > super::SCREEN_ROW_QUANTUM,
         "the recount must span more than one step"
     );
-    grid.scrollback_display_rows = 12_345;
     grid.start_display_row_recount(grid.width);
     assert!(!grid.continue_display_row_recount());
     assert!(grid.display_recount_pending());
 
-    // A public mutation between screen turns changes the document the
-    // paused job was counting.
+    // A public mutation between screen turns must be incorporated by the
+    // ongoing measurement rather than publishing a stale partial sum.
     grid.add_canonical_line();
-    let before = grid.scrollback_display_rows;
-    assert!(!grid.continue_display_row_recount());
+    while grid.display_recount_pending() {
+        grid.continue_display_row_recount();
+    }
     assert_eq!(
-        grid.scrollback_display_rows, before,
-        "an invalidated recount must not publish its partial sum"
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a tail mutation must not lose or restart the in-progress summary"
     );
-    grid.finish_display_row_recount();
-    let expected = scrollback_recount(&mut grid);
-    assert_eq!(grid.scrollback_display_rows, expected);
 }
 
 #[test]
@@ -13893,62 +14107,6 @@ fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
     );
 }
 #[test]
-fn a_multi_row_eviction_that_needs_a_recount_does_not_apply_a_partial_delta() {
-    let width = 121usize;
-    let mut grid = create_grid_with_size_and_raw(1, width, b"");
-    // A long continuation run whose suffix table cannot finish inside one
-    // eviction's transition budget. The rows do not meet in the synchronized
-    // character walk either, so the burst's temporary cache requests a
-    // recount instead of publishing an incomplete delta.
-    let run_rows = 2_305usize;
-    for _ in 0..run_rows {
-        grid.lines_above.push_back(width_cells(40, 2));
-    }
-    for _ in 0..4_955 {
-        grid.lines_above
-            .push_back(scrollback_row_of_cells(2_048, None));
-    }
-    grid.scrollback_cells = recounted_scrollback_cells(&grid);
-    let cell_budget = *SCROLL_BUFFER_SIZE.get().unwrap() * super::MAX_SCROLLBACK_ROW_CELLS;
-    assert_eq!(grid.scrollback_cells, cell_budget + 40);
-
-    let evicted = super::bounded_push(
-        &mut grid.lines_above,
-        &mut grid.sixel_grid,
-        &mut grid.kitty_grid,
-        width_cells(40, 2),
-        &mut grid.scrollback_cells,
-        &mut grid.front_run_validity,
-        grid.content_epoch,
-    );
-    assert_eq!(evicted.len(), 2, "the fixture must evict a multi-row burst");
-
-    grid.scrollback_display_rows = 7;
-    let delta = super::evicted_rows_display_row_delta(
-        &mut grid.lines_above,
-        evicted,
-        width,
-        &mut grid.front_run_validity,
-        grid.content_epoch,
-    );
-    assert_eq!(delta, super::EvictionDelta::NeedsRecount);
-    grid.apply_scrollback_display_row_delta(delta);
-    assert!(
-        grid.display_recount_pending(),
-        "an over-budget inner delta must schedule a recount"
-    );
-    assert_eq!(
-        grid.scrollback_display_rows, 7,
-        "the incomplete numeric delta must not be applied as exact"
-    );
-    grid.finish_display_row_recount();
-    assert_eq!(
-        grid.scrollback_position_and_length().1,
-        scrollback_recount(&mut grid)
-    );
-}
-
-#[test]
 fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
     use crate::panes::grid::{
         evicted_row_inspection_count, evicted_run_rescan_count, reset_evicted_row_inspection_count,
@@ -14013,74 +14171,203 @@ fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
     );
 }
 
-#[test]
-fn a_growing_long_ascii_run_evicts_with_bounded_row_visits() {
-    use crate::panes::grid::{
-        evicted_row_inspection_count, evicted_run_rescan_count, reset_evicted_row_inspection_count,
-        reset_evicted_run_rescan_count, reset_suffix_table_transition_count,
-        suffix_table_transition_count,
-    };
+fn line_index_counters() -> (usize, usize, usize) {
+    use crate::panes::line_index::{boundary_discoveries, cell_visits, row_visits};
+    (row_visits(), cell_visits(), boundary_discoveries())
+}
 
+fn reset_line_index_counters() {
+    use crate::panes::line_index::{
+        reset_boundary_discoveries, reset_cell_visits, reset_row_visits,
+    };
+    reset_row_visits();
+    reset_cell_visits();
+    reset_boundary_discoveries();
+}
+
+#[test]
+fn a_terminated_wide_glyph_run_evicts_with_bounded_line_index_work() {
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
     let width = 80usize;
+    let run_rows = 3_000usize;
     let mut grid = create_grid_with_size_and_raw(2, width, b"");
-    let line_rows = scroll_buffer_size + 2_000;
-    let mut line = vec![b'a'; line_rows * width];
+    let mut line = "\u{4e16}".repeat(width / 2 * run_rows).into_bytes();
     line.extend_from_slice(b"\r\n");
     feed_bytes(&mut grid, &line);
-    assert!(
-        !grid.lines_above.front().unwrap().is_canonical,
-        "the canonical head must have been evicted"
+    feed_bytes(
+        &mut grid,
+        &repeated_lines(b"x", scroll_buffer_size - run_rows - 100),
     );
-    grid.change_size(2, width + 1);
 
-    reset_evicted_row_inspection_count();
-    reset_evicted_run_rescan_count();
-    reset_suffix_table_transition_count();
-    let growth_rows = 500usize;
-    for _ in 0..growth_rows {
-        let evicted_before = grid.scrollback_rows_evicted;
-        feed_bytes(&mut grid, &vec![b'a'; width + 1]);
-        if grid.scrollback_rows_evicted == evicted_before {
-            continue;
-        }
-        let summary = grid
-            .front_run_validity
-            .single_width_run
-            .expect("the growing ASCII run keeps a summary once it evicts");
-        let actual_run: Vec<_> = grid
-            .lines_above
-            .iter()
-            .take_while(|row| !row.is_canonical)
-            .collect();
-        assert_eq!(summary.run_len, actual_run.len());
-        assert_eq!(
-            summary.cells,
-            actual_run
-                .iter()
-                .map(|row| row.stored_cell_count())
-                .sum::<usize>()
-        );
-    }
-
-    let inspections = evicted_row_inspection_count();
-    let rescans = evicted_run_rescan_count();
-    let transitions = suffix_table_transition_count();
-    grid.finish_display_row_recount();
+    reset_line_index_counters();
+    grid.change_size(2, width + 2);
+    let (discovery_rows, _, discovery_boundaries) = line_index_counters();
+    assert!(
+        discovery_rows <= grid.lines_above.len() * 4 + 2_000,
+        "initial wide-line discovery visited {discovery_rows} rows for {} stored rows",
+        grid.lines_above.len()
+    );
+    assert!(
+        discovery_boundaries <= discovery_rows,
+        "boundary discovery must be charged with the row walk"
+    );
     assert_eq!(
         grid.scrollback_position_and_length().1,
         scrollback_recount(&mut grid),
-        "a growing single-width run must stay exact"
+        "80 -> 82 reflow must keep the wide-glyph total exact"
+    );
+
+    reset_line_index_counters();
+    let evicted_before = grid.scrollback_rows_evicted;
+    feed_bytes(&mut grid, &repeated_lines(b"x", run_rows + 500));
+    let evicted = (grid.scrollback_rows_evicted - evicted_before) as usize;
+    let (rows, cells, boundaries) = line_index_counters();
+    assert!(
+        evicted >= run_rows / 2,
+        "the fixture must evict the wide run"
     );
     assert!(
-        inspections < 20_000,
-        "inspected {inspections} rows while the ASCII run grew by {growth_rows} rows"
+        rows <= evicted * 8 + 2_000,
+        "wide-glyph eviction revisited {rows} rows for {evicted} evictions"
     );
-    assert!(rescans <= 2, "rescanned the growing run {rescans} times");
+    assert!(
+        cells <= evicted * 8 + 2_000,
+        "wide-glyph eviction scanned {cells} cells for {evicted} evictions"
+    );
+    assert!(
+        boundaries <= rows,
+        "boundary discovery must be covered by the row budget"
+    );
     assert_eq!(
-        transitions, 0,
-        "the single-width run should not build a suffix table"
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "terminated wide-glyph eviction must match the recount oracle"
     );
+}
+
+#[test]
+fn a_growing_wide_glyph_run_keeps_its_summary_and_bounded_work() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let run_rows = 3_000usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    feed_bytes(
+        &mut grid,
+        &repeated_lines(b"x", scroll_buffer_size - run_rows - 100),
+    );
+    feed_bytes(
+        &mut grid,
+        "\u{4e16}".repeat(width / 2 * run_rows).as_bytes(),
+    );
+
+    reset_line_index_counters();
+    grid.change_size(2, width + 2);
+    let (discovery_rows, _, _) = line_index_counters();
+    assert!(
+        discovery_rows <= grid.lines_above.len() * 4 + 2_000,
+        "initial growing-line discovery visited {discovery_rows} rows"
+    );
+
+    reset_line_index_counters();
+    let evicted_before = grid.scrollback_rows_evicted;
+    let growth_rows = scroll_buffer_size + 1_000;
+    feed_bytes(&mut grid, "\u{4e16}".repeat(41 * growth_rows).as_bytes());
+    let evicted = (grid.scrollback_rows_evicted - evicted_before) as usize;
+    let (rows, cells, boundaries) = line_index_counters();
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "the growing wide line must reach the eviction front"
+    );
+    assert!(
+        rows <= evicted * 8 + growth_rows,
+        "continued wide output revisited {rows} rows for {evicted} evictions and {growth_rows} appended rows"
+    );
+    assert!(
+        cells <= evicted * 8 + growth_rows * 64,
+        "continued wide output scanned {cells} cells"
+    );
+    assert!(
+        boundaries <= rows,
+        "boundary discovery must be covered by the row budget"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "growing wide-glyph eviction must match the recount oracle"
+    );
+}
+
+#[test]
+fn randomized_grid_operations_match_the_reference_recount() {
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0
+        }
+
+        fn below(&mut self, limit: usize) -> usize {
+            (self.next() % limit as u64) as usize
+        }
+    }
+
+    let mut rng = Lcg(0x1234_5678_9abc_def0);
+    let mut grid = create_grid_with_size_and_raw(6, 20, b"");
+    for step in 0..400 {
+        match rng.below(10) {
+            0..=3 => {
+                let mut content = Vec::new();
+                for _ in 0..=rng.below(3) {
+                    match rng.below(4) {
+                        0 => content
+                            .extend_from_slice("wide \u{4e16}\u{4e16}\u{4e16}\r\n".as_bytes()),
+                        1 => content.extend_from_slice(b"short\r\n"),
+                        2 => content.extend_from_slice(b"\r\n"),
+                        _ => content.extend_from_slice("0123456789abcdef\r\n".as_bytes()),
+                    }
+                }
+                feed_bytes(&mut grid, &content);
+            },
+            4 => {
+                let rows = 4 + rng.below(5);
+                let columns = 6 + rng.below(20);
+                grid.change_size(rows, columns);
+            },
+            5 => {
+                grid.scroll_up_one_line();
+            },
+            6 => {
+                grid.scroll_down_one_line();
+            },
+            7 => {
+                grid.clear_lines_above();
+            },
+            8 => {
+                grid.reset_terminal_state();
+            },
+            _ => {
+                grid.delete_viewport_and_scroll();
+            },
+        }
+        grid.finish_display_row_recount();
+        let recorded = grid.scrollback_position_and_length().1;
+        let recounted = scrollback_recount(&mut grid) + grid.lines_below.len();
+        assert_eq!(
+            recorded, recounted,
+            "step {step}: display length diverged from the recount oracle"
+        );
+        assert_eq!(
+            grid.scrollback_cells,
+            grid.lines_above
+                .iter()
+                .map(|row| row.stored_cell_count())
+                .sum::<usize>(),
+            "step {step}: stored scrollback cells were lost"
+        );
+    }
 }
 
 fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
@@ -14098,15 +14385,13 @@ fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
 
 fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
     grid.content_epoch = grid.content_epoch.wrapping_add(1);
-    let epoch = grid.content_epoch;
     super::bounded_push(
         &mut grid.lines_above,
         &mut grid.sixel_grid,
         &mut grid.kitty_grid,
         row,
         &mut grid.scrollback_cells,
-        &mut grid.front_run_validity,
-        epoch,
+        &mut grid.line_index,
     );
 }
 

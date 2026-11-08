@@ -805,7 +805,9 @@ mod tests {
             emitter.advance(&bytes);
             let mut alacritty = VteTerminal::new(STREAM_ROWS, STREAM_COLS);
             alacritty.apply_bytes(&bytes);
-            let grid = emitter.scrollback_len();
+            // Alacritty reports physical stored history rows here, not the
+            // logical display-row length shown in the scrollbar.
+            let grid = emitter.scrollback_stored_rows();
             let alacritty = alacritty.history_len();
             let name = path.file_name().unwrap().to_str().unwrap().to_owned();
             match (clears_the_screen(&bytes), grid == alacritty) {

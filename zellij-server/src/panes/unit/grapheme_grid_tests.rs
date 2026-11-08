@@ -45,7 +45,22 @@ fn new_grid(rows: usize, cols: usize) -> Grid {
 
 fn feed(grid: &mut Grid, content: &str) {
     let mut parser = crate::vt_parser::Parser::new();
-    parser.feed(grid, content.as_bytes());
+    let bytes = content.as_bytes();
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let consumed = parser.feed_until_paused(grid, &bytes[offset..]);
+        offset += consumed;
+        if grid.rep_pending() {
+            while grid.rep_pending() {
+                let _ = grid.continue_pending_rep();
+            }
+            continue;
+        }
+        if consumed == 0 {
+            parser.feed(grid, &bytes[offset..]);
+            break;
+        }
+    }
 }
 
 fn grid_with(content: &str, grapheme_mode: bool) -> Grid {

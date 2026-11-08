@@ -834,6 +834,10 @@ impl Soak {
         self.fed += bytes.len();
         self.pane.handle_pty_bytes(bytes.to_vec());
         for _ in 0..100_000 {
+            let had_pending_rep = self.pane.grid.rep_pending();
+            while self.pane.grid.rep_pending() {
+                let _ = self.pane.grid.continue_pending_rep();
+            }
             self.pane.drain_messages_to_pty();
             self.pane.drain_nested_session_messages();
             self.pane.drain_clipboard_update();
@@ -842,6 +846,13 @@ impl Soak {
             self.pane.drain_prompt_return();
             self.pane.drain_pane_signals();
             if self.pane.drain_forwarded_queries().is_empty() {
+                if had_pending_rep {
+                    let held = self.pane.drain_pending_pty_input();
+                    if !held.is_empty() {
+                        self.pane.handle_pty_bytes(held);
+                        continue;
+                    }
+                }
                 return;
             }
             self.pane.arm_forward_pause();
