@@ -135,67 +135,6 @@ fn reference_total(rows: &VecDeque<Row>, width: usize) -> usize {
     reference_heights(rows, width).into_iter().sum()
 }
 
-fn reference_height_from_rows(rows: &[Row], width: usize, origin: RowBoundary) -> usize {
-    if width == 0 {
-        return 1;
-    }
-    let mut completed = origin.completed_rows as usize;
-    let mut current = origin.current as usize;
-    let mut push = |character_width: usize| {
-        if current + character_width > width {
-            if current > 0 {
-                completed += 1;
-            }
-            current = 0;
-        }
-        current += character_width;
-    };
-    for row in rows {
-        for character in &row.columns {
-            push(character.width());
-        }
-        for _ in 0..(row.stored_cell_count() - row.columns.len()) {
-            push(1);
-        }
-    }
-    (completed + usize::from(current > 0))
-        .max(1)
-        .saturating_sub(origin.completed_rows as usize)
-        .max(1)
-}
-
-fn assert_origin_aware_total(fixture: &Fixture, width: usize) {
-    assert_eq!(
-        fixture.line_counts(),
-        reference_line_counts(&fixture.rows),
-        "logical-line grouping must match the reference model"
-    );
-    let mut row_start = 0;
-    let mut total = 0;
-    for (line_index, line) in fixture.index.lines.iter().enumerate() {
-        let rows = (row_start..row_start + line.row_count)
-            .map(|row| fixture.rows[row].clone())
-            .collect::<Vec<_>>();
-        let origin = if line.uniform_character_width.is_some() {
-            RowBoundary::default()
-        } else {
-            line.boundary_origin
-        };
-        let expected = reference_height_from_rows(&rows, width, origin);
-        assert_eq!(
-            fixture.index.line_height(line_index),
-            Some(expected),
-            "line {line_index} height"
-        );
-        total += expected;
-        row_start += line.row_count;
-    }
-    assert_eq!(
-        fixture.index.total_display_rows(),
-        LineDelta::Exact(total as isize)
-    );
-}
-
 fn row_signature(row: &Row) -> (bool, Vec<usize>, usize) {
     (
         row.is_canonical,
@@ -436,7 +375,7 @@ fn partial_front_eviction_after_completed_rows_rebases_the_open_row() {
 }
 
 #[test]
-fn mixed_width_partial_front_cuts_keep_absolute_origins_without_rewrapping() {
+fn mixed_width_partial_front_cuts_remeasure_survivors_from_column_zero() {
     let width = 7;
     let mut fixture = Fixture::new(
         vec![
@@ -461,9 +400,7 @@ fn mixed_width_partial_front_cuts_keep_absolute_origins_without_rewrapping() {
 
     for cut in 1..=4 {
         let line = fixture.index.lines.front().unwrap();
-        let absolute_origin = line.boundaries[line.boundary_base + 1];
         let surviving_rows = line.row_count - 1;
-        let old_height = line.height;
         let rows = fixture
             .rows
             .iter()
@@ -471,34 +408,244 @@ fn mixed_width_partial_front_cuts_keep_absolute_origins_without_rewrapping() {
             .take(surviving_rows)
             .cloned()
             .collect::<Vec<_>>();
-        let expected_height = reference_height_from_rows(&rows, width, absolute_origin);
+        let expected_height = reference_wrap_height(rows.iter(), width);
 
         reset_row_visits();
         reset_cell_visits();
         reset_boundary_discoveries();
         assert_eq!(
-            fixture.evict_front(1).exact(),
-            Some(-(old_height as isize - expected_height as isize))
+            fixture.evict_front(1),
+            LineDelta::NeedsMeasure,
+            "cut {cut} must defer measurement"
         );
-        assert_eq!(row_visits(), 0, "cut {cut} visited rows");
-        assert_eq!(cell_visits(), 0, "cut {cut} visited cells");
+        assert_eq!(row_visits(), 0, "cut {cut} scanned rows synchronously");
+        assert_eq!(cell_visits(), 0, "cut {cut} scanned cells synchronously");
         assert_eq!(
             boundary_discoveries(),
             0,
-            "cut {cut} rediscovered boundaries"
+            "cut {cut} rebuilt boundaries synchronously"
         );
+        assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
+        fixture.measure_all();
 
         let line = fixture.index.lines.front().unwrap();
         assert_eq!(line.height, expected_height);
-        assert_eq!(
-            line.boundary_at(0, width),
-            RowBoundary {
-                completed_rows: 0,
-                current: absolute_origin.current,
-            }
-        );
-        assert_origin_aware_total(&fixture, width);
+        assert_eq!(line.boundary_at(0, width), RowBoundary::default());
+        assert_exact_total(&fixture, width);
     }
+}
+
+#[test]
+fn mixed_width_cut_matches_fresh_wrap_of_the_surviving_rows() {
+    let width = 3;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("ab", true),
+            character_row("\u{754c}", false),
+            character_row("c", false),
+        ],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    fixture.measure_all();
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::Exact(reference_total(&fixture.rows, width) as isize)
+    );
+    assert_eq!(
+        fixture.index.lines.front().unwrap().height,
+        1,
+        "fresh wrap of the identical surviving rows is one display row"
+    );
+
+    assert_eq!(
+        fixture.append(character_row("de", false)),
+        LineDelta::Exact(1)
+    );
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn continuation_churn_keeps_prefix_metadata_bounded() {
+    let retained_rows = 64;
+    let text = "x".repeat(80);
+    let rows = (0..retained_rows)
+        .map(|index| character_row(&text, index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 80);
+
+    for _ in 0..100_000 {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+        assert_eq!(
+            fixture.append(character_row(&text, false)),
+            LineDelta::Exact(1)
+        );
+    }
+
+    assert_eq!(fixture.rows.len(), retained_rows);
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix.len() <= retained_rows + 1024,
+        "retained prefix length grew with lifetime appends: {}",
+        line.cell_prefix.len()
+    );
+    assert!(
+        line.cell_prefix.capacity() <= 4096,
+        "retained prefix capacity grew with lifetime appends: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, 80);
+}
+
+#[test]
+fn large_line_releases_backing_capacity_after_shrinking() {
+    let width = 200;
+    let text = "x".repeat(width);
+    let mut rows = vec![character_row(&text, true)];
+    rows.extend((0..10_000).map(|_| character_row(&text, false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert!(
+        fixture.index.lines.front().unwrap().cell_prefix.capacity() > 8_000,
+        "fixture did not grow the prefix backing"
+    );
+
+    let retained_rows = 64;
+    for _ in 0..(10_001 - retained_rows) {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+    }
+    let line = fixture.index.lines.front().unwrap();
+    assert_eq!(line.row_count, retained_rows);
+    assert!(
+        line.cell_prefix.capacity() <= 4_096,
+        "large backing survived the shrink: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn mixed_width_continuation_churn_keeps_metadata_bounded() {
+    let retained_rows = 64;
+    let texts = [
+        "a\u{754c}b",
+        "\u{754c}\u{754c}a",
+        "ab\u{754c}",
+        "\u{754c}a\u{754c}",
+    ];
+    let mut rows: Vec<Row> = (0..retained_rows)
+        .map(|index| character_row(texts[index % texts.len()], index == 0))
+        .collect();
+    let mut fixture = Fixture::new(std::mem::take(&mut rows), 7);
+
+    for cycle in 0..20_000 {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        fixture.measure_all();
+        let delta = fixture.append(character_row(texts[cycle % texts.len()], false));
+        if delta == LineDelta::NeedsMeasure {
+            fixture.measure_all();
+        }
+    }
+
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix.len() <= line.row_count + 1024,
+        "mixed-line prefix metadata grew with lifetime appends: {}",
+        line.cell_prefix.len()
+    );
+    assert!(
+        line.cell_prefix.capacity() <= 4096,
+        "mixed-line prefix capacity grew with lifetime appends: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, 7);
+}
+
+#[test]
+fn unmeasured_partial_cut_does_not_scan_the_surviving_suffix() {
+    let rows = (0..10_000)
+        .map(|index| character_row(&"x".repeat(80), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 80);
+    fixture.set_width(81);
+
+    reset_row_visits();
+    reset_cell_visits();
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    assert!(row_visits() <= 128, "row visits: {}", row_visits());
+    assert!(cell_visits() <= 128 * 81, "cell visits: {}", cell_visits());
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, 81);
+}
+
+#[test]
+fn uniform_to_mixed_append_defers_the_full_remeasure() {
+    let width = 80;
+    let text = "x".repeat(width);
+    let mut rows = vec![character_row(&text, true)];
+    rows.extend((0..10_000).map(|_| character_row(&text, false)));
+    let mut fixture = Fixture::new(rows, width);
+
+    reset_row_visits();
+    reset_cell_visits();
+    assert_eq!(
+        fixture.append(character_row("\u{754c}", false)),
+        LineDelta::NeedsMeasure
+    );
+    assert!(row_visits() <= 1, "the transition scanned old rows eagerly");
+    assert_eq!(cell_visits(), 0, "the transition scanned cells eagerly");
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn first_unmeasured_hint_does_not_rescan_measured_lines() {
+    let rows = (0..2_000)
+        .map(|_| character_row("x", true))
+        .collect::<Vec<_>>();
+    let mut fixture = Fixture::new(rows, 10);
+    let last = fixture.index.line_count() - 1;
+    fixture.index.invalidate_line(last);
+
+    reset_line_scan_visits();
+    assert_eq!(fixture.measure_next(1, 1), MeasureProgress::Done);
+    assert!(
+        line_scan_visits() <= 2,
+        "finding the invalidated tail rescanned {} lines",
+        line_scan_visits()
+    );
+    assert_exact_total(&fixture, 10);
+}
+
+#[test]
+fn retired_front_prefixes_are_compacted() {
+    let width = 2;
+    let mut rows = vec![character_row("xx", true)];
+    rows.extend((0..2000).map(|_| character_row("xx", false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2001));
+
+    for _ in 0..1500 {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+    }
+
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix_base < 1024,
+        "retired prefix must be reclaimed"
+    );
+    assert!(
+        line.cell_prefix.len() <= line.row_count + 1024,
+        "retained prefix metadata must stay bounded"
+    );
+    assert_exact_total(&fixture, width);
+
+    let _ = fixture.append(character_row("xy", false));
+    assert_exact_total(&fixture, width);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(502));
 }
 
 #[test]
@@ -762,7 +909,7 @@ fn randomized_operations_match_the_reference_model() {
             line.check_prefix(&format!("step {step} op {operation}"));
         }
         if fixture.index.is_fully_measured() {
-            assert_origin_aware_total(&fixture, width);
+            assert_exact_total(&fixture, width);
         } else {
             assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
         }

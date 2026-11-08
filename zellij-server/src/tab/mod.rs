@@ -956,6 +956,16 @@ pub trait Pane {
     fn has_pending_pty_input(&self) -> bool {
         false
     }
+    /// Whether the pane still has output to apply. This includes semantic
+    /// work that is not visible as raw bytes, such as an unfinished repeat.
+    fn has_pending_output(&self) -> bool {
+        false
+    }
+    /// Whether new PTY bytes can make progress now. False while a semantic
+    /// operation or an already-buffered suffix must run first.
+    fn can_accept_pty_bytes(&self) -> bool {
+        true
+    }
     /// Whether the pane is forward-paused with more buffered output than
     /// it is allowed to hold while waiting for the host.
     fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
@@ -4862,19 +4872,42 @@ impl Tab {
             .unwrap_or(false)
     }
     pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
-        self.floating_panes
-            .get_pane(pane_id)
-            .map(Box::as_ref)
-            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
-            .or_else(|| self.suppressed_panes.get(&pane_id).map(|p| p.1.as_ref()))
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            return Some(pane.as_ref());
+        }
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            return Some(pane.as_ref());
+        }
+        self.suppressed_pane(pane_id).map(|pane| pane.as_ref())
     }
     pub fn get_pane_with_id_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
         self.floating_panes
             .get_pane_mut(pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| {
+                if self.suppressed_panes.contains_key(&pane_id) {
+                    self.suppressed_panes
+                        .get_mut(&pane_id)
+                        .map(|(_, pane)| pane)
+                } else {
+                    self.suppressed_panes
+                        .values_mut()
+                        .find(|(_, pane)| pane.pid() == pane_id)
+                        .map(|(_, pane)| pane)
+                }
+            })
+    }
+    /// A suppressed pane is stored under the id of the pane that replaced it
+    /// (for example the scrollback editor), while PTY traffic still addresses
+    /// its original terminal id. Resolve both.
+    fn suppressed_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
+        self.suppressed_panes
+            .get(&pane_id)
+            .map(|(_, pane)| pane)
+            .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
+                    .values()
+                    .find(|(_, pane)| pane.pid() == pane_id)
                     .map(|(_, pane)| pane)
             })
     }
@@ -5353,7 +5386,10 @@ impl Tab {
         // backlog in this call. Parse at most one quantum now; the screen
         // thread continues the rest on a later turn. Bytes that arrived while
         // a backlog already exists stay behind it so order does not change.
-        if self.pending_vte_len(pid) > 0 || self.terminal_pane_is_scrolled(pid) {
+        if self.pending_vte_len(pid) > 0
+            || self.terminal_pane_is_scrolled(pid)
+            || self.terminal_pane_has_pending_output(pid)
+        {
             self.enqueue_pending_vte(pid, bytes);
             self.apply_one_pending_vte_quantum(pid)
                 .with_context(err_context)?;
@@ -5362,22 +5398,12 @@ impl Tab {
         self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
     fn terminal_pane_is_scrolled(&self, pid: u32) -> bool {
-        self.tiled_panes
-            .get_pane(PaneId::Terminal(pid))
-            .map(Box::as_ref)
-            .or_else(|| {
-                self.floating_panes
-                    .get_pane(PaneId::Terminal(pid))
-                    .map(Box::as_ref)
-            })
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .map(|s_p| s_p.1.as_ref())
-                    .find(|pane| pane.pid() == PaneId::Terminal(pid))
-            })
-            .map(|pane| pane.is_scrolled())
-            .unwrap_or(false)
+        self.get_pane_with_id(PaneId::Terminal(pid))
+            .is_some_and(|pane| pane.is_scrolled())
+    }
+    fn terminal_pane_has_pending_output(&self, pid: u32) -> bool {
+        self.get_pane_with_id(PaneId::Terminal(pid))
+            .is_some_and(|pane| pane.has_pending_output())
     }
     fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>) {
         if bytes.is_empty() {
@@ -5420,12 +5446,13 @@ impl Tab {
             .unwrap_or(0)
     }
     /// Whether the pane still has output to apply, either in the scrolled
-    /// backlog or buffered behind a forward-paused host query.
+    /// backlog, buffered behind a forward-paused host query, or waiting for
+    /// deferred semantic work such as an unfinished repeat.
     pub(crate) fn has_pending_output(&self, pid: u32) -> bool {
         self.pending_vte_len(pid) > 0
             || self
                 .get_pane_with_id(PaneId::Terminal(pid))
-                .is_some_and(|pane| pane.has_pending_pty_input())
+                .is_some_and(|pane| pane.has_pending_output())
     }
     #[cfg(test)]
     pub(crate) fn pending_vte_bytes_dropped(&self, pid: u32) -> u64 {
@@ -5453,11 +5480,15 @@ impl Tab {
             return Ok(());
         }
         let has_bytes = self.pending_vte_len(pid) > 0;
-        let parse_now = self
+        let (parse_now, can_accept) = self
             .get_pane_with_id_mut(PaneId::Terminal(pid))
-            .map(|pane| pane.prepare_scrolled_output(has_bytes))
-            .unwrap_or(true);
-        if !parse_now || !has_bytes {
+            .map(|pane| {
+                let parse_now = pane.prepare_scrolled_output(has_bytes);
+                let can_accept = pane.can_accept_pty_bytes();
+                (parse_now, can_accept)
+            })
+            .unwrap_or((true, true));
+        if !parse_now || !has_bytes || !can_accept {
             return Ok(());
         }
         let bytes = self.take_pending_vte_quantum(pid);
@@ -5493,9 +5524,25 @@ impl Tab {
     pub(crate) fn advance_deferred_pane_work(&mut self) {
         let pane_ids = self.get_all_pane_ids();
         for pane_id in pane_ids {
-            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let did_work = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
                 if pane.has_deferred_pane_work() {
                     pane.advance_deferred_pane_work();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if did_work {
+                if let PaneId::Terminal(pid) = pane_id {
+                    // Delivering a deferred REP step can release bytes that
+                    // produce host queries, clipboard/OSC events or messages.
+                    // Run them through the normal post-output drain so none
+                    // stay stuck until an unrelated chunk arrives.
+                    if let Err(error) = self.process_pty_bytes(pid, Vec::new()) {
+                        log::error!("failed to settle deferred output for pane {pid}: {error}");
+                    }
                 }
             }
         }

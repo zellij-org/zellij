@@ -129,6 +129,10 @@ pub trait Handler {
         false
     }
 
+    /// Called once at the start of a synchronous `feed`. Handlers with
+    /// turn-scoped semantic budgets reset them here.
+    fn begin_turn(&mut self) {}
+
     /// Make one bounded step toward clearing the condition reported by
     /// `paused`. Return true when progress was made. `feed` calls this
     /// synchronously; `feed_until_paused` leaves the decision to the caller.
@@ -345,6 +349,7 @@ impl Parser {
     }
 
     pub fn feed<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
+        handler.begin_turn();
         let mut at = 0;
         loop {
             let before = at;

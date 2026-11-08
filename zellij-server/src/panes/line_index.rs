@@ -16,6 +16,7 @@ thread_local! {
     static ROW_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CELL_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static BOUNDARY_DISCOVERIES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static LINE_SCAN_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -49,6 +50,16 @@ pub(crate) fn reset_boundary_discoveries() {
 }
 
 #[cfg(test)]
+pub(crate) fn line_scan_visits() -> usize {
+    LINE_SCAN_VISITS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_line_scan_visits() {
+    LINE_SCAN_VISITS.with(|value| value.set(0));
+}
+
+#[cfg(test)]
 fn note_row_visit() {
     ROW_VISITS.with(|value| value.set(value.get() + 1));
 }
@@ -61,6 +72,11 @@ fn note_cell_visits(count: usize) {
 #[cfg(test)]
 fn note_boundary_discovery() {
     BOUNDARY_DISCOVERIES.with(|value| value.set(value.get() + 1));
+}
+
+#[cfg(test)]
+fn note_line_scan_visit() {
+    LINE_SCAN_VISITS.with(|value| value.set(value.get() + 1));
 }
 
 /// The wrapping state at the start of a stored row, or after a line's last
@@ -221,11 +237,6 @@ struct Line {
     /// front eviction keeps a suffix of the line.
     cell_prefix: Vec<usize>,
     cell_prefix_base: usize,
-    /// Absolute row boundaries remain valid when a front eviction keeps only
-    /// a suffix.  `boundary_base` selects the first surviving row and
-    /// `boundary_origin` is its original wrap state.
-    boundary_base: usize,
-    boundary_origin: RowBoundary,
     /// Single-width lines derive every boundary from `cell_prefix`, so a
     /// mid-line front eviction does not have to rewrite the whole line.
     uniform_character_width: Option<usize>,
@@ -241,8 +252,6 @@ impl Line {
             height: 0,
             cell_prefix: Vec::new(),
             cell_prefix_base: 0,
-            boundary_base: 0,
-            boundary_origin: RowBoundary::default(),
             uniform_character_width: None,
         }
     }
@@ -260,8 +269,6 @@ impl Line {
             height: measurement.height,
             cell_prefix: measurement.cell_prefix,
             cell_prefix_base: 0,
-            boundary_base: 0,
-            boundary_origin: RowBoundary::default(),
             uniform_character_width: measurement.uniform_character_width,
         }
     }
@@ -276,18 +283,50 @@ impl Line {
         if let Some(character_width) = self.uniform_character_width {
             uniform_boundary(self.suffix_cells(relative_row), character_width, width)
         } else {
-            let absolute = self.boundaries[self.boundary_base + relative_row];
-            RowBoundary {
-                completed_rows: absolute
-                    .completed_rows
-                    .saturating_sub(self.boundary_origin.completed_rows),
-                current: absolute.current,
-            }
+            self.boundaries[relative_row]
         }
     }
 
     fn height_after(&self, end: RowBoundary) -> usize {
-        line_height_from_origin(end, self.boundary_origin)
+        end.height()
+    }
+
+    /// Drop a measured summary. The line keeps its rows and grouping, but the
+    /// next read must remeasure it at the current width. Used when a cut moves
+    /// the logical-line origin or when a uniform line gains a different glyph
+    /// width: both changes make the stored boundaries path-dependent.
+    fn invalidate(&mut self) {
+        self.measured_width = None;
+        self.boundaries = Vec::new();
+        self.end = RowBoundary::default();
+        self.height = 0;
+        self.cell_prefix = Vec::new();
+        self.cell_prefix_base = 0;
+        self.uniform_character_width = None;
+    }
+
+    /// Do not keep a large backing allocation after the line shrank by an
+    /// order of magnitude. The check is cheap and the shrink is amortized by
+    /// the eviction that made the capacity oversized.
+    fn release_oversized_backing(&mut self) {
+        fn oversized(len: usize, capacity: usize) -> bool {
+            capacity > len.saturating_mul(2).saturating_add(64)
+        }
+        if oversized(self.cell_prefix.len(), self.cell_prefix.capacity()) {
+            self.cell_prefix.shrink_to_fit();
+        }
+        if oversized(self.boundaries.len(), self.boundaries.capacity()) {
+            self.boundaries.shrink_to_fit();
+        }
+    }
+
+    fn compact_cell_prefix(&mut self) {
+        const COMPACT_AT: usize = 1024;
+        if self.cell_prefix_base >= COMPACT_AT {
+            self.cell_prefix.drain(..self.cell_prefix_base);
+            self.cell_prefix_base = 0;
+            self.release_oversized_backing();
+        }
     }
 
     #[cfg(test)]
@@ -304,23 +343,13 @@ impl Line {
     }
 }
 
-fn line_height_from_origin(end: RowBoundary, origin: RowBoundary) -> usize {
-    end.height()
-        .saturating_sub(origin.completed_rows as usize)
-        .max(1)
-}
-
 enum PartialLine {
     SingleWidth {
         cut: usize,
         height: usize,
         end: RowBoundary,
     },
-    MixedCut {
-        cut: usize,
-        height: usize,
-    },
-    Measured(LineMeasurement),
+    Invalidated,
 }
 
 fn trailing_blanks(row: &Row) -> usize {
@@ -452,6 +481,11 @@ pub(crate) struct LineIndex {
     /// resumable measurement completes, so readers see a complete value.
     published_display_rows: usize,
     measure: Option<MeasureCursor>,
+    /// Every line before this index is measured. `measure_hint_row_start` is
+    /// the number of stored rows before it. This keeps summary repair O(1)
+    /// instead of rescanning every measured line to find the first gap.
+    measure_hint_line: usize,
+    measure_hint_row_start: usize,
 }
 
 impl LineIndex {
@@ -468,6 +502,8 @@ impl LineIndex {
         self.measured_display_rows = 0;
         self.published_display_rows = 0;
         self.measure = None;
+        self.measure_hint_line = 0;
+        self.measure_hint_row_start = 0;
     }
 
     /// Rebuild logical-line grouping without measuring cells.  Used when a
@@ -490,6 +526,8 @@ impl LineIndex {
         }
         self.measured_lines = 0;
         self.measured_display_rows = 0;
+        self.measure_hint_line = 0;
+        self.measure_hint_row_start = 0;
         if rows.is_empty() {
             self.published_display_rows = 0;
         }
@@ -511,19 +549,79 @@ impl LineIndex {
             .and_then(|line| (line.measured_width == Some(self.width)).then_some(line.height))
     }
 
-    #[cfg(test)]
-    pub(crate) fn line_origin(&self, line_index: usize) -> Option<RowBoundary> {
-        self.lines.get(line_index).map(|line| {
-            if line.uniform_character_width.is_some() {
-                RowBoundary::default()
-            } else {
-                line.boundary_origin
-            }
-        })
-    }
-
     pub(crate) fn is_fully_measured(&self) -> bool {
         self.measured_lines == self.lines.len()
+    }
+
+    /// Drop one line's summary after its stored rows changed in a way that
+    /// makes the old boundaries path-dependent (for example a row split).
+    pub(crate) fn invalidate_line(&mut self, line_index: usize) {
+        let hint_shift = (line_index < self.measure_hint_line).then(|| {
+            self.lines
+                .range(line_index..self.measure_hint_line)
+                .map(|line| line.row_count)
+                .sum::<usize>()
+        });
+        let Some(line) = self.lines.get_mut(line_index) else {
+            return;
+        };
+        if line.measured_width == Some(self.width) {
+            self.measured_display_rows = self.measured_display_rows.saturating_sub(line.height);
+            self.measured_lines = self.measured_lines.saturating_sub(1);
+        }
+        line.invalidate();
+        if let Some(cursor) = self.measure.as_mut() {
+            if cursor.line_index == line_index {
+                let row_start = cursor.row_start;
+                cursor.reset_for_line(line_index, row_start);
+            }
+        }
+        if let Some(shift) = hint_shift {
+            self.measure_hint_line = line_index;
+            self.measure_hint_row_start = self.measure_hint_row_start.saturating_sub(shift);
+        }
+    }
+
+    /// Keep an in-flight measurement job aligned with the surviving line
+    /// deque after rows left the front. A job on a later line keeps its
+    /// progress; a job on the partially cut first line restarts from that
+    /// line's new row zero.
+    fn rebase_measure_after_front_removal(
+        &mut self,
+        popped_lines: usize,
+        removed_rows: usize,
+        partial_front_line: bool,
+    ) {
+        let Some(mut cursor) = self.measure.take() else {
+            return;
+        };
+        if cursor.line_index < popped_lines {
+            return;
+        }
+        cursor.line_index -= popped_lines;
+        cursor.row_start = cursor.row_start.saturating_sub(removed_rows);
+        if partial_front_line && cursor.line_index == 0 {
+            cursor.reset_for_line(0, 0);
+        }
+        self.measure = Some(cursor);
+    }
+
+    /// Keep an in-flight measurement job valid after rows left the back.
+    /// Full lines removed after the cursor do not move it. If the cursor's
+    /// own line lost rows it had already accounted for, restart that line.
+    fn clamp_measure_after_back_removal(&mut self) {
+        let Some(cursor) = self.measure.as_mut() else {
+            return;
+        };
+        let Some(line) = self.lines.get(cursor.line_index) else {
+            self.measure = None;
+            return;
+        };
+        if cursor.row_index > line.row_count {
+            let line_index = cursor.line_index;
+            let row_start = cursor.row_start;
+            cursor.reset_for_line(line_index, row_start);
+        }
     }
 
     pub(crate) fn published_display_rows(&self) -> usize {
@@ -561,16 +659,14 @@ impl LineIndex {
         }
         self.width = width;
         for line in &mut self.lines {
-            line.measured_width = None;
-            line.boundaries.clear();
-            line.end = RowBoundary::default();
-            line.height = 0;
-            line.boundary_base = 0;
-            line.boundary_origin = RowBoundary::default();
+            let row_count = line.row_count;
+            *line = Line::unmeasured(row_count);
         }
         self.measured_lines = 0;
         self.measured_display_rows = 0;
         self.measure = None;
+        self.measure_hint_line = 0;
+        self.measure_hint_row_start = 0;
         if self.lines.is_empty() {
             self.published_display_rows = 0;
         }
@@ -593,6 +689,8 @@ impl LineIndex {
         }
 
         let width = self.width;
+        let hint_at_end = self.measure_hint_line == self.lines.len();
+        let last_line_index = self.lines.len() - 1;
         let line = self.lines.back_mut().expect("checked non-empty");
         if line.measured_width == Some(width) {
             let old_height = line.height;
@@ -617,14 +715,26 @@ impl LineIndex {
                 rows.push_back(row);
                 self.measured_display_rows =
                     (self.measured_display_rows as isize + delta).max(0) as usize;
+                if hint_at_end {
+                    self.measure_hint_row_start = self.measure_hint_row_start.saturating_add(1);
+                }
                 self.publish_if_fully_measured();
                 LineDelta::Exact(delta)
             } else if line.uniform_character_width.is_some() {
                 line.row_count += 1;
                 rows.push_back(row);
-                let line_index = self.lines.len() - 1;
-                let new_height = self.measure_line(rows, line_index).unwrap_or(old_height);
-                LineDelta::Exact(new_height as isize - old_height as isize)
+                self.measured_display_rows =
+                    (self.measured_display_rows as isize - old_height as isize).max(0) as usize;
+                self.measured_lines -= 1;
+                if hint_at_end {
+                    self.measure_hint_line = last_line_index;
+                    self.measure_hint_row_start = self
+                        .measure_hint_row_start
+                        .saturating_add(1)
+                        .saturating_sub(line.row_count);
+                }
+                line.invalidate();
+                LineDelta::NeedsMeasure
             } else {
                 #[cfg(test)]
                 note_cell_visits(row.stored_cell_count());
@@ -640,6 +750,9 @@ impl LineIndex {
                 rows.push_back(row);
                 self.measured_display_rows =
                     (self.measured_display_rows as isize + delta).max(0) as usize;
+                if hint_at_end {
+                    self.measure_hint_row_start = self.measure_hint_row_start.saturating_add(1);
+                }
                 self.publish_if_fully_measured();
                 LineDelta::Exact(delta)
             }
@@ -650,12 +763,13 @@ impl LineIndex {
         }
     }
 
-    /// Update metadata after `count` rows were removed from the front.  The
-    /// rows passed here are the surviving deque.  A partial survivor is
-    /// rebased and measured from the remaining rows.
+    /// Update metadata after `count` rows were removed from the front.  A
+    /// single-width partial survivor is cheaply rebased; any other partial
+    /// survivor is invalidated so the resumable measure job recomputes it
+    /// from column zero of the surviving rows.
     pub(crate) fn note_front_rows_removed(
         &mut self,
-        rows_after: &VecDeque<Row>,
+        _rows_after: &VecDeque<Row>,
         count: usize,
     ) -> LineDelta {
         if count == 0 {
@@ -699,18 +813,20 @@ impl LineIndex {
                             },
                         ));
                     } else {
-                        let origin = line.boundaries[line.boundary_base + cut];
-                        let height = line_height_from_origin(line.end, origin);
-                        measured_delta += height as isize - line.height as isize;
-                        partial = Some((surviving_rows, PartialLine::MixedCut { cut, height }));
+                        // A mixed cut cannot be derived from the old origin:
+                        // a prefix of the first surviving row may merge into
+                        // the previous row and cascade through wide glyphs.
+                        // Rebuilding the survivors eagerly would reintroduce
+                        // the full-line cliff, so publish `NeedsMeasure` and
+                        // let the resumable job recompute under its budget.
+                        measured_delta -= line.height as isize;
+                        measured_line_delta -= 1;
+                        exact = false;
+                        partial = Some((surviving_rows, PartialLine::Invalidated));
                     }
                 } else {
-                    let measurement =
-                        measure_rows(rows_after.iter().take(surviving_rows), self.width);
-                    measured_delta += measurement.height as isize;
-                    measured_line_delta += 1;
                     exact = false;
-                    partial = Some((surviving_rows, PartialLine::Measured(measurement)));
+                    partial = Some((surviving_rows, PartialLine::Invalidated));
                 }
                 break;
             }
@@ -719,40 +835,35 @@ impl LineIndex {
         for _ in 0..full_lines {
             self.lines.pop_front().expect("planned full line");
         }
+        let partial_front_line = partial.is_some();
         if let Some((surviving_rows, partial)) = partial {
             let line = self.lines.front_mut().expect("surviving partial line");
             line.row_count = surviving_rows;
-            line.measured_width = Some(self.width);
             match partial {
                 PartialLine::SingleWidth { cut, height, end } => {
+                    line.measured_width = Some(self.width);
                     line.cell_prefix_base += cut;
+                    line.compact_cell_prefix();
                     line.height = height;
                     line.end = end;
                     line.boundaries.clear();
                 },
-                PartialLine::MixedCut { cut, height } => {
-                    line.cell_prefix_base += cut;
-                    line.boundary_base += cut;
-                    line.boundary_origin = line.boundaries[line.boundary_base];
-                    line.height = height;
-                },
-                PartialLine::Measured(measurement) => {
-                    line.boundaries = if measurement.uniform_character_width.is_some() {
-                        Vec::new()
-                    } else {
-                        measurement.boundaries
-                    };
-                    line.end = measurement.end;
-                    line.height = measurement.height;
-                    line.cell_prefix = measurement.cell_prefix;
-                    line.cell_prefix_base = 0;
-                    line.boundary_base = 0;
-                    line.boundary_origin = RowBoundary::default();
-                    line.uniform_character_width = measurement.uniform_character_width;
-                },
+                PartialLine::Invalidated => line.invalidate(),
             }
         }
-        self.measure = None;
+        let front_unmeasured = partial_front_line
+            && self
+                .lines
+                .front()
+                .is_some_and(|line| line.measured_width != Some(self.width));
+        if front_unmeasured || self.measure_hint_line < full_lines {
+            self.measure_hint_line = 0;
+            self.measure_hint_row_start = 0;
+        } else {
+            self.measure_hint_line -= full_lines;
+            self.measure_hint_row_start = self.measure_hint_row_start.saturating_sub(count);
+        }
+        self.rebase_measure_after_front_removal(full_lines, count, partial_front_line);
         self.apply_measured_delta(measured_delta, measured_line_delta);
         self.publish_if_fully_measured();
         if exact {
@@ -776,7 +887,7 @@ impl LineIndex {
     /// rows passed here are the surviving deque.
     pub(crate) fn note_back_rows_removed(
         &mut self,
-        rows_after: &VecDeque<Row>,
+        _rows_after: &VecDeque<Row>,
         count: usize,
     ) -> LineDelta {
         if count == 0 {
@@ -788,6 +899,7 @@ impl LineIndex {
         let mut measured_line_delta = 0isize;
         let mut exact = true;
         let mut partial = None;
+        let hint_was_at_end = self.measure_hint_line == self.lines.len();
 
         for line in self.lines.iter().rev() {
             if remaining == 0 {
@@ -804,29 +916,25 @@ impl LineIndex {
                 full_lines += 1;
             } else {
                 let surviving_rows = line.row_count - remaining;
-                let new_height = if line.measured_width == Some(self.width) {
+                let measured_height = if line.measured_width == Some(self.width) {
                     if let Some(character_width) = line.uniform_character_width {
                         let cells = line.cell_prefix[line.cell_prefix_base + surviving_rows]
                             .saturating_sub(line.cell_prefix[line.cell_prefix_base]);
                         uniform_height(cells, character_width, self.width)
                     } else {
-                        line_height_from_origin(
-                            line.boundaries[line.boundary_base + surviving_rows],
-                            line.boundary_origin,
-                        )
+                        line.boundaries[surviving_rows].height()
                     }
                 } else {
                     exact = false;
-                    measured_line_delta += 1;
-                    let start = rows_after.len().saturating_sub(surviving_rows);
-                    measure_rows(rows_after.iter().skip(start), self.width).height
+                    0
                 };
-                if line.measured_width == Some(self.width) {
-                    measured_delta += new_height as isize - line.height as isize;
+                let partial_height = if line.measured_width == Some(self.width) {
+                    measured_delta += measured_height as isize - line.height as isize;
+                    Some(measured_height)
                 } else {
-                    measured_delta += new_height as isize;
-                }
-                partial = Some((surviving_rows, new_height));
+                    None
+                };
+                partial = Some((surviving_rows, partial_height));
                 break;
             }
         }
@@ -834,41 +942,35 @@ impl LineIndex {
         for _ in 0..full_lines {
             self.lines.pop_back().expect("planned full line");
         }
-        if let Some((surviving_rows, new_height)) = partial {
+        if let Some((surviving_rows, partial_height)) = partial {
             let line = self.lines.back_mut().expect("surviving partial line");
             line.row_count = surviving_rows;
-            if line.measured_width == Some(self.width) {
+            if let Some(height) = partial_height {
                 if let Some(character_width) = line.uniform_character_width {
                     let cells = line.suffix_cells(surviving_rows);
                     line.end = uniform_boundary(cells, character_width, self.width);
                     line.cell_prefix
                         .truncate(line.cell_prefix_base + surviving_rows + 1);
                 } else {
-                    line.end = line.boundaries[line.boundary_base + surviving_rows];
-                    line.boundaries
-                        .truncate(line.boundary_base + surviving_rows);
+                    line.end = line.boundaries[surviving_rows];
+                    line.boundaries.truncate(surviving_rows);
                     line.cell_prefix
                         .truncate(line.cell_prefix_base + surviving_rows + 1);
                 }
+                line.height = height;
+                line.release_oversized_backing();
             } else {
-                let start = rows_after.len().saturating_sub(surviving_rows);
-                let measurement = measure_rows(rows_after.iter().skip(start), self.width);
-                line.measured_width = Some(self.width);
-                line.boundaries = if measurement.uniform_character_width.is_some() {
-                    Vec::new()
-                } else {
-                    measurement.boundaries
-                };
-                line.end = measurement.end;
-                line.cell_prefix = measurement.cell_prefix;
-                line.cell_prefix_base = 0;
-                line.boundary_base = 0;
-                line.boundary_origin = RowBoundary::default();
-                line.uniform_character_width = measurement.uniform_character_width;
+                line.invalidate();
             }
-            line.height = new_height;
         }
-        self.measure = None;
+        if hint_was_at_end {
+            self.measure_hint_line = self.lines.len();
+            self.measure_hint_row_start = self.measure_hint_row_start.saturating_sub(count);
+        } else if self.measure_hint_line > self.lines.len() {
+            self.measure_hint_line = 0;
+            self.measure_hint_row_start = 0;
+        }
+        self.clamp_measure_after_back_removal();
         self.apply_measured_delta(measured_delta, measured_line_delta);
         self.publish_if_fully_measured();
         if exact {
@@ -905,6 +1007,8 @@ impl LineIndex {
             return LineDelta::Exact(0);
         }
         self.measure = None;
+        self.measure_hint_line = 0;
+        self.measure_hint_row_start = 0;
 
         let mut group_counts = Vec::new();
         for row in &new_rows {
@@ -980,8 +1084,6 @@ impl LineIndex {
             line.height = combined_height;
             line.cell_prefix = merged.cell_prefix;
             line.cell_prefix_base = 0;
-            line.boundary_base = 0;
-            line.boundary_origin = RowBoundary::default();
             line.uniform_character_width = merged.uniform_character_width;
         }
 
@@ -1009,8 +1111,9 @@ impl LineIndex {
         self.measure_line(rows, line_index).unwrap_or(0)
     }
 
-    /// Measure one line synchronously.  This rebuilds the line's boundaries
-    /// from the current stored rows.
+    /// Measure one line synchronously.  Test-only: production summaries are
+    /// rebuilt by [`Self::measure_next`] under the caller's work budget.
+    #[cfg(test)]
     pub(crate) fn measure_line(
         &mut self,
         rows: &VecDeque<Row>,
@@ -1044,8 +1147,6 @@ impl LineIndex {
         line.height = height;
         line.cell_prefix = measurement.cell_prefix;
         line.cell_prefix_base = 0;
-        line.boundary_base = 0;
-        line.boundary_origin = RowBoundary::default();
         line.uniform_character_width = measurement.uniform_character_width;
         self.measured_lines += 1;
         self.measured_display_rows += height;
@@ -1053,14 +1154,23 @@ impl LineIndex {
         Some(height)
     }
 
-    fn first_unmeasured(&self) -> Option<(usize, usize)> {
-        let mut row_start = 0;
-        for (line_index, line) in self.lines.iter().enumerate() {
+    fn first_unmeasured(&mut self) -> Option<(usize, usize)> {
+        let mut line_index = self.measure_hint_line.min(self.lines.len());
+        let mut row_start = self.measure_hint_row_start;
+        while line_index < self.lines.len() {
+            #[cfg(test)]
+            note_line_scan_visit();
+            let line = &self.lines[line_index];
             if line.measured_width != Some(self.width) {
+                self.measure_hint_line = line_index;
+                self.measure_hint_row_start = row_start;
                 return Some((line_index, row_start));
             }
-            row_start += line.row_count;
+            row_start = row_start.saturating_add(line.row_count);
+            line_index += 1;
         }
+        self.measure_hint_line = line_index;
+        self.measure_hint_row_start = row_start;
         None
     }
 
@@ -1086,6 +1196,8 @@ impl LineIndex {
         let mut cells_remaining = budget.cells.max(1);
         loop {
             if cursor.line_index >= self.lines.len() {
+                self.measure_hint_line = self.lines.len();
+                self.measure_hint_row_start = self.lines.iter().map(|line| line.row_count).sum();
                 self.measure = None;
                 return MeasureProgress::Done;
             }
@@ -1110,8 +1222,6 @@ impl LineIndex {
                 line.height = height;
                 line.cell_prefix = std::mem::take(&mut cursor.cell_prefix);
                 line.cell_prefix_base = 0;
-                line.boundary_base = 0;
-                line.boundary_origin = RowBoundary::default();
                 line.uniform_character_width = uniform_character_width;
                 self.measured_lines += 1;
                 self.measured_display_rows += height;
@@ -1125,6 +1235,8 @@ impl LineIndex {
                     next_line += 1;
                 }
                 if next_line >= self.lines.len() {
+                    self.measure_hint_line = self.lines.len();
+                    self.measure_hint_row_start = cursor.row_start;
                     self.measure = None;
                     self.publish_if_fully_measured();
                     return MeasureProgress::Done;

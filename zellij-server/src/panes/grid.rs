@@ -1853,6 +1853,7 @@ pub struct Grid {
     /// than one row quantum. The viewport does not move until the cut is known.
     pending_line_reflow: Option<PendingLineReflow>,
     pending_rep: Option<PendingRep>,
+    rep_turn_remaining: usize,
     scrollback_cells: usize,
     /// Rows removed from the front of scrollback. Used to keep a scrolled
     /// viewport anchored while output is applied at the live bottom.
@@ -2297,6 +2298,7 @@ impl Grid {
             history_truncated: false,
             pending_line_reflow: None,
             pending_rep: None,
+            rep_turn_remaining: REP_STEP_CHARACTER_BUDGET,
             scrollback_cells: 0,
             scrollback_rows_evicted: 0,
             mouse_mode: MouseMode::default(),
@@ -2872,10 +2874,11 @@ impl Grid {
     }
     pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         self.resize_and_reflow(new_rows, new_columns, true);
-        self.finish_display_row_recount();
+        self.note_change();
     }
     /// Start a width recount. Nothing is published until every line has been
     /// measured: a partial sum is not a length.
+    #[cfg(test)]
     pub(crate) fn start_display_row_recount(&mut self, new_columns: usize) {
         self.line_index.regroup(&self.lines_above, new_columns);
     }
@@ -2899,6 +2902,9 @@ impl Grid {
     pub(crate) fn rep_pending(&self) -> bool {
         self.pending_rep.is_some()
     }
+    pub(crate) fn begin_terminal_input_turn(&mut self) {
+        self.rep_turn_remaining = REP_STEP_CHARACTER_BUDGET;
+    }
     #[cfg(test)]
     pub(crate) fn pending_rep_remaining(&self) -> Option<usize> {
         self.pending_rep.as_ref().map(|rep| rep.remaining)
@@ -2920,7 +2926,8 @@ impl Grid {
         true
     }
     fn start_rep(&mut self, character: TerminalCharacter, count: usize) {
-        let immediate = count.min(REP_STEP_CHARACTER_BUDGET);
+        let immediate = count.min(self.rep_turn_remaining);
+        self.rep_turn_remaining -= immediate;
         for _ in 0..immediate {
             self.add_character(character.clone());
         }
@@ -2953,6 +2960,7 @@ impl Grid {
         if new_columns == 0 || new_rows == 0 {
             return;
         }
+        let columns_changed = force_rewrap || new_columns != self.width;
         self.note_content_mutation();
         // Reflow owns one document. Put the pinned view back first so the
         // parked gap is not a second history the resize never sees.
@@ -2985,7 +2993,7 @@ impl Grid {
         self.sixel_grid.character_cell_size_possibly_changed();
         self.kitty_grid.character_cell_size_possibly_changed();
         self.kitty_reanchor_all_from_pixels();
-        let cursors = if force_rewrap || new_columns != self.width {
+        let cursors = if columns_changed {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -3254,12 +3262,13 @@ impl Grid {
         self.kitty_reproject_all_from_anchor();
         self.height = new_rows;
         self.width = new_columns;
-        // Publish nothing until the scan has seen every stored row. One
-        // quantum runs here; `change_size` finishes the rest for callers
-        // that read the length before returning, and the screen thread
-        // continues the job on later turns.
-        self.start_display_row_recount(new_columns);
-        let _ = self.continue_display_row_recount();
+        // The width-change branch above already regrouped the surviving rows.
+        // Run one measurement quantum here; the screen thread continues the
+        // rest from deferred pane work. A height-only resize does not change
+        // wrapping, so its summaries stay valid.
+        if columns_changed {
+            let _ = self.continue_display_row_recount();
+        }
         self.set_scroll_region_to_viewport_size();
         self.search_results.selections.clear();
         self.search_viewport();
@@ -6271,7 +6280,7 @@ impl Grid {
         }
         if cut_char > 0 {
             if let Some(last_line) = self.line_index.line_count().checked_sub(1) {
-                self.line_index.measure_line(&self.lines_above, last_line);
+                self.line_index.invalidate_line(last_line);
             }
         }
         if suffix.is_empty() {
@@ -8312,7 +8321,6 @@ impl Handler for Grid {
                                     .iter()
                                     .map(|row| row.stored_cell_count())
                                     .sum();
-                                self.line_index.regroup(&self.lines_above, self.width);
                             }
                             self.alternate_screen_state = None;
                             self.shell_reports.push(
@@ -8996,6 +9004,10 @@ impl Handler for Grid {
                 .pending_forwarded_queries
                 .iter()
                 .any(|query| !query.shares_da_barrier())
+    }
+
+    fn begin_turn(&mut self) {
+        self.begin_terminal_input_turn();
     }
 
     fn resume_paused(&mut self) -> bool {

@@ -21453,6 +21453,66 @@ fn tab_with_scrollback() -> Tab {
     tab
 }
 
+#[test]
+fn rep_paused_output_is_admitted_through_the_bounded_backlog() {
+    let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec()).unwrap();
+    assert!(tab.has_pending_output(1));
+    assert!(tab.pending_vte_len(1) == 0);
+
+    for _ in 0..8 {
+        tab.handle_pty_bytes(1, vec![b'x'; 200_000]).unwrap();
+    }
+    assert!(tab.pending_vte_len(1) <= crate::tab::MAX_PENDING_VTE_BYTES);
+    assert!(tab.has_pending_output(1));
+
+    let mut steps = 0;
+    while tab.has_pending_output(1) {
+        tab.apply_pending_vte_quanta().unwrap();
+        tab.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 100_000, "REP and admitted backlog did not settle");
+    }
+    assert!(!tab.has_pending_output(1));
+}
+
+#[test]
+fn suppressed_scrollback_editor_pane_advances_rep_and_reports_pending_output() {
+    let mut tab = create_new_tab(Size { cols: 40, rows: 8 }, false);
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(99), 1)
+        .unwrap();
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec()).unwrap();
+    assert!(
+        tab.has_pending_output(1),
+        "settlement must see the suppressed pane by its terminal id"
+    );
+
+    let mut steps = 0;
+    while tab.has_pending_output(1) {
+        tab.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 100_000, "suppressed pane REP did not settle");
+    }
+    assert!(!tab.has_pending_output(1));
+}
+
+#[test]
+fn deferred_rep_suffix_forwards_its_host_query() {
+    let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
+    tab.handle_pty_bytes(1, b"a\x1b[1025b\x1b[14t".to_vec())
+        .unwrap();
+    assert!(tab.has_pending_output(1));
+
+    tab.advance_deferred_pane_work();
+    let pane = tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .expect("terminal pane");
+    assert!(
+        pane.is_forward_paused(),
+        "the query produced after the repeat must be forwarded and pause the pane"
+    );
+}
+
 fn scrolled_lines(tab: &Tab) -> usize {
     tab.get_pane_with_id(PaneId::Terminal(1))
         .unwrap()

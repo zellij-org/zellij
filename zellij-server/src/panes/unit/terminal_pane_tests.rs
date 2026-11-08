@@ -1,4 +1,4 @@
-use super::super::TerminalPane;
+use super::super::{TerminalPane, MAX_PENDING_PTY_BYTES};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::tab::Pane;
@@ -13,6 +13,32 @@ use zellij_utils::{
 };
 
 use std::fmt::Write;
+
+fn terminal_pane_with_size(rows: usize, cols: usize) -> TerminalPane {
+    let mut geom = PaneGeom::default();
+    geom.cols.set_inner(cols);
+    geom.rows.set_inner(rows);
+    TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -125,6 +151,75 @@ fn maximum_rep_resumes_from_deferred_terminal_pane_work() {
             .any(|cell| cell.character == 'Z'),
         "bytes after REP must be applied after the repeat settles"
     );
+}
+
+#[test]
+fn unfinished_rep_counts_as_pending_output_after_its_bytes_are_consumed() {
+    let mut pane = terminal_pane_with_size(4, 10);
+    pane.handle_pty_bytes_for_test(b"a\x1b[65535b".to_vec());
+    assert!(pane.grid.rep_pending());
+    assert!(
+        !pane.has_pending_pty_input(),
+        "the repeat sequence itself is fully consumed"
+    );
+    assert!(pane.has_pending_output());
+
+    while pane.grid.rep_pending() {
+        pane.advance_deferred_pane_work();
+    }
+    assert!(!pane.has_pending_output());
+}
+
+#[test]
+fn scrolled_rep_continues_on_the_live_model() {
+    let mut pane = terminal_pane_with_size(3, 2048);
+    for _ in 0..5 {
+        pane.handle_pty_bytes_for_test(vec![b'H'; 2048]);
+        pane.handle_pty_bytes_for_test(b"\r\n".to_vec());
+    }
+    assert!(pane.grid.lines_above.len() >= 2);
+    pane.scroll_up(2, 1);
+    assert!(pane.is_scrolled());
+
+    pane.handle_pty_bytes_for_test(b"\x1b[1;1HA\x1b[1025bZ".to_vec());
+    assert!(pane.grid.rep_pending());
+    let mut steps = 0;
+    while pane.has_deferred_pane_work() || pane.has_pending_pty_input() {
+        pane.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 10_000, "REP deferred work did not settle");
+    }
+    assert!(
+        pane.is_scrolled(),
+        "deferred REP should restore the held history view"
+    );
+
+    pane.clear_scroll();
+    let viewport = pane.grid.as_character_lines();
+    let first_row: String = viewport[0].iter().map(|cell| cell.character).collect();
+    let expected = format!("{}Z", "A".repeat(1026));
+    assert!(
+        first_row.starts_with(&expected),
+        "repeat resumed in history instead of the live model: {:?}",
+        &first_row[..first_row.len().min(40)]
+    );
+}
+
+#[test]
+fn rep_paused_output_is_bounded_and_dropped_oldest() {
+    let mut pane = terminal_pane_with_size(4, 10);
+    pane.handle_pty_bytes_for_test(b"a\x1b[65535b".to_vec());
+    assert!(pane.grid.rep_pending());
+
+    let chunk = vec![b'x'; MAX_PENDING_PTY_BYTES + 10_000];
+    pane.handle_pty_bytes_for_test(chunk);
+    pane.handle_pty_bytes_for_test(vec![b'y'; 10_000]);
+    let pending = pane.pending_pty_input.len() - pane.pending_pty_offset;
+    assert!(
+        pending <= MAX_PENDING_PTY_BYTES,
+        "pending bytes grew past the admission ceiling: {pending}"
+    );
+    assert!(pane.has_pending_output());
 }
 
 #[test]

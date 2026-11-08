@@ -10881,30 +10881,6 @@ fn scrollback_recount(grid: &mut Grid) -> usize {
     super::scrollback_display_row_count(&mut grid.lines_above, width)
 }
 
-fn origin_aware_scrollback_recount(grid: &Grid) -> usize {
-    let mut row_start = 0;
-    let mut total = 0;
-    for line_index in 0..grid.line_index.line_count() {
-        let row_count = grid.line_index.line_row_count(line_index).unwrap();
-        let origin = grid.line_index.line_origin(line_index).unwrap();
-        let mut state = super::WrapState {
-            completed_rows: origin.completed_rows as usize,
-            current: origin.current as usize,
-        };
-        for row in grid.lines_above.range(row_start..row_start + row_count) {
-            for character_width in super::row_display_widths(row) {
-                state.push_character(character_width, grid.width);
-            }
-        }
-        total += state
-            .height()
-            .saturating_sub(origin.completed_rows as usize)
-            .max(1);
-        row_start += row_count;
-    }
-    total
-}
-
 fn filled_scrollback(rows: usize, cols: usize, line: &[u8], line_count: usize) -> Grid {
     let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
     let mut content: Vec<u8> = Vec::new();
@@ -12624,6 +12600,48 @@ fn rep_orders_trailing_bytes_and_is_partition_invariant() {
 }
 
 #[test]
+fn many_small_rep_sequences_share_one_turn_budget() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    grid.begin_terminal_input_turn();
+    let mut input = vec![b'a'];
+    for _ in 0..10 {
+        input.extend_from_slice(b"\x1b[1000b");
+    }
+    let mut parser = vt_parser::Parser::new();
+    let consumed = parser.feed_until_paused(&mut grid, &input);
+    let one_sequence = b"\x1b[1000b".len();
+    assert_eq!(
+        consumed,
+        1 + 2 * one_sequence,
+        "two 1000-cell repeats must consume the aggregate 1024-cell turn budget"
+    );
+    assert!(grid.rep_pending());
+    assert_eq!(grid.pending_rep_remaining(), Some(976));
+
+    while grid.rep_pending() {
+        let _ = grid.continue_pending_rep();
+    }
+    let mut pos = consumed;
+    while pos < input.len() {
+        let consumed = parser.feed_until_paused(&mut grid, &input[pos..]);
+        assert!(consumed > 0, "a paused REP must make progress");
+        pos += consumed;
+        while grid.rep_pending() {
+            let _ = grid.continue_pending_rep();
+        }
+    }
+
+    let mut literal = create_grid_with_size_and_raw(5, 20, b"");
+    let mut literal_input = vec![b'a'];
+    literal_input.extend(std::iter::repeat_n(b'a', 10_000));
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal)
+    );
+}
+
+#[test]
 fn synchronous_feed_drains_rep_before_consuming_trailing_bytes() {
     let mut grid = create_grid_with_size_and_raw(4, 10, b"");
     let mut parser = vt_parser::Parser::new();
@@ -13636,7 +13654,7 @@ fn evicting_a_row_whose_character_is_wider_than_the_pane_stays_exact() {
     grid.change_size(5, 1);
     assert_eq!(
         grid.scrollback_position_and_length().1,
-        origin_aware_scrollback_recount(&grid)
+        scrollback_recount(&mut grid)
     );
     let missing = scroll_buffer_size - grid.lines_above.len() - 1;
     feed_bytes(&mut grid, &repeated_lines(b"x", missing));
@@ -13644,7 +13662,7 @@ fn evicting_a_row_whose_character_is_wider_than_the_pane_stays_exact() {
         feed_bytes(&mut grid, b"x\r\n");
         assert_eq!(
             grid.scrollback_position_and_length().1,
-            origin_aware_scrollback_recount(&grid),
+            scrollback_recount(&mut grid),
             "after {} stored rows",
             grid.lines_above.len()
         );

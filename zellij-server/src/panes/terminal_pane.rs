@@ -51,6 +51,18 @@ pub const MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED: usize = 4 * 1024 * 1024;
 #[cfg(test)]
 pub const MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED: usize = 256 * 1024;
 
+/// Most unparsed output one pane may retain behind a semantic pause (an
+/// unfinished repeat) or a host-forward pause. Past this, the oldest
+/// unprocessed bytes are dropped with a warning, matching the scrolled
+/// backlog's explicit loss policy.
+// Leave headroom above the forward-pause resume threshold: the pane must be
+// able to observe one chunk past that threshold before it resumes, while the
+// hard ceiling still bounds a repeat-paused producer.
+#[cfg(not(test))]
+pub const MAX_PENDING_PTY_BYTES: usize = MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED + 1024 * 1024;
+#[cfg(test)]
+pub const MAX_PENDING_PTY_BYTES: usize = MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED + 64 * 1024;
+
 /// Pending PTY bytes are scanned for kitty graphics APCs in blocks of
 /// this size, so that resuming after a query does not rescan the whole
 /// buffered remainder.
@@ -280,6 +292,15 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
+        if bytes.is_empty()
+            && !self.forward_paused
+            && (self.grid.rep_pending() || !self.has_pending_pty_input())
+        {
+            // An empty resume with nothing buffered must not complete a
+            // half-received escape with a synthetic ESC, and a paused repeat
+            // is advanced by deferred work rather than by this path.
+            return;
+        }
         let bytes = if std::mem::take(&mut self.held_escape) {
             let mut joined = Vec::with_capacity(bytes.len() + 1);
             joined.push(0x1b);
@@ -294,40 +315,7 @@ impl Pane for TerminalPane {
             self.append_pending_pty_input(&bytes);
             return;
         }
-        // The cursor is in viewport coordinates. While the user is scrolled
-        // away from the live bottom, parse against that live screen and put
-        // the same rows back afterwards. Parking swaps in the live window
-        // without moving the rows in between. A catch-up parks before this
-        // call. `reset_viewport` is only the fallback when an image placement
-        // still depends on scrolling the whole gap.
-        let parked = self.output_catchup.is_none()
-            && self.grid.is_scrolled
-            && self.grid.park_at_live_bottom();
-        let viewport_anchor = (self.output_catchup.is_none() && self.grid.is_scrolled && !parked)
-            .then(|| self.grid.viewport_anchor());
-        if viewport_anchor.is_some() {
-            self.grid.reset_viewport();
-        }
-        if self.pending_pty_offset == self.pending_pty_input.len() {
-            // Nothing is queued ahead of these bytes: feed them straight
-            // from the caller's buffer and keep only what was not
-            // consumed.
-            let (consumed, replay) = self.feed_pty_bytes(&bytes);
-            if !replay.is_empty() {
-                self.append_pending_pty_input(&replay);
-            }
-            if consumed < bytes.len() {
-                self.append_pending_pty_input(&bytes[consumed..]);
-            }
-        } else {
-            self.append_pending_pty_input(&bytes);
-            self.process_pending_pty_input();
-        }
-        if parked {
-            self.grid.unpark_live_bottom();
-        } else if let Some(viewport_anchor) = viewport_anchor {
-            self.grid.restore_viewport_anchor(viewport_anchor);
-        }
+        self.with_live_terminal(|pane| pane.feed_terminal_bytes(&bytes));
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
@@ -883,6 +871,7 @@ impl Pane for TerminalPane {
     }
     fn has_deferred_pane_work(&self) -> bool {
         self.grid.rep_pending()
+            || (!self.forward_paused && self.has_pending_pty_input())
             || self.viewport_goal.is_some()
             || self.output_catchup.is_some()
             || self.grid.pending_search.is_some()
@@ -890,11 +879,18 @@ impl Pane for TerminalPane {
     }
     fn advance_deferred_pane_work(&mut self) {
         if self.grid.rep_pending() {
-            let done = self.grid.continue_pending_rep();
-            if done {
-                // Resume the bytes the parser left behind the repeat.
-                self.process_pending_pty_input();
-            }
+            self.with_live_terminal(|pane| {
+                let done = pane.grid.continue_pending_rep();
+                if done {
+                    // Resume the bytes the parser left behind the repeat.
+                    pane.process_pending_pty_input();
+                }
+            });
+            self.set_should_render(true);
+            return;
+        }
+        if !self.forward_paused && self.has_pending_pty_input() {
+            self.with_live_terminal(|pane| pane.process_pending_pty_input());
             self.set_should_render(true);
             return;
         }
@@ -1156,6 +1152,17 @@ impl Pane for TerminalPane {
 
     fn has_pending_pty_input(&self) -> bool {
         self.pending_pty_offset < self.pending_pty_input.len()
+    }
+
+    fn has_pending_output(&self) -> bool {
+        self.has_pending_pty_input() || self.grid.rep_pending()
+    }
+
+    fn can_accept_pty_bytes(&self) -> bool {
+        // A forward pause appends into the bounded pending buffer, so the
+        // backlog still drains. An unfinished repeat or an already-buffered
+        // suffix must run first, otherwise the backlog would only grow.
+        self.forward_paused || (!self.has_pending_pty_input() && !self.grid.rep_pending())
     }
 
     fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
@@ -1772,6 +1779,46 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    /// Apply terminal operations against the live model even when the user
+    /// is looking at history. The held view is restored afterwards, so a
+    /// deferred REP quantum and the bytes behind it cannot land in history.
+    fn with_live_terminal<R>(&mut self, operation: impl FnOnce(&mut Self) -> R) -> R {
+        if !self.grid.is_scrolled || self.grid.is_live_bottom_parked() {
+            return operation(self);
+        }
+        if self.grid.park_at_live_bottom() {
+            let result = operation(self);
+            self.grid.unpark_live_bottom();
+            return result;
+        }
+        // An image placement still depends on scrollback coordinates; use
+        // the same anchor fallback the direct PTY path uses.
+        let viewport_anchor = self.grid.viewport_anchor();
+        self.grid.reset_viewport();
+        let result = operation(self);
+        self.grid.restore_viewport_anchor(viewport_anchor);
+        result
+    }
+
+    fn feed_terminal_bytes(&mut self, bytes: &[u8]) {
+        self.grid.begin_terminal_input_turn();
+        if self.pending_pty_offset == self.pending_pty_input.len() {
+            // Nothing is queued ahead of these bytes: feed them straight
+            // from the caller's buffer and keep only what was not
+            // consumed.
+            let (consumed, replay) = self.feed_pty_bytes(bytes);
+            if !replay.is_empty() {
+                self.append_pending_pty_input(&replay);
+            }
+            if consumed < bytes.len() {
+                self.append_pending_pty_input(&bytes[consumed..]);
+            }
+        } else {
+            self.append_pending_pty_input(bytes);
+            self.process_pending_pty_input();
+        }
+    }
+
     fn cancel_output_catchup(&mut self) {
         if self.grid.is_live_bottom_parked() {
             self.grid.unpark_live_bottom();
@@ -1896,7 +1943,34 @@ impl TerminalPane {
         {
             self.pending_bytes_appended += bytes.len();
         }
-        self.pending_pty_input.extend_from_slice(bytes);
+        let unparsed = self
+            .pending_pty_input
+            .len()
+            .saturating_sub(self.pending_pty_offset);
+        let excess = unparsed
+            .saturating_add(bytes.len())
+            .saturating_sub(MAX_PENDING_PTY_BYTES);
+        let mut new_bytes = bytes;
+        if excess > 0 {
+            let drop_existing = excess.min(unparsed);
+            if drop_existing > 0 {
+                let start = self.pending_pty_offset;
+                self.pending_pty_input.drain(start..start + drop_existing);
+                log::warn!(
+                    "pane dropped {drop_existing} oldest bytes of output buffered behind \
+                     unfinished terminal work to stay within {MAX_PENDING_PTY_BYTES} bytes"
+                );
+            }
+            let excess_after = excess.saturating_sub(drop_existing);
+            if excess_after > 0 {
+                log::warn!(
+                    "pane dropped {excess_after} bytes of new output to stay within \
+                     {MAX_PENDING_PTY_BYTES} bytes"
+                );
+                new_bytes = &new_bytes[excess_after..];
+            }
+        }
+        self.pending_pty_input.extend_from_slice(new_bytes);
     }
 
     /// Feed the queued PTY bytes to vte front to back. Only the bytes
@@ -1904,6 +1978,7 @@ impl TerminalPane {
     /// never copied: each byte is fed once, however many forward-bound
     /// queries interrupt the stream.
     fn process_pending_pty_input(&mut self) {
+        self.grid.begin_terminal_input_turn();
         let mut buffer = std::mem::take(&mut self.pending_pty_input);
         let start = self.pending_pty_offset;
         let (consumed, replay) = self.feed_pty_bytes(&buffer[start..]);
