@@ -53,9 +53,9 @@ pub enum HostQuery {
     DefaultBackground { terminator: OscTerminator },
     /// `OSC 4 ; i ; ? ; j ; ? <term>` — one or more palette registers.
     ///
-    /// Registers that arrived in one OSC, or as consecutive palette
-    /// queries in one PTY chunk, travel as one query so they take one
-    /// host round trip. Empty `indices` is not a query.
+    /// Indices that arrived in one OSC stay in one query, so the host's
+    /// reply has the same shape the app asked for. Empty `indices` is
+    /// not a query.
     PaletteRegister {
         indices: Vec<u8>,
         terminator: OscTerminator,
@@ -64,6 +64,13 @@ pub enum HostQuery {
         selection: char,
         terminator: OscTerminator,
     },
+    /// Several queries that can share one Primary-DA barrier.
+    ///
+    /// The host sees each query's original bytes, in order, then one
+    /// device-attributes query. It answers in that order, and the client
+    /// returns every answer as one reply. Separate palette OSCs stay
+    /// separate sequences inside this batch; only the round trip is shared.
+    RoundTrip(Vec<HostQuery>),
     /// `CSI ? 996 n` — query the host terminal's color-palette theme
     /// mode (light or dark). NOT forwarded to the host. Zellij has
     /// already queried the host once at startup (via the client's
@@ -93,7 +100,10 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
-            HostQuery::PaletteRegister { indices, terminator } => {
+            HostQuery::PaletteRegister {
+                indices,
+                terminator,
+            } => {
                 if indices.is_empty() {
                     return Vec::new();
                 }
@@ -118,6 +128,40 @@ impl HostQuery {
             // bypass `Screen::forward_host_query` for this variant
             // shouldn't be calling `to_query_bytes` on it at all.
             HostQuery::ColorPaletteMode => Vec::new(),
+            HostQuery::RoundTrip(parts) => {
+                let mut v = Vec::new();
+                for part in parts {
+                    v.extend(part.to_query_bytes());
+                }
+                v
+            },
+        }
+    }
+
+    /// Queries the client can collect under one Primary-DA barrier.
+    /// Clipboard reads use their own slot. Color-palette mode is answered
+    /// here and never goes on the wire.
+    pub fn shares_da_barrier(&self) -> bool {
+        match self {
+            HostQuery::TextAreaPixelSize
+            | HostQuery::CharacterCellPixelSize
+            | HostQuery::DefaultForeground { .. }
+            | HostQuery::DefaultBackground { .. }
+            | HostQuery::PaletteRegister { .. } => true,
+            HostQuery::RoundTrip(parts) => {
+                !parts.is_empty() && parts.iter().all(HostQuery::shares_da_barrier)
+            },
+            HostQuery::ClipboardContent { .. } | HostQuery::ColorPaletteMode => false,
+        }
+    }
+
+    /// Nothing to ask the host. An empty palette register list, or a round
+    /// trip made only of those, must not occupy the forward slot.
+    pub fn is_noop(&self) -> bool {
+        match self {
+            HostQuery::PaletteRegister { indices, .. } => indices.is_empty(),
+            HostQuery::RoundTrip(parts) => parts.is_empty() || parts.iter().all(HostQuery::is_noop),
+            _ => false,
         }
     }
 
@@ -131,8 +175,50 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
+            HostQuery::RoundTrip(parts) => {
+                let mut v = Vec::new();
+                for part in parts {
+                    v.extend(part.empty_reply_bytes());
+                }
+                v
+            },
             _ => Vec::new(),
         }
+    }
+}
+
+/// Group queries that can share one Primary-DA barrier.
+///
+/// A run of palette, foreground, background, and pixel-size queries becomes
+/// one [`HostQuery::RoundTrip`] when it holds more than one query. Each part
+/// keeps the bytes the app sent. A clipboard read or a locally answered
+/// query ends the run and stays on its own.
+pub(crate) fn pack_shared_round_trip(queries: Vec<HostQuery>) -> Vec<HostQuery> {
+    let mut packed = Vec::new();
+    let mut batch = Vec::new();
+    for query in queries {
+        if query.is_noop() {
+            continue;
+        }
+        if query.shares_da_barrier() {
+            match query {
+                HostQuery::RoundTrip(mut parts) => batch.append(&mut parts),
+                other => batch.push(other),
+            }
+        } else {
+            flush_round_trip(&mut batch, &mut packed);
+            packed.push(query);
+        }
+    }
+    flush_round_trip(&mut batch, &mut packed);
+    packed
+}
+
+fn flush_round_trip(batch: &mut Vec<HostQuery>, packed: &mut Vec<HostQuery>) {
+    match batch.len() {
+        0 => {},
+        1 => packed.push(batch.pop().unwrap()),
+        _ => packed.push(HostQuery::RoundTrip(std::mem::take(batch))),
     }
 }
 
@@ -212,14 +298,12 @@ mod tests {
             .to_query_bytes(),
             b"\x1b]4;1;?;2;?\x1b\\",
         );
-        assert!(
-            HostQuery::PaletteRegister {
-                indices: vec![],
-                terminator: OscTerminator::St,
-            }
-            .to_query_bytes()
-            .is_empty()
-        );
+        assert!(HostQuery::PaletteRegister {
+            indices: vec![],
+            terminator: OscTerminator::St,
+        }
+        .to_query_bytes()
+        .is_empty());
     }
 
     #[test]
@@ -282,5 +366,44 @@ mod tests {
             OscTerminator::from_bell_terminated(false),
             OscTerminator::St
         );
+    }
+
+    #[test]
+    fn separate_palette_queries_share_a_round_trip_without_merging_oscs() {
+        let packed = pack_shared_round_trip(vec![
+            HostQuery::PaletteRegister {
+                indices: vec![1],
+                terminator: OscTerminator::Bel,
+            },
+            HostQuery::DefaultForeground {
+                terminator: OscTerminator::St,
+            },
+            HostQuery::PaletteRegister {
+                indices: vec![2],
+                terminator: OscTerminator::St,
+            },
+            HostQuery::ClipboardContent {
+                selection: 'c',
+                terminator: OscTerminator::Bel,
+            },
+        ]);
+        assert_eq!(packed.len(), 2);
+        match &packed[0] {
+            HostQuery::RoundTrip(parts) => {
+                assert_eq!(parts.len(), 3);
+                assert_eq!(
+                    packed[0].to_query_bytes(),
+                    b"\x1b]4;1;?\x07\x1b]10;?\x1b\\\x1b]4;2;?\x1b\\"
+                );
+            },
+            other => panic!("expected one round trip, got {other:?}"),
+        }
+        assert!(matches!(packed[1], HostQuery::ClipboardContent { .. }));
+    }
+
+    #[test]
+    fn one_query_is_not_wrapped_in_a_round_trip() {
+        let query = HostQuery::TextAreaPixelSize;
+        assert_eq!(pack_shared_round_trip(vec![query.clone()]), vec![query]);
     }
 }

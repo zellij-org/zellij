@@ -1504,3 +1504,21 @@ fn discarding_a_pre_open_gap_drops_held_escape_and_kitty_apc_state() {
     assert!(pane.pending_pty_input.is_empty());
     assert_eq!(pane.pending_pty_offset, 0);
 }
+
+#[test]
+fn resetting_the_grid_cancels_output_catchup() {
+    let mut pane = pane_for_split_test();
+    pane.output_catchup = Some(super::OutputCatchup {
+        anchor: pane.grid.viewport_anchor(),
+        phase: super::CatchupPhase::Draining,
+        restore_in_turn: false,
+    });
+    pane.pending_pty_input = b"stale input".to_vec();
+    pane.pending_pty_offset = 3;
+    assert!(pane.has_deferred_pane_work());
+    pane.clear_screen();
+    assert!(pane.output_catchup.is_none());
+    assert!(pane.pending_pty_input.is_empty());
+    assert_eq!(pane.pending_pty_offset, 0);
+    assert!(!pane.has_deferred_pane_work());
+}

@@ -54,7 +54,7 @@ pub const MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED: usize = 256 * 1024;
 /// Pending PTY bytes are scanned for kitty graphics APCs in blocks of
 /// this size, so that resuming after a query does not rescan the whole
 /// buffered remainder.
-const PTY_SCAN_BLOCK_SIZE: usize = 16 * 1024;
+pub(crate) const PTY_SCAN_BLOCK_SIZE: usize = 16 * 1024;
 
 // Some keys in different formats but are used in the code
 const LEFT_ARROW: &[u8] = &[27, 91, 68];
@@ -800,7 +800,8 @@ impl Pane for TerminalPane {
         self.grid.mark_unseen_output_start();
     }
     fn clear_screen(&mut self) {
-        self.grid.clear_screen()
+        self.reset_grid_state();
+        self.grid.mark_for_rerender();
     }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         if self.nudge_catchup_anchor(-(count as isize)) {
@@ -1007,6 +1008,7 @@ impl Pane for TerminalPane {
     }
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        self.grid.clear_forward_hold();
         self.grid.pending_forwarded_queries.drain(..).collect()
     }
 
@@ -1148,7 +1150,10 @@ impl Pane for TerminalPane {
 
     fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
         self.forward_paused
-            && self.pending_pty_input.len() - self.pending_pty_offset
+            && self
+                .pending_pty_input
+                .len()
+                .saturating_sub(self.pending_pty_offset)
                 > MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED
     }
 
@@ -1564,7 +1569,7 @@ impl Pane for TerminalPane {
         // is not in the right sort of state
         self.is_held.take().map(|(_, _, run_command)| {
             self.is_held = None;
-            self.grid.reset_terminal_state();
+            self.reset_grid_state();
             self.set_should_render(true);
             self.remove_banner();
             run_command.clone()
@@ -1766,6 +1771,13 @@ impl TerminalPane {
         }
     }
 
+    fn reset_grid_state(&mut self) {
+        self.cancel_output_catchup();
+        self.viewport_goal = None;
+        self.discard_unfinished_input();
+        self.grid.reset_terminal_state();
+    }
+
     /// Record a user scroll against the held anchor. Returns true when a
     /// catch-up owns the grid and the scroll was not applied to it.
     fn nudge_catchup_anchor(&mut self, rows: isize) -> bool {
@@ -1887,11 +1899,13 @@ impl TerminalPane {
     }
 
     /// Feed `bytes` through the kitty graphics interceptor and the vte
-    /// parser, stopping as soon as Grid produces a forward-bound query.
-    /// Returns how many leading bytes were consumed. If stopping in the
-    /// middle of bytes the interceptor was already holding from an
-    /// earlier call, those bytes are returned as well; they have to be
-    /// put back in front of the unconsumed remainder.
+    /// parser. Parsing continues through text and further queries that can
+    /// share one host round trip, and stops before a sequence that would
+    /// write to the pane's stdin or that needs its own reply. Returns how
+    /// many leading bytes were consumed. If stopping in the middle of bytes
+    /// the interceptor was already holding from an earlier call, those bytes
+    /// are returned as well; they have to be put back in front of the
+    /// unconsumed remainder.
     fn feed_pty_bytes(&mut self, bytes: &[u8]) -> (usize, Vec<u8>) {
         let mut pos = 0;
         while pos < bytes.len() {
@@ -1911,13 +1925,18 @@ impl TerminalPane {
                 let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
                 pos += consumed;
                 if consumed < head.len() {
-                    return (pos, Vec::new());
+                    if self.grid.paused() || !self.grid.batch_is_open() {
+                        return (pos, Vec::new());
+                    }
+                    // The batch stopped on an escape this block does not
+                    // finish. The slow path below sees the rest of `bytes`.
+                } else {
+                    if ends_in_escape && end == bytes.len() {
+                        self.held_escape = true;
+                        pos = end;
+                    }
+                    continue;
                 }
-                if ends_in_escape && end == bytes.len() {
-                    self.held_escape = true;
-                    pos = end;
-                }
-                continue;
             }
             let mut index = pos;
             while index < end {
@@ -1940,6 +1959,11 @@ impl TerminalPane {
                         }
                         continue;
                     }
+                }
+                if self.kitty_interceptor.is_ground()
+                    && self.grid.hold_open_batch_before(&bytes[index..])
+                {
+                    return (index, Vec::new());
                 }
                 let byte = bytes[index];
                 index += 1;
@@ -2153,7 +2177,7 @@ impl TerminalPane {
         // that read the length immediately.
         self.grid.resize_keeping_recount_open(rows, cols);
         if self.banner.is_some() {
-            self.grid.reset_terminal_state();
+            self.reset_grid_state();
             self.render_first_run_banner();
         }
         self.set_should_render(true);
@@ -2209,7 +2233,7 @@ impl TerminalPane {
     }
     fn remove_banner(&mut self) {
         if self.banner.is_some() {
-            self.grid.reset_terminal_state();
+            self.reset_grid_state();
             self.set_should_render(true);
             self.banner = None;
         }
@@ -2322,7 +2346,7 @@ impl TerminalPane {
     fn handle_held_run(&mut self) -> Option<AdjustedInput> {
         self.is_held.take().map(|(_, _, run_command)| {
             self.is_held = None;
-            self.grid.reset_terminal_state();
+            self.reset_grid_state();
             self.set_should_render(true);
             self.remove_banner();
             AdjustedInput::ReRunCommandInThisPane(run_command.clone())
@@ -2333,7 +2357,7 @@ impl TerminalPane {
             // Drop to shell in the same working directory as the command was run
             let working_dir = run_command.cwd.clone();
             self.is_held = None;
-            self.grid.reset_terminal_state();
+            self.reset_grid_state();
             self.set_should_render(true);
             self.remove_banner();
             AdjustedInput::DropToShellInThisPane { working_dir }

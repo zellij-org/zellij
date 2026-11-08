@@ -368,6 +368,10 @@ pub struct StdinAnsiParser {
     /// Bytes of an OSC sequence whose terminator hasn't arrived yet.
     /// Carried across feed() calls so the next chunk can complete it.
     partial_osc: Vec<u8>,
+    /// How much of `partial_osc` is already known to be an unterminated
+    /// OSC. The next chunk continues from here instead of copying and
+    /// rescanning the prefix.
+    partial_scanned: usize,
     /// Same for CSI device-control reports.
     partial_csi: Vec<u8>,
     partial_paste: Vec<u8>,
@@ -377,6 +381,8 @@ pub struct StdinAnsiParser {
     startup_kitty_zlib_probe: StartupKittyProbe,
     startup_grapheme_cluster_probe: StartupKittyProbe,
     partial_apc: Vec<u8>,
+    /// How much of `partial_apc` is already known to be an unterminated APC.
+    partial_apc_scanned: usize,
     primary_da_answered: bool,
     exit_draining: bool,
 }
@@ -398,6 +404,7 @@ impl StdinAnsiParser {
             batches: VecDeque::new(),
             active_clipboard_forward: None,
             partial_osc: Vec::new(),
+            partial_scanned: 0,
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
             nested_frame_extractor: nested_session::NestedFrameExtractor::new(),
@@ -406,6 +413,7 @@ impl StdinAnsiParser {
             startup_kitty_zlib_probe: StartupKittyProbe::NotSent,
             startup_grapheme_cluster_probe: StartupKittyProbe::NotSent,
             partial_apc: Vec::new(),
+            partial_apc_scanned: 0,
             primary_da_answered: false,
             exit_draining: false,
         }
@@ -802,6 +810,7 @@ impl StdinAnsiParser {
                 if !self.nested_frame_extractor.partial_bytes().is_empty() {
                     self.nested_frame_extractor.take_partial()
                 } else if !self.partial_osc.is_empty() {
+                    self.partial_scanned = 0;
                     std::mem::take(&mut self.partial_osc)
                 } else {
                     std::mem::take(&mut self.partial_csi)
@@ -821,6 +830,8 @@ impl StdinAnsiParser {
                 + partial_nested_frame.len()
                 + self.partial_apc.len(),
         );
+        self.partial_scanned = 0;
+        self.partial_apc_scanned = 0;
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);
         out.append(&mut self.partial_paste);
@@ -833,70 +844,82 @@ impl StdinAnsiParser {
     }
 
     fn extract_kitty_probe_reply(&mut self, bytes: &[u8], replies: &mut Vec<HostReply>) -> Vec<u8> {
+        let scanned = self.partial_apc_scanned;
+        self.partial_apc_scanned = 0;
         let mut working = std::mem::take(&mut self.partial_apc);
         if working.is_empty() && self.partial_osc == [0x1b] && bytes.first() == Some(&b'_') {
+            self.partial_scanned = 0;
             working.append(&mut self.partial_osc);
         }
         working.extend_from_slice(bytes);
         let mut out = Vec::with_capacity(working.len());
         let mut i = 0;
         while i < working.len() {
-            let rest = &working[i..];
-            if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
-                match rest.get(2) {
-                    Some(&b'G') => {},
-                    Some(_) => {
-                        out.push(working[i]);
-                        i += 1;
-                        continue;
-                    },
-                    None => {
-                        self.partial_apc = rest.to_vec();
-                        return out;
-                    },
+            let (is_apc, status) = {
+                let rest = &working[i..];
+                if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
+                    match rest.get(2) {
+                        Some(&b'G') => {
+                            let from = if i == 0 { scanned.max(2) } else { 2 };
+                            (true, apc_status_from(rest, from))
+                        },
+                        Some(_) => (false, SeqStatus::Malformed),
+                        None => (true, SeqStatus::NeedMore),
+                    }
+                } else {
+                    (false, SeqStatus::Malformed)
                 }
-                match apc_status(rest) {
-                    SeqStatus::Complete(len) => {
-                        let payload = &rest[2..len - 2];
-                        if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply
-                            && payload.first() == Some(&b'G')
-                            && contains_subslice(payload, b"i=31")
-                        {
-                            replies.push(HostReply::KittyGraphicsSupport(contains_subslice(
-                                payload, b"i=31;OK",
-                            )));
-                            self.startup_kitty_probe = StartupKittyProbe::Resolved;
-                        }
-                        if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply
-                            && payload.first() == Some(&b'G')
-                            && contains_subslice(payload, b"i=32")
-                        {
-                            replies.push(HostReply::KittyZlibSupport(contains_subslice(
-                                payload, b"i=32;OK",
-                            )));
-                            self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
-                        }
-                        i += len;
-                        continue;
-                    },
-                    SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
-                        if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
-                            out.extend_from_slice(&tail);
-                        } else {
-                            self.partial_apc = tail;
-                        }
-                        return out;
-                    },
-                    SeqStatus::Malformed => {
-                        out.push(working[i]);
-                        i += 1;
-                        continue;
-                    },
-                }
+            };
+            if !is_apc {
+                out.push(working[i]);
+                i += 1;
+                continue;
             }
-            out.push(working[i]);
-            i += 1;
+            match status {
+                SeqStatus::Complete(len) => {
+                    let rest = &working[i..];
+                    let payload = &rest[2..len - 2];
+                    if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply
+                        && payload.first() == Some(&b'G')
+                        && contains_subslice(payload, b"i=31")
+                    {
+                        replies.push(HostReply::KittyGraphicsSupport(contains_subslice(
+                            payload, b"i=31;OK",
+                        )));
+                        self.startup_kitty_probe = StartupKittyProbe::Resolved;
+                    }
+                    if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply
+                        && payload.first() == Some(&b'G')
+                        && contains_subslice(payload, b"i=32")
+                    {
+                        replies.push(HostReply::KittyZlibSupport(contains_subslice(
+                            payload, b"i=32;OK",
+                        )));
+                        self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
+                    }
+                    i += len;
+                    continue;
+                },
+                SeqStatus::NeedMore => {
+                    let tail = if i == 0 {
+                        std::mem::take(&mut working)
+                    } else {
+                        working.split_off(i)
+                    };
+                    if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                        out.extend_from_slice(&tail);
+                    } else {
+                        self.partial_apc_scanned = tail.len();
+                        self.partial_apc = tail;
+                    }
+                    return out;
+                },
+                SeqStatus::Malformed => {
+                    out.push(working[i]);
+                    i += 1;
+                    continue;
+                },
+            }
         }
         out
     }
@@ -912,23 +935,37 @@ impl StdinAnsiParser {
     /// residue (and never appear as spurious keypresses) while waiting
     /// for the rest of the sequence.
     fn strip_replies(&mut self, bytes: &[u8]) -> Vec<u8> {
-        // Prepend any pending partial. At most one of (partial_osc,
-        // partial_csi) is non-empty at any time — the previous walk
-        // either completed all sequences or stopped at exactly one
-        // unterminated tail.
-        let mut working: Vec<u8> = Vec::with_capacity(
-            self.partial_osc.len()
-                + self.partial_csi.len()
-                + self.partial_paste.len()
-                + bytes.len(),
-        );
-        working.append(&mut self.partial_osc);
-        working.append(&mut self.partial_csi);
-        working.append(&mut self.partial_paste);
+        // At most one partial is non-empty. Move it and append only the
+        // new bytes. A long unterminated OSC is resumed from
+        // `partial_scanned` so each fragment is scanned once.
+        let scanned = self.partial_scanned;
+        self.partial_scanned = 0;
+        let mut working = std::mem::take(&mut self.partial_osc);
+        if working.is_empty() {
+            working = std::mem::take(&mut self.partial_csi);
+        }
+        if working.is_empty() {
+            working = std::mem::take(&mut self.partial_paste);
+        }
         working.extend_from_slice(bytes);
 
         let mut out = Vec::with_capacity(working.len());
         let mut i = 0;
+        if scanned >= 2 && working.len() >= 2 && working[0] == 0x1b && working[1] == b']' {
+            match osc_status_from(&working, scanned) {
+                SeqStatus::NeedMore => {
+                    if working.len() > PARTIAL_BUFFER_CAP_BYTES {
+                        out.extend_from_slice(&working);
+                    } else {
+                        self.partial_scanned = working.len();
+                        self.partial_osc = working;
+                    }
+                    return out;
+                },
+                SeqStatus::Complete(len) => i = len,
+                SeqStatus::Malformed => {},
+            }
+        }
         while i < working.len() {
             let rest = &working[i..];
             if self.in_bracketed_paste {
@@ -966,13 +1003,14 @@ impl StdinAnsiParser {
             }
             // OSC: ESC ] ... (BEL | ESC \)
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b']' {
-                match osc_status(rest) {
+                let status = osc_status(rest);
+                match status {
                     SeqStatus::Complete(len) => {
                         i += len;
                         continue;
                     },
                     SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
+                        let tail = take_tail(&mut working, i);
                         if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                             // Cap exceeded: flush buffered bytes to
                             // residue and reset, preserving the
@@ -980,6 +1018,7 @@ impl StdinAnsiParser {
                             // silently swallowed.
                             out.extend_from_slice(&tail);
                         } else {
+                            self.partial_scanned = tail.len();
                             self.partial_osc = tail;
                         }
                         return out;
@@ -1029,13 +1068,30 @@ impl StdinAnsiParser {
     }
 }
 
+fn take_tail(buf: &mut Vec<u8>, at: usize) -> Vec<u8> {
+    if at == 0 {
+        std::mem::take(buf)
+    } else {
+        buf.split_off(at)
+    }
+}
+
 /// Walk an OSC sequence starting at the head of `buf`. Returns whether
 /// the sequence is complete, needs more bytes, or is malformed.
 fn osc_status(buf: &[u8]) -> SeqStatus {
+    osc_status_from(buf, 2)
+}
+
+/// Continue an OSC walk. `start` is an index already known not to contain
+/// a terminator; a trailing ESC is rechecked so a split ST still closes.
+fn osc_status_from(buf: &[u8], start: usize) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
         return SeqStatus::Malformed;
     }
-    let mut i = 2;
+    let mut i = start.max(2);
+    if i > 2 && buf.get(i - 1) == Some(&0x1b) {
+        i -= 1;
+    }
     while i < buf.len() {
         match buf[i] {
             0x07 => return SeqStatus::Complete(i + 1),
@@ -1054,11 +1110,14 @@ fn osc_status(buf: &[u8]) -> SeqStatus {
     SeqStatus::NeedMore
 }
 
-fn apc_status(buf: &[u8]) -> SeqStatus {
+fn apc_status_from(buf: &[u8], start: usize) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'_') {
         return SeqStatus::Malformed;
     }
-    let mut i = 2;
+    let mut i = start.max(2);
+    if i > 2 && buf.get(i - 1) == Some(&0x1b) {
+        i -= 1;
+    }
     while i < buf.len() {
         match buf[i] {
             0x1b => match buf.get(i + 1) {

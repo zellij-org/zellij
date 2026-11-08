@@ -121,6 +121,13 @@ pub trait Handler {
     fn paused(&self) -> bool {
         false
     }
+
+    /// When parsing with `feed_until_paused`, return true to leave `bytes`
+    /// unconsumed. The handler has an open host-query batch and this escape
+    /// must wait until that batch's reply has been written.
+    fn defer_pending_escape(&mut self, _bytes: &[u8]) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -339,7 +346,7 @@ impl Parser {
         };
         while at < bytes.len() && !(stop && handler.paused()) {
             let rest = &bytes[at..];
-            at += match self.state {
+            let consumed = match self.state {
                 State::Ground => self.ground(handler, rest, scan, stop),
                 State::CsiEntry | State::CsiParam if scan => self.csi_numbers(handler, rest),
                 _ => {
@@ -347,6 +354,10 @@ impl Parser {
                     1
                 },
             };
+            if consumed == 0 {
+                break;
+            }
+            at += consumed;
         }
         at
     }
@@ -475,6 +486,9 @@ impl Parser {
         scan: bool,
         stop: bool,
     ) -> usize {
+        if stop && handler.defer_pending_escape(bytes) {
+            return 0;
+        }
         if scan && !(stop && handler.paused()) {
             if let Some(length) = fast_sgr_length(bytes) {
                 handler.sgr(&bytes[2..2 + length]);

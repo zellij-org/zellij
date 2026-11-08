@@ -2006,7 +2006,6 @@ pub fn fish_select_tab_completion_options() {
     // changes.
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -2044,10 +2043,8 @@ pub fn vim_scroll_region_down() {
     // the region is defined here by vim as 1-26 (there are 28 rows)
     // then the cursor is moved to line 26 and a new line is added
     // what should happen is that the first line in the scroll region (1) is deleted
-    // terminal_emulator_color_codes,
     // and an empty line is inserted in the last scroll region line (26)
     // this tests also has other steps afterwards that fills the line with the next line in the
-    // sixel_image_store,
     // file
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2086,7 +2083,6 @@ pub fn vim_ctrl_d() {
     // this case) lines inside the scroll region and push the other lines up
     // what happens here is that 13 lines are deleted and instead 13 empty lines are added at the
     // end of the scroll region
-    // terminal_emulator_color_codes,
     // vim makes sure to fill these empty lines with the rest of the file
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2125,7 +2121,6 @@ pub fn vim_ctrl_u() {
     // this case) lines at the cursor, pushing away (deleting) the last line in the scroll region
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -2259,10 +2254,8 @@ pub fn vim_overwrite() {
     // * open a file in vim
     // * open the same file in another window
     // * change the file in the other window and save
-    // terminal_emulator_color_codes,
     // * change the file in the original vim window and save
     // * confirm you would like to change the file by pressing 'y' and then ENTER
-    // sixel_image_store,
     // * if everything looks fine, this test passed :)
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2590,13 +2583,9 @@ pub fn top_and_quit() {
 
 #[test]
 pub fn exa_plus_omf_theme() {
-    // this tests that we handle a tab delimited table properly
-    // without overriding the previous content
-    // this is a potential bug because the \t character is a goto
-    // if we forwarded it as is to the terminal, we would be skipping
-    // over existing on-screen content without deleting it, so we must
-    // terminal_emulator_color_codes,
-    // convert it to spaces
+    // A tab moves the cursor to the next stop. The skipped cells are
+    // filled with spaces, so a tab-delimited table does not leave the
+    // previous content in place.
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -3067,7 +3056,6 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     // full viewport and then scrolling up would cause
     // lines to get deleted from the viewport rather
     // than moving to "lines_above"
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -12149,6 +12137,25 @@ fn park_at_live_bottom_keeps_the_scrolled_rows_and_appends_under_them() {
     assert!(
         full_after_return.contains("NEW-LINE"),
         "parsed output should be in the document, got {full_after_return:?}"
+    );
+}
+
+#[test]
+fn parking_reuses_the_gap_cell_count_between_output_chunks() {
+    use crate::panes::grid::{park_gap_cell_rows_scanned, reset_park_gap_cell_rows_scanned};
+
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(20);
+    assert!(grid.park_at_live_bottom());
+    grid.unpark_live_bottom();
+
+    reset_park_gap_cell_rows_scanned();
+    assert!(grid.park_at_live_bottom());
+    grid.unpark_live_bottom();
+    assert_eq!(
+        park_gap_cell_rows_scanned(),
+        0,
+        "a second park repeated the gap scan"
     );
 }
 

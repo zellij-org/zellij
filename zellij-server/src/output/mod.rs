@@ -3146,9 +3146,7 @@ impl FloatingPanesStack {
                 // may have straddled that edge, so erase before drawing (see `serialize_chunks`).
                 c_chunk.erase_first = true;
                 return Ok(None);
-            } else if pane_left_edge >= c_chunk_left_side
-                && pane_right_edge >= c_chunk_right_side
-            {
+            } else if pane_left_edge >= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
                 // pane covers chunk partially to the right
                 c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
                 return Ok(None);

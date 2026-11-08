@@ -278,6 +278,48 @@ fn fragmented_csi_report_does_not_leak() {
 }
 
 #[test]
+fn a_long_osc_fed_one_byte_at_a_time_is_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7);
+    let mut osc = b"\x1b]11;".to_vec();
+    osc.extend(std::iter::repeat(b'x').take(8 * 1024));
+    osc.extend_from_slice(b"\x1b\\");
+    let mut residue = 0usize;
+    for byte in &osc {
+        let out = parser.feed(&[*byte]);
+        residue += out.residue.len();
+        assert!(out.completed_forward.is_none());
+    }
+    assert_eq!(
+        residue, 0,
+        "a fragmented OSC must not leak while it is open"
+    );
+    let out = parser.feed(b"\x1b[c");
+    assert!(out.residue.is_empty());
+    let (token, reply) = out.completed_forward.expect("the barrier closes one reply");
+    assert_eq!(token, 7);
+    assert_eq!(reply, osc);
+}
+
+#[test]
+fn a_long_apc_fed_one_byte_at_a_time_is_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let mut apc = b"\x1b_G".to_vec();
+    apc.extend(std::iter::repeat(b'q').take(8 * 1024));
+    apc.extend_from_slice(b"i=31;OK\x1b\\");
+    let mut residue = 0usize;
+    let mut replies = 0usize;
+    for byte in &apc {
+        let out = parser.feed(&[*byte]);
+        residue += out.residue.len();
+        replies += out.replies.len();
+    }
+    assert_eq!(residue, 0);
+    assert_eq!(replies, 1);
+}
+
+#[test]
 fn fragmented_osc_byte_by_byte() {
     // Every byte in its own chunk — the worst case.
     let full = b"\x1b]11;rgb:abcd/ef01/2345\x1b\\";

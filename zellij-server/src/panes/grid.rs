@@ -1940,6 +1940,7 @@ const MAX_SERIALIZE_SNAPSHOT_CELLS: usize = 4 * 1024 * 1024;
 thread_local! {
     static SERIALIZE_BUDGET_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static SCROLL_DOWN_ONE_LINE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static PARK_GAP_CELL_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -1960,6 +1961,16 @@ pub(crate) fn serialize_budget_rows_scanned() -> usize {
 #[cfg(test)]
 pub(crate) fn reset_serialize_budget_rows_scanned() {
     SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn park_gap_cell_rows_scanned() -> usize {
+    PARK_GAP_CELL_ROWS_SCANNED.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_park_gap_cell_rows_scanned() {
+    PARK_GAP_CELL_ROWS_SCANNED.with(|c| c.set(0));
 }
 
 #[cfg(test)]
@@ -2504,6 +2515,10 @@ pub struct Grid {
     front_run_validity: EvictionCache,
     pub(crate) viewport: VecDeque<Row>,
     pub(crate) lines_below: VecDeque<Row>,
+    /// Cached cell count for `lines_below`. Mutating the rows invalidates
+    /// it; parking and unparking keep it exact so output can cycle through
+    /// a parked view without rescanning the whole gap every chunk.
+    lines_below_cells: Option<usize>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -2589,6 +2604,10 @@ pub struct Grid {
     /// Zellij should forward to the host terminal; the host's reply is
     /// later routed back to this pane's pty.
     pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
+    /// A batchable host query is already queued, and the next sequence would
+    /// write to the pane's stdin or start a query that cannot share that
+    /// batch. The bytes of that sequence stay unparsed until the reply.
+    hold_for_forward: bool,
     pub pending_nested_session_messages: Vec<NestedSessionMessage>,
     pub ui_components_enabled: bool,
     ui_component_bytes: Option<Vec<u8>>,
@@ -2956,6 +2975,7 @@ impl Grid {
             front_run_validity: EvictionCache::default(),
             viewport: VecDeque::from(vec![Row::new().canonical()]),
             lines_below: VecDeque::new(),
+            lines_below_cells: Some(0),
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
@@ -3014,6 +3034,7 @@ impl Grid {
             pending_desktop_notifications: Vec::new(),
             notification_tracker: NotificationTracker::default(),
             pending_forwarded_queries: Vec::new(),
+            hold_for_forward: false,
             pending_nested_session_messages: Vec::new(),
             ui_components_enabled: false,
             ui_component_bytes: None,
@@ -3457,6 +3478,7 @@ impl Grid {
             result.moved = true;
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
+            self.lines_below_cells = None;
 
             let (display_row_delta, reflowed) = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
@@ -3534,6 +3556,7 @@ impl Grid {
                 1,
                 self.width,
             );
+            self.lines_below_cells = None;
             // Normalizing the pushed-up first row was already
             // announced via insert_canonical_anchor_line_at_front; a
             // reflow of pulled rows (stale wraps or a boundary merge)
@@ -4632,23 +4655,34 @@ impl Grid {
         }
         let height = self.viewport.len();
         let below = self.lines_below.len();
-        let (held, live, gap, overlap_skip) = if below >= height {
+        let below_cells = self.lines_below_cells;
+        let (held, live, gap, overlap_skip, gap_cells) = if below >= height {
             let held = std::mem::take(&mut self.viewport);
             let live = self.lines_below.split_off(below - height);
             let gap = std::mem::take(&mut self.lines_below);
-            (held, live, gap, 0)
+            let live_cells: usize = live.iter().map(|row| row.stored_cell_count()).sum();
+            let gap_cells = match below_cells {
+                Some(cells) => cells.saturating_sub(live_cells),
+                None => {
+                    #[cfg(test)]
+                    PARK_GAP_CELL_ROWS_SCANNED
+                        .with(|counter| counter.set(counter.get().saturating_add(gap.len())));
+                    gap.iter().map(|row| row.stored_cell_count()).sum()
+                },
+            };
+            (held, live, gap, 0, gap_cells)
         } else {
             let held = self.viewport.clone();
             let overlap_skip = height - below;
             let mut live = self.viewport.split_off(below);
             live.extend(self.lines_below.drain(..));
             self.viewport.clear();
-            (held, live, VecDeque::new(), overlap_skip)
+            (held, live, VecDeque::new(), overlap_skip, 0)
         };
         let held_cells = held.iter().map(|row| row.stored_cell_count()).sum();
-        let gap_cells = gap.iter().map(|row| row.stored_cell_count()).sum();
         self.viewport = live;
         self.lines_below.clear();
+        self.lines_below_cells = Some(0);
         self.is_scrolled = false;
         self.kitty_grid.invalidate_canonical_starts();
         self.kitty_grid.note_rows_below_the_viewport(None);
@@ -4804,6 +4838,7 @@ impl Grid {
         }
         self.is_scrolled = false;
         self.lines_below.clear();
+        self.lines_below_cells = Some(0);
         self.kitty_grid.invalidate_canonical_starts();
     }
     pub(crate) fn is_live_bottom_parked(&self) -> bool {
@@ -4819,18 +4854,23 @@ impl Grid {
         for _ in 0..skip {
             self.viewport.pop_front();
         }
+        let mut gap_cells = park.gap_cells;
         for row in self.viewport.drain(..) {
-            park.gap_cells = park.gap_cells.saturating_add(row.stored_cell_count());
+            gap_cells = gap_cells.saturating_add(row.stored_cell_count());
             park.gap.push_back(row);
         }
         self.viewport = park.held;
         self.lines_below = park.gap;
         while self.viewport.len() < self.height {
             match self.lines_below.pop_front() {
-                Some(row) => self.viewport.push_back(row),
+                Some(row) => {
+                    gap_cells = gap_cells.saturating_sub(row.stored_cell_count());
+                    self.viewport.push_back(row);
+                },
                 None => self.viewport.push_back(Row::new().canonical()),
             }
         }
+        self.lines_below_cells = Some(gap_cells);
         self.is_scrolled = !self.lines_below.is_empty();
         self.kitty_grid.invalidate_canonical_starts();
         self.output_buffer.update_all_lines();
@@ -4889,6 +4929,9 @@ impl Grid {
                 self.lines_below.push_front(row);
             }
         }
+        if added > 0 {
+            self.lines_below_cells = None;
+        }
         if added == 0 {
             return 0;
         }
@@ -4926,6 +4969,7 @@ impl Grid {
             count,
             self.width,
         );
+        self.lines_below_cells = None;
         let grown = self.viewport.len().saturating_sub(height);
         self.push_viewport_front_to_scrollback(grown);
         if grown == 0 {
@@ -5774,6 +5818,7 @@ impl Grid {
         self.lines_above = VecDeque::new();
         self.scrollback_cells = 0;
         self.lines_below = VecDeque::new();
+        self.lines_below_cells = Some(0);
         self.is_scrolled = false;
         self.viewport = VecDeque::from(vec![Row::with_capacity(self.width).canonical()]);
         self.alternate_screen_state = None;
@@ -7144,6 +7189,9 @@ impl Grid {
                 self.lines_below.push_front(row);
             }
         }
+        if added > 0 {
+            self.lines_below_cells = None;
+        }
         added
     }
     fn note_rows_scrolled_up(&mut self, added: usize, reflowed: bool) {
@@ -7818,6 +7866,7 @@ impl Grid {
         self.scrollback_cells = 0;
         self.viewport.clear();
         self.lines_below = VecDeque::new();
+        self.lines_below_cells = Some(0);
         self.scrollback_display_rows = 0;
         self.kitty_grid.invalidate_canonical_starts();
     }
@@ -8200,6 +8249,192 @@ impl Grid {
         self.nested_frame_bytes = None;
         self.xtgettcap_bytes = None;
         self.sixel_grid.abandon_image();
+    }
+}
+
+impl Grid {
+    /// Palette, color, and pixel-size queries are waiting, and nothing has
+    /// yet required the parser to stop for their reply.
+    pub(crate) fn batch_is_open(&self) -> bool {
+        !self.hold_for_forward
+            && !self.pending_forwarded_queries.is_empty()
+            && self
+                .pending_forwarded_queries
+                .iter()
+                .all(crate::host_query::HostQuery::shares_da_barrier)
+    }
+
+    /// Stop before `bytes` when it would write a reply to the pane, or start
+    /// a query that cannot travel with the open batch.
+    ///
+    /// `Some(true)` means the sequence is complete and must wait. `None`
+    /// means it is incomplete, so the parser may hold it. The branches here
+    /// are the ones that push `pending_messages_to_pty` or a non-batchable
+    /// `HostQuery`.
+    pub(crate) fn escape_breaks_query_batch(&self, bytes: &[u8]) -> Option<bool> {
+        if bytes.first() != Some(&0x1b) {
+            return Some(false);
+        }
+        let Some(&introducer) = bytes.get(1) else {
+            return None;
+        };
+        match introducer {
+            b'[' => self.csi_breaks_query_batch(bytes),
+            b']' => self.osc_breaks_query_batch(bytes),
+            b'P' | b'X' | b'^' | b'_' => control_string_breaks_query_batch(bytes),
+            b'Z' => Some(true),
+            0x20..=0x2f => match bytes.get(2) {
+                None => None,
+                Some(b'Z') => Some(true),
+                Some(final_byte) if (0x30..=0x7e).contains(final_byte) => Some(false),
+                Some(_) => Some(true),
+            },
+            0x30..=0x7e => Some(false),
+            _ => Some(true),
+        }
+    }
+
+    /// True when this escape has to wait until the open batch is answered.
+    /// Sets the hold so a later `paused` check stops the parser.
+    pub(crate) fn hold_open_batch_before(&mut self, bytes: &[u8]) -> bool {
+        if self.batch_is_open() && self.escape_breaks_query_batch(bytes) == Some(true) {
+            self.hold_for_forward = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn clear_forward_hold(&mut self) {
+        self.hold_for_forward = false;
+    }
+
+    fn csi_breaks_query_batch(&self, bytes: &[u8]) -> Option<bool> {
+        let mut index = 2;
+        let mut first_intermediate = None;
+        let mut first_param: u16 = 0;
+        let mut saw_digit = false;
+        let mut in_first_param = true;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            match byte {
+                b'0'..=b'9' if in_first_param => {
+                    saw_digit = true;
+                    first_param = first_param
+                        .saturating_mul(10)
+                        .saturating_add((byte - b'0') as u16);
+                },
+                b';' | b':' => in_first_param = false,
+                0x3c..=0x3f | 0x20..=0x2f => {
+                    if first_intermediate.is_none() {
+                        first_intermediate = Some(byte);
+                    }
+                },
+                0x40..=0x7e => {
+                    return Some(csi_final_breaks_query_batch(
+                        byte,
+                        first_intermediate,
+                        if saw_digit { first_param } else { 0 },
+                    ));
+                },
+                _ => return Some(true),
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn osc_breaks_query_batch(&self, bytes: &[u8]) -> Option<bool> {
+        let mut index = 2;
+        while index < bytes.len() {
+            match bytes[index] {
+                0x07 | 0x18 | 0x1a => {
+                    return Some(self.osc_payload_breaks_query_batch(&bytes[2..index]));
+                },
+                0x1b => {
+                    return if index + 1 >= bytes.len() {
+                        None
+                    } else {
+                        Some(self.osc_payload_breaks_query_batch(&bytes[2..index]))
+                    };
+                },
+                _ => index += 1,
+            }
+        }
+        None
+    }
+
+    fn osc_payload_breaks_query_batch(&self, payload: &[u8]) -> bool {
+        let mut fields = payload.split(|&byte| byte == b';');
+        let Some(command) = fields.next() else {
+            return false;
+        };
+        match command {
+            b"52" => {
+                let _selection = fields.next();
+                fields.next() == Some(b"?".as_ref())
+            },
+            b"7501" => {
+                let mut body = Vec::new();
+                for (index, field) in fields.enumerate() {
+                    if index > 0 {
+                        body.push(b';');
+                    }
+                    body.extend_from_slice(field);
+                }
+                std::str::from_utf8(&body)
+                    .map(|text| text.trim() == "?")
+                    .unwrap_or(false)
+            },
+            b"10" | b"11" => {
+                let Ok(mut code) = std::str::from_utf8(command).unwrap_or("").parse::<u16>() else {
+                    return false;
+                };
+                for param in fields {
+                    if param == b"?" {
+                        let overridden = match code {
+                            10 => self.pane_default_fg.is_some(),
+                            11 => self.pane_default_bg.is_some(),
+                            _ => false,
+                        };
+                        if overridden {
+                            return true;
+                        }
+                    }
+                    code = code.saturating_add(1);
+                }
+                false
+            },
+            _ => false,
+        }
+    }
+}
+
+fn csi_final_breaks_query_batch(
+    final_byte: u8,
+    first_intermediate: Option<u8>,
+    first_param: u16,
+) -> bool {
+    let effective = if first_param == 0 { 1 } else { first_param };
+    match final_byte {
+        b'c' | b'n' | b'x' => true,
+        b't' => effective == 18,
+        b'p' => first_intermediate == Some(b'?'),
+        b'q' => first_intermediate == Some(b'>'),
+        b'u' | b'S' => first_intermediate == Some(b'?'),
+        _ => false,
+    }
+}
+
+fn control_string_breaks_query_batch(bytes: &[u8]) -> Option<bool> {
+    let rest = &bytes[2..];
+    if rest
+        .iter()
+        .any(|byte| matches!(byte, 0x1b | 0x18 | 0x1a | 0x9c))
+    {
+        Some(true)
+    } else {
+        None
     }
 }
 
@@ -8911,6 +9146,7 @@ impl Handler for Grid {
                                     &mut self.lines_below,
                                     &mut self.is_scrolled,
                                 );
+                                self.lines_below_cells = None;
                                 self.scrollback_cells = self
                                     .lines_above
                                     .iter()
@@ -9017,6 +9253,7 @@ impl Handler for Grid {
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
                             let current_lines_below = std::mem::take(&mut self.lines_below);
+                            self.lines_below_cells = None;
                             let was_scrolled = self.is_scrolled;
                             self.is_scrolled = false;
                             self.scrollback_cells = 0;
@@ -9601,7 +9838,28 @@ impl Handler for Grid {
     }
 
     fn paused(&self) -> bool {
-        !self.pending_forwarded_queries.is_empty()
+        self.hold_for_forward
+            || self
+                .pending_forwarded_queries
+                .iter()
+                .any(|query| !query.shares_da_barrier())
+    }
+
+    fn defer_pending_escape(&mut self, bytes: &[u8]) -> bool {
+        if !self.batch_is_open() {
+            return false;
+        }
+        match self.escape_breaks_query_batch(bytes) {
+            Some(true) => {
+                self.hold_for_forward = true;
+                true
+            },
+            // The final byte may sit in the next scan block. Leave the
+            // escape unconsumed so the caller can classify the whole
+            // remainder before any of it reaches the parser.
+            None => true,
+            Some(false) => false,
+        }
     }
 }
 

@@ -4195,10 +4195,7 @@ impl Screen {
             self.answer_color_palette_mode_query_locally(pane_id);
             return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
         }
-        if matches!(
-            &query,
-            crate::host_query::HostQuery::PaletteRegister { indices, .. } if indices.is_empty()
-        ) {
+        if query.is_noop() {
             // Nothing to ask and nothing to wait for. Treat it as a local
             // no-op rather than pausing the pane until the forward timeout.
             return STARTUP_SENTINEL_TOKEN;
@@ -4210,7 +4207,7 @@ impl Screen {
             }
             return self.enqueue_clipboard_forward(pane_id, query);
         }
-        if self.merge_queued_palette_query(pane_id, &query) {
+        if self.merge_queued_round_trip(pane_id, &query) {
             return self
                 .forward_queue
                 .back()
@@ -4236,46 +4233,44 @@ impl Screen {
         token
     }
 
-    /// Fold a palette query into the tail of `forward_queue` when that tail
-    /// is already a palette query for the same pane and terminator.
+    /// Fold a query into the tail of `forward_queue` when that tail is already
+    /// a same-pane query that can share its Primary-DA barrier.
     ///
     /// An in-flight query is left alone: its bytes are already on the wire.
     /// A burst that arrives as separate instructions therefore becomes one
-    /// queued dispatch after the in-flight one, not one round trip per register.
-    fn merge_queued_palette_query(
+    /// queued dispatch after the in-flight one, not one round trip per query.
+    fn merge_queued_round_trip(
         &mut self,
         pane_id: PaneId,
         query: &crate::host_query::HostQuery,
     ) -> bool {
         use crate::host_query::HostQuery;
-        let HostQuery::PaletteRegister {
-            indices,
-            terminator,
-        } = query
-        else {
-            return false;
-        };
-        if indices.is_empty() {
+        if !query.shares_da_barrier() {
             return false;
         }
-        let indices = indices.clone();
-        let terminator = *terminator;
         let Some(back) = self.forward_queue.back_mut() else {
             return false;
         };
-        if back.pane_id != pane_id {
+        if back.pane_id != pane_id || !back.query.shares_da_barrier() {
             return false;
         }
-        match &mut back.query {
-            HostQuery::PaletteRegister {
-                indices: existing,
-                terminator: queued_terminator,
-            } if *queued_terminator == terminator => {
-                existing.extend(indices);
-                true
+        let mut incoming = match query.clone() {
+            HostQuery::RoundTrip(parts) => parts,
+            other => vec![other],
+        };
+        let existing = std::mem::replace(&mut back.query, HostQuery::ColorPaletteMode);
+        back.query = HostQuery::RoundTrip(match existing {
+            HostQuery::RoundTrip(mut parts) => {
+                parts.append(&mut incoming);
+                parts
             },
-            _ => false,
-        }
+            other => {
+                let mut parts = vec![other];
+                parts.append(&mut incoming);
+                parts
+            },
+        });
+        true
     }
 
     /// Register a query the pane has just been paused on. Output may have
@@ -6223,6 +6218,19 @@ impl Screen {
                 out
             },
             HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
+            HostQuery::RoundTrip(parts) => {
+                let mut out = Vec::new();
+                for part in parts {
+                    let reply = self.synthesize_cached_reply(part);
+                    if reply.is_empty() {
+                        // A missing part would slide the later replies onto
+                        // the wrong query. Decline the whole batch.
+                        return Vec::new();
+                    }
+                    out.extend(reply);
+                }
+                out
+            },
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
             HostQuery::ColorPaletteMode => match self.effective_host_terminal_theme_mode() {
@@ -9775,7 +9783,38 @@ impl Screen {
     }
     fn note_pty_run_drained(&mut self, terminal_id: u32, generation: u64) {
         if let Some(exit) = stage_run_drained(&mut self.terminal_runs, terminal_id, generation) {
-            let _ = self.bus.senders.send_to_screen(exit);
+            if self.terminal_has_pending_vte(terminal_id) {
+                if let Some(run) = self.terminal_runs.get_mut(&terminal_id) {
+                    run.deferred_exit = Some(exit);
+                }
+            } else {
+                let _ = self.bus.senders.send_to_screen(exit);
+            }
+        }
+    }
+    fn terminal_has_pending_vte(&self, terminal_id: u32) -> bool {
+        self.tabs
+            .values()
+            .any(|tab| tab.pending_vte_len(terminal_id) > 0)
+    }
+    fn release_settled_run_exits(&mut self) {
+        let ready: Vec<u32> = self
+            .terminal_runs
+            .iter()
+            .filter(|(_, run)| run.drained && run.deferred_exit.is_some())
+            .map(|(terminal_id, _)| *terminal_id)
+            .collect();
+        for terminal_id in ready {
+            if self.terminal_has_pending_vte(terminal_id) {
+                continue;
+            }
+            let exit = self
+                .terminal_runs
+                .get_mut(&terminal_id)
+                .and_then(|run| run.deferred_exit.take());
+            if let Some(exit) = exit {
+                let _ = self.bus.senders.send_to_screen(exit);
+            }
         }
     }
     fn note_child_run_exited(
@@ -9811,7 +9850,13 @@ impl Screen {
             run_generation,
             instruction,
         ) {
-            let _ = self.bus.senders.send_to_screen(instruction);
+            if self.terminal_has_pending_vte(terminal_id) {
+                if let Some(run) = self.terminal_runs.get_mut(&terminal_id) {
+                    run.deferred_exit = Some(instruction);
+                }
+            } else {
+                let _ = self.bus.senders.send_to_screen(instruction);
+            }
         }
     }
     fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
@@ -11755,6 +11800,7 @@ pub(crate) fn screen_thread_main(
                     }
                     tab.advance_deferred_pane_work();
                 }
+                screen.release_settled_run_exits();
                 screen.schedule_scrolled_pty_continuation();
                 let _ = screen
                     .bus

@@ -173,34 +173,6 @@ pub(crate) const SCROLLED_PTY_QUANTUM_BYTES: usize = 64 * 1024;
 /// growing without a bound.
 pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 
-/// Consecutive palette-register queries with the same terminator become
-/// one query. Separate OSCs that are not adjacent, and queries of any
-/// other kind, keep their own replies.
-fn coalesce_palette_queries(
-    queries: Vec<crate::host_query::HostQuery>,
-) -> Vec<crate::host_query::HostQuery> {
-    use crate::host_query::HostQuery;
-    let mut coalesced = Vec::with_capacity(queries.len());
-    for query in queries {
-        match (coalesced.last_mut(), query) {
-            (
-                Some(HostQuery::PaletteRegister {
-                    indices,
-                    terminator,
-                }),
-                HostQuery::PaletteRegister {
-                    indices: more,
-                    terminator: next_terminator,
-                },
-            ) if *terminator == next_terminator => {
-                indices.extend(more);
-            },
-            (_, query) => coalesced.push(query),
-        }
-    }
-    coalesced
-}
-
 /// Unparsed PTY bytes for one scrolled pane, in arrival order. `head` is the
 /// consumed prefix of the first chunk so a quantum can split a chunk without
 /// copying the rest of the backlog.
@@ -581,6 +553,7 @@ pub(crate) struct Tab {
     pending_vte: HashMap<u32, PendingPtyBacklog>,
     /// Oldest scrolled-output bytes dropped because `MAX_PENDING_VTE_BYTES`
     /// was hit. Not the steady state: quanta are supposed to drain the backlog.
+    #[cfg(test)]
     pending_vte_bytes_dropped: HashMap<u32, u64>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
@@ -602,6 +575,7 @@ pub(crate) struct Tab {
     // cursor_shape_csi)
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
+    pending_pty_bytes: HashMap<u32, usize>,
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
     default_shell: PathBuf,
@@ -1521,6 +1495,7 @@ impl Tab {
             hidden_bars: HiddenBars::default(),
             auto_layout,
             pending_vte: HashMap::new(),
+            #[cfg(test)]
             pending_vte_bytes_dropped: HashMap::new(),
             connected_clients,
             selecting_with_mouse_in_pane: None,
@@ -1536,6 +1511,7 @@ impl Tab {
             cursor_positions_and_shape: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
+            pending_pty_bytes: HashMap::new(),
             swap_layouts,
             default_shell,
             debug,
@@ -2956,16 +2932,7 @@ impl Tab {
         if bytes.is_empty() {
             return;
         }
-        let used = self
-            .pending_instructions
-            .iter()
-            .map(|instruction| match instruction {
-                BufferedTabInstruction::HandlePtyBytes(id, buffered) if *id == pid => {
-                    buffered.len()
-                },
-                _ => 0,
-            })
-            .sum::<usize>();
+        let used = self.pending_pty_bytes.get(&pid).copied().unwrap_or(0);
         let room = MAX_PENDING_VTE_BYTES.saturating_sub(used);
         if bytes.len() > room {
             log::warn!(
@@ -2978,12 +2945,22 @@ impl Tab {
             }
             bytes.truncate(room);
         }
+        *self.pending_pty_bytes.entry(pid).or_default() += bytes.len();
+        if let Some(BufferedTabInstruction::HandlePtyBytes(last_pid, buffered)) =
+            self.pending_instructions.last_mut()
+        {
+            if *last_pid == pid {
+                buffered.extend_from_slice(&bytes);
+                return;
+            }
+        }
         self.pending_instructions
             .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
             self.pending_instructions.drain(..).collect();
+        self.pending_pty_bytes.clear();
         for buffered_instruction in buffered_instructions {
             match buffered_instruction {
                 BufferedTabInstruction::SetPaneSelectable(pane_id, selectable) => {
@@ -4950,9 +4927,18 @@ impl Tab {
             }
         });
         if let Some(focus_event) = focus_event {
-            let _ = self
-                .os_api
-                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            if self.senders.to_pty_writer.is_some() {
+                let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                    focus_event.into_bytes(),
+                    terminal_id,
+                    None,
+                ));
+            } else {
+                // Test and embedded buses have no writer thread.
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            }
         }
     }
     pub fn check_and_handle_bell_notifications(
@@ -5403,7 +5389,10 @@ impl Tab {
             let overflow = backlog.len - MAX_PENDING_VTE_BYTES;
             let dropped = backlog.drop_oldest(overflow);
             if dropped > 0 {
-                *self.pending_vte_bytes_dropped.entry(pid).or_default() += dropped as u64;
+                #[cfg(test)]
+                {
+                    *self.pending_vte_bytes_dropped.entry(pid).or_default() += dropped as u64;
+                }
                 log::warn!(
                     "pane {pid} dropped {dropped} oldest bytes of scrolled output to stay within \
                      the {MAX_PENDING_VTE_BYTES} byte pending ceiling"
@@ -5484,10 +5473,14 @@ impl Tab {
         self.has_pending_vte_bytes() || self.panes_have_deferred_work()
     }
     fn panes_have_deferred_work(&self) -> bool {
-        self.get_all_pane_ids().into_iter().any(|pane_id| {
-            self.get_pane_with_id(pane_id)
-                .is_some_and(|pane| pane.has_deferred_pane_work())
-        })
+        self.tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .any(|(_, pane)| pane.has_deferred_pane_work())
+            || self
+                .suppressed_panes
+                .values()
+                .any(|(_, pane)| pane.has_deferred_pane_work())
     }
     pub(crate) fn advance_deferred_pane_work(&mut self) {
         let pane_ids = self.get_all_pane_ids();
@@ -5665,7 +5658,7 @@ impl Tab {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
             }
-            for query in coalesce_palette_queries(forwarded_queries) {
+            for query in crate::host_query::pack_shared_round_trip(forwarded_queries) {
                 let _ = self
                     .senders
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
@@ -9466,6 +9459,7 @@ impl Tab {
         {
             Some(pane_to_rerun) => {
                 if let Some(command_to_rerun) = pane_to_rerun.rerun() {
+                    self.pending_vte.remove(&terminal_pane_id);
                     self.pids_waiting_resize.insert(terminal_pane_id);
                     let _ = self.senders.send_to_pty(PtyInstruction::ReRunCommandInPane(
                         pane_id,

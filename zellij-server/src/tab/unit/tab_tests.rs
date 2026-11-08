@@ -17188,6 +17188,29 @@ pub fn pending_vte_bytes_are_bounded_while_scrolled() {
 }
 
 #[test]
+pub fn pre_layout_pty_output_is_coalesced_and_bounded() {
+    let mut tab = create_new_tab(Size { rows: 24, cols: 80 }, false);
+    tab.is_pending = true;
+    tab.buffer_pending_pty_bytes(1, vec![b'a'; super::MAX_PENDING_VTE_BYTES]);
+    tab.buffer_pending_pty_bytes(1, b"dropped".to_vec());
+    tab.buffer_pending_pty_bytes(2, b"other".to_vec());
+
+    assert_eq!(tab.pending_instructions.len(), 2);
+    match &tab.pending_instructions[0] {
+        super::BufferedTabInstruction::HandlePtyBytes(pid, bytes) => {
+            assert_eq!(*pid, 1);
+            assert_eq!(bytes.len(), super::MAX_PENDING_VTE_BYTES);
+        },
+        _ => panic!("expected buffered PTY bytes"),
+    }
+    assert_eq!(
+        tab.pending_pty_bytes.get(&1).copied(),
+        Some(super::MAX_PENDING_VTE_BYTES)
+    );
+    assert_eq!(tab.pending_pty_bytes.get(&2).copied(), Some(5));
+}
+
+#[test]
 pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
     let size = Size {
         cols: 121,
@@ -17277,7 +17300,10 @@ pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
         assert!(scroll_guard < 10_000, "scroll to bottom did not finish");
     }
     assert_eq!(tab.pending_vte_len(1), 0);
-    let full = tab.get_pane_with_id(pane_a).unwrap().dump_screen(true, None);
+    let full = tab
+        .get_pane_with_id(pane_a)
+        .unwrap()
+        .dump_screen(true, None);
     let mut previous = 0;
     for line in &ordered_lines {
         let found = full[previous..]

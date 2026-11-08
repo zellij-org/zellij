@@ -9550,6 +9550,31 @@ fn forward_host_query_when_busy_queues_instead_of_dispatching() {
 }
 
 #[test]
+fn queued_queries_for_one_pane_share_a_round_trip() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+
+    let _in_flight = screen.forward_host_query(pane, bg_query());
+    let queued = screen.forward_host_query(pane, palette_query(1));
+    let merged = screen.forward_host_query(pane, palette_query(2));
+
+    assert_eq!(queued, merged, "the merge keeps the queued token");
+    assert_eq!(screen.forward_queue.len(), 1);
+    match &screen.forward_queue[0].query {
+        HostQuery::RoundTrip(parts) => {
+            assert_eq!(parts.len(), 2);
+            assert_eq!(
+                screen.forward_queue[0].query.to_query_bytes(),
+                b"\x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\"
+            );
+        },
+        other => panic!("expected a round trip, got {other:?}"),
+    }
+    assert_eq!(capture.drain_forward_queries().len(), 1);
+}
+
+#[test]
 fn handle_reply_writes_to_pane_pty_and_releases_slot() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
@@ -10168,6 +10193,60 @@ fn empty_reply_falls_back_to_cached_palette_register() {
     assert_eq!(
         std::str::from_utf8(&writes[0].0).unwrap(),
         "\u{1b}]4;42;rgb:abab/cdcd/efef\u{1b}\\",
+    );
+}
+
+#[test]
+fn empty_round_trip_uses_every_cached_part() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![
+        (1, "rgb:0101/0101/0101".to_string()),
+        (2, "rgb:0202/0202/0202".to_string()),
+    ]);
+    screen.update_terminal_foreground_color("rgb:0a0a/0b0b/0c0c".to_string());
+    let token = screen.forward_host_query(
+        pane,
+        HostQuery::RoundTrip(vec![palette_query(1), fg_query(), palette_query(2)]),
+    );
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]4;1;rgb:0101/0101/0101\u{1b}\\\
+         \u{1b}]10;rgb:0a0a/0b0b/0c0c\u{1b}\\\
+         \u{1b}]4;2;rgb:0202/0202/0202\u{1b}\\"
+    );
+}
+
+#[test]
+fn empty_round_trip_with_one_uncached_part_writes_nothing() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![(1, "rgb:0101/0101/0101".to_string())]);
+    let token = screen.forward_host_query(
+        pane,
+        HostQuery::RoundTrip(vec![palette_query(1), palette_query(2)]),
+    );
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0].0.is_empty(),
+        "a missing register must not shift the other reply onto the wrong query"
     );
 }
 
@@ -11041,14 +11120,14 @@ fn pane_buffers_pty_bytes_while_forward_paused() {
 }
 
 #[test]
-fn pane_forward_in_vte_stops_processing_with_remainder_queued() {
-    // App sends `OSC 10;? + after`. When vte's OSC dispatch runs and
-    // Grid pushes the forward query, processing must stop, leaving
-    // `after` in the queue. Those bytes will be replayed AFTER the
-    // host reply has been written.
+fn pane_forward_in_vte_stops_before_a_non_shareable_query() {
+    // `OSC 10;?` opens a batchable host query. Text after it can be parsed
+    // while the batch is open, but a clipboard read needs its own reply, so
+    // that query and everything after it must wait for the batch reply.
     let mut pane = new_terminal_pane_for_pause_test(1);
     let mut input = b"\x1b]10;?\x07".to_vec();
-    input.extend_from_slice(b"after");
+    let blocked = b"\x1b]52;c;?\x07after".to_vec();
+    input.extend_from_slice(&blocked);
     pane.handle_pty_bytes(input);
 
     let queries = pane.drain_forwarded_queries();
@@ -11062,10 +11141,67 @@ fn pane_forward_in_vte_stops_processing_with_remainder_queued() {
 
     let buffered = pane.drain_pending_pty_input();
     assert_eq!(
-        buffered,
-        b"after".to_vec(),
-        "bytes after the forward must remain queued, not rendered"
+        buffered, blocked,
+        "a non-shareable query and the bytes after it must remain queued"
     );
+}
+
+#[test]
+fn separate_palette_queries_in_one_read_stop_before_da1() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let input = b"\x1b]4;1;?\x07hello\x1b[31m\x1b]4;2;?\x1b\\\x1b[c".to_vec();
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 2, "both palette queries are parsed together");
+    assert!(matches!(
+        &queries[0],
+        HostQuery::PaletteRegister { indices, .. } if indices == &vec![1]
+    ));
+    assert!(matches!(
+        &queries[1],
+        HostQuery::PaletteRegister { indices, .. } if indices == &vec![2]
+    ));
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "DA1 is not answered before the palette queries go out"
+    );
+    assert!(pane.dump_screen(true, None).contains("hello"));
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
+}
+
+#[test]
+fn a_clipboard_query_does_not_join_an_open_palette_batch() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    pane.handle_pty_bytes(b"\x1b]4;1;?\x07\x1b]52;c;?\x1b\\".to_vec());
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 1);
+    assert!(matches!(queries[0], HostQuery::PaletteRegister { .. }));
+    assert_eq!(
+        pane.drain_pending_pty_input(),
+        b"\x1b]52;c;?\x1b\\".to_vec()
+    );
+}
+
+#[test]
+fn da1_split_across_a_scan_block_stays_behind_the_open_batch() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let block = crate::panes::terminal_pane::PTY_SCAN_BLOCK_SIZE;
+    let mut input = b"\x1b]4;1;?\x07".to_vec();
+    // The scan block ends on `ESC [`. The final `c` is in the next block.
+    input.resize(block - 2, b'a');
+    input.extend_from_slice(b"\x1b[c");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 1);
+    assert!(matches!(queries[0], HostQuery::PaletteRegister { .. }));
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "the DA1 final byte is in the next scan block and must not be answered yet"
+    );
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
 }
 
 #[test]
@@ -11170,10 +11306,9 @@ fn forwarded_reply_routes_through_tab_for_unpaused_pane() {
 
 #[test]
 fn paused_pane_with_da1_in_queue_emits_da1_after_resume() {
-    // Simulates the user-reported ordering bug: app sends
-    // `OSC 10;? + CSI c`. The OSC 10 forward must be dispatched
-    // first, then the DA1 reply emitted only after the resume kicks
-    // processing of the queued `\x1b[c`.
+    // `OSC 10;?` followed by `CSI c`: the color query is forwarded
+    // first, and the DA1 reply is emitted only after resume processes
+    // the queued `\x1b[c`.
     let mut pane = new_terminal_pane_for_pause_test(1);
     let mut input = b"\x1b]10;?\x07".to_vec();
     input.extend_from_slice(b"\x1b[c");
