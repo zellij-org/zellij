@@ -20705,6 +20705,126 @@ fn cli_pane_renames_drop_control_characters() {
 }
 
 #[test]
+fn many_title_changes_in_one_turn_report_pane_state_once_with_the_last_title() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    new_tab(&mut screen, 1, 0);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .background_plugin_subscriptions
+        .insert((7, 1), HashSet::from([EventType::PaneUpdate]));
+    // Settle the initial attention-visibility sync so the only pane-state
+    // report left to observe is the title-driven one.
+    screen.render_to_clients().expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    for title in ["first", "second", "last"] {
+        let bytes = format!("\x1b]0;{title}\x07").into_bytes();
+        screen.apply_pty_bytes(1, bytes).expect("TEST");
+    }
+    let pane_updates_before_render = received_pane_updates(&plugin_receiver);
+    assert!(
+        pane_updates_before_render.is_empty(),
+        "title changes should be coalesced until the next render, got {} pane updates",
+        pane_updates_before_render.len()
+    );
+
+    screen.render_to_clients().expect("TEST");
+    let pane_updates = received_pane_updates(&plugin_receiver);
+    assert_eq!(
+        pane_updates.len(),
+        1,
+        "many title changes in one render turn must report pane state once"
+    );
+    let title = pane_updates[0]
+        .panes
+        .get(&0)
+        .and_then(|panes| panes.iter().find(|pane| pane.id == 1))
+        .map(|pane| pane.title.clone())
+        .expect("the terminal pane was reported");
+    assert_eq!(title, "last");
+
+    // A report satisfies the pending flag, so a second render does not repeat it.
+    screen.render_to_clients().expect("TEST");
+    assert!(received_pane_updates(&plugin_receiver).is_empty());
+}
+
+fn received_pane_updates(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<zellij_utils::data::PaneManifest> {
+    plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Update(updates) => Some(updates),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|(_plugin_id, _client_id, event)| match event {
+            Event::PaneUpdate(manifest) => Some(manifest),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_targeted_pane_state_report_does_not_drop_the_pending_broadcast() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    new_tab(&mut screen, 1, 0);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .background_plugin_subscriptions
+        .insert((7, 1), HashSet::from([EventType::PaneUpdate]));
+    screen.render_to_clients().expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    screen
+        .apply_pty_bytes(1, b"\x1b]0;last\x07".to_vec())
+        .expect("TEST");
+    screen
+        .report_pane_and_tab_state_to_plugin(9, 1)
+        .expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    screen.render_to_clients().expect("TEST");
+    let pane_updates = received_pane_updates(&plugin_receiver);
+    assert_eq!(
+        pane_updates.len(),
+        1,
+        "the broadcast must still reach the subscribed plugin"
+    );
+    let title = pane_updates[0]
+        .panes
+        .get(&0)
+        .and_then(|panes| panes.iter().find(|pane| pane.id == 1))
+        .map(|pane| pane.title.clone())
+        .expect("the terminal pane was reported");
+    assert_eq!(title, "last");
+}
+
+#[test]
 fn closing_a_pane_that_needs_you_updates_the_reported_session_attention() {
     let size = Size {
         cols: 121,

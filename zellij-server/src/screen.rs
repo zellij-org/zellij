@@ -2370,6 +2370,10 @@ pub(crate) struct Screen {
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
+    /// A pane title changed since the last pane-state report. Reports are
+    /// coalesced to one per render so programs that alternate their title on
+    /// every output chunk cannot force a full pane-manifest build per chunk.
+    pane_state_report_pending: bool,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
@@ -2839,6 +2843,7 @@ impl Screen {
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
             state_report_target: None,
+            pane_state_report_pending: false,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
@@ -6318,6 +6323,8 @@ impl Screen {
         // the render method for more details)
         let err_context = "failed to render screen";
 
+        self.flush_pending_pane_state_report().non_fatal();
+
         // Separate rendering for regular clients and watchers
         let has_regular_clients = self
             .connected_clients
@@ -7732,6 +7739,12 @@ impl Screen {
         Ok(tab_infos_for_screen_state.values().cloned().collect())
     }
     fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
+        // A broadcast report reflects the current pane state, so it also
+        // satisfies a pending title-change report. Targeted reports only reach
+        // one plugin, so other plugins still need the coalesced broadcast.
+        if self.state_report_target.is_none() {
+            self.pane_state_report_pending = false;
+        }
         let mut pane_manifest = PaneManifest::default();
         for tab in self.tabs.values() {
             let mut pane_infos = tab.pane_infos();
@@ -7758,6 +7771,13 @@ impl Screen {
         }
 
         Ok(pane_manifest)
+    }
+
+    fn flush_pending_pane_state_report(&mut self) -> Result<()> {
+        if !self.pane_state_report_pending {
+            return Ok(());
+        }
+        self.generate_and_report_pane_state().map(|_| ())
     }
 
     fn report_pane_and_tab_state_to_plugin(
@@ -9934,9 +9954,7 @@ impl Screen {
         }
         self.enforce_forward_buffer_limit(pid);
         if title_changed {
-            self.generate_and_report_pane_state()
-                .map(|_| ())
-                .non_fatal();
+            self.pane_state_report_pending = true;
         }
         if vte_bytes.is_none() {
             self.attention_output(pid);
