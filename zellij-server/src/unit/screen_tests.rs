@@ -21612,3 +21612,54 @@ fn a_newer_run_exit_before_its_start_is_not_lost() {
     assert_eq!(runs[&1].generation, 2);
     assert!(super::stage_run_drained(&mut runs, 1, 2).is_some());
 }
+
+#[test]
+fn settled_run_exit_is_released_after_pending_rep_is_applied() {
+    let size = Size { cols: 20, rows: 5 };
+    let mut screen = create_new_screen_with_kitty_graphics(size, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    let exit = ScreenInstruction::ClosePane(
+        PaneId::Terminal(1),
+        None,
+        None,
+        Some(0),
+        ClosePaneSource::ChildExit,
+        Some(1),
+    );
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 1,
+            drained: true,
+            deferred_exit: Some(exit),
+        },
+    );
+
+    let tab = screen.get_active_tab_mut(1).expect("active tab");
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec())
+        .expect("feed repeat");
+    assert!(tab.has_pending_output(1));
+    screen.release_settled_run_exits();
+    assert!(
+        screen
+            .terminal_runs
+            .get(&1)
+            .and_then(|run| run.deferred_exit.as_ref())
+            .is_some(),
+        "an unfinished repeat must hold the exit"
+    );
+
+    let tab = screen.get_active_tab_mut(1).expect("active tab");
+    while tab.has_pending_output(1) {
+        tab.advance_deferred_pane_work();
+    }
+    screen.release_settled_run_exits();
+    assert!(
+        screen
+            .terminal_runs
+            .get(&1)
+            .and_then(|run| run.deferred_exit.as_ref())
+            .is_none(),
+        "the exit is released once the repeat is applied"
+    );
+}

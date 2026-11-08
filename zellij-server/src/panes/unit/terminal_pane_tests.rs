@@ -223,6 +223,40 @@ fn rep_paused_output_is_bounded_and_dropped_oldest() {
 }
 
 #[test]
+fn image_capable_chunks_do_not_park_scrolled_panes() {
+    let pane = terminal_pane_with_size(4, 20);
+    assert!(pane.parking_is_safe(b"plain text"));
+    assert!(!pane.parking_is_safe(b"\x1bPq#0;2;0;0;0"));
+    assert!(!pane.parking_is_safe(b"\x1b_Ga=t,f=24;AAAA\x1b\\"));
+    assert!(!pane.parking_is_safe(b"\x1b]1337;File=inline=1:AAAA\x07"));
+}
+
+#[test]
+fn scrolled_image_output_does_not_resume_in_history() {
+    let mut pane = terminal_pane_with_size(5, 20);
+    for _ in 0..30 {
+        pane.handle_pty_bytes_for_test(b"HHHHHHHHHHHHHHHHHHHH\r\n".to_vec());
+    }
+    assert!(pane.grid.lines_above.len() > 1);
+    pane.scroll_up(1, 1);
+    assert!(pane.is_scrolled());
+
+    let sixel = "\u{1b}Pq\n#0;2;0;0;0\n#1;2;100;100;0\n#2;2;0;100;0\n\
+                 #1~~@@vv@@~~@@~~$\n#2??}}GG}}??}}??-\n#1!14@\n\u{1b}\\";
+    pane.handle_pty_bytes_for_test(format!("{sixel}\r\nX").into_bytes());
+    pane.clear_scroll();
+
+    let viewport = pane.grid.as_character_lines();
+    let contains_x = viewport
+        .iter()
+        .any(|row| row.iter().any(|cell| cell.character == 'X'));
+    assert!(
+        contains_x,
+        "output after a scrolled image landed in history instead of the live model"
+    );
+}
+
+#[test]
 pub fn sixel_image_inside_terminal_pane() {
     let mut fake_win_size = PaneGeom::default();
     fake_win_size.cols.set_inner(121);

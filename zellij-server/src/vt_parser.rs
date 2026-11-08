@@ -340,6 +340,20 @@ impl Parser {
         self.carry_len = 0;
     }
 
+    /// Whether a control string that can carry an inline image is currently
+    /// open. Parking a scrolled pane is unsafe across such strings because
+    /// the image is inserted only when the string ends.
+    pub fn in_image_capable_string(&self) -> bool {
+        matches!(
+            self.state,
+            State::DcsEntry
+                | State::DcsParam
+                | State::DcsIntermediate
+                | State::DcsPassthrough
+                | State::DcsIgnore
+        ) || (matches!(self.state, State::OscString) && self.osc.starts_with(b"1337;"))
+    }
+
     #[cfg(test)]
     pub(crate) fn without_shortcuts() -> Self {
         Parser {

@@ -21497,6 +21497,28 @@ fn suppressed_scrollback_editor_pane_advances_rep_and_reports_pending_output() {
 }
 
 #[test]
+fn nested_suppression_resolves_terminal_identity_by_pid_not_map_key() {
+    let mut tab = create_new_tab(Size { cols: 40, rows: 8 }, false);
+    // Simulate {E -> P, P -> Q}: the pane stored under key P has pid Q, while
+    // the pane whose pid is P is stored under E.
+    let pane_p = tab.new_scrollback_editor_pane(10);
+    let pane_q = tab.new_scrollback_editor_pane(20);
+    tab.suppressed_panes
+        .insert(PaneId::Terminal(10), (true, Box::new(pane_q)));
+    tab.suppressed_panes
+        .insert(PaneId::Terminal(99), (true, Box::new(pane_p)));
+
+    let resolved = tab
+        .get_pane_by_pid(PaneId::Terminal(10))
+        .expect("pid identity resolves");
+    assert_eq!(resolved.pid(), PaneId::Terminal(10));
+    let resolved_mut = tab
+        .get_pane_by_pid_mut(PaneId::Terminal(10))
+        .expect("mutable pid identity resolves");
+    assert_eq!(resolved_mut.pid(), PaneId::Terminal(10));
+}
+
+#[test]
 fn deferred_rep_suffix_forwards_its_host_query() {
     let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
     tab.handle_pty_bytes(1, b"a\x1b[1025b\x1b[14t".to_vec())

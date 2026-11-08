@@ -317,6 +317,29 @@ enum PaneLayer {
 type HoldForCommand = Option<RunCommand>;
 pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is scrollback editor
 
+/// PID-first mutable pane lookup. Kept as a free function so callers can
+/// borrow the pane containers independently of the other `Tab` fields (for
+/// example while the resize macro reads the OS API and senders).
+fn pane_by_pid_mut<'a>(
+    floating_panes: &'a mut FloatingPanes,
+    tiled_panes: &'a mut TiledPanes,
+    suppressed_panes: &'a mut SuppressedPanes,
+    pane_id: PaneId,
+) -> Option<&'a mut Box<dyn Pane>> {
+    if suppressed_panes
+        .values()
+        .any(|(_, pane)| pane.pid() == pane_id)
+    {
+        return suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == pane_id)
+            .map(|(_, pane)| pane);
+    }
+    floating_panes
+        .get_pane_mut(pane_id)
+        .or_else(|| tiled_panes.get_pane_mut(pane_id))
+}
+
 pub type StackListId = usize;
 
 #[derive(Debug, Clone)]
@@ -4897,6 +4920,32 @@ impl Tab {
                 }
             })
     }
+    /// Resolve a pane by its terminal identity rather than by the key it is
+    /// stored under. A suppressed pane keeps its original pid while it is
+    /// stored under the id of the pane that replaced it, and suppression can
+    /// nest. PTY traffic, deferred work and run settlement all address that
+    /// original pid.
+    pub fn get_pane_by_pid(&self, pane_id: PaneId) -> Option<&dyn Pane> {
+        if let Some((_, pane)) = self
+            .suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
+            return Some(pane.as_ref());
+        }
+        self.floating_panes
+            .get_pane(pane_id)
+            .map(Box::as_ref)
+            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
+    }
+    pub fn get_pane_by_pid_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+        pane_by_pid_mut(
+            &mut self.floating_panes,
+            &mut self.tiled_panes,
+            &mut self.suppressed_panes,
+            pane_id,
+        )
+    }
     /// A suppressed pane is stored under the id of the pane that replaced it
     /// (for example the scrollback editor), while PTY traffic still addresses
     /// its original terminal id. Resolve both.
@@ -5388,7 +5437,7 @@ impl Tab {
         // a backlog already exists stay behind it so order does not change.
         if self.pending_vte_len(pid) > 0
             || self.terminal_pane_is_scrolled(pid)
-            || self.terminal_pane_has_pending_output(pid)
+            || !self.terminal_pane_can_accept_pty_bytes(pid)
         {
             self.enqueue_pending_vte(pid, bytes);
             self.apply_one_pending_vte_quantum(pid)
@@ -5398,12 +5447,13 @@ impl Tab {
         self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
     fn terminal_pane_is_scrolled(&self, pid: u32) -> bool {
-        self.get_pane_with_id(PaneId::Terminal(pid))
+        self.get_pane_by_pid(PaneId::Terminal(pid))
             .is_some_and(|pane| pane.is_scrolled())
     }
-    fn terminal_pane_has_pending_output(&self, pid: u32) -> bool {
-        self.get_pane_with_id(PaneId::Terminal(pid))
-            .is_some_and(|pane| pane.has_pending_output())
+    fn terminal_pane_can_accept_pty_bytes(&self, pid: u32) -> bool {
+        self.get_pane_by_pid(PaneId::Terminal(pid))
+            .map(|pane| pane.can_accept_pty_bytes())
+            .unwrap_or(true)
     }
     fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>) {
         if bytes.is_empty() {
@@ -5451,7 +5501,7 @@ impl Tab {
     pub(crate) fn has_pending_output(&self, pid: u32) -> bool {
         self.pending_vte_len(pid) > 0
             || self
-                .get_pane_with_id(PaneId::Terminal(pid))
+                .get_pane_by_pid(PaneId::Terminal(pid))
                 .is_some_and(|pane| pane.has_pending_output())
     }
     #[cfg(test)]
@@ -5481,7 +5531,7 @@ impl Tab {
         }
         let has_bytes = self.pending_vte_len(pid) > 0;
         let (parse_now, can_accept) = self
-            .get_pane_with_id_mut(PaneId::Terminal(pid))
+            .get_pane_by_pid_mut(PaneId::Terminal(pid))
             .map(|pane| {
                 let parse_now = pane.prepare_scrolled_output(has_bytes);
                 let can_accept = pane.can_accept_pty_bytes();
@@ -5493,17 +5543,17 @@ impl Tab {
         }
         let bytes = self.take_pending_vte_quantum(pid);
         if bytes.is_empty() {
-            if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
                 pane.scrolled_backlog_idle();
             }
             return Ok(());
         }
         self.process_pty_bytes(pid, bytes)?;
         if self.pending_vte_len(pid) == 0 {
-            if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
                 pane.scrolled_backlog_idle();
             }
-        } else if let Some(pane) = self.get_pane_with_id_mut(PaneId::Terminal(pid)) {
+        } else if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
             pane.restore_short_output_catchup();
         }
         Ok(())
@@ -5524,7 +5574,7 @@ impl Tab {
     pub(crate) fn advance_deferred_pane_work(&mut self) {
         let pane_ids = self.get_all_pane_ids();
         for pane_id in pane_ids {
-            let did_work = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            let did_work = if let Some(pane) = self.get_pane_by_pid_mut(pane_id) {
                 if pane.has_deferred_pane_work() {
                     pane.advance_deferred_pane_work();
                     true
@@ -5596,22 +5646,14 @@ impl Tab {
         }
         // Clear the pause; any bytes buffered while it waited for the
         // host reply are processed in place, in order.
-        let has_buffered = if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            }) {
-            terminal_output.clear_forward_pause();
-            terminal_output.has_pending_pty_input()
-        } else {
-            // Pane closed between forward dispatch and reply arrival.
-            return Ok(());
-        };
+        let has_buffered =
+            if let Some(terminal_output) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                terminal_output.clear_forward_pause();
+                terminal_output.has_pending_pty_input()
+            } else {
+                // Pane closed between forward dispatch and reply arrival.
+                return Ok(());
+            };
         if has_buffered {
             self.process_pty_bytes(pid, Vec::new())
                 .with_context(err_context)?;
@@ -5621,36 +5663,19 @@ impl Tab {
     /// Whether the terminal pane `pid` is waiting on a host reply with
     /// more output buffered than it may hold.
     pub fn pending_pty_input_exceeds_forward_limit(&self, pid: u32) -> bool {
-        // Find the pane the way `process_pty_bytes` does: a pane hidden
-        // behind the scrollback editor is stored under the editor's id.
-        let pane_id = PaneId::Terminal(pid);
-        self.floating_panes
-            .get_pane(pane_id)
-            .map(Box::as_ref)
-            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .map(|s_p| s_p.1.as_ref())
-                    .find(|pane| pane.pid() == pane_id)
-            })
+        self.get_pane_by_pid(PaneId::Terminal(pid))
             .map(|pane| pane.pending_pty_input_exceeds_forward_limit())
             .unwrap_or(false)
     }
     fn process_pty_bytes(&mut self, pid: u32, mut bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
-        if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            })
-        {
+        if let Some(terminal_output) = pane_by_pid_mut(
+            &mut self.floating_panes,
+            &mut self.tiled_panes,
+            &mut self.suppressed_panes,
+            PaneId::Terminal(pid),
+        ) {
             if self.pids_waiting_resize.remove(&pid) {
                 resize_pty!(
                     terminal_output,

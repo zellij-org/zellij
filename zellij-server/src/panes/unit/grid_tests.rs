@@ -13792,6 +13792,51 @@ fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
     );
 }
 
+#[test]
+fn deferred_recount_reserves_room_instead_of_starving_under_churn() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let pattern = "\u{754c}a";
+    let initial = pattern.repeat(scroll_buffer_size * 4 + 5_000);
+    feed_bytes(&mut grid, initial.as_bytes());
+    assert!(
+        grid.lines_above.len() >= scroll_buffer_size,
+        "the unbroken mixed line did not reach the scrollback cap"
+    );
+
+    grid.resize_keeping_recount_open(5, 11);
+    assert!(grid.display_recount_pending());
+    let max_turns = 220;
+    let mut turns = 0;
+    let mut completed = false;
+    while grid.display_recount_pending() && turns < max_turns && !completed {
+        feed_bytes(&mut grid, pattern.repeat(16).as_bytes());
+        completed = grid.continue_display_row_recount();
+        turns += 1;
+    }
+    assert!(
+        completed,
+        "the recount never completed in {turns} turns under front eviction (rows={}, lines={}, front_unmeasured={})",
+        grid.lines_above.len(),
+        grid.line_index.line_count(),
+        grid.line_index.front_line_unmeasured()
+    );
+
+    // Stop producing: the trim after the completed recount may have opened a
+    // final recount over the surviving front line, which must settle.
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 300 {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+    assert!(!grid.display_recount_pending());
+    assert!(
+        grid.lines_above.len() <= scroll_buffer_size,
+        "the recount reserve was not trimmed: {} > {scroll_buffer_size}",
+        grid.lines_above.len()
+    );
+}
+
 fn line_index_counters() -> (usize, usize, usize) {
     use crate::panes::line_index::{boundary_discoveries, cell_visits, row_visits};
     (row_visits(), cell_visits(), boundary_discoveries())

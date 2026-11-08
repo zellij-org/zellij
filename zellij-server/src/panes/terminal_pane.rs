@@ -292,10 +292,7 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
-        if bytes.is_empty()
-            && !self.forward_paused
-            && (self.grid.rep_pending() || !self.has_pending_pty_input())
-        {
+        if bytes.is_empty() && (self.grid.rep_pending() || !self.has_pending_pty_input()) {
             // An empty resume with nothing buffered must not complete a
             // half-received escape with a synthetic ESC, and a paused repeat
             // is advanced by deferred work rather than by this path.
@@ -315,7 +312,8 @@ impl Pane for TerminalPane {
             self.append_pending_pty_input(&bytes);
             return;
         }
-        self.with_live_terminal(|pane| pane.feed_terminal_bytes(&bytes));
+        let allow_park = self.parking_is_safe(&bytes) && self.pending_input_parking_is_safe();
+        self.with_live_terminal(allow_park, |pane| pane.feed_terminal_bytes(&bytes));
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
@@ -879,7 +877,7 @@ impl Pane for TerminalPane {
     }
     fn advance_deferred_pane_work(&mut self) {
         if self.grid.rep_pending() {
-            self.with_live_terminal(|pane| {
+            self.with_live_terminal(self.parking_is_safe(&[]), |pane| {
                 let done = pane.grid.continue_pending_rep();
                 if done {
                     // Resume the bytes the parser left behind the repeat.
@@ -890,7 +888,8 @@ impl Pane for TerminalPane {
             return;
         }
         if !self.forward_paused && self.has_pending_pty_input() {
-            self.with_live_terminal(|pane| pane.process_pending_pty_input());
+            let allow_park = self.parking_is_safe(&[]) && self.pending_input_parking_is_safe();
+            self.with_live_terminal(allow_park, |pane| pane.process_pending_pty_input());
             self.set_should_render(true);
             return;
         }
@@ -1782,21 +1781,45 @@ impl TerminalPane {
     /// Apply terminal operations against the live model even when the user
     /// is looking at history. The held view is restored afterwards, so a
     /// deferred REP quantum and the bytes behind it cannot land in history.
-    fn with_live_terminal<R>(&mut self, operation: impl FnOnce(&mut Self) -> R) -> R {
+    fn bytes_may_place_image(bytes: &[u8]) -> bool {
+        const INTRODUCERS: [&[u8]; 3] = [b"\x1bP", b"\x1b_", b"\x1b]1337;"];
+        INTRODUCERS
+            .iter()
+            .any(|introducer| memchr::memmem::find(bytes, introducer).is_some())
+    }
+
+    fn parking_is_safe(&self, bytes: &[u8]) -> bool {
+        self.kitty_interceptor.is_ground()
+            && !self.vte_parser.in_image_capable_string()
+            && !Self::bytes_may_place_image(bytes)
+    }
+
+    fn pending_input_parking_is_safe(&self) -> bool {
+        !Self::bytes_may_place_image(&self.pending_pty_input[self.pending_pty_offset..])
+    }
+
+    fn with_live_terminal<R>(
+        &mut self,
+        allow_park: bool,
+        operation: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         if !self.grid.is_scrolled || self.grid.is_live_bottom_parked() {
             return operation(self);
         }
-        if self.grid.park_at_live_bottom() {
+        if allow_park && self.grid.park_at_live_bottom() {
             let result = operation(self);
             self.grid.unpark_live_bottom();
             return result;
         }
         // An image placement still depends on scrollback coordinates; use
         // the same anchor fallback the direct PTY path uses.
+        let alternate_before = self.grid.is_alternate_mode_active();
         let viewport_anchor = self.grid.viewport_anchor();
         self.grid.reset_viewport();
         let result = operation(self);
-        self.grid.restore_viewport_anchor(viewport_anchor);
+        if self.grid.is_alternate_mode_active() == alternate_before {
+            self.grid.restore_viewport_anchor(viewport_anchor);
+        }
         result
     }
 

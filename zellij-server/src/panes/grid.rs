@@ -1420,6 +1420,24 @@ fn bounded_push(
     }
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
+    // While the oldest line is being measured, evicting it would move the
+    // measurement origin and restart the job. Admit a bounded reserve of new
+    // rows instead; the recount trims back to the normal cap when it finishes.
+    // If output outruns the recount, evictions resume at the 2x ceiling. Each
+    // completed recount still publishes the exact length, so this is a
+    // bounded-work cycle, not a stuck measurement.
+    let reserving_for_recount =
+        line_index.front_line_unmeasured() && line_index.measurement_active();
+    let row_limit = if reserving_for_recount {
+        scroll_buffer_size.saturating_mul(2)
+    } else {
+        scroll_buffer_size
+    };
+    let cell_limit = if reserving_for_recount {
+        cell_budget.saturating_mul(2)
+    } else {
+        cell_budget
+    };
     let mut evicted = 0usize;
     // Measure after trailing-blank compress. Evict on the prospective
     // total, not the total before this row: rows that each fit the
@@ -1429,8 +1447,8 @@ fn bounded_push(
     // One newest row may exceed the budget; stop once the buffer is
     // empty and admit it anyway.
     let incoming = value.stored_cell_count();
-    while vec.len() >= scroll_buffer_size
-        || (scrollback_cells.saturating_add(incoming) > cell_budget && !vec.is_empty())
+    while vec.len() >= row_limit
+        || (scrollback_cells.saturating_add(incoming) > cell_limit && !vec.is_empty())
     {
         match retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells) {
             Some(_) => evicted += 1,
@@ -2885,19 +2903,47 @@ impl Grid {
     pub(crate) fn display_recount_pending(&self) -> bool {
         !self.line_index.is_fully_measured()
     }
+    /// Whether the bounded scrollback reserve is open because the front line
+    /// is actively being remeasured.
+    #[cfg(test)]
+    pub(crate) fn retention_reserve_active(&self) -> bool {
+        self.line_index.front_line_unmeasured() && self.line_index.measurement_active()
+    }
     /// Measure at most one line/chunk of scrollback. Returns true when the
     /// recount has finished.
     pub(crate) fn continue_display_row_recount(&mut self) -> bool {
-        self.line_index.measure_next(
+        let done = self.line_index.measure_next(
             &self.lines_above,
             MeasureBudget::new(SCREEN_ROW_QUANTUM, DISPLAY_RECOUNT_CELL_BUDGET),
-        ) == MeasureProgress::Done
+        ) == MeasureProgress::Done;
+        if done {
+            self.trim_scrollback_to_budget();
+        }
+        done
     }
     /// Finish a resize recount on the calling thread. Grid tests and any
     /// caller that reads the length immediately use this. The screen thread
     /// uses [`Self::continue_display_row_recount`] one quantum at a time.
     pub(crate) fn finish_display_row_recount(&mut self) {
         self.line_index.measure_all(&self.lines_above);
+        self.trim_scrollback_to_budget();
+    }
+    /// Drop the bounded evacuation reserve admitted while a recount owned the
+    /// front line. Only called once every line has an exact summary.
+    fn trim_scrollback_to_budget(&mut self) {
+        let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+        let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
+        while self.lines_above.len() > scroll_buffer_size
+            || (self.scrollback_cells > cell_budget && !self.lines_above.is_empty())
+        {
+            if !self.evict_one_scrollback_row() {
+                break;
+            }
+        }
+        if self.lines_above.capacity() > self.lines_above.len().saturating_mul(2).saturating_add(64)
+        {
+            self.lines_above.shrink_to_fit();
+        }
     }
     pub(crate) fn rep_pending(&self) -> bool {
         self.pending_rep.is_some()

@@ -899,9 +899,16 @@ impl Soak {
         );
 
         // scrollback
+        let scrollback_reserve = if self.pane.grid.retention_reserve_active() {
+            scrollback_limit
+        } else {
+            0
+        };
+        let lines_above_limit = scrollback_limit.saturating_add(scrollback_reserve);
         assert!(
-            state.lines_above <= scrollback_limit,
-            "scrollback holds {} rows (limit {scrollback_limit}), {at}",
+            state.lines_above <= lines_above_limit,
+            "scrollback holds {} rows (limit {lines_above_limit}, hard limit \
+             {scrollback_limit}), {at}",
             state.lines_above
         );
         assert!(

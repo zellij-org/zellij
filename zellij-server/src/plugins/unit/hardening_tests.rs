@@ -584,6 +584,28 @@ fn worker_messages_are_dropped_for_a_quarantined_plugin() {
 }
 
 #[test]
+fn worker_messages_are_dropped_when_a_failed_load_has_no_instance() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    bridge.cached_worker_messages.insert(
+        42,
+        vec![(
+            1,
+            "worker".to_owned(),
+            "message".to_owned(),
+            "payload".to_owned(),
+        )],
+    );
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    bridge
+        .apply_cached_events_and_resizes_for_plugin(42, shutdown_sender)
+        .unwrap();
+    assert!(
+        !bridge.cached_worker_messages.contains_key(&42),
+        "a failed load must not retain worker messages with no instance to receive them"
+    );
+}
+
+#[test]
 fn quarantine_marks_the_running_instance_for_already_queued_callbacks() {
     let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
     let run = write_noop_plugin(dir.path(), "plugin.wasm");

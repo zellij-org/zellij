@@ -374,6 +374,28 @@ fn huge_continuation_tail() -> Vec<super::super::Row> {
 }
 
 #[test]
+fn empty_continuation_rows_do_not_materialize_in_search_windows() {
+    use crate::panes::search::{reset_search_work, search_work, SearchResult};
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let first = super::super::Row::from_columns(vec![TerminalCharacter::new('a')]).canonical();
+    let empties: Vec<super::super::Row> = (0..10_000).map(|_| super::super::Row::new()).collect();
+    let mut rows: Vec<&super::super::Row> = vec![&first];
+    rows.extend(empties.iter());
+    let mut search = SearchResult::default();
+    search.needle = "zzz".to_string();
+
+    reset_search_work();
+    let _ = search.search_rows(0, &rows);
+    let work = search_work();
+    assert!(
+        work.rows <= 2,
+        "search materialized {} rows for a blank continuation tail",
+        work.rows
+    );
+}
+
+#[test]
 pub fn a_long_wrapped_line_is_searched_in_bounded_windows() {
     use crate::panes::search::{reset_search_work, search_work};
     let content: String = "0123456789".repeat(10);

@@ -184,13 +184,15 @@ struct MeasureCursor {
     cell_index: usize,
     state: RowBoundary,
     boundaries: Vec<RowBoundary>,
-    cell_prefix: Vec<usize>,
+    cell_prefix: VecDeque<usize>,
     row_uniform_widths: Vec<(usize, Option<usize>)>,
     width: usize,
 }
 
 impl MeasureCursor {
     fn new(line_index: usize, row_start: usize, width: usize) -> Self {
+        let mut cell_prefix = VecDeque::new();
+        cell_prefix.push_back(0);
         Self {
             line_index,
             row_start,
@@ -198,7 +200,7 @@ impl MeasureCursor {
             cell_index: 0,
             state: RowBoundary::default(),
             boundaries: Vec::new(),
-            cell_prefix: vec![0],
+            cell_prefix,
             row_uniform_widths: Vec::new(),
             width,
         }
@@ -212,7 +214,7 @@ impl MeasureCursor {
         self.state = RowBoundary::default();
         self.boundaries.clear();
         self.cell_prefix.clear();
-        self.cell_prefix.push(0);
+        self.cell_prefix.push_back(0);
         self.row_uniform_widths.clear();
     }
 }
@@ -221,7 +223,7 @@ struct LineMeasurement {
     boundaries: Vec<RowBoundary>,
     end: RowBoundary,
     height: usize,
-    cell_prefix: Vec<usize>,
+    cell_prefix: VecDeque<usize>,
     uniform_character_width: Option<usize>,
 }
 
@@ -235,7 +237,7 @@ struct Line {
     /// Cumulative stored cells from the original line start.  `cell_prefix`
     /// is empty for an unmeasured line.  `cell_prefix_base` advances when a
     /// front eviction keeps a suffix of the line.
-    cell_prefix: Vec<usize>,
+    cell_prefix: VecDeque<usize>,
     cell_prefix_base: usize,
     /// Single-width lines derive every boundary from `cell_prefix`, so a
     /// mid-line front eviction does not have to rewrite the whole line.
@@ -250,7 +252,7 @@ impl Line {
             boundaries: Vec::new(),
             end: RowBoundary::default(),
             height: 0,
-            cell_prefix: Vec::new(),
+            cell_prefix: VecDeque::new(),
             cell_prefix_base: 0,
             uniform_character_width: None,
         }
@@ -300,7 +302,7 @@ impl Line {
         self.boundaries = Vec::new();
         self.end = RowBoundary::default();
         self.height = 0;
-        self.cell_prefix = Vec::new();
+        self.cell_prefix = VecDeque::new();
         self.cell_prefix_base = 0;
         self.uniform_character_width = None;
     }
@@ -323,7 +325,9 @@ impl Line {
     fn compact_cell_prefix(&mut self) {
         const COMPACT_AT: usize = 1024;
         if self.cell_prefix_base >= COMPACT_AT {
-            self.cell_prefix.drain(..self.cell_prefix_base);
+            for _ in 0..self.cell_prefix_base {
+                self.cell_prefix.pop_front();
+            }
             self.cell_prefix_base = 0;
             self.release_oversized_backing();
         }
@@ -446,7 +450,8 @@ fn measure_row(state: &mut RowBoundary, row: &Row, width: usize) {
 fn measure_rows<'a>(rows: impl IntoIterator<Item = &'a Row>, width: usize) -> LineMeasurement {
     let mut state = RowBoundary::default();
     let mut boundaries = Vec::new();
-    let mut cell_prefix = vec![0usize];
+    let mut cell_prefix = VecDeque::new();
+    cell_prefix.push_back(0usize);
     let mut row_uniform_widths = Vec::new();
     for row in rows {
         #[cfg(test)]
@@ -456,8 +461,8 @@ fn measure_rows<'a>(rows: impl IntoIterator<Item = &'a Row>, width: usize) -> Li
         }
         boundaries.push(state);
         measure_row(&mut state, row, width);
-        let total = cell_prefix.last().copied().unwrap_or(0);
-        cell_prefix.push(total.saturating_add(row.stored_cell_count()));
+        let total = cell_prefix.back().copied().unwrap_or(0);
+        cell_prefix.push_back(total.saturating_add(row.stored_cell_count()));
         row_uniform_widths.push((row.stored_cell_count(), row_uniform_character_width(row)));
     }
     let uniform_character_width = measured_uniform_width_rows(&row_uniform_widths);
@@ -551,6 +556,18 @@ impl LineIndex {
 
     pub(crate) fn is_fully_measured(&self) -> bool {
         self.measured_lines == self.lines.len()
+    }
+
+    /// Whether the oldest line still needs its summary rebuilt. While that is
+    /// true, front eviction would reset the measurement origin.
+    pub(crate) fn front_line_unmeasured(&self) -> bool {
+        self.lines
+            .front()
+            .is_some_and(|line| line.measured_width != Some(self.width))
+    }
+
+    pub(crate) fn measurement_active(&self) -> bool {
+        self.measure.is_some()
     }
 
     /// Drop one line's summary after its stored rows changed in a way that
@@ -704,9 +721,9 @@ impl LineIndex {
                 #[cfg(test)]
                 note_cell_visits(row.stored_cell_count());
                 let character_width = line.uniform_character_width.expect("checked");
-                let total = line.cell_prefix.last().copied().unwrap_or(0);
+                let total = line.cell_prefix.back().copied().unwrap_or(0);
                 line.cell_prefix
-                    .push(total.saturating_add(row.stored_cell_count()));
+                    .push_back(total.saturating_add(row.stored_cell_count()));
                 line.row_count += 1;
                 let cells = line.suffix_cells(line.row_count);
                 line.height = uniform_height(cells, character_width, width);
@@ -741,9 +758,9 @@ impl LineIndex {
                 let boundary = line.end;
                 line.boundaries.push(boundary);
                 measure_row(&mut line.end, &row, width);
-                let total = line.cell_prefix.last().copied().unwrap_or(0);
+                let total = line.cell_prefix.back().copied().unwrap_or(0);
                 line.cell_prefix
-                    .push(total.saturating_add(row.stored_cell_count()));
+                    .push_back(total.saturating_add(row.stored_cell_count()));
                 line.row_count += 1;
                 line.height = line.height_after(line.end);
                 let delta = line.height as isize - old_height as isize;
@@ -1196,8 +1213,11 @@ impl LineIndex {
         let mut cells_remaining = budget.cells.max(1);
         loop {
             if cursor.line_index >= self.lines.len() {
-                self.measure_hint_line = self.lines.len();
-                self.measure_hint_row_start = self.lines.iter().map(|line| line.row_count).sum();
+                if self.is_fully_measured() {
+                    self.measure_hint_line = self.lines.len();
+                    self.measure_hint_row_start =
+                        self.lines.iter().map(|line| line.row_count).sum();
+                }
                 self.measure = None;
                 return MeasureProgress::Done;
             }
@@ -1235,8 +1255,10 @@ impl LineIndex {
                     next_line += 1;
                 }
                 if next_line >= self.lines.len() {
-                    self.measure_hint_line = self.lines.len();
-                    self.measure_hint_row_start = cursor.row_start;
+                    if self.is_fully_measured() {
+                        self.measure_hint_line = self.lines.len();
+                        self.measure_hint_row_start = cursor.row_start;
+                    }
                     self.measure = None;
                     self.publish_if_fully_measured();
                     return MeasureProgress::Done;
@@ -1259,10 +1281,10 @@ impl LineIndex {
                         note_boundary_discovery();
                     }
                     let row = &rows[cursor.row_start + row_index];
-                    let total = cursor.cell_prefix.last().copied().unwrap_or(0);
+                    let total = cursor.cell_prefix.back().copied().unwrap_or(0);
                     cursor
                         .cell_prefix
-                        .push(total.saturating_add(row.stored_cell_count()));
+                        .push_back(total.saturating_add(row.stored_cell_count()));
                     cursor
                         .row_uniform_widths
                         .push((row.stored_cell_count(), row_uniform_character_width(row)));
@@ -1292,8 +1314,10 @@ impl LineIndex {
             let columns = row.columns.len();
             let total_cells = row.stored_cell_count();
             if cursor.cell_index == 0 {
-                let total = cursor.cell_prefix.last().copied().unwrap_or(0);
-                cursor.cell_prefix.push(total.saturating_add(total_cells));
+                let total = cursor.cell_prefix.back().copied().unwrap_or(0);
+                cursor
+                    .cell_prefix
+                    .push_back(total.saturating_add(total_cells));
                 cursor
                     .row_uniform_widths
                     .push((total_cells, row_uniform_character_width(row)));

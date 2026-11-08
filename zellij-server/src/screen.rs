@@ -17461,6 +17461,10 @@ pub(crate) fn screen_thread_main(
             },
         }
         screen.process_attention();
+        // A forward reply or a timeout can drain the last buffered bytes
+        // without scheduling another scrolled-pty continuation. Settlement
+        // must not depend on that continuation being queued.
+        screen.release_settled_run_exits();
         screen.schedule_scrolled_pty_continuation();
     }
     Ok(())

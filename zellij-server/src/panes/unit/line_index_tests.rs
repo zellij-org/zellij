@@ -539,7 +539,7 @@ fn mixed_width_continuation_churn_keeps_metadata_bounded() {
         .collect();
     let mut fixture = Fixture::new(std::mem::take(&mut rows), 7);
 
-    for cycle in 0..20_000 {
+    for cycle in 0..100_000 {
         assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
         fixture.measure_all();
         let delta = fixture.append(character_row(texts[cycle % texts.len()], false));
@@ -618,6 +618,44 @@ fn first_unmeasured_hint_does_not_rescan_measured_lines() {
         line_scan_visits()
     );
     assert_exact_total(&fixture, 10);
+}
+
+#[test]
+fn finishing_a_later_line_does_not_forget_an_earlier_invalidation() {
+    let width = 3;
+    let mut rows = vec![
+        character_row("ab", true),
+        character_row("\u{754c}", false),
+        character_row("c", false),
+        character_row("x", true),
+        character_row("y", true),
+    ];
+    rows.extend((0..10).map(|_| character_row("z", false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert_eq!(fixture.index.line_count(), 3);
+
+    let last = fixture.index.line_count() - 1;
+    fixture.index.invalidate_line(last);
+    assert_eq!(
+        fixture.measure_next(2, usize::MAX),
+        MeasureProgress::Pending
+    );
+
+    // The cursor is on the last line; invalidate the front mixed line.
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    let mut progress = MeasureProgress::Pending;
+    while progress == MeasureProgress::Pending {
+        progress = fixture.measure_next(1, usize::MAX);
+    }
+    assert_eq!(progress, MeasureProgress::Done);
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::NeedsMeasure,
+        "the invalidated front line is still unmeasured"
+    );
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
 }
 
 #[test]

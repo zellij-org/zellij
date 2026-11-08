@@ -2717,6 +2717,13 @@ impl WasmBridge {
             return Ok(());
         }
         let err_context = || format!("Failed to apply cached events to plugin");
+        let has_instance = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .all_plugin_ids()
+            .iter()
+            .any(|(instance_plugin_id, _)| *instance_plugin_id == plugin_id);
         if let Some(events_or_pipe_messages) =
             self.cached_events_for_pending_plugins.take(&plugin_id)
         {
@@ -2728,10 +2735,7 @@ impl WasmBridge {
             let plugin_instances = self.plugin_map.lock().unwrap().all_plugin_ids();
             // A failed load leaves no instance to answer the pipes cached for it. Release them
             // instead of dropping them and leaving their callers blocked.
-            if !plugin_instances
-                .iter()
-                .any(|(instance_plugin_id, _)| *instance_plugin_id == plugin_id)
-            {
+            if !has_instance {
                 self.release_cached_cli_pipes_with_error(&events_or_pipe_messages.entries);
             }
             let mut replay_was_rejected = false;
@@ -2893,7 +2897,13 @@ impl WasmBridge {
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
         }
-        self.apply_cached_worker_messages(plugin_id)?;
+        if has_instance {
+            self.apply_cached_worker_messages(plugin_id)?;
+        } else {
+            // A failed load has no worker to receive these; re-caching them
+            // would leak one bounded cache per failed plugin id.
+            self.cached_worker_messages.remove(&plugin_id);
+        }
         Ok(())
     }
     pub fn apply_cached_worker_messages(&mut self, plugin_id: PluginId) -> Result<()> {

@@ -61,7 +61,7 @@ impl Haystack {
     fn new<'a>(
         ridx: usize,
         first: &Row,
-        below: impl Iterator<Item = &'a Row>,
+        below: impl Iterator<Item = (usize, &'a Row)>,
         needle_len: usize,
         case_insensitive: bool,
     ) -> Self {
@@ -107,8 +107,8 @@ impl Haystack {
         let mut line_ended = false;
         while measure_len(&text, &folded) < target {
             match below.next() {
-                Some(row) if !row.is_canonical => {
-                    push_row(&mut text, &mut cells, &mut folded, rows_pushed, row);
+                Some((row_offset, row)) if !row.is_canonical => {
+                    push_row(&mut text, &mut cells, &mut folded, row_offset, row);
                     rows_pushed += 1;
                 },
                 _ => {
@@ -120,8 +120,8 @@ impl Haystack {
         // A match can end exactly at `target`; keep one following character
         // when the logical line continues so boundary checks see real context.
         if !line_ended && measure_len(&text, &folded) == target {
-            if let Some(row) = below.next().filter(|row| !row.is_canonical) {
-                push_row(&mut text, &mut cells, &mut folded, rows_pushed, row);
+            if let Some((row_offset, row)) = below.next().filter(|(_, row)| !row.is_canonical) {
+                push_row(&mut text, &mut cells, &mut folded, row_offset, row);
                 rows_pushed += 1;
             }
         }
@@ -421,11 +421,29 @@ impl SearchResult {
         if self.needle.is_empty() || rows.is_empty() {
             return res;
         }
+        // Empty rows contribute no searchable text. Index the content rows
+        // once so a long blank continuation tail is never walked per starting
+        // row.
+        let content_rows: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| !row.columns.is_empty())
+            .map(|(index, _)| index)
+            .collect();
+        let mut next_content_row = 0;
         for (offset, row) in rows.iter().enumerate() {
-            let below = rows[offset + 1..]
+            if row.columns.is_empty() {
+                continue;
+            }
+            while next_content_row < content_rows.len() && content_rows[next_content_row] <= offset
+            {
+                next_content_row += 1;
+            }
+            let below = content_rows[next_content_row..]
                 .iter()
                 .copied()
-                .take_while(|row| !row.is_canonical);
+                .map(move |index| (index - offset, rows[index]))
+                .take_while(|(_, row)| !row.is_canonical);
             res.extend(self.search_starting_row(ridx + offset, row, below));
         }
         res
@@ -435,7 +453,7 @@ impl SearchResult {
         &self,
         ridx: usize,
         row: &Row,
-        below: impl Iterator<Item = &'a Row>,
+        below: impl Iterator<Item = (usize, &'a Row)>,
     ) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
@@ -483,7 +501,11 @@ impl SearchResult {
         self.search_starting_row(
             ridx,
             row,
-            tail.iter().copied().take_while(|row| !row.is_canonical),
+            tail.iter()
+                .copied()
+                .enumerate()
+                .map(|(offset, row)| (offset + 1, row))
+                .take_while(|(_, row)| !row.is_canonical),
         )
     }
 
@@ -569,7 +591,11 @@ impl SearchResult {
         // Search the new line for our needle
         if !self.needle.is_empty() {
             if let Some(row) = viewport.back() {
-                let below = lines_below.iter().take_while(|row| !row.is_canonical);
+                let below = lines_below
+                    .iter()
+                    .take_while(|row| !row.is_canonical)
+                    .enumerate()
+                    .map(|(offset, row)| (offset + 1, row));
                 let selections = self.search_starting_row(viewport.len() - 1, row, below);
                 found_something = !selections.is_empty();
                 self.selections.extend(selections);
@@ -641,7 +667,9 @@ impl SearchResult {
                 .iter()
                 .skip(index + 1)
                 .take_while(|row| !row.is_canonical)
-                .chain(lines_below.iter().take_while(|row| !row.is_canonical));
+                .chain(lines_below.iter().take_while(|row| !row.is_canonical))
+                .enumerate()
+                .map(|(offset, row)| (offset + 1, row));
             self.selections
                 .extend(self.search_starting_row(index, &viewport[index], below));
             index += 1;
