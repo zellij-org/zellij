@@ -83,29 +83,16 @@ impl TerminalBytes {
             }
         }
 
-        // Ignore any errors that happen here.
-        // We only leave the loop above when the pane exits. This can happen in a lot of ways, but
-        // the most problematic is when quitting zellij with `Ctrl+q`. That is because the channel
-        // for `Screen` will have exited already, so this send *will* fail. This isn't a problem
-        // per-se because the application terminates anyway, but it will print a lengthy error
-        // message into the log for every pane that was still active when we quit the application.
-        // This:
-        //
-        // 1. Makes the log rather pointless, because even when the application exits "normally",
-        //    there will be errors inside and
-        // 2. Leaves the impression we have a bug in the code and can't terminate properly
-        //
-        // FIXME: Ideally we detect whether the application is being quit and only ignore the error
-        // in that particular case?
-        // The child exit is applied only after this. Bytes already queued
-        // are ahead of it on the screen channel.
-        let _ = self
-            .async_send_to_screen(ScreenInstruction::PtyRunDrained(
-                self.terminal_id,
-                self.run_generation,
-            ))
-            .await;
-        let _ = self.async_send_to_screen(ScreenInstruction::Render).await;
+        // The child exit is applied only after these. Bytes already queued
+        // are ahead of them on the screen channel. A dropped screen receiver
+        // means the session is already shutting down, so that one failure is
+        // not an error. A missing sender still is.
+        self.send_after_exit(ScreenInstruction::PtyRunDrained(
+            self.terminal_id,
+            self.run_generation,
+        ))
+        .await?;
+        self.send_after_exit(ScreenInstruction::Render).await?;
 
         Ok(())
     }
@@ -121,5 +108,30 @@ impl TerminalBytes {
             .context("failed to async-send to screen")?
             .context("failed to block on sending message to screen")?;
         Ok(sent_at.elapsed())
+    }
+    /// `send` fails only when the screen receiver is gone. That is shutdown.
+    /// A missing sender is reported. `should_silently_fail` keeps the test
+    /// doubles quiet.
+    async fn send_after_exit(&self, screen_instruction: ScreenInstruction) -> Result<()> {
+        let senders = self.senders.clone();
+        task::spawn_blocking(move || -> Result<()> {
+            if senders.should_silently_fail {
+                let _ = senders
+                    .to_screen
+                    .as_ref()
+                    .map(|sender| sender.send(screen_instruction));
+                return Ok(());
+            }
+            let sender = senders
+                .to_screen
+                .as_ref()
+                .context("failed to get screen sender")?;
+            match sender.send(screen_instruction) {
+                Ok(()) => Ok(()),
+                Err(_disconnected) => Ok(()),
+            }
+        })
+        .await
+        .context("failed to async-send to screen")?
     }
 }

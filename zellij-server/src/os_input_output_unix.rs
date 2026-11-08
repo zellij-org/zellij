@@ -1,4 +1,4 @@
-use crate::os_input_output::{command_exists, AsyncReader, PaneEnv};
+use crate::os_input_output::{command_exists, AsyncReader, PaneEnv, TerminalRunChangedBeforeWrite};
 use crate::panes::PaneId;
 
 use nix::{
@@ -391,7 +391,10 @@ pub(crate) struct UnixPtyBackend {
 /// full) or when the syscall budget is spent, stops and returns how many
 /// bytes were written so far (which may be 0). The caller is expected to
 /// re-queue any unwritten remainder.
-fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
+fn try_write_to_fd(
+    fd: RawFd,
+    buf: &[u8],
+) -> std::result::Result<usize, (usize, nix::errno::Errno)> {
     write_bounded(buf, MAX_WRITE_SYSCALLS_PER_CALL, |chunk| {
         unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, chunk)
     })
@@ -406,7 +409,7 @@ fn write_bounded(
     buf: &[u8],
     max_syscalls: usize,
     mut write: impl FnMut(&[u8]) -> nix::Result<usize>,
-) -> Result<usize> {
+) -> std::result::Result<usize, (usize, nix::errno::Errno)> {
     let mut written = 0;
     let mut syscalls = 0;
     while written < buf.len() && syscalls < max_syscalls {
@@ -416,7 +419,7 @@ fn write_bounded(
             Ok(n) => written += n,
             Err(nix::errno::Errno::EINTR) => continue,
             Err(nix::errno::Errno::EAGAIN) => break,
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err((written, e)),
         }
     }
     Ok(written)
@@ -566,6 +569,31 @@ impl UnixPtyBackend {
     /// The check and the clone happen under one lock, so a replacement
     /// cannot swap the endpoint between the check and the handle this
     /// write will use. The write itself runs after the lock is released.
+    fn terminal_fd_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+    ) -> Result<Arc<OwnedFd>> {
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+
+        let registry = self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?;
+        match registry.get(&terminal_id) {
+            Some(Some(endpoint)) => {
+                if let Some(expected) = generation {
+                    if endpoint.generation != Some(expected) {
+                        return Err(anyhow::Error::new(TerminalRunChangedBeforeWrite));
+                    }
+                }
+                Ok(endpoint.fd.clone())
+            },
+            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+        }
+    }
+
     pub fn write_to_tty_stdin_for_run(
         &self,
         terminal_id: u32,
@@ -573,30 +601,31 @@ impl UnixPtyBackend {
         buf: &[u8],
     ) -> Result<usize> {
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+        let fd = self.terminal_fd_for_run(terminal_id, generation)?;
+        match try_write_to_fd(fd.as_raw_fd(), buf) {
+            Ok(written) => Ok(written),
+            Err((_written, error)) => Err(anyhow::Error::new(error)).with_context(err_context),
+        }
+    }
 
-        let fd = {
-            let registry = self
-                .terminal_id_to_raw_fd
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?;
-            match registry.get(&terminal_id) {
-                Some(Some(endpoint)) => {
-                    if let Some(expected) = generation {
-                        if endpoint.generation != Some(expected) {
-                            return Err(anyhow!("terminal run changed before the write"));
-                        }
-                    }
-                    endpoint.fd.clone()
-                },
-                _ => {
-                    return Err(anyhow!("could not find raw file descriptor"))
-                        .with_context(err_context)
-                },
-            }
+    pub fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+        let fd = match self.terminal_fd_for_run(terminal_id, generation) {
+            Ok(fd) => fd,
+            Err(error) => return (0, Err(error)),
         };
-
-        try_write_to_fd(fd.as_raw_fd(), buf).with_context(err_context)
+        match try_write_to_fd(fd.as_raw_fd(), buf) {
+            Ok(written) => (written, Ok(())),
+            Err((written, error)) => (
+                written,
+                Err(anyhow::Error::new(error)).with_context(err_context),
+            ),
+        }
     }
 
     pub fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
@@ -931,7 +960,7 @@ mod tests {
             match super::try_write_to_fd(master_fd, &chunk) {
                 Ok(0) => break,
                 Ok(n) => total_filled += n,
-                Err(e) => panic!("unexpected error filling buffer: {e}"),
+                Err(e) => panic!("unexpected error filling buffer: {e:?}"),
             }
         }
         assert!(
@@ -1002,6 +1031,27 @@ mod tests {
         assert!(write_bounded(&buf, 4, |_| Err(nix::errno::Errno::EBADF)).is_err());
     }
 
+    #[test]
+    fn write_bounded_reports_the_prefix_before_a_fatal_error() {
+        let mut calls = 0;
+        let result = write_bounded(b"abcdef", 4, |_| {
+            calls += 1;
+            if calls == 1 {
+                Ok(2)
+            } else {
+                Err(nix::errno::Errno::EIO)
+            }
+        });
+
+        match result {
+            Err((written, error)) => {
+                assert_eq!(written, 2);
+                assert_eq!(error, nix::errno::Errno::EIO);
+            },
+            Ok(written) => panic!("expected a fatal error after 2 bytes, wrote {written}"),
+        }
+    }
+
     /// Verify that `try_write_to_fd` returns Ok(0) — not an error — when the
     /// fd is completely full and cannot accept any bytes at all.
     #[test]
@@ -1028,7 +1078,7 @@ mod tests {
             match super::try_write_to_fd(master_fd, &fill) {
                 Ok(0) => break,
                 Ok(_) => continue,
-                Err(e) => panic!("unexpected error filling buffer: {e}"),
+                Err(e) => panic!("unexpected error filling buffer: {e:?}"),
             }
         }
 

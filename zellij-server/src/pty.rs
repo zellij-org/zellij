@@ -1235,9 +1235,12 @@ impl Pty {
         terminal_id: u32,
         reader: Box<dyn AsyncReader>,
         run_generation: u64,
+        announce_run: bool,
         context: String,
     ) {
-        self.announce_terminal_run(terminal_id, run_generation);
+        if announce_run {
+            self.announce_terminal_run(terminal_id, run_generation);
+        }
         let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let activity_flag_for_task = activity_flag.clone();
         let senders = self.bus.senders.clone();
@@ -1420,6 +1423,7 @@ impl Pty {
             terminal_id,
             reader,
             run_generation,
+            true,
             format!("failed to run async task for terminal {terminal_id}"),
         );
 
@@ -1615,6 +1619,7 @@ impl Pty {
                         terminal_id,
                         reader,
                         run_generation,
+                        true,
                         "failed to spawn terminals for layout".to_string(),
                     );
                 },
@@ -1785,6 +1790,7 @@ impl Pty {
                         terminal_id,
                         reader,
                         run_generation,
+                        true,
                         "failed to spawn terminals for layout".to_string(),
                     );
                 },
@@ -2235,6 +2241,7 @@ impl Pty {
                     id,
                     reader,
                     run_generation,
+                    false,
                     format!("failed to run async task for pane {pane_id:?}"),
                 );
                 let _ = self.bus.senders.send_to_screen(

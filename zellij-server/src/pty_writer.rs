@@ -5,7 +5,7 @@ use zellij_utils::channels;
 use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
 use crate::diagnostics;
-use crate::os_input_output::ServerOsApi;
+use crate::os_input_output::{ServerOsApi, TerminalRunChangedBeforeWrite};
 use crate::route::NotificationEnd;
 use crate::thread_bus::Bus;
 
@@ -385,19 +385,30 @@ fn drain_terminal_turn(
         }
         let offer = remaining.len().min(MAX_DRAIN_BYTES_PER_TURN - turn_bytes);
         let stamp = queue.writes.front().and_then(|write| write.run_generation);
-        match os_input.write_to_tty_stdin_for_run(tid, stamp, &remaining[..offer]) {
-            Ok(0) => break, // EAGAIN — move to next terminal
-            Ok(n) => {
-                queue.advance(n);
-                turn_bytes += n;
-                progress = true;
+        let (written, result) =
+            os_input.write_to_tty_stdin_for_run_with_progress(tid, stamp, &remaining[..offer]);
+        if written > 0 {
+            queue.advance(written);
+            turn_bytes += written;
+            progress = true;
+        }
+        match result {
+            Ok(()) if written == 0 => break, // EAGAIN — move to next terminal
+            Ok(()) => {},
+            Err(error)
+                if error
+                    .downcast_ref::<TerminalRunChangedBeforeWrite>()
+                    .is_some() =>
+            {
+                // The endpoint is being replaced. Keep the queue; the
+                // matching AdoptRun (or ForgetRun) settles it.
+                break;
             },
-            Err(e) => {
-                // Terminal error, or the endpoint is no longer the run
-                // this write was admitted for. A prefix already written
-                // is reported; the rest is not described as never sent.
-                let message = e.to_string();
-                Err::<(), _>(e).with_context(err_context).non_fatal();
+            Err(error) => {
+                // Terminal error. A prefix already written is reported; the
+                // rest is not described as never sent.
+                let message = error.to_string();
+                Err::<(), _>(error).with_context(err_context).non_fatal();
                 queue.fail_after_write_error(&message);
                 break;
             },

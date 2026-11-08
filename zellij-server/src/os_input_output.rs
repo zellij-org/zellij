@@ -630,6 +630,20 @@ impl AsyncReader for NullAsyncReader {
     }
 }
 
+/// The endpoint was replaced before a stamped write reached it. The writer
+/// keeps the queued bytes and retries until the matching `AdoptRun` settles
+/// the queue, instead of treating it as a fatal write error.
+#[derive(Debug)]
+pub(crate) struct TerminalRunChangedBeforeWrite;
+
+impl std::fmt::Display for TerminalRunChangedBeforeWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "terminal run changed before the write")
+    }
+}
+
+impl std::error::Error for TerminalRunChangedBeforeWrite {}
+
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
@@ -673,6 +687,19 @@ pub trait ServerOsApi: Send + Sync {
     ) -> Result<usize> {
         let _ = generation;
         self.write_to_tty_stdin(terminal_id, buf)
+    }
+    /// Like [`Self::write_to_tty_stdin_for_run`], but also reports a prefix
+    /// that reached the terminal before a later fatal error.
+    fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        match self.write_to_tty_stdin_for_run(terminal_id, generation, buf) {
+            Ok(written) => (written, Ok(())),
+            Err(error) => (0, Err(error)),
+        }
     }
     /// Record `generation` on the endpoint already registered for `terminal_id`.
     /// A missing endpoint is left missing. Stamped writes fail until this
@@ -828,6 +855,15 @@ impl ServerOsApi for ServerOsInputOutput {
     ) -> Result<usize> {
         self.pty_backend
             .write_to_tty_stdin_for_run(terminal_id, generation, buf)
+    }
+    fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        self.pty_backend
+            .write_to_tty_stdin_for_run_with_progress(terminal_id, generation, buf)
     }
     fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
         self.pty_backend

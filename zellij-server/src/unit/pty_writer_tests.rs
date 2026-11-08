@@ -1,5 +1,5 @@
 use super::*;
-use crate::os_input_output::{AsyncReader, ServerOsApi};
+use crate::os_input_output::{AsyncReader, ServerOsApi, TerminalRunChangedBeforeWrite};
 use crate::panes::PaneId;
 use crate::thread_bus::Bus;
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -139,7 +139,7 @@ impl ServerOsApi for MockServerOsApi {
             let endpoints = self.endpoint_generation.lock().unwrap();
             if let Some(actual) = endpoints.get(&terminal_id) {
                 if *actual != Some(expected) {
-                    return Err(anyhow::anyhow!("terminal run changed before the write"));
+                    return Err(anyhow::Error::new(TerminalRunChangedBeforeWrite));
                 }
             }
         }
@@ -599,7 +599,8 @@ fn write_error_clears_terminal_queue() {
 fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
     // Writer-local adoption is still generation 1. The native endpoint
     // has already been replaced with generation 2. Both a write that was
-    // already queued and one admitted after the replacement are refused.
+    // already queued and one admitted after the replacement are refused,
+    // but stay queued until adoption settles them.
     let os = MockServerOsApi::new();
     os.set_endpoint_generation(1, Some(2));
     let writer_adopted = Some(1u64);
@@ -612,7 +613,11 @@ fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
             run_generation: writer_adopted,
         });
         super::drain_terminal_turn(&mut queue, 1, writer_adopted, &os);
-        assert!(queue.is_empty(), "{bytes:?} stayed queued");
+        assert_eq!(queue.writes.len(), 1, "{bytes:?} did not stay queued");
+        let mut pending = HashMap::from([(1, queue)]);
+        let mut adopted = HashMap::from([(1, 1u64)]);
+        super::adopt_run(&mut adopted, &mut pending, 1, 2);
+        assert!(pending[&1].is_empty(), "{bytes:?} survived adoption");
     }
     assert!(
         os.get_written_bytes(1).is_empty(),

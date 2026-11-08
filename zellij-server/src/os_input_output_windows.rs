@@ -1,4 +1,6 @@
-use crate::os_input_output::{resolve_command, AsyncReader, PaneEnv};
+use crate::os_input_output::{
+    resolve_command, AsyncReader, PaneEnv, TerminalRunChangedBeforeWrite,
+};
 use crate::panes::PaneId;
 
 use std::{
@@ -15,7 +17,9 @@ use std::{
 
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE, S_OK,
+};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
 };
@@ -25,7 +29,7 @@ use windows_sys::Win32::System::Console::{
 };
 use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
     WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
     PROCESS_INFORMATION, PROCESS_TERMINATE, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
@@ -71,6 +75,39 @@ impl Drop for ConPtyTerminal {
             ClosePseudoConsole(self.hpcon);
             CloseHandle(self.input_write_handle);
         }
+    }
+}
+
+/// Closes a duplicated handle. The original console handle stays open.
+struct CloseOnDrop(HANDLE);
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+fn duplicate_write_handle(handle: HANDLE) -> io::Result<HANDLE> {
+    let mut duplicated: HANDLE = std::ptr::null_mut();
+    let ok = unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            handle,
+            GetCurrentProcess(),
+            &mut duplicated,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    };
+    if ok == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(duplicated)
     }
 }
 
@@ -612,67 +649,98 @@ impl WindowsPtyBackend {
         generation: Option<u64>,
         buf: &[u8],
     ) -> Result<usize> {
+        let (written, result) =
+            self.write_to_tty_stdin_for_run_with_progress(terminal_id, generation, buf);
+        result.map(|_| written)
+    }
+
+    pub fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
         let err_context = || format!("failed to write to stdin of terminal {}", terminal_id);
 
-        // The generation check and the write share the lock. Replacing the
-        // console waits, so this write cannot be retargeted at a new handle.
-        match self
-            .terminals
-            .lock()
-            .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(term)) => {
-                if let Some(expected) = generation {
-                    if term.generation != Some(expected) {
-                        return Err(anyhow!("terminal run changed before the write"));
+        // Duplicate under the lock, after the generation check, and write the
+        // duplicate after releasing it. A blocking WriteFile must not stall
+        // every other pane's spawn, kill, or write. The duplicate still names
+        // the console that passed the check.
+        let handle = {
+            let terminals = match self.terminals.lock().to_anyhow().with_context(err_context) {
+                Ok(terminals) => terminals,
+                Err(error) => return (0, Err(error)),
+            };
+            match terminals.get(&terminal_id) {
+                Some(Some(term)) => {
+                    if let Some(expected) = generation {
+                        if term.generation != Some(expected) {
+                            return (0, Err(anyhow::Error::new(TerminalRunChangedBeforeWrite)));
+                        }
                     }
-                }
-                let mut written: u32 = 0;
-                let ok = unsafe {
-                    WriteFile(
-                        term.input_write_handle,
-                        buf.as_ptr(),
-                        buf.len() as u32,
-                        &mut written,
-                        std::ptr::null_mut(),
-                    )
-                };
-                if ok == 0 {
-                    Err(io::Error::last_os_error()).with_context(err_context)
-                } else {
-                    Ok(written as usize)
-                }
-            },
-            _ => Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
-                .with_context(err_context),
+                    match duplicate_write_handle(term.input_write_handle) {
+                        Ok(handle) => handle,
+                        Err(error) => return (0, Err(error).with_context(err_context)),
+                    }
+                },
+                _ => {
+                    return (
+                        0,
+                        Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
+                            .with_context(err_context),
+                    );
+                },
+            }
+        };
+        let _close = CloseOnDrop(handle);
+        let mut written: u32 = 0;
+        let ok = unsafe {
+            WriteFile(
+                handle,
+                buf.as_ptr(),
+                buf.len() as u32,
+                &mut written,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            (
+                written as usize,
+                Err(io::Error::last_os_error()).with_context(err_context),
+            )
+        } else {
+            (written as usize, Ok(()))
         }
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
         let err_context = || format!("failed to drain terminal {}", terminal_id);
 
-        match self
-            .terminals
-            .lock()
-            .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(term)) => {
-                let ok = unsafe { FlushFileBuffers(term.input_write_handle) };
-                if ok == 0 {
-                    // FlushFileBuffers can legitimately fail on pipe handles
-                    // (ERROR_INVALID_FUNCTION) — treat as non-fatal.
-                    let e = io::Error::last_os_error();
-                    log::debug!("FlushFileBuffers on terminal {}: {}", terminal_id, e);
-                }
-                Ok(())
-            },
-            _ => Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
-                .with_context(err_context),
+        let handle = {
+            let terminals = self
+                .terminals
+                .lock()
+                .to_anyhow()
+                .with_context(err_context)?;
+            match terminals.get(&terminal_id) {
+                Some(Some(term)) => duplicate_write_handle(term.input_write_handle)
+                    .map_err(anyhow::Error::new)
+                    .with_context(err_context)?,
+                _ => {
+                    return Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
+                        .with_context(err_context);
+                },
+            }
+        };
+        let _close = CloseOnDrop(handle);
+        let ok = unsafe { FlushFileBuffers(handle) };
+        if ok == 0 {
+            // FlushFileBuffers can legitimately fail on pipe handles
+            // (ERROR_INVALID_FUNCTION) — treat as non-fatal.
+            let e = io::Error::last_os_error();
+            log::debug!("FlushFileBuffers on terminal {}: {}", terminal_id, e);
         }
+        Ok(())
     }
 
     pub fn kill(&self, pid: u32) -> Result<()> {
