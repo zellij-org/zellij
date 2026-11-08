@@ -3,6 +3,10 @@ use std::str;
 const PARAMETER_LIMIT: usize = 32;
 const COLLECT_LIMIT: usize = 2;
 pub(crate) const OSC_FIELD_LIMIT: usize = 16;
+/// A hostile OSC can contain millions of semicolons. Handlers only need a
+/// prefix of its fields, so cap the collected slice instead of allocating one
+/// entry per separator in a multi-megabyte payload.
+const MAX_OSC_FIELDS: usize = 4096;
 /// Longest OSC payload assembled. Large enough for an OSC 52 clipboard
 /// copy of roughly 3 MiB of text; longer sequences are discarded.
 const MAX_OSC_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
@@ -25,7 +29,10 @@ pub(crate) fn with_osc_fields<R>(payload: &[u8], f: impl FnOnce(&[&[u8]]) -> R) 
         count += 1;
     }
     if rest.next().is_some() {
-        let all_fields: Vec<&[u8]> = payload.split(|&byte| byte == b';').collect();
+        let all_fields: Vec<&[u8]> = payload
+            .split(|&byte| byte == b';')
+            .take(MAX_OSC_FIELDS)
+            .collect();
         f(&all_fields)
     } else {
         f(&fields[..count])

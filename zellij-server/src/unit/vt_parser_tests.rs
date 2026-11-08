@@ -859,6 +859,13 @@ fn an_osc_string_keeps_at_most_sixteen_fields() {
 }
 
 #[test]
+fn a_payload_with_explosive_field_count_passes_a_bounded_prefix() {
+    let payload = vec![b';'; 100_000];
+    let seen = super::with_osc_fields(&payload, |fields| fields.len());
+    assert_eq!(seen, super::MAX_OSC_FIELDS);
+}
+
+#[test]
 fn oversized_osc_payload_is_dropped_and_parser_recovers() {
     let mut bytes = b"\x1b]0;".to_vec();
     bytes.extend(std::iter::repeat(b'x').take(super::MAX_OSC_PAYLOAD_BYTES + 1));
