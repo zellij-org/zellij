@@ -5419,6 +5419,14 @@ impl Tab {
             .map(|backlog| backlog.len)
             .unwrap_or(0)
     }
+    /// Whether the pane still has output to apply, either in the scrolled
+    /// backlog or buffered behind a forward-paused host query.
+    pub(crate) fn has_pending_output(&self, pid: u32) -> bool {
+        self.pending_vte_len(pid) > 0
+            || self
+                .get_pane_with_id(PaneId::Terminal(pid))
+                .is_some_and(|pane| pane.has_pending_pty_input())
+    }
     #[cfg(test)]
     pub(crate) fn pending_vte_bytes_dropped(&self, pid: u32) -> u64 {
         self.pending_vte_bytes_dropped

@@ -1825,6 +1825,55 @@ fn character_cell_size_is_not_derived_for_a_client_of_unknown_size() {
 }
 
 #[test]
+fn zero_character_cell_sizes_are_ignored() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    let valid_cell_size = SizeInPixels {
+        height: 21,
+        width: 9,
+    };
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(valid_cell_size),
+            text_area_size: None,
+        },
+    );
+
+    assert!(!screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 0,
+                width: 9,
+            }),
+            text_area_size: None,
+        },
+    ));
+    assert_eq!(*screen.character_cell_size.borrow(), Some(valid_cell_size));
+    assert_eq!(
+        screen.pixel_dimensions.character_cell_size,
+        Some(valid_cell_size)
+    );
+
+    assert!(!screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 19,
+                width: 80,
+            }),
+        },
+    ));
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(valid_cell_size),
+        "a text area that derives a zero-sized cell must not replace a valid report"
+    );
+}
+
+#[test]
 fn attach_after_first_tab_closed() {
     // ensure https://github.com/zellij-org/zellij/issues/1645 is fixed
     let size = Size {
@@ -9655,6 +9704,48 @@ fn handle_reply_dispatches_next_queued_forward() {
             .get(&second_token)
             .map(|e| e.pane_id),
         Some(second_pane)
+    );
+}
+
+#[test]
+fn a_resume_failure_still_releases_the_slot_and_dispatches_the_next_forward() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let first_pane = PaneId::Terminal(1);
+    let second_pane = PaneId::Terminal(2);
+    let first_token = screen.forward_host_query(first_pane, bg_query());
+    let second_token = screen.forward_host_query(second_pane, fg_query());
+    let _ = capture.drain_forward_queries();
+    assert!(screen.pane_exists(&first_pane));
+
+    let (to_pty_writer, pty_writer_receiver) =
+        channels::unbounded::<(PtyWriteInstruction, ErrorContext)>();
+    drop(pty_writer_receiver);
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.senders.should_silently_fail = false;
+    tab.senders
+        .replace_to_pty_writer(SenderWithContext::new(to_pty_writer));
+
+    let result = screen.handle_forwarded_reply_from_host(first_token, b"reply".to_vec());
+    assert!(result.is_err(), "the failed PTY write must surface");
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(second_token),
+        "the failed resume must not leave the forward slot wedged"
+    );
+    assert_eq!(
+        screen
+            .pending_forwarded_queries
+            .get(&second_token)
+            .map(|entry| entry.pane_id),
+        Some(second_pane)
+    );
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.iter().map(|(token, _)| *token).collect::<Vec<_>>(),
+        vec![second_token],
+        "the next queued forward must be dispatched despite the resume failure"
     );
 }
 

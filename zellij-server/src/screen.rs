@@ -3772,10 +3772,17 @@ impl Screen {
     pub fn update_pixel_dimensions(
         &mut self,
         client_id: ClientId,
-        pixel_dimensions: PixelDimensions,
+        mut pixel_dimensions: PixelDimensions,
     ) -> bool {
         let previous_character_cell_size = *self.character_cell_size.borrow();
+        let usable_size =
+            |size: Option<SizeInPixels>| size.filter(|size| size.width > 0 && size.height > 0);
+        pixel_dimensions.character_cell_size = usable_size(pixel_dimensions.character_cell_size);
+        pixel_dimensions.text_area_size = usable_size(pixel_dimensions.text_area_size);
         self.pixel_dimensions.merge(pixel_dimensions);
+        self.pixel_dimensions.character_cell_size =
+            usable_size(self.pixel_dimensions.character_cell_size);
+        self.pixel_dimensions.text_area_size = usable_size(self.pixel_dimensions.text_area_size);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
@@ -3789,7 +3796,9 @@ impl Screen {
                 height: text_area_size.height / client_size.rows,
                 width: text_area_size.width / client_size.cols,
             };
-            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+            if character_cell_size.width > 0 && character_cell_size.height > 0 {
+                *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+            }
         }
         *self.character_cell_size.borrow() != previous_character_cell_size
     }
@@ -4379,6 +4388,7 @@ impl Screen {
     }
 
     fn handle_clipboard_reply(&mut self, token: u32, reply_bytes: Vec<u8>) -> Result<()> {
+        let mut resume_result = Ok(());
         if let Some(PendingForwardEntry { pane_id, query }) =
             self.pending_clipboard_forwards.remove(&token)
         {
@@ -4387,7 +4397,7 @@ impl Screen {
             } else {
                 reply_bytes
             };
-            self.resume_pane_after_forward(pane_id, payload)?;
+            resume_result = self.resume_pane_after_forward(pane_id, payload);
         }
         self.clipboard_forward_in_flight_token = None;
         while let Some(next) = self.clipboard_forward_queue.pop_front() {
@@ -4397,7 +4407,7 @@ impl Screen {
             self.dispatch_clipboard_forward(next.token, next.pane_id, next.query);
             break;
         }
-        Ok(())
+        resume_result
     }
 
     fn pane_exists(&self, pane_id: &PaneId) -> bool {
@@ -4507,6 +4517,7 @@ impl Screen {
             );
             return Ok(());
         }
+        let mut resume_result = Ok(());
         if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
             let PendingForwardEntry { pane_id, query } = entry;
             match pane_id {
@@ -4519,7 +4530,7 @@ impl Screen {
                     // Route via Tab so the reply lands on the pane in
                     // the correct stream position and any PTY input
                     // the app emitted while waiting is replayed.
-                    self.resume_pane_after_forward(pane_id, payload)?;
+                    resume_result = self.resume_pane_after_forward(pane_id, payload);
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -4537,7 +4548,7 @@ impl Screen {
         if let Some(next) = self.forward_queue.pop_front() {
             self.dispatch_forward(next.token, next.pane_id, next.query);
         }
-        Ok(())
+        resume_result
     }
 
     /// Stop waiting for the host to answer the query `pane_id` is paused
@@ -4619,7 +4630,9 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
                 tab.resume_pane_after_forward(terminal_id, reply_bytes.clone())
-                    .non_fatal();
+                    .with_context(|| {
+                        format!("failed to resume pane {pane_id:?} after a forwarded reply")
+                    })?;
                 found = true;
                 break;
             }
@@ -9832,7 +9845,7 @@ impl Screen {
     fn terminal_has_pending_vte(&self, terminal_id: u32) -> bool {
         self.tabs
             .values()
-            .any(|tab| tab.pending_vte_len(terminal_id) > 0)
+            .any(|tab| tab.has_pending_output(terminal_id))
     }
     fn release_settled_run_exits(&mut self) {
         let ready: Vec<u32> = self

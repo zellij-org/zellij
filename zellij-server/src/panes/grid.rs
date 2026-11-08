@@ -67,6 +67,8 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
 );
 
 const MAX_TRACKED_NOTIFICATION_IDS: usize = 256;
+const MAX_NOTIFICATION_ID_BYTES: usize = 256;
+const MAX_TRACKED_NOTIFICATION_ID_BYTES: usize = 16 * 1024;
 const MAX_NOTIFICATION_ASSEMBLY_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,32 +175,48 @@ pub struct NotificationTracker {
     wants_report: HashMap<String, bool>,
     assemblies: HashMap<String, NotificationAssembly>,
     known_ids: VecDeque<String>,
+    known_id_bytes: usize,
 }
 
 impl NotificationTracker {
     fn remember(&mut self, id: &str) {
+        if id.len() > MAX_NOTIFICATION_ID_BYTES {
+            return;
+        }
         if self.known_ids.iter().any(|known| known == id) {
             return;
         }
         self.known_ids.push_back(id.to_owned());
-        while self.known_ids.len() > MAX_TRACKED_NOTIFICATION_IDS {
+        self.known_id_bytes += id.len();
+        while self.known_ids.len() > MAX_TRACKED_NOTIFICATION_IDS
+            || self.known_id_bytes > MAX_TRACKED_NOTIFICATION_ID_BYTES
+        {
             if let Some(evicted) = self.known_ids.pop_front() {
+                self.known_id_bytes = self.known_id_bytes.saturating_sub(evicted.len());
                 self.wants_report.remove(&evicted);
                 self.assemblies.remove(&evicted);
             }
         }
     }
+    fn is_trackable(&self, id: &str) -> bool {
+        id.len() <= MAX_NOTIFICATION_ID_BYTES
+    }
     fn wants_report(&mut self, id: &str, action: Option<&str>) -> bool {
         match action {
             Some(action_value) => {
                 let wants_report = action_wants_report(action_value);
-                if !id.is_empty() {
+                if !id.is_empty() && self.is_trackable(id) {
                     self.remember(id);
                     self.wants_report.insert(id.to_owned(), wants_report);
                 }
                 wants_report
             },
-            None => self.wants_report.get(id).copied().unwrap_or(false),
+            None => {
+                if !self.is_trackable(id) {
+                    return false;
+                }
+                self.wants_report.get(id).copied().unwrap_or(false)
+            },
         }
     }
     fn assemble(
@@ -208,6 +226,9 @@ impl NotificationTracker {
         is_done: bool,
         payload: String,
     ) -> Option<(String, String)> {
+        if !self.is_trackable(id) {
+            return None;
+        }
         if payload_type == Osc99PayloadType::Close {
             self.assemblies.remove(id);
             return None;
@@ -5842,6 +5863,8 @@ impl Grid {
         self.clear_viewport_before_rendering = true;
         self.cursor = Cursor::new(0, 0, self.styled_underlines);
         self.saved_cursor_position = None;
+        self.horizontal_tabstops = create_horizontal_tabstops(self.width);
+        self.preceding_char = None;
         self.active_charset = Default::default();
         self.erasure_mode = false;
         self.disable_linewrap = false;
@@ -7261,6 +7284,9 @@ impl Grid {
         } {
             // thanks borrow checker
             let pixel_height = character_cell_size.height;
+            if pixel_height == 0 {
+                return;
+            }
             let to_move = (pixel_count as f64 / pixel_height as f64).ceil() as usize;
             for _ in 0..to_move {
                 self.add_canonical_line();
@@ -7270,6 +7296,9 @@ impl Grid {
     fn current_cursor_pixel_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            if character_cell_size.width == 0 || character_cell_size.height == 0 {
+                return None;
+            }
             let line_count_in_scrollback = self.lines_above.len();
             let y_coordinates =
                 (line_count_in_scrollback + self.cursor.y) * character_cell_size.height;
@@ -10374,6 +10403,7 @@ impl Row {
             TerminalCharacter::append_plain_ascii(&mut self.columns, run, styles);
             self.width = encode_width(x + run.len());
         } else {
+            self.invalidate_link_scan();
             for (cell, byte) in self.columns[x..x + run.len()].iter_mut().zip(run) {
                 *cell = TerminalCharacter::new_with_width(*byte as char, 1, styles.clone());
             }

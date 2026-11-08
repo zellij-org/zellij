@@ -2965,6 +2965,9 @@ impl FloatingPanesStack {
         k_chunk: &KittyImageChunk,
         character_cell_size: &SizeInPixels,
     ) -> Vec<KittyImageChunk> {
+        if character_cell_size.width == 0 || character_cell_size.height == 0 {
+            return vec![*k_chunk];
+        }
         let rounded_kitty_image_pixel_height =
             if k_chunk.source_px_height % character_cell_size.height > 0 {
                 let modulus = k_chunk.source_px_height % character_cell_size.height;
@@ -3190,6 +3193,9 @@ impl FloatingPanesStack {
         s_chunk: &SixelImageChunk,
         character_cell_size: &SizeInPixels,
     ) -> Vec<SixelImageChunk> {
+        if character_cell_size.width == 0 || character_cell_size.height == 0 {
+            return vec![*s_chunk];
+        }
         // round these up to the nearest cell edge
         let rounded_sixel_image_pixel_height =
             if s_chunk.sixel_image_pixel_height % character_cell_size.height > 0 {

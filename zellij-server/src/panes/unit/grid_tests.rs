@@ -3635,6 +3635,100 @@ pub fn sixel_images_are_reaped_when_resetting() {
 }
 
 #[test]
+fn a_full_reset_restores_default_tabstops_and_forgets_the_repeat_source() {
+    let mut grid = create_grid_with_size_and_raw(2, 20, b"\x1b[3g\x1b[1;3H\x1bHabc");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"\x1bc");
+    assert_eq!(
+        grid.horizontal_tabstops,
+        super::create_horizontal_tabstops(20),
+        "a full reset must restore the default tab stops"
+    );
+
+    parser.feed(&mut grid, b"\x1b[2b");
+    assert_eq!(
+        grid.cursor.x, 0,
+        "a full reset must forget the character preceding it"
+    );
+    parser.feed(&mut grid, b"\t");
+    assert_eq!(
+        grid.cursor.x, 8,
+        "tabs after a full reset must use the default tab stops"
+    );
+    assert!(
+        !row_to_string(&grid.viewport[0]).contains('c'),
+        "the pre-reset repeat source must not reappear"
+    );
+}
+
+#[test]
+fn zero_character_cell_sizes_do_not_panic_image_clipping() {
+    use crate::output::{FloatingPanesStack, KittyImageChunk, SixelImageChunk};
+    use zellij_utils::pane_size::{Dimension, PaneGeom};
+
+    let floating_panes_stack = FloatingPanesStack {
+        layers: vec![PaneGeom {
+            x: 0,
+            y: 0,
+            cols: Dimension::fixed(10),
+            rows: Dimension::fixed(10),
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        }],
+    };
+    let kitty = KittyImageChunk {
+        cell_x: 0,
+        cell_y: 0,
+        internal_image_id: 1,
+        source_px_x: 0,
+        source_px_y: 0,
+        source_px_width: 30,
+        source_px_height: 40,
+        cell_offset_x: 0,
+        cell_offset_y: 0,
+        z_index: 0,
+        scaled_image: None,
+        placement_uid: 1,
+    };
+    let sixel = SixelImageChunk {
+        cell_x: 0,
+        cell_y: 0,
+        sixel_image_pixel_x: 0,
+        sixel_image_pixel_y: 0,
+        sixel_image_pixel_width: 30,
+        sixel_image_pixel_height: 40,
+        sixel_image_id: 7,
+    };
+    for character_cell_size in [
+        SizeInPixels {
+            width: 0,
+            height: 20,
+        },
+        SizeInPixels {
+            width: 10,
+            height: 0,
+        },
+    ] {
+        assert_eq!(
+            floating_panes_stack.visible_kitty_image_chunks(
+                vec![kitty],
+                None,
+                &character_cell_size
+            ),
+            vec![kitty]
+        );
+        let visible_sixel_chunks = floating_panes_stack.visible_sixel_image_chunks(
+            vec![sixel],
+            None,
+            &character_cell_size,
+        );
+        assert_eq!(visible_sixel_chunks.len(), 1);
+        assert_eq!(visible_sixel_chunks[0].sixel_image_id, 7);
+    }
+}
+
+#[test]
 pub fn sixel_image_in_alternate_buffer() {
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -6361,6 +6455,41 @@ fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
     // rows 0-3: AAA, BBB, DDD, EEE (CCC scrolled off and discarded) - no anchors;
     // row 4 holds the URL's first 40 columns, row 5 the wrapped remainder
     assert_eq!(start_anchors_per_row, vec![0, 0, 0, 0, 40, 10]);
+}
+
+#[test]
+fn overwriting_a_scanned_url_replaces_its_link_anchors() {
+    let old_url = "https://old.example";
+    let new_url = "https://new.example";
+    assert_eq!(old_url.len(), new_url.len());
+    let mut grid = create_grid_with_size_and_raw(5, 40, old_url.as_bytes());
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"\x1b[2;1H");
+    grid.link_urls_in_changed_lines();
+    assert_eq!(linked_uris(&grid), vec![old_url.to_owned()]);
+
+    parser.feed(&mut grid, b"\x1b[1;1H");
+    parser.feed(&mut grid, new_url.as_bytes());
+    parser.feed(&mut grid, b"\x1b[2;1H");
+    grid.link_urls_in_changed_lines();
+
+    let handler = grid.link_handler.borrow();
+    let visible_uris: Vec<String> = grid
+        .viewport
+        .iter()
+        .flat_map(|row| row.columns.iter())
+        .filter_map(|cell| handler.uri(cell.styles.link_anchor))
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        visible_uris.iter().all(|uri| uri == new_url),
+        "overwritten URL kept stale anchors or new URL was not linked: {visible_uris:?}"
+    );
+    assert_eq!(
+        visible_uris.len(),
+        new_url.len(),
+        "every overwritten cell should point at the new URL"
+    );
 }
 
 #[test]
@@ -9903,6 +10032,42 @@ fn the_notification_state_remembered_per_pane_is_bounded() {
             && grid.notification_tracker.wants_report.len() <= 256
             && grid.notification_tracker.assemblies.is_empty(),
         "an app sending endless notifications does not grow the pane's state without bound"
+    );
+}
+
+#[test]
+fn oversized_and_numerous_notification_ids_stay_within_the_byte_budget() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vt_parser::Parser::new();
+    let oversized_id = "x".repeat(super::MAX_NOTIFICATION_ID_BYTES + 1);
+    vte_parser.feed(
+        &mut grid,
+        format!("\x1b]99;i={}:a=report;notification\x1b\\", oversized_id).as_bytes(),
+    );
+    assert!(grid.notification_tracker.known_ids.is_empty());
+    assert_eq!(grid.notification_tracker.known_id_bytes, 0);
+    assert!(grid.notification_tracker.wants_report.is_empty());
+    assert!(grid.notification_tracker.assemblies.is_empty());
+
+    for index in 0..80 {
+        let id = format!("{:0>250}", index);
+        vte_parser.feed(
+            &mut grid,
+            format!("\x1b]99;i={}:a=report;notification\x1b\\", id).as_bytes(),
+        );
+        grid.pending_desktop_notifications.clear();
+    }
+    let retained_bytes: usize = grid
+        .notification_tracker
+        .known_ids
+        .iter()
+        .map(String::len)
+        .sum();
+    assert!(
+        grid.notification_tracker.known_ids.len() <= super::MAX_TRACKED_NOTIFICATION_IDS
+            && retained_bytes <= super::MAX_TRACKED_NOTIFICATION_ID_BYTES
+            && grid.notification_tracker.known_id_bytes == retained_bytes,
+        "notification ids must stay within both the entry and byte budgets"
     );
 }
 
