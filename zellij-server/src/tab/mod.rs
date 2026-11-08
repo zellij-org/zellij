@@ -1211,6 +1211,12 @@ pub trait Pane {
     }
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
+    /// Output that arrived before this pane existed was cut. The notice is
+    /// pane state, not bytes in the terminal stream.
+    fn note_preopen_output_truncated(&mut self) {}
+    /// Drop a control sequence the parser had not finished, without
+    /// dispatching it. Used at a pre-open output gap.
+    fn discard_unfinished_input(&mut self) {}
     fn stack_list_entry_label(&self) -> String {
         self.current_title()
     }
@@ -5424,6 +5430,7 @@ impl Tab {
             .map(|backlog| backlog.len)
             .unwrap_or(0)
     }
+    #[cfg(test)]
     pub(crate) fn pending_vte_bytes_dropped(&self, pid: u32) -> u64 {
         self.pending_vte_bytes_dropped
             .get(&pid)
@@ -5477,12 +5484,10 @@ impl Tab {
         self.has_pending_vte_bytes() || self.panes_have_deferred_work()
     }
     fn panes_have_deferred_work(&self) -> bool {
-        self.get_all_pane_ids()
-            .into_iter()
-            .any(|pane_id| {
-                self.get_pane_with_id(pane_id)
-                    .is_some_and(|pane| pane.has_deferred_pane_work())
-            })
+        self.get_all_pane_ids().into_iter().any(|pane_id| {
+            self.get_pane_with_id(pane_id)
+                .is_some_and(|pane| pane.has_deferred_pane_work())
+        })
     }
     pub(crate) fn advance_deferred_pane_work(&mut self) {
         let pane_ids = self.get_all_pane_ids();

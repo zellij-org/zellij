@@ -3847,6 +3847,35 @@ pub fn osc_4_color_query() {
 }
 
 #[test]
+pub fn osc_4_query_with_eight_registers_forwards_all_of_them() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let content = "\u{1b}]4;1;?;2;?;3;?;4;?;5;?;6;?;7;?;8;?\u{1b}\\";
+    vte_parser.feed(&mut grid, content.as_bytes());
+    let forwarded_string: String = grid
+        .pending_forwarded_queries
+        .iter()
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
+    assert_eq!(forwarded_string, content);
+}
+
+#[test]
 pub fn xtsmgraphics_color_register_count() {
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -12124,6 +12153,681 @@ fn park_at_live_bottom_keeps_the_scrolled_rows_and_appends_under_them() {
 }
 
 #[test]
+fn a_partially_truncated_park_takes_rows_from_the_gap_instead_of_inserting_blanks() {
+    let cap = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut fill = Vec::with_capacity(cap * 4);
+    for index in 0..cap {
+        fill.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    parser.feed(&mut grid, &fill);
+    let moved = grid.scroll_up_rows(usize::MAX);
+    assert!(moved > 0);
+    assert!(grid.lines_above.is_empty());
+    assert!(grid.park_at_live_bottom());
+
+    parser.feed(&mut grid, b"a\r\nb\r\nc\r\nd\r\n");
+    assert!(grid.history_was_truncated());
+    grid.unpark_live_bottom();
+
+    assert_eq!(grid.viewport.len(), 3);
+    assert!(
+        grid.viewport.iter().all(|row| !row.columns.is_empty()),
+        "unparking a truncated view inserted a synthetic blank row: {:?}",
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn canonical_line_coordinates_include_a_leading_continuation_group() {
+    use crate::panes::grid::Row;
+    use std::collections::VecDeque;
+
+    let mut grid = create_grid_with_size_and_raw(3, 8, b"");
+    grid.viewport = VecDeque::from([
+        Row::new(),
+        Row::new(),
+        Row::new().canonical(),
+        Row::new().canonical(),
+    ]);
+    assert_eq!(grid.canonical_line_y_coordinates(0), 0);
+    assert_eq!(grid.canonical_line_y_coordinates(1), 2);
+    assert_eq!(grid.canonical_line_y_coordinates(2), 3);
+}
+
+#[test]
+fn setting_a_search_string_keeps_a_paused_upward_scan() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut lines = Vec::new();
+    for index in 0..400 {
+        if index == 5 {
+            lines.extend_from_slice(b"NEEDLE\r\n");
+        } else {
+            lines.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+        }
+    }
+    parser.feed(&mut grid, &lines);
+    grid.set_search_string("NEEDLE");
+    assert!(
+        grid.pending_search.is_some(),
+        "the upward scan should still be in progress"
+    );
+    let mut guard = 0;
+    while grid.pending_search.is_some() {
+        grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 100, "search did not finish");
+    }
+    assert!(!grid.search_results.selections.is_empty());
+    assert!(grid.dump_screen(false).contains("NEEDLE"));
+}
+
+#[test]
+fn a_paused_upward_search_tries_downward_when_it_finds_nothing() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut lines = Vec::new();
+    for index in 0..400 {
+        if index == 350 {
+            lines.extend_from_slice(b"LOWER-NEEDLE\r\n");
+        } else {
+            lines.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+        }
+    }
+    parser.feed(&mut grid, &lines);
+    grid.scroll_up_rows(250);
+    grid.set_search_string("LOWER-NEEDLE");
+    assert!(grid.pending_search.is_some());
+    let mut guard = 0;
+    while grid.pending_search.is_some() {
+        grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 100, "search did not finish");
+    }
+    assert!(!grid.search_results.selections.is_empty());
+    assert!(grid.dump_screen(false).contains("LOWER-NEEDLE"));
+}
+
+fn document_text(grid: &Grid) -> String {
+    let mut text = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        text.push_str(&row_to_string(row));
+        text.push('\n');
+    }
+    text
+}
+
+fn canonical_row_count(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .filter(|row| row.is_canonical)
+        .count()
+}
+
+/// Scrollback, the pinned view, and the gap share one row budget. Output
+/// while the user stays scrolled must not keep every new parsed row.
+#[test]
+fn parked_output_stays_inside_the_scrollback_budget() {
+    let cap = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(3, 8, b"MARKER-ROW\r\n");
+    let mut parser = vt_parser::Parser::new();
+    let mut fill = Vec::with_capacity(cap * 3);
+    for _ in 0..cap {
+        fill.extend_from_slice(b"x\r\n");
+    }
+    parser.feed(&mut grid, &fill);
+    grid.move_viewport_up(2);
+    assert!(
+        grid.park_at_live_bottom(),
+        "a scrolled pane with no images should park"
+    );
+    let mut more = Vec::with_capacity(500 * 3);
+    for _ in 0..500 {
+        more.extend_from_slice(b"y\r\n");
+    }
+    parser.feed(&mut grid, &more);
+    assert!(
+        grid.is_live_bottom_parked(),
+        "five hundred lines do not evict the whole pinned view"
+    );
+    assert!(
+        grid.parked_history_rows() <= cap,
+        "parked history {} exceeded the scrollback cap {cap}",
+        grid.parked_history_rows()
+    );
+    let mut flood = Vec::with_capacity((cap + 20) * 3);
+    for _ in 0..(cap + 20) {
+        flood.extend_from_slice(b"z\r\n");
+    }
+    parser.feed(&mut grid, &flood);
+    assert!(
+        grid.history_was_truncated(),
+        "evicting the pinned view has to record truncation"
+    );
+    assert!(
+        grid.parked_history_rows() <= cap,
+        "after the flood, retained rows {} still exceed {cap}",
+        grid.parked_history_rows()
+    );
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        !document.contains("MARKER-ROW"),
+        "the pinned anchor was evicted and must not come back"
+    );
+    assert!(grid.lines_above.len() + grid.lines_below.len() <= cap);
+}
+
+/// `ESC c` retires the parked projection. A later unpark is what the pane
+/// does after the chunk, and it must not put the pre-reset screen back.
+#[test]
+fn reset_while_parked_does_not_restore_the_old_viewport() {
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"live-line\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1bcafter-reset\r\n");
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        document.contains("after-reset"),
+        "reset output should be on the new screen, got {document:?}"
+    );
+    assert!(
+        !document.contains("PARKED-SECRET"),
+        "unpark after reset restored pre-reset text: {document:?}"
+    );
+    assert!(!grid.is_live_bottom_parked());
+    assert!(!grid.history_was_truncated());
+}
+
+#[test]
+fn reset_across_chunks_drops_the_park_before_the_next_chunk() {
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"live-line\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1bc");
+    // The pane unparks at the end of each chunk, before the next one arrives.
+    grid.unpark_live_bottom();
+    assert!(!document_text(&grid).contains("PARKED-SECRET"));
+    parser.feed(&mut grid, b"after-reset\r\n");
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(document.contains("after-reset"), "{document:?}");
+    assert!(!document.contains("PARKED-SECRET"), "{document:?}");
+}
+
+#[test]
+fn alternate_screen_while_parked_saves_and_restores_the_primary_view() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(
+        &mut grid,
+        b"PARKED-SECRET\r\na\r\nb\r\nc\r\nd\r\ne\r\nf\r\nBOTTOM\r\n",
+    );
+    grid.move_viewport_up(6);
+    assert!(
+        grid.dump_screen(false).contains("PARKED-SECRET"),
+        "the scrolled viewport should be holding the secret"
+    );
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1b[?1049h");
+    assert!(!grid.is_live_bottom_parked());
+    assert!(
+        !grid.dump_screen(true).contains("PARKED-SECRET"),
+        "the alternate screen is a new buffer"
+    );
+    parser.feed(&mut grid, b"\x1b[?1049l");
+    assert!(
+        grid.dump_screen(true).contains("PARKED-SECRET"),
+        "leaving the alternate screen restores the primary document"
+    );
+}
+
+#[test]
+fn resize_while_parked_unparks_and_keeps_the_held_text() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"later\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    grid.change_size(5, 24);
+    assert!(!grid.is_live_bottom_parked());
+    assert!(document_text(&grid).contains("PARKED-SECRET"));
+}
+
+#[test]
+fn a_kitty_placement_while_parked_returns_the_held_text_on_the_next_line() {
+    let (mut grid, _store) = new_kitty_grid(5, 20);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        b"PARKED-SECRET\r\n",
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &b"later\r\n".repeat(8),
+    );
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=1,v=1,i=1,C=1", &rgb_raster(1, 1)),
+    );
+    assert!(
+        !grid.kitty_placements().is_empty(),
+        "the image should be placed before the following newline"
+    );
+    feed_kitty_bytes(&mut grid, &mut parser, &mut interceptor, b"\r\n");
+    assert!(
+        !grid.is_live_bottom_parked(),
+        "a placement uses scrollback coordinates, so the park cannot stay up"
+    );
+    assert!(document_text(&grid).contains("PARKED-SECRET"));
+}
+
+/// A resize quantum must not turn the cut in a soft-wrapped line into a newline.
+#[test]
+fn a_bounded_resize_keeps_one_logical_line() {
+    let width = 4usize;
+    let stored_rows = 300usize;
+    let mut bytes = Vec::with_capacity(stored_rows * width);
+    for index in 0..stored_rows {
+        let byte = b'a' + (index % 26) as u8;
+        bytes.extend(std::iter::repeat(byte).take(width));
+    }
+    let mut grid = create_grid_with_size_and_raw(3, width, &bytes);
+    assert!(
+        grid.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the line has to be longer than one resize quantum, above={}",
+        grid.lines_above.len()
+    );
+    assert_eq!(
+        canonical_row_count(&grid),
+        1,
+        "the fixture is one soft-wrapped line"
+    );
+    let before = logical_characters(&grid);
+    grid.change_size(3, width + 3);
+    assert_eq!(
+        canonical_row_count(&grid),
+        1,
+        "a quantum boundary became a hard line break"
+    );
+    assert!(
+        grid.lines_above.front().is_some_and(|row| row.is_canonical),
+        "the original canonical start stays in scrollback"
+    );
+    assert!(
+        grid.viewport.iter().all(|row| !row.is_canonical),
+        "the visible suffix is still a continuation"
+    );
+    assert_eq!(logical_characters(&grid), before);
+    // Copy splits logical lines on canonical rows. One soft line stays one
+    // copied line, including the characters that sat on the resize quantum.
+    let copied = grid
+        .text_in_range(
+            Position::new(-(grid.lines_above.len() as i32), 0),
+            Position::new(
+                grid.viewport.len().saturating_sub(1) as i32,
+                grid.width as u16,
+            ),
+        )
+        .expect("the line should copy");
+    assert!(
+        !copied.contains('\n'),
+        "a resize quantum became a newline in copied text"
+    );
+    let junction = 127 * width + 2;
+    assert_eq!(&copied[junction..junction + 4], "xxyy");
+    assert_eq!(copied, before);
+    // Search joins the non-canonical tail. The same junction has to be a hit
+    // on that one logical line, not only an earlier repeat of "xxyy".
+    grid.search_results.needle = "xxyy".to_owned();
+    // A match is reported on the row where it starts. Search each row of the
+    // one logical line, not only the canonical head.
+    let mut hits = Vec::new();
+    for index in 0..grid.lines_above.len() {
+        if index > 0 && grid.lines_above[index].is_canonical {
+            break;
+        }
+        let tail: Vec<&super::super::Row> = grid
+            .lines_above
+            .iter()
+            .skip(index + 1)
+            .take_while(|row| !row.is_canonical)
+            .collect();
+        hits.extend(
+            grid.search_results
+                .search_row(index, &grid.lines_above[index], &tail),
+        );
+    }
+    let junction_hit = hits.iter().any(|hit| {
+        let mut offset = 0usize;
+        for (index, row) in grid.lines_above.iter().enumerate() {
+            if index as isize == hit.start.line.0 {
+                let mut column = 0usize;
+                for character in &row.columns {
+                    if column >= hit.start.column.0 as usize {
+                        return offset == junction;
+                    }
+                    offset += character.character.len_utf8();
+                    column += character.width();
+                }
+                return offset == junction;
+            }
+            offset += row
+                .columns
+                .iter()
+                .map(|character| character.character.len_utf8())
+                .sum::<usize>();
+        }
+        false
+    });
+    assert!(
+        junction_hit,
+        "search did not find the quantum junction on the original logical line"
+    );
+}
+
+fn logical_characters(grid: &Grid) -> String {
+    let mut text = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        text.push_str(row_to_string(row).trim_end());
+    }
+    text
+}
+
+fn width_cells(count: usize, width: u8) -> super::super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut columns = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut cell = TerminalCharacter::new('a');
+        cell.set_width(width);
+        columns.push(cell);
+    }
+    let mut row = super::super::Row::from_columns(columns);
+    row.is_canonical = false;
+    let _ = row.width_cached();
+    row
+}
+
+#[test]
+fn appending_a_continuation_invalidates_a_summarized_suffix() {
+    // The source witness: three stored rows of four cells and one of three,
+    // measured at width 3. The cached next delta is -1. Replacing the tail
+    // with a width-2 continuation, while the deque length and the next
+    // row's fingerprint stay put, makes the exact delta -2. `bounded_push`
+    // drops that summary before the delta is read.
+    let width = 3usize;
+    let mut lines =
+        std::collections::VecDeque::from([width_cells(4, 1), width_cells(4, 1), width_cells(3, 1)]);
+    let mut evicted = width_cells(4, 1);
+    let mut cache = super::EvictionCache::default();
+    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    let predicted = {
+        let stale = cache
+            .stale
+            .as_ref()
+            .expect("the stale wrap should be summarized");
+        assert_eq!(stale.tail_rows, 0, "the run reached the end of the deque");
+        stale.heights[stale.index + 1] as isize - stale.heights[stale.index] as isize
+    };
+    assert_eq!(predicted, -1, "the witness's cached next delta");
+    cache.note_appended(false);
+    assert!(
+        cache.stale.is_none(),
+        "a continuation of a summarized suffix must drop that summary"
+    );
+    // Same length and the same next row (four cells). The rows behind it
+    // are the witness's edited tail, which the dropped summary must not use.
+    let mut lines =
+        std::collections::VecDeque::from([width_cells(4, 1), width_cells(3, 1), width_cells(1, 2)]);
+    let mut evicted = width_cells(4, 1);
+    let mut fresh_lines = lines.clone();
+    let mut fresh_evicted = evicted.clone();
+    let mut fresh = super::EvictionCache::default();
+    let exact = super::evicted_row_display_row_delta(
+        &mut fresh_lines,
+        &mut fresh_evicted,
+        width,
+        &mut fresh,
+    );
+    let got = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    assert_eq!(got, exact);
+    assert_eq!(
+        exact, -2,
+        "the tail edit changes the delta the cache had stored"
+    );
+}
+
+fn alternating_row(pairs: usize, canonical: bool) -> super::super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut columns = Vec::with_capacity(pairs * 2);
+    for _ in 0..pairs {
+        columns.push(TerminalCharacter::new('a'));
+        columns.push(TerminalCharacter::new('你'));
+    }
+    let mut row = super::super::Row::from_columns(columns);
+    row.is_canonical = canonical;
+    let _ = row.width_cached();
+    row
+}
+
+#[test]
+fn a_long_alternating_run_skips_the_suffix_table_and_stays_exact() {
+    use super::run_display_height;
+    let width = 121usize;
+    let mut lines = std::collections::VecDeque::new();
+    for _ in 0..39 {
+        lines.push_back(alternating_row(40, false));
+    }
+    let mut evicted = alternating_row(40, true);
+    let with_widths = std::iter::repeat([1usize, 2]).take(40 * 40).flatten();
+    let without_widths = std::iter::repeat([1usize, 2]).take(40 * 39).flatten();
+    let expected = run_display_height(without_widths, width) as isize
+        - run_display_height(with_widths, width) as isize;
+    super::reset_suffix_table_transition_count();
+    let mut cache = super::EvictionCache::default();
+    let delta = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    assert_eq!(delta, expected);
+    assert!(!cache.take_needs_recount());
+    assert_eq!(super::suffix_table_transition_count(), 0);
+}
+
+/// More width-2 rows than one synchronous table. These rows do not meet in
+/// the character walk, so the summary is built a transition budget at a
+/// time and the finished delta matches a full wrap.
+#[test]
+fn a_long_wide_run_chunks_the_suffix_table() {
+    use super::run_display_height;
+    let width = 121usize;
+    let rows = 2_200usize;
+    let cells = 40usize;
+    let mut lines = std::collections::VecDeque::new();
+    for _ in 0..(rows - 1) {
+        lines.push_back(width_cells(cells, 2));
+    }
+    let mut evicted = width_cells(cells, 2);
+    let with_widths = std::iter::repeat(2usize).take(cells * rows);
+    let without_widths = std::iter::repeat(2usize).take(cells * (rows - 1));
+    let expected = run_display_height(without_widths, width) as isize
+        - run_display_height(with_widths, width) as isize;
+    let mut cache = super::EvictionCache::default();
+    let mut delta = 0isize;
+    let mut finished = false;
+    for _ in 0..rows {
+        super::reset_suffix_table_transition_count();
+        delta = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+        let transitions = super::suffix_table_transition_count();
+        assert!(
+            transitions <= super::SUFFIX_TABLE_TRANSITION_BUDGET,
+            "one eviction built {transitions} suffix transitions"
+        );
+        if cache.stale.is_some() {
+            finished = true;
+            break;
+        }
+    }
+    assert!(finished, "the suffix table did not finish");
+    assert_eq!(delta, expected);
+    // Later hits consume heights[index + 1] - heights[index], starting
+    // at index 1. Pop one continuation and append a new canonical row so
+    // the deque length, and therefore the cache key, stays put.
+    for step in 0..4 {
+        let mut next = lines.pop_front().expect("continuation row");
+        let mut tail = width_cells(1, 1);
+        tail.is_canonical = true;
+        lines.push_back(tail);
+        cache.note_appended(true);
+        let left = lines.iter().filter(|row| !row.is_canonical).count();
+        let without = run_display_height(std::iter::repeat(2usize).take(cells * left), width);
+        let with = run_display_height(std::iter::repeat(2usize).take(cells * (left + 1)), width);
+        super::reset_suffix_table_transition_count();
+        let hit = super::evicted_row_display_row_delta(&mut lines, &mut next, width, &mut cache);
+        assert_eq!(
+            super::suffix_table_transition_count(),
+            0,
+            "a stored suffix hit must not rebuild the table"
+        );
+        assert_eq!(hit, without as isize - with as isize, "cache hit {step}");
+    }
+}
+
+#[test]
+fn an_empty_continuation_still_occupies_one_display_row() {
+    use super::run_display_height;
+    use crate::panes::grid::Row;
+    // The head is narrower than the pane, so the stored wrap is stale and
+    // the suffix table decides. The blank continuation is one display row
+    // until it itself is evicted.
+    // A short head is a stale wrap. A head that exactly fills the pane used
+    // to take the valid-wrap fast path and subtract one while the blank
+    // row was still there.
+    for (width, cells) in [(8usize, 1usize), (4, 4)] {
+        let mut blank = Row::new();
+        let _ = blank.width_cached();
+        let mut lines = std::collections::VecDeque::from([blank]);
+        let mut evicted = width_cells(cells, 1);
+        evicted.is_canonical = true;
+        let expected = run_display_height(std::iter::empty(), width) as isize
+            - run_display_height(std::iter::repeat(1usize).take(cells), width) as isize;
+        assert_eq!(expected, 0, "width {width}");
+        let mut cache = super::EvictionCache::default();
+        let delta =
+            super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+        assert_eq!(delta, expected, "width {width}");
+        let next = {
+            let stale = cache
+                .stale
+                .as_ref()
+                .expect("the blank continuation is summarized");
+            stale.heights[stale.index + 1] as isize - stale.heights[stale.index] as isize
+        };
+        assert_eq!(
+            next, -1,
+            "width {width}: removing the last blank row drops the line"
+        );
+    }
+}
+
+#[test]
+fn a_short_alternating_run_builds_a_bounded_suffix_table() {
+    let width = 3usize;
+    let mut lines = std::collections::VecDeque::new();
+    for _ in 0..3 {
+        lines.push_back(alternating_row(2, false));
+    }
+    let mut evicted = alternating_row(2, false);
+    super::reset_suffix_table_transition_count();
+    let mut cache = super::EvictionCache::default();
+    let _ = super::evicted_row_display_row_delta(&mut lines, &mut evicted, width, &mut cache);
+    let transitions = super::suffix_table_transition_count();
+    assert!(transitions > 0, "the short table should do real work");
+    assert!(transitions <= 8_192, "transitions {transitions}");
+    assert!(cache.stale.is_some());
+}
+
+#[test]
+fn retiring_canonical_rows_from_the_front_does_not_copy_the_index() {
+    let (mut grid, _store) = new_kitty_grid(5, 10);
+    let before: Vec<usize> = (0..200).collect();
+    grid.kitty_grid.set_canonical_starts(before.clone());
+    for _ in 0..50 {
+        grid.kitty_grid.note_front_row_removed(true);
+    }
+    let after = grid.kitty_grid.canonical_starts_current();
+    assert_eq!(
+        after,
+        before[50..]
+            .iter()
+            .map(|start| start - 50)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(grid.kitty_grid.index_entries_copied(), 0);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+    assert!(grid.kitty_grid.index_front_pops() >= 50);
+
+    // The front row is not a canonical start, so retiring it moves the
+    // base and leaves the stored starts in place.
+    grid.kitty_grid.set_canonical_starts(vec![2, 10, 40, 80]);
+    grid.kitty_grid.note_front_row_removed(false);
+    assert_eq!(grid.kitty_grid.index_front_pops(), 50);
+    assert_eq!(
+        grid.kitty_grid.canonical_starts_current(),
+        vec![1, 9, 39, 79]
+    );
+    grid.kitty_grid.note_front_row_removed(false);
+    grid.kitty_grid.note_front_row_removed(true);
+    assert_eq!(grid.kitty_grid.index_front_pops(), 51);
+    assert_eq!(grid.kitty_grid.canonical_starts_current(), vec![7, 37, 77]);
+    assert_eq!(grid.kitty_grid.index_entries_copied(), 0);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+}
+
+#[test]
+fn reanchoring_placements_does_not_clone_the_canonical_index() {
+    let (mut grid, _store) = new_kitty_grid(8, 20);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,C=1", &rgb_raster(2, 2)),
+    );
+    assert!(!grid.kitty_placements().is_empty());
+    let copies_before = grid.kitty_grid.index_entries_copied();
+    grid.kitty_reanchor_all_from_pixels_for_test();
+    assert_eq!(grid.kitty_grid.index_entries_copied(), copies_before);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+}
+
+#[test]
 fn a_long_stale_scroll_up_waits_for_a_display_boundary() {
     use crate::panes::grid::Row;
     use crate::panes::terminal_character::TerminalCharacter;
@@ -12155,7 +12859,11 @@ fn a_long_stale_scroll_up_waits_for_a_display_boundary() {
         .iter()
         .map(|row| row.columns.len())
         .sum::<usize>()
-        + grid.viewport.iter().map(|row| row.columns.len()).sum::<usize>();
+        + grid
+            .viewport
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>();
     // The first turns only walk the prefix. That is not the top of the buffer.
     assert!(
         !grid.advance_toward_top(2),
@@ -12600,6 +13308,7 @@ fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
         &mut grid.kitty_grid,
         row,
         &mut grid.scrollback_cells,
+        &mut grid.front_run_validity,
     );
 }
 

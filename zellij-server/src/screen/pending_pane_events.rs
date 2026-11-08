@@ -11,9 +11,11 @@
 //!   output for a pane is coalesced into one buffer, so the number of
 //!   retained instructions does not grow with the number of writes. A chunk
 //!   that would exceed either budget is dropped whole. The prefix already
-//!   buffered stays, and the first overflow appends one truncation notice so
-//!   that prefix is not replayed as a complete stream. Notice bytes are not
-//!   counted against the budget.
+//!   buffered stays. The first overflow is recorded on the pane, not as
+//!   terminal bytes: a notice inserted into an unfinished OSC or DCS would
+//!   be swallowed or would complete a different control operation. Bytes
+//!   after the gap are a separate event, and replay discards the unfinished
+//!   control sequence before them.
 //! * Lifecycle facts (exit, hold) are settlement. Duplicate exits collapse to
 //!   the latest close, and duplicate holds collapse to the latest hold, so a
 //!   flood cannot grow the queue. A fact for a pane that already has an entry
@@ -34,12 +36,6 @@ pub(crate) const MAX_PENDING_OUTPUT_BYTES_PER_PANE: usize = 1024 * 1024;
 pub(crate) const MAX_PENDING_OUTPUT_BYTES_TOTAL: usize = 16 * 1024 * 1024;
 /// Not-yet-created panes with anything buffered.
 pub(crate) const MAX_PENDING_PANES: usize = 1024;
-
-/// Appended once, as its own `PtyBytes`, the first time a pane's output is
-/// truncated. Not counted against the byte budget, so a full buffer can still
-/// carry it.
-const OUTPUT_TRUNCATION_NOTICE: &[u8] =
-    b"\r\n[zellij: output before this pane opened was cut off]\r\n";
 
 /// Terminals whose panes have been admitted but not yet installed.
 ///
@@ -79,11 +75,21 @@ pub(crate) fn release_uninstalled_terminal(terminal_id: u32) {
 struct PendingPane {
     events: Vec<ScreenInstruction>,
     output_bytes: usize,
-    /// A truncation notice was already appended for this pane.
+    /// Output was dropped. Reported through pane state, not `PtyBytes`.
     truncation_noted: bool,
-    /// The last event is the truncation notice, so later output must not be
-    /// coalesced into it.
-    truncation_notice_is_tail: bool,
+    /// Indexes of the first event after each dropped span. Replay discards
+    /// an unfinished control sequence before these events. An index equal to
+    /// the event count means the last span was dropped and needs recovery
+    /// after the final event.
+    recover_before: Vec<usize>,
+}
+
+/// Buffered events plus the out-of-band truncation record.
+pub(crate) struct PendingReplay {
+    pub events: Vec<ScreenInstruction>,
+    pub output_truncated: bool,
+    /// Parser state must be discarded before each of these event indexes.
+    pub recover_before: Vec<usize>,
 }
 
 #[derive(Default)]
@@ -96,8 +102,8 @@ impl PendingPaneEvents {
     /// Buffer PTY output for a pane that does not exist yet.
     ///
     /// When the chunk would exceed either budget, it is dropped and the
-    /// prefix already buffered is kept. The first time that happens, one
-    /// truncation notice is appended. Its bytes are not charged to the budget.
+    /// prefix already buffered is kept. The first time that happens, the
+    /// pane is marked truncated. No notice is written into the byte stream.
     /// A chunk larger than the per-pane budget is never retained.
     pub fn push_output(&mut self, pid: PaneId, bytes: Vec<u8>) {
         let PaneId::Terminal(terminal_id) = pid else {
@@ -144,14 +150,37 @@ impl PendingPaneEvents {
         pane.events.push(event);
     }
 
+    /// Whether output for `pid` was dropped. Read this before [`Self::take`],
+    /// which removes the pane.
+    #[cfg(test)]
+    pub fn output_was_truncated(&self, pid: PaneId) -> bool {
+        self.panes
+            .get(&pid)
+            .is_some_and(|pane| pane.truncation_noted)
+    }
+
     /// Remove and return a pane's buffered events, in arrival order.
     pub fn take(&mut self, pid: PaneId) -> Vec<ScreenInstruction> {
+        self.take_replay(pid).events
+    }
+
+    /// Events plus the truncation boundaries. `recover_before` contains the
+    /// index of the first event after each dropped span.
+    pub fn take_replay(&mut self, pid: PaneId) -> PendingReplay {
         match self.panes.remove(&pid) {
             Some(pane) => {
                 self.total_output_bytes = self.total_output_bytes.saturating_sub(pane.output_bytes);
-                pane.events
+                PendingReplay {
+                    events: pane.events,
+                    output_truncated: pane.truncation_noted,
+                    recover_before: pane.recover_before,
+                }
             },
-            None => vec![],
+            None => PendingReplay {
+                events: vec![],
+                output_truncated: false,
+                recover_before: vec![],
+            },
         }
     }
 
@@ -171,24 +200,25 @@ impl PendingPaneEvents {
             || self.total_output_bytes.saturating_add(len) > MAX_PENDING_OUTPUT_BYTES_TOTAL
     }
 
-    fn note_output_truncated(&mut self, pid: PaneId, terminal_id: u32) {
+    fn note_output_truncated(&mut self, pid: PaneId, _terminal_id: u32) {
         let Some(pane) = self.pane_entry(pid) else {
             return;
         };
-        if pane.truncation_noted {
-            return;
-        }
         pane.truncation_noted = true;
-        pane.truncation_notice_is_tail = true;
-        pane.events.push(ScreenInstruction::PtyBytes(
-            terminal_id,
-            OUTPUT_TRUNCATION_NOTICE.to_vec(),
-        ));
+        let boundary = pane.events.len();
+        if pane.recover_before.last().copied() != Some(boundary) {
+            pane.recover_before.push(boundary);
+        }
+    }
+
+    /// True when this chunk is the first output after a dropped span. The
+    /// caller pushes it as its own event.
+    fn begin_post_gap_output(pane: &mut PendingPane) -> bool {
+        pane.recover_before.last().copied() == Some(pane.events.len())
     }
 
     fn append_output(pane: &mut PendingPane, terminal_id: u32, bytes: Vec<u8>) {
-        if pane.truncation_notice_is_tail {
-            pane.truncation_notice_is_tail = false;
+        if Self::begin_post_gap_output(pane) {
             pane.events
                 .push(ScreenInstruction::PtyBytes(terminal_id, bytes));
             return;
@@ -259,8 +289,7 @@ impl PendingPaneEvents {
         generation: u64,
         bytes: Vec<u8>,
     ) {
-        if pane.truncation_notice_is_tail {
-            pane.truncation_notice_is_tail = false;
+        if Self::begin_post_gap_output(pane) {
             pane.events.push(ScreenInstruction::PtyRunBytes(
                 terminal_id,
                 generation,
@@ -324,7 +353,14 @@ mod tests {
     }
 
     fn child_exit(pid: PaneId, status: i32) -> ScreenInstruction {
-        ScreenInstruction::ClosePane(pid, None, None, Some(status), ClosePaneSource::ChildExit)
+        ScreenInstruction::ClosePane(
+            pid,
+            None,
+            None,
+            Some(status),
+            ClosePaneSource::ChildExit,
+            Some(1),
+        )
     }
 
     fn describe(events: &[ScreenInstruction]) -> Vec<String> {
@@ -332,10 +368,24 @@ mod tests {
             .iter()
             .map(|event| match event {
                 ScreenInstruction::PtyBytes(_, bytes) => format!("out:{}", bytes.len()),
-                ScreenInstruction::ClosePane(_, _, _, status, _) => format!("exit:{status:?}"),
+                ScreenInstruction::ClosePane(_, _, _, status, _, _) => {
+                    format!("exit:{status:?}")
+                },
                 _ => "other".to_owned(),
             })
             .collect()
+    }
+
+    fn stream_bytes(events: &[ScreenInstruction]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for event in events {
+            match event {
+                ScreenInstruction::PtyBytes(_, payload)
+                | ScreenInstruction::PtyRunBytes(_, _, payload) => bytes.extend_from_slice(payload),
+                _ => {},
+            }
+        }
+        bytes
     }
 
     fn payload_byte_count(events: &[ScreenInstruction]) -> usize {
@@ -378,21 +428,22 @@ mod tests {
         pending.push_output(pid, output(chunk));
         pending.push_output(pid, output(chunk));
         assert_eq!(pending.total_output_bytes(), chunk * 2);
-        let events = pending.take(pid);
+        assert!(pending.output_was_truncated(pid));
+        let replay = pending.take_replay(pid);
+        assert!(replay.output_truncated);
+        assert_eq!(replay.recover_before, vec![3]);
         assert_eq!(
-            describe(&events),
+            describe(&replay.events),
             vec![
                 format!("out:{chunk}"),
                 "exit:Some(3)".to_owned(),
                 format!("out:{chunk}"),
-                format!("out:{}", OUTPUT_TRUNCATION_NOTICE.len()),
             ]
         );
-        assert_eq!(payload_byte_count(&events), chunk * 2);
-        assert!(matches!(
-            events.last(),
-            Some(ScreenInstruction::PtyBytes(_, bytes)) if bytes.as_slice() == OUTPUT_TRUNCATION_NOTICE
-        ));
+        assert_eq!(payload_byte_count(&replay.events), chunk * 2);
+        assert!(stream_bytes(&replay.events)
+            .windows(b"[zellij:".len())
+            .all(|window| window != b"[zellij:"));
     }
 
     #[test]
@@ -408,14 +459,9 @@ mod tests {
         }
         // Panes that did not fit still keep their lifecycle facts.
         let last = PaneId::Terminal(panes as u32 - 1);
+        assert!(pending.output_was_truncated(last));
         let last_events = pending.take(last);
-        assert_eq!(
-            describe(&last_events),
-            vec![
-                "exit:Some(0)".to_owned(),
-                format!("out:{}", OUTPUT_TRUNCATION_NOTICE.len()),
-            ]
-        );
+        assert_eq!(describe(&last_events), vec!["exit:Some(0)".to_owned()]);
         assert_eq!(payload_byte_count(&last_events), 0);
         assert!(pending.total_output_bytes() <= MAX_PENDING_OUTPUT_BYTES_TOTAL);
     }
@@ -427,16 +473,103 @@ mod tests {
         let len = MAX_PENDING_OUTPUT_BYTES_PER_PANE + 1;
         pending.push_output(pid, output(len));
         assert_eq!(pending.total_output_bytes(), 0);
-        let events = pending.take(pid);
-        assert_eq!(payload_byte_count(&events), 0);
-        assert!(events.iter().all(|event| match event {
-            ScreenInstruction::PtyBytes(_, bytes) => bytes.as_slice() != output(len).as_slice(),
-            _ => true,
-        }));
-        assert!(matches!(
-            events.as_slice(),
-            [ScreenInstruction::PtyBytes(_, bytes)] if bytes.as_slice() == OUTPUT_TRUNCATION_NOTICE
-        ));
+        assert!(pending.output_was_truncated(pid));
+        let replay = pending.take_replay(pid);
+        assert!(replay.output_truncated);
+        assert!(replay.events.is_empty());
+        assert_eq!(payload_byte_count(&replay.events), 0);
+    }
+
+    #[test]
+    fn an_osc_split_by_overflow_stays_out_of_band_and_unjoined() {
+        // Every split of a harmless OSC title, then a chunk that does not
+        // fit, then a smaller chunk that would terminate that OSC if the
+        // two sides were concatenated. The notice is not in the stream.
+        // The later chunk is its own event, and replay is told to drop the
+        // unfinished sequence before it.
+        let prefix = b"\x1b]2;unfinished-title";
+        let later = b"\x07VISIBLE";
+        for split in 0..=prefix.len() {
+            let pid = PaneId::Terminal(1);
+            let mut pending = PendingPaneEvents::default();
+            if split > 0 {
+                pending.push_output(pid, prefix[..split].to_vec());
+            }
+            pending.push_output(pid, vec![b'y'; MAX_PENDING_OUTPUT_BYTES_PER_PANE + 1]);
+            pending.push_output(pid, later.to_vec());
+            assert!(pending.output_was_truncated(pid), "split {split}");
+            let replay = pending.take_replay(pid);
+            assert!(replay.output_truncated, "split {split}");
+            let bytes = stream_bytes(&replay.events);
+            assert!(
+                !bytes
+                    .windows(b"[zellij:".len())
+                    .any(|window| window == b"[zellij:"),
+                "split {split} inserted a notice into the stream: {bytes:?}"
+            );
+            assert!(
+                !bytes
+                    .windows(b"output before this pane".len())
+                    .any(|window| { window == b"output before this pane" }),
+                "split {split}"
+            );
+            let outputs: Vec<&[u8]> = replay
+                .events
+                .iter()
+                .filter_map(|event| match event {
+                    ScreenInstruction::PtyBytes(_, payload) => Some(payload.as_slice()),
+                    _ => None,
+                })
+                .collect();
+            if split == 0 {
+                assert_eq!(outputs, vec![&later[..]], "split {split}");
+                assert_eq!(replay.recover_before, vec![0]);
+            } else {
+                assert_eq!(outputs.len(), 2, "split {split}");
+                assert_eq!(outputs[0], &prefix[..split]);
+                assert_eq!(outputs[1], &later[..]);
+                assert_eq!(replay.recover_before, vec![1]);
+                // A split that still holds the OSC introducer would finish
+                // that title if the later bytes were appended to it. The
+                // two events stay apart so replay can break the sequence.
+                if split >= b"\x1b]2;".len() {
+                    let joined = [outputs[0], outputs[1]].concat();
+                    assert!(joined
+                        .windows(b"\x1b]2;".len())
+                        .any(|window| window == b"\x1b]2;"));
+                    assert!(joined.ends_with(b"VISIBLE"));
+                    assert_ne!(outputs[0], joined.as_slice());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_gap_gets_its_own_recovery_boundary() {
+        let pid = PaneId::Terminal(1);
+        let mut pending = PendingPaneEvents::default();
+        pending.push_output(pid, output(MAX_PENDING_OUTPUT_BYTES_PER_PANE - 10));
+        pending.push_output(pid, output(20));
+        pending.push_output(pid, b"\x1b".to_vec());
+        pending.push_output(pid, output(20));
+        pending.push_output(pid, b"\x07VISIBLE".to_vec());
+        let replay = pending.take_replay(pid);
+        assert_eq!(replay.recover_before, vec![1, 2]);
+        assert_eq!(
+            describe(&replay.events),
+            vec![
+                format!("out:{}", MAX_PENDING_OUTPUT_BYTES_PER_PANE - 10),
+                "out:1".to_owned(),
+                "out:8".to_owned(),
+            ]
+        );
+
+        let pid = PaneId::Terminal(2);
+        let mut pending = PendingPaneEvents::default();
+        pending.push_output(pid, output(MAX_PENDING_OUTPUT_BYTES_PER_PANE - 10));
+        pending.push_output(pid, output(20));
+        let replay = pending.take_replay(pid);
+        assert_eq!(replay.recover_before, vec![1]);
     }
 
     #[test]

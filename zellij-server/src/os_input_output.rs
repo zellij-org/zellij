@@ -658,6 +658,26 @@ pub trait ServerOsApi: Send + Sync {
     }
     /// Write bytes to the standard input of the virtual terminal referred to by `terminal_id`.
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
+    /// Write `buf` only if `terminal_id` still has `generation`.
+    ///
+    /// `None` is an unstamped write from before any run was adopted. A
+    /// `Some` that does not match the endpoint is not written: the
+    /// descriptor currently registered for the id may already belong to
+    /// a later process. The default ignores the generation so test
+    /// doubles keep compiling; the real server backend overrides it.
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        let _ = generation;
+        self.write_to_tty_stdin(terminal_id, buf)
+    }
+    /// Record `generation` on the endpoint already registered for `terminal_id`.
+    /// A missing endpoint is left missing. Stamped writes fail until this
+    /// matches the generation they were admitted with.
+    fn bind_terminal_generation(&self, _terminal_id: u32, _generation: u64) {}
     /// Wait until all output written to the terminal has been transmitted.
     fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGHUP)
@@ -797,7 +817,21 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(terminal_id)
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
-        self.pty_backend.write_to_tty_stdin(terminal_id, buf)
+        self.pty_backend
+            .write_to_tty_stdin_for_run(terminal_id, None, buf)
+    }
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        self.pty_backend
+            .write_to_tty_stdin_for_run(terminal_id, generation, buf)
+    }
+    fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        self.pty_backend
+            .bind_terminal_generation(terminal_id, generation);
     }
     fn tcdrain(&self, terminal_id: u32) -> Result<()> {
         self.pty_backend.tcdrain(terminal_id)

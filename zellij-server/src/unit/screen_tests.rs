@@ -9254,6 +9254,7 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
         PaneId::Terminal(new_pane_id),
         Some(0),
         run_command,
+        None,
     ));
 
     // Small sleep to ensure the above messages are processed (and buffered) first
@@ -9508,6 +9509,23 @@ fn forward_host_query_when_idle_dispatches_immediately() {
         (token, query.to_query_bytes()),
         "wire bytes must be derived from the HostQuery"
     );
+}
+
+#[test]
+fn an_empty_palette_query_is_not_dispatched_or_queued() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let token = screen.forward_host_query(
+        PaneId::Terminal(42),
+        HostQuery::PaletteRegister {
+            indices: Vec::new(),
+            terminator: OscTerminator::St,
+        },
+    );
+    assert_eq!(token, crate::screen::STARTUP_SENTINEL_TOKEN);
+    assert!(capture.drain_forward_queries().is_empty());
+    assert!(screen.forward_queue.is_empty());
+    assert_eq!(screen.forward_in_flight_token, None);
 }
 
 #[test]
@@ -20920,6 +20938,7 @@ pub fn an_external_close_for_a_pane_that_does_not_exist_yet_is_ignored() {
             None,
             None,
             ClosePaneSource::External,
+            None,
         ),
         7,
     );
@@ -20938,6 +20957,7 @@ pub fn a_child_exit_before_its_pane_exists_closes_the_pane_once_created() {
             None,
             Some(0),
             ClosePaneSource::ChildExit,
+            Some(1),
         ),
         7,
     );
@@ -20967,6 +20987,7 @@ pub fn an_external_close_for_a_headless_plugin_still_unloads_it() {
         None,
         None,
         ClosePaneSource::External,
+        None,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
@@ -21002,6 +21023,7 @@ pub fn a_child_exit_before_its_layout_is_applied_closes_the_pane_once_created() 
         None,
         Some(0),
         ClosePaneSource::ChildExit,
+        Some(1),
     ));
     let layout = TiledPaneLayout::default();
     let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
@@ -21059,11 +21081,32 @@ pub fn a_child_exit_after_its_terminal_was_closed_is_dropped() {
                 None,
                 Some(0),
                 ClosePaneSource::ChildExit,
+                Some(1),
             ),
         ],
         7,
     );
     assert_eq!(cleanups, 0);
+}
+
+#[test]
+fn late_run_events_do_not_recreate_state_for_a_closed_terminal() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    let terminal_id = 7;
+    screen.remember_terminal_closed(terminal_id);
+
+    screen.note_terminal_run_started(terminal_id, 1);
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
+
+    let bytes = screen
+        .accept_run_bytes(terminal_id, 1, b"late".to_vec())
+        .expect("late bytes are ignored");
+    assert!(bytes.is_none());
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
+
+    screen.note_child_run_exited(PaneId::Terminal(terminal_id), Some(0), 1, None);
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
 }
 
 #[test]

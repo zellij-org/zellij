@@ -54,11 +54,13 @@ thread_local! {
 fn note_cells_materialized(count: usize) {
     #[cfg(test)]
     HYPERLINK_CELLS_MATERIALIZED.with(|counter| counter.set(counter.get() + count));
+    let _ = count;
 }
 
 fn note_cells_visited(count: usize) {
     #[cfg(test)]
     HYPERLINK_CELLS_VISITED.with(|counter| counter.set(counter.get() + count));
+    let _ = count;
 }
 
 #[cfg(test)]
@@ -288,18 +290,38 @@ fn scan_logical_span(
     } else {
         COLON_FREE_LOOKBEHIND
     };
-    let mut window_start = resume_at.saturating_sub(lookback);
+    let total_cells = {
+        let mut total = 0usize;
+        for y in start..end {
+            if let Some(row) = row_ref(lines_above, viewport, y) {
+                total += row.columns.len();
+            }
+        }
+        total
+    };
+    if resume_at >= total_cells {
+        return;
+    }
+    // Lookbehind is context. The window must still end on text that has
+    // not been scanned, or a full lookbehind consumes the window, the
+    // next start does not move, and the watermark below would mark the
+    // unseen suffix done.
+    let mut covered_until = resume_at;
     let mut deferred_line = false;
-    loop {
-        let cells = collect_span_cells(
-            lines_above,
-            viewport,
-            start,
-            end,
-            window_start,
-            MAX_URL_CHARS,
-        );
+    while covered_until < total_cells {
+        let window_end = (covered_until + MAX_URL_CHARS).min(total_cells);
+        let lookbehind_start =
+            covered_until.saturating_sub(lookback.min(MAX_URL_CHARS.saturating_sub(1)));
+        let window_start = window_end
+            .saturating_sub(MAX_URL_CHARS)
+            .min(lookbehind_start);
+        let want = window_end.saturating_sub(window_start);
+        let cells = collect_span_cells(lines_above, viewport, start, end, window_start, want);
         if cells.is_empty() {
+            break;
+        }
+        let examined_end = window_start + cells.len();
+        if examined_end <= covered_until {
             break;
         }
         note_cells_materialized(cells.len());
@@ -317,45 +339,43 @@ fn scan_logical_span(
             if let Some(row) = row_mut(lines_above, viewport, end - 1) {
                 row.link_scan_pending = true;
             }
-        }
-        if cells.len() < MAX_URL_CHARS {
             break;
         }
-        let next = window_start + cells.len() - lookback.min(cells.len());
-        if next <= window_start {
-            break;
-        }
-        window_start = next;
+        covered_until = examined_end;
     }
     // A URL the cursor may still extend was not linked. Leave the scan
     // cursor where it was so the next pass still sees that candidate.
     if deferred_line {
         return;
     }
+    // The watermark stops at the last cell this call actually passed to
+    // the URL finder. Cells past that stay unscanned.
+    let mut offset = 0usize;
     for y in start..end {
-        if let Some(row) = row_mut(lines_above, viewport, y) {
-            let len = row.columns.len();
-            let scanned = (row.link_prefix_scanned as usize).min(len);
-            if row.columns[scanned..].iter().any(|cell| cell.character == ':') {
+        let Some(row) = row_mut(lines_above, viewport, y) else {
+            continue;
+        };
+        let len = row.columns.len();
+        if offset >= covered_until {
+            break;
+        }
+        let covered = covered_until.saturating_sub(offset).min(len);
+        let previously = (row.link_prefix_scanned as usize).min(len);
+        if covered > previously {
+            if row.columns[previously..covered]
+                .iter()
+                .any(|cell| cell.character == ':')
+            {
                 row.link_prefix_has_colon = true;
             }
-            row.link_prefix_scanned = len.min(u32::MAX as usize) as u32;
-            row.link_scan_dirty = false;
+            row.link_prefix_scanned = covered.min(u32::MAX as usize) as u32;
         }
+        row.link_scan_dirty = false;
+        if covered < len {
+            break;
+        }
+        offset += len;
     }
-}
-
-fn row_has_detected_anchor(
-    lines_above: &VecDeque<Row>,
-    viewport: &VecDeque<Row>,
-    y: isize,
-    link_handler: &LinkHandler,
-) -> bool {
-    row_ref(lines_above, viewport, y).is_some_and(|row| {
-        row.columns
-            .iter()
-            .any(|cell| link_handler.is_detected(cell.styles.link_anchor))
-    })
 }
 
 fn link_urls_in_line(
@@ -1101,7 +1121,9 @@ mod tests {
             "materialized {}",
             hyperlink_cells_materialized()
         );
-        assert!(uris(&handler).iter().any(|uri| uri.starts_with("http://example.org/")));
+        assert!(uris(&handler)
+            .iter()
+            .any(|uri| uri.starts_with("http://example.org/")));
     }
 
     #[test]
@@ -1128,5 +1150,92 @@ mod tests {
             hyperlink_cells_visited()
         );
         assert_eq!(hyperlink_cells_materialized(), 0);
+    }
+
+    fn row_with_scanned_colon(scanned: usize, total: usize) -> Row {
+        let mut columns = Vec::with_capacity(total);
+        for index in 0..total {
+            let character = if index == 10 { ':' } else { 'x' };
+            columns.push(TerminalCharacter::new(character));
+        }
+        let mut row = Row::from_columns(columns).canonical();
+        row.link_prefix_scanned = scanned.min(u32::MAX as usize) as u32;
+        row.link_prefix_has_colon = true;
+        row.link_scan_dirty = false;
+        row
+    }
+
+    #[test]
+    fn a_scanned_colon_prefix_still_links_a_url_appended_after_it() {
+        let prefix = 3000usize;
+        let url = "https://new.example/path";
+        let mut row = row_with_scanned_colon(prefix, prefix);
+        row.columns.push(TerminalCharacter::new(' '));
+        for character in url.chars() {
+            row.columns.push(TerminalCharacter::new(character));
+        }
+        row.columns.push(TerminalCharacter::new(' '));
+        let mut viewport = VecDeque::from([row]);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(
+            uris(&handler).iter().any(|uri| uri == url),
+            "uris {:?}",
+            uris(&handler)
+        );
+        assert_eq!(
+            viewport[0].link_prefix_scanned as usize,
+            viewport[0].columns.len()
+        );
+    }
+
+    #[test]
+    fn a_cursor_on_a_new_url_does_not_advance_the_watermark_past_it() {
+        let prefix = 3000usize;
+        let url = "https://new.example/path";
+        let mut row = row_with_scanned_colon(prefix, prefix);
+        row.columns.push(TerminalCharacter::new(' '));
+        let url_start = row.columns.len();
+        for character in url.chars() {
+            row.columns.push(TerminalCharacter::new(character));
+        }
+        row.columns.push(TerminalCharacter::new(' '));
+        let mut viewport = VecDeque::from([row]);
+        let mut handler = LinkHandler::new();
+        link_all(
+            &mut VecDeque::new(),
+            &mut viewport,
+            Some((url_start, 0)),
+            &mut handler,
+        );
+        assert!(uris(&handler).is_empty(), "{:?}", uris(&handler));
+        assert_eq!(viewport[0].link_prefix_scanned as usize, prefix);
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(uris(&handler).iter().any(|uri| uri == url));
+    }
+
+    #[test]
+    fn a_url_past_eight_thousand_cells_is_linked_in_the_same_scan() {
+        let prefix = 64usize;
+        let mut row = row_with_scanned_colon(prefix, prefix);
+        for _ in 0..9_000 {
+            row.columns.push(TerminalCharacter::new('x'));
+        }
+        let url = "https://late.example/z";
+        row.columns.push(TerminalCharacter::new(' '));
+        for character in url.chars() {
+            row.columns.push(TerminalCharacter::new(character));
+        }
+        row.columns.push(TerminalCharacter::new(' '));
+        let full = row.columns.len();
+        let mut viewport = VecDeque::from([row]);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(
+            uris(&handler).iter().any(|uri| uri == url),
+            "scan uris {:?}",
+            uris(&handler)
+        );
+        assert_eq!(viewport[0].link_prefix_scanned as usize, full);
     }
 }

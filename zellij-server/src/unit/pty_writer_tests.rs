@@ -36,6 +36,10 @@ struct MockServerOsApi {
     write_log: Arc<Mutex<Vec<(u32, Vec<u8>)>>>,
     /// Number of write_to_tty_stdin calls, whatever their outcome.
     write_attempts: Arc<std::sync::atomic::AtomicUsize>,
+    /// Installed run for a terminal. Absent means the test does not
+    /// check generations. `None` means an endpoint is installed and not
+    /// yet bound to a run.
+    endpoint_generation: Arc<Mutex<HashMap<u32, Option<u64>>>>,
 }
 
 impl MockServerOsApi {
@@ -44,7 +48,14 @@ impl MockServerOsApi {
             write_behavior: Arc::new(Mutex::new(HashMap::new())),
             write_log: Arc::new(Mutex::new(Vec::new())),
             write_attempts: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            endpoint_generation: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+    fn set_endpoint_generation(&self, terminal_id: u32, generation: Option<u64>) {
+        self.endpoint_generation
+            .lock()
+            .unwrap()
+            .insert(terminal_id, generation);
     }
     fn set_behavior(&self, terminal_id: u32, behavior: WriteBehavior) {
         self.write_behavior
@@ -117,6 +128,22 @@ impl ServerOsApi for MockServerOsApi {
                 terminal_id
             )),
         }
+    }
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        if let Some(expected) = generation {
+            let endpoints = self.endpoint_generation.lock().unwrap();
+            if let Some(actual) = endpoints.get(&terminal_id) {
+                if *actual != Some(expected) {
+                    return Err(anyhow::anyhow!("terminal run changed before the write"));
+                }
+            }
+        }
+        self.write_to_tty_stdin(terminal_id, buf)
     }
     fn tcdrain(&self, _id: u32) -> Result<()> {
         Ok(())
@@ -566,4 +593,40 @@ fn write_error_clears_terminal_queue() {
     // Terminal 2 should be unaffected
     let written_2 = mock_clone.get_written_bytes(2);
     assert_eq!(written_2, b"should work");
+}
+
+#[test]
+fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
+    // Writer-local adoption is still generation 1. The native endpoint
+    // has already been replaced with generation 2. Both a write that was
+    // already queued and one admitted after the replacement are refused.
+    let os = MockServerOsApi::new();
+    os.set_endpoint_generation(1, Some(2));
+    let writer_adopted = Some(1u64);
+    for bytes in [b"already-queued".as_slice(), b"arrived-late".as_slice()] {
+        let mut queue = super::PendingQueue::default();
+        queue.push_back(super::PendingWrite {
+            bytes: bytes.to_vec(),
+            offset: 0,
+            completion: None,
+            run_generation: writer_adopted,
+        });
+        super::drain_terminal_turn(&mut queue, 1, writer_adopted, &os);
+        assert!(queue.is_empty(), "{bytes:?} stayed queued");
+    }
+    assert!(
+        os.get_written_bytes(1).is_empty(),
+        "neither write may reach generation 2's endpoint"
+    );
+
+    os.set_endpoint_generation(1, Some(2));
+    let mut live = super::PendingQueue::default();
+    live.push_back(super::PendingWrite {
+        bytes: b"for-the-new-run".to_vec(),
+        offset: 0,
+        completion: None,
+        run_generation: Some(2),
+    });
+    assert!(super::drain_terminal_turn(&mut live, 1, Some(2), &os));
+    assert_eq!(os.get_written_bytes(1), b"for-the-new-run");
 }

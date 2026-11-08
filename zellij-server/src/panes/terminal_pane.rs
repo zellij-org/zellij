@@ -210,6 +210,9 @@ pub struct TerminalPane {
     /// Output is being applied at the live bottom while the user's view
     /// is held and restored in quanta. Renders stay locked until it ends.
     output_catchup: Option<OutputCatchup>,
+    /// Bytes from before this pane existed were dropped. Shown in the title,
+    /// never written into the PTY stream.
+    preopen_output_truncated: bool,
 }
 
 struct OutputCatchup {
@@ -300,9 +303,7 @@ impl Pane for TerminalPane {
         let parked = self.output_catchup.is_none()
             && self.grid.is_scrolled
             && self.grid.park_at_live_bottom();
-        let viewport_anchor = (self.output_catchup.is_none()
-            && self.grid.is_scrolled
-            && !parked)
+        let viewport_anchor = (self.output_catchup.is_none() && self.grid.is_scrolled && !parked)
             .then(|| self.grid.viewport_anchor());
         if viewport_anchor.is_some() {
             self.grid.reset_viewport();
@@ -846,6 +847,7 @@ impl Pane for TerminalPane {
     fn clear_scroll(&mut self) {
         self.cancel_output_catchup();
         self.viewport_goal = None;
+        self.grid.pending_search = None;
         self.grid.reset_viewport();
         self.set_should_render(true);
     }
@@ -862,12 +864,12 @@ impl Pane for TerminalPane {
             return false;
         };
         let done = match goal {
-            crate::tab::ViewportGoal::Bottom => {
-                self.grid.advance_to_bottom(crate::panes::grid::SCREEN_ROW_QUANTUM)
-            },
-            crate::tab::ViewportGoal::Top => {
-                self.grid.advance_toward_top(crate::panes::grid::SCREEN_ROW_QUANTUM)
-            },
+            crate::tab::ViewportGoal::Bottom => self
+                .grid
+                .advance_to_bottom(crate::panes::grid::SCREEN_ROW_QUANTUM),
+            crate::tab::ViewportGoal::Top => self
+                .grid
+                .advance_toward_top(crate::panes::grid::SCREEN_ROW_QUANTUM),
         };
         self.set_should_render(true);
         if done {
@@ -908,8 +910,8 @@ impl Pane for TerminalPane {
                 return true;
             }
             self.grid.lock_renders();
-            let near_bottom = self.grid.scrolled_row_distance()
-                <= crate::panes::grid::SCREEN_ROW_QUANTUM;
+            let near_bottom =
+                self.grid.scrolled_row_distance() <= crate::panes::grid::SCREEN_ROW_QUANTUM;
             self.output_catchup = Some(OutputCatchup {
                 anchor: self.grid.viewport_anchor(),
                 phase: CatchupPhase::ToBottom,
@@ -1458,15 +1460,38 @@ impl Pane for TerminalPane {
         self.pane_title = title;
     }
     fn current_title(&self) -> String {
-        if self.pane_name.is_empty() {
+        let mut title = if self.pane_name.is_empty() {
             self.grid
                 .title
                 .as_deref()
                 .unwrap_or(&self.pane_title)
-                .into()
+                .to_owned()
         } else {
             self.pane_name.to_owned()
+        };
+        if self.preopen_output_truncated {
+            title.push_str(" [output cut off]");
         }
+        if self.grid.history_was_truncated() {
+            title.push_str(" [history cut off]");
+        }
+        title
+    }
+    fn note_preopen_output_truncated(&mut self) {
+        if !self.preopen_output_truncated {
+            self.preopen_output_truncated = true;
+            self.set_should_render(true);
+        }
+    }
+    fn discard_unfinished_input(&mut self) {
+        self.held_escape = false;
+        self.kitty_interceptor.reset();
+        self.vte_parser.discard_unfinished();
+        self.grid.abandon_unfinished_control_sequence();
+        // Bytes the prefix left queued must not be fed next to the output
+        // that follows the gap.
+        self.pending_pty_input.clear();
+        self.pending_pty_offset = 0;
     }
     fn stack_list_entry_label(&self) -> String {
         match self.attention_marker_text() {
@@ -1792,7 +1817,9 @@ impl TerminalPane {
         // window is the anchor. A nudge moves one quantum and does not walk
         // the rows under the viewport.
         if !self.grid.lines_below.is_empty() {
-            if self.grid.nudge_toward_anchor(anchor, crate::panes::grid::SCREEN_ROW_QUANTUM)
+            if self
+                .grid
+                .nudge_toward_anchor(anchor, crate::panes::grid::SCREEN_ROW_QUANTUM)
             {
                 self.grid.unlock_renders();
                 self.output_catchup = None;
@@ -1805,10 +1832,7 @@ impl TerminalPane {
             .as_ref()
             .is_some_and(|catchup| catchup.restore_in_turn);
         let budget = if restore_in_turn {
-            self.grid
-                .rows_to_restore_anchor(anchor)
-                .unwrap_or(0)
-                .max(1)
+            self.grid.rows_to_restore_anchor(anchor).unwrap_or(0).max(1)
         } else {
             crate::panes::grid::SCREEN_ROW_QUANTUM
         };
@@ -2089,6 +2113,7 @@ impl TerminalPane {
             mirror_pinned_size: None,
             viewport_goal: None,
             output_catchup: None,
+            preopen_output_truncated: false,
             program_resized_at: None,
         }
     }

@@ -960,6 +960,54 @@ fn cancelling_an_osc_string_still_dispatches_it() {
 }
 
 #[test]
+fn discarding_an_unfinished_osc_does_not_let_the_next_bytes_finish_it() {
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    parser.feed(&mut ours, b"\x1b]2;unfinished-title");
+    parser.discard_unfinished();
+    parser.feed(&mut ours, b"\x07VISIBLE");
+    assert!(
+        ours.0.iter().all(|event| !matches!(event, Event::Osc(..))),
+        "the abandoned title was dispatched: {:?}",
+        ours.0
+    );
+    let printed: String = ours
+        .0
+        .iter()
+        .filter_map(|event| match event {
+            Event::Print(character) => Some(*character),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(printed, "VISIBLE");
+    assert!(ours.0.contains(&Event::Execute(0x07)));
+}
+
+#[test]
+fn discarding_an_unfinished_dcs_does_not_put_the_following_bytes() {
+    let mut parser = crate::vt_parser::Parser::new();
+    let mut ours = Ours::default();
+    parser.feed(&mut ours, b"\x1bPqpartial");
+    parser.discard_unfinished();
+    ours.0.clear();
+    parser.feed(&mut ours, b"more\x1b\\");
+    assert!(
+        ours.0.iter().all(|event| !matches!(event, Event::Put(_))),
+        "bytes after the gap were still DCS payload: {:?}",
+        ours.0
+    );
+    let printed: String = ours
+        .0
+        .iter()
+        .filter_map(|event| match event {
+            Event::Print(character) => Some(*character),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(printed, "more");
+}
+
+#[test]
 fn a_dcs_string_is_hooked_passed_through_and_unhooked() {
     expect(
         b"\x1bP1$qm\x1b\\",

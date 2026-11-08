@@ -2076,6 +2076,7 @@ fn route_action_with_origin(
                     Some(NotificationEnd::new(completion_tx)),
                     None,
                     ClosePaneSource::External,
+                    None,
                 ))
                 .with_context(err_context)?;
         },
@@ -2090,6 +2091,7 @@ fn route_action_with_origin(
                     Some(NotificationEnd::new(completion_tx)),
                     None,
                     ClosePaneSource::External,
+                    None,
                 ))
                 .with_context(err_context)?;
         },

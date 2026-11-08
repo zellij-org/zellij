@@ -1464,3 +1464,43 @@ fn pane_frame_color_override_reports_change_only_on_real_delta() {
     // clearing an already-clear pane is also a no-op
     assert!(!pane.clear_pane_frame_color_override(None));
 }
+
+#[test]
+fn truncation_is_reported_on_the_title_and_not_as_terminal_bytes() {
+    let mut pane = pane_for_split_test();
+    pane.pane_name = "shell".to_owned();
+    pane.note_preopen_output_truncated();
+    pane.note_preopen_output_truncated();
+    let title = pane.current_title();
+    assert_eq!(title.matches(" [output cut off]").count(), 1, "{title}");
+    assert!(title.starts_with("shell"), "{title}");
+    pane.grid.set_history_truncated_for_test(true);
+    let title = pane.current_title();
+    assert!(title.contains(" [history cut off]"), "{title}");
+    assert_eq!(title.matches(" [output cut off]").count(), 1, "{title}");
+}
+
+#[test]
+fn discarding_a_pre_open_gap_drops_held_escape_and_kitty_apc_state() {
+    let mut pane = pane_for_split_test();
+    pane.handle_pty_bytes(b"prefix\x1b".to_vec());
+    pane.discard_unfinished_input();
+    pane.handle_pty_bytes(b"]0;TITLE\x07VISIBLE".to_vec());
+    assert_eq!(pane.grid.title, None);
+    assert!(
+        pane.grid.dump_screen(false).contains("]0;TITLE"),
+        "the held escape completed an OSC across the gap"
+    );
+
+    pane.handle_pty_bytes(b"\x1b_G".to_vec());
+    assert!(!pane.kitty_interceptor.is_ground());
+    pane.pending_pty_input = b"prefix-leftover".to_vec();
+    pane.pending_pty_offset = 6;
+    pane.discard_unfinished_input();
+    assert!(
+        pane.kitty_interceptor.is_ground(),
+        "an unfinished kitty APC survived the gap"
+    );
+    assert!(pane.pending_pty_input.is_empty());
+    assert_eq!(pane.pending_pty_offset, 0);
+}

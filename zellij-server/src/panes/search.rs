@@ -16,6 +16,8 @@ pub(crate) struct PendingSearch {
     phase: SearchPhase,
     rows: isize,
     origin: Option<Selection>,
+    /// The direction to try if this scan finishes without a hit.
+    fallback: Option<SearchDirection>,
 }
 
 #[derive(Clone, Copy)]
@@ -487,6 +489,11 @@ impl Grid {
             return false;
         };
         self.search_scrollbuffer(pending.dir);
+        if self.pending_search.is_none() && self.search_results.selections.is_empty() {
+            if let Some(fallback) = pending.fallback {
+                self.search_scrollbuffer(fallback);
+            }
+        }
         self.pending_search.is_some()
     }
 
@@ -501,16 +508,20 @@ impl Grid {
     }
 
     pub fn set_search_string(&mut self, needle: &str) {
+        self.pending_search = None;
         self.search_results.needle = needle.to_string();
         self.search_viewport();
         // If the current viewport does not contain any hits,
         // we jump around until we find something. Starting
         // going backwards.
         if self.search_results.selections.is_empty() {
-            self.search_up();
-        }
-        if self.search_results.selections.is_empty() {
-            self.search_down();
+            self.search_scrollbuffer(SearchDirection::Up);
+            if self.search_results.selections.is_empty() {
+                match self.pending_search.as_mut() {
+                    Some(pending) => pending.fallback = Some(SearchDirection::Down),
+                    None => self.search_scrollbuffer(SearchDirection::Down),
+                }
+            }
         }
         // We still don't want to pre-select anything at this stage
         self.search_results.active = None;
@@ -543,6 +554,7 @@ impl Grid {
     }
 
     pub fn toggle_search_case_sensitivity(&mut self) {
+        self.pending_search = None;
         self.search_results.case_insensitive = !self.search_results.case_insensitive;
         for line in self.search_results.selections.drain(..) {
             self.output_buffer
@@ -558,6 +570,7 @@ impl Grid {
     }
 
     pub fn toggle_search_whole_words(&mut self) {
+        self.pending_search = None;
         self.search_results.whole_word_only = !self.search_results.whole_word_only;
         for line in self.search_results.selections.drain(..) {
             self.output_buffer
@@ -661,13 +674,15 @@ impl Grid {
         // spent before the scan finished.
         if let Some(pending) = self.pending_search.clone() {
             if pending.dir == dir && matches!(pending.phase, SearchPhase::Undo) {
-                return self.undo_search_move(dir, pending.rows, pending.origin);
+                return self.undo_search_move(dir, pending.rows, pending.origin, pending.fallback);
             }
         }
-        let resume = self.pending_search.clone().filter(|pending| {
-            pending.dir == dir && matches!(pending.phase, SearchPhase::Move)
-        });
+        let resume = self
+            .pending_search
+            .clone()
+            .filter(|pending| pending.dir == dir && matches!(pending.phase, SearchPhase::Move));
         let mut rows = resume.as_ref().map(|pending| pending.rows).unwrap_or(0);
+        let fallback = resume.as_ref().and_then(|pending| pending.fallback);
         let mut found_something = false;
 
         // We might loose the current selection, if we can't find anything
@@ -683,6 +698,7 @@ impl Grid {
                     phase: SearchPhase::Move,
                     rows,
                     origin: current_active_selection,
+                    fallback,
                 });
                 return None;
             }
@@ -702,7 +718,7 @@ impl Grid {
             self.search_adjust_to_new_selection(dir);
             return Some(true);
         }
-        self.undo_search_move(dir, rows, current_active_selection)
+        self.undo_search_move(dir, rows, current_active_selection, fallback)
     }
 
     fn undo_search_move(
@@ -710,6 +726,7 @@ impl Grid {
         dir: SearchDirection,
         rows_left: isize,
         origin: Option<Selection>,
+        fallback: Option<SearchDirection>,
     ) -> Option<bool> {
         // Scroll back in bulk quanta. A scan that crossed the whole
         // history must not undo it one line at a time in this turn.
@@ -726,6 +743,7 @@ impl Grid {
                     phase: SearchPhase::Undo,
                     rows: remaining,
                     origin,
+                    fallback,
                 });
                 return None;
             }
@@ -773,6 +791,10 @@ impl Grid {
         let resuming_walk = self.pending_search.as_ref().is_some_and(|pending| {
             pending.dir == dir && matches!(pending.phase, SearchPhase::WrapBack)
         });
+        let fallback = self
+            .pending_search
+            .as_ref()
+            .and_then(|pending| pending.fallback);
         // UP
         // Go to the opposite end (bottom when searching up and top when searching down)
         let mut rows = if resuming_walk {
@@ -797,13 +819,14 @@ impl Grid {
         // We didn't find anything at the opposing end of the scrollbuffer, so we scroll back until we find something
         if !found_something {
             let mut stepped = 0isize;
-            while rows >= 0 && !found_something {
+            while rows > 0 && !found_something {
                 if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM as isize {
                     self.pending_search = Some(PendingSearch {
                         dir,
                         phase: SearchPhase::WrapBack,
                         rows,
                         origin: current_active_selection,
+                        fallback,
                     });
                     return;
                 }
@@ -850,11 +873,13 @@ impl Grid {
         let mut rows = self
             .pending_search
             .as_ref()
-            .filter(|pending| {
-                pending.dir == dir && matches!(pending.phase, SearchPhase::GoToEnd)
-            })
+            .filter(|pending| pending.dir == dir && matches!(pending.phase, SearchPhase::GoToEnd))
             .map(|pending| pending.rows)
             .unwrap_or(0);
+        let fallback = self
+            .pending_search
+            .as_ref()
+            .and_then(|pending| pending.fallback);
         let mut stepped = 0usize;
         loop {
             let done = match dir {
@@ -871,6 +896,7 @@ impl Grid {
                     phase: SearchPhase::GoToEnd,
                     rows,
                     origin,
+                    fallback,
                 });
                 return None;
             }

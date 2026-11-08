@@ -4,7 +4,7 @@ use super::parser::{
 use super::store::{InternalImageId, KittyImageStore, ScaledImageKey};
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use zellij_utils::pane_size::SizeInPixels;
 
@@ -89,10 +89,24 @@ pub struct KittyGrid {
     commands_handled: u64,
     previous_cell_size: Option<SizeInPixels>,
     rows_below_the_viewport: Option<KittyRowsBelowTheViewport>,
-    /// Wrapped-row index of each canonical line, top to bottom.
+    /// Absolute wrapped-row index of each canonical line, top to bottom.
+    /// A stored value `S` is current-document row `S - canonical_front_offset`.
+    /// Front retirement increments the offset and drops entries that left
+    /// the document. It does not shift or renumber the rest.
     /// Rebuilt only when `canonical_starts_valid` is false.
-    canonical_starts: Vec<usize>,
+    canonical_starts: VecDeque<usize>,
+    canonical_front_offset: usize,
     canonical_starts_valid: bool,
+    /// Entries copied out of `canonical_starts`. Reanchor reads the deque
+    /// in place, so this stays zero on the scroll path.
+    #[cfg(test)]
+    index_entries_copied: u64,
+    /// Offsets rewritten in place. Front retirement does not do this.
+    #[cfg(test)]
+    index_offsets_renumbered: u64,
+    /// Canonical starts dropped because their row left the front.
+    #[cfg(test)]
+    index_front_pops: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -142,41 +156,80 @@ impl KittyGrid {
             commands_handled: 0,
             previous_cell_size,
             rows_below_the_viewport: None,
-            canonical_starts: Vec::new(),
+            canonical_starts: VecDeque::new(),
+            canonical_front_offset: 0,
             canonical_starts_valid: false,
+            #[cfg(test)]
+            index_entries_copied: 0,
+            #[cfg(test)]
+            index_offsets_renumbered: 0,
+            #[cfg(test)]
+            index_front_pops: 0,
         }
     }
     pub fn invalidate_canonical_starts(&mut self) {
         self.canonical_starts_valid = false;
         self.canonical_starts.clear();
+        self.canonical_front_offset = 0;
     }
     pub fn canonical_starts_valid(&self) -> bool {
         self.canonical_starts_valid
     }
+    /// `starts` are current-document indexes. A full rebuild has no
+    /// retired prefix, so the front offset goes back to zero.
     pub fn set_canonical_starts(&mut self, starts: Vec<usize>) {
-        self.canonical_starts = starts;
+        self.canonical_starts = VecDeque::from(starts);
+        self.canonical_front_offset = 0;
         self.canonical_starts_valid = true;
     }
-    pub fn canonical_starts(&self) -> &[usize] {
-        &self.canonical_starts
+    /// Absolute starts and the offset that turns them into current rows.
+    pub fn canonical_index(&self) -> (&VecDeque<usize>, usize) {
+        (&self.canonical_starts, self.canonical_front_offset)
+    }
+    pub fn canonical_start_count(&self) -> usize {
+        self.canonical_starts.len()
     }
     /// One wrapped row left the front of the buffer.
     pub fn note_front_row_removed(&mut self, was_canonical: bool) {
         if !self.canonical_starts_valid {
             return;
         }
-        if was_canonical && self.canonical_starts.first() == Some(&0) {
-            self.canonical_starts.remove(0);
+        let removed_at = self.canonical_front_offset;
+        if was_canonical && self.canonical_starts.front().copied() == Some(removed_at) {
+            self.canonical_starts.pop_front();
+            #[cfg(test)]
+            {
+                self.index_front_pops = self.index_front_pops.saturating_add(1);
+            }
         }
-        for start in &mut self.canonical_starts {
-            *start = start.saturating_sub(1);
-        }
+        self.canonical_front_offset = self.canonical_front_offset.saturating_add(1);
     }
-    /// A canonical row was appended at `wrapped_index`.
+    /// A canonical row was appended at the current-document `wrapped_index`.
     pub fn note_canonical_row_appended(&mut self, wrapped_index: usize) {
         if self.canonical_starts_valid {
-            self.canonical_starts.push(wrapped_index);
+            self.canonical_starts
+                .push_back(wrapped_index.saturating_add(self.canonical_front_offset));
         }
+    }
+    #[cfg(test)]
+    pub fn index_entries_copied(&self) -> u64 {
+        self.index_entries_copied
+    }
+    #[cfg(test)]
+    pub fn index_offsets_renumbered(&self) -> u64 {
+        self.index_offsets_renumbered
+    }
+    #[cfg(test)]
+    pub fn index_front_pops(&self) -> u64 {
+        self.index_front_pops
+    }
+    /// Current-document index of each canonical line.
+    #[cfg(test)]
+    pub fn canonical_starts_current(&self) -> Vec<usize> {
+        self.canonical_starts
+            .iter()
+            .map(|start| start.saturating_sub(self.canonical_front_offset))
+            .collect()
     }
     pub fn note_command_handled(&mut self) {
         self.commands_handled += 1;

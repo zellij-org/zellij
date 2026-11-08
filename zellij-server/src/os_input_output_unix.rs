@@ -13,7 +13,6 @@ use nix::{
 use tokio::io::unix::AsyncFd;
 
 use libc::{self, ioctl, TIOCSWINSZ};
-use signal_hook;
 use signal_hook::consts::*;
 
 use std::{
@@ -45,7 +44,7 @@ pub use async_trait::async_trait;
 fn signal_pid(pid: u32, signal: Signal) -> Result<()> {
     match kill(unistd::Pid::from_raw(pid as i32), Some(signal)) {
         Ok(()) => Ok(()),
-        Err(errno) if errno == nix::errno::Errno::ESRCH => Ok(()),
+        Err(nix::errno::Errno::ESRCH) => Ok(()),
         Err(errno) => Err(anyhow!("failed to send {signal} to pid {pid}: {errno}")),
     }
 }
@@ -106,8 +105,10 @@ fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
         }
         break ret;
     };
-    unsafe { buf.set_len(ret as usize) };
-    while ret > 0 && buf.len() < buf.capacity() {
+    // `set_len` past capacity is undefined. A correct `read` never reports
+    // more bytes than it was asked for; refuse that result instead.
+    accept_read(&mut buf, 0, ret)?;
+    while !buf.is_empty() && buf.len() < buf.capacity() {
         let filled = buf.len();
         let more = unsafe {
             libc::read(
@@ -125,10 +126,30 @@ fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
         if more == 0 {
             break;
         }
-        unsafe { buf.set_len(filled + more as usize) };
+        if accept_read(&mut buf, filled, more).is_err() {
+            break;
+        }
     }
     buf.shrink_to_fit();
     Ok(buf)
+}
+
+fn accept_read(buf: &mut Vec<u8>, filled: usize, got: isize) -> Result<(), io::Error> {
+    let got = got as usize;
+    let Some(end) = filled.checked_add(got) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read returned more bytes than requested",
+        ));
+    };
+    if end > buf.capacity() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read returned more bytes than requested",
+        ));
+    }
+    unsafe { buf.set_len(end) };
+    Ok(())
 }
 
 #[async_trait]
@@ -339,6 +360,13 @@ fn handle_terminal(
     }
 }
 
+/// One open PTY endpoint and the run it was admitted for.
+#[derive(Clone)]
+struct TerminalEndpoint {
+    generation: Option<u64>,
+    fd: Arc<OwnedFd>,
+}
+
 /// The Unix PTY backend. Manages native PTY file descriptors and signals.
 #[derive(Clone)]
 pub(crate) struct UnixPtyBackend {
@@ -346,8 +374,11 @@ pub(crate) struct UnixPtyBackend {
     /// Each terminal owns a duplicated descriptor held by the registry;
     /// a write, resize or drain issued after the original endpoint
     /// closed still targets the same open file description instead of
-    /// whatever descriptor number the kernel recycled.
-    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<Arc<OwnedFd>>>>>,
+    /// whatever descriptor number the kernel recycled. `generation`
+    /// names the process run that endpoint belongs to. `None` means the
+    /// descriptor is installed and not yet bound, so a stamped write
+    /// is refused until [`Self::bind_terminal_generation`].
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<TerminalEndpoint>>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
 }
 
@@ -459,10 +490,17 @@ impl UnixPtyBackend {
     ) -> Result<()> {
         match duplicate(pid_primary) {
             Ok(pty_handle) => {
-                self.terminal_id_to_raw_fd
-                    .lock()
-                    .to_anyhow()?
-                    .insert(terminal_id, Some(Arc::new(pty_handle)));
+                // Generation stays unbound until the PTY thread records the
+                // run. A stamped write during that gap cannot land on this
+                // descriptor, and the insert replaces any previous endpoint
+                // before the new one is visible.
+                self.terminal_id_to_raw_fd.lock().to_anyhow()?.insert(
+                    terminal_id,
+                    Some(TerminalEndpoint {
+                        generation: None,
+                        fd: Arc::new(pty_handle),
+                    }),
+                );
                 Ok(())
             },
             Err(e) => {
@@ -499,10 +537,10 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => {
+            Some(Some(endpoint)) => {
                 if cols > 0 && rows > 0 {
                     set_terminal_size_using_fd(
-                        fd.as_raw_fd(),
+                        endpoint.fd.as_raw_fd(),
                         cols,
                         rows,
                         width_in_pixels,
@@ -519,23 +557,55 @@ impl UnixPtyBackend {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        self.write_to_tty_stdin_for_run(terminal_id, None, buf)
+    }
+
+    /// Copy the descriptor only when `generation` is the run bound to it.
+    /// The check and the clone happen under one lock, so a replacement
+    /// cannot swap the endpoint between the check and the handle this
+    /// write will use. The write itself runs after the lock is released.
+    pub fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        let fd = match self
-            .terminal_id_to_raw_fd
-            .lock()
-            .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(fd)) => fd.clone(),
-            _ => {
-                return Err(anyhow!("could not find raw file descriptor")).with_context(err_context)
-            },
+        let fd = {
+            let registry = self
+                .terminal_id_to_raw_fd
+                .lock()
+                .to_anyhow()
+                .with_context(err_context)?;
+            match registry.get(&terminal_id) {
+                Some(Some(endpoint)) => {
+                    if let Some(expected) = generation {
+                        if endpoint.generation != Some(expected) {
+                            return Err(anyhow!("terminal run changed before the write"));
+                        }
+                    }
+                    endpoint.fd.clone()
+                },
+                _ => {
+                    return Err(anyhow!("could not find raw file descriptor"))
+                        .with_context(err_context)
+                },
+            }
         };
 
         try_write_to_fd(fd.as_raw_fd(), buf).with_context(err_context)
+    }
+
+    pub fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() else {
+            return;
+        };
+        if let Some(Some(endpoint)) = registry.get_mut(&terminal_id) {
+            endpoint.generation = Some(generation);
+        }
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
@@ -548,14 +618,16 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => termios::tcdrain(fd.as_fd()).with_context(err_context),
+            Some(Some(endpoint)) => termios::tcdrain(endpoint.fd.as_fd()).with_context(err_context),
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
 
     pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
         match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
-            Some(Some(fd)) => unistd::tcgetpgrp(fd.as_fd()).ok().map(|pgid| pgid.as_raw()),
+            Some(Some(endpoint)) => unistd::tcgetpgrp(endpoint.fd.as_fd())
+                .ok()
+                .map(|pgid| pgid.as_raw()),
             _ => None,
         }
     }
@@ -614,11 +686,13 @@ mod tests {
 
         let original = unsafe { OwnedFd::from_raw_fd(terminal_write) };
         let retained = original.try_clone().expect("dup original");
-        backend
-            .terminal_id_to_raw_fd
-            .lock()
-            .unwrap()
-            .insert(7, Some(Arc::new(retained)));
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            7,
+            Some(TerminalEndpoint {
+                generation: None,
+                fd: Arc::new(retained),
+            }),
+        );
 
         // The original number now names the unrelated pipe, as if the
         // pane's endpoint closed and the number was recycled.
@@ -656,11 +730,13 @@ mod tests {
         let previous = unsafe { BorrowedFd::borrow_raw(read_end) }
             .try_clone_to_owned()
             .expect("dup previous owner");
-        backend
-            .terminal_id_to_raw_fd
-            .lock()
-            .unwrap()
-            .insert(9, Some(Arc::new(previous)));
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            9,
+            Some(TerminalEndpoint {
+                generation: Some(1),
+                fd: Arc::new(previous),
+            }),
+        );
         // Another terminal's entry must be left alone.
         backend.reserve_terminal_id(10);
 
@@ -673,11 +749,100 @@ mod tests {
         assert!(!registry.contains_key(&9), "stale entry must be removed");
         assert!(registry.contains_key(&10));
         drop(registry);
+        let mut buf = [0u8; 1];
         assert_eq!(
-            unsafe { libc::fcntl(write_end, libc::F_GETFD) },
-            -1,
-            "the primary side must be closed"
+            unsafe { libc::read(read_end, buf.as_mut_ptr() as *mut _, buf.len()) },
+            0,
+            "the primary write side must be closed"
         );
+        unsafe {
+            libc::close(read_end);
+        }
+    }
+
+    #[test]
+    fn a_stamped_write_does_not_follow_a_replaced_endpoint() {
+        // The writer still considers generation 1 adopted. The PTY owner
+        // has already installed generation 2's endpoint. The bytes must
+        // not reach that pipe, or the pipe they were originally for.
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (old_read, old_write) = nonblocking_pipe();
+        let (new_read, new_write) = nonblocking_pipe();
+        let old_fd = unsafe { OwnedFd::from_raw_fd(old_write) };
+        let new_fd = unsafe { OwnedFd::from_raw_fd(new_write) };
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            3,
+            Some(TerminalEndpoint {
+                generation: Some(1),
+                fd: Arc::new(old_fd),
+            }),
+        );
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            3,
+            Some(TerminalEndpoint {
+                generation: Some(2),
+                fd: Arc::new(new_fd),
+            }),
+        );
+
+        let error = backend
+            .write_to_tty_stdin_for_run(3, Some(1), b"old-input")
+            .expect_err("generation 1 must not write to the replacement");
+        assert!(
+            error
+                .to_string()
+                .contains("terminal run changed before the write"),
+            "{error}"
+        );
+        let mut buf = [0u8; 16];
+        assert_eq!(
+            unsafe { libc::read(new_read, buf.as_mut_ptr() as *mut _, buf.len()) },
+            -1,
+            "the replacement pipe got bytes"
+        );
+        let retired = unsafe { libc::read(old_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert!(retired <= 0, "the retired pipe got {retired} bytes");
+
+        let written = backend
+            .write_to_tty_stdin_for_run(3, Some(2), b"live")
+            .expect("generation 2 matches the installed endpoint");
+        assert_eq!(written, 4);
+        let read = unsafe { libc::read(new_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(read, 4);
+        assert_eq!(&buf[..4], b"live");
+
+        unsafe {
+            libc::close(old_read);
+            libc::close(new_read);
+        }
+    }
+
+    #[test]
+    fn a_stamped_write_waits_until_the_installed_endpoint_is_bound() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (read_end, write_end) = nonblocking_pipe();
+        let owned = unsafe { OwnedFd::from_raw_fd(write_end) };
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            4,
+            Some(TerminalEndpoint {
+                generation: None,
+                fd: Arc::new(owned),
+            }),
+        );
+        let error = backend
+            .write_to_tty_stdin_for_run(4, Some(1), b"early")
+            .expect_err("an unbound endpoint refuses a stamped write");
+        assert!(error
+            .to_string()
+            .contains("terminal run changed before the write"));
+        backend.bind_terminal_generation(4, 1);
+        let written = backend
+            .write_to_tty_stdin_for_run(4, Some(1), b"bound")
+            .expect("bound generation accepts the write");
+        assert_eq!(written, 5);
+        let mut buf = [0u8; 8];
+        let read = unsafe { libc::read(read_end, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(&buf[..read as usize], b"bound");
         unsafe {
             libc::close(read_end);
         }

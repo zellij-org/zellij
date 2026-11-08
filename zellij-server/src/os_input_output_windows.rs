@@ -52,6 +52,9 @@ static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
 struct ConPtyTerminal {
     hpcon: HPCON,
     input_write_handle: HANDLE,
+    /// `None` until the run that owns this console is bound. A stamped
+    /// write is refused until it matches.
+    generation: Option<u64>,
 }
 
 // HANDLE/HPCON are raw pointers in windows-sys >= 0.59; OS handles are
@@ -497,6 +500,7 @@ impl WindowsPtyBackend {
             Some(ConPtyTerminal {
                 hpcon,
                 input_write_handle: input_write,
+                generation: None,
             }),
         );
 
@@ -599,8 +603,19 @@ impl WindowsPtyBackend {
     }
 
     pub fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        self.write_to_tty_stdin_for_run(terminal_id, None, buf)
+    }
+
+    pub fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
         let err_context = || format!("failed to write to stdin of terminal {}", terminal_id);
 
+        // The generation check and the write share the lock. Replacing the
+        // console waits, so this write cannot be retargeted at a new handle.
         match self
             .terminals
             .lock()
@@ -609,6 +624,11 @@ impl WindowsPtyBackend {
             .get(&terminal_id)
         {
             Some(Some(term)) => {
+                if let Some(expected) = generation {
+                    if term.generation != Some(expected) {
+                        return Err(anyhow!("terminal run changed before the write"));
+                    }
+                }
                 let mut written: u32 = 0;
                 let ok = unsafe {
                     WriteFile(
@@ -673,6 +693,15 @@ impl WindowsPtyBackend {
             terminate_process(pid)
                 .with_context(|| format!("failed to send SIGINT to pid {}", pid))?;
             Ok(())
+        }
+    }
+
+    pub fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        let Ok(mut terminals) = self.terminals.lock() else {
+            return;
+        };
+        if let Some(Some(term)) = terminals.get_mut(&terminal_id) {
+            term.generation = Some(generation);
         }
     }
 

@@ -534,9 +534,10 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
         Option<i32>,
         ClosePaneSource,
+        Option<u64>,
     ), // i32 -> optional exit
     // status
-    HoldPane(PaneId, Option<i32>, RunCommand),
+    HoldPane(PaneId, Option<i32>, RunCommand, Option<u64>),
     /// The PTY thread has closed this terminal: no pane will be created for
     /// it, and events that still arrive for it are dropped.
     TerminalClosed(u32),
@@ -1301,7 +1302,11 @@ struct TerminalRun {
 
 /// Record `generation` as the terminal's current run when nothing is recorded.
 /// Returns false when a different run is current: the caller drops the bytes.
-fn run_generation_accepts(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32, generation: u64) -> bool {
+fn run_generation_accepts(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> bool {
     match runs.get(&terminal_id) {
         Some(run) if run.generation != generation => false,
         Some(_) => true,
@@ -1317,6 +1322,18 @@ fn run_generation_accepts(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32
             true
         },
     }
+}
+
+/// Whether a lifecycle instruction for `generation` still applies. An
+/// unknown run is accepted: a child can exit before the screen has seen its
+/// `TerminalRunStarted`, and that exit still has to settle the pane.
+fn run_generation_matches(
+    runs: &HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> bool {
+    runs.get(&terminal_id)
+        .is_none_or(|run| run.generation == generation)
 }
 
 /// Hold a child exit until its run has drained. Returns the instruction when
@@ -2564,6 +2581,7 @@ mod run_fence_tests {
             None,
             Some(0),
             ClosePaneSource::ChildExit,
+            Some(1),
         )
     }
 
@@ -2609,6 +2627,15 @@ mod run_fence_tests {
         assert!(stage_child_exit(&mut runs, 4, 2, child_close(4)).is_none());
         stage_run_started(&mut runs, 4, 2);
         assert!(stage_run_drained(&mut runs, 4, 2).is_some());
+    }
+
+    #[test]
+    fn a_settlement_for_a_replaced_run_no_longer_matches() {
+        let mut runs = HashMap::new();
+        assert!(run_generation_matches(&runs, 4, 1));
+        stage_run_started(&mut runs, 4, 2);
+        assert!(!run_generation_matches(&runs, 4, 1));
+        assert!(run_generation_matches(&runs, 4, 2));
     }
 }
 
@@ -4168,6 +4195,14 @@ impl Screen {
             self.answer_color_palette_mode_query_locally(pane_id);
             return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
         }
+        if matches!(
+            &query,
+            crate::host_query::HostQuery::PaletteRegister { indices, .. } if indices.is_empty()
+        ) {
+            // Nothing to ask and nothing to wait for. Treat it as a local
+            // no-op rather than pausing the pane until the forward timeout.
+            return STARTUP_SENTINEL_TOKEN;
+        }
         if let crate::host_query::HostQuery::ClipboardContent { .. } = query {
             if !self.paste_buffer_read_enabled {
                 let _ = self.resume_pane_after_forward(pane_id, Vec::new());
@@ -4213,7 +4248,11 @@ impl Screen {
         query: &crate::host_query::HostQuery,
     ) -> bool {
         use crate::host_query::HostQuery;
-        let HostQuery::PaletteRegister { indices, terminator } = query else {
+        let HostQuery::PaletteRegister {
+            indices,
+            terminator,
+        } = query
+        else {
             return false;
         };
         if indices.is_empty() {
@@ -6162,7 +6201,10 @@ impl Screen {
                     Vec::new()
                 }
             },
-            HostQuery::PaletteRegister { indices, terminator } => {
+            HostQuery::PaletteRegister {
+                indices,
+                terminator,
+            } => {
                 let codes = self.terminal_emulator_color_codes.borrow();
                 let mut parts = Vec::new();
                 for index in indices {
@@ -9717,17 +9759,19 @@ impl Screen {
         generation: u64,
         bytes: VteBytes,
     ) -> Result<Option<VteBytes>> {
+        if self.terminal_was_closed(&PaneId::Terminal(terminal_id)) {
+            return Ok(None);
+        }
         if !run_generation_accepts(&mut self.terminal_runs, terminal_id, generation) {
             return Ok(None);
         }
         self.apply_pty_bytes(terminal_id, bytes)
     }
     fn note_terminal_run_started(&mut self, terminal_id: u32, generation: u64) {
+        if self.terminal_was_closed(&PaneId::Terminal(terminal_id)) {
+            return;
+        }
         stage_run_started(&mut self.terminal_runs, terminal_id, generation);
-        let _ = self
-            .bus
-            .senders
-            .send_to_pty_writer(PtyWriteInstruction::AdoptRun(terminal_id, generation));
     }
     fn note_pty_run_drained(&mut self, terminal_id: u32, generation: u64) {
         if let Some(exit) = stage_run_drained(&mut self.terminal_runs, terminal_id, generation) {
@@ -9741,14 +9785,20 @@ impl Screen {
         run_generation: u64,
         hold_command: Option<RunCommand>,
     ) {
+        if self.terminal_was_closed(&pane_id) {
+            return;
+        }
         let instruction = match hold_command {
-            Some(command) => ScreenInstruction::HoldPane(pane_id, exit_status, command),
+            Some(command) => {
+                ScreenInstruction::HoldPane(pane_id, exit_status, command, Some(run_generation))
+            },
             None => ScreenInstruction::ClosePane(
                 pane_id,
                 None,
                 None,
                 exit_status,
                 ClosePaneSource::ChildExit,
+                Some(run_generation),
             ),
         };
         let PaneId::Terminal(terminal_id) = pane_id else {
@@ -9812,11 +9862,7 @@ impl Screen {
         if self.scrolled_pty_continuation_queued {
             return;
         }
-        if !self
-            .tabs
-            .values()
-            .any(|tab| tab.has_deferred_screen_work())
-        {
+        if !self.tabs.values().any(|tab| tab.has_deferred_screen_work()) {
             return;
         }
         match self
@@ -9882,7 +9928,15 @@ impl Screen {
         pid: PaneId,
         pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
     ) {
-        for event in pending_events_waiting_for_pane.take(pid) {
+        let replay = pending_events_waiting_for_pane.take_replay(pid);
+        let event_count = replay.events.len();
+        let mut recover_before = replay.recover_before.into_iter().peekable();
+        let truncated = replay.output_truncated;
+        for (index, event) in replay.events.into_iter().enumerate() {
+            while recover_before.peek() == Some(&index) {
+                self.discard_unfinished_pane_input(pid);
+                recover_before.next();
+            }
             match event {
                 ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
                     self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
@@ -9894,6 +9948,30 @@ impl Screen {
                 event => {
                     self.bus.senders.send_to_screen(event).non_fatal();
                 },
+            }
+        }
+        // No bytes followed the last gap. Drop the prefix's open sequence so
+        // the pane's own later output does not finish it.
+        if recover_before.any(|boundary| boundary == event_count) {
+            self.discard_unfinished_pane_input(pid);
+        }
+        if truncated {
+            self.note_pane_preopen_output_truncated(pid);
+        }
+    }
+    fn discard_unfinished_pane_input(&mut self, pid: PaneId) {
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pid) {
+                pane.discard_unfinished_input();
+                return;
+            }
+        }
+    }
+    fn note_pane_preopen_output_truncated(&mut self, pid: PaneId) {
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pid) {
+                pane.note_preopen_output_truncated();
+                return;
             }
         }
     }
@@ -9924,6 +10002,9 @@ impl Screen {
             PaneId::Terminal(terminal_id) => self.closed_terminal_ids.contains(terminal_id),
             PaneId::Plugin(_) => false,
         }
+    }
+    fn terminal_run_generation_matches(&self, terminal_id: u32, generation: u64) -> bool {
+        run_generation_matches(&self.terminal_runs, terminal_id, generation)
     }
     pub fn replace_pane_with_existing_pane(
         &mut self,
@@ -13174,7 +13255,13 @@ pub(crate) fn screen_thread_main(
                 // waiting for it
                 exit_status,
                 close_pane_source,
+                run_generation,
             ) => {
+                if let (Some(generation), PaneId::Terminal(terminal_id)) = (run_generation, id) {
+                    if !screen.terminal_run_generation_matches(terminal_id, generation) {
+                        continue;
+                    }
+                }
                 if let PaneId::Plugin(plugin_id) = id {
                     if screen.close_popup_with_plugin_id(plugin_id) {
                         screen.render(None)?;
@@ -13221,6 +13308,7 @@ pub(crate) fn screen_thread_main(
                                         None,
                                         exit_status,
                                         ClosePaneSource::ChildExit,
+                                        run_generation,
                                     ),
                                 );
                                 continue;
@@ -13261,7 +13349,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state().non_fatal();
                 screen.retain_only_existing_panes_in_pane_groups();
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, run_generation) => {
+                if let (Some(generation), PaneId::Terminal(terminal_id)) = (run_generation, id) {
+                    if !screen.terminal_run_generation_matches(terminal_id, generation) {
+                        continue;
+                    }
+                }
                 let is_first_run = false;
                 let mut found = false;
                 for tab in screen.tabs.values_mut() {
@@ -13281,7 +13374,7 @@ pub(crate) fn screen_thread_main(
                 } else if !found {
                     pending_events_waiting_for_pane.push_lifecycle(
                         id,
-                        ScreenInstruction::HoldPane(id, exit_status, run_command),
+                        ScreenInstruction::HoldPane(id, exit_status, run_command, run_generation),
                     );
                 }
                 screen.log_and_report_session_state()?;

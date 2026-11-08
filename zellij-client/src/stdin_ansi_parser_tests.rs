@@ -931,7 +931,6 @@ fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
 }
 
 #[test]
-#[test]
 fn one_osc_4_reply_can_carry_every_requested_register() {
     let mut p = StdinAnsiParser::new();
     let fed = p.feed(b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x1b\\");

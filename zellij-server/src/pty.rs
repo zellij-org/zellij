@@ -2,6 +2,7 @@ use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
+use crate::pty_writer::PtyWriteInstruction;
 use crate::route::NotificationEnd;
 use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
 use crate::terminal_bytes::TerminalBytes;
@@ -704,6 +705,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         PaneId::Terminal(*terminal_id),
                                         Some(2), // exit status
                                         run_command,
+                                        None,
                                     ))
                                     .with_context(err_context)?;
                             }
@@ -756,6 +758,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         PaneId::Terminal(*terminal_id),
                                         Some(2), // exit status
                                         run_command,
+                                        None,
                                     ))
                                     .with_context(err_context)?;
                             }
@@ -1194,6 +1197,7 @@ impl Pty {
         self.next_run_generation = self.next_run_generation.wrapping_add(1);
         run_generation
     }
+    #[cfg(test)]
     fn record_child_pid(&mut self, terminal_id: u32, child_pid: u32, run_generation: u64) {
         self.remember_run(terminal_id, Some(child_pid), run_generation);
     }
@@ -1203,12 +1207,28 @@ impl Pty {
         if let Some(child_pid) = child_pid {
             self.id_to_child_pid.insert(terminal_id, child_pid);
         }
+        // The endpoint was inserted by spawn, still unbound. Binding it
+        // here is what lets a stamped write for this run through, and what
+        // makes a write stamped for the previous run fail.
+        if let Some(os_input) = self.bus.os_input.as_ref() {
+            os_input.bind_terminal_generation(terminal_id, run_generation);
+        }
+        // Only adopt the run once the endpoint it names is bound. Until then
+        // writes keep the previous stamp instead of being rejected against
+        // an endpoint that does not represent the new process yet.
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::AdoptRun(terminal_id, run_generation));
     }
     fn announce_terminal_run(&self, terminal_id: u32, run_generation: u64) {
-        let _ = self.bus.senders.send_to_screen(ScreenInstruction::TerminalRunStarted(
-            terminal_id,
-            run_generation,
-        ));
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::TerminalRunStarted(
+                terminal_id,
+                run_generation,
+            ));
     }
     fn spawn_terminal_reader(
         &mut self,
@@ -1832,13 +1852,7 @@ impl Pty {
                     pane_id,
                     run_generation,
                 ));
-                send_child_run_exited(
-                    &senders,
-                    pane_id,
-                    exit_status,
-                    run_generation,
-                    None,
-                );
+                send_child_run_exited(&senders, pane_id, exit_status, run_generation, None);
             }
         });
 
@@ -2057,6 +2071,10 @@ impl Pty {
         let err_context = || format!("failed to close for pane {id:?}");
         match id {
             PaneId::Terminal(id) => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_pty_writer(PtyWriteInstruction::ForgetRun(id));
                 // Sent before the reader is stopped and the child killed, so
                 // the screen hears of the close before any output or exit
                 // event that follows it. Only terminals that were actually
@@ -2761,6 +2779,7 @@ fn send_command_not_found_to_screen(
             PaneId::Terminal(terminal_id),
             Some(2),
             run_command.clone(),
+            None,
         ))
         .with_context(err_context)?;
     Ok(())

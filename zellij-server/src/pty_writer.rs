@@ -24,6 +24,9 @@ pub enum PtyWriteInstruction {
     /// known. A later, different generation drops the queue: those bytes
     /// were for the previous process.
     AdoptRun(u32, u64),
+    /// The terminal is gone. Drop its adopted-run entry so the map does not
+    /// grow with every pane ever opened in the session.
+    ForgetRun(u32),
     Exit,
 }
 
@@ -35,6 +38,7 @@ impl From<&PtyWriteInstruction> for PtyWriteContext {
             PtyWriteInstruction::ApplyCachedResizes => PtyWriteContext::ApplyCachedResizes,
             PtyWriteInstruction::StartCachingResizes => PtyWriteContext::StartCachingResizes,
             PtyWriteInstruction::AdoptRun(..) => PtyWriteContext::Write,
+            PtyWriteInstruction::ForgetRun(..) => PtyWriteContext::Write,
             PtyWriteInstruction::Exit => PtyWriteContext::Exit,
         }
     }
@@ -127,9 +131,10 @@ impl PendingQueue {
         let leftover = write.bytes.len().saturating_sub(write.offset);
         self.remaining_bytes = self.remaining_bytes.saturating_sub(leftover);
         if let Some(mut completion) = write.completion.take() {
-            completion.set_error_message(
-                "the pane started another command before this input was written".to_string(),
-            );
+            completion.set_error_message(Self::failure_message(
+                "the pane started another command before this input was written",
+                write.offset,
+            ));
         }
         true
     }
@@ -140,7 +145,44 @@ impl PendingQueue {
     fn fail_all(&mut self, reason: &str) {
         for mut write in self.writes.drain(..) {
             if let Some(mut completion) = write.completion.take() {
-                completion.set_error_message(reason.to_string());
+                completion.set_error_message(Self::failure_message(reason, write.offset));
+            }
+        }
+        self.remaining_bytes = 0;
+    }
+
+    /// A prefix that already reached the terminal is not "discarded before
+    /// reaching" it. Offset zero keeps `reason` unchanged.
+    fn failure_message(reason: &str, offset: usize) -> String {
+        if offset == 0 {
+            return reason.to_string();
+        }
+        let reason = reason
+            .replace(
+                "the write was discarded before reaching the terminal",
+                "the rest of the write was not written",
+            )
+            .replace(
+                "before this input was written",
+                "before the rest of this input was written",
+            );
+        format!("{reason} ({offset} bytes of this write were already written)")
+    }
+
+    fn fail_after_write_error(&mut self, error: &str) {
+        for mut write in self.writes.drain(..) {
+            if let Some(mut completion) = write.completion.take() {
+                let message = if write.offset > 0 {
+                    format!(
+                        "pty write failed ({error}); {} bytes of this write were already written",
+                        write.offset
+                    )
+                } else {
+                    format!(
+                        "pty write failed ({error}); the write was discarded before reaching the terminal"
+                    )
+                };
+                completion.set_error_message(message);
             }
         }
         self.remaining_bytes = 0;
@@ -160,6 +202,17 @@ fn adopt_run(
     if matches!(previous, Some(current) if current != generation) {
         if let Some(queue) = pending.get_mut(&terminal_id) {
             queue.fail_all("the pane started another command before this input was written");
+        }
+    } else if previous.is_none() {
+        // Keystrokes queued before any run was known belong to this first
+        // run. Stamping them means a later endpoint replacement rejects
+        // them instead of delivering them to the next process.
+        if let Some(queue) = pending.get_mut(&terminal_id) {
+            for write in queue.writes.iter_mut() {
+                if write.run_generation.is_none() {
+                    write.run_generation = Some(generation);
+                }
+            }
         }
     }
 }
@@ -269,6 +322,9 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                 PtyWriteInstruction::AdoptRun(terminal_id, generation) => {
                     adopt_run(&mut adopted_runs, &mut pending, terminal_id, generation);
                 },
+                PtyWriteInstruction::ForgetRun(terminal_id) => {
+                    adopted_runs.remove(&terminal_id);
+                },
                 PtyWriteInstruction::Exit => {
                     return Ok(());
                 },
@@ -328,7 +384,8 @@ fn drain_terminal_turn(
             continue;
         }
         let offer = remaining.len().min(MAX_DRAIN_BYTES_PER_TURN - turn_bytes);
-        match os_input.write_to_tty_stdin(tid, &remaining[..offer]) {
+        let stamp = queue.writes.front().and_then(|write| write.run_generation);
+        match os_input.write_to_tty_stdin_for_run(tid, stamp, &remaining[..offer]) {
             Ok(0) => break, // EAGAIN — move to next terminal
             Ok(n) => {
                 queue.advance(n);
@@ -336,14 +393,12 @@ fn drain_terminal_turn(
                 progress = true;
             },
             Err(e) => {
-                // Terminal error (EBADF, EIO, etc) — report every
-                // discarded write as failed rather than completed.
-                let reason = format!(
-                    "pty write failed ({e}); the write was discarded before \
-                     reaching the terminal"
-                );
+                // Terminal error, or the endpoint is no longer the run
+                // this write was admitted for. A prefix already written
+                // is reported; the rest is not described as never sent.
+                let message = e.to_string();
                 Err::<(), _>(e).with_context(err_context).non_fatal();
-                queue.fail_all(&reason);
+                queue.fail_after_write_error(&message);
                 break;
             },
         }
@@ -442,6 +497,11 @@ mod tests {
 
         adopt_run(&mut adopted, &mut pending, 1, 7);
         assert_eq!(pending.get(&1).map(|queue| queue.writes.len()), Some(1));
+        assert_eq!(
+            pending.get(&1).unwrap().writes[0].run_generation,
+            Some(7),
+            "the first adoption stamps writes that had no run yet"
+        );
         assert!(keep_rx.try_recv().is_err());
 
         adopt_run(&mut adopted, &mut pending, 1, 7);
@@ -476,6 +536,93 @@ mod tests {
         assert!(discarded.error_message.is_some());
         assert!(!queue.reject_other_run(Some(2)));
         assert!(live_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_rejected_partial_write_reports_the_bytes_already_written() {
+        let mut queue = PendingQueue::default();
+        let (partial_tx, partial_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"abcdef".to_vec(),
+            offset: 2,
+            completion: Some(NotificationEnd::new(partial_tx)),
+            run_generation: Some(1),
+        });
+        assert!(queue.reject_other_run(Some(2)));
+        let message = partial_rx
+            .blocking_recv()
+            .expect("rejected write resolves")
+            .error_message
+            .unwrap();
+        assert!(
+            message.contains("2 bytes of this write were already written"),
+            "{message}"
+        );
+        assert!(!message.contains("discarded before reaching"), "{message}");
+    }
+
+    #[test]
+    fn a_partial_overflow_does_not_claim_the_prefix_was_never_sent() {
+        let mut queue = PendingQueue::default();
+        let (partial_tx, partial_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"abcdef".to_vec(),
+            offset: 2,
+            completion: Some(NotificationEnd::new(partial_tx)),
+            run_generation: None,
+        });
+        queue.fail_all(
+            "pty write queue overflowed the pending byte limit; \
+             the write was discarded before reaching the terminal",
+        );
+        let message = partial_rx
+            .blocking_recv()
+            .expect("overflowed write resolves")
+            .error_message
+            .unwrap();
+        assert!(
+            message.contains("2 bytes of this write were already written"),
+            "{message}"
+        );
+        assert!(!message.contains("discarded before reaching"), "{message}");
+        assert!(
+            message.contains("the rest of the write was not written"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_partial_write_failure_reports_the_bytes_already_written() {
+        let mut queue = PendingQueue::default();
+        let (partial_tx, partial_rx) = oneshot::channel();
+        let (rest_tx, rest_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"abcdefgh".to_vec(),
+            offset: 3,
+            completion: Some(NotificationEnd::new(partial_tx)),
+            run_generation: Some(1),
+        });
+        queue.push_back(PendingWrite {
+            bytes: b"later".to_vec(),
+            offset: 0,
+            completion: Some(NotificationEnd::new(rest_tx)),
+            run_generation: Some(1),
+        });
+        queue.fail_after_write_error("broken pipe");
+        let partial = partial_rx.blocking_recv().expect("partial write resolves");
+        let rest = rest_rx.blocking_recv().expect("later write resolves");
+        let partial_message = partial.error_message.unwrap();
+        assert!(
+            partial_message.contains("3 bytes of this write were already written"),
+            "{partial_message}"
+        );
+        assert!(
+            !partial_message.contains("discarded before reaching"),
+            "{partial_message}"
+        );
+        let rest_message = rest.error_message.unwrap();
+        assert!(rest_message.contains("discarded before reaching the terminal"));
+        assert!(!rest_message.contains("already written"));
     }
 }
 

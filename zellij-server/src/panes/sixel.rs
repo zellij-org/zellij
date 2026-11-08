@@ -278,6 +278,11 @@ impl SixelGrid {
     pub fn is_parsing(&self) -> bool {
         self.sixel_parser.is_some()
     }
+    /// Drop a sixel that was opened and never finished. Nothing is published.
+    pub fn abandon_image(&mut self) {
+        self.sixel_parser = None;
+        self.currently_parsing = None;
+    }
     pub fn start_image(
         &mut self,
         max_height_in_pixels: Option<usize>,
