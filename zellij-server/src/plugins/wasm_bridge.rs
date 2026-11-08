@@ -89,6 +89,7 @@ pub enum EventOrPipeMessage {
 
 pub const PIPE_POPUP_CLOSED_EXIT_CODE: i32 = 1;
 pub const PIPE_POPUP_ERROR_EXIT_CODE: i32 = 2;
+pub const PIPE_PLUGIN_UNAVAILABLE_EXIT_CODE: i32 = 1;
 
 #[derive(Debug, Clone)]
 enum PipePopup {
@@ -1103,23 +1104,6 @@ impl WasmBridge {
                 return Ok(());
             };
 
-            let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-            self.cached_events_for_pending_plugins
-                .insert(plugin_id, vec![]);
-            self.plugins_with_unfinished_load.insert(plugin_id);
-            self.cached_resizes_for_pending_plugins
-                .insert(plugin_id, (rows, columns));
-
-            let loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-            self.start_plugin_loading_indication_for_client(
-                plugin_id,
-                client_id,
-                &loading_indication,
-            );
-            self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
-            let plugin_executor = self.plugin_executor.clone();
-
             let Some(plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
                 log::error!("Could not find running plugin with id: {}", plugin_id);
                 return Ok(());
@@ -1132,12 +1116,26 @@ impl WasmBridge {
                 );
                 return Ok(());
             };
+            let (rows, columns) = size;
             let size = Size {
-                rows: size.0,
-                cols: size.1,
+                rows,
+                cols: columns,
             };
 
             let cwd = self.cwd_of_plugin_id(plugin_id);
+
+            self.cached_events_for_pending_plugins
+                .insert(plugin_id, vec![]);
+            self.plugins_with_unfinished_load.insert(plugin_id);
+            self.cached_resizes_for_pending_plugins
+                .insert(plugin_id, (rows, columns));
+
+            let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+            self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+            self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+
+            let plugin_executor = self.plugin_executor.clone();
+            let loading_executor = plugin_executor.clone();
 
             let loading_context = LoadingContext::new(
                 &self,
@@ -1177,7 +1175,20 @@ impl WasmBridge {
                             });
                         },
                         Err(e) => {
-                            log::error!("Failed to load plugin for new client: {}", e);
+                            handle_plugin_loading_failure(
+                                &senders,
+                                plugin_id,
+                                &mut loading_indication,
+                                e,
+                                Some(client_id),
+                            );
+                            if !plugin_map.lock().unwrap().has_instance_of(plugin_id) {
+                                loading_executor.unregister_plugin(plugin_id);
+                            }
+                            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                plugin_ids: vec![plugin_id],
+                                done_receiving_permissions: false,
+                            });
                         },
                     }
                 },
@@ -1297,6 +1308,7 @@ impl WasmBridge {
                                         // TODO(plugin-hardening): a render that traps for any
                                         // other reason is still only logged here.
                                         if crate::plugins::shared::is_out_of_fuel(&e) {
+                                            running_plugin.mark_quarantined();
                                             handle_plugin_crash(
                                                 plugin_id,
                                                 running_plugin.store.data().generation,
@@ -1425,6 +1437,7 @@ impl WasmBridge {
                                         let stringified_error =
                                             format!("{:?}", e).replace("\n", "\n\r");
 
+                                        running_plugin.mark_quarantined();
                                         handle_plugin_crash(
                                             plugin_id,
                                             running_plugin.store.data().generation,
@@ -1711,6 +1724,7 @@ impl WasmBridge {
                                     let stringified_error =
                                         format!("{:?}", e).replace("\n", "\n\r");
 
+                                    running_plugin.mark_quarantined();
                                     handle_plugin_crash(
                                         plugin_id,
                                         running_plugin.store.data().generation,
@@ -2223,6 +2237,14 @@ impl WasmBridge {
             self.cached_events_for_pending_plugins.remove(&plugin_id)
         {
             let plugin_instances = self.plugin_map.lock().unwrap().all_plugin_ids();
+            // A failed load leaves no instance to answer the pipes cached for it. Release them
+            // instead of dropping them and leaving their callers blocked.
+            if !plugin_instances
+                .iter()
+                .any(|(instance_plugin_id, _)| *instance_plugin_id == plugin_id)
+            {
+                self.release_cached_cli_pipes_with_error(&events_or_pipe_messages);
+            }
             for (instance_plugin_id, client_id) in plugin_instances {
                 if instance_plugin_id != plugin_id {
                     continue;
@@ -2282,7 +2304,16 @@ impl WasmBridge {
                                                         );
                                                     },
                                                     Err(e) => {
-                                                        log::error!("{}", e);
+                                                        log::error!("{:?}", e);
+                                                        running_plugin.mark_quarantined();
+                                                        handle_plugin_crash(
+                                                            plugin_id,
+                                                            running_plugin.store.data().generation,
+                                                            format!("{:?}", e)
+                                                                .replace("\n", "\n\r"),
+                                                            senders.clone(),
+                                                        );
+                                                        break;
                                                     },
                                                 }
                                             },
@@ -2324,6 +2355,7 @@ impl WasmBridge {
                                             },
                                             Err(e) => {
                                                 log::error!("{:?}", e);
+                                                running_plugin.mark_quarantined();
 
                                                 // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
                                                 let stringified_error =
@@ -2335,6 +2367,7 @@ impl WasmBridge {
                                                     stringified_error,
                                                     senders.clone(),
                                                 );
+                                                break;
                                             },
                                         }
                                     },
@@ -2785,6 +2818,25 @@ impl WasmBridge {
                     release.exit_code,
                 ))
                 .context("failed to unblock input pipe");
+        }
+    }
+    fn release_cli_pipe_with_error(&mut self, pipe_message: &PipeMessage) {
+        let PipeSource::Cli(pipe_id) = &pipe_message.source else {
+            return;
+        };
+        if self.pending_pipes.is_finished(pipe_id) {
+            return;
+        }
+        let release = self
+            .pending_pipes
+            .release_with_code(pipe_id, PIPE_PLUGIN_UNAVAILABLE_EXIT_CODE);
+        self.send_pipe_releases(vec![release]);
+    }
+    fn release_cached_cli_pipes_with_error(&mut self, entries: &[EventOrPipeMessage]) {
+        for entry in entries {
+            if let EventOrPipeMessage::PipeMessage(pipe_message, _) = entry {
+                self.release_cli_pipe_with_error(pipe_message);
+            }
         }
     }
     pub fn route_pipe_popup_message(
@@ -3714,11 +3766,12 @@ impl WasmBridge {
             let targets: Vec<(PluginId, Option<PluginId>)> = match plugin_id {
                 Some(plugin_id) => match self.shared_instance_of(plugin_id) {
                     // a quarantined instance receives nothing until it is reloaded
-                    // TODO(plugin-hardening): a CLI pipe addressed only to a quarantined
-                    // instance is dropped here without being released, as it is for quarantined
-                    // plugins that are not shared; release it with an error exit code so the
-                    // `zellij pipe` client does not wait for a plugin that will never answer.
-                    Some(instance_id) if self.quarantine.contains(&instance_id) => continue,
+                    Some(instance_id) if self.quarantine.contains(&instance_id) => {
+                        // The caller cannot know the plugin is gone; release the pipe so the
+                        // `zellij pipe` client does not wait forever.
+                        self.release_cli_pipe_with_error(&pipe_message);
+                        continue;
+                    },
                     Some(instance_id) => {
                         let slot_id = if plugin_id != instance_id {
                             Some(plugin_id)
@@ -3867,6 +3920,23 @@ pub fn handle_plugin_loading_failure(
             None,
         ));
     }
+}
+
+/// Drop state a plugin installed before its load failed. It never produced a running instance
+/// that the normal unload path could clean up, so its key intercepts, highlights, and settings
+/// entry would otherwise outlive it.
+pub fn clear_failed_plugin_load_side_effects(
+    senders: &ThreadSenders,
+    plugin_id: PluginId,
+    client_ids: impl IntoIterator<Item = ClientId>,
+) {
+    for client_id in client_ids {
+        let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+            plugin_id, client_id,
+        ));
+    }
+    let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(plugin_id));
+    let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(plugin_id));
 }
 
 // TODO: move to permissions?

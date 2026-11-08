@@ -187,6 +187,140 @@ fn a_failed_shared_load_removes_the_dead_instance_and_its_slots() {
 }
 
 #[test]
+fn a_failed_shared_reload_restores_the_previous_instance_and_keeps_its_data_dir() {
+    let (bridge, dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "shared.wasm");
+    let mut loading_context = LoadingContext::new(
+        &bridge,
+        None,
+        PluginConfig::from_run_plugin(&run).unwrap(),
+        10,
+        1,
+        None,
+        Size { rows: 5, cols: 80 },
+    );
+    loading_context.plugin_own_data_dir = dir.path().join("shared-data");
+    loading_context.plugin_own_cache_dir = dir.path().join("shared-cache");
+    let plugin_cache: PluginCache = Arc::new(Mutex::new(HashMap::new()));
+    let engine = wasmi::Engine::default();
+
+    assert!(start_instance_job(
+        bridge.senders.clone(),
+        bridge.plugin_map.clone(),
+        bridge.connected_clients.clone(),
+        plugin_cache.clone(),
+        engine.clone(),
+        loading_context.clone(),
+        false,
+        10,
+        BTreeMap::new(),
+    ));
+    let previous = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .shared_running_plugin(10)
+        .unwrap()
+        .0;
+
+    let mut failing_context = loading_context.clone();
+    failing_context.generation = next_plugin_generation();
+    failing_context.wasm_bytes = Some(
+        wat::parse_str(r#"(module (func (export "_start") unreachable) (func (export "load")))"#)
+            .unwrap(),
+    );
+    assert!(!start_instance_job(
+        bridge.senders.clone(),
+        bridge.plugin_map.clone(),
+        bridge.connected_clients.clone(),
+        plugin_cache,
+        engine,
+        failing_context,
+        true,
+        10,
+        BTreeMap::new(),
+    ));
+
+    let current = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .shared_running_plugin(10)
+        .unwrap()
+        .0;
+    assert!(
+        Arc::ptr_eq(&previous, &current),
+        "a failed reload must leave the previous instance running"
+    );
+    assert!(loading_context.plugin_own_data_dir.exists());
+}
+
+#[test]
+fn cached_cli_pipes_are_released_when_the_plugin_load_failed() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    bridge
+        .pending_pipes
+        .mark_being_processed("failed-load", &7, &1);
+    bridge.cached_events_for_pending_plugins.insert(
+        7,
+        vec![EventOrPipeMessage::PipeMessage(
+            cli_pipe("failed-load"),
+            Some(1),
+        )],
+    );
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+
+    bridge
+        .apply_cached_events_and_resizes_for_plugin(7, shutdown_sender)
+        .unwrap();
+
+    assert!(bridge.pending_pipes.is_finished("failed-load"));
+    assert!(!bridge.pending_pipes.is_pending("failed-load"));
+}
+
+#[test]
+fn a_failed_load_for_a_new_client_clears_its_pending_state() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "client-plugin.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+    std::fs::write(dir.path().join("client-plugin.wasm"), b"not a wasm module").unwrap();
+
+    bridge.add_client(2).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let apply = loop {
+        let (instruction, _) = plugin_receiver
+            .recv_deadline(deadline)
+            .expect("the failed load must report its cleanup");
+        if let PluginInstruction::ApplyCachedEvents {
+            plugin_ids,
+            done_receiving_permissions,
+        } = instruction
+        {
+            if plugin_ids.contains(&plugin_id) {
+                break (plugin_ids, done_receiving_permissions);
+            }
+        }
+    };
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    bridge
+        .apply_cached_events(apply.0, apply.1, shutdown_sender)
+        .unwrap();
+
+    assert!(!bridge
+        .cached_events_for_pending_plugins
+        .contains_key(&plugin_id));
+    assert!(!bridge
+        .cached_resizes_for_pending_plugins
+        .contains_key(&plugin_id));
+    assert!(!bridge.plugins_with_unfinished_load.contains(&plugin_id));
+    assert!(!bridge
+        .loading_plugins
+        .iter()
+        .any(|(loading_plugin_id, _)| *loading_plugin_id == plugin_id));
+}
+
+#[test]
 fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
     let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
     let run = RunPlugin::from_url("file:/nonexistent/shared.wasm").unwrap();
@@ -212,6 +346,7 @@ fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
         &mut notification_end,
     );
     assert!(!bridge.pending_pipes.is_pending("addressed"));
+    assert!(bridge.pending_pipes.is_finished("addressed"));
     assert!(!bridge.pending_pipes.is_pending("broadcast"));
     // the broadcast still goes to plugins that are not shared
     assert_eq!(legacy.len(), 1);

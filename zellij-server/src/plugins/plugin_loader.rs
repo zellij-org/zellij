@@ -3,7 +3,9 @@ use crate::plugins::plugin_map::{
     WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, MessageToWorker, RunningWorker};
-use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
+use crate::plugins::wasm_bridge::{
+    clear_failed_plugin_load_side_effects, LoadingContext, PluginCache,
+};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use prost::Message;
@@ -120,6 +122,8 @@ pub struct PluginLoader {
     quarantined: Arc<std::sync::atomic::AtomicBool>,
     // Set when the plugin was unloaded while this loader was still publishing instances.
     unloaded_during_load: bool,
+    // Whether this load publishes a shared instance, whose rollback is handled by its caller.
+    shared_load: bool,
     connected_clients: Option<Arc<Mutex<Vec<ClientId>>>>,
 }
 
@@ -173,6 +177,7 @@ impl PluginLoader {
             published_shared_instance: None,
             quarantined: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             unloaded_during_load: false,
+            shared_load: false,
             connected_clients: Some(connected_clients),
             loading_indication,
         }
@@ -208,6 +213,7 @@ impl PluginLoader {
         Ok(())
     }
     pub fn start_shared_plugin(&mut self) -> Result<Arc<Mutex<RunningPlugin>>> {
+        self.shared_load = true;
         let snapshot = self.load_snapshot();
         let result = (|| {
             let module = self.load_module()?;
@@ -417,10 +423,12 @@ impl PluginLoader {
     /// Roll back only the instances this loader published. A concurrent load of the same plugin
     /// id may have replaced any of them already, so each entry is matched by identity first.
     fn rollback_failed_load(&mut self, snapshot: &LoadSnapshot) {
+        let mut published_clients = Vec::new();
         let (removed, other_instances_remain) = {
             let mut plugin_map = self.plugin_map.lock().unwrap();
             let mut removed = Vec::new();
             for (client_id, published) in self.published_instances.drain(..) {
+                published_clients.push(client_id);
                 let still_published = plugin_map
                     .get_running_plugin(self.plugin_id, Some(client_id))
                     .map(|current| Arc::ptr_eq(&current, &published))
@@ -465,6 +473,9 @@ impl PluginLoader {
         // instance behind.
         if !snapshot.had_instance && !other_instances_remain {
             self.remove_data_dir();
+        }
+        if !self.shared_load && !other_instances_remain {
+            clear_failed_plugin_load_side_effects(&self.senders, self.plugin_id, published_clients);
         }
     }
     fn remove_failed_load_data_dir_if_unused(&self, snapshot: &LoadSnapshot) {
@@ -1361,6 +1372,53 @@ mod tests {
         assert!(!data_dir.exists());
         assert!(plugin_map.metadata(5).is_none());
         assert!(!plugin_map.has_instance_of(5));
+    }
+
+    #[test]
+    fn a_failed_load_clears_the_screen_state_it_installed() {
+        use crate::plugins::PluginInstruction;
+        use crate::screen::ScreenInstruction;
+        use zellij_utils::channels::{self, SenderWithContext};
+
+        let fixture = LoaderFixture::new(FAILING_PLUGIN, 5, 1, &[]);
+        let (to_plugin, plugin_receiver) = channels::unbounded();
+        let (to_screen, screen_receiver) = channels::unbounded();
+        let senders = crate::thread_bus::ThreadSenders {
+            to_plugin: Some(SenderWithContext::new(to_plugin)),
+            to_screen: Some(SenderWithContext::new(to_screen)),
+            should_silently_fail: true,
+            ..Default::default()
+        };
+        let mut loader = super::PluginLoader::new(
+            false,
+            fixture.loading_context.clone(),
+            senders,
+            fixture.engine.clone(),
+            fixture.plugin_cache.clone(),
+            fixture.plugin_map.clone(),
+            fixture.connected_clients.clone(),
+        );
+
+        assert!(loader.start_plugin().is_err());
+
+        let mut screen_instructions = vec![];
+        while let Ok((instruction, _)) = screen_receiver.try_recv() {
+            screen_instructions.push(instruction);
+        }
+        assert!(screen_instructions
+            .iter()
+            .any(|i| matches!(i, ScreenInstruction::ClearKeyPressesIntercepts(5, 1))));
+        assert!(screen_instructions
+            .iter()
+            .any(|i| matches!(i, ScreenInstruction::ClearAllPluginHighlights(5))));
+
+        let mut plugin_instructions = vec![];
+        while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+            plugin_instructions.push(instruction);
+        }
+        assert!(plugin_instructions
+            .iter()
+            .any(|i| matches!(i, PluginInstruction::UnregisterSettingsEntry(5))));
     }
 
     #[test]

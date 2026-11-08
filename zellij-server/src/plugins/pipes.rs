@@ -124,6 +124,9 @@ impl PendingPipes {
         plugin_id: &PluginId,
         client_id: &ClientId,
     ) {
+        if self.is_finished(pipe_id) {
+            return;
+        }
         if self.pipes.contains_key(pipe_id) {
             self.pipes.get_mut(pipe_id).map(|pending_pipe_info| {
                 pending_pipe_info.add_processing_plugin(plugin_id, client_id)

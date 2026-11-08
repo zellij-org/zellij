@@ -171,6 +171,9 @@ impl PluginMap {
                 (running_plugin.clone(), subscriptions.clone())
             })
     }
+    pub fn shared_plugin_assets(&self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_assets.get(&instance_id).cloned()
+    }
     pub fn remove_metadata(&mut self, plugin_id: PluginId) {
         self.plugin_metadata.remove(&plugin_id);
     }
@@ -645,6 +648,9 @@ impl RunningPlugin {
     }
     pub fn quarantine_flag(&self) -> Arc<AtomicBool> {
         self.quarantined.clone()
+    }
+    pub fn mark_quarantined(&self) {
+        self.quarantined.store(true, Ordering::SeqCst);
     }
     pub fn is_quarantined(&self) -> bool {
         self.quarantined.load(Ordering::SeqCst)

@@ -65,6 +65,16 @@ pub fn plugin_worker(mut worker: RunningWorker) -> UnboundedSender<MessageToWork
                 }
                 match receiver.recv().await {
                     Some(MessageToWorker::Message(message, payload)) => {
+                        // A fatal error may have quarantined the plugin while this worker was
+                        // waiting; do not enter the guest once it has.
+                        if worker
+                            .store
+                            .data()
+                            .quarantined
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                        {
+                            break;
+                        }
                         if let Err(e) = worker.send_message(message, payload) {
                             log::error!("Failed to send message to worker: {:?}", e);
                             // Other failures leave the plugin running, as they always have. A

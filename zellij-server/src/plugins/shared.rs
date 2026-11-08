@@ -5,9 +5,9 @@ use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::wasm_bridge::{
-    check_event_permission, handle_plugin_crash, handle_plugin_loading_failure,
-    handle_plugin_successful_loading, subscription_event_type, LoadingContext, PluginCache,
-    PluginRenderAsset,
+    check_event_permission, clear_failed_plugin_load_side_effects, handle_plugin_crash,
+    handle_plugin_loading_failure, handle_plugin_successful_loading, subscription_event_type,
+    LoadingContext, PluginCache, PluginRenderAsset,
 };
 use crate::plugins::zellij_exports::{wasi_read_bytes, wasi_read_string, wasi_write_object};
 use crate::plugins::PluginInstruction;
@@ -475,6 +475,9 @@ fn report_instance_error(
     running_plugin: &RunningPlugin,
     error: anyhow::Error,
 ) {
+    // An asynchronous Quarantine instruction is not enough: jobs already queued on this
+    // instance's executor must see the flag before they enter the failed guest.
+    running_plugin.mark_quarantined();
     let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(
         running_plugin.store.data().plugin_id,
     ));
@@ -722,6 +725,7 @@ pub fn add_slot_job(
         Err(e) => {
             let _ =
                 senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(slot_id));
+            running_plugin.mark_quarantined();
             report_error(
                 &senders,
                 instance_id,
@@ -935,26 +939,23 @@ pub fn start_instance_job(
     initial_slots: BTreeMap<PluginId, SharedSlot>,
 ) -> bool {
     let mut initial_slots = initial_slots;
-    let previous = plugin_map.lock().unwrap().remove_shared(instance_id);
-    let previous_visible_slots = match previous {
-        Some((running_plugin, _subscriptions, workers)) => {
-            for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+    // Keep the previous instance in the map until the replacement has initialized. A failed
+    // reload must leave the running plugin (and its slots) in place; removing it first also hid
+    // it from the loader's snapshot, which then deleted the replacement's data directory.
+    let previous = plugin_map.lock().unwrap().shared_plugin_assets(instance_id);
+    let mut previous_visible_slots = HashMap::new();
+    let mut previous_in_blocking_call = None;
+    if let Some((running_plugin, _subscriptions, _workers)) = previous.as_ref() {
+        let running_plugin = running_plugin.lock().unwrap();
+        if let Some(shared) = running_plugin.store.data().shared.as_ref() {
+            for (slot_id, slot) in shared.slots.iter() {
+                initial_slots
+                    .entry(*slot_id)
+                    .or_insert_with(|| slot.clone());
             }
-            let running_plugin = running_plugin.lock().unwrap();
-            match running_plugin.store.data().shared.as_ref() {
-                Some(shared) => {
-                    for (slot_id, slot) in shared.slots.iter() {
-                        initial_slots
-                            .entry(*slot_id)
-                            .or_insert_with(|| slot.clone());
-                    }
-                    shared.visible_slots.clone()
-                },
-                None => HashMap::new(),
-            }
-        },
-        None => HashMap::new(),
+            previous_visible_slots = shared.visible_slots.clone();
+            previous_in_blocking_call = Some(shared.in_blocking_call.clone());
+        }
     };
     let started = PluginLoader::new(
         skip_cache,
@@ -967,8 +968,34 @@ pub fn start_instance_job(
     )
     .start_shared_plugin();
     let running_plugin = match started {
-        Ok(running_plugin) => running_plugin,
+        Ok(running_plugin) => {
+            // The replacement is published; only now is it safe to retire the old workers.
+            if let Some((_running_plugin, _subscriptions, workers)) = previous {
+                for (_worker_name, worker_sender) in workers {
+                    drop(worker_sender.send(MessageToWorker::Exit));
+                }
+            }
+            running_plugin
+        },
         Err(e) => {
+            if let Some((running_plugin, subscriptions, workers)) = previous {
+                let mut plugin_map = plugin_map.lock().unwrap();
+                // A failure before publication leaves the old entry in place. A failure after
+                // publication removed the replacement, so put back what it displaced.
+                if plugin_map.shared_running_plugin(instance_id).is_none() {
+                    plugin_map.insert_shared(
+                        instance_id,
+                        (running_plugin, subscriptions, workers),
+                        previous_in_blocking_call,
+                    );
+                }
+            } else {
+                let clients = connected_clients.lock().unwrap().clone();
+                clear_failed_plugin_load_side_effects(&senders, instance_id, clients);
+            }
+            // A failed replacement may have registered intercepts or highlights under the same
+            // plugin id before trapping. Clearing them here would also drop the restored
+            // instance's registrations, so they are left for the restored instance to replace.
             for slot_id in initial_slots.keys() {
                 let mut loading_indication = LoadingIndication::new(String::new());
                 handle_plugin_loading_failure(
@@ -1011,6 +1038,10 @@ pub fn start_instance_job(
             true
         },
         Err(e) => {
+            // TODO(plugin-hardening): a reload that publishes successfully but then fails in
+            // these callbacks still retires the previous instance. Restoring it would need
+            // generation-aware quarantine cleanup so the failed replacement's crash report
+            // cannot quarantine the restored instance.
             for slot_id in initial_slots.keys() {
                 let _ = senders
                     .send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(*slot_id));
