@@ -32,6 +32,47 @@ pub fn pane_contents_file_name(contents: &str) -> String {
     file_name
 }
 
+/// Every `contents_file` reference in a serialized layout, in document order.
+///
+/// Each reference corresponds to one pane whose initial contents the layout
+/// parser must load. Keeping duplicates is intentional: counting these
+/// references is how a reader can detect that one of the files disappeared
+/// while it was parsing.
+pub fn session_layout_content_file_references(layout: &str) -> Vec<String> {
+    fn visit(node: &KdlNode, references: &mut Vec<String>) {
+        let contents_file = node
+            .get("contents_file")
+            .and_then(|entry| entry.value().as_string())
+            .or_else(|| {
+                node.children()
+                    .and_then(|children| children.get("contents_file"))
+                    .and_then(|child| child.get(0))
+                    .and_then(|entry| entry.value().as_string())
+            });
+        if let Some(contents_file) = contents_file {
+            references.push(contents_file.to_owned());
+        }
+        if let Some(children) = node.children() {
+            for child in children.nodes() {
+                visit(child, references);
+            }
+        }
+    }
+    let mut references = Vec::new();
+    if let Ok(document) = layout.parse::<KdlDocument>() {
+        for node in document.nodes() {
+            visit(node, &mut references);
+        }
+    }
+    references
+}
+
+pub fn session_layout_referenced_content_files(layout: &str) -> HashSet<String> {
+    session_layout_content_file_references(layout)
+        .into_iter()
+        .collect()
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct GlobalLayoutManifest {
     pub global_cwd: Option<PathBuf>,
@@ -1318,6 +1359,39 @@ mod tests {
         // A stable digest keeps old layouts readable across restarts and
         // toolchain upgrades; a `DefaultHasher` name would not.
         assert_eq!(first, "initial_contents_7553f71f1610255c385f29edc8d011f9");
+    }
+
+    #[test]
+    fn content_file_references_keep_property_and_child_forms() {
+        let layout = r#"
+layout {
+    tab {
+        pane contents_file="initial_contents_one"
+        pane {
+            contents_file "initial_contents_two"
+        }
+        floating_panes {
+            pane contents_file="initial_contents_three"
+        }
+    }
+}
+"#;
+        assert_eq!(
+            session_layout_content_file_references(layout),
+            vec![
+                "initial_contents_one".to_owned(),
+                "initial_contents_two".to_owned(),
+                "initial_contents_three".to_owned(),
+            ]
+        );
+        assert_eq!(
+            session_layout_referenced_content_files(layout),
+            HashSet::from([
+                "initial_contents_one".to_owned(),
+                "initial_contents_two".to_owned(),
+                "initial_contents_three".to_owned(),
+            ])
+        );
     }
 
     const PANEGEOMS_JSON: &[&[&str]] = &[

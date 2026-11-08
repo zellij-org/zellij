@@ -5,7 +5,7 @@ use crate::{
     },
     data::SessionInfo,
     envs,
-    input::layout::Layout,
+    input::layout::{FloatingPaneLayout, Layout, TiledPaneLayout},
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     session_index::{self, SessionIndex},
 };
@@ -666,33 +666,111 @@ pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Lay
     let session_id = resolve_session_id(session_name_to_resurrect)
         .unwrap_or_else(|| session_name_to_resurrect.to_owned());
     let layout_file_name = session_layout_cache_file_name(&session_id);
-    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
-        Ok(raw_layout) => raw_layout,
-        Err(_e) => {
-            return Ok(None);
-        },
-    };
-    match Layout::from_kdl(
-        &raw_layout,
-        Some(layout_file_name.display().to_string()),
-        None,
-        None,
-    ) {
-        Ok(layout) => Ok(Some(layout)),
-        Err(e) => {
-            let error_text = crate::input::keybind_presets::config_error_text(&e);
-            log::error!(
-                "Failed to parse resurrection layout file {}: {}",
-                layout_file_name.display(),
-                error_text
-            );
-            return Err(format!(
-                "Failed to parse resurrection layout file {}: {}.",
-                layout_file_name.display(),
-                error_text
-            ));
-        },
+    resurrection_layout_from_path_with_reader_barrier(&layout_file_name, || {})
+}
+
+const RESURRECTION_LAYOUT_READ_ATTEMPTS: usize = 8;
+
+/// Read a saved layout together with every pane-content file it references.
+///
+/// Content files are content-addressed and may be reclaimed after later saves.
+/// A reader can therefore observe a layout whose files were pruned while it was
+/// parsing. The parser represents a missing file as absent pane contents, so
+/// compare the number of references with the number of loaded contents. On a
+/// mismatch, restart from the currently committed layout rather than returning
+/// a silently incomplete resurrection.
+///
+/// `after_layout_read` is a test seam for blocking a real reader between the
+/// layout read and the content loads.
+#[doc(hidden)]
+pub fn resurrection_layout_from_path_with_reader_barrier<F>(
+    layout_file_name: &Path,
+    mut after_layout_read: F,
+) -> Result<Option<Layout>, String>
+where
+    F: FnMut(),
+{
+    let mut last_observation = None;
+    for _ in 0..RESURRECTION_LAYOUT_READ_ATTEMPTS {
+        let raw_layout = match std::fs::read_to_string(layout_file_name) {
+            Ok(raw_layout) => raw_layout,
+            Err(_) => return Ok(None),
+        };
+        after_layout_read();
+        let expected_contents =
+            crate::session_serialization::session_layout_content_file_references(&raw_layout).len();
+        match Layout::from_kdl(
+            &raw_layout,
+            Some(layout_file_name.display().to_string()),
+            None,
+            None,
+        ) {
+            Ok(layout) => {
+                let loaded_contents = loaded_pane_initial_contents(&layout);
+                if loaded_contents == expected_contents {
+                    return Ok(Some(layout));
+                }
+                last_observation = Some((expected_contents, loaded_contents));
+            },
+            Err(e) => {
+                let error_text = crate::input::keybind_presets::config_error_text(&e);
+                log::error!(
+                    "Failed to parse resurrection layout file {}: {}",
+                    layout_file_name.display(),
+                    error_text
+                );
+                return Err(format!(
+                    "Failed to parse resurrection layout file {}: {}.",
+                    layout_file_name.display(),
+                    error_text
+                ));
+            },
+        }
     }
+    let detail = last_observation
+        .map(|(expected, loaded)| {
+            format!(" ({loaded} of {expected} pane content files were available)")
+        })
+        .unwrap_or_default();
+    Err(format!(
+        "Saved layout file {} kept changing while its pane contents were being read{}.",
+        layout_file_name.display(),
+        detail
+    ))
+}
+
+fn loaded_pane_initial_contents(layout: &Layout) -> usize {
+    fn tiled(pane: &TiledPaneLayout) -> usize {
+        pane.pane_initial_contents.is_some() as usize
+            + pane.children.iter().map(tiled).sum::<usize>()
+    }
+    fn floating(panes: &[FloatingPaneLayout]) -> usize {
+        panes
+            .iter()
+            .filter(|pane| pane.pane_initial_contents.is_some())
+            .count()
+    }
+    let mut loaded = layout
+        .tabs
+        .iter()
+        .map(|(_, tiled_pane, floating_panes)| tiled(tiled_pane) + floating(floating_panes))
+        .sum::<usize>();
+    if let Some((tiled_pane, floating_panes)) = layout.template.as_ref() {
+        loaded += tiled(tiled_pane) + floating(floating_panes);
+    }
+    for (tiled_pane, floating_panes) in &layout.swap_layouts {
+        loaded += tiled(tiled_pane) + floating(floating_panes);
+    }
+    for (tiled_layouts, _) in &layout.swap_tiled_layouts {
+        loaded += tiled_layouts.values().map(tiled).sum::<usize>();
+    }
+    for (floating_layouts, _) in &layout.swap_floating_layouts {
+        loaded += floating_layouts
+            .values()
+            .map(|panes| floating(panes))
+            .sum::<usize>();
+    }
+    loaded
 }
 
 pub fn assert_session(name: &str) {
