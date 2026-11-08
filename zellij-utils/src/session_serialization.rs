@@ -1,4 +1,5 @@
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -11,6 +12,25 @@ use crate::{
     input::{layout::PluginUserConfiguration, options::StackListOrientation},
     pane_size::{Constraint, PaneGeom},
 };
+
+/// Prefix shared by the pane-content files referenced from a saved layout.
+///
+/// Names are content-addressed so publishing a new generation never mutates
+/// the files a previously committed layout points at.
+pub const PANE_CONTENTS_FILE_PREFIX: &str = "initial_contents_";
+const PANE_CONTENTS_HASH_BYTES: usize = 16;
+
+pub fn pane_contents_file_name(contents: &str) -> String {
+    let digest = Sha256::digest(contents.as_bytes());
+    let mut file_name =
+        String::with_capacity(PANE_CONTENTS_FILE_PREFIX.len() + 2 * PANE_CONTENTS_HASH_BYTES);
+    file_name.push_str(PANE_CONTENTS_FILE_PREFIX);
+    for byte in &digest[..PANE_CONTENTS_HASH_BYTES] {
+        use std::fmt::Write as _;
+        let _ = write!(file_name, "{:02x}", byte);
+    }
+    file_name
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct GlobalLayoutManifest {
@@ -369,7 +389,7 @@ fn serialize_pane_title_and_attributes(
     }
     if let Some(initial_pane_contents) = initial_pane_contents.as_ref() {
         if command.is_none() && edit.is_none() {
-            let file_name = format!("initial_contents_{}", pane_contents.keys().len() + 1);
+            let file_name = pane_contents_file_name(initial_pane_contents);
             kdl_node
                 .entries_mut()
                 .push(KdlEntry::new_prop("contents_file", file_name.clone()));
@@ -1284,6 +1304,22 @@ mod tests {
     use insta::assert_snapshot;
     use serde_json::Value;
     use std::collections::HashMap;
+
+    #[test]
+    fn pane_contents_file_names_are_content_addressed() {
+        let first = pane_contents_file_name("pane contents A");
+        assert_eq!(first, pane_contents_file_name("pane contents A"));
+        assert_ne!(first, pane_contents_file_name("pane contents B"));
+        assert!(first.starts_with(PANE_CONTENTS_FILE_PREFIX));
+        assert_eq!(
+            first.len(),
+            PANE_CONTENTS_FILE_PREFIX.len() + 2 * PANE_CONTENTS_HASH_BYTES
+        );
+        // A stable digest keeps old layouts readable across restarts and
+        // toolchain upgrades; a `DefaultHasher` name would not.
+        assert_eq!(first, "initial_contents_7553f71f1610255c385f29edc8d011f9");
+    }
+
     const PANEGEOMS_JSON: &[&[&str]] = &[
         &[
             r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,

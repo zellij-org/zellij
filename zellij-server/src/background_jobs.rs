@@ -20,7 +20,7 @@ use isahc::prelude::*;
 use isahc::AsyncReadResponseExt;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::hash::Hasher;
 use std::io::Write;
@@ -183,6 +183,10 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+// Serializes publication and pruning between the periodic writer and explicit
+// saves: a pruner must never observe a half-published generation and delete
+// files another writer just committed.
+static SESSION_STATE_WRITE_LOCK: Mutex<()> = Mutex::new(());
 const SESSION_SUGGESTIONS_EXIT_WAIT: Duration = Duration::from_secs(3);
 pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(4);
 pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(10);
@@ -528,10 +532,12 @@ pub(crate) fn background_jobs_main(
                 if name.is_empty() || session_id.is_empty() {
                     continue;
                 }
-                let (writes, hashes) = {
+                let (writes, hashes, current_layout) = {
                     let info = current_session_info.lock().unwrap();
                     let layout = current_session_layout.lock().unwrap();
-                    collect_dirty_session_state_writes(&session_id, &info, &layout, &published)
+                    let (writes, hashes) =
+                        collect_dirty_session_state_writes(&session_id, &info, &layout, &published);
+                    (writes, hashes, layout.0.clone())
                 };
                 // Files that are no longer part of the session state are not
                 // tracked any further.
@@ -553,6 +559,10 @@ pub(crate) fn background_jobs_main(
                     continue;
                 }
                 reported_saved = false;
+                // The layout currently on disk is the generation readers may
+                // still be resolving while the new one is published.
+                let previous_layout =
+                    fs::read_to_string(session_layout_cache_file_name(&session_id)).ok();
                 // Stage the writes outside the stop mutex so a slow filesystem
                 // cannot block Exit, then publish under it so a shutdown that
                 // lands mid-write still fences the on-disk files.
@@ -576,6 +586,9 @@ pub(crate) fn background_jobs_main(
                     if *stopped_guard {
                         false
                     } else {
+                        let _write_guard = SESSION_STATE_WRITE_LOCK
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
                         let all_persisted = publish_staged_session_state(
                             &session_layout_cache_file_name(&session_id),
                             staged,
@@ -584,6 +597,12 @@ pub(crate) fn background_jobs_main(
                             !stage_failed,
                         );
                         if all_persisted && layout_present {
+                            prune_stale_pane_content_files(
+                                &session_info_folder_for_session(&session_id),
+                                &session_layout_cache_file_name(&session_id),
+                                previous_layout.as_deref(),
+                                &current_layout,
+                            );
                             report_session_saved(&senders);
                             reported_saved = true;
                         }
@@ -1425,11 +1444,90 @@ fn collect_dirty_session_state_writes(
     (writes, hashes)
 }
 
+fn session_layout_referenced_content_files(layout: &str) -> HashSet<String> {
+    fn visit(node: &kdl::KdlNode, names: &mut HashSet<String>) {
+        if let Some(name) = node
+            .get("contents_file")
+            .and_then(|entry| entry.value().as_string())
+        {
+            names.insert(name.to_owned());
+        }
+        if let Some(name) = node
+            .children()
+            .and_then(|children| children.get("contents_file"))
+            .and_then(|child| child.get(0))
+            .and_then(|entry| entry.value().as_string())
+        {
+            names.insert(name.to_owned());
+        }
+        if let Some(children) = node.children() {
+            for child in children.nodes() {
+                visit(child, names);
+            }
+        }
+    }
+    let mut names = HashSet::new();
+    if let Ok(document) = layout.parse::<kdl::KdlDocument>() {
+        for node in document.nodes() {
+            visit(node, &mut names);
+        }
+    }
+    names
+}
+
+/// Remove pane-content files that no committed layout can reference any more.
+///
+/// Names are content-addressed, so a failed publication can only leave
+/// unreferenced files behind. The layout currently on disk is always part of
+/// the retained set (a concurrent writer may have just published it) and the
+/// previous committed generation is kept for one save interval so readers that
+/// already resolved it can still open its content files.
+fn prune_stale_pane_content_files(
+    session_info_folder: &Path,
+    layout_path: &Path,
+    previous_layout: Option<&str>,
+    current_layout: &str,
+) {
+    let mut retained = session_layout_referenced_content_files(current_layout);
+    if let Some(previous_layout) = previous_layout {
+        retained.extend(session_layout_referenced_content_files(previous_layout));
+    }
+    if let Ok(on_disk) = fs::read_to_string(layout_path) {
+        retained.extend(session_layout_referenced_content_files(&on_disk));
+    }
+    let Ok(entries) = fs::read_dir(session_info_folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !file_name.starts_with(zellij_utils::session_serialization::PANE_CONTENTS_FILE_PREFIX)
+            || retained.contains(file_name)
+        {
+            continue;
+        }
+        match fs::remove_file(&path) {
+            Ok(()) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => log::debug!(
+                "Failed to remove stale pane content file {}: {:?}",
+                path.display(),
+                error
+            ),
+        }
+    }
+}
+
 pub fn write_session_state_to_disk(
     session_id: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
 ) -> std::io::Result<()> {
+    let _write_guard = SESSION_STATE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let metadata_cache_file_name = session_info_cache_file_name(&session_id);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
@@ -1452,6 +1550,8 @@ pub fn write_session_state_to_disk(
 
     if !current_session_layout.is_empty() {
         let session_info_folder = session_info_folder_for_session(&session_id);
+        let layout_cache_file_name = session_layout_cache_file_name(&session_id);
+        let previous_layout = fs::read_to_string(&layout_cache_file_name).ok();
         let mut content_persisted = true;
         for (external_file_name, external_file_contents) in layout_files_to_write {
             content_persisted &= write_if_changed(
@@ -1462,7 +1562,6 @@ pub fn write_session_state_to_disk(
         // The layout names these files, so never publish it after one of them
         // failed; the next save retries the whole set.
         if content_persisted {
-            let layout_cache_file_name = session_layout_cache_file_name(&session_id);
             if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
                 // replacing the file gives it a new creation time; keep the
                 // session's own
@@ -1471,6 +1570,12 @@ pub fn write_session_state_to_disk(
                 );
             }
             write_if_changed(layout_cache_file_name, current_session_layout.as_bytes());
+            prune_stale_pane_content_files(
+                &session_info_folder,
+                &session_layout_cache_file_name(&session_id),
+                previous_layout.as_deref(),
+                &current_session_layout,
+            );
         }
     }
     match first_error {
@@ -1723,6 +1828,172 @@ mod tests {
         let folder = info_dir.join(session);
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("session-layout.kdl"), "layout { }").unwrap();
+    }
+
+    fn serialized_layout_with_contents(contents: &[&str]) -> (String, BTreeMap<String, String>) {
+        use zellij_utils::pane_size::{Dimension, PaneGeom};
+        use zellij_utils::session_serialization::{
+            serialize_session_layout, GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest,
+        };
+        let tiled_panes = contents
+            .iter()
+            .enumerate()
+            .map(|(index, contents)| PaneLayoutManifest {
+                pane_contents: Some((*contents).to_owned()),
+                geom: PaneGeom {
+                    x: 0,
+                    y: index * 10,
+                    rows: Dimension::fixed(10),
+                    cols: Dimension::fixed(10),
+                    stacked: None,
+                    is_pinned: false,
+                    logical_position: None,
+                },
+                ..Default::default()
+            })
+            .collect();
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes,
+            ..Default::default()
+        };
+        serialize_session_layout(GlobalLayoutManifest {
+            tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
+            ..Default::default()
+        })
+        .unwrap()
+    }
+
+    fn stage_generation(
+        layout_path: &Path,
+        layout: &str,
+        contents: &BTreeMap<String, String>,
+        blocked_content: Option<&str>,
+    ) -> (
+        Vec<(PathBuf, tempfile::NamedTempFile)>,
+        HashMap<PathBuf, u64>,
+    ) {
+        let folder = layout_path.parent().unwrap();
+        let mut hashes = HashMap::new();
+        let mut staged = Vec::new();
+        for (file_name, contents) in contents {
+            let path = folder.join(file_name);
+            let file = stage_atomic_write(&path, contents.as_bytes()).unwrap();
+            if blocked_content == Some(file_name.as_str()) {
+                // Remove the staged temporary file: the rename fails without
+                // touching whatever the currently committed generation has at
+                // this path.
+                std::fs::remove_file(file.path()).unwrap();
+            }
+            hashes.insert(path.clone(), content_hash(contents.as_bytes()));
+            staged.push((path, file));
+        }
+        let layout_file = stage_atomic_write(layout_path, layout.as_bytes()).unwrap();
+        hashes.insert(layout_path.to_path_buf(), content_hash(layout.as_bytes()));
+        staged.push((layout_path.to_path_buf(), layout_file));
+        (staged, hashes)
+    }
+
+    fn publish_generation(
+        layout_path: &Path,
+        layout: &str,
+        contents: &BTreeMap<String, String>,
+    ) -> bool {
+        let (staged, hashes) = stage_generation(layout_path, layout, contents, None);
+        publish_staged_session_state(layout_path, staged, &hashes, &mut HashMap::new(), true)
+    }
+
+    fn loaded_pane_contents(layout_path: &Path) -> Vec<String> {
+        use zellij_utils::input::layout::TiledPaneLayout;
+        fn collect(pane: &TiledPaneLayout, contents: &mut Vec<String>) {
+            if let Some(pane_contents) = pane.pane_initial_contents.as_ref() {
+                contents.push(pane_contents.clone());
+            }
+            for child in &pane.children {
+                collect(child, contents);
+            }
+        }
+        let layout = zellij_utils::input::layout::Layout::from_path_without_config(
+            &layout_path.to_path_buf(),
+        )
+        .unwrap();
+        let mut contents = Vec::new();
+        for (_, tiled_panes, _) in &layout.tabs {
+            collect(tiled_panes, &mut contents);
+        }
+        contents.sort();
+        contents
+    }
+
+    fn content_paths(folder: &Path, contents: &BTreeMap<String, String>) -> Vec<PathBuf> {
+        contents.keys().map(|name| folder.join(name)).collect()
+    }
+
+    #[test]
+    fn a_failed_next_generation_content_publication_keeps_the_committed_generation_loadable() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("session-layout.kdl");
+        let (layout_a, contents_a) = serialized_layout_with_contents(&["alpha one", "alpha two"]);
+        let (layout_b, contents_b) = serialized_layout_with_contents(&["beta one", "beta two"]);
+        let expected_a = vec!["alpha one".to_owned(), "alpha two".to_owned()];
+        let expected_b = vec!["beta one".to_owned(), "beta two".to_owned()];
+
+        assert!(publish_generation(&layout_path, &layout_a, &contents_a));
+        assert_eq!(loaded_pane_contents(&layout_path), expected_a);
+
+        for failing_index in 0..contents_b.len() {
+            let blocked_name = contents_b.keys().nth(failing_index).unwrap().clone();
+            let (staged, hashes) =
+                stage_generation(&layout_path, &layout_b, &contents_b, Some(&blocked_name));
+            let all_persisted = publish_staged_session_state(
+                &layout_path,
+                staged,
+                &hashes,
+                &mut HashMap::new(),
+                true,
+            );
+
+            assert!(!all_persisted, "publication {} must fail", failing_index);
+            assert_eq!(
+                loaded_pane_contents(&layout_path),
+                expected_a,
+                "after failing publication {}",
+                failing_index
+            );
+        }
+
+        assert!(publish_generation(&layout_path, &layout_b, &contents_b));
+        assert_eq!(loaded_pane_contents(&layout_path), expected_b);
+    }
+
+    #[test]
+    fn stale_pane_content_generations_are_retained_for_one_save_then_pruned() {
+        let dir = tempdir().unwrap();
+        let layout_path = dir.path().join("session-layout.kdl");
+        let (layout_a, contents_a) = serialized_layout_with_contents(&["alpha one", "alpha two"]);
+        let (layout_b, contents_b) = serialized_layout_with_contents(&["beta one", "beta two"]);
+        let (layout_c, contents_c) = serialized_layout_with_contents(&["gamma one", "gamma two"]);
+
+        assert!(publish_generation(&layout_path, &layout_a, &contents_a));
+        assert!(publish_generation(&layout_path, &layout_b, &contents_b));
+        prune_stale_pane_content_files(dir.path(), &layout_path, Some(&layout_a), &layout_b);
+        for path in content_paths(dir.path(), &contents_a) {
+            assert!(path.exists(), "the previous generation must be retained");
+        }
+        for path in content_paths(dir.path(), &contents_b) {
+            assert!(path.exists());
+        }
+
+        assert!(publish_generation(&layout_path, &layout_c, &contents_c));
+        prune_stale_pane_content_files(dir.path(), &layout_path, Some(&layout_b), &layout_c);
+        for path in content_paths(dir.path(), &contents_a) {
+            assert!(!path.exists(), "two generations back must be pruned");
+        }
+        for path in content_paths(dir.path(), &contents_b) {
+            assert!(path.exists(), "the previous generation must be retained");
+        }
+        for path in content_paths(dir.path(), &contents_c) {
+            assert!(path.exists());
+        }
     }
 
     #[test]
