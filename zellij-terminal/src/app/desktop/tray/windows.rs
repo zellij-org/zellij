@@ -18,8 +18,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     DestroyMenu, DestroyWindow, GetCursorPos, GetWindowLongPtrW, PostMessageW, RegisterClassExW,
     RegisterWindowMessageW, SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA,
     HICON, HMENU, HWND_MESSAGE, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
-    SM_CXSMICON, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU,
-    WM_LBUTTONUP, WM_NULL, WNDCLASSEXW,
+    SM_CXSMICON, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU, WM_NULL,
+    WNDCLASSEXW,
 };
 
 use super::{find_action, menu, Anchor, MenuEntry, Tray, TrayEvent, TrayEvents};
@@ -133,6 +133,24 @@ fn set_tip(data: &mut NOTIFYICONDATAW, tip: &str) {
     data.szTip[..encoded.len()].copy_from_slice(&encoded);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Callback {
+    Activate,
+    Menu,
+    Ignore,
+}
+
+/// A click, and Enter or Space on the focused icon, reach the icon as mouse messages followed by
+/// NIN_SELECT, so only the selection counts: answering the button-up as well would toggle the
+/// panel twice. NIN_KEYSELECT is the keyboard selection Windows documents.
+fn callback_for(event: u32) -> Callback {
+    match event {
+        NIN_SELECT | NIN_KEYSELECT => Callback::Activate,
+        WM_CONTEXTMENU => Callback::Menu,
+        _ => Callback::Ignore,
+    }
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
@@ -156,19 +174,19 @@ unsafe extern "system" fn window_proc(
         let event = (lparam as u32) & 0xffff;
         let x = (wparam as u32 & 0xffff) as i16 as i32;
         let y = ((wparam as u32 >> 16) & 0xffff) as i16 as i32;
-        match event {
-            NIN_SELECT | NIN_KEYSELECT | WM_LBUTTONUP => {
+        match callback_for(event) {
+            Callback::Activate => {
                 state.cursor.set(Some((x, y)));
                 (state.events)(TrayEvent::Activate {
                     at: Some((x, y)),
                     token: None,
                 });
             },
-            WM_CONTEXTMENU => {
+            Callback::Menu => {
                 state.cursor.set(Some((x, y)));
                 show_menu(hwnd, state, x, y);
             },
-            _ => {},
+            Callback::Ignore => {},
         }
         return 0;
     }
@@ -406,5 +424,27 @@ impl Drop for NotifyIcon {
                 DestroyIcon(self.icon);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP;
+
+    #[test]
+    fn a_click_toggles_the_panel_once() {
+        assert_eq!(
+            callback_for(WM_LBUTTONUP),
+            Callback::Ignore,
+            "a click, or Enter or Space, is followed by NIN_SELECT, which toggles the panel"
+        );
+        assert_eq!(callback_for(NIN_SELECT), Callback::Activate);
+        assert_eq!(
+            callback_for(NIN_KEYSELECT),
+            Callback::Activate,
+            "the documented keyboard selection works like a click"
+        );
+        assert_eq!(callback_for(WM_CONTEXTMENU), Callback::Menu);
     }
 }
