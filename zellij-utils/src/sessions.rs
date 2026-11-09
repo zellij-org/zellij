@@ -395,39 +395,32 @@ pub fn get_active_session() -> ActiveSession {
 }
 
 pub fn kill_session(name: &str) {
-    use crate::consts::ipc_connect;
     let path = &*resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-    match ipc_connect(path) {
-        Ok(stream) => {
-            // On Windows, the server uses a dual-pipe architecture: the main pipe
-            // for client→server and a reply pipe for server→client. We must:
-            // 1. Connect to the reply pipe (so the server unblocks from
-            //    reply_listener.accept() and spawns the route thread)
-            // 2. Send KillSession on the main pipe
-            // 3. Wait for the Exit response on the reply pipe (so we don't
-            //    disconnect before the server processes the message)
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-            }
-        },
-        Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
-            process::exit(1);
-        },
-    };
+    if let Err(e) = send_kill_session(path) {
+        eprintln!("Error occurred: {:?}", e);
+        process::exit(1);
+    }
+}
+
+/// On Windows the server answers on the connection's reply pipe, and waiting for that answer
+/// keeps the request from being dropped before the server has read it.
+#[cfg(windows)]
+pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
+    let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
+    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+        .send_client_msg(ClientToServerMsg::KillSession);
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        IpcReceiverWithContext::new(reply_stream);
+    let _ = receiver.recv_server_msg();
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
+    let stream = crate::consts::ipc_connect(path)?;
+    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+        .send_client_msg(ClientToServerMsg::KillSession);
+    Ok(())
 }
 
 pub fn delete_session(name: &str, force: bool) {
@@ -438,27 +431,7 @@ pub fn delete_session(name: &str, force: bool) {
         process::exit(1);
     }
     if force {
-        use crate::consts::ipc_connect;
-        let path = &*ZELLIJ_SOCK_DIR.join(&session_id);
-        let _ = ipc_connect(path).ok().map(|stream| {
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession)
-                    .ok();
-            }
-        });
+        let _ = send_kill_session(&ZELLIJ_SOCK_DIR.join(&session_id));
     }
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);

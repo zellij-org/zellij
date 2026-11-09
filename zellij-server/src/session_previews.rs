@@ -41,12 +41,13 @@ pub fn running_session_preview(
         Err(e) => return preview_error(session_name, tab_index, e),
     };
     let socket_path = ZELLIJ_SOCK_DIR.join(session_id);
-    let stream = match zellij_utils::consts::ipc_connect(&socket_path) {
-        Ok(stream) => stream,
+    #[cfg(windows)]
+    let (stream, reply_stream) = match zellij_utils::pipe_pairs::connect_pair(&socket_path) {
+        Ok(pipes) => pipes,
         Err(e) => return preview_error(session_name, tab_index, e.to_string()),
     };
-    #[cfg(windows)]
-    let reply_stream = match zellij_utils::consts::ipc_connect_reply(&socket_path) {
+    #[cfg(not(windows))]
+    let stream = match zellij_utils::consts::ipc_connect(&socket_path) {
         Ok(stream) => stream,
         Err(e) => return preview_error(session_name, tab_index, e.to_string()),
     };
