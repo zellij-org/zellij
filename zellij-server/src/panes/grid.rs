@@ -1999,7 +1999,8 @@ pub(crate) struct ViewportAnchor {
 /// stamps of that window in newest-screen-line-first order. Later turns copy
 /// the front of this list. A row created after the freeze is absent, and a
 /// rewrap tail stays where it sat on screen even when its stamp is newer
-/// than the lines below it.
+/// than the lines below it. `parts` holds each quantum's text, newest first,
+/// so a turn does not recopy the text already saved.
 #[derive(Clone)]
 struct SerializeResume {
     request: Option<usize>,
@@ -2007,7 +2008,17 @@ struct SerializeResume {
     taken_cells: usize,
     done: bool,
     started: bool,
-    accumulated: String,
+    parts: Vec<String>,
+}
+
+impl SerializeResume {
+    fn joined(&self) -> String {
+        let mut out = String::with_capacity(self.parts.iter().map(|part| part.len()).sum());
+        for part in self.parts.iter().rev() {
+            out.push_str(part);
+        }
+        out
+    }
 }
 
 impl ViewportAnchor {
@@ -2431,7 +2442,7 @@ impl Grid {
                 taken_cells: 0,
                 done: true,
                 started: false,
-                accumulated: String::new(),
+                parts: Vec::new(),
             }),
         }
     }
@@ -3605,7 +3616,7 @@ impl Grid {
                     taken_cells: 0,
                     done: true,
                     started: true,
-                    accumulated: String::new(),
+                    parts: Vec::new(),
                 };
                 return Some(String::new());
             }
@@ -3615,7 +3626,7 @@ impl Grid {
                 taken_cells: 0,
                 done: false,
                 started: true,
-                accumulated: String::new(),
+                parts: Vec::new(),
             };
         }
 
@@ -3680,7 +3691,7 @@ impl Grid {
         // a partial quantum.
         if copied.is_empty() {
             resume.done = true;
-            return Some(resume.accumulated.clone());
+            return Some(resume.joined());
         }
         copied.reverse();
         // The oldest row of this quantum is copied[0]. A continuation there
@@ -3700,15 +3711,11 @@ impl Grid {
                 piece = rest.to_string();
             }
         }
-        if resume.accumulated.is_empty() {
-            resume.accumulated = piece;
-        } else {
-            let mut joined = piece;
-            joined.push_str(&resume.accumulated);
-            resume.accumulated = joined;
-        }
+        // Newest piece first. The finished snapshot walks these backwards
+        // once, instead of recopying every saved byte on each turn.
+        resume.parts.push(piece);
         if resume.done {
-            Some(resume.accumulated.clone())
+            Some(resume.joined())
         } else {
             None
         }
