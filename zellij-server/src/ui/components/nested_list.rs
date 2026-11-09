@@ -16,12 +16,18 @@ pub fn nested_list(
     mut contents: Vec<NestedListItem>,
     style: &Style,
     coordinates: Option<Coordinates>,
+    max_columns: usize,
+    max_rows: usize,
 ) -> Vec<u8> {
     let mut stringified = String::new();
+    // the rows that do not fit the pane are not drawn, and the items are not padded to be wider
+    // than the pane, whatever the widest of them is (it is the product of the two that grows)
+    // (the width still comes from all the items, so that it does not change with the ones shown)
     let max_width = coordinates
         .as_ref()
         .and_then(|c| c.width)
-        .unwrap_or_else(|| max_nested_item_width(&contents));
+        .unwrap_or_else(|| std::cmp::min(max_nested_item_width(&contents), max_columns));
+    contents.truncate(max_rows);
     for (line_index, line_item) in contents.drain(..).enumerate() {
         if is_too_high(line_index + 1, &coordinates) {
             break;
@@ -63,10 +69,10 @@ pub fn nested_list(
                 }
             });
         stringified.push_str(&format!(
-            "{}{}{:padding$}{bulletin}{}{text}{}",
+            "{}{}{}{bulletin}{}{text}{}",
             go_to_row_instruction,
             text_style,
-            " ",
+            " ".repeat(padding),
             text_style.bold(Some(AnsiCode::On)),
             RESET_STYLES
         ));
@@ -100,18 +106,10 @@ pub fn parse_nested_list_items<'a>(
 }
 
 fn parse_indentation_level(stringified: &mut String) -> usize {
-    let mut indentation_level = 0;
-    loop {
-        if stringified.is_empty() {
-            break;
-        }
-        if stringified.chars().next() == Some('|') {
-            stringified.remove(0);
-            indentation_level += 1;
-        } else {
-            break;
-        }
-    }
+    // one pass over the pipes and one drain: removing them one at a time moves the
+    // rest of the string for each of them
+    let indentation_level = stringified.bytes().take_while(|byte| *byte == b'|').count();
+    stringified.drain(..indentation_level);
     indentation_level
 }
 
@@ -133,7 +131,57 @@ fn pad_line(text: String, max_width: usize, padding: usize, text_width: usize) -
     if max_width > text_width + padding + 2 {
         // 2 is the bulletin
         let end_padding = max_width.saturating_sub(text_width + padding + 2);
-        return format!("{}{:end_padding$}", text, " ");
+        return format!("{}{}", text, " ".repeat(end_padding));
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(text: String) -> NestedListItem {
+        NestedListItem {
+            text: Text::plain(text),
+            indentation_level: 0,
+        }
+    }
+
+    #[test]
+    fn leading_pipes_are_counted_in_one_pass() {
+        // removing them one at a time moves the rest of the string for each of them: this many
+        // took tens of seconds
+        let mut stringified = format!("{}104,105", "|".repeat(1_500_000));
+        let started = std::time::Instant::now();
+        assert_eq!(parse_indentation_level(&mut stringified), 1_500_000);
+        assert_eq!(stringified, "104,105");
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        let mut without_pipes = "104|".to_owned();
+        assert_eq!(parse_indentation_level(&mut without_pipes), 0);
+        assert_eq!(without_pipes, "104|");
+        let mut only_pipes = "|||".to_owned();
+        assert_eq!(parse_indentation_level(&mut only_pipes), 3);
+        assert_eq!(only_pipes, "");
+    }
+
+    #[test]
+    fn items_are_not_padded_to_the_longest_one_past_the_pane() {
+        // 2000 short items next to one of 5000 characters: padding every item to the width of
+        // the longest one writes their product (which grows without bound with the input)
+        for max_rows in [10, 50] {
+            let mut items = vec![item("b".repeat(5000))];
+            items.extend((0..2000).map(|_| item("a".to_owned())));
+            let output = nested_list(items, &Style::default(), None, 40, max_rows);
+            // (the long item itself is written once, since it is among the rows)
+            assert!(output.len() < 20_000, "{} bytes", output.len());
+        }
+    }
+
+    #[test]
+    fn only_the_rows_of_the_pane_are_drawn() {
+        let items: Vec<NestedListItem> = (0..2000).map(|_| item("a".to_owned())).collect();
+        let output = nested_list(items, &Style::default(), None, 40, 10);
+        let text = String::from_utf8(output).unwrap();
+        assert_eq!(text.matches('>').count(), 10);
+    }
 }

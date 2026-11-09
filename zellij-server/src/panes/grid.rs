@@ -1524,6 +1524,9 @@ pub struct Grid {
     pub pending_nested_session_messages: Vec<NestedSessionMessage>,
     pub ui_components_enabled: bool,
     ui_component_bytes: Option<Vec<u8>>,
+    // whether `DCS z` (UI components, see crate::ui::components) is honoured: only the output of
+    // plugins is, anything a terminal program prints is untrusted
+    ui_components_enabled: bool,
     nested_frame_bytes: Option<Vec<u8>>,
     xtgettcap_bytes: Option<Vec<u8>>,
     style: Style,
@@ -1917,6 +1920,7 @@ impl Grid {
             pending_nested_session_messages: Vec::new(),
             ui_components_enabled: false,
             ui_component_bytes: None,
+            ui_components_enabled: false,
             nested_frame_bytes: None,
             xtgettcap_bytes: None,
             style,
@@ -2077,6 +2081,11 @@ impl Grid {
     fn restore_cursor_position(&mut self) {
         if let Some(saved_cursor_position) = &self.saved_cursor_position {
             self.cursor = saved_cursor_position.clone();
+            // the saved position outlives screen switches and may be outside the current
+            // screen (eg. it was saved on the main screen and restored on the alternate one)
+            self.cursor.x = std::cmp::min(self.cursor.x, self.width);
+            self.cursor.y = std::cmp::min(self.cursor.y, self.height.saturating_sub(1));
+            self.pad_lines_until(self.cursor.y, EMPTY_TERMINAL_CHARACTER);
         }
     }
     fn configure_charset(&mut self, charset: StandardCharset, index: CharsetIndex) {
@@ -2412,6 +2421,17 @@ impl Grid {
         if self.alternate_screen_state.is_some() {
             // in alternate screen we do nothing but log the new size, the program in the terminal
             // is in control now...
+            //
+            // It has no scrollback to push rows into, though, so the rows
+            // that no longer fit are cut from the bottom and the cursors
+            // are kept on the screen. Without this the viewport keeps the
+            // rows of the old size until the program exits.
+            self.viewport.truncate(new_rows);
+            let last_row = new_rows - 1;
+            self.cursor.y = self.cursor.y.min(last_row);
+            if let Some(saved_cursor) = self.saved_cursor_position.as_mut() {
+                saved_cursor.y = saved_cursor.y.min(last_row);
+            }
             self.height = new_rows;
             self.width = new_columns;
             self.set_scroll_region_to_viewport_size();
@@ -3136,6 +3156,11 @@ impl Grid {
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        // scrolling by more than the height of the region cannot show anything more
+        let count = std::cmp::min(
+            count,
+            scroll_region_bottom.saturating_sub(scroll_region_top) + 1,
+        );
         self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
         for _ in 0..count {
             if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
@@ -3153,6 +3178,11 @@ impl Grid {
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
+        // scrolling by more than the height of the region cannot show anything more
+        let count = std::cmp::min(
+            count,
+            scroll_region_bottom.saturating_sub(scroll_region_top) + 1,
+        );
         self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
@@ -3315,7 +3345,8 @@ impl Grid {
             self.kitty_reanchor_all_from_pixels();
             return;
         }
-        if self.viewport.len() <= self.cursor.y + 1 {
+        // (on the last line of the screen, below the scroll region, there is no line to add)
+        if self.viewport.len() <= self.cursor.y + 1 && self.cursor.y + 1 < self.height {
             // FIXME: this should add an empty line with the pad_character
             // but for some reason this breaks rendering in various situations
             // it needs to be investigated and fixed
@@ -3549,6 +3580,8 @@ impl Grid {
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
+        // the viewport is populated lazily, so the cursor's row may not exist yet
+        self.pad_lines_until(self.cursor.y, EMPTY_TERMINAL_CHARACTER);
         if let Some(row) = self.viewport.get_mut(self.cursor.y) {
             row.replace_and_pad_beginning(self.cursor.x, replace_with);
         }
@@ -3722,18 +3755,37 @@ impl Grid {
             self.cursor.x -= count;
         }
     }
+    /// Accept Zellij's UI-component DCS sequences (`DCS z`) in this grid's output. Only for
+    /// grids showing a plugin's output; for any other grid they are ignored like unknown DCS.
+    pub fn enable_ui_components(&mut self) {
+        self.ui_components_enabled = true;
+    }
     pub fn hide_cursor(&mut self) {
         self.cursor_is_hidden = true;
     }
     pub fn show_cursor(&mut self) {
         self.cursor_is_hidden = false;
     }
-    pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
-        let bottom_line_index = bottom_line_index.unwrap_or(self.height.saturating_sub(1));
+    pub fn set_scroll_region(
+        &mut self,
+        top_line_index: usize,
+        bottom_line_index: Option<usize>,
+    ) -> bool {
+        // like xterm, a bottom margin past the screen is clamped to its last line and a region
+        // that is not at least two lines tall is ignored entirely (including the cursor move)
+        let last_line_index = self.height.saturating_sub(1);
+        let bottom_line_index = std::cmp::min(
+            bottom_line_index.unwrap_or(last_line_index),
+            last_line_index,
+        );
+        if top_line_index >= bottom_line_index {
+            return false;
+        }
         self.scroll_region = (top_line_index, bottom_line_index);
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
         self.move_cursor_to(0, 0, pad_character); // DECSTBM moves the cursor to column 1 line 1 of the page
+        true
     }
     pub fn set_scroll_region_to_viewport_size(&mut self) {
         self.scroll_region = (0, self.height.saturating_sub(1));
@@ -3746,6 +3798,12 @@ impl Grid {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         let current_line_index = self.cursor.y;
         if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom {
+            // deleting more lines than there are from the cursor to the end of the region
+            // cannot do anything more
+            let count = std::cmp::min(
+                count,
+                scroll_region_bottom.saturating_sub(current_line_index) + 1,
+            );
             // when deleting lines inside the scroll region, we must make sure it stays the
             // same size (and that other lines below it aren't shifted inside it)
             // so we delete the current line(s) and add an empty line at the end of the scroll
@@ -3770,6 +3828,12 @@ impl Grid {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         let current_line_index = self.cursor.y;
         if current_line_index >= scroll_region_top && current_line_index <= scroll_region_bottom {
+            // inserting more lines than there are from the cursor to the end of the region
+            // cannot do anything more
+            let count = std::cmp::min(
+                count,
+                scroll_region_bottom.saturating_sub(current_line_index) + 1,
+            );
             // when adding empty lines inside the scroll region, we must make sure it stays the
             // same size and that lines don't "leak" outside of it
             // so we add an empty line where the cursor currently is, and delete the last line
@@ -3799,6 +3863,8 @@ impl Grid {
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
+        // nothing past the end of the line can be erased
+        let count = std::cmp::min(count, self.width.saturating_sub(self.cursor.x));
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
         self.pad_current_line_until(pad_until, empty_character.clone());
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
@@ -3809,6 +3875,8 @@ impl Grid {
         }
     }
     fn erase_characters(&mut self, count: usize, empty_char_style: RcCharacterStyles) {
+        // nothing past the end of the line can be deleted
+        let count = std::cmp::min(count, self.width.saturating_sub(self.cursor.x));
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
@@ -6858,11 +6926,9 @@ impl Handler for Grid {
                     .next()
                     .map(|param| param[0] as usize)
                     .filter(|&param| param != 0)
-                    .map(|bottom| {
-                        std::cmp::min(self.height.saturating_sub(1), bottom.saturating_sub(1))
-                    });
-                self.set_scroll_region(top, bottom);
-                if self.erasure_mode {
+                    .map(|bottom| bottom.saturating_sub(1));
+                // an invalid region is ignored and leaves the cursor where it was
+                if self.set_scroll_region(top, bottom) && self.erasure_mode {
                     self.move_cursor_to_line(top, EMPTY_TERMINAL_CHARACTER);
                     self.move_cursor_to_beginning_of_line();
                 }
@@ -7008,7 +7074,8 @@ impl Handler for Grid {
         } else if c == 'u' {
             self.restore_cursor_position();
         } else if c == '@' {
-            let count = next_param_or(1);
+            // characters inserted past the end of the line are pushed off it
+            let count = std::cmp::min(next_param_or(1), self.width.saturating_sub(self.cursor.x));
             for _ in 0..count {
                 let mut pad_character = EMPTY_TERMINAL_CHARACTER;
                 pad_character.styles = self.cursor.pending_styles.clone();
@@ -7016,7 +7083,23 @@ impl Handler for Grid {
             }
         } else if c == 'b' {
             if let Some(c) = self.preceding_char.clone() {
-                for _ in 0..next_param_or(1) {
+                let count = next_param_or(1);
+                let count = if self.disable_linewrap {
+                    // everything past the edge of the line is dropped
+                    std::cmp::min(count, self.width.saturating_sub(self.cursor.x))
+                } else {
+                    // once the repeat has filled the screen, more characters only move the
+                    // cursor along the last line: skip whole lines of them, keeping the
+                    // position within the line the repeat would have ended at
+                    let per_line = std::cmp::max(1, self.width / std::cmp::max(1, c.width()));
+                    let screenful = per_line.saturating_mul(self.height.saturating_add(1));
+                    if count > screenful.saturating_add(per_line) {
+                        screenful + count % per_line
+                    } else {
+                        count
+                    }
+                };
+                for _ in 0..count {
                     self.add_character(c.clone());
                 }
             }
@@ -7032,7 +7115,8 @@ impl Handler for Grid {
             self.move_cursor_up(count);
             self.move_cursor_to_beginning_of_line();
         } else if c == 'I' {
-            for _ in 0..next_param_or(1) {
+            // there are no more tab stops than columns
+            for _ in 0..std::cmp::min(next_param_or(1), self.width) {
                 self.advance_to_next_tabstop(self.cursor.pending_styles.clone());
             }
         } else if c == 'q' {
@@ -7060,7 +7144,8 @@ impl Handler for Grid {
                     .push(xtversion.as_bytes().to_vec());
             }
         } else if c == 'Z' {
-            for _ in 0..next_param_or(1) {
+            // there are no more tab stops than columns
+            for _ in 0..std::cmp::min(next_param_or(1), self.width) {
                 self.move_to_previous_tabstop();
             }
         } else if c == 'c' {
@@ -8038,7 +8123,25 @@ impl Row {
                 marker.column += column_offset;
                 markers.push(marker);
             }
-            for character in &row.columns {
+            if max_row_length > 0 && row.columns.iter().any(|c| c.width() > max_row_length) {
+                // a character wider than the pane cannot be shown anywhere in it (typing one is
+                // ignored too): replace it with as many blanks as columns it took, rather than
+                // giving it a row wider than the pane. The cells that follow (and the OSC 133
+                // markers, which are positioned in columns) stay where they were.
+                let columns = std::mem::take(&mut row.columns);
+                for character in columns {
+                    let width = character.width();
+                    if width > max_row_length {
+                        for _ in 0..width {
+                            row.columns
+                                .push(TerminalCharacter::new_styled(' ', character.styles.clone()));
+                        }
+                    } else {
+                        row.columns.push(character);
+                    }
+                }
+            }
+            for character in row.columns.iter() {
                 let character_width = character.width();
                 if current_part_width + character_width > max_row_length {
                     if current_part_len > 0 {

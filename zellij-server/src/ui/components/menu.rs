@@ -62,7 +62,12 @@ pub fn menu(
     style: &Style,
     coordinates: &Coordinates,
 ) -> Vec<u8> {
-    let rows: Vec<MenuRow> = fields.iter().map(|f| parse_menu_row(f)).collect();
+    // rows past the bottom of the pane are not seen, whatever their number
+    let rows: Vec<MenuRow> = fields
+        .iter()
+        .take(coordinates.max_height)
+        .map(|f| parse_menu_row(f))
+        .collect();
     let border = state.flag("b");
     let indicators = state.flag("ind") && !border;
     let focused = state.flag("f");
@@ -72,8 +77,7 @@ pub fn menu(
     let below = state.count("below");
     let border_width = if border { 1 } else { 0 };
     let width = coordinates
-        .width
-        .unwrap_or_else(|| natural_width(&rows, mark_column) + border_width * 2)
+        .width_or_else(|| natural_width(&rows, mark_column) + border_width * 2)
         .max(border_width * 2 + 1);
     let inner_width = width - border_width * 2;
     let base_styles = plain_styles(style);

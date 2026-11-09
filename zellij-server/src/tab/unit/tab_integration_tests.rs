@@ -20562,3 +20562,64 @@ fn leaving_a_tab_forgets_the_last_click_so_returning_cannot_double_click() {
     tab.add_multiple_clients(drained).unwrap();
     assert!(!tab.mouse_click_tracker.contains_key(&client_id));
 }
+
+#[test]
+fn only_plugin_panes_render_ui_component_sequences() {
+    let size = Size { cols: 60, rows: 10 };
+    let client_id = 1;
+    let mut output = Output::default();
+    let base_layout = r#"
+        layout {
+            pane size=3 borderless=true {
+                plugin location="zellij:tab-bar"
+            }
+            pane
+        }
+    "#;
+    let (base_layout, base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let mut new_plugin_ids = HashMap::new();
+    new_plugin_ids.insert(
+        RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap(),
+        vec![1],
+    );
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (vec![], vec![]),
+        Some((
+            base_layout,
+            base_floating_layout,
+            vec![(2, None)],
+            vec![],
+            new_plugin_ids,
+        )),
+        true,
+        true,
+    );
+    let serialized: String = "component"
+        .bytes()
+        .map(|byte| byte.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let component = format!("\u{1b}Pztext;{}\u{1b}\\", serialized);
+    let _ = tab.handle_plugin_bytes(1, 1, component.as_bytes().to_vec());
+    tab.handle_pty_bytes(2, component.into_bytes()).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap().ansi(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        snapshot.matches("component").count(),
+        1,
+        "only the plugin pane should show the component:\n{}",
+        snapshot
+    );
+    assert!(snapshot.lines().next().unwrap().contains("component"));
+}

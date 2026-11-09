@@ -71,6 +71,7 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.enable_ui_components();
             grid.grapheme_mode = true;
             grid.ui_components_enabled = true;
             grid
