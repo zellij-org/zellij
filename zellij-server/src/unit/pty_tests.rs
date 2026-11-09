@@ -968,11 +968,25 @@ fn close_pane_after_clear_pane_process_identity_does_not_kill() {
 }
 
 #[test]
+#[cfg(not(target_os = "linux"))]
 fn closing_a_pane_whose_child_is_running_still_hangs_it_up() {
     let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
     handle_forget_requests(&mut pty);
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert_eq!(mock.signals(), vec![("SIGHUP", 4242)]);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn close_pane_without_pidfd_does_not_kill() {
+    // `open_child_pidfd` returns None under `cfg(test)`, so this stored
+    // child has no pidfd. Close must not numeric-kill it.
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
+    assert!(pty.child_pidfds.get(&7).is_none());
+    pty.close_pane(PaneId::Terminal(7)).unwrap();
+    assert_eq!(mock.signals(), vec![]);
 }
 
 #[test]

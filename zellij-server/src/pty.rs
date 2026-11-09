@@ -1413,10 +1413,20 @@ impl Pty {
         if exit_observed {
             return;
         }
-        // Numeric kill only while this thread still believes the child is
-        // unreaped and has not observed its exit. That is the non-Linux
-        // path, and Linux when `pidfd_open` failed. It does not close the
-        // reuse race; a pidfd is what closes it.
+        // Linux never numeric-kills here. Without a pidfd the number may
+        // already belong to another process (`pidfd_open` failed, or tests
+        // store a synthetic pid). Non-Linux has no pidfd and still signals
+        // the stored pid while this thread has not observed the exit.
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(child_pid) = child_pid {
+                log::warn!(
+                    "not sending SIGHUP to pane {terminal_id} (pid {child_pid}): no pidfd, refusing a numeric kill"
+                );
+            }
+            return;
+        }
+        #[cfg(not(target_os = "linux"))]
         if let Some(child_pid) = child_pid {
             let err_context = || format!("failed to kill child processes for pane {terminal_id}");
             self.bus
@@ -3027,9 +3037,10 @@ impl Drop for Pty {
 
 /// Open a pidfd for `pid` at the moment it is stored.
 ///
-/// Failure leaves the caller with no fd. A later close may then numeric-kill
-/// only until this thread observes the exit. Unit tests store synthetic pids,
-/// so they never attach a live process that happens to use the same number.
+/// Failure leaves the caller with no fd. On Linux a later close then logs
+/// and does not numeric-kill, because the pid may have been reused. Unit
+/// tests store synthetic pids and always take this path: `pidfd_open` is
+/// not called.
 #[cfg(target_os = "linux")]
 fn open_child_pidfd(pid: u32) -> Option<std::os::fd::OwnedFd> {
     #[cfg(test)]
