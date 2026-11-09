@@ -656,7 +656,18 @@ pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKin
 pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     match match_session_name(name) {
         Ok(SessionNameMatch::Exact(_)) => Ok(true),
-        Ok(_) => Ok(false),
+        Ok(_) => {
+            // A socket that could not be probed before the shared deadline is
+            // unknown, not absent. Treating it as absent lets callers create a
+            // second server for a live session.
+            let socket_path =
+                resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+            if socket_path.exists() {
+                Err(io::ErrorKind::TimedOut)
+            } else {
+                Ok(false)
+            }
+        },
         Err(e) => Err(e),
     }
 }

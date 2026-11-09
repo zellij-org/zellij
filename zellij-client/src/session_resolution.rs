@@ -246,10 +246,18 @@ pub fn resolve_attach(
     let client = if let Some(index) = args.index {
         attach_with_session_index(config_options.clone(), index, create)?
     } else {
-        let session_exists = session_name
-            .as_ref()
-            .and_then(|s| session_exists(&s).ok())
-            .unwrap_or(false);
+        let session_exists = match session_name.as_ref() {
+            Some(session_name) => match session_exists(session_name) {
+                Ok(exists) => exists,
+                Err(kind) => {
+                    return Err(ResolutionFailure::to_stderr(
+                        session_listing_error_message(kind),
+                        1,
+                    ));
+                },
+            },
+            None => false,
+        };
         let resurrection_layout = match session_name
             .as_ref()
             .filter(|_| !session_exists)

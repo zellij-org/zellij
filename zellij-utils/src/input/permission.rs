@@ -11,8 +11,15 @@ pub struct PermissionCache {
 }
 
 impl PermissionCache {
-    pub fn cache(&mut self, plugin_name: String, permissions: Vec<PermissionType>) {
-        self.granted.insert(plugin_name, permissions);
+    /// Add grants to the existing set for this plugin. Permissions are never
+    /// removed here; a denial for a new request must not revoke earlier ones.
+    pub fn grant_permissions(&mut self, plugin_name: String, permissions: Vec<PermissionType>) {
+        let granted = self.granted.entry(plugin_name).or_default();
+        for permission in permissions {
+            if !granted.contains(&permission) {
+                granted.push(permission);
+            }
+        }
     }
 
     pub fn get_permissions(&self, plugin_name: String) -> Option<&Vec<PermissionType>> {
@@ -144,5 +151,27 @@ mod tests {
         cache.write_to_file().unwrap();
         let second_modified = fs::metadata(&path).unwrap().modified().unwrap();
         assert_eq!(first_modified, second_modified);
+    }
+
+    #[test]
+    fn grants_add_to_the_existing_set_without_duplicates_or_replacement() {
+        let mut cache = PermissionCache::default();
+        cache.grant_permissions(
+            "example".to_owned(),
+            vec![PermissionType::ReadApplicationState],
+        );
+        cache.grant_permissions("example".to_owned(), vec![PermissionType::ReadPaneContents]);
+        cache.grant_permissions(
+            "example".to_owned(),
+            vec![PermissionType::ReadApplicationState],
+        );
+        let granted = cache.get_permissions("example".to_owned()).unwrap();
+        assert_eq!(
+            granted,
+            &vec![
+                PermissionType::ReadApplicationState,
+                PermissionType::ReadPaneContents
+            ]
+        );
     }
 }

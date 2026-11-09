@@ -3184,16 +3184,21 @@ impl WasmBridge {
 
         let mut running_plugin = running_plugin.lock().unwrap();
 
-        let permissions = if status == PermissionStatus::Granted {
-            permissions
-        } else {
-            vec![]
-        };
-
+        let mut runtime_permissions = running_plugin
+            .store
+            .data()
+            .permissions
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
+        if status == PermissionStatus::Granted {
+            runtime_permissions.extend(permissions.iter().cloned());
+        }
         running_plugin
             .store
             .data_mut()
-            .set_permissions(HashSet::from_iter(permissions.clone()));
+            .set_permissions(runtime_permissions);
 
         if running_plugin.store.data().plugin.is_builtin() {
             return Ok(());
@@ -3204,10 +3209,12 @@ impl WasmBridge {
             running_plugin.store.data().plugin.location,
             running_plugin.store.data().plugin_digest
         );
-        let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-        permission_cache.cache(permission_cache_key, permissions);
-
-        permission_cache.write_to_file().with_context(err_context)
+        if status == PermissionStatus::Granted {
+            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
+            permission_cache.grant_permissions(permission_cache_key, permissions);
+            permission_cache.write_to_file().with_context(err_context)?;
+        }
+        Ok(())
     }
     pub fn cache_plugin_events(&mut self, plugin_id: PluginId, generation: u64, digest: String) {
         // Remember which module instance the prompt that is about to be shown belongs to. Shared
