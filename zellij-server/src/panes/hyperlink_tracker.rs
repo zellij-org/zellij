@@ -552,6 +552,13 @@ fn link_urls_in_line(
         let kept = url.chars().count();
         if is_valid_url(url) {
             handled.push((at, end));
+            // Explicit OSC 8 ownership wins over automatic detection. An app
+            // may show URL-looking text whose target differs, so skip any
+            // candidate that overlaps a non-detected span.
+            if overlaps_explicit_link(lines_above, viewport, &cells[at..end], link_handler) {
+                at = end + 1;
+                continue;
+            }
             let previous = start_anchor_at(lines_above, viewport, cells[at]);
             if !linked_exactly(lines_above, viewport, &cells[at..], kept, previous) {
                 if let Some(anchor) = link_handler.new_link_from_url(url.to_owned()) {
@@ -567,6 +574,20 @@ fn link_urls_in_line(
     }
     clear_orphaned_detected_links(lines_above, viewport, cells, &handled, link_handler);
     deferred
+}
+
+fn overlaps_explicit_link(
+    lines_above: &VecDeque<Row>,
+    viewport: &VecDeque<Row>,
+    cells: &[Cell],
+    link_handler: &LinkHandler,
+) -> bool {
+    cells.iter().any(|cell| {
+        let anchor = row_ref(lines_above, viewport, cell.y)
+            .and_then(|row| row.columns.get(cell.index))
+            .and_then(|character| character.styles.link_anchor);
+        matches!(anchor, Some(LinkAnchor::Start(_))) && !link_handler.is_detected(anchor)
+    })
 }
 
 /// Drop detected links that no longer sit on URL text, for example because
@@ -1242,6 +1263,130 @@ mod tests {
         assert!(anchors(&viewport[0])[..4]
             .iter()
             .all(|anchor| *anchor == Some(explicit)));
+    }
+
+    #[test]
+    fn explicit_osc8_url_looking_label_keeps_its_target() {
+        // Visible text looks like a different URL than the OSC 8 target.
+        let label = "https://wrong.example";
+        let mut viewport = screen(&[(label, true)], 40);
+        let mut handler = LinkHandler::new();
+        let explicit = handler
+            .dispatch_osc8(&[b"8", b"", b"https://right.example/target"])
+            .expect("an osc 8 anchor");
+        for cell in &mut viewport[0].columns[..label.len()] {
+            cell.styles
+                .update(|styles| styles.link_anchor = Some(explicit));
+        }
+        viewport[0].columns[label.len()]
+            .styles
+            .update(|styles| styles.link_anchor = Some(LinkAnchor::End));
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(
+            anchors(&viewport[0])[..label.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(explicit)),
+            "{:?}",
+            anchors(&viewport[0])
+        );
+        assert_eq!(
+            handler.uri(Some(explicit)),
+            Some("https://right.example/target")
+        );
+        // Detection must not register a competing target for the label.
+        assert!(!handler
+            .links()
+            .values()
+            .any(|link| link.detected && link.uri == label));
+    }
+
+    #[test]
+    fn explicit_osc8_span_containing_url_text_is_not_replaced() {
+        let text = "see https://wrong.example now";
+        let mut viewport = screen(&[(text, true)], 40);
+        let mut handler = LinkHandler::new();
+        let explicit = handler
+            .dispatch_osc8(&[b"8", b"", b"https://right.example/target"])
+            .expect("an osc 8 anchor");
+        for cell in &mut viewport[0].columns[..text.len()] {
+            cell.styles
+                .update(|styles| styles.link_anchor = Some(explicit));
+        }
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(
+            anchors(&viewport[0])[..text.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(explicit)),
+            "{:?}",
+            anchors(&viewport[0])
+        );
+        assert_eq!(
+            handler.uri(Some(explicit)),
+            Some("https://right.example/target")
+        );
+    }
+
+    #[test]
+    fn mixed_explicit_and_plain_url_on_one_line() {
+        let explicit_label = "https://wrong.example";
+        let plain = "https://plain.example";
+        let text = format!("{explicit_label} and {plain}");
+        let mut viewport = screen(&[(&text, true)], 80);
+        let mut handler = LinkHandler::new();
+        let explicit = handler
+            .dispatch_osc8(&[b"8", b"", b"https://right.example/target"])
+            .expect("an osc 8 anchor");
+        for cell in &mut viewport[0].columns[..explicit_label.len()] {
+            cell.styles
+                .update(|styles| styles.link_anchor = Some(explicit));
+        }
+        viewport[0].columns[explicit_label.len()]
+            .styles
+            .update(|styles| styles.link_anchor = Some(LinkAnchor::End));
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+
+        let marked = anchors(&viewport[0]);
+        assert!(
+            marked[..explicit_label.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(explicit)),
+            "{marked:?}"
+        );
+        assert_eq!(
+            handler.uri(Some(explicit)),
+            Some("https://right.example/target")
+        );
+
+        let plain_at = text.find(plain).expect("plain url");
+        assert!(
+            marked[plain_at..plain_at + plain.len()]
+                .iter()
+                .all(is_start),
+            "{marked:?}"
+        );
+        assert_eq!(marked[plain_at + plain.len()], Some(LinkAnchor::End));
+        assert!(handler
+            .links()
+            .values()
+            .any(|link| link.detected && link.uri == plain));
+    }
+
+    #[test]
+    fn detected_only_orphaned_cleanup_still_clears_broken_urls() {
+        let mut viewport = screen(&[("see https://example.com/path now", true)], 60);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(is_start(&anchors(&viewport[0])[4]));
+
+        // Overwriting the scheme start leaves an orphaned detected run.
+        viewport[0].columns[4] = TerminalCharacter::new('X');
+        viewport[0].invalidate_link_scan();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert!(
+            anchors(&viewport[0]).iter().all(Option::is_none),
+            "{:?}",
+            anchors(&viewport[0])
+        );
     }
 
     #[test]
