@@ -562,6 +562,7 @@ pub enum ScreenContext {
     MuteSession,
     AttentionCommandPaneStarted,
     SetAttentionConfig,
+    SettlePendingPluginActivation,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

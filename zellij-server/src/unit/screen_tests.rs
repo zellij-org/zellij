@@ -1163,7 +1163,10 @@ fn report_mode_info_to_plugin_delivers_an_initial_mode_update() {
         .flatten()
         .filter(|(_, _, event)| matches!(event, Event::ModeUpdate(_)))
         .count();
-    assert_eq!(mode_updates, 1, "subscribe-time ModeUpdate must be delivered");
+    assert_eq!(
+        mode_updates, 1,
+        "subscribe-time ModeUpdate must be delivered"
+    );
 }
 
 #[test]
@@ -1180,10 +1183,7 @@ fn a_tab_created_before_any_client_geometry_falls_back_to_eighty_by_twenty_four(
         .expect("detached tab with no prior geometry");
     assert_eq!(
         screen.tabs.get(&3).map(|tab| tab.size),
-        Some(Size {
-            rows: 24,
-            cols: 80
-        })
+        Some(Size { rows: 24, cols: 80 })
     );
 }
 
@@ -5100,6 +5100,238 @@ pub fn launch_or_focus_plugin_sends_activation_context_from_the_source_pane() {
         "activation must capture the pane that held focus at admission"
     );
     assert_eq!(context.source_tab_id, Some(0));
+}
+
+fn plugin_activated_events(
+    receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<(Option<u32>, zellij_utils::data::PluginActivationContext)> {
+    let mut events = vec![];
+    for (instruction, _) in receiver.try_iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (plugin_id, _, event) in updates {
+                if let Event::PluginActivated(context) = event {
+                    events.push((plugin_id, context));
+                }
+            }
+        }
+    }
+    events
+}
+
+fn plugin_run(configuration: Option<BTreeMap<String, String>>) -> RunPluginOrAlias {
+    RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &configuration, None, None).unwrap()
+}
+
+#[test]
+fn focusing_plugin_id_zero_emits_plugin_activation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    let run = plugin_run(None);
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Vertical;
+    let mut plugin_pane = TiledPaneLayout::default();
+    plugin_pane.run = Some(Run::Plugin(run.clone()));
+    layout.children = vec![TiledPaneLayout::default(), plugin_pane];
+    let mut plugin_ids = HashMap::new();
+    plugin_ids.insert(run.clone(), vec![0]);
+    screen.new_tab(0, (vec![], vec![]), None, Some(1)).unwrap();
+    screen
+        .apply_layout(
+            layout,
+            vec![],
+            vec![(1, None)],
+            vec![],
+            plugin_ids,
+            0,
+            true,
+            (1, false),
+            None,
+        )
+        .unwrap();
+    let _ = plugin_receiver.try_iter().count();
+    screen
+        .launch_or_focus_plugin(run, false, true, false, false, None, false, 1, None, None)
+        .unwrap();
+    let events = plugin_activated_events(&plugin_receiver);
+    assert_eq!(
+        events.len(),
+        1,
+        "reusing plugin id 0 must emit exactly one PluginActivated, got {events:?}"
+    );
+    assert_eq!(events[0].0, Some(0));
+    assert_eq!(events[0].1.source_client_id, 1);
+    assert_eq!(events[0].1.source_tab_id, Some(0));
+    assert!(
+        events[0].1.source_pane_id.is_some(),
+        "activation must capture the pane focused at admission"
+    );
+    assert!(
+        screen.pending_plugin_activations.is_empty(),
+        "focusing an existing plugin must not leave a pending load"
+    );
+}
+
+#[test]
+fn reversed_plugin_activation_loads_keep_their_source_identity() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+
+    let plugin_a = plugin_run(Some(BTreeMap::from([("role".to_owned(), "a".to_owned())])));
+    let plugin_b = plugin_run(Some(BTreeMap::from([("role".to_owned(), "b".to_owned())])));
+    assert_eq!(
+        plugin_a.location_string(),
+        plugin_b.location_string(),
+        "the two loads must share a location string"
+    );
+
+    screen.go_to_tab(1, 1).unwrap();
+    let source_a_pane = screen.get_active_pane_id(&1).map(Into::into);
+    let source_a_tab = screen.active_tab_ids.get(&1).copied();
+    screen
+        .launch_or_focus_plugin(
+            plugin_a, false, true, false, false, None, false, 1, None, None,
+        )
+        .unwrap();
+
+    screen.go_to_tab(2, 1).unwrap();
+    let source_b_pane = screen.get_active_pane_id(&1).map(Into::into);
+    let source_b_tab = screen.active_tab_ids.get(&1).copied();
+    screen
+        .launch_or_focus_plugin(
+            plugin_b, false, true, false, false, None, false, 1, None, None,
+        )
+        .unwrap();
+
+    assert_ne!(source_a_pane, source_b_pane);
+    assert_ne!(source_a_tab, source_b_tab);
+    let mut tokens = vec![];
+    for (instruction, _) in pty_receiver.try_iter() {
+        if let PtyInstruction::FillPluginCwd(_, _, _, _, _, _, _, _, _, _, _, _, _, _, token) =
+            instruction
+        {
+            tokens.push(token);
+        }
+    }
+    assert_eq!(tokens.len(), 2, "each load must carry its own token");
+    let token_a = tokens[0].expect("load A token");
+    let token_b = tokens[1].expect("load B token");
+    assert_ne!(token_a, token_b);
+    assert_eq!(screen.pending_plugin_activations.len(), 2);
+
+    screen.activate_plugin_for_load(99, Some(u64::MAX));
+    assert_eq!(
+        screen.pending_plugin_activations.len(),
+        2,
+        "an unknown token must not consume another load"
+    );
+
+    screen.activate_plugin_for_load(8, Some(token_b));
+    screen.activate_plugin_for_load(7, Some(token_a));
+    let events = plugin_activated_events(&plugin_receiver);
+    assert_eq!(events.len(), 2, "got {events:?}");
+    assert_eq!(events[0].0, Some(8));
+    assert_eq!(events[0].1.source_client_id, 1);
+    assert_eq!(events[0].1.source_pane_id, source_b_pane);
+    assert_eq!(events[0].1.source_tab_id, source_b_tab);
+    assert_eq!(events[1].0, Some(7));
+    assert_eq!(events[1].1.source_client_id, 1);
+    assert_eq!(events[1].1.source_pane_id, source_a_pane);
+    assert_eq!(events[1].1.source_tab_id, source_a_tab);
+    assert!(screen.pending_plugin_activations.is_empty());
+}
+
+#[test]
+fn plugin_focus_failure_does_not_record_a_pending_activation() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let _ = plugin_receiver.try_iter().count();
+    let admitted = screen
+        .admit_plugin_focus(
+            Err(anyhow!("focus failed")),
+            zellij_utils::data::PluginActivationContext {
+                source_client_id: 1,
+                source_pane_id: Some(zellij_utils::data::PaneId::Terminal(1)),
+                source_tab_id: Some(0),
+            },
+            &mut None,
+        )
+        .unwrap();
+    assert_eq!(admitted, None);
+    assert!(
+        screen.pending_plugin_activations.is_empty(),
+        "a focus error must not be stored as a plugin id"
+    );
+    assert!(
+        plugin_activated_events(&plugin_receiver).is_empty(),
+        "a focus error must not emit PluginActivated"
+    );
+}
+
+#[test]
+fn client_disconnect_drops_pending_plugin_activation() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let (to_pty, _pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen
+        .launch_or_focus_plugin(
+            plugin_run(None),
+            false,
+            true,
+            false,
+            false,
+            None,
+            false,
+            1,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(screen.pending_plugin_activations.len(), 1);
+    let client_token = *screen
+        .pending_plugin_activations
+        .keys()
+        .next()
+        .expect("pending load");
+    let other_token =
+        screen.store_pending_plugin_activation(zellij_utils::data::PluginActivationContext {
+            source_client_id: 2,
+            source_pane_id: Some(zellij_utils::data::PaneId::Terminal(9)),
+            source_tab_id: Some(3),
+        });
+    screen.remove_client(1).unwrap();
+    assert!(
+        !screen
+            .pending_plugin_activations
+            .contains_key(&client_token),
+        "disconnect must drop the client's pending load"
+    );
+    assert!(screen.pending_plugin_activations.contains_key(&other_token));
+    let _ = plugin_receiver.try_iter().count();
+    screen.activate_plugin_for_load(4, Some(client_token));
+    assert!(
+        plugin_activated_events(&plugin_receiver).is_empty(),
+        "a settled token must not emit PluginActivated"
+    );
+    assert!(screen.pending_plugin_activations.contains_key(&other_token));
 }
 
 #[test]
@@ -20699,6 +20931,7 @@ fn f9_opens_the_session_manager_as_a_floating_pane_at_its_final_size() {
                 _,
                 should_focus,
                 coordinates,
+                _,
                 _,
             ) => loaded.push((
                 should_float,

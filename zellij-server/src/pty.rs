@@ -165,6 +165,7 @@ pub enum PtyInstruction {
         Option<bool>,    // should focus plugin
         Option<FloatingPaneCoordinates>,
         Option<NotificationEnd>,
+        Option<u64>, // activation load token; None when the load has no activation context
     ),
     ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     Reconfigure {
@@ -959,6 +960,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 should_focus_plugin,
                 floating_pane_coordinates,
                 completion_tx,
+                activation_token,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -975,6 +977,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     should_focus_plugin,
                     floating_pane_coordinates,
                     completion_tx,
+                    activation_token,
                 )?;
             },
             PtyInstruction::Reconfigure {
@@ -2449,8 +2452,7 @@ impl Pty {
         // fallback for shell panes that have no saved launch intent — an
         // ssh/nvim child must not replace the command the pane was started
         // with (#5798/#4156/#3913, #4873/#4727/#3952).
-        let deliberate_launch =
-            session_layout_metadata.terminals_with_deliberate_launch_intent();
+        let deliberate_launch = session_layout_metadata.terminals_with_deliberate_launch_intent();
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
@@ -2500,6 +2502,7 @@ impl Pty {
         should_focus_plugin: Option<bool>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         completion_tx: Option<NotificationEnd>,
+        activation_token: Option<u64>,
     ) -> Result<()> {
         let get_focused_cwd = || {
             self.active_panes
@@ -2534,7 +2537,7 @@ impl Pty {
             let cwd = get_focused_cwd();
             alias.set_caller_cwd_if_not_set(cwd);
         }
-        self.bus.senders.send_to_plugin(PluginInstruction::Load(
+        if let Err(err) = self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,
             should_open_in_place,
             close_replaced_pane,
@@ -2550,7 +2553,18 @@ impl Pty {
             should_focus_plugin,
             floating_pane_coordinates,
             completion_tx,
-        ))?;
+            activation_token,
+        )) {
+            // The load never reached the plugin thread, so the screen must not
+            // keep an activation that AddPlugin will never complete.
+            if let Some(token) = activation_token {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::SettlePendingPluginActivation(token));
+            }
+            return Err(err);
+        }
         Ok(())
     }
     fn capture_initial_cwd(&mut self, terminal_id: u32, child_pid: u32) {

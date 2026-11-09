@@ -78,6 +78,7 @@ pub enum PluginInstruction {
         Option<bool>,     // should focus plugin
         Option<FloatingPaneCoordinates>,
         Option<NotificationEnd>, // completion signal
+        Option<u64>,             // activation load token; None when there is no context
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
@@ -467,6 +468,7 @@ pub(crate) fn plugin_thread_main(
                 should_focus_plugin,
                 floating_pane_coordinates,
                 completion_tx,
+                activation_token,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd).or_else(|| {
@@ -502,6 +504,7 @@ pub(crate) fn plugin_thread_main(
                             should_focus_plugin,
                             Some(client_id),
                             completion_tx,
+                            activation_token,
                         )));
 
                         drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
@@ -511,6 +514,11 @@ pub(crate) fn plugin_thread_main(
                     },
                     Err(e) => {
                         log::error!("Failed to load plugin: {e}");
+                        if let Some(token) = activation_token {
+                            let _ = bus.senders.send_to_screen(
+                                ScreenInstruction::SettlePendingPluginActivation(token),
+                            );
+                        }
                     },
                 }
             },
@@ -675,6 +683,7 @@ pub(crate) fn plugin_thread_main(
                                                     None,
                                                     None,
                                                     completion_tx,
+                                                    None,
                                                 ),
                                             ));
                                         },
@@ -1961,6 +1970,7 @@ fn load_background_plugin(
                 None,
                 None,
                 Some(client_id),
+                None,
                 None,
             )));
         },

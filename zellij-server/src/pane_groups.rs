@@ -186,6 +186,7 @@ impl PaneGroups {
                 should_focus_plugin,
                 Some(floating_pane_coordinates),
                 None,
+                None,
             ));
         }
     }

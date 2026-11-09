@@ -821,7 +821,11 @@ pub enum ScreenInstruction {
         Option<bool>, // should focus plugin
         Option<ClientId>,
         Option<NotificationEnd>, // completion signal
+        Option<u64>,             // activation load token; None when there is no context
     ),
+    /// Drop one pending LaunchOrFocus activation without emitting PluginActivated.
+    /// Used when the load fails or is cancelled before AddPlugin.
+    SettlePendingPluginActivation(u64),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     StartPluginLoadingIndication(u32, LoadingIndication, Option<ClientId>), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
@@ -1688,6 +1692,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::StartOrReloadPluginPane
             },
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
+            ScreenInstruction::SettlePendingPluginActivation(..) => {
+                ScreenContext::SettlePendingPluginActivation
+            },
             ScreenInstruction::UpdatePluginLoadingStage(..) => {
                 ScreenContext::UpdatePluginLoadingStage
             },
@@ -2365,9 +2372,10 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
-    /// Activation context captured at LaunchOrFocusPlugin admission, keyed by
-    /// `(client_id, plugin location string)`, flushed when the plugin pane is added.
-    pending_plugin_activations: HashMap<(ClientId, String), PluginActivationContext>,
+    /// Activation context captured at LaunchOrFocusPlugin admission, keyed by the
+    /// load token that travels with that load until AddPlugin or settlement.
+    pending_plugin_activations: HashMap<u64, PluginActivationContext>,
+    next_plugin_activation_token: u64,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
@@ -2843,6 +2851,7 @@ impl Screen {
             live_views: Default::default(),
             background_plugin_subscriptions: HashMap::new(),
             pending_plugin_activations: HashMap::new(),
+            next_plugin_activation_token: 0,
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
             terminal_command_submitted: false,
@@ -7435,6 +7444,7 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+        self.drop_plugin_activations_for_client(client_id);
         if !self.recently_disconnected_clients.contains(&client_id) {
             if self.recently_disconnected_clients.len() >= RECENTLY_DISCONNECTED_CLIENTS_LIMIT {
                 self.recently_disconnected_clients.pop_front();
@@ -9201,6 +9211,61 @@ impl Screen {
         self.render(None)
     }
 
+    fn store_pending_plugin_activation(&mut self, context: PluginActivationContext) -> u64 {
+        let token = self.next_plugin_activation_token;
+        self.next_plugin_activation_token = self.next_plugin_activation_token.wrapping_add(1);
+        self.pending_plugin_activations.insert(token, context);
+        token
+    }
+
+    fn settle_plugin_activation(&mut self, token: u64) {
+        self.pending_plugin_activations.remove(&token);
+    }
+
+    fn drop_plugin_activations_for_client(&mut self, client_id: ClientId) {
+        self.pending_plugin_activations
+            .retain(|_, context| context.source_client_id != client_id);
+    }
+
+    /// `Ok(Some(token))` starts a load. `Ok(None)` focused an existing plugin
+    /// (including id 0) or the focus failed. Failure does not record a pending load.
+    fn admit_plugin_focus(
+        &mut self,
+        focus_result: Result<Option<PluginId>>,
+        activation: PluginActivationContext,
+        completion_tx: &mut Option<NotificationEnd>,
+    ) -> Result<Option<u64>> {
+        match focus_result {
+            Ok(Some(plugin_id)) => {
+                self.send_plugin_activated(plugin_id, activation);
+                self.render(None)?;
+                self.log_and_report_session_state()?;
+                Ok(None)
+            },
+            Ok(None) => Ok(Some(self.store_pending_plugin_activation(activation))),
+            Err(error) => {
+                let error_message = format!("Failed to launch or focus plugin: {}", error);
+                Err::<(), _>(error).non_fatal();
+                mark_action_as_failed(completion_tx, &error_message);
+                if let Some(completion) = completion_tx.as_mut() {
+                    completion.clear_affected_pane_id();
+                }
+                self.render(None)?;
+                self.log_and_report_session_state()?;
+                Ok(None)
+            },
+        }
+    }
+
+    fn activate_plugin_for_load(&mut self, plugin_id: PluginId, token: Option<u64>) {
+        let Some(token) = token else {
+            return;
+        };
+        if let Some(context) = self.pending_plugin_activations.remove(&token) {
+            self.send_plugin_activated(plugin_id, context);
+        }
+    }
+
     fn capture_plugin_activation_context(&self, client_id: ClientId) -> PluginActivationContext {
         PluginActivationContext {
             source_client_id: client_id,
@@ -9218,6 +9283,123 @@ impl Screen {
                 Some(context.source_client_id),
                 Event::PluginActivated(context),
             )]));
+    }
+
+    fn launch_or_focus_plugin(
+        &mut self,
+        run_plugin: RunPluginOrAlias,
+        should_float: bool,
+        move_to_focused_tab: bool,
+        should_open_in_place: bool,
+        close_replaced_pane: bool,
+        pane_id_to_replace: Option<PaneId>,
+        skip_cache: bool,
+        client_id: ClientId,
+        mut completion_tx: Option<NotificationEnd>,
+        explicit_tab_id: Option<usize>,
+    ) -> Result<()> {
+        match pane_id_to_replace {
+            Some(pane_id_to_replace) if should_open_in_place => {
+                let resolved_tab_index =
+                    explicit_tab_id.or_else(|| self.active_tab_ids.values().next().copied());
+                match resolved_tab_index {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        self.bus.senders.send_to_pty(PtyInstruction::FillPluginCwd(
+                            Some(should_float),
+                            should_open_in_place,
+                            close_replaced_pane,
+                            None,
+                            run_plugin,
+                            tab_index,
+                            Some(pane_id_to_replace),
+                            client_id,
+                            size,
+                            skip_cache,
+                            None,
+                            None,
+                            None,
+                            completion_tx,
+                            None,
+                        ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
+            },
+            _ => {
+                let client_id = if self.active_tab_ids.contains_key(&client_id) {
+                    Some(client_id)
+                } else {
+                    self.get_first_client_id()
+                };
+                let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                    self.active_tab_ids
+                        .get(&client_id)
+                        .map(|tab_index| (*tab_index, client_id))
+                });
+                let resolved_tab_and_client = explicit_tab_id
+                    .and_then(|tid| client_id.map(|cid| (tid, cid)))
+                    .or(client_id_and_focused_tab);
+                match resolved_tab_and_client {
+                    Some((tab_index, client_id)) => {
+                        // Capture before focus moves so plugins see the triggering pane/tab.
+                        let activation = self.capture_plugin_activation_context(client_id);
+                        let focus_result = self.focus_plugin_pane(
+                            &run_plugin,
+                            should_float,
+                            move_to_focused_tab,
+                            should_open_in_place,
+                            client_id,
+                            &mut completion_tx,
+                        );
+                        if let Some(token) =
+                            self.admit_plugin_focus(focus_result, activation, &mut completion_tx)?
+                        {
+                            let floating_session_manager = (should_float
+                                && !should_open_in_place
+                                && popups::is_session_manager(&run_plugin))
+                            .then(|| self.get_active_tab(client_id).ok())
+                            .flatten()
+                            .map(popups::session_manager_coordinates);
+                            let (size, coordinates) = match floating_session_manager {
+                                Some((coordinates, content)) => (content, Some(coordinates)),
+                                None => (Size::default(), None),
+                            };
+                            if let Err(err) =
+                                self.bus.senders.send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    close_replaced_pane,
+                                    None,
+                                    run_plugin,
+                                    tab_index,
+                                    None,
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    None,
+                                    None,
+                                    coordinates,
+                                    completion_tx,
+                                    Some(token),
+                                ))
+                            {
+                                self.settle_plugin_activation(token);
+                                return Err(err);
+                            }
+                        }
+                    },
+                    None => {
+                        log::error!("No connected clients found - cannot load or focus plugin")
+                    },
+                }
+            },
+        }
+        Ok(())
     }
 
     pub fn focus_plugin_pane(
@@ -14829,6 +15011,7 @@ pub(crate) fn screen_thread_main(
                         should_focus_plugin,
                         None,
                         completion_tx,
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
@@ -14868,6 +15051,7 @@ pub(crate) fn screen_thread_main(
                                 should_focus_plugin,
                                 floating_pane_coordinates,
                                 completion_tx,
+                                None,
                             ))?;
                     },
                     None => {
@@ -14914,6 +15098,7 @@ pub(crate) fn screen_thread_main(
                                 should_focus_plugin,
                                 None,
                                 completion_tx,
+                                None,
                             ))?;
                     },
                     None => {
@@ -14955,6 +15140,7 @@ pub(crate) fn screen_thread_main(
                 should_focus_plugin,
                 client_id,
                 mut completion_tx,
+                activation_token,
             ) => {
                 let mut new_pane_placement = NewPanePlacement::default();
                 let maybe_should_float = should_float;
@@ -14994,6 +15180,7 @@ pub(crate) fn screen_thread_main(
                         should_focus_plugin,
                         client_id,
                         completion_tx,
+                        activation_token,
                     ));
                     continue;
                 }
@@ -15012,14 +15199,7 @@ pub(crate) fn screen_thread_main(
                 if let Some(ref mut completion) = completion_tx {
                     completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
                 }
-                if let Some(client_id) = client_id {
-                    if let Some(context) = screen
-                        .pending_plugin_activations
-                        .remove(&(client_id, plugin_location))
-                    {
-                        screen.send_plugin_activated(plugin_id, context);
-                    }
-                }
+                screen.activate_plugin_for_load(plugin_id, activation_token);
 
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
@@ -15153,129 +15333,24 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
-                mut completion_tx,
+                completion_tx,
                 explicit_tab_id,
-            ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) if should_open_in_place => {
-                    let resolved_tab_index =
-                        explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
-                    match resolved_tab_index {
-                        Some(tab_index) => {
-                            let size = Size::default();
-                            screen
-                                .bus
-                                .senders
-                                .send_to_pty(PtyInstruction::FillPluginCwd(
-                                    Some(should_float),
-                                    should_open_in_place,
-                                    close_replaced_pane,
-                                    None,
-                                    run_plugin,
-                                    tab_index,
-                                    Some(pane_id_to_replace),
-                                    client_id,
-                                    size,
-                                    skip_cache,
-                                    None,
-                                    None,
-                                    None,
-                                    completion_tx,
-                                ))?;
-                        },
-                        None => {
-                            log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                        },
-                    }
-                },
-                _ => {
-                    let client_id = if screen.active_tab_ids.contains_key(&client_id) {
-                        Some(client_id)
-                    } else {
-                        screen.get_first_client_id()
-                    };
-                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
-                        screen
-                            .active_tab_ids
-                            .get(&client_id)
-                            .map(|tab_index| (*tab_index, client_id))
-                    });
-                    let resolved_tab_and_client = explicit_tab_id
-                        .and_then(|tid| client_id.map(|cid| (tid, cid)))
-                        .or(client_id_and_focused_tab);
-                    match resolved_tab_and_client {
-                        Some((tab_index, client_id)) => {
-                            // Capture before focus moves so plugins see the triggering pane/tab.
-                            let activation = screen.capture_plugin_activation_context(client_id);
-                            let focused_plugin_id = match screen.focus_plugin_pane(
-                                &run_plugin,
-                                should_float,
-                                move_to_focused_tab,
-                                should_open_in_place,
-                                client_id,
-                                &mut completion_tx,
-                            ) {
-                                Ok(plugin_id) => plugin_id,
-                                Err(e) => {
-                                    let error_message =
-                                        format!("Failed to launch or focus plugin: {}", e);
-                                    Err::<(), _>(e).non_fatal();
-                                    mark_action_as_failed(&mut completion_tx, &error_message);
-                                    if let Some(completion_tx) = completion_tx.as_mut() {
-                                        completion_tx.clear_affected_pane_id();
-                                    }
-                                    // Skip loading after a focus failure.
-                                    Some(0)
-                                },
-                            };
-                            if let Some(plugin_id) = focused_plugin_id {
-                                if plugin_id != 0 {
-                                    screen.send_plugin_activated(plugin_id, activation);
-                                }
-                                screen.render(None)?;
-                                screen.log_and_report_session_state()?;
-                            } else {
-                                screen.pending_plugin_activations.insert(
-                                    (client_id, run_plugin.location_string()),
-                                    activation,
-                                );
-                                let floating_session_manager = (should_float
-                                    && !should_open_in_place
-                                    && popups::is_session_manager(&run_plugin))
-                                .then(|| screen.get_active_tab(client_id).ok())
-                                .flatten()
-                                .map(popups::session_manager_coordinates);
-                                let (size, coordinates) = match floating_session_manager {
-                                    Some((coordinates, content)) => (content, Some(coordinates)),
-                                    None => (Size::default(), None),
-                                };
-                                screen
-                                    .bus
-                                    .senders
-                                    .send_to_pty(PtyInstruction::FillPluginCwd(
-                                        Some(should_float),
-                                        should_open_in_place,
-                                        close_replaced_pane,
-                                        None,
-                                        run_plugin,
-                                        tab_index,
-                                        None,
-                                        client_id,
-                                        size,
-                                        skip_cache,
-                                        None,
-                                        None,
-                                        coordinates,
-                                        completion_tx,
-                                    ))?;
-                            }
-                        },
-                        None => {
-                            log::error!("No connected clients found - cannot load or focus plugin")
-                        },
-                    }
-                },
+            ) => {
+                screen.launch_or_focus_plugin(
+                    run_plugin,
+                    should_float,
+                    move_to_focused_tab,
+                    should_open_in_place,
+                    close_replaced_pane,
+                    pane_id_to_replace,
+                    skip_cache,
+                    client_id,
+                    completion_tx,
+                    explicit_tab_id,
+                )?;
+            },
+            ScreenInstruction::SettlePendingPluginActivation(token) => {
+                screen.settle_plugin_activation(token);
             },
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
@@ -15314,6 +15389,7 @@ pub(crate) fn screen_thread_main(
                                     if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
+                                    None,
                                 ))?;
                         },
                         None => {
@@ -15358,6 +15434,7 @@ pub(crate) fn screen_thread_main(
                                     if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
+                                    None,
                                 ))?;
                         },
                         None => {
