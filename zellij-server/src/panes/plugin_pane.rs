@@ -239,6 +239,19 @@ impl Pane for PluginPane {
         self.resize_grids();
         self.set_should_render(true);
     }
+    fn has_deferred_pane_work(&self) -> bool {
+        self.grids
+            .values()
+            .any(|grid| grid.display_recount_pending())
+    }
+    fn advance_deferred_pane_work(&mut self) {
+        for grid in self.grids.values_mut() {
+            if grid.display_recount_pending() {
+                let _ = grid.continue_display_row_recount();
+            }
+        }
+        self.set_should_render(true);
+    }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
         if let Some(loading_clients) = self.loading_only_for.as_mut() {
             loading_clients.remove(&client_id);
@@ -1008,7 +1021,7 @@ impl PluginPane {
         let content_rows = self.get_content_rows();
         let content_columns = self.get_content_columns();
         for grid in self.grids.values_mut() {
-            grid.change_size(content_rows, content_columns);
+            grid.resize_keeping_recount_open(content_rows, content_columns);
         }
         self.set_should_render(true);
     }

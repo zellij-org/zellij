@@ -896,7 +896,11 @@ impl Pane for TerminalPane {
             return;
         }
         if self.output_catchup.is_some() {
-            let _ = self.prepare_scrolled_output(false);
+            if !self.forward_paused && !self.has_pending_pty_input() {
+                self.scrolled_backlog_idle();
+            } else {
+                let _ = self.prepare_scrolled_output(false);
+            }
             return;
         }
         if self.grid.pending_search.is_some() {
@@ -957,13 +961,24 @@ impl Pane for TerminalPane {
         }
     }
     fn scrolled_backlog_idle(&mut self) {
-        let Some(catchup) = self.output_catchup.as_mut() else {
+        let Some(phase) = self.output_catchup.as_ref().map(|catchup| catchup.phase) else {
             return;
         };
-        if !matches!(catchup.phase, CatchupPhase::Draining) {
-            return;
+        match phase {
+            CatchupPhase::ToBottom => {
+                if !self.advance_catchup_to_bottom() {
+                    return;
+                }
+            },
+            CatchupPhase::Draining => {},
+            CatchupPhase::Restore => {
+                self.advance_catchup_restore();
+                return;
+            },
         }
-        catchup.phase = CatchupPhase::Restore;
+        if let Some(catchup) = self.output_catchup.as_mut() {
+            catchup.phase = CatchupPhase::Restore;
+        }
         self.advance_catchup_restore();
     }
     fn restore_short_output_catchup(&mut self) {

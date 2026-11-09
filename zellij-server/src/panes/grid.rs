@@ -1468,6 +1468,13 @@ fn bounded_push(
     while vec.len() >= row_limit
         || (scrollback_cells.saturating_add(incoming) > cell_limit && !vec.is_empty())
     {
+        if reserving_for_recount && !may_drop_back {
+            // Retained graphics make back-shedding unsafe, but evicting the
+            // measured front would restart the recount forever. Reject this
+            // scrolled-off row and keep the measurement origin stable.
+            *history_truncated = true;
+            return 0;
+        }
         if reserving_for_recount && may_drop_back {
             let Some(row) = vec.pop_back() else {
                 break;

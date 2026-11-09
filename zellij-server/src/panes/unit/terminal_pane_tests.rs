@@ -1769,6 +1769,31 @@ fn resetting_the_grid_cancels_output_catchup() {
 }
 
 #[test]
+fn an_idle_catchup_at_a_deep_scroll_settles_after_backlog_rejection() {
+    let mut pane = terminal_pane_with_size(3, 20);
+    for _ in 0..100 {
+        pane.handle_pty_bytes_for_test(b"history\r\n".to_vec());
+    }
+    pane.scroll_up(80, 1);
+    assert!(pane.is_scrolled());
+    pane.grid.lock_renders();
+    pane.output_catchup = Some(super::OutputCatchup {
+        anchor: pane.grid.viewport_anchor(),
+        phase: super::CatchupPhase::ToBottom,
+        restore_in_turn: false,
+    });
+
+    pane.reject_unparsed_input();
+    let mut steps = 0;
+    while pane.output_catchup.is_some() {
+        pane.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 1_000, "catch-up did not settle after backlog loss");
+    }
+    assert!(!pane.has_deferred_pane_work());
+}
+
+#[test]
 fn resetting_the_grid_drops_output_buffered_behind_a_forward_pause() {
     let mut pane = pane_for_split_test();
     pane.arm_forward_pause();
