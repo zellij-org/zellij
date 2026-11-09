@@ -32,6 +32,20 @@ pub fn windows_app_id() -> String {
     windows_app_id_for(crate::distribution::name())
 }
 
+/// Where Windows keeps the name and icon of an app id that comes without a manifest. The app
+/// writes it when it starts and uninstalling the desktop entry removes it.
+pub fn windows_app_id_key(name: &str) -> String {
+    format!(
+        r"Software\Classes\AppUserModelId\{}",
+        windows_app_id_for(name)
+    )
+}
+
+/// The image the app id's registry key points Windows at.
+pub fn windows_app_icon_path(cache_dir: &std::path::Path, name: &str) -> PathBuf {
+    cache_dir.join(format!("{}.png", name))
+}
+
 pub const REMOTE_WARNING: &str = "The window opens on the computer running Zellij.";
 
 pub const DESKTOP_OVERRIDE_ENV: &str = "ZELLIJ_DESKTOP_INTEGRATION";

@@ -110,6 +110,13 @@ fn removal_order(items: &[Item]) -> Vec<Item> {
     .collect()
 }
 
+/// Removes the app's own registration, icon and jump list, even when nothing else was
+/// installed.
+#[cfg(windows)]
+pub fn forget_app() -> Vec<String> {
+    windows_desktop::forget_app()
+}
+
 pub fn launcher_repair_offer() -> Option<crate::desktop_integration::RepairOffer> {
     platform::repair_offer(&load())
 }
@@ -1690,11 +1697,69 @@ mod windows_desktop {
     pub fn remove(item: Item, _environment: &Environment) -> Outcome {
         let result = match item {
             Item::CopyBinary => remove_copy(),
-            Item::StartMenu => remove_start_menu(),
-            Item::ExplorerItem => remove_explorer_item(),
+            Item::StartMenu => remove_start_menu().map(with_app_forgotten),
+            Item::ExplorerItem => remove_explorer_item().map(with_app_forgotten),
             _ => Err(anyhow::anyhow!("Not available on Windows")),
         };
         outcome(item, false, result)
+    }
+
+    fn with_app_forgotten(message: String) -> String {
+        std::iter::once(message)
+            .chain(forget_app())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Removes what the app sets up for itself whenever it starts: the name and icon Windows
+    /// shows on its toasts, and its taskbar jump list. They come back if the app runs again.
+    pub fn forget_app() -> Vec<String> {
+        let name = crate::distribution::name();
+        let mut lines = vec![];
+        let key = crate::desktop_integration::windows_app_id_key(name);
+        if registry::key_exists(registry::Root::CurrentUser, &key) {
+            lines.push(
+                match registry::delete_tree(registry::Root::CurrentUser, &key) {
+                    Ok(()) => format!(r"Removed HKEY_CURRENT_USER\{}", key),
+                    Err(e) => format!("{:#}", e),
+                },
+            );
+        }
+        let icon = crate::desktop_integration::windows_app_icon_path(
+            &crate::consts::ZELLIJ_CACHE_DIR,
+            name,
+        );
+        if icon.exists() {
+            lines.push(match std::fs::remove_file(&icon) {
+                Ok(()) => format!("Removed {}", icon.display()),
+                Err(e) => format!("failed to remove {}: {}", icon.display(), e),
+            });
+        }
+        if load().windows.jump_list {
+            lines.push(match delete_jump_list() {
+                Ok(()) => {
+                    let _ = update(|state: &mut IntegrationState| state.windows.jump_list = false);
+                    "Removed the taskbar jump list".to_owned()
+                },
+                Err(e) => format!("failed to remove the taskbar jump list: {:#}", e),
+            });
+        }
+        lines
+    }
+
+    fn delete_jump_list() -> Result<()> {
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::Shell::{DestinationList, ICustomDestinationList};
+        let _com = Com::initialize()?;
+        unsafe {
+            let list: ICustomDestinationList =
+                CoCreateInstance(&DestinationList, None, CLSCTX_INPROC_SERVER)
+                    .context("failed to reach the jump list")?;
+            list.DeleteList(&windows::core::HSTRING::from(
+                crate::desktop_integration::windows_app_id(),
+            ))?;
+        }
+        Ok(())
     }
 
     fn current_binary() -> Result<PathBuf> {

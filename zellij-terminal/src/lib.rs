@@ -49,8 +49,3 @@ pub fn run(args: TerminalArgs, opts: CliArgs) -> Result<()> {
     run.finish(&result);
     result
 }
-
-#[cfg(windows)]
-pub fn unregister_app() -> Result<Vec<String>> {
-    windows_shell::app_registration::unregister()
-}
