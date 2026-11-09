@@ -13,6 +13,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
 
 use crate::ClientId;
+use std::time::{Duration, Instant};
 
 /// Per-terminal write behavior for the mock.
 #[derive(Clone)]
@@ -33,6 +34,8 @@ struct MockServerOsApi {
     write_behavior: Arc<Mutex<HashMap<u32, WriteBehavior>>>,
     /// Log of (terminal_id, bytes) for each successful write.
     write_log: Arc<Mutex<Vec<(u32, Vec<u8>)>>>,
+    /// Number of write_to_tty_stdin calls, whatever their outcome.
+    write_attempts: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl MockServerOsApi {
@@ -40,6 +43,7 @@ impl MockServerOsApi {
         MockServerOsApi {
             write_behavior: Arc::new(Mutex::new(HashMap::new())),
             write_log: Arc::new(Mutex::new(Vec::new())),
+            write_attempts: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
     fn set_behavior(&self, terminal_id: u32, behavior: WriteBehavior) {
@@ -80,6 +84,8 @@ impl ServerOsApi for MockServerOsApi {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        self.write_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let behavior = self
             .write_behavior
             .lock()
@@ -198,12 +204,12 @@ fn pending_queue_tracks_remaining_bytes_incrementally() {
     queue.push_back(PendingWrite {
         bytes: b"hello".to_vec(),
         offset: 0,
-        _completion: None,
+        completion: None,
     });
     queue.push_back(PendingWrite {
         bytes: b" world".to_vec(),
         offset: 2,
-        _completion: None,
+        completion: None,
     });
 
     assert_eq!(queue.remaining_bytes, 9);
@@ -349,6 +355,183 @@ fn memory_cap_drops_buffer_when_exceeded() {
         written_2, b"still alive",
         "writer thread should continue functioning after dropping a buffer"
     );
+}
+
+/// A terminal that accepts everything the kernel offers must not monopolize
+/// the writer: with a bounded per-terminal turn, a sparse terminal's queued
+/// write lands while the burst terminal still has pending bytes.
+#[test]
+fn fast_terminal_burst_yields_to_sparse_terminal() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptAll);
+    mock.set_behavior(2, WriteBehavior::AcceptAll);
+    let mock_clone = mock.clone();
+
+    let (bus, sender) = make_test_bus(mock);
+
+    let burst_size = 8 * 1024 * 1024; // under MAX_PENDING_BYTES
+    sender
+        .send(PtyWriteInstruction::Write(vec![0xAA; burst_size], 1, None))
+        .unwrap();
+    sender
+        .send(PtyWriteInstruction::Write(b"sparse".to_vec(), 2, None))
+        .unwrap();
+
+    let writer = std::thread::spawn(move || pty_writer_main(bus));
+
+    // Wait until terminal 2's write lands and terminal 1 fully drains.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        {
+            let log = mock_clone.write_log.lock().unwrap();
+            let t2_seen = log.iter().any(|(tid, _)| *tid == 2);
+            let t1_bytes: usize = log
+                .iter()
+                .filter(|(tid, _)| *tid == 1)
+                .map(|(_, b)| b.len())
+                .sum();
+            if t2_seen && t1_bytes == burst_size {
+                break;
+            }
+            assert!(Instant::now() < deadline, "writes did not complete in time");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let log = mock_clone.write_log.lock().unwrap();
+    let t2_pos = log.iter().position(|(tid, _)| *tid == 2).unwrap();
+    let last_t1_pos = log.iter().rposition(|(tid, _)| *tid == 1).unwrap();
+    assert!(
+        t2_pos < last_t1_pos,
+        "sparse terminal's write must land before the burst finishes draining"
+    );
+    drop(log);
+
+    // Byte-perfect, ordered delivery to each terminal.
+    assert_eq!(mock_clone.get_written_bytes(2), b"sparse");
+    assert_eq!(mock_clone.get_written_bytes(1).len(), burst_size);
+    assert!(mock_clone.get_written_bytes(1).iter().all(|b| *b == 0xAA));
+
+    sender.send(PtyWriteInstruction::Exit).unwrap();
+    writer.join().unwrap().unwrap();
+}
+
+/// When every pending terminal refuses bytes, the writer must keep polling
+/// instead of spinning, and later writes must still drain once the consumer
+/// accepts again.
+#[test]
+fn stalled_terminals_resume_draining_without_new_instructions() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptNone);
+    let mock_clone = mock.clone();
+
+    let (bus, sender) = make_test_bus(mock);
+
+    sender
+        .send(PtyWriteInstruction::Write(b"blocked".to_vec(), 1, None))
+        .unwrap();
+
+    let writer = std::thread::spawn(move || pty_writer_main(bus));
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(mock_clone.get_written_bytes(1).is_empty());
+
+    // While every terminal refuses bytes the writer retries on the
+    // PENDING_DRAIN_TIMEOUT cadence: roughly 30 attempts in 300 ms. A
+    // zero-timeout spin makes orders of magnitude more; a writer that stops
+    // retrying (or waits far longer) makes almost none.
+    let attempts = mock_clone
+        .write_attempts
+        .load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        (5..=120).contains(&attempts),
+        "stalled writer made {attempts} attempts in 300 ms; expected polling near 10 ms"
+    );
+
+    // The terminal starts accepting; the pending write must drain without
+    // any new instruction arriving.
+    mock_clone.set_behavior(1, WriteBehavior::AcceptAll);
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while mock_clone.get_written_bytes(1) != b"blocked" {
+        assert!(Instant::now() < deadline, "stalled write never drained");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    sender.send(PtyWriteInstruction::Exit).unwrap();
+    writer.join().unwrap().unwrap();
+}
+
+/// While the last pass made progress the writer must poll without waiting;
+/// sleeping the stall timeout between productive passes would throttle a
+/// slow-but-moving consumer to a few passes per second. A consumer taking one
+/// byte per call needs 400 passes for this payload, which would take over
+/// four seconds with a 10 ms wait per pass.
+#[test]
+fn progressing_terminal_drains_without_waiting_between_passes() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptAtMost(1));
+    let mock_clone = mock.clone();
+
+    let (bus, sender) = make_test_bus(mock);
+    let payload = vec![0x5A; MAX_DRAIN_CALLS_PER_TURN * 400];
+    sender
+        .send(PtyWriteInstruction::Write(payload.clone(), 1, None))
+        .unwrap();
+
+    let started = Instant::now();
+    let writer = std::thread::spawn(move || pty_writer_main(bus));
+    while mock_clone.get_written_bytes(1).len() < payload.len() {
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "payload never drained"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "productive passes must not wait out the stall timeout, took {:?}",
+        started.elapsed()
+    );
+
+    sender.send(PtyWriteInstruction::Exit).unwrap();
+    writer.join().unwrap().unwrap();
+}
+
+/// Retiring an empty write costs a unit of the turn's call budget, so a
+/// terminal with a long run of empty writes queued cannot hold the writer
+/// past its turn.
+#[test]
+fn empty_writes_spend_the_turn_budget() {
+    let mock = MockServerOsApi::new();
+    let mock_clone = mock.clone();
+    let mut queue = PendingQueue::default();
+    let empties = MAX_DRAIN_CALLS_PER_TURN * 3;
+    for _ in 0..empties {
+        queue.push_back(PendingWrite {
+            bytes: Vec::new(),
+            offset: 0,
+            completion: None,
+        });
+    }
+    queue.push_back(PendingWrite {
+        bytes: b"tail".to_vec(),
+        offset: 0,
+        completion: None,
+    });
+
+    assert!(drain_terminal_turn(&mut queue, 1, &mock));
+    assert_eq!(
+        queue.writes.len(),
+        empties + 1 - MAX_DRAIN_CALLS_PER_TURN,
+        "one turn may retire at most the call budget's worth of empty writes"
+    );
+    assert!(mock_clone.get_written_bytes(1).is_empty());
+
+    // Later turns finish the run and then deliver the real write.
+    while !queue.is_empty() {
+        drain_terminal_turn(&mut queue, 1, &mock);
+    }
+    assert_eq!(mock_clone.get_written_bytes(1), b"tail");
 }
 
 #[test]

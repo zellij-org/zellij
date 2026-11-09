@@ -20,7 +20,7 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io,
-    os::fd::{BorrowedFd, FromRawFd, IntoRawFd},
+    os::fd::{AsFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd},
     os::unix::{
         io::{AsRawFd, RawFd},
         process::CommandExt,
@@ -329,20 +329,44 @@ fn handle_terminal(
 #[derive(Clone)]
 pub(crate) struct UnixPtyBackend {
     orig_termios: Arc<Mutex<Option<termios::Termios>>>,
-    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>,
+    /// Each terminal owns a duplicated descriptor held by the registry;
+    /// a write, resize or drain issued after the original endpoint
+    /// closed still targets the same open file description instead of
+    /// whatever descriptor number the kernel recycled.
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<Arc<OwnedFd>>>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
 }
 
 /// Try to write as many bytes from `buf` as possible to `fd` without blocking.
 ///
 /// Loops on successful short writes and EINTR to drain as much as the kernel
-/// will accept. On EAGAIN (fd buffer full), stops and returns how many bytes
-/// were written so far (which may be 0). The caller is expected to re-queue
-/// any unwritten remainder.
+/// will accept, but issues at most `MAX_WRITE_SYSCALLS_PER_CALL` write(2)
+/// calls (EINTR retries included) so a consumer that takes a few bytes per
+/// call cannot turn one call into hundreds of syscalls. On EAGAIN (fd buffer
+/// full) or when the syscall budget is spent, stops and returns how many
+/// bytes were written so far (which may be 0). The caller is expected to
+/// re-queue any unwritten remainder.
 fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
+    write_bounded(buf, MAX_WRITE_SYSCALLS_PER_CALL, |chunk| {
+        unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, chunk)
+    })
+}
+
+/// Upper bound on write(2) calls made by one `try_write_to_fd` call. Together
+/// with the pty writer's per-turn call limit this bounds the syscalls a
+/// terminal can spend in one turn (calls per turn x this value).
+const MAX_WRITE_SYSCALLS_PER_CALL: usize = 4;
+
+fn write_bounded(
+    buf: &[u8],
+    max_syscalls: usize,
+    mut write: impl FnMut(&[u8]) -> nix::Result<usize>,
+) -> Result<usize> {
     let mut written = 0;
-    while written < buf.len() {
-        match unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, &buf[written..]) {
+    let mut syscalls = 0;
+    while written < buf.len() && syscalls < max_syscalls {
+        syscalls += 1;
+        match write(&buf[written..]) {
             Ok(0) => break, // fd returned 0 on non-empty buf; treat like EAGAIN
             Ok(n) => written += n,
             Err(nix::errno::Errno::EINTR) => continue,
@@ -387,15 +411,57 @@ impl UnixPtyBackend {
             terminal_id,
             pane_env,
         )?;
-        self.terminal_id_to_raw_fd
-            .lock()
-            .to_anyhow()?
-            .insert(terminal_id, Some(pid_primary));
-        let async_reader = Box::new(
-            RawFdAsyncReader::new(pid_primary)
-                .map_err(|e| anyhow::anyhow!("failed to create async reader: {}", e))?,
-        ) as Box<dyn AsyncReader>;
+        // On failure past this point, closing the primary side hangs up the
+        // child's session, so the child exits through its normal watcher
+        // instead of running without a pane.
+        self.retain_primary_handle(terminal_id, pid_primary, |fd| {
+            // try_clone_to_owned duplicates with close-on-exec, so the copy
+            // is not inherited by helper processes spawned without a PTY.
+            unsafe { BorrowedFd::borrow_raw(fd) }.try_clone_to_owned()
+        })?;
+        let async_reader = match RawFdAsyncReader::new(pid_primary) {
+            Ok(async_reader) => Box::new(async_reader) as Box<dyn AsyncReader>,
+            Err(e) => {
+                if let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() {
+                    registry.remove(&terminal_id);
+                }
+                let _ = unistd::close(pid_primary);
+                return Err(anyhow::anyhow!("failed to create async reader: {}", e));
+            },
+        };
         Ok((async_reader, child_fd))
+    }
+
+    /// Duplicate the primary side with `duplicate` and register the owned copy
+    /// for `terminal_id`. When duplication fails, drop the registry entry
+    /// (the reserved placeholder, or the previous owner's descriptor on a
+    /// rerun) and close the primary side before reporting the error, so no
+    /// stale endpoint stays registered for a pane that never started.
+    fn retain_primary_handle(
+        &self,
+        terminal_id: u32,
+        pid_primary: RawFd,
+        duplicate: impl FnOnce(RawFd) -> io::Result<OwnedFd>,
+    ) -> Result<()> {
+        match duplicate(pid_primary) {
+            Ok(pty_handle) => {
+                self.terminal_id_to_raw_fd
+                    .lock()
+                    .to_anyhow()?
+                    .insert(terminal_id, Some(Arc::new(pty_handle)));
+                Ok(())
+            },
+            Err(e) => {
+                if let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() {
+                    registry.remove(&terminal_id);
+                }
+                let _ = unistd::close(pid_primary);
+                Err(anyhow::anyhow!(
+                    "failed to retain an owned PTY handle: {}",
+                    e
+                ))
+            },
+        }
     }
 
     pub fn set_terminal_size(
@@ -421,7 +487,13 @@ impl UnixPtyBackend {
         {
             Some(Some(fd)) => {
                 if cols > 0 && rows > 0 {
-                    set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
+                    set_terminal_size_using_fd(
+                        fd.as_raw_fd(),
+                        cols,
+                        rows,
+                        width_in_pixels,
+                        height_in_pixels,
+                    );
                 }
             },
             _ => {
@@ -443,13 +515,13 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => *fd,
+            Some(Some(fd)) => fd.clone(),
             _ => {
                 return Err(anyhow!("could not find raw file descriptor")).with_context(err_context)
             },
         };
 
-        try_write_to_fd(fd, buf).with_context(err_context)
+        try_write_to_fd(fd.as_raw_fd(), buf).with_context(err_context)
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
@@ -462,18 +534,14 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => {
-                termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) }).with_context(err_context)
-            },
+            Some(Some(fd)) => termios::tcdrain(fd.as_fd()).with_context(err_context),
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
 
     pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
         match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
-            Some(Some(fd)) => unistd::tcgetpgrp(unsafe { BorrowedFd::borrow_raw(*fd) })
-                .ok()
-                .map(|pgid| pgid.as_raw()),
+            Some(Some(fd)) => unistd::tcgetpgrp(fd.as_fd()).ok().map(|pgid| pgid.as_raw()),
             _ => None,
         }
     }
@@ -521,6 +589,102 @@ mod tests {
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
     use std::io::{Read, Write};
+
+    #[test]
+    fn a_retained_pty_handle_never_targets_a_recycled_descriptor() {
+        // The registry keeps a duplicated OwnedFd per terminal. When the
+        // original descriptor number comes to name an unrelated file, a
+        // write through the registry must still reach the terminal's own
+        // pipe. dup2 replaces the number atomically, so no other thread can
+        // take it in between.
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (terminal_read, terminal_write) = nonblocking_pipe();
+        let (unrelated_read, unrelated_write) = nonblocking_pipe();
+
+        let original = unsafe { OwnedFd::from_raw_fd(terminal_write) };
+        let retained = original.try_clone().expect("dup original");
+        backend
+            .terminal_id_to_raw_fd
+            .lock()
+            .unwrap()
+            .insert(7, Some(Arc::new(retained)));
+
+        // The original number now names the unrelated pipe, as if the
+        // pane's endpoint closed and the number was recycled.
+        assert_eq!(
+            unsafe { libc::dup2(unrelated_write, original.as_raw_fd()) },
+            original.as_raw_fd()
+        );
+
+        let written = backend
+            .write_to_tty_stdin(7, b"pane bytes")
+            .expect("write must reach the retained endpoint");
+        assert_eq!(written, b"pane bytes".len());
+
+        let mut buf = [0u8; 16];
+        let read = unsafe { libc::read(terminal_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(read, written as isize);
+        assert_eq!(&buf[..written], b"pane bytes");
+        let leaked = unsafe { libc::read(unrelated_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(leaked, -1, "nothing may reach the recycled descriptor");
+
+        drop(original);
+        unsafe {
+            libc::close(terminal_read);
+            libc::close(unrelated_read);
+            libc::close(unrelated_write);
+        }
+    }
+
+    #[test]
+    fn failed_handle_duplication_unregisters_the_terminal_and_closes_the_primary() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (read_end, write_end) = nonblocking_pipe();
+
+        // A previous owner is registered, as on a rerun of a command pane.
+        let previous = unsafe { BorrowedFd::borrow_raw(read_end) }
+            .try_clone_to_owned()
+            .expect("dup previous owner");
+        backend
+            .terminal_id_to_raw_fd
+            .lock()
+            .unwrap()
+            .insert(9, Some(Arc::new(previous)));
+        // Another terminal's entry must be left alone.
+        backend.reserve_terminal_id(10);
+
+        let result = backend.retain_primary_handle(9, write_end, |_| {
+            Err(io::Error::from_raw_os_error(libc::EMFILE))
+        });
+        assert!(result.is_err());
+
+        let registry = backend.terminal_id_to_raw_fd.lock().unwrap();
+        assert!(!registry.contains_key(&9), "stale entry must be removed");
+        assert!(registry.contains_key(&10));
+        drop(registry);
+        assert_eq!(
+            unsafe { libc::fcntl(write_end, libc::F_GETFD) },
+            -1,
+            "the primary side must be closed"
+        );
+        unsafe {
+            libc::close(read_end);
+        }
+    }
+
+    fn nonblocking_pipe() -> (libc::c_int, libc::c_int) {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        for fd in fds {
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            assert!(flags >= 0);
+            assert_eq!(
+                unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) },
+                0
+            );
+        }
+        (fds[0], fds[1])
+    }
 
     #[test]
     fn raw_fd_reader_returns_exact_bytes_in_order() {
@@ -623,6 +787,43 @@ mod tests {
             libc::close(master_fd);
             libc::close(slave_fd);
         }
+    }
+
+    #[test]
+    fn write_bounded_stops_after_the_syscall_budget() {
+        let buf = vec![0u8; 1024 * 1024];
+
+        // A consumer taking 1 KiB per call.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            Ok(1024)
+        })
+        .unwrap();
+        assert_eq!((calls, written), (4, 4096));
+
+        // EINTR retries spend budget too.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            Err(nix::errno::Errno::EINTR)
+        })
+        .unwrap();
+        assert_eq!((calls, written), (4, 0));
+
+        // EAGAIN still ends the call early, and errors still propagate.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            if calls == 1 {
+                Ok(10)
+            } else {
+                Err(nix::errno::Errno::EAGAIN)
+            }
+        })
+        .unwrap();
+        assert_eq!((calls, written), (2, 10));
+        assert!(write_bounded(&buf, 4, |_| Err(nix::errno::Errno::EBADF)).is_err());
     }
 
     /// Verify that `try_write_to_fd` returns Ok(0) — not an error — when the
