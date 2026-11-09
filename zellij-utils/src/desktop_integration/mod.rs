@@ -134,11 +134,16 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
     if needs_the_copy && installable(&Item::CopyBinary) && !plan.install.contains(&Item::CopyBinary)
     {
         plan.install.insert(0, Item::CopyBinary);
-        plan.notes.push(
-            "Copying Zellij to a permanent folder first, so the desktop entry and the default \
+        plan.notes
+            .push(if status.environment.platform == Platform::Windows {
+                "Copying Zellij to a permanent folder first, so the Start menu and \"Open Zellij \
+             here\" run that copy"
+                    .to_owned()
+            } else {
+                "Copying Zellij to a permanent folder first, so the desktop entry and the default \
              terminal run that copy"
-                .to_owned(),
-        );
+                    .to_owned()
+            });
     }
     if actions.uninstall_desktop_entry {
         let removable: Vec<Item> = DESKTOP_ENTRY_ITEMS
