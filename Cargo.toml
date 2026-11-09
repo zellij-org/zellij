@@ -206,6 +206,11 @@ opt-level = 2
 [profile.dev.package.png]
 opt-level = 3
 
+# Plugin modules are hashed on every load; unoptimized SHA-256 over a debug-build plugin takes
+# seconds.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.dev.package.alacritty_terminal]
 opt-level = 3
 

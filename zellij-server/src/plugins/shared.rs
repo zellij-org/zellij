@@ -117,11 +117,51 @@ fn set_call_context(
     }
 }
 
+/// Fuel budget granted to each WASM plugin callback. A runaway or
+/// nonterminating callback exhausts it and traps instead of holding
+/// its executor thread forever. Engines without fuel metering (test
+/// fixtures) ignore the refuel.
+///
+/// TODO(plugin-hardening): fuel only meters guest instructions. WASI `poll_oneoff` is capped
+/// separately (see `add_wasi_to_linker`), but other synchronous host functions that can block
+/// for long (reads from slow or special files, for example) still hold the executor thread and
+/// the execution lock without consuming fuel. Bounding them needs a deadline checked by those
+/// host functions, or running guest calls under a watchdog that can abandon the executor.
+pub const PLUGIN_CALLBACK_FUEL_BUDGET: u64 = 1_000_000_000;
+
+/// Whether a callback failed because it ran out of its fuel budget, as opposed to an ordinary
+/// failure. Contexts around the trap do not hide it.
+pub fn is_out_of_fuel(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<wasmi::Error>()
+            .and_then(|error| error.as_trap_code())
+            == Some(wasmi::TrapCode::OutOfFuel)
+    })
+}
+
+pub fn refuel_for_callback<T>(store: &mut wasmi::Store<T>) {
+    let _ = store.set_fuel(PLUGIN_CALLBACK_FUEL_BUDGET);
+}
+
+/// Instantiate a plugin module with a fresh callback budget. A new store
+/// starts with no fuel, so a module with a WebAssembly start section
+/// would otherwise trap during instantiation on a metering engine.
+pub fn instantiate_metered<T>(
+    linker: &wasmi::Linker<T>,
+    store: &mut wasmi::Store<T>,
+    module: &wasmi::Module,
+) -> std::result::Result<wasmi::Instance, wasmi::Error> {
+    refuel_for_callback(store);
+    linker.instantiate_and_start(store, module)
+}
+
 fn clear_call_context(running_plugin: &mut RunningPlugin) {
     set_call_context(running_plugin, None, None, false);
 }
 
 fn call_with_i32(running_plugin: &mut RunningPlugin, name: &str, value: i32) -> Result<()> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<i32, ()>(&mut running_plugin.store, name)
@@ -131,6 +171,7 @@ fn call_with_i32(running_plugin: &mut RunningPlugin, name: &str, value: i32) -> 
 }
 
 fn call_without_args(running_plugin: &mut RunningPlugin, name: &str) -> Result<()> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<(), ()>(&mut running_plugin.store, name)
@@ -140,6 +181,7 @@ fn call_without_args(running_plugin: &mut RunningPlugin, name: &str) -> Result<(
 }
 
 fn call_returning_i32(running_plugin: &mut RunningPlugin, name: &str) -> Result<i32> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<(), i32>(&mut running_plugin.store, name)
@@ -319,6 +361,7 @@ pub fn render_targets(
             continue;
         };
         set_call_context(running_plugin, Some(*slot_id), Some(*client_id), true);
+        refuel_for_callback(&mut running_plugin.store);
         let instance = running_plugin.instance.clone();
         let result = instance
             .get_typed_func::<(i32, i32, i32, i32), ()>(&mut running_plugin.store, "shared_render")
@@ -391,15 +434,30 @@ fn report_instance_error(
     let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(
         running_plugin.store.data().plugin_id,
     ));
-    report_error(senders, pane_slot_ids(running_plugin), error);
+    report_error(
+        senders,
+        running_plugin.store.data().plugin_id,
+        pane_slot_ids(running_plugin),
+        running_plugin.store.data().generation,
+        error,
+    );
 }
 
-fn report_error(senders: &ThreadSenders, pane_slots: Vec<PluginId>, error: anyhow::Error) {
+fn report_error(
+    senders: &ThreadSenders,
+    instance_id: PluginId,
+    pane_slots: Vec<PluginId>,
+    generation: u64,
+    error: anyhow::Error,
+) {
     log::error!("{:?}", error);
     let message = format!("{:?}", error).replace("\n", "\n\r");
     for slot_id in pane_slots {
-        handle_plugin_crash(slot_id, message.clone(), senders.clone());
+        handle_plugin_crash(slot_id, generation, message.clone(), senders.clone());
     }
+    // The instance executes under its own id, which is what shared events and pipes are
+    // dispatched by; quarantining only the pane slots would leave it running.
+    let _ = senders.send_to_plugin(PluginInstruction::Quarantine(instance_id, generation));
 }
 
 fn send_pipe_changes(
@@ -601,7 +659,13 @@ pub fn add_slot_job(
         Err(e) => {
             let _ =
                 senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(slot_id));
-            report_error(&senders, vec![slot_id], e);
+            report_error(
+                &senders,
+                instance_id,
+                vec![slot_id],
+                running_plugin.store.data().generation,
+                e,
+            );
         },
     }
 }
@@ -665,7 +729,10 @@ fn tear_down_instance(
             .map(|shared| shared.clients.iter().copied().collect())
             .unwrap_or_default();
         for client_id in clients {
-            let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
+            let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                instance_id,
+                client_id,
+            ));
         }
     }
     let data_dir = running_plugin.store.data().plugin_own_data_dir.clone();
@@ -810,19 +877,16 @@ pub fn start_instance_job(
         },
         None => HashMap::new(),
     };
-    let started = {
-        let mut plugin_map = plugin_map.lock().unwrap();
-        PluginLoader::new(
-            skip_cache,
-            loading_context,
-            senders.clone(),
-            engine,
-            plugin_cache,
-            &mut plugin_map,
-            connected_clients.clone(),
-        )
-        .start_shared_plugin()
-    };
+    let started = PluginLoader::new(
+        skip_cache,
+        loading_context,
+        senders.clone(),
+        engine,
+        plugin_cache,
+        plugin_map.clone(),
+        connected_clients.clone(),
+    )
+    .start_shared_plugin();
     let running_plugin = match started {
         Ok(running_plugin) => running_plugin,
         Err(e) => {
@@ -914,5 +978,92 @@ mod tests {
             b"not a wasm module",
             SHARED_MARKER_EXPORT
         ));
+    }
+}
+
+#[cfg(test)]
+mod fuel_tests {
+    use super::{instantiate_metered, is_out_of_fuel, refuel_for_callback};
+    use wasmi::{Linker, Module, Store};
+
+    fn plugin_engine_module(wat: &str) -> (wasmi::Engine, Module) {
+        let engine = crate::get_engine();
+        let module = Module::new(&engine, wat::parse_str(wat).unwrap()).unwrap();
+        (engine, module)
+    }
+
+    #[test]
+    fn a_module_with_a_start_section_instantiates_on_the_metered_engine() {
+        let (engine, module) = plugin_engine_module(
+            r#"(module
+                (global $g (mut i32) (i32.const 0))
+                (func $init (global.set $g (i32.add (global.get $g) (i32.const 1))))
+                (start $init))"#,
+        );
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        assert!(
+            linker.instantiate_and_start(&mut store, &module).is_err(),
+            "witness: a fresh metered store has no fuel for the start section"
+        );
+        let mut store = Store::new(&engine, ());
+        assert!(instantiate_metered(&linker, &mut store, &module).is_ok());
+    }
+
+    #[test]
+    fn running_out_of_fuel_is_told_apart_from_other_failures() {
+        let (engine, module) = plugin_engine_module(
+            r#"(module
+                (func (export "spin") (loop br 0))
+                (func (export "crash") unreachable))"#,
+        );
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = instantiate_metered(&linker, &mut store, &module).unwrap();
+        let spin = instance
+            .get_typed_func::<(), ()>(&mut store, "spin")
+            .unwrap();
+        let crash = instance
+            .get_typed_func::<(), ()>(&mut store, "crash")
+            .unwrap();
+        store.set_fuel(10_000).unwrap();
+        let spin_error = anyhow::Error::new(spin.call(&mut store, ()).unwrap_err())
+            .context("failed to call spin on the plugin");
+        assert!(is_out_of_fuel(&spin_error));
+        refuel_for_callback(&mut store);
+        let crash_error = anyhow::Error::new(crash.call(&mut store, ()).unwrap_err())
+            .context("failed to call crash on the plugin");
+        assert!(!is_out_of_fuel(&crash_error));
+        assert!(!is_out_of_fuel(&anyhow::anyhow!("not a wasm error")));
+    }
+
+    #[test]
+    fn a_nonterminating_callback_traps_instead_of_holding_its_thread() {
+        let (engine, module) =
+            plugin_engine_module(r#"(module (func (export "update") (loop br 0)))"#);
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = instantiate_metered(&linker, &mut store, &module).unwrap();
+        let update = instance
+            .get_typed_func::<(), ()>(&mut store, "update")
+            .unwrap();
+        // A small budget keeps the test fast; the production budget is the
+        // same mechanism with a larger number.
+        store.set_fuel(10_000).unwrap();
+        let error = update
+            .call(&mut store, ())
+            .expect_err("the loop must exhaust its fuel");
+        assert!(
+            matches!(error.as_trap_code(), Some(wasmi::TrapCode::OutOfFuel))
+                || error.to_string().to_lowercase().contains("fuel"),
+            "unexpected error: {error:?}"
+        );
+        // Each callback gets a fresh budget rather than inheriting what the
+        // previous one left over.
+        refuel_for_callback(&mut store);
+        assert_eq!(
+            store.get_fuel().unwrap(),
+            super::PLUGIN_CALLBACK_FUEL_BUDGET
+        );
     }
 }

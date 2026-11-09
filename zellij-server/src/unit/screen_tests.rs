@@ -1,5 +1,5 @@
 use super::{
-    screen_thread_main, ClosePaneSource, CopyOptions, Screen, ScreenInstruction,
+    screen_thread_main, ClosePaneSource, CopyOptions, KeybindIntercepts, Screen, ScreenInstruction,
     MAX_REMEMBERED_PANES_NEVER_CREATED,
 };
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
@@ -21083,4 +21083,88 @@ fn closed_terminals_are_forgotten_in_close_order() {
         screen.closed_terminal_ids.len(),
         super::MAX_REMEMBERED_CLOSED_TERMINALS
     );
+}
+fn releasing_a_key_intercept_only_affects_the_plugin_that_holds_it() {
+    let mut intercepts = KeybindIntercepts::default();
+    intercepts.intercept(1, 10);
+    // unloading an unrelated plugin must not take the intercept away
+    intercepts.release(20, 1);
+    assert_eq!(intercepts.owner(1), Some(10));
+    // nor must releasing on behalf of a client that has none
+    intercepts.release(10, 2);
+    assert_eq!(intercepts.owner(1), Some(10));
+    intercepts.release(10, 1);
+    assert_eq!(intercepts.owner(1), None);
+}
+
+#[test]
+fn a_newer_key_intercept_replaces_the_previous_owner() {
+    let mut intercepts = KeybindIntercepts::default();
+    intercepts.intercept(1, 10);
+    intercepts.intercept(1, 20);
+    // the plugin that lost the intercept can still be unloaded without effect
+    intercepts.release(10, 1);
+    assert_eq!(intercepts.owner(1), Some(20));
+}
+
+#[test]
+fn unloading_one_plugin_keeps_the_key_intercept_of_another() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab(TiledPaneLayout::default());
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let intercepting_plugin = 7;
+    let unrelated_plugin = 8;
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::InterceptKeyPresses(
+            intercepting_plugin,
+            client_id,
+        ));
+    // what the plugin thread sends for every client instance of a plugin it unloads
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ClearKeyPressesIntercepts(
+            unrelated_plugin,
+            client_id,
+        ));
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::WriteCharacter(
+            Some(key.clone()),
+            vec![b'a'],
+            false,
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let intercepted_by: Vec<_> = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            PluginInstruction::Update(updates) => Some(updates.clone()),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|update| match update {
+            (Some(plugin_id), Some(update_client), Event::InterceptedKeyPress(intercepted))
+                if update_client == client_id && intercepted == key =>
+            {
+                Some(plugin_id)
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(intercepted_by, vec![intercepting_plugin]);
 }

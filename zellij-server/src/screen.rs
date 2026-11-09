@@ -995,7 +995,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     SetPaneCollapsed(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
-    ClearKeyPressesIntercepts(ClientId),
+    ClearKeyPressesIntercepts(PluginId, ClientId), // only drops an intercept owned by the plugin
     TogglePaneIdInGroup(PaneId, ClientId, Option<NotificationEnd>),
     StartRenamePaneWithPaneId(PaneId, ClientId),
     StartRenameTabWithTabId(usize, ClientId),
@@ -11008,6 +11008,28 @@ const MAX_REMEMBERED_PANES_NEVER_CREATED: usize = 1024;
 /// to be remembered; terminal ids are never reused.
 const MAX_REMEMBERED_CLOSED_TERMINALS: usize = 1024;
 
+/// The plugin that receives each client's key presses, if any.
+#[derive(Debug, Default)]
+struct KeybindIntercepts {
+    owners: HashMap<ClientId, PluginId>,
+}
+
+impl KeybindIntercepts {
+    fn intercept(&mut self, client_id: ClientId, plugin_id: PluginId) {
+        self.owners.insert(client_id, plugin_id);
+    }
+    /// Drop the client's intercept if `plugin_id` holds it. Another plugin's intercept is left
+    /// alone, so unloading a plugin that never intercepted anything is harmless.
+    fn release(&mut self, plugin_id: PluginId, client_id: ClientId) {
+        if self.owners.get(&client_id) == Some(&plugin_id) {
+            self.owners.remove(&client_id);
+        }
+    }
+    fn owner(&self, client_id: ClientId) -> Option<PluginId> {
+        self.owners.get(&client_id).copied()
+    }
+}
+
 fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message: &str) {
     if let Some(completion) = completion.as_mut() {
         completion.set_exit_status(1);
@@ -11245,7 +11267,7 @@ pub(crate) fn screen_thread_main(
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_pane = pending_pane_events::PendingPaneEvents::default();
     let mut plugin_loading_message_cache = HashMap::new();
-    let mut keybind_intercepts = HashMap::new();
+    let mut keybind_intercepts = KeybindIntercepts::default();
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -11665,13 +11687,13 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.record_client_input(client_id);
-                if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
+                if let Some(plugin_id) = keybind_intercepts.owner(client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
                         let _ = screen
                             .bus
                             .senders
                             .send_to_plugin(PluginInstruction::Update(vec![(
-                                Some(*plugin_id),
+                                Some(plugin_id),
                                 Some(client_id),
                                 Event::InterceptedKeyPress(key_with_modifier),
                             )]));
@@ -15679,7 +15701,7 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::InterceptKeyPresses(plugin_id, client_id) => {
-                keybind_intercepts.insert(client_id, plugin_id);
+                keybind_intercepts.intercept(client_id, plugin_id);
             },
             ScreenInstruction::TogglePaneIdInGroup(pane_id, client_id, _completion_tx) => {
                 screen.toggle_pane_id_in_group(pane_id, &client_id);
@@ -15978,8 +16000,8 @@ pub(crate) fn screen_thread_main(
                 let actions = screen.context_menu_item_actions(plugin_id, client_id, index);
                 let _ = response_channel.send(actions);
             },
-            ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
-                keybind_intercepts.remove(&client_id);
+            ScreenInstruction::ClearKeyPressesIntercepts(plugin_id, client_id) => {
+                keybind_intercepts.release(plugin_id, client_id);
             },
             ScreenInstruction::ReplacePaneWithExistingPane(
                 old_pane_id,

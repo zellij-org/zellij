@@ -32,6 +32,7 @@ prost = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 sixel-image = { version = "0.2.1", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.39.5", default-features = false, features = ["system"] }
@@ -73,6 +74,7 @@ windows-sys = { workspace = true, features = [
 insta = "1.48"
 tempfile = "3.2.0"
 wasmi = { version = "1.1.0", features = ["std"] }
+wat = "1.239"
 
 [features]
 web_server_capability = ["zellij-utils/web_server_capability"]

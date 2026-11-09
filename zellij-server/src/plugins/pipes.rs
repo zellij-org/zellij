@@ -337,6 +337,7 @@ fn apply_pipe_message_to_plugin_inner(
                 &protobuf_pipe_message.encode_to_vec(),
             )
             .with_context(err_context)?;
+            crate::plugins::shared::refuel_for_callback(&mut running_plugin.store);
             let should_render = pipe
                 .call(&mut running_plugin.store, ())
                 .with_context(err_context)?;
@@ -350,6 +351,7 @@ fn apply_pipe_message_to_plugin_inner(
                 let rendered_bytes = instance
                     .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
                     .and_then(|render| {
+                        crate::plugins::shared::refuel_for_callback(&mut running_plugin.store);
                         render.call(&mut running_plugin.store, (rows as i32, columns as i32))
                     })
                     .map_err(|e| anyhow!(e))

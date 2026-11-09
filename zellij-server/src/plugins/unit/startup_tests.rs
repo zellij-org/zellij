@@ -161,3 +161,90 @@ fn cached_background_permission_results_reach_existing_instances_before_client_c
         }
     }
 }
+
+#[test]
+fn unloading_a_plugin_whose_start_failed_retires_its_executor_assignment() {
+    let (to_plugin, plugin_receiver) = channels::unbounded();
+    let (to_screen, _screen_receiver) = channels::unbounded();
+    let senders = ThreadSenders {
+        to_plugin: Some(SenderWithContext::new(to_plugin)),
+        to_screen: Some(SenderWithContext::new(to_screen)),
+        should_silently_fail: true,
+        ..Default::default()
+    };
+    let plugin_dir = tempdir().unwrap();
+    let mut config = wasmi::Config::default();
+    config.set_max_stack_height(1024 * 1024);
+    config.set_max_recursion_depth(1000);
+    let mut bridge = WasmBridge::new(
+        senders,
+        wasmi::Engine::new(&config),
+        plugin_dir.path().to_path_buf(),
+        "/bin/sh".into(),
+        plugin_dir.path().to_path_buf(),
+        Default::default(),
+        None,
+        None,
+        vec![],
+        vec![],
+        Default::default(),
+        Default::default(),
+    );
+    let plugin_path = plugin_dir.path().join("failing-start.wasm");
+    std::fs::write(
+        &plugin_path,
+        wat::parse_str(
+            r#"(module
+                (func (export "_start") unreachable)
+                (func (export "load")))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let run = RunPlugin::from_url(&format!("file:{}", plugin_path.display())).unwrap();
+    let (plugin_id, _client_id) = bridge
+        .load_plugin_with_kind(
+            &Some(run),
+            None,
+            Size { rows: 5, cols: 80 },
+            None,
+            false,
+            Some(1),
+            true,
+        )
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match plugin_receiver.recv_deadline(deadline).unwrap().0 {
+            PluginInstruction::ApplyCachedEvents { plugin_ids, .. }
+                if plugin_ids.contains(&plugin_id) =>
+            {
+                break
+            },
+            _ => {},
+        }
+    }
+    // the plugin thread would now process the instruction
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    bridge
+        .apply_cached_events(vec![plugin_id], false, shutdown_sender)
+        .unwrap();
+    // the failed initialization rolled its instance back out of the plugin map
+    assert!(bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .all_plugin_ids()
+        .is_empty());
+
+    bridge.unload_plugin(plugin_id).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while bridge.plugin_executor.is_registered(plugin_id) {
+        assert!(
+            Instant::now() < deadline,
+            "the executor assignment of the unloaded plugin leaked"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}

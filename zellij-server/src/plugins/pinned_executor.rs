@@ -41,19 +41,15 @@ struct ExecutionThread {
     jobs_in_flight: Arc<AtomicUsize>, // Busy state tracking
 }
 
+/// A unit of work executed on a plugin's pinned thread.
+pub type PluginWork = Box<
+    dyn FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, PluginCache, Engine)
+        + Send
+        + 'static,
+>;
+
 enum Job {
-    Work(
-        Box<
-            dyn FnOnce(
-                    ThreadSenders,
-                    Arc<Mutex<PluginMap>>,
-                    Arc<Mutex<Vec<ClientId>>>,
-                    PluginCache,
-                    Engine,
-                ) + Send
-                + 'static,
-        >,
-    ),
+    Work(PluginWork),
     Shutdown, // Signal to exit the worker loop
 }
 
@@ -303,17 +299,48 @@ impl PinnedExecutor {
             ) + Send
             + 'static,
     ) {
+        self.execute_plugin_unload_many(plugin_id, vec![Box::new(f)]);
+    }
+
+    /// Unload a plugin family: run every cleanup job on the plugin's pinned
+    /// thread, then retire its executor assignment exactly once.
+    ///
+    /// A plugin can own several client instances that all share one executor
+    /// assignment. Submitting a separate unload per instance lets the first
+    /// job's unregistration drop later submissions before their cleanup runs;
+    /// batching them into a single job keeps every cleanup ahead of the one
+    /// retirement.
+    pub fn execute_plugin_unload_many(self: &Arc<Self>, plugin_id: u32, cleanups: Vec<PluginWork>) {
+        if cleanups.is_empty() && !self.is_registered(plugin_id) {
+            // nothing to run and nothing to retire
+            return;
+        }
         let executor = self.clone();
         self.execute_for_plugin(
             plugin_id,
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 // Execute the cleanup work
-                f(senders, plugin_map, connected_clients, plugin_cache, engine);
+                for cleanup in cleanups {
+                    cleanup(
+                        senders.clone(),
+                        plugin_map.clone(),
+                        connected_clients.clone(),
+                        plugin_cache.clone(),
+                        engine.clone(),
+                    );
+                }
 
                 // Unregister plugin and potentially shrink the pool
                 executor.unregister_plugin(plugin_id);
             },
         );
+    }
+
+    pub fn is_registered(&self, plugin_id: u32) -> bool {
+        self.plugin_assignments
+            .lock()
+            .unwrap()
+            .contains_key(&plugin_id)
     }
 
     /// Unregister a plugin and potentially shrink the pool
@@ -427,9 +454,10 @@ mod tests {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients = Arc::new(Mutex::new(vec![]));
 
-        let plugin_cache = Arc::new(Mutex::new(
-            std::collections::HashMap::<PathBuf, Module>::new(),
-        ));
+        let plugin_cache = Arc::new(Mutex::new(std::collections::HashMap::<
+            PathBuf,
+            (String, Module),
+        >::new()));
 
         let engine = Engine::default();
 
@@ -858,6 +886,80 @@ mod tests {
         // Plugin should be unregistered - registering again should assign new thread
         let thread_idx = executor.register_plugin(1);
         assert_eq!(thread_idx, 0, "Plugin should be re-registered to thread 0");
+    }
+
+    #[test]
+    fn test_unload_many_runs_every_cleanup_before_single_retirement() {
+        // A plugin that was instantiated once per connected client shares one
+        // executor assignment; its unload must run every instance's cleanup
+        // and retire the assignment exactly once.
+        let executor = create_test_executor(2);
+        executor.register_plugin(1);
+        executor.register_plugin(2);
+
+        let cleanup_count = 3;
+        let (tx, rx) = channel();
+        let cleanups: Vec<PluginWork> = (0..cleanup_count)
+            .map(|_| {
+                let tx = tx.clone();
+                let job = move |_s, _p, _c, _ca, _e| {
+                    tx.send(()).unwrap();
+                };
+                Box::new(job) as PluginWork
+            })
+            .collect();
+
+        executor.execute_plugin_unload_many(1, cleanups);
+
+        for _ in 0..cleanup_count {
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Every instance cleanup must run before retirement");
+        }
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while executor.plugin_assignments.lock().unwrap().contains_key(&1) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Assignment was not retired"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // The sibling plugin's assignment and thread survive the retirement
+        assert!(executor.plugin_assignments.lock().unwrap().contains_key(&2));
+        let (tx2, rx2) = channel();
+        executor.execute_for_plugin(2, make_signaling_job(tx2));
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Sibling plugin must remain schedulable");
+
+        // The retired plugin id can be registered again
+        executor.register_plugin(1);
+        let (tx3, rx3) = channel();
+        executor.execute_for_plugin(1, make_signaling_job(tx3));
+        rx3.recv_timeout(Duration::from_secs(5))
+            .expect("Re-registered plugin must remain schedulable");
+    }
+
+    #[test]
+    fn test_unload_without_cleanups_still_retires_the_assignment() {
+        // A plugin whose initialization failed has no instance left to clean up
+        // but still holds an assignment.
+        let executor = create_test_executor(2);
+        executor.register_plugin(1);
+        executor.execute_plugin_unload_many(1, vec![]);
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while executor.is_registered(1) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Assignment was not retired"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // Unloading an id that is not registered has nothing to run or retire
+        executor.execute_plugin_unload_many(1, vec![]);
+        assert!(!executor.is_registered(1));
     }
 
     #[test]
