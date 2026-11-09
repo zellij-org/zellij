@@ -20,6 +20,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -324,15 +325,95 @@ pub fn take_client_data_dirs(plugin_id: PluginId, client_id: ClientId) -> Vec<Pa
     take_matching(|(id, cid, _)| *id == plugin_id && *cid == client_id)
 }
 
-/// Lock the guest only when it is free. Unload must not wait out a host call.
-pub fn try_lock_running(
-    running_plugin: &Mutex<RunningPlugin>,
-) -> Option<std::sync::MutexGuard<'_, RunningPlugin>> {
-    match running_plugin.try_lock() {
-        Ok(guard) => Some(guard),
-        Err(std::sync::TryLockError::WouldBlock) => None,
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+/// Host-only slot removals waiting on a guest callback. This is not the
+/// execution mutex: recording a removal must not wait for the guest.
+static PENDING_HOST_SLOT_REMOVALS: LazyLock<Mutex<HashMap<PluginId, HashSet<PluginId>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn record_pending_host_slot_removal(instance_id: PluginId, slot_id: PluginId) {
+    PENDING_HOST_SLOT_REMOVALS
+        .lock()
+        .unwrap()
+        .entry(instance_id)
+        .or_default()
+        .insert(slot_id);
+}
+
+/// Copy the ids out and drop the pending mutex before the caller mutates
+/// `shared.slots` under the execution lock.
+fn take_pending_host_slot_removals(instance_id: PluginId) -> Vec<PluginId> {
+    PENDING_HOST_SLOT_REMOVALS
+        .lock()
+        .unwrap()
+        .remove(&instance_id)
+        .map(|ids| ids.into_iter().collect())
+        .unwrap_or_default()
+}
+
+/// Delete host slot records queued while the execution mutex was busy.
+/// Caller already holds that mutex. Does not enter the guest.
+pub fn apply_pending_host_slot_removals(running_plugin: &mut RunningPlugin) {
+    if running_plugin.store.data().shared.is_none() {
+        return;
     }
+    let instance_id = running_plugin.store.data().plugin_id;
+    let slot_ids = take_pending_host_slot_removals(instance_id);
+    if slot_ids.is_empty() {
+        return;
+    }
+    let Some(shared) = running_plugin.store.data_mut().shared.as_mut() else {
+        let mut pending = PENDING_HOST_SLOT_REMOVALS.lock().unwrap();
+        pending.entry(instance_id).or_default().extend(slot_ids);
+        return;
+    };
+    for slot_id in slot_ids {
+        shared.slots.remove(&slot_id);
+        for visible in shared.visible_slots.values_mut() {
+            visible.remove(&slot_id);
+        }
+    }
+}
+
+/// Execution-mutex guard. Pending host slot removals are applied before the
+/// caller does guest work and again just before the mutex is released.
+pub struct RunningPluginLock<'a> {
+    guard: std::sync::MutexGuard<'a, RunningPlugin>,
+}
+
+impl Drop for RunningPluginLock<'_> {
+    fn drop(&mut self) {
+        apply_pending_host_slot_removals(&mut self.guard);
+    }
+}
+
+impl Deref for RunningPluginLock<'_> {
+    type Target = RunningPlugin;
+    fn deref(&self) -> &RunningPlugin {
+        &self.guard
+    }
+}
+
+impl DerefMut for RunningPluginLock<'_> {
+    fn deref_mut(&mut self) -> &mut RunningPlugin {
+        &mut self.guard
+    }
+}
+
+pub fn lock_running(running_plugin: &Mutex<RunningPlugin>) -> RunningPluginLock<'_> {
+    let mut guard = running_plugin.lock().unwrap();
+    apply_pending_host_slot_removals(&mut guard);
+    RunningPluginLock { guard }
+}
+
+/// Lock the guest only when it is free. Unload must not wait out a host call.
+pub fn try_lock_running(running_plugin: &Mutex<RunningPlugin>) -> Option<RunningPluginLock<'_>> {
+    let mut guard = match running_plugin.try_lock() {
+        Ok(guard) => guard,
+        Err(std::sync::TryLockError::WouldBlock) => return None,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    };
+    apply_pending_host_slot_removals(&mut guard);
+    Some(RunningPluginLock { guard })
 }
 
 pub fn refuel_for_callback<T>(store: &mut wasmi::Store<T>) {
@@ -712,7 +793,7 @@ pub fn apply_events_job(
         return;
     };
     let subscriptions = subscriptions.lock().unwrap().clone();
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -797,7 +878,7 @@ pub fn apply_pipes_job(
         }
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -848,7 +929,7 @@ pub fn add_slot_job(
         );
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         let mut loading_indication = LoadingIndication::new(String::new());
         handle_plugin_loading_failure(
@@ -911,17 +992,19 @@ pub fn remove_slot_job(
                         );
                     }
                 }
+            } else {
+                // The guest holds the execution mutex. Keep the host removal
+                // and apply it when that mutex is free. Do not wait, and do
+                // not call the guest from this thread.
+                record_pending_host_slot_removal(instance_id, slot_id);
             }
-        } else if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
-            // The lifecycle queue rejected this job, so it is running on the
-            // management thread. Drop the host slot record only; do not enter
-            // the guest, and do not wait if a callback holds the mutex.
-            if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
-                shared.slots.remove(&slot_id);
-                for visible in shared.visible_slots.values_mut() {
-                    visible.remove(&slot_id);
-                }
-            }
+        } else {
+            // Lifecycle admission rejected this job, so it is running on the
+            // management thread. Record the host removal without the execution
+            // mutex, then apply it only when that mutex is free. Do not enter
+            // the guest and do not wait if a callback holds the mutex.
+            record_pending_host_slot_removal(instance_id, slot_id);
+            let _running_plugin = try_lock_running(&running_plugin);
         }
     }
     if tear_down {
@@ -1015,7 +1098,7 @@ pub fn client_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -1046,7 +1129,7 @@ pub fn resize_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -1082,7 +1165,7 @@ pub fn visibility_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -1111,7 +1194,7 @@ pub fn host_settings_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if !running_plugin.is_active() {
         return;
     }
@@ -1140,7 +1223,7 @@ pub fn start_instance_job(
     let mut previous_visible_slots = HashMap::new();
     let mut previous_in_blocking_call = None;
     if let Some((running_plugin, _subscriptions, _workers)) = previous.as_ref() {
-        let running_plugin = running_plugin.lock().unwrap();
+        let running_plugin = lock_running(&running_plugin);
         if let Some(shared) = running_plugin.store.data().shared.as_ref() {
             for (slot_id, slot) in shared.slots.iter() {
                 initial_slots
@@ -1209,7 +1292,7 @@ pub fn start_instance_job(
             return false;
         },
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
         shared.visible_slots = previous_visible_slots;
     }
@@ -1447,5 +1530,202 @@ mod retirement_tests {
             !alive.load(Ordering::Acquire),
             "retirement must clear load_alive without the execution mutex"
         );
+    }
+}
+
+#[cfg(test)]
+mod pending_slot_tests {
+    use super::{lock_running, remove_slot_job};
+    use crate::plugins::plugin_loader::PluginLoader;
+    use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot};
+    use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
+    use crate::thread_bus::ThreadSenders;
+    use std::collections::{BTreeMap, HashSet};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use zellij_utils::data::{InputMode, SlotKind};
+    use zellij_utils::input::layout::{PluginUserConfiguration, RunPluginLocation};
+    use zellij_utils::input::plugins::PluginConfig;
+    use zellij_utils::pane_size::Size;
+
+    const INSTANCE_ID: u32 = 4_000_111;
+    const SLOT_A: u32 = 4_000_121;
+    const SLOT_B: u32 = 4_000_122;
+    const SLOT_C: u32 = 4_000_123;
+
+    const SHARED_WAT: &str = r#"(module
+        (memory (export "memory") 1)
+        (func (export "_start"))
+        (func (export "load"))
+        (func (export "slot_removed") (param i32)
+            (i32.store (i32.const 0)
+                (i32.add (i32.load (i32.const 0)) (i32.const 1)))))"#;
+
+    fn slot_ids(running: &RunningPlugin) -> Vec<u32> {
+        running
+            .store
+            .data()
+            .shared
+            .as_ref()
+            .unwrap()
+            .slots
+            .keys()
+            .copied()
+            .collect()
+    }
+
+    fn visible_ids(running: &RunningPlugin) -> HashSet<u32> {
+        running
+            .store
+            .data()
+            .shared
+            .as_ref()
+            .unwrap()
+            .visible_slots
+            .get(&1)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn slot_removed_calls(running: &RunningPlugin) -> u32 {
+        let memory = running
+            .instance
+            .get_memory(&running.store, "memory")
+            .unwrap();
+        let mut bytes = [0u8; 4];
+        memory.read(&running.store, 0, &mut bytes).unwrap();
+        u32::from_le_bytes(bytes)
+    }
+
+    fn remove_host_slot(plugin_map: Arc<Mutex<PluginMap>>, slot_id: u32) {
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            remove_slot_job(
+                ThreadSenders {
+                    should_silently_fail: true,
+                    ..Default::default()
+                },
+                plugin_map,
+                INSTANCE_ID,
+                slot_id,
+                false,
+                false,
+            );
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("host slot removal waited on the execution mutex");
+    }
+
+    #[test]
+    fn pending_slot_remove_slot_leaves_the_other_shared_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
+        let plugin_cache: PluginCache = Default::default();
+        let connected_clients = Arc::new(Mutex::new(vec![1]));
+        let path = dir.path().join("shared.wasm");
+        let loading_context = LoadingContext {
+            plugin_id: INSTANCE_ID,
+            client_id: 1,
+            plugin_cwd: dir.path().to_path_buf(),
+            plugin_own_data_dir: dir.path().join("data"),
+            plugin_own_cache_dir: dir.path().join("cache"),
+            plugin_config: PluginConfig {
+                path: path.clone(),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(path),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            tab_index: None,
+            path_to_default_shell: "/bin/sh".into(),
+            session_env_vars: BTreeMap::new(),
+            default_shell: None,
+            layout_dir: None,
+            default_mode: InputMode::Normal,
+            keybinds: Arc::new(Vec::new()),
+            plugin_dir: dir.path().to_path_buf(),
+            size: Size { rows: 5, cols: 80 },
+            wasm_bytes: Some(wat::parse_str(SHARED_WAT).unwrap()),
+            generation: 1,
+        };
+        let mut loader = PluginLoader::new(
+            true,
+            loading_context,
+            ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            crate::get_engine(),
+            plugin_cache,
+            plugin_map.clone(),
+            connected_clients,
+        );
+        loader.start_shared_plugin().expect("shared plugin loads");
+        let running = plugin_map
+            .lock()
+            .unwrap()
+            .shared_running_plugin(INSTANCE_ID)
+            .unwrap()
+            .0;
+        {
+            let mut running_plugin = running.lock().unwrap();
+            let shared = running_plugin.store.data_mut().shared.as_mut().unwrap();
+            for slot_id in [SLOT_A, SLOT_B, SLOT_C] {
+                shared.slots.insert(
+                    slot_id,
+                    SharedSlot {
+                        kind: SlotKind::Pane,
+                        configuration: BTreeMap::new(),
+                        rows: 2,
+                        columns: 8,
+                    },
+                );
+            }
+            shared
+                .visible_slots
+                .insert(1, HashSet::from([SLOT_A, SLOT_B, SLOT_C]));
+        }
+
+        let hold = running.lock().unwrap();
+        remove_host_slot(plugin_map.clone(), SLOT_A);
+        assert_eq!(
+            slot_ids(&hold),
+            vec![SLOT_A, SLOT_B, SLOT_C],
+            "a non-final removal must not delete the slot while the execution mutex is held"
+        );
+        assert!(visible_ids(&hold).contains(&SLOT_A));
+        drop(hold);
+
+        {
+            let drained = lock_running(&running);
+            assert_eq!(
+                slot_ids(&drained),
+                vec![SLOT_B, SLOT_C],
+                "one drain removes only the pending slot"
+            );
+            let visible = visible_ids(&drained);
+            assert!(!visible.contains(&SLOT_A));
+            assert!(visible.contains(&SLOT_B) && visible.contains(&SLOT_C));
+            assert_eq!(
+                slot_removed_calls(&drained),
+                0,
+                "the deferred path must not call guest slot_removed"
+            );
+        }
+
+        let hold = lock_running(&running);
+        remove_host_slot(plugin_map, SLOT_B);
+        assert_eq!(slot_ids(&hold), vec![SLOT_B, SLOT_C]);
+        drop(hold);
+        let observed = running.lock().unwrap();
+        assert_eq!(
+            slot_ids(&observed),
+            vec![SLOT_C],
+            "releasing the guest lock drains the pending removal and leaves the other slot"
+        );
+        assert_eq!(visible_ids(&observed), HashSet::from([SLOT_C]));
+        assert_eq!(slot_removed_calls(&observed), 0);
     }
 }

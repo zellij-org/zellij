@@ -13,7 +13,7 @@ use crate::plugins::plugin_map::{
 use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
 use crate::plugins::settings_entries::{PluginIdentity, SettingsEntries};
 use crate::plugins::shared::{
-    add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
+    add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job, lock_running,
     remove_slot_job, resize_job, revoke_client_loads, revoke_plugin_loads, start_instance_job,
     take_client_data_dirs, try_lock_running, visibility_job, wasm_module_exports_function,
     SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
@@ -1848,11 +1848,7 @@ impl WasmBridge {
             .collect();
         for (plugin_id, client_id, running_plugin) in plugins_to_resize {
             if plugin_id == pid {
-                let event_id = running_plugin
-                    .lock()
-                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                    .unwrap()
-                    .next_event_id(AtomicEvent::Resize);
+                let event_id = lock_running(&running_plugin).next_event_id(AtomicEvent::Resize);
                 // Execute directly on pinned thread (no async I/O needed for resize/render)
                 self.plugin_executor.execute_for_plugin_with(
                     plugin_id,
@@ -1863,7 +1859,7 @@ impl WasmBridge {
                         let running_plugin = running_plugin.clone();
                         let _s = shutdown_sender.clone();
                         move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let mut running_plugin = running_plugin.lock().unwrap();
+                            let mut running_plugin = lock_running(&running_plugin);
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             if !running_plugin.is_active() {
                                 return;
@@ -2042,7 +2038,7 @@ impl WasmBridge {
                                             return;
                                         }
                                     }
-                                    let mut running_plugin = running_plugin.lock().unwrap();
+                                    let mut running_plugin = lock_running(&running_plugin);
                                     if !running_plugin.is_active() {
                                         return;
                                     }
@@ -2130,9 +2126,7 @@ impl WasmBridge {
                 .unwrap()
                 .shared_running_plugin(instance_id)
                 .map(|(running_plugin, _)| {
-                    running_plugin
-                        .lock()
-                        .unwrap()
+                    lock_running(&running_plugin)
                         .store
                         .data()
                         .plugin_cwd
@@ -2147,14 +2141,7 @@ impl WasmBridge {
             .iter()
             .find_map(|(p_id, c_id, running_plugin)| {
                 if p_id == &plugin_id && c_id == &client_id {
-                    let plugin_cwd = running_plugin
-                        .lock()
-                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_cwd
-                        .clone();
+                    let plugin_cwd = lock_running(running_plugin).store.data().plugin_cwd.clone();
                     Some(plugin_cwd)
                 } else {
                     None
@@ -2188,7 +2175,7 @@ impl WasmBridge {
                     let Some(running_plugin) = running_plugin else {
                         return;
                     };
-                    let mut running_plugin = running_plugin.lock().unwrap();
+                    let mut running_plugin = lock_running(&running_plugin);
                     if !running_plugin.is_active() {
                         return;
                     }
@@ -2266,7 +2253,7 @@ impl WasmBridge {
                     for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change
                     {
                         if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
-                            let mut running_plugin = running_plugin.lock().unwrap();
+                            let mut running_plugin = lock_running(&running_plugin);
                             if !running_plugin.is_active() {
                                 continue;
                             }
@@ -2378,7 +2365,7 @@ impl WasmBridge {
                                   _connected_clients,
                                   _plugin_cache,
                                   _engine| {
-                                let mut running_plugin = running_plugin.lock().unwrap();
+                                let mut running_plugin = lock_running(&running_plugin);
                                 if !running_plugin.is_active() {
                                     return;
                                 }
@@ -2731,7 +2718,7 @@ impl WasmBridge {
                 .running_plugins_and_subscriptions()
                 .iter()
                 .find(|(pid, cid, _, _)| *pid == plugin_id && *cid == client_id)
-                .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.as_ref().clone())
+                .map(|(_, _, rp, _)| lock_running(rp).store.data().keybinds.as_ref().clone())
         };
         if let Some(keybinds) = keybinds {
             self.send_keybinds_payload_to_plugin(plugin_id, client_id, keybinds);
@@ -2949,7 +2936,7 @@ impl WasmBridge {
                     let default_shell = default_shell.clone();
                     let layout_dir = layout_dir.clone();
                     move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                        let mut running_plugin = running_plugin.lock().unwrap();
+                        let mut running_plugin = lock_running(&running_plugin);
                         if let Some(keybinds) = keybinds {
                             running_plugin.update_keybinds(keybinds);
                         }
@@ -3041,7 +3028,7 @@ impl WasmBridge {
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                                if !running_plugin.lock().unwrap().is_active() {
+                                if !lock_running(&running_plugin).is_active() {
                                     return;
                                 }
                                 for event_or_pipe_message in events_or_pipe_messages {
@@ -3065,7 +3052,7 @@ impl WasmBridge {
                                                         continue;
                                                     }
                                                     let mut running_plugin =
-                                                        running_plugin.lock().unwrap();
+                                                        lock_running(&running_plugin);
                                                     if !running_plugin.is_active() {
                                                         break;
                                                     }
@@ -3119,7 +3106,7 @@ impl WasmBridge {
                                             {
                                                 continue;
                                             }
-                                            let mut running_plugin = running_plugin.lock().unwrap();
+                                            let mut running_plugin = lock_running(&running_plugin);
                                             if !running_plugin.is_active() {
                                                 break;
                                             }
@@ -3357,7 +3344,7 @@ impl WasmBridge {
                     plugin_map.get_running_plugin(plugin_id, Some(client_id))
                 };
                 if let Some(running_plugin) = running_plugin {
-                    if !running_plugin.lock().unwrap().is_active() {
+                    if !lock_running(&running_plugin).is_active() {
                         // The instance was retired or quarantined after this message was
                         // queued. Do not cache it for a replacement that reused the same key.
                         return Ok(());
@@ -3479,7 +3466,7 @@ impl WasmBridge {
         let Some(running_plugin) = running_plugin else {
             return false;
         };
-        let running_plugin = running_plugin.lock().unwrap();
+        let running_plugin = lock_running(&running_plugin);
         let data = running_plugin.store.data();
         data.generation == generation && data.plugin_digest == digest
     }
@@ -3526,7 +3513,7 @@ impl WasmBridge {
         let Some(running_plugin) = running_plugin else {
             return false;
         };
-        let running_plugin = running_plugin.lock().unwrap();
+        let running_plugin = lock_running(&running_plugin);
         running_plugin.store.data().plugin_digest == prompt_digest
     }
     pub fn clear_permission_prompt(&mut self, plugin_id: PluginId) {
@@ -3562,7 +3549,7 @@ impl WasmBridge {
                 .ok_or_else(|| anyhow!("Failed to get running plugin"))?,
         };
 
-        let mut running_plugin = running_plugin.lock().unwrap();
+        let mut running_plugin = lock_running(&running_plugin);
 
         let mut runtime_permissions = running_plugin
             .store
@@ -3945,10 +3932,7 @@ impl WasmBridge {
             .map(|(_, _, running_plugin)| running_plugin)
             .collect();
         for running_plugin in running_plugins {
-            running_plugin
-                .lock()
-                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                .unwrap()
+            lock_running(&running_plugin)
                 .store
                 .data_mut()
                 .pending_popup_size = None;
@@ -4932,7 +4916,7 @@ impl WasmBridge {
         let running_plugins = self.plugin_map.lock().unwrap().running_plugins();
 
         for (plugin_id, client_id, running_plugin) in running_plugins {
-            let running_plugin = running_plugin.lock().unwrap();
+            let running_plugin = lock_running(&running_plugin);
             let plugin_env = &running_plugin.store.data();
             let current_config = &plugin_env.plugin.initial_userspace_configuration;
             let plugin_location = &plugin_env.plugin.location;
