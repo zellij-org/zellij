@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use zellij_utils::channels::{self, SenderWithContext};
-use zellij_utils::data::{Event, Palette};
+use zellij_utils::data::{
+    Event, GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, Palette,
+};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
@@ -36,6 +38,14 @@ struct MockOsApi {
     foreground_pgrp: Arc<Mutex<Option<i32>>>,
     /// Group-signal attempts `(signal, terminal_id)`. Not numeric shell kills.
     foreground_group_attempts: Arc<Mutex<Vec<(&'static str, u32)>>>,
+    /// Pids handed to cwd, command, or foreground-command lookups.
+    pid_lookups: Arc<Mutex<Vec<u32>>>,
+    /// Generation `bind_terminal_generation` recorded for each terminal.
+    bound_generations: Arc<Mutex<HashMap<u32, u64>>>,
+    /// Writes whose generation matched the bound run.
+    applied_writes: Arc<Mutex<Vec<(u32, Option<u64>, Vec<u8>)>>>,
+    /// Next `re_run_command_in_terminal` result: child pid and optional pidfd.
+    rerun_child: Arc<Mutex<Option<(u32, Option<ChildPidFd>)>>>,
 }
 
 impl MockOsApi {
@@ -52,7 +62,33 @@ impl MockOsApi {
             quit_cb: Arc::new(Mutex::new(None)),
             foreground_pgrp: Arc::new(Mutex::new(None)),
             foreground_group_attempts: Arc::new(Mutex::new(Vec::new())),
+            pid_lookups: Arc::new(Mutex::new(Vec::new())),
+            bound_generations: Arc::new(Mutex::new(HashMap::new())),
+            applied_writes: Arc::new(Mutex::new(Vec::new())),
+            rerun_child: Arc::new(Mutex::new(None)),
         }
+    }
+    fn bound_generation(&self, terminal_id: u32) -> Option<u64> {
+        self.bound_generations
+            .lock()
+            .unwrap()
+            .get(&terminal_id)
+            .copied()
+    }
+    fn applied_writes(&self) -> Vec<(u32, Option<u64>, Vec<u8>)> {
+        self.applied_writes.lock().unwrap().clone()
+    }
+    fn clear_applied_writes(&self) {
+        self.applied_writes.lock().unwrap().clear();
+    }
+    fn plan_rerun(&self, child_pid: u32, pidfd: Option<ChildPidFd>) {
+        *self.rerun_child.lock().unwrap() = Some((child_pid, pidfd));
+    }
+    fn pid_lookups(&self) -> Vec<u32> {
+        self.pid_lookups.lock().unwrap().clone()
+    }
+    fn clear_pid_lookups(&self) {
+        self.pid_lookups.lock().unwrap().clear();
     }
     fn signals(&self) -> Vec<(&'static str, u32)> {
         self.signals.lock().unwrap().clone()
@@ -149,6 +185,35 @@ impl ServerOsApi for MockOsApi {
     fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> anyhow::Result<usize> {
         Ok(buf.len())
     }
+    fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        self.bound_generations
+            .lock()
+            .unwrap()
+            .insert(terminal_id, generation);
+    }
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> anyhow::Result<usize> {
+        // Same gate as `ServerOsInputOutput::terminal_fd_for_run`: a stamped
+        // write applies only while the endpoint is still that generation.
+        let bound = self.bound_generation(terminal_id);
+        if let Some(expected) = generation {
+            if bound != Some(expected) {
+                return Err(anyhow::Error::new(
+                    crate::os_input_output::TerminalRunChangedBeforeWrite,
+                ));
+            }
+        }
+        self.applied_writes.lock().unwrap().push((
+            terminal_id,
+            generation,
+            buf.to_vec(),
+        ));
+        Ok(buf.len())
+    }
     fn tcdrain(&self, _: u32) -> anyhow::Result<()> {
         Ok(())
     }
@@ -209,9 +274,14 @@ impl ServerOsApi for MockOsApi {
         Palette::default()
     }
     fn get_cwd(&self, pid: u32) -> Option<PathBuf> {
+        self.pid_lookups.lock().unwrap().push(pid);
         self.cwds.lock().unwrap().get(&pid).cloned()
     }
     fn get_cwds(&self, pids: Vec<u32>) -> (HashMap<u32, PathBuf>, HashMap<u32, Vec<String>>) {
+        self.pid_lookups
+            .lock()
+            .unwrap()
+            .extend(pids.iter().copied());
         let cwds_lock = self.cwds.lock().unwrap();
         let cmds_lock = self.cmds.lock().unwrap();
         let cwds = pids
@@ -232,6 +302,10 @@ impl ServerOsApi for MockOsApi {
         panes: &[(u32, u32)],
         _: &Option<String>,
     ) -> HashMap<u32, Vec<String>> {
+        self.pid_lookups
+            .lock()
+            .unwrap()
+            .extend(panes.iter().map(|(_, shell_pid)| *shell_pid));
         let cmds_by_ppid = self.cmds_by_ppid.lock().unwrap();
         panes
             .iter()
@@ -249,10 +323,18 @@ impl ServerOsApi for MockOsApi {
         &self,
         _: u32,
         _: RunCommand,
-        _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
-        unimplemented!()
+        let Some((child_pid, pidfd)) = self.rerun_child.lock().unwrap().take() else {
+            unimplemented!("the test must plan the replacement run");
+        };
+        *self.quit_cb.lock().unwrap() = Some(quit_cb);
+        Ok((
+            Box::new(crate::os_input_output::NullAsyncReader),
+            Some(child_pid),
+            pidfd,
+        ))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> anyhow::Result<()> {
         self.cleared_terminal_ids.lock().unwrap().push(terminal_id);
@@ -273,9 +355,62 @@ fn make_pty_with_plugin_receiver(
 }
 
 fn set_active_terminal(pty: &mut Pty, terminal_id: u32, child_pid: u32) {
-    let flag = Arc::new(AtomicBool::new(true));
-    pty.id_to_child_pid.insert(terminal_id, child_pid);
-    pty.pane_activity_flags.insert(terminal_id, flag);
+    // Identity goes through the real registration path. The activity flag is
+    // what the reader would publish; these tests do not start one. The probe
+    // is set after registration so capture does not cache a cwd first.
+    let generation = pty.mint_run_generation();
+    pty.record_child_pid(terminal_id, child_pid, generation);
+    pty.panes
+        .get_mut(&terminal_id)
+        .and_then(|pane| pane.run.as_mut())
+        .expect("registration stores a run")
+        .activity = Some(Arc::new(AtomicBool::new(true)));
+    // The fixture means this number is still that task. Production learns
+    // the same fact from the spawn-time pidfd; tests inject the probe.
+    #[cfg(target_os = "linux")]
+    {
+        pty.test_shell_pid_probe = Some(Ok(()));
+    }
+}
+
+fn activity_flag(pty: &Pty, terminal_id: u32) -> Arc<AtomicBool> {
+    pty.panes
+        .get(&terminal_id)
+        .and_then(|pane| pane.run.as_ref())
+        .and_then(|run| run.activity.clone())
+        .unwrap_or_else(|| panic!("terminal {terminal_id} has no activity flag"))
+}
+
+fn stored_pid(pty: &Pty, terminal_id: u32) -> Option<u32> {
+    pty.panes
+        .get(&terminal_id)
+        .and_then(|pane| pane.run.as_ref())
+        .and_then(|run| run.child_pid)
+}
+
+fn stored_generation(pty: &Pty, terminal_id: u32) -> Option<u64> {
+    pty.panes
+        .get(&terminal_id)
+        .and_then(|pane| pane.run.as_ref())
+        .and_then(|run| run.generation)
+}
+
+fn generations_empty(pty: &Pty) -> bool {
+    !pty
+        .panes
+        .values()
+        .any(|pane| pane.run.as_ref().and_then(|run| run.generation).is_some())
+}
+
+#[cfg(target_os = "linux")]
+fn stored_pidfd_raw(pty: &Pty, terminal_id: u32) -> Option<std::os::fd::RawFd> {
+    pty.panes.get(&terminal_id).and_then(|pane| {
+        pane.run.as_ref().and_then(|run| {
+            run.pidfd
+                .as_ref()
+                .map(std::os::fd::AsRawFd::as_raw_fd)
+        })
+    })
 }
 
 fn collect_cwd_changed_events(
@@ -360,10 +495,7 @@ fn foreground_clearing_emits_shell_fallback() {
     assert_eq!(events[0].1, vec!["cargo", "build"]);
 
     mock.clear_foreground_cmd(child_pid);
-    pty.pane_activity_flags
-        .get(&1)
-        .unwrap()
-        .store(true, Ordering::Relaxed);
+    activity_flag(&pty, 1).store(true, Ordering::Relaxed);
 
     pty.update_and_report_cwds();
     let events = collect_command_changed_events(&rx);
@@ -386,10 +518,7 @@ fn no_event_when_foreground_unchanged() {
     pty.update_and_report_cwds();
     let _ = collect_command_changed_events(&rx);
 
-    pty.pane_activity_flags
-        .get(&1)
-        .unwrap()
-        .store(true, Ordering::Relaxed);
+    activity_flag(&pty, 1).store(true, Ordering::Relaxed);
     pty.update_and_report_cwds();
     let events = collect_command_changed_events(&rx);
     assert!(
@@ -405,10 +534,7 @@ fn no_event_for_inactive_terminal() {
     mock.set_foreground_cmd(child_pid, vec!["vim".into()]);
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
-    pty.pane_activity_flags
-        .get(&1)
-        .unwrap()
-        .store(false, Ordering::Relaxed);
+    activity_flag(&pty, 1).store(false, Ordering::Relaxed);
 
     pty.update_and_report_cwds();
     let events = collect_command_changed_events(&rx);
@@ -432,10 +558,7 @@ fn foreground_change_between_two_commands() {
     assert!(events[0].2);
 
     mock.set_foreground_cmd(child_pid, vec!["cargo".into(), "test".into()]);
-    pty.pane_activity_flags
-        .get(&1)
-        .unwrap()
-        .store(true, Ordering::Relaxed);
+    activity_flag(&pty, 1).store(true, Ordering::Relaxed);
 
     pty.update_and_report_cwds();
     let events = collect_command_changed_events(&rx);
@@ -452,19 +575,12 @@ fn activity_flag_reset_after_poll() {
     let child_pid = 100;
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
-    assert!(pty
-        .pane_activity_flags
-        .get(&1)
-        .unwrap()
-        .load(Ordering::Relaxed));
+    assert!(activity_flag(&pty, 1).load(Ordering::Relaxed));
 
     pty.update_and_report_cwds();
 
     assert!(
-        !pty.pane_activity_flags
-            .get(&1)
-            .unwrap()
-            .load(Ordering::Relaxed),
+        !activity_flag(&pty, 1).load(Ordering::Relaxed),
         "activity flag should be reset to false after poll"
     );
 }
@@ -479,10 +595,7 @@ fn multiple_terminals_only_active_ones_polled() {
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, pid_active);
     set_active_terminal(&mut pty, 2, pid_inactive);
-    pty.pane_activity_flags
-        .get(&2)
-        .unwrap()
-        .store(false, Ordering::Relaxed);
+    activity_flag(&pty, 2).store(false, Ordering::Relaxed);
 
     pty.update_and_report_cwds();
 
@@ -517,7 +630,7 @@ fn no_cwd_event_when_unchanged() {
     mock.set_cwd(child_pid, PathBuf::from("/home/user"));
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
-    pty.terminal_cwds.insert(1, PathBuf::from("/home/user"));
+    pty.panes.get_mut(&1).unwrap().cwd = Some(PathBuf::from("/home/user"));
 
     pty.update_and_report_cwds();
 
@@ -531,7 +644,6 @@ fn no_cwd_event_when_unchanged() {
 fn osc7_emits_cwd_changed() {
     let mock = MockOsApi::new();
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
-    pty.id_to_child_pid.insert(1, 100);
 
     pty.notify_cwd_from_osc7(1, PathBuf::from("/tmp/new"));
 
@@ -540,7 +652,7 @@ fn osc7_emits_cwd_changed() {
     assert_eq!(events[0].0, PaneId::Terminal(1));
     assert_eq!(events[0].1, PathBuf::from("/tmp/new"));
     assert_eq!(
-        pty.terminal_cwds.get(&1),
+        pty.panes.get(&1).and_then(|pane| pane.cwd.as_ref()),
         Some(&PathBuf::from("/tmp/new")),
         "cache should be updated"
     );
@@ -550,8 +662,7 @@ fn osc7_emits_cwd_changed() {
 fn osc7_no_event_when_unchanged() {
     let mock = MockOsApi::new();
     let (mut pty, rx) = make_pty_with_plugin_receiver(mock);
-    pty.id_to_child_pid.insert(1, 100);
-    pty.terminal_cwds.insert(1, PathBuf::from("/same"));
+    pty.panes.entry(1).or_default().cwd = Some(PathBuf::from("/same"));
 
     pty.notify_cwd_from_osc7(1, PathBuf::from("/same"));
 
@@ -563,9 +674,8 @@ fn osc7_no_event_when_unchanged() {
 fn osc7_clears_activity_flag() {
     let mock = MockOsApi::new();
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
-    let flag = Arc::new(AtomicBool::new(true));
-    pty.id_to_child_pid.insert(1, 100);
-    pty.pane_activity_flags.insert(1, flag.clone());
+    set_active_terminal(&mut pty, 1, 100);
+    let flag = activity_flag(&pty, 1);
 
     pty.notify_cwd_from_osc7(1, PathBuf::from("/new"));
 
@@ -788,7 +898,11 @@ fn closing_pane_removes_resurrect_command() {
         .unwrap();
     pty.close_pane(PaneId::Terminal(1)).unwrap();
 
-    assert!(!pty.resurrect_commands.contains_key(&1));
+    assert!(pty
+        .panes
+        .get(&1)
+        .and_then(|pane| pane.resurrect.as_ref())
+        .is_none());
 }
 
 #[test]
@@ -797,14 +911,17 @@ fn closing_pane_forgets_plugin_and_prompt_marker_state() {
     let child_pid = 100;
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
-    pty.terminals_with_prompt_markers.insert(1);
-    pty.originating_plugins
-        .insert(1, OriginatingPlugin::new(7, 0, Default::default()));
+    {
+        let pane = pty.panes.get_mut(&1).unwrap();
+        pane.prompt_markers = true;
+        pane.originating_plugin = Some(OriginatingPlugin::new(7, 0, Default::default()));
+    }
 
     pty.close_pane(PaneId::Terminal(1)).unwrap();
 
-    assert!(!pty.terminals_with_prompt_markers.contains(&1));
-    assert!(!pty.originating_plugins.contains_key(&1));
+    assert!(pty.panes.get(&1).is_none_or(|pane| {
+        !pane.prompt_markers && pane.originating_plugin.is_none()
+    }));
 }
 
 #[test]
@@ -838,7 +955,7 @@ fn resurrect_command_for_unknown_terminal_is_rejected() {
     let result = pty.set_resurrect_command(7, Some(resurrect_command("opencode", vec![], None)));
 
     assert!(result.is_err());
-    assert!(pty.resurrect_commands.is_empty());
+    assert!(pty.panes.values().all(|pane| pane.resurrect.is_none()));
 }
 
 #[test]
@@ -853,30 +970,32 @@ fn a_late_exit_from_a_replaced_run_does_not_erase_the_new_process() {
 
     pty.clear_exited_process_identity(3, old_run);
     assert_eq!(
-        pty.id_to_child_pid.get(&3),
-        Some(&200),
+        stored_pid(&pty, 3),
+        Some(200),
         "the replacement run's process must stay addressable"
     );
 
     pty.clear_exited_process_identity(3, new_run);
-    assert_eq!(pty.id_to_child_pid.get(&3), None);
-    assert!(pty.child_run_generations.is_empty());
+    assert_eq!(stored_pid(&pty, 3), None);
+    assert!(generations_empty(&pty));
 }
 
 #[test]
 fn a_held_pane_still_accepts_a_resurrect_command() {
     // Forgetting the exited process must not make the held pane itself
-    // unknown: its terminal lives until the pane is closed.
-    let (mut pty, _plugin_rx) = make_pty_with_plugin_receiver(MockOsApi::new());
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .unwrap();
-    pty.task_handles.insert(5, runtime.spawn(async {}));
-    let run = pty.mint_run_generation();
-    pty.record_child_pid(5, 500, run);
-    pty.clear_exited_process_identity(5, run);
-    assert_eq!(pty.id_to_child_pid.get(&5), None);
-    assert!(pty.set_resurrect_command(5, None).is_ok());
+    // unknown: its reader, started by the real registration path, lives
+    // until the pane is closed.
+    let (mut pty, _mock, quit_cb) = spawn_plain_command(500);
+    quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
+    handle_forget_requests(&mut pty);
+    assert_eq!(stored_pid(&pty, 7), None);
+    assert!(pty
+        .panes
+        .get(&7)
+        .and_then(|pane| pane.run.as_ref())
+        .and_then(|run| run.task.as_ref())
+        .is_some());
+    assert!(pty.set_resurrect_command(7, None).is_ok());
     assert!(pty.set_resurrect_command(6, None).is_err());
 }
 
@@ -886,10 +1005,10 @@ fn forgetting_a_child_drops_its_run_generation() {
     let run = pty.mint_run_generation();
     pty.record_child_pid(4, 400, run);
     assert_eq!(pty.forget_child_pid(4), Some(400));
-    assert!(pty.child_run_generations.is_empty());
+    assert!(generations_empty(&pty));
     // A notification for the forgotten run is a no-op.
     pty.clear_exited_process_identity(4, run);
-    assert_eq!(pty.id_to_child_pid.get(&4), None);
+    assert_eq!(stored_pid(&pty, 4), None);
 }
 
 /// Spawns a plain (not held) command through the mock, which hands out the
@@ -943,7 +1062,7 @@ fn spawn_plain_command(
         )
         .unwrap();
     assert_eq!(terminal_id, 7);
-    assert_eq!(pty.id_to_child_pid.get(&7), Some(&child_pid));
+    assert_eq!(stored_pid(&pty, 7), Some(child_pid));
     let quit_cb = mock.quit_cb.lock().unwrap().take().unwrap();
     (pty, mock, quit_cb)
 }
@@ -964,7 +1083,7 @@ fn clear_pane_process_identity_is_received_on_the_session_pty_bus() {
     // The exit callback must reach the receiver `init_session` gives the pty
     // thread. Installing a sender on an empty bus does not prove that.
     let (pty, _mock, quit_cb) = spawn_plain_command(4242);
-    let run_generation = pty.child_run_generations.get(&7).copied().unwrap();
+    let run_generation = stored_generation(&pty, 7).unwrap();
     quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
 
     let received = pty.bus.drain_available();
@@ -988,7 +1107,7 @@ fn close_pane_after_clear_pane_process_identity_does_not_kill() {
     let (mut pty, mock, quit_cb) = spawn_plain_command(4242);
     quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
     handle_forget_requests(&mut pty);
-    assert_eq!(pty.id_to_child_pid.get(&7), None);
+    assert_eq!(stored_pid(&pty, 7), None);
 
     pty.send_sigint_to_pane(PaneId::Terminal(7));
     pty.send_sigkill_to_pane(PaneId::Terminal(7));
@@ -1011,8 +1130,8 @@ fn close_pane_without_pidfd_does_not_kill() {
     // The mock spawn supplies a pid and no pidfd. Close must not numeric-kill.
     let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
     handle_forget_requests(&mut pty);
-    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
-    assert!(pty.child_pidfds.get(&7).is_none());
+    assert_eq!(stored_pid(&pty, 7), Some(4242));
+    assert!(stored_pidfd_raw(&pty, 7).is_none());
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert_eq!(mock.signals(), vec![]);
 }
@@ -1028,17 +1147,15 @@ fn close_pane_uses_the_supplied_pidfd_and_does_not_numeric_kill() {
         .expect("open /dev/null")
         .into();
     let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
-    let generation = pty.child_run_generations.get(&7).copied().unwrap();
+    let generation = stored_generation(&pty, 7).unwrap();
     pty.remember_run(7, Some(4242), Some(fd), generation);
     assert_eq!(
-        pty.child_pidfds
-            .get(&7)
-            .map(std::os::fd::AsRawFd::as_raw_fd),
+        stored_pidfd_raw(&pty, 7),
         Some(raw)
     );
     pty.close_pane(PaneId::Terminal(7)).unwrap();
-    assert!(pty.child_pidfds.get(&7).is_none());
-    assert_eq!(pty.id_to_child_pid.get(&7), None);
+    assert!(stored_pidfd_raw(&pty, 7).is_none());
+    assert_eq!(stored_pid(&pty, 7), None);
     assert_eq!(mock.signals(), vec![]);
 }
 
@@ -1049,8 +1166,8 @@ fn sigint_and_sigkill_without_a_pidfd_do_not_numeric_kill() {
     // unset, so tcgetpgrp is None. Neither signal may fall back to kill(pid).
     let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
     handle_forget_requests(&mut pty);
-    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
-    assert!(pty.child_pidfds.get(&7).is_none());
+    assert_eq!(stored_pid(&pty, 7), Some(4242));
+    assert!(stored_pidfd_raw(&pty, 7).is_none());
     assert_eq!(*mock.foreground_pgrp.lock().unwrap(), None);
 
     pty.send_sigint_to_pane(PaneId::Terminal(7));
@@ -1061,7 +1178,7 @@ fn sigint_and_sigkill_without_a_pidfd_do_not_numeric_kill() {
         vec![("SIGINT", 7), ("SIGKILL", 7)]
     );
     assert_eq!(mock.signals(), vec![]);
-    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
+    assert_eq!(stored_pid(&pty, 7), Some(4242));
 }
 
 #[test]
@@ -1076,7 +1193,7 @@ fn sigint_and_sigkill_use_the_stored_pidfd_when_tcgetpgrp_is_none() {
         .expect("open /dev/null")
         .into();
     let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
-    let generation = pty.child_run_generations.get(&7).copied().unwrap();
+    let generation = stored_generation(&pty, 7).unwrap();
     pty.remember_run(7, Some(4242), Some(fd), generation);
     assert_eq!(*mock.foreground_pgrp.lock().unwrap(), None);
 
@@ -1084,9 +1201,7 @@ fn sigint_and_sigkill_use_the_stored_pidfd_when_tcgetpgrp_is_none() {
     pty.send_sigkill_to_pane(PaneId::Terminal(7));
 
     assert_eq!(
-        pty.child_pidfds
-            .get(&7)
-            .map(std::os::fd::AsRawFd::as_raw_fd),
+        stored_pidfd_raw(&pty, 7),
         Some(raw)
     );
     assert_eq!(
@@ -1094,6 +1209,168 @@ fn sigint_and_sigkill_use_the_stored_pidfd_when_tcgetpgrp_is_none() {
         vec![("SIGINT", 7), ("SIGKILL", 7)]
     );
     assert_eq!(mock.signals(), vec![]);
+}
+
+#[cfg(target_os = "linux")]
+fn devnull_pidfd() -> ChildPidFd {
+    std::fs::File::open("/dev/null")
+        .expect("open /dev/null")
+        .into()
+}
+
+#[cfg(target_os = "linux")]
+fn query_cwd_and_command(pty: &Pty) -> (GetPaneCwdResponse, GetPaneRunningCommandResponse) {
+    (
+        pty.get_pane_cwd(PaneId::Terminal(7)),
+        pty.get_pane_running_command(PaneId::Terminal(7)),
+    )
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn numeric_shell_lookup_requires_a_successful_probe() {
+    assert!(
+        !numeric_shell_lookup_allowed(None),
+        "no stored pidfd is not a live task"
+    );
+    assert!(!numeric_shell_lookup_allowed(Some(Err(libc::ESRCH))));
+    assert!(
+        !numeric_shell_lookup_allowed(Some(Err(libc::EBADF))),
+        "a non-pidfd's EBADF is not proof the pid is still that process"
+    );
+    assert!(!numeric_shell_lookup_allowed(Some(Err(libc::ENOTTY))));
+    assert!(numeric_shell_lookup_allowed(Some(Ok(()))));
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn stored_pid_without_a_live_pidfd_is_not_looked_up() {
+    // The mock will answer for this pid. A query that reaches it would
+    // report that answer, which is how a reused pid leaks into the pane.
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    mock.set_cwd(4242, PathBuf::from("/tmp/stolen"));
+    mock.set_cmd(4242, vec!["stolen".into()]);
+    mock.set_foreground_cmd(4242, vec!["stolen-fg".into()]);
+    let not_running = (
+        GetPaneCwdResponse::Err("Terminal pane 7 not found or not running".to_string()),
+        GetPaneRunningCommandResponse::Err("Terminal pane 7 not found or not running".to_string()),
+    );
+
+    assert!(stored_pidfd_raw(&pty, 7).is_none());
+    mock.clear_pid_lookups();
+    assert_eq!(query_cwd_and_command(&pty), not_running);
+    assert!(
+        mock.pid_lookups().is_empty(),
+        "absent pidfd must not look up the stored number"
+    );
+
+    let fd = devnull_pidfd();
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+    let generation = stored_generation(&pty, 7).unwrap();
+    pty.remember_run(7, Some(4242), Some(fd), generation);
+    // No injected probe: signal 0 on `/dev/null` fails with EBADF (or
+    // ENOTTY). That is not a live pidfd.
+    pty.test_shell_pid_probe = None;
+    mock.clear_pid_lookups();
+    assert_eq!(query_cwd_and_command(&pty), not_running);
+    assert!(
+        mock.pid_lookups().is_empty(),
+        "a non-pidfd stand-in must not authorize a numeric lookup"
+    );
+
+    pty.test_shell_pid_probe = Some(Err(libc::ESRCH));
+    mock.clear_pid_lookups();
+    assert_eq!(query_cwd_and_command(&pty), not_running);
+    assert!(
+        mock.pid_lookups().is_empty(),
+        "ESRCH means the task is gone; the number must not be looked up"
+    );
+    assert_eq!(
+        stored_pidfd_raw(&pty, 7),
+        Some(raw),
+        "the probe borrows the pidfd"
+    );
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn stored_pidfd_with_a_live_probe_allows_cwd_and_command_lookup() {
+    // `/dev/null` is not a pidfd. The successful probe is injected so this
+    // test does not call `pidfd_open` and does not treat the stand-in as live.
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    mock.set_cwd(4242, PathBuf::from("/tmp/real"));
+    mock.set_cmd(4242, vec!["bash".into()]);
+    mock.set_foreground_cmd(4242, vec!["vim".into()]);
+    let fd = devnull_pidfd();
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+    let generation = stored_generation(&pty, 7).unwrap();
+    pty.remember_run(7, Some(4242), Some(fd), generation);
+    pty.test_shell_pid_probe = Some(Ok(()));
+    mock.clear_pid_lookups();
+
+    assert_eq!(
+        pty.get_pane_cwd(PaneId::Terminal(7)),
+        GetPaneCwdResponse::Ok(PathBuf::from("/tmp/real"))
+    );
+    assert_eq!(
+        pty.get_pane_running_command(PaneId::Terminal(7)),
+        GetPaneRunningCommandResponse::Ok(vec!["vim".into()])
+    );
+    assert_eq!(mock.pid_lookups(), vec![4242, 4242, 4242]);
+    assert_eq!(
+        stored_pidfd_raw(&pty, 7),
+        Some(raw),
+        "the probe borrows the pidfd"
+    );
+    assert_eq!(mock.signals(), vec![]);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn a_failed_probe_blocks_layout_cwd_and_pid_reports() {
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    mock.set_cwd(4242, PathBuf::from("/tmp/stolen"));
+    mock.set_cmd(4242, vec!["stolen".into()]);
+    mock.set_foreground_cmd(4242, vec!["stolen-fg".into()]);
+    let fd = devnull_pidfd();
+    let generation = stored_generation(&pty, 7).unwrap();
+    pty.remember_run(7, Some(4242), Some(fd), generation);
+    pty.panes
+        .get_mut(&7)
+        .and_then(|pane| pane.run.as_mut())
+        .unwrap()
+        .activity = Some(Arc::new(AtomicBool::new(true)));
+    pty.test_shell_pid_probe = Some(Err(libc::ESRCH));
+    mock.clear_pid_lookups();
+
+    pty.update_and_report_cwds();
+    let mut meta = session_with_terminal_pane(7);
+    pty.populate_session_layout_metadata(&mut meta);
+    assert_eq!(
+        pty.get_pane_pid(PaneId::Terminal(7)),
+        GetPanePidResponse::Err("Terminal pane 7 not found or not running".to_string())
+    );
+    assert_eq!(
+        query_cwd_and_command(&pty),
+        (
+            GetPaneCwdResponse::Err("Terminal pane 7 not found or not running".to_string()),
+            GetPaneRunningCommandResponse::Err(
+                "Terminal pane 7 not found or not running".to_string()
+            ),
+        )
+    );
+    assert!(
+        mock.pid_lookups().is_empty(),
+        "cwd refresh, layout serialization, and pid/cwd/command queries must not read the stored number"
+    );
+    assert!(pty
+        .panes
+        .get(&7)
+        .and_then(|pane| pane.cwd.as_ref())
+        .is_none());
 }
 
 #[test]
@@ -1324,10 +1601,20 @@ fn a_mid_layout_spawn_failure_rolls_everything_back_without_stopping_the_pty_thr
         "the completion must carry the layout spawn failure: {:?}",
         result.error_message
     );
+    // The mock spawn does not return a pidfd. On Linux a close then
+    // refuses a numeric SIGHUP. The pane is still dropped: the terminal id
+    // is cleared and the writer run is forgotten below.
+    #[cfg(target_os = "linux")]
+    assert!(
+        mock.signals().is_empty(),
+        "linux must not numeric-kill a layout pane that has no pidfd: {:?}",
+        mock.signals()
+    );
+    #[cfg(not(target_os = "linux"))]
     assert_eq!(
         mock.signals(),
         vec![("SIGHUP", 4242)],
-        "the pane spawned before the failure must be terminated"
+        "without pidfds the stored pid is still signaled"
     );
     assert_eq!(
         mock.cleared_terminal_ids(),
@@ -1434,5 +1721,233 @@ fn command_not_found_layout_panes_are_stamped_and_get_a_close_event() {
     assert!(screen_instructions.iter().any(|instruction| matches!(
         instruction,
         ScreenInstruction::ClosePane(PaneId::Terminal(8), _, _, _, _, Some(1))
+    )));
+}
+
+#[test]
+fn reader_eof_does_not_clear_process_identity_or_count_as_child_exit() {
+    // The reader reaching EOF reports `PtyRunDrained`. The child exit is a
+    // separate quit callback. Draining must not forget the pid.
+    let mock = MockOsApi::new();
+    *mock.spawn_pid.lock().unwrap() = Some(4242);
+    let (to_pty_tx, pty_receiver) = channels::unbounded();
+    let to_pty = SenderWithContext::new(to_pty_tx);
+    let (screen_tx, screen_rx) = channels::unbounded();
+    let screen_sender = SenderWithContext::new(screen_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_receiver],
+        Some(&screen_sender),
+        Some(&to_pty),
+        None,
+        None,
+        None,
+        None,
+        Some(Box::new(mock.clone())),
+    )
+    .should_silently_fail();
+    let mut pty = Pty::new(bus, false, None, None, Default::default());
+    let generation = pty.mint_run_generation();
+    pty.spawn_terminal(
+        Some(TerminalAction::RunCommand(RunCommand {
+            command: PathBuf::from("true"),
+            ..Default::default()
+        })),
+        ClientTabIndexOrPaneId::TabIndex(0),
+        None,
+        generation,
+    )
+    .unwrap();
+    let quit_cb = mock.quit_cb.lock().unwrap().take().unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut saw_drained = false;
+    let mut saw_exit = false;
+    while std::time::Instant::now() < deadline {
+        match screen_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok((ScreenInstruction::PtyRunDrained(7, drained_generation), _)) => {
+                assert_eq!(drained_generation, generation);
+                saw_drained = true;
+                break;
+            },
+            Ok((ScreenInstruction::ChildRunExited { .. }, _)) => {
+                saw_exit = true;
+                break;
+            },
+            Ok(_) => {},
+            Err(_) => {},
+        }
+    }
+    assert!(saw_drained, "reader EOF must report PtyRunDrained");
+    assert!(!saw_exit, "reader EOF is not a child exit");
+    assert_eq!(stored_pid(&pty, 7), Some(4242));
+    assert!(
+        !pty
+            .bus
+            .drain_available()
+            .iter()
+            .any(|instruction| matches!(instruction, PtyInstruction::ClearPaneProcessIdentity(..))),
+        "reader EOF must not forget the child"
+    );
+
+    quit_cb(PaneId::Terminal(7), Some(9), RunCommand::default());
+    let mut saw_child_exit = false;
+    while let Ok((instruction, _)) = screen_rx.try_recv() {
+        if let ScreenInstruction::ChildRunExited {
+            pane_id,
+            run_generation,
+            ..
+        } = instruction
+        {
+            assert_eq!(pane_id, PaneId::Terminal(7));
+            assert_eq!(run_generation, generation);
+            saw_child_exit = true;
+        }
+    }
+    assert!(saw_child_exit, "the quit callback is the child-exit path");
+    assert_eq!(
+        stored_pid(&pty, 7),
+        Some(4242),
+        "exit is applied on the pty thread, not inside the callback"
+    );
+    handle_forget_requests(&mut pty);
+    assert_eq!(stored_pid(&pty, 7), None);
+}
+
+#[test]
+fn a_replaced_run_keeps_one_record_and_rejects_the_old_write_and_signal() {
+    let mock = MockOsApi::new();
+    *mock.spawn_pid.lock().unwrap() = Some(100);
+    #[cfg(target_os = "linux")]
+    let (replacement_pidfd, replacement_raw) = {
+        let fd = devnull_pidfd();
+        let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+        (Some(fd), Some(raw))
+    };
+    #[cfg(not(target_os = "linux"))]
+    let replacement_pidfd = None;
+    mock.plan_rerun(200, replacement_pidfd);
+
+    let (to_pty_tx, pty_receiver) = channels::unbounded();
+    let to_pty = SenderWithContext::new(to_pty_tx);
+    let (writer_tx, writer_rx) = channels::unbounded();
+    let writer_sender: SenderWithContext<PtyWriteInstruction> = SenderWithContext::new(writer_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_receiver],
+        None,
+        Some(&to_pty),
+        None,
+        None,
+        Some(&writer_sender),
+        None,
+        Some(Box::new(mock.clone())),
+    )
+    .should_silently_fail();
+    let mut pty = Pty::new(bus, false, None, None, Default::default());
+    let run_command = RunCommand {
+        command: PathBuf::from("true"),
+        ..Default::default()
+    };
+    let old_generation = pty.mint_run_generation();
+    let (terminal_id, _) = pty
+        .spawn_terminal(
+            Some(TerminalAction::RunCommand(run_command.clone())),
+            ClientTabIndexOrPaneId::TabIndex(0),
+            None,
+            old_generation,
+        )
+        .unwrap();
+    assert_eq!(terminal_id, 7);
+    let old_quit = mock.quit_cb.lock().unwrap().take().unwrap();
+    assert_eq!(stored_pid(&pty, 7), Some(100));
+    assert_eq!(stored_generation(&pty, 7), Some(old_generation));
+    assert!(
+        pty.panes
+            .get(&7)
+            .and_then(|pane| pane.run.as_ref())
+            .and_then(|run| run.task.as_ref())
+            .is_some(),
+        "spawn registers one run and its reader"
+    );
+    assert_eq!(
+        pty.panes.values().filter(|pane| pane.run.is_some()).count(),
+        1
+    );
+    assert_eq!(mock.bound_generation(7), Some(old_generation));
+    mock.clear_applied_writes();
+    mock.write_to_tty_stdin_for_run(7, Some(old_generation), b"old")
+        .unwrap();
+
+    let new_generation = pty.mint_run_generation();
+    pty.rerun_command_in_pane(PaneId::Terminal(7), run_command, new_generation)
+        .unwrap();
+
+    assert_eq!(stored_pid(&pty, 7), Some(200));
+    assert_eq!(stored_generation(&pty, 7), Some(new_generation));
+    assert!(
+        pty.panes
+            .get(&7)
+            .and_then(|pane| pane.run.as_ref())
+            .and_then(|run| run.task.as_ref())
+            .is_some(),
+        "the replacement has its own reader"
+    );
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        stored_pidfd_raw(&pty, 7),
+        replacement_raw,
+        "the run record holds the replacement pidfd, not a second map entry"
+    );
+    assert_eq!(
+        pty.panes.values().filter(|pane| pane.run.is_some()).count(),
+        1
+    );
+    assert_eq!(mock.bound_generation(7), Some(new_generation));
+
+    mock.clear_applied_writes();
+    assert!(
+        mock.write_to_tty_stdin_for_run(7, Some(old_generation), b"stale")
+            .is_err(),
+        "a write stamped for the old run must not apply to the replacement"
+    );
+    assert!(mock.applied_writes().is_empty());
+    mock.write_to_tty_stdin_for_run(7, Some(new_generation), b"new")
+        .unwrap();
+    assert_eq!(mock.applied_writes()[0].2, b"new");
+
+    pty.send_sigint_to_pane(PaneId::Terminal(7));
+    #[cfg(target_os = "linux")]
+    {
+        assert!(
+            mock.signals().is_empty(),
+            "the signal uses the replacement pidfd, not the old pid: {:?}",
+            mock.signals()
+        );
+        assert_eq!(stored_pid(&pty, 7), Some(200));
+    }
+    #[cfg(not(target_os = "linux"))]
+    assert_eq!(mock.signals(), vec![("SIGINT", 200)]);
+
+    old_quit(PaneId::Terminal(7), Some(0), RunCommand::default());
+    handle_forget_requests(&mut pty);
+    assert_eq!(
+        stored_pid(&pty, 7),
+        Some(200),
+        "the old run's exit must not clear the replacement"
+    );
+
+    let writer_instructions: Vec<PtyWriteInstruction> = std::iter::from_fn(|| {
+        writer_rx
+            .try_recv()
+            .ok()
+            .map(|(instruction, _)| instruction)
+    })
+    .collect();
+    assert!(writer_instructions.iter().any(|instruction| matches!(
+        instruction,
+        PtyWriteInstruction::AdoptRun(7, generation) if *generation == old_generation
+    )));
+    assert!(writer_instructions.iter().any(|instruction| matches!(
+        instruction,
+        PtyWriteInstruction::AdoptRun(7, generation) if *generation == new_generation
     )));
 }
