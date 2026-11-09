@@ -228,8 +228,12 @@ fn entry_line_label(words: &EntryWords, upgrade: Option<&Upgrade>) -> String {
 
 impl SetupScreen {
     pub fn new(auto_shown: bool, own_plugin_id: u32) -> Self {
+        Self::with_config(auto_shown, own_plugin_id, &read_config())
+    }
+
+    fn with_config(auto_shown: bool, own_plugin_id: u32, config: &ConfigSnapshot) -> Self {
         let mut keys = KeysScreen::new(true).as_setup_step();
-        keys.set_snapshot(&read_config());
+        keys.set_snapshot(config);
         let screen = SetupScreen {
             step: Step::Choose,
             auto_shown,
@@ -1503,7 +1507,7 @@ mod tests {
         }
         .with_upgrade(upgrade("0.46.0", "0.47.0"))
         .with_removes(vec!["/Users/me/Applications/Zellij.app".to_owned()]);
-        let mut screen = SetupScreen::new(false, 0);
+        let mut screen = SetupScreen::with_config(false, 0, &ConfigSnapshot::default());
         screen.status = Some(Status {
             items: vec![out_of_date],
             ..Status::default()

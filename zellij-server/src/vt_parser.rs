@@ -3,6 +3,7 @@ use std::str;
 const PARAMETER_LIMIT: usize = 32;
 const COLLECT_LIMIT: usize = 2;
 const OSC_FIELD_LIMIT: usize = 16;
+const OSC_BYTE_LIMIT: usize = 100 * 1024 * 1024;
 const FAST_SGR_LIMIT: usize = 31;
 const ESC: u8 = 0x1b;
 
@@ -252,6 +253,7 @@ pub struct Parser {
     collected_count: usize,
     overflowed: bool,
     osc: Vec<u8>,
+    osc_overflowed: bool,
     carry: [u8; 3],
     carry_len: usize,
     without_shortcuts: bool,
@@ -509,10 +511,14 @@ impl Parser {
 
     fn osc_start(&mut self) {
         self.osc.clear();
+        self.osc_overflowed = false;
         self.state = State::OscString;
     }
 
     fn osc_finish<H: Handler>(&self, handler: &mut H, ended_by_bell: bool) {
+        if self.osc_overflowed {
+            return;
+        }
         let mut fields: [&[u8]; OSC_FIELD_LIMIT] = [&[]; OSC_FIELD_LIMIT];
         let mut count = 0;
         for (slot, field) in fields.iter_mut().zip(self.osc.split(|&byte| byte == b';')) {
@@ -677,6 +683,11 @@ impl Parser {
                 self.enter_escape();
             },
             0x00..=0x1f => {},
+            _ if self.osc_overflowed => {},
+            _ if self.osc.len() >= OSC_BYTE_LIMIT => {
+                self.osc_overflowed = true;
+                self.osc = Vec::new();
+            },
             _ => self.osc.push(byte),
         }
     }
