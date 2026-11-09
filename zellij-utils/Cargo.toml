@@ -58,7 +58,7 @@ rusqlite = { version = "0.41", default-features = false, features = ["bundled", 
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["user", "fs", "hostname"] }
+nix = { workspace = true, features = ["user", "fs", "hostname", "socket", "poll"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }

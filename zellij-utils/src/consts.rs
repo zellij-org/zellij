@@ -188,22 +188,172 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     LocalSocketStream::connect(ns_name)
 }
 
+/// Outcome of one nonblocking Unix connect poll.
+///
+/// `so_error` is the raw `SO_ERROR` value (`0` means no pending error).
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UnixConnectPoll {
+    pollout: bool,
+    pollhup: bool,
+    pollerr: bool,
+    pollnval: bool,
+    so_error: i32,
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnixConnectReadiness {
+    Connected,
+    Pending,
+    Failed(i32),
+}
+
+/// Classify a nonblocking Unix connect after `poll` reports readiness.
+///
+/// `SO_ERROR == 0` with `POLLOUT` or `POLLHUP` is connected. macOS `poll` reports
+/// `POLLHUP` without `POLLOUT` while `SO_ERROR` is still 0 for a Unix socket that
+/// has connected and is waiting for `accept`. Treating that as a timeout drops a
+/// later `Connected` reply and the probe becomes `Unknown`.
+#[cfg(unix)]
+fn classify_unix_connect_readiness(poll: UnixConnectPoll) -> UnixConnectReadiness {
+    use nix::errno::Errno;
+
+    if poll.pollnval {
+        return UnixConnectReadiness::Failed(Errno::EBADF as i32);
+    }
+    if poll.so_error != 0 {
+        return match Errno::from_raw(poll.so_error) {
+            Errno::EINPROGRESS | Errno::EALREADY | Errno::EAGAIN | Errno::EINTR => {
+                UnixConnectReadiness::Pending
+            },
+            _ => UnixConnectReadiness::Failed(poll.so_error),
+        };
+    }
+    if poll.pollout || poll.pollhup {
+        UnixConnectReadiness::Connected
+    } else if poll.pollerr {
+        UnixConnectReadiness::Failed(Errno::EIO as i32)
+    } else {
+        UnixConnectReadiness::Pending
+    }
+}
+
+#[cfg(unix)]
+fn set_cloexec_and_nonblock(fd: &std::os::fd::OwnedFd) -> std::io::Result<()> {
+    use nix::fcntl::{fcntl, FcntlArg, FdFlag, OFlag};
+
+    let status = OFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFL)?);
+    fcntl(fd, FcntlArg::F_SETFL(status | OFlag::O_NONBLOCK))?;
+    let descriptor = FdFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFD)?);
+    fcntl(fd, FcntlArg::F_SETFD(descriptor | FdFlag::FD_CLOEXEC))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn clear_nonblock(fd: &std::os::fd::OwnedFd) -> std::io::Result<()> {
+    use nix::fcntl::{fcntl, FcntlArg, OFlag};
+
+    let status = OFlag::from_bits_truncate(fcntl(fd, FcntlArg::F_GETFL)?);
+    fcntl(fd, FcntlArg::F_SETFL(status.difference(OFlag::O_NONBLOCK)))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn wait_for_unix_connect(
+    fd: &std::os::fd::OwnedFd,
+    timeout: std::time::Duration,
+) -> std::io::Result<()> {
+    use nix::errno::Errno;
+    use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+    use nix::sys::socket::{getsockopt, sockopt};
+    use std::os::fd::AsFd;
+    use std::time::Instant;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "ipc connect timed out",
+            ));
+        }
+        let poll_timeout = PollTimeout::try_from(remaining).unwrap_or(PollTimeout::MAX);
+        let mut fds = [PollFd::new(fd.as_fd(), PollFlags::POLLOUT)];
+        match poll(&mut fds, poll_timeout) {
+            Err(Errno::EINTR) => continue,
+            Err(error) => return Err(error.into()),
+            Ok(0) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "ipc connect timed out",
+                ));
+            },
+            Ok(_) => {
+                let revents = fds[0].revents().unwrap_or(PollFlags::empty());
+                let so_error = getsockopt(fd, sockopt::SocketError)?;
+                match classify_unix_connect_readiness(UnixConnectPoll {
+                    pollout: revents.contains(PollFlags::POLLOUT),
+                    pollhup: revents.contains(PollFlags::POLLHUP),
+                    pollerr: revents.contains(PollFlags::POLLERR),
+                    pollnval: revents.contains(PollFlags::POLLNVAL),
+                    so_error,
+                }) {
+                    UnixConnectReadiness::Connected => return Ok(()),
+                    UnixConnectReadiness::Pending => continue,
+                    UnixConnectReadiness::Failed(code) => {
+                        return Err(std::io::Error::from_raw_os_error(code));
+                    },
+                }
+            },
+        }
+    }
+}
+
 /// Connect with an absolute wait bound. Session probes must use this so a full accept queue
 /// cannot stall past the remaining discovery deadline before a read timeout is installed.
+///
+/// The socket address is built with `sun_len` set, and a `POLLHUP` whose `SO_ERROR` is 0 is a
+/// completed connect. Both differ from interprocess 2.3's nonblocking connect on macOS, which
+/// can time out before a listening server replies `Connected`.
 #[cfg(unix)]
 pub fn ipc_connect_with_timeout(
     path: &std::path::Path,
     timeout: std::time::Duration,
 ) -> std::io::Result<interprocess::local_socket::Stream> {
-    use interprocess::{
-        local_socket::{prelude::*, ConnectOptions, GenericFilePath},
-        ConnectWaitMode,
+    use interprocess::local_socket::Stream as LocalSocketStream;
+    use nix::errno::Errno;
+    use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, UnixAddr};
+    use std::os::fd::{AsRawFd, OwnedFd};
+
+    if timeout.is_zero() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "ipc connect timed out",
+        ));
+    }
+    let address = UnixAddr::new(path)?;
+    let fd: OwnedFd = socket(
+        AddressFamily::Unix,
+        SockType::Stream,
+        SockFlag::empty(),
+        None,
+    )?;
+    set_cloexec_and_nonblock(&fd)?;
+    let in_progress = loop {
+        match connect(fd.as_raw_fd(), &address) {
+            Ok(()) => break false,
+            Err(Errno::EINTR) => continue,
+            Err(Errno::EINPROGRESS) | Err(Errno::EAGAIN) => break true,
+            Err(error) => return Err(error.into()),
+        }
     };
-    let fs_name = path.to_fs_name::<GenericFilePath>()?;
-    ConnectOptions::new()
-        .name(fs_name)
-        .wait_mode(ConnectWaitMode::Timeout(timeout))
-        .connect_sync()
+    if in_progress {
+        wait_for_unix_connect(&fd, timeout)?;
+    }
+    clear_nonblock(&fd)?;
+    Ok(LocalSocketStream::UdSocket(fd.into()))
 }
 
 /// Windows named-pipe connect does not honour `ConnectWaitMode::Timeout` the same way Unix does,
@@ -514,5 +664,69 @@ mod app_dir_tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o700);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pollhup_without_pollout_and_a_clear_so_error_is_connected() {
+        // interprocess 2.3 `wait_for_connect`: POLLHUP/POLLERR with SO_ERROR == 0
+        // falls through, then missing POLLOUT is a timeout. The probe maps that
+        // timeout to Unknown and never reads Connected. macOS poll does this for
+        // a Unix socket that has connected and is waiting in the accept queue.
+        fn legacy_interprocess_wait(
+            pollout: bool,
+            pollhup: bool,
+            pollerr: bool,
+            so_error: i32,
+        ) -> Result<(), &'static str> {
+            if pollhup || pollerr {
+                if so_error != 0 {
+                    return Err("socket error");
+                }
+            }
+            if !pollout {
+                return Err("timed out");
+            }
+            Ok(())
+        }
+
+        let pollout = false;
+        let pollhup = true;
+        let pollerr = false;
+        let so_error = 0;
+        assert_eq!(
+            legacy_interprocess_wait(pollout, pollhup, pollerr, so_error),
+            Err("timed out")
+        );
+        assert_eq!(
+            classify_unix_connect_readiness(UnixConnectPoll {
+                pollout,
+                pollhup,
+                pollerr,
+                pollnval: false,
+                so_error,
+            }),
+            UnixConnectReadiness::Connected
+        );
+        assert_eq!(
+            classify_unix_connect_readiness(UnixConnectPoll {
+                pollout: true,
+                pollhup: true,
+                pollerr: false,
+                pollnval: false,
+                so_error: nix::errno::Errno::ECONNREFUSED as i32,
+            }),
+            UnixConnectReadiness::Failed(nix::errno::Errno::ECONNREFUSED as i32)
+        );
+        assert!(matches!(
+            classify_unix_connect_readiness(UnixConnectPoll {
+                pollout: false,
+                pollhup: false,
+                pollerr: false,
+                pollnval: true,
+                so_error: 0,
+            }),
+            UnixConnectReadiness::Failed(_)
+        ));
     }
 }

@@ -868,13 +868,14 @@ pub fn delete_session(name: &str, force: bool) {
             }
         }
     }
-    if let Ok(index) = crate::session_index::SessionIndex::open_default() {
-        let _ = index.delete(name);
-    }
-    // Fence and remove under one per-session lock. A fence failure must not
-    // report success: the directory stays, and the process does not exit 0.
+    // Fence and remove under one per-session lock. The index row is removed
+    // only after that removal succeeds. A fence failure leaves the row, the
+    // directory stays, and the process does not exit 0.
     match remove_fenced_session_cache(&session_id) {
         Ok(SessionCacheRemoval::Removed) => {
+            if let Ok(index) = crate::session_index::SessionIndex::open_default() {
+                let _ = index.delete(name);
+            }
             println!("Session: {:?} successfully deleted.", name);
         },
         Ok(SessionCacheRemoval::NotFound) => {
@@ -2149,16 +2150,27 @@ mod session_entry_tests {
         use std::os::unix::ffi::OsStringExt;
 
         let directory = tempfile::tempdir().unwrap();
-        fs::write(
-            directory.path().join(OsString::from_vec(vec![b'n', 0xff])),
-            b"",
-        )
-        .unwrap();
+        // Linux accepts this name. APFS rejects it (illegal byte sequence) and
+        // cannot store a non-UTF-8 name another way; that platform still has to
+        // prove a regular file is not a session socket.
+        let non_utf8 = directory.path().join(OsString::from_vec(vec![b'n', 0xff]));
+        let created_non_utf8 = fs::write(&non_utf8, b"").is_ok();
         fs::write(directory.path().join("regular-file"), b"").unwrap();
 
-        for entry in fs::read_dir(directory.path()).unwrap() {
-            let entry = entry.unwrap();
-            assert!(session_socket_id(&entry).is_none());
+        if created_non_utf8 {
+            for entry in fs::read_dir(directory.path()).unwrap() {
+                let entry = entry.unwrap();
+                assert!(session_socket_id(&entry).is_none());
+            }
+        } else {
+            let regular = fs::read_dir(directory.path())
+                .unwrap()
+                .find_map(|entry| {
+                    let entry = entry.unwrap();
+                    (entry.file_name() == "regular-file").then_some(entry)
+                })
+                .unwrap();
+            assert!(session_socket_id(&regular).is_none());
         }
     }
 }
