@@ -390,11 +390,11 @@ impl KittyImageStore {
         let existing = self
             .images
             .get(&id)
-            .and_then(|stored| stored.image.scaled_variants.get(&key))
-            .map(|variant| variant.len())
+            .and_then(|stored| stored.derived.scaled_variants.get(&key))
+            .map(|variant| variant.bytes.len())
             .unwrap_or(0);
         let incoming = bytes.saturating_sub(existing);
-        self.evict_to_fit(incoming, Some(id));
+        self.evict_to_fit(incoming, Some(id), u64::MAX);
         self.total_bytes + incoming <= self.quota_bytes
     }
     pub fn clear_scaled_variants(&mut self, id: InternalImageId) {

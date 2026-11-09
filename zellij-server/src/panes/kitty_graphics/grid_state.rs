@@ -555,7 +555,6 @@ impl KittyGrid {
         self.kitty_image_store
             .borrow_mut()
             .add_placement_ref(internal);
-        self.prune_stale_image_references();
         Ok(dest_cells)
     }
     pub fn delete(

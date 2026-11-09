@@ -1950,9 +1950,6 @@ pub struct Grid {
     pub pending_nested_session_messages: Vec<NestedSessionMessage>,
     pub ui_components_enabled: bool,
     ui_component_bytes: Option<Vec<u8>>,
-    // whether `DCS z` (UI components, see crate::ui::components) is honoured: only the output of
-    // plugins is, anything a terminal program prints is untrusted
-    ui_components_enabled: bool,
     nested_frame_bytes: Option<Vec<u8>>,
     xtgettcap_bytes: Option<Vec<u8>>,
     style: Style,
@@ -2512,7 +2509,6 @@ impl Grid {
             pending_nested_session_messages: Vec::new(),
             ui_components_enabled: false,
             ui_component_bytes: None,
-            ui_components_enabled: false,
             nested_frame_bytes: None,
             xtgettcap_bytes: None,
             style,
@@ -8268,18 +8264,22 @@ impl Handler for Grid {
 
             // Set color index.
             b"4" => {
+                let mut changed = false;
                 let mut query_indices = Vec::new();
                 for chunk in params[1..].chunks(2) {
                     let index = chunk.get(0).and_then(|index| parse_number(index));
                     let color = chunk.get(1).and_then(|color| xparse_color(color));
                     if let (Some(i), Some(c)) = (index, color) {
                         self.changed_colors.get_or_insert([None; 256])[i as usize] = Some(c);
-                        return;
+                        changed = true;
                     } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
                         if let Some(index) = index {
                             query_indices.push(index);
                         }
                     }
+                }
+                if changed {
+                    self.output_buffer.update_all_lines();
                 }
                 if !query_indices.is_empty() {
                     // One OSC that names several registers is one query.
@@ -8448,29 +8448,22 @@ impl Handler for Grid {
                 // Reset all color indexes when no parameters are given.
                 if params.len() == 1 {
                     self.changed_colors = None;
+                    self.output_buffer.update_all_lines();
                     return;
                 }
 
                 // Reset color indexes given as parameters.
+                let mut changed = false;
                 for param in &params[1..] {
                     if let Some(index) = parse_number(param) {
                         if let Some(colors) = self.changed_colors.as_mut() {
                             colors[index as usize] = None;
+                            changed = true;
                         }
                     }
                 }
-
-                // Reset all color indexes when no parameters are given.
-                if params.len() == 1 {
-                    // TBD - reset all color changes - currently unsupported
-                    return;
-                }
-
-                // Reset color indexes given as parameters.
-                for param in &params[1..] {
-                    if let Some(_index) = parse_number(param) {
-                        // TBD - reset color index - currently unimplemented
-                    }
+                if changed {
+                    self.output_buffer.update_all_lines();
                 }
             },
 

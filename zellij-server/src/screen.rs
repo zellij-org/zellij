@@ -579,6 +579,7 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,        // regular completion signal
         Option<(u32, NotificationEnd)>, // blocking_terminal (terminal_id, completion_tx)
     ),
+    LayoutSpawnFailed(usize),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
     SwitchTabPrev(ClientId, Option<NotificationEnd>),
     ToggleActiveSyncTab(ClientId, Option<NotificationEnd>),
@@ -1575,7 +1576,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
-            ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
+            ScreenInstruction::ApplyLayout(..) | ScreenInstruction::LayoutSpawnFailed(..) => {
+                ScreenContext::ApplyLayout
+            },
             ScreenInstruction::SwitchTabNext(..) => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
@@ -11995,6 +11998,16 @@ fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
+const MAX_PENDING_TAB_EVENTS: usize = 1024;
+
+fn push_pending_tab_event(queue: &mut Vec<ScreenInstruction>, event: ScreenInstruction) {
+    if queue.len() < MAX_PENDING_TAB_EVENTS {
+        queue.push(event);
+    } else {
+        log::warn!("Dropping a tab-deferred screen instruction: queue is full");
+    }
+}
+
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
@@ -13778,11 +13791,10 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::ShowPluginCursor(
-                        pid,
-                        client_id,
-                        cursor_position,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position),
+                    );
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -13798,7 +13810,8 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab.push(
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
                         ScreenInstruction::SetMouseSelectionSupport(pid, selection_support),
                     );
                 }
@@ -14287,6 +14300,15 @@ pub(crate) fn screen_thread_main(
                     screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
+                screen.render(None)?;
+            },
+            ScreenInstruction::LayoutSpawnFailed(tab_index) => {
+                pending_tab_ids.remove(&tab_index);
+                if pending_tab_ids.is_empty() {
+                    for event in pending_events_waiting_for_tab.drain(..) {
+                        screen.bus.senders.send_to_screen(event).non_fatal();
+                    }
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::GoToTab(
@@ -17691,11 +17713,10 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabWithTabId(
-                        tab_id,
-                        direction,
-                        _completion_tx,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabWithTabId(tab_id, direction, _completion_tx),
+                    );
                 }
             },
             ScreenInstruction::MoveTabToPosition(tab_id, position, mut _completion_tx) => {
@@ -17709,11 +17730,10 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabToPosition(
-                        tab_id,
-                        position,
-                        _completion_tx,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabToPosition(tab_id, position, _completion_tx),
+                    );
                 }
             },
             ScreenInstruction::SetSoftKeyboard { client_id, on } => {

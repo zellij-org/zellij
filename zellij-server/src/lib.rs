@@ -1128,6 +1128,8 @@ impl SessionMetaData {
         ))
     }
     fn forget_window_client(&mut self, client_id: ClientId) {
+        self.current_input_modes.remove(&client_id);
+        self.remove_key_passthrough_client(client_id);
         self.sent_terminal_settings.remove(&client_id);
         self.font_families.remove(&client_id);
     }
@@ -1499,10 +1501,17 @@ fn remove_client_and_flush_forwards(
 ) {
     let _ = os_input.remove_client(client_id);
     let stuck_tokens = session_state.write().unwrap().remove_client(client_id);
-    if let Ok(mut session) = session_data.try_write() {
-        if let Some(session) = session.as_mut() {
-            session.forget_window_client(client_id);
-        }
+    match session_data.write() {
+        Ok(mut session) => {
+            if let Some(session) = session.as_mut() {
+                session.forget_window_client(client_id);
+            }
+        },
+        Err(error) => log::error!(
+            "Failed to clean up disconnected client {}: session lock poisoned: {}",
+            client_id,
+            error
+        ),
     }
     if stuck_tokens.is_empty() {
         return;
@@ -4162,9 +4171,6 @@ pub fn start_server_impl(
                     )),
                 );
             }
-        }
-        if let Some(session_data) = session_data.read().unwrap().as_ref() {
-            session_data.publish_live_view_release_keys();
         }
         let (instruction, mut err_ctx) = if let Some(instruction) = owner_followups.pop_front() {
             (instruction, zellij_utils::errors::ErrorContext::default())

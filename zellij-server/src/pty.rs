@@ -1498,9 +1498,14 @@ impl Pty {
         &mut self,
         error: anyError,
         terminal_ids: Vec<u32>,
+        tab_index: usize,
         mut completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         self.rollback_unapplied_layout_terminals(terminal_ids);
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::LayoutSpawnFailed(tab_index));
         if let Some(completion_tx) = completion_tx.as_mut() {
             completion_tx.set_error_message(format!("{error:#}"));
         }
@@ -1632,7 +1637,7 @@ impl Pty {
                 .chain(new_floating_panes_pids.iter())
                 .map(|pane| pane.0)
                 .collect();
-            return self.fail_layout_spawn(error, terminal_ids, completion_tx);
+            return self.fail_layout_spawn(error, terminal_ids, tab_index, completion_tx);
         }
 
         // Option<RunCommand> should only be Some if the pane starts held

@@ -3282,6 +3282,26 @@ impl Tab {
         let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.tiled_panes.remove_client(client_id);
+        self.current_pane_group
+            .borrow_mut()
+            .remove_client(&client_id);
+        self.cursor_positions_and_shape.remove(&client_id);
+        self.mouse_hover_pane_id.remove(&client_id);
+        self.plugin_hover_pane_id.remove(&client_id);
+        self.popup_hover_plugin_id.remove(&client_id);
+        self.last_hint_text.remove(&client_id);
+        self.last_active_pane_scroll.remove(&client_id);
+        if let Some(pane_id) = self.selecting_with_mouse_in_pane.remove(&client_id) {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.reset_selection(Some(client_id));
+            }
+        }
+        let had_mouse_press = self.mouse_press_owner.remove(&client_id).is_some();
+        if had_mouse_press && self.mouse_press_owner.is_empty() {
+            self.pane_being_resized_with_mouse = None;
+            self.floating_panes.forget_pane_being_moved_with_mouse();
+        }
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);

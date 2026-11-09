@@ -659,12 +659,12 @@ fn temp_file_inside_temp_dir_without_magic_name_is_not_deleted() {
     let path = dir.path().join("img.bin");
     std::fs::write(&path, &raster).unwrap();
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
 }
 
@@ -686,15 +686,15 @@ fn temp_file_path_escaping_temp_dir_is_not_deleted() {
     }
     escaping.push(victim.strip_prefix("/").unwrap());
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd(
             "a=T,f=24,s=2,v=2,t=t",
             escaping.to_str().unwrap().as_bytes(),
         ),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
 }
 
@@ -705,13 +705,10 @@ fn chunked_upload_exceeding_payload_cap_is_rejected() {
     assert!(parser
         .parse(&raw_cmd("a=t,f=32,s=1,v=1,i=7,m=1", b"AAAA"))
         .is_none());
-    let mut result = None;
-    for _ in 0..200 {
-        result = parser.parse(&raw_cmd("m=1", &chunk));
-        if result.is_some() {
-            break;
-        }
+    for _ in 0..5 {
+        assert!(parser.parse(&raw_cmd("m=1", &chunk)).is_none());
     }
+    let result = parser.parse(&raw_cmd("m=0", &chunk));
     let err = result.unwrap().unwrap_err();
     assert_eq!(err.code, KittyErrorCode::Einval);
     assert!(!parser.has_pending());

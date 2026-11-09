@@ -236,7 +236,13 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
             Ok(None) => {
                 thread::sleep(Duration::from_millis(10));
             },
-            Err(e) => panic!("error attempting to wait: {}", e),
+            Err(e) if e.raw_os_error() == Some(libc::ECHILD) => {
+                break 'handle_exit Ok(None);
+            },
+            Err(e) => {
+                log::error!("error attempting to wait on child {}: {}", id, e);
+                break 'handle_exit Err(e).with_context(err_context);
+            },
         }
 
         if !should_exit {
@@ -335,9 +341,13 @@ fn handle_openpty(
 
     let child_id = child.id();
     thread::spawn(move || {
-        let exit_status = handle_command_exit(child)
-            .with_context(|| err_context(&cmd))
-            .fatal();
+        let exit_status = match handle_command_exit(child).with_context(|| err_context(&cmd)) {
+            Ok(exit_status) => exit_status,
+            Err(error) => {
+                log::error!("{:?}", error);
+                None
+            },
+        };
         let _ = unistd::close(pid_secondary);
         quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
     });

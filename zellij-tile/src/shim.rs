@@ -3338,7 +3338,8 @@ pub fn toggle_pane_embed_or_eject_for_pane_id(pane_id: PaneId) {
 
 pub fn toggle_pane_embed_or_eject_for_pane_id_with_focus(pane_id: PaneId, show_and_focus: bool) {
     let plugin_command = PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, show_and_focus);
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().expect("PluginCommand→protobuf");
+    let protobuf_plugin_command: ProtobufPluginCommand =
+        plugin_command.try_into().expect("PluginCommand→protobuf");
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }

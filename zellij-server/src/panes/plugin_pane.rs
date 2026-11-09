@@ -1142,7 +1142,6 @@ mod loading_indication_tests {
             Rc::new(RefCell::new(KittyImageStore::default())),
             Rc::new(RefCell::new(Palette::default())),
             Rc::new(RefCell::new(HashMap::new())),
-            Rc::new(RefCell::new(LinkHandler::new())),
             Rc::new(RefCell::new(None)),
             clients,
             Style::default(),

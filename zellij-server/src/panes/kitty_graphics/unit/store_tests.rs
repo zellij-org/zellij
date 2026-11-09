@@ -162,7 +162,7 @@ fn remove_placement_ref_keeps_data_but_makes_image_evictable() {
 
 #[test]
 fn scaled_variant_reservation_respects_quota_when_images_are_pinned() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2000);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id_a);
     let key = super::ScaledImageKey {
@@ -170,7 +170,7 @@ fn scaled_variant_reservation_respects_quota_when_images_are_pinned() {
         size: (12, 12),
     };
     assert!(store.reserve_scaled_variant(id_a, key, 576));
-    assert!(!store.reserve_scaled_variant(id_a, key, 700));
+    assert!(!store.reserve_scaled_variant(id_a, key, 1200));
     assert!(!store.reserve_scaled_variant(id_a, key, usize::MAX));
 }
 

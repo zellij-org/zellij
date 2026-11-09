@@ -638,10 +638,12 @@ impl LineIndex {
             .is_some_and(|line| line.measured_width != Some(self.width))
     }
 
+    #[cfg(test)]
     pub(crate) fn front_line_row_count(&self) -> Option<usize> {
         self.lines.front().map(|line| line.row_count)
     }
 
+    #[cfg(test)]
     pub(crate) fn front_line_is_measured(&self) -> bool {
         self.lines
             .front()
@@ -663,6 +665,7 @@ impl LineIndex {
     /// Whether removing one row from the front keeps every summary exact.
     /// Uniform lines rebase cheaply and a one-row line disappears whole; a
     /// partial mixed-width cut has to remeasure from its new origin.
+    #[cfg(test)]
     pub(crate) fn front_row_cut_is_exact(&self) -> bool {
         self.lines.front().map_or(true, |line| {
             line.measured_width == Some(self.width)

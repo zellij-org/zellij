@@ -2914,6 +2914,7 @@ fn route_action_with_origin(
 
 const SESSION_READY_WAIT: Duration = Duration::from_secs(10);
 const SESSION_READY_POLL_INTERVAL: Duration = Duration::from_millis(5);
+const MAX_STARTUP_RETRY_QUEUE: usize = 1024;
 
 fn wait_for_session_to_be_ready(session_data: &Arc<RwLock<Option<SessionMetaData>>>) -> bool {
     let deadline = std::time::Instant::now() + SESSION_READY_WAIT;
@@ -2940,7 +2941,11 @@ macro_rules! send_to_screen_or_retry_queue {
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
-                    retry_queue.push_back($instruction);
+                    if retry_queue.len() < MAX_STARTUP_RETRY_QUEUE {
+                        retry_queue.push_back($instruction);
+                    } else {
+                        log::warn!("Startup retry queue is full; dropping an instruction");
+                    }
                 }
                 Ok(())
             },
@@ -2955,7 +2960,11 @@ macro_rules! send_to_screen_priority_or_retry_queue {
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
-                    retry_queue.push_back($instruction);
+                    if retry_queue.len() < MAX_STARTUP_RETRY_QUEUE {
+                        retry_queue.push_back($instruction);
+                    } else {
+                        log::warn!("Startup retry queue is full; dropping an instruction");
+                    }
                 }
                 Ok(())
             },
@@ -3560,6 +3569,15 @@ pub(crate) fn route_thread_main(
                             terminal_size,
                             is_web_client,
                         } => {
+                            if !wait_for_session_to_be_ready(&session_data) {
+                                let _ = to_server.send(ServerInstruction::LogError(
+                                    vec!["Session did not become ready for the watcher.".to_owned()],
+                                    client_id,
+                                    None,
+                                ));
+                                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                                return Ok(false);
+                            }
                             let allow_web_connections = session_data
                                 .read()
                                 .ok()
@@ -3887,7 +3905,6 @@ pub(crate) fn route_thread_main(
                         }
                         if index < retried_count {
                             log::warn!("Server ready, retrying sending instruction.");
-                            thread::sleep(Duration::from_millis(5));
                         }
                         let should_break = handle_instruction(
                             pending_instruction,

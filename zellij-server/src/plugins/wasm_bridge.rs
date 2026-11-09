@@ -1570,7 +1570,11 @@ impl WasmBridge {
             self.plugins_with_unfinished_load.insert(plugin_id);
             self.cached_resizes_for_pending_plugins
                 .insert(plugin_id, (rows, columns));
-            self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+            self.start_plugin_loading_indication_for_client(
+                plugin_id,
+                client_id,
+                &loading_indication,
+            );
             self.loading_plugins.insert((plugin_id, run_plugin.clone()));
 
             reservation.commit(Box::new(

@@ -86,13 +86,13 @@ pub enum PluginInstruction {
     Quarantine(PluginId, u64), // plugin id, generation of the instance that hit a fatal error
     SharedInstanceLoadFailed(PluginId),
     Reload(
-        Option<bool>,        // should float
-        Option<String>,      // pane title
+        Option<bool>,   // should float
+        Option<String>, // pane title
         RunPluginOrAlias,
-        usize,                // tab index
+        usize, // tab index
         Size,
         Option<NotificationEnd>,
-        Option<ClientId>,     // requester, when the reload carries one
+        Option<ClientId>, // requester, when the reload carries one
     ),
     ApplyTimer {
         plugin_id: PluginId,

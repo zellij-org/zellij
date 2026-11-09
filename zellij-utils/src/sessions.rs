@@ -3,8 +3,8 @@ use crate::ipc::IpcReceiverWithContext;
 use crate::{
     consts::{
         is_ipc_socket, session_deletion_tombstone_path, session_incarnation_path,
-        session_layout_cache_file_name,
-        session_publication_lock_path, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+        session_layout_cache_file_name, session_publication_lock_path,
+        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     data::SessionInfo,
     envs,

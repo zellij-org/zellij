@@ -3449,6 +3449,13 @@ impl TiledPanes {
                 .insert(client_id, to_pane_id, &mut self.panes);
         }
     }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        // Active/last focus is intentionally retained for an absent client:
+        // stack-list changes still move that client's focus, and a reconnect
+        // may reuse the entry. Only per-client geometry is session-lifetime
+        // state that cannot be reused after disconnect.
+        self.client_id_to_boundaries.remove(&client_id);
+    }
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
     }

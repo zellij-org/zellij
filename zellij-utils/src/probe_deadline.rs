@@ -215,7 +215,9 @@ fn observe_sessions_with_returns_when_blocking_sockets_honor_the_budget() {
     for index in 0..4 {
         let name = format!("blocked-{index}");
         let (_path, listener) = bind(dir.path(), &name);
-        servers.push(thread::spawn(move || hold_listener_until_peer_drops(listener)));
+        servers.push(thread::spawn(move || {
+            hold_listener_until_peer_drops(listener)
+        }));
         candidates.push((name.clone(), name, ()));
     }
     let started = Instant::now();

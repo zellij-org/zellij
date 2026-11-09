@@ -1601,6 +1601,7 @@ fn stage_and_commit_session_generation(
     })
 }
 
+#[cfg(test)]
 fn commit_staged_session_generation(
     session_id: &str,
     incarnation: u128,
@@ -1807,6 +1808,7 @@ fn stage_atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<tempfile:
     Ok(temporary_file)
 }
 
+#[cfg(test)]
 fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let file = stage_atomic_write(path, contents)?;
     persist_atomic_write(file, path)
