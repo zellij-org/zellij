@@ -1,3 +1,10 @@
+// Pure helper for the soft-keyboard committed-text contract: only backspace is
+// time-window deduped. Paste / insert / speech must never drop intentional
+// repeated characters merely because they match the previous char (#5826).
+export function shouldDedupeCommittedChar(ch, elapsedMs, dedupeMs) {
+    return ch === "\x7f" && elapsedMs < dedupeMs;
+}
+
 export function isCoarsePointerDevice() {
     if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
         return true;
@@ -127,17 +134,20 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     resetBaseline();
 
     // A single backspace tap fires two deleteContentBackward events ~5 ms apart;
-    // this dedupe window merges them into one \x7f.
-    let lastCh = null;
-    let lastChAt = 0;
-    const DEDUPE_MS = 8;
+    // this dedupe window merges them into one \x7f. It must NOT apply to inserted
+    // text: pastes and intentional repeated characters (e.g. "ssh", "&&") arrive
+    // in one input event and would otherwise lose every other identical char
+    // (#5826 vs the duplication fixes for #4987/#4423/#4840).
+    let lastBackspaceAt = 0;
+    const BACKSPACE_DEDUPE_MS = 8;
     const dispatchCh = (ch) => {
-        const now = performance.now();
-        if (ch === lastCh && now - lastChAt < DEDUPE_MS) {
-            return;
+        if (ch === "\x7f") {
+            const now = performance.now();
+            if (shouldDedupeCommittedChar(ch, now - lastBackspaceAt, BACKSPACE_DEDUPE_MS)) {
+                return;
+            }
+            lastBackspaceAt = now;
         }
-        lastCh = ch;
-        lastChAt = now;
         state.sendFn(ch);
     };
 

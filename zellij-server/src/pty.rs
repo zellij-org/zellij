@@ -2444,15 +2444,27 @@ impl Pty {
             .map(|os_input| os_input.get_foreground_cmds(&panes, &self.post_command_discovery_hook))
             .unwrap_or_default();
 
+        // Deliberate launch intent (layout / RunCommand / explicit resurrect
+        // command) is authoritative. Observed foreground PIDs are only a
+        // fallback for shell panes that have no saved launch intent — an
+        // ssh/nvim child must not replace the command the pane was started
+        // with (#5798/#4156/#3913, #4873/#4727/#3952).
+        let deliberate_launch =
+            session_layout_metadata.terminals_with_deliberate_launch_intent();
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
-            let cmd_sysinfo = process_id.and_then(|pid| pids_to_cmds.get(pid));
-            let cmd_foreground = foreground_cmds.get(&terminal_id);
-            if let Some(cmd) = cmd_foreground {
-                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
-            } else if let Some(cmd) = cmd_sysinfo {
-                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+            let has_explicit_resurrect = self.resurrect_commands.contains_key(&terminal_id);
+            let keep_deliberate =
+                deliberate_launch.contains_key(&terminal_id) && !has_explicit_resurrect;
+            if !keep_deliberate {
+                let cmd_sysinfo = process_id.and_then(|pid| pids_to_cmds.get(pid));
+                let cmd_foreground = foreground_cmds.get(&terminal_id);
+                if let Some(cmd) = cmd_foreground {
+                    terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+                } else if let Some(cmd) = cmd_sysinfo {
+                    terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+                }
             }
             if let Some(cwd) = cwd {
                 terminal_ids_to_cwds.insert(terminal_id, cwd.clone());

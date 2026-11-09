@@ -211,16 +211,159 @@ impl HostReply {
     }
 }
 
+/// Expected reply shape for an open forwarded-query slot (#5467).
+///
+/// Only matching host replies are re-serialized into `reply_bytes`.
+/// Unrelated replies (startup palette burst, theme notifications, etc.)
+/// still classify for Zellij's own cache but must not be delivered to the
+/// querying pane. Unrecognised query bytes fall back to [`Any`] so
+/// round-trips keep working while new shapes are taught.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectedForwardReply {
+    Any,
+    OscForeground,
+    OscBackground,
+    OscPalette { indices: Vec<usize> },
+    TextAreaPixels,
+    CharacterCellPixels,
+    Compound(Vec<ExpectedForwardReply>),
+}
+
+impl ExpectedForwardReply {
+    fn from_query_bytes(query: &[u8]) -> Self {
+        let mut parts = Vec::new();
+        let mut rest = query;
+        while !rest.is_empty() {
+            if rest.starts_with(b"\x1b]") {
+                let body = &rest[2..];
+                let bel = body.iter().position(|&b| b == 0x07);
+                let st = body.windows(2).position(|w| w == b"\x1b\\");
+                let (payload, consumed) = match (bel, st) {
+                    (Some(b), Some(s)) if b <= s => (&body[..b], 2 + b + 1),
+                    (Some(_), Some(s)) => (&body[..s], 2 + s + 2),
+                    (Some(b), None) => (&body[..b], 2 + b + 1),
+                    (None, Some(s)) => (&body[..s], 2 + s + 2),
+                    (None, None) => break,
+                };
+                if let Some(part) = Self::from_osc_query_payload(payload) {
+                    parts.push(part);
+                } else {
+                    return Self::Any;
+                }
+                rest = &rest[consumed..];
+            } else if rest.starts_with(b"\x1b[") {
+                let Some(end) = rest
+                    .iter()
+                    .position(|&b| matches!(b, b't' | b'n' | b'c' | b'y' | b'p' | b'R'))
+                else {
+                    break;
+                };
+                let seq = &rest[..=end];
+                if let Some(part) = Self::from_csi_query(seq) {
+                    parts.push(part);
+                } else if seq == PRIMARY_DA_QUERY {
+                    // Barrier appended by the client — ignore.
+                } else {
+                    return Self::Any;
+                }
+                rest = &rest[end + 1..];
+            } else {
+                return Self::Any;
+            }
+        }
+        match parts.len() {
+            0 => Self::Any,
+            1 => parts.pop().unwrap(),
+            _ => Self::Compound(parts),
+        }
+    }
+
+    fn from_osc_query_payload(payload: &[u8]) -> Option<Self> {
+        let s = std::str::from_utf8(payload).ok()?;
+        if s == "10;?" || s.starts_with("10;?") {
+            return Some(Self::OscForeground);
+        }
+        if s == "11;?" || s.starts_with("11;?") {
+            return Some(Self::OscBackground);
+        }
+        if let Some(rest) = s.strip_prefix("4;") {
+            let mut indices = Vec::new();
+            let mut fields = rest.split(';');
+            while let Some(index) = fields.next() {
+                let Some(mark) = fields.next() else {
+                    return None;
+                };
+                if mark != "?" {
+                    return None;
+                }
+                indices.push(index.parse().ok()?);
+            }
+            if indices.is_empty() {
+                return None;
+            }
+            return Some(Self::OscPalette { indices });
+        }
+        None
+    }
+
+    fn from_csi_query(seq: &[u8]) -> Option<Self> {
+        match seq {
+            b"\x1b[14t" => Some(Self::TextAreaPixels),
+            b"\x1b[16t" => Some(Self::CharacterCellPixels),
+            _ => None,
+        }
+    }
+
+    fn matches_osc_payload(&self, payload: &[u8]) -> bool {
+        match self {
+            Self::Any => true,
+            Self::OscForeground => std::str::from_utf8(payload)
+                .map(|s| s.starts_with("10;"))
+                .unwrap_or(false),
+            Self::OscBackground => std::str::from_utf8(payload)
+                .map(|s| s.starts_with("11;"))
+                .unwrap_or(false),
+            Self::OscPalette { indices } => {
+                let Some(registers) = palette_registers(std::str::from_utf8(payload).unwrap_or(""))
+                else {
+                    return false;
+                };
+                indices
+                    .iter()
+                    .all(|want| registers.iter().any(|(got, _)| got == want))
+            },
+            Self::Compound(parts) => parts.iter().any(|p| p.matches_osc_payload(payload)),
+            Self::TextAreaPixels | Self::CharacterCellPixels => false,
+        }
+    }
+
+    fn matches_csi_raw(&self, raw: &[u8]) -> bool {
+        match self {
+            Self::Any => true,
+            Self::TextAreaPixels => std::str::from_utf8(raw)
+                .map(|s| s.starts_with("\u{1b}[4;"))
+                .unwrap_or(false),
+            Self::CharacterCellPixels => std::str::from_utf8(raw)
+                .map(|s| s.starts_with("\u{1b}[6;"))
+                .unwrap_or(false),
+            Self::Compound(parts) => parts.iter().any(|p| p.matches_csi_raw(raw)),
+            Self::OscForeground | Self::OscBackground | Self::OscPalette { .. } => false,
+        }
+    }
+}
+
+
 /// The "slot" tracking state for a single forwarded query currently in
-/// flight to the host terminal. The parser accumulates raw reply bytes
-/// into `reply_bytes` until it sees a Primary-DA (`c`) reply, which acts
-/// as the serializing barrier. The timer that enforces the 500 ms
+/// flight to the host terminal. The parser accumulates matching raw reply
+/// bytes into `reply_bytes` until it sees a Primary-DA (`c`) reply, which
+/// acts as the serializing barrier. The timer that enforces the 500 ms
 /// deadline lives on the forward-timeout runtime and owns its own
 /// wall-clock — the parser itself is deadline-agnostic.
 #[derive(Debug, Clone)]
 pub struct ForwardSlot {
     pub token: u32,
     pub reply_bytes: Vec<u8>,
+    expected: ExpectedForwardReply,
     abandoned: bool,
 }
 
@@ -449,7 +592,7 @@ impl StdinAnsiParser {
     /// debug builds panic so bugs surface during testing, release builds
     /// log and clobber the previous slot (whose accumulated bytes would
     /// otherwise silently leak).
-    pub fn open_forward(&mut self, token: u32) {
+    pub fn open_forward(&mut self, token: u32, query_bytes: &[u8]) {
         let existing = self.live_forward().map(|slot| slot.token);
         debug_assert!(
             existing.is_none(),
@@ -465,10 +608,18 @@ impl StdinAnsiParser {
             );
             let _ = self.take_active_forward();
         }
+        let expected = ExpectedForwardReply::from_query_bytes(query_bytes);
+        if matches!(expected, ExpectedForwardReply::Any) && !query_bytes.is_empty() {
+            log::warn!(
+                "open_forward({}) could not derive a reply filter from query bytes;                  falling back to capture-everything",
+                token,
+            );
+        }
         self.batches.push_back(QueryBatch {
             owner: BatchOwner::Pane(ForwardSlot {
                 token,
                 reply_bytes: Vec::new(),
+                expected,
                 abandoned: false,
             }),
             sent_at: Instant::now(),
@@ -650,11 +801,13 @@ impl StdinAnsiParser {
                         }
                     }
                     if let Some(slot) = self.collecting_forward_mut() {
-                        // Re-serialize so the pane's pty sees a legal OSC.
-                        // Terminators vary by host; ST (ESC \) is always safe.
-                        slot.reply_bytes.extend_from_slice(b"\x1b]");
-                        slot.reply_bytes.extend_from_slice(&payload);
-                        slot.reply_bytes.extend_from_slice(b"\x1b\\");
+                        if slot.expected.matches_osc_payload(&payload) {
+                            // Re-serialize so the pane's pty sees a legal OSC.
+                            // Terminators vary by host; ST (ESC \) is always safe.
+                            slot.reply_bytes.extend_from_slice(b"\x1b]");
+                            slot.reply_bytes.extend_from_slice(&payload);
+                            slot.reply_bytes.extend_from_slice(b"\x1b\\");
+                        }
                     }
                 },
                 InputEvent::DeviceControlReply {
@@ -711,7 +864,9 @@ impl StdinAnsiParser {
                                 matches!(reply, Some(HostReply::HostTerminalThemeChanged(_)));
                             if let Some(HostReply::GraphemeClusterMode(value)) = reply {
                                 if let Some(slot) = self.collecting_forward_mut() {
-                                    slot.reply_bytes.extend_from_slice(&raw);
+                                    if slot.expected.matches_csi_raw(&raw) {
+                                        slot.reply_bytes.extend_from_slice(&raw);
+                                    }
                                 } else if self.startup_grapheme_cluster_probe
                                     == StartupKittyProbe::AwaitingReply
                                 {
@@ -726,7 +881,9 @@ impl StdinAnsiParser {
                             }
                             if !is_theme_notification {
                                 if let Some(slot) = self.collecting_forward_mut() {
-                                    slot.reply_bytes.extend_from_slice(&raw);
+                                    if slot.expected.matches_csi_raw(&raw) {
+                                        slot.reply_bytes.extend_from_slice(&raw);
+                                    }
                                 }
                             }
                             // Suppress unused-variable warning for params.

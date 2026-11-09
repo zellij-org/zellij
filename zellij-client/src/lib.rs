@@ -1676,7 +1676,7 @@ pub fn start_client(
                 let stale_forward = {
                     let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                     let stale_forward = stdin_ansi_parser.take_active_forward();
-                    stdin_ansi_parser.open_forward(token);
+                    stdin_ansi_parser.open_forward(token, &query_bytes);
                     let mut blob = query_bytes;
                     blob.extend_from_slice(stdin_ansi_parser::PRIMARY_DA_QUERY);
                     let mut out = os_input.get_stdout_writer();

@@ -3904,6 +3904,10 @@ pub fn start_server_impl(
                 };
 
                 info!("FirstClientConnected: initializing session");
+                // A recycled id (astronomically unlikely) or a leftover fence
+                // from a force-delete must not block the new session's first
+                // metadata publication.
+                zellij_utils::sessions::clear_session_deletion_fence(&session_id);
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
@@ -5397,6 +5401,8 @@ fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
     }
+    // Fence before remove so a racing metadata writer cannot republish.
+    zellij_utils::sessions::fence_session_deletion(session_id);
     let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
         session_id,
     ));

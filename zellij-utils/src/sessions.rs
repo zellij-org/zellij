@@ -1,7 +1,7 @@
 use crate::{
     consts::{
-        is_ipc_socket, session_info_folder_for_session, session_layout_cache_file_name,
-        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+        is_ipc_socket, session_deletion_tombstone_path, session_info_folder_for_session,
+        session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     data::SessionInfo,
     envs,
@@ -726,6 +726,10 @@ pub fn delete_session(name: &str, force: bool) {
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
     }
+    // Fence late writers *before* removing the folder: a sleep/probe is not a
+    // writer fence (#5709). The tombstone is a sibling of the session folder
+    // so it survives `remove_dir_all`.
+    fence_session_deletion(&session_id);
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(&session_id)) {
         if e.kind() == std::io::ErrorKind::NotFound {
             eprintln!("Session: {:?} not found.", name);
@@ -761,6 +765,41 @@ fn sessions_for_display(
         .into_iter()
         .map(|(name, (timestamp, is_dead))| (name, timestamp, is_dead))
         .collect()
+}
+
+/// Publish a deletion tombstone for `session_id`. Writers that observe this
+/// marker must refuse to republish session metadata/layout for that id.
+pub fn fence_session_deletion(session_id: &str) {
+    let path = session_deletion_tombstone_path(session_id);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let generation = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let contents = format!("deleted\ngeneration={generation}\n");
+    if let Err(e) = std::fs::write(&path, contents) {
+        log::error!(
+            "Failed to write session deletion tombstone {}: {:?}",
+            path.display(),
+            e
+        );
+    }
+}
+
+/// True when a deletion tombstone fences writers for this session id.
+pub fn session_deletion_is_fenced(session_id: &str) -> bool {
+    session_deletion_tombstone_path(session_id).exists()
+}
+
+/// Clear a deletion tombstone when a fresh session claims the same id
+/// (should be rare — ids are random — but kept for symmetry with creation).
+pub fn clear_session_deletion_fence(session_id: &str) {
+    let path = session_deletion_tombstone_path(session_id);
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
@@ -1332,6 +1371,36 @@ mod session_folder_name_tests {
     #[test]
     fn validate_session_name_rejects_backslash_on_windows() {
         assert!(validate_session_name("a\\b").is_err());
+    }
+}
+
+
+#[cfg(test)]
+mod deletion_fence_tests {
+    use super::*;
+
+    #[test]
+    fn deletion_tombstone_fences_writers_and_survives_folder_removal() {
+        let session_id = format!("tombstone-test-{}", std::process::id());
+        let folder = session_info_folder_for_session(&session_id);
+        let _ = fs::remove_dir_all(&folder);
+        clear_session_deletion_fence(&session_id);
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("session-metadata.kdl"), "session").unwrap();
+
+        assert!(!session_deletion_is_fenced(&session_id));
+        fence_session_deletion(&session_id);
+        assert!(session_deletion_is_fenced(&session_id));
+
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(
+            session_deletion_is_fenced(&session_id),
+            "tombstone must survive remove_dir_all of the session folder"
+        );
+        assert!(!folder.exists(), "session folder itself must still be gone");
+
+        clear_session_deletion_fence(&session_id);
+        assert!(!session_deletion_is_fenced(&session_id));
     }
 }
 

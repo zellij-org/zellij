@@ -583,6 +583,7 @@ pub(crate) fn background_jobs_main(
                         false
                     } else {
                         let all_persisted = commit_staged_session_generation(
+                            &session_id,
                             &session_info_folder_for_session(&session_id),
                             &session_layout_cache_file_name(&session_id),
                             staged,
@@ -1489,6 +1490,7 @@ fn prune_stale_pane_content_files(
 }
 
 fn commit_staged_session_generation(
+    session_id: &str,
     session_info_folder: &Path,
     layout_path: &Path,
     staged: Vec<(PathBuf, tempfile::NamedTempFile)>,
@@ -1501,6 +1503,15 @@ fn commit_staged_session_generation(
     let _write_guard = SESSION_STATE_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Deletion tombstone fences late writers: a timeout/probe is not proof
+    // that no publisher can republish (#5709).
+    if zellij_utils::sessions::session_deletion_is_fenced(session_id) {
+        log::info!(
+            "Refusing to publish session state for deleted session id {}",
+            session_id
+        );
+        return false;
+    }
     // This read must happen under the same lock as publication. Reading it
     // earlier can retain a generation older than the immediate predecessor
     // when another writer commits in between.
@@ -1531,6 +1542,13 @@ pub fn write_session_state_to_disk(
     let _write_guard = SESSION_STATE_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if zellij_utils::sessions::session_deletion_is_fenced(&session_id) {
+        log::info!(
+            "Refusing to write session state for deleted session id {}",
+            session_id
+        );
+        return Ok(());
+    }
     let metadata_cache_file_name = session_info_cache_file_name(&session_id);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
@@ -2103,6 +2121,7 @@ mod tests {
 
         let (staged_b, hashes_b) = stage_generation(&layout_path, &layout_b, &contents_b, None);
         assert!(commit_staged_session_generation(
+            "held-reader-test",
             dir.path(),
             &layout_path,
             staged_b,
@@ -2114,6 +2133,7 @@ mod tests {
         ));
         let (staged_c, hashes_c) = stage_generation(&layout_path, &layout_c, &contents_c, None);
         assert!(commit_staged_session_generation(
+            "held-reader-test",
             dir.path(),
             &layout_path,
             staged_c,
@@ -2176,6 +2196,7 @@ mod tests {
                 let (staged, hashes) = stage_generation(&layout_path, &layout, &contents, None);
                 barrier.wait();
                 commit_staged_session_generation(
+                    "concurrent-saves-test",
                     &folder,
                     &layout_path,
                     staged,
@@ -2444,6 +2465,48 @@ mod tests {
         assert!(writes.iter().any(|(path, _)| path == &layout_path));
         assert!(hashes.contains_key(&layout_path));
         assert!(layout_is_part_of_state(session_id, &hashes));
+    }
+
+    #[test]
+    fn deletion_tombstone_blocks_session_state_publication() {
+        let session_id = format!(
+            "fenced-write-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let folder = session_info_folder_for_session(&session_id);
+        let metadata_path = session_info_cache_file_name(&session_id);
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let _ = std::fs::remove_dir_all(&folder);
+        zellij_utils::sessions::clear_session_deletion_fence(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        let info = SessionInfo::new(session_id.clone());
+        let (layout, contents) = serialized_layout_with_contents(&["pane-a"]);
+
+        write_session_state_to_disk(
+            session_id.clone(),
+            info.clone(),
+            (layout.clone(), contents.clone()),
+        )
+        .unwrap();
+        assert!(
+            metadata_path.exists() && layout_path.exists(),
+            "unfenced write must publish metadata and layout"
+        );
+
+        zellij_utils::sessions::fence_session_deletion(&session_id);
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert!(!folder.exists());
+        write_session_state_to_disk(session_id.clone(), info, (layout, contents)).unwrap();
+        assert!(
+            !folder.exists() && !layout_path.exists() && !metadata_path.exists(),
+            "fenced writer must not recreate deleted session state"
+        );
+
+        zellij_utils::sessions::clear_session_deletion_fence(&session_id);
     }
 
     #[test]

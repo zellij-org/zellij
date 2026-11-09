@@ -569,12 +569,19 @@ fn osc7_then_poll_skips_terminal() {
 }
 
 fn session_with_terminal_pane(terminal_id: u32) -> SessionLayoutMetadata {
+    session_with_terminal_pane_run(terminal_id, None)
+}
+
+fn session_with_terminal_pane_run(
+    terminal_id: u32,
+    run: Option<Run>,
+) -> SessionLayoutMetadata {
     let mut meta = SessionLayoutMetadata::default();
     let pane = crate::session_layout_metadata::PaneLayoutMetadata::new(
         PaneId::Terminal(terminal_id),
         zellij_utils::pane_size::PaneGeom::default(),
         false,
-        None,
+        run,
         None,
         false,
         None,
@@ -622,6 +629,56 @@ fn resurrect_command(command: &str, args: Vec<&str>, cwd: Option<&str>) -> Resur
         args: args.into_iter().map(|a| a.to_string()).collect(),
         cwd: cwd.map(PathBuf::from),
     }
+}
+
+
+#[test]
+fn deliberate_launch_intent_is_not_replaced_by_observed_foreground() {
+    // Layout/command panes carry Run::Command in invoked_with. A foreground
+    // child (ssh, LSP, …) must not become the serialized restart command.
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(
+        child_pid,
+        vec!["ssh".into(), "user@host".into(), "interactive".into()],
+    );
+    mock.set_cwd(child_pid, PathBuf::from("/tmp/detected"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    let mut meta = session_with_terminal_pane_run(
+        1,
+        run_command("opencode", vec!["-s", "ses_abc"]),
+    );
+    pty.populate_session_layout_metadata(&mut meta);
+    let manifest: session_serialization::GlobalLayoutManifest = meta.into();
+    let pane = manifest
+        .tabs
+        .into_iter()
+        .next()
+        .unwrap()
+        .1
+        .tiled_panes
+        .into_iter()
+        .next()
+        .unwrap();
+    assert_eq!(
+        pane.run,
+        run_command("opencode", vec!["-s", "ses_abc"]),
+        "observed foreground must not overwrite deliberate launch intent"
+    );
+}
+
+#[test]
+fn shell_pane_without_launch_intent_still_serializes_observed_foreground() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    let (run, _cwd) = serialized_run_and_cwd(&mut pty, 1);
+    assert_eq!(run, run_command("htop", vec![]));
 }
 
 #[test]
