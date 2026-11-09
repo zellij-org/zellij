@@ -41,6 +41,11 @@ pub fn get_default_themes() -> Themes {
     Themes::default()
 }
 
+/// Built-in themes are the fallback; user-supplied themes with the same name win.
+pub fn themes_with_built_in_fallback(user_themes: Themes) -> Themes {
+    get_default_themes().merge(user_themes)
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -449,7 +454,7 @@ impl Setup {
                 None => config.options.clone(),
             };
 
-            config.themes = config.themes.merge(get_default_themes());
+            config.themes = themes_with_built_in_fallback(std::mem::take(&mut config.themes));
 
             let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
                 get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
@@ -881,12 +886,50 @@ fn merge_attach_command_options(
 
 #[cfg(test)]
 mod setup_test {
-    use super::Setup;
+    use super::{themes_with_built_in_fallback, Setup};
     use crate::cli::{CliArgs, Command};
     use crate::data::LayoutInfo;
     use crate::input::options::Options;
+    use crate::input::theme::Themes;
     use insta::assert_snapshot;
     use std::path::PathBuf;
+
+    fn theme_named(name: &str, fg: u8, sourced_from_external_file: bool) -> Themes {
+        let text = format!(
+            "themes {{ {name} {{ fg {fg}; bg 2; red 3; green 4; blue 5; yellow 6; magenta 7; orange 8; cyan 9; black 10; white 11; }}; }}"
+        );
+        Themes::from_string(&text, sourced_from_external_file).unwrap()
+    }
+
+    #[test]
+    fn user_themes_override_same_name_built_in_themes() {
+        // get_default_themes() is empty under cfg(test), so pin the precedence
+        // the helper documents: built-ins first, user themes on top.
+        let built_in = theme_named("dracula", 1, false);
+        let user = theme_named("dracula", 200, true);
+        let user_theme = user.get_theme("dracula").unwrap().clone();
+
+        // Old (buggy) call order: user.merge(built_in) silently dropped the user theme.
+        let buggy = user.clone().merge(built_in.clone());
+        assert_eq!(
+            buggy.get_theme("dracula").unwrap().sourced_from_external_file,
+            false,
+            "merging built-ins over user themes must not be the documented order"
+        );
+        assert_ne!(buggy.get_theme("dracula").unwrap(), &user_theme);
+
+        let merged = built_in.merge(user);
+        assert_eq!(
+            merged.get_theme("dracula").unwrap(),
+            &user_theme,
+            "user-supplied themes with the same name must override built-ins"
+        );
+
+        // themes_with_built_in_fallback uses the same merge order with empty
+        // built-ins in tests; user content must still be preserved.
+        let via_helper = themes_with_built_in_fallback(theme_named("dracula", 200, true));
+        assert_eq!(via_helper.get_theme("dracula").unwrap(), &user_theme);
+    }
 
     #[test]
     fn default_config_with_no_cli_arguments() {
