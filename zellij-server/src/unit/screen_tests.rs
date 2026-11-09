@@ -2482,6 +2482,53 @@ fn mouse_focus_clears_bell_on_focused_pane() {
 }
 
 #[test]
+fn focus_pane_with_id_clears_bell_on_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    let new_pane_id = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        active_tab
+            .horizontal_split(new_pane_id, None, client_id, None, None)
+            .unwrap();
+        active_tab.move_focus_up(client_id).unwrap();
+        active_tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+        active_tab.check_and_handle_bell_notifications(false);
+        assert!(
+            active_tab.panes_with_pending_bell.contains(&new_pane_id),
+            "Pane 2 should have a pending bell before it is focused"
+        );
+    }
+
+    // what a plugin's focus_terminal_pane (or `zellij action focus-pane-id`) runs
+    screen
+        .focus_pane_with_id(new_pane_id, false, false, client_id)
+        .unwrap();
+
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        active_tab.get_active_pane_id(client_id),
+        Some(new_pane_id),
+        "focus_pane_with_id should have focused pane 2"
+    );
+    assert!(
+        !active_tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Bell on pane 2 should be cleared after focusing it by id"
+    );
+    assert!(
+        !active_tab.tab_has_pending_bell,
+        "Tab bell should be cleared after the last pane bell is cleared"
+    );
+}
+
+#[test]
 fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
     let size = Size {
         cols: 121,
@@ -5688,6 +5735,63 @@ pub fn go_to_tab_by_id_verifies_screen_state() {
         1,
         "Active tab should be tab with ID 1"
     );
+}
+
+#[test]
+pub fn go_to_tab_by_id_does_not_duplicate_destination_in_tab_history() {
+    // Regression for #5384 / #5385: GoToTabWithId must only call switch_active_tab
+    // (which already records the previous tab). Pushing the destination again makes
+    // the first ToggleTab a no-op.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
+
+    let tab_position = screen.get_tab_position_by_id(0).unwrap();
+    screen
+        .switch_active_tab(tab_position, None, true, client_id)
+        .expect("TEST");
+    assert_eq!(
+        screen.tab_history.get(&client_id).unwrap().last(),
+        Some(&2),
+        "history should end with the previously active tab, not the destination"
+    );
+
+    screen.toggle_tab(client_id).expect("TEST");
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        2,
+        "ToggleTab should return to the previous tab in one press"
+    );
+}
+
+#[test]
+pub fn nonexistent_tab_by_id_actions_report_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let cases: Vec<Box<dyn FnOnce(crate::route::NotificationEnd) -> ScreenInstruction>> = vec![
+        Box::new(|completion| ScreenInstruction::GoToTabWithId(99, Some(1), Some(completion))),
+        Box::new(|completion| {
+            ScreenInstruction::RenameTabWithId(99, b"ghost".to_vec(), Some(completion))
+        }),
+        Box::new(|completion| ScreenInstruction::CloseTabWithId(99, Some(completion))),
+    ];
+    for make_instruction in cases {
+        let result = send_instructions_and_collect(size, true, |_| {}, make_instruction);
+        assert_eq!(result.completion.exit_status, Some(1));
+        assert_eq!(
+            result.completion.error_message.as_deref(),
+            Some("Tab with id 99 not found")
+        );
+    }
 }
 
 #[test]
@@ -16585,6 +16689,41 @@ pub fn moving_a_plugin_to_the_tab_of_a_client_without_a_tab_keeps_the_plugin() {
         &mut None,
     );
     assert!(screen.has_pane_with_pid(&PaneId::Plugin(5)));
+}
+
+#[test]
+pub fn focus_plugin_pane_stays_on_its_tab_after_tab_ids_and_positions_diverge() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    let run_plugin =
+        RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &None, None, None).unwrap();
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(5),
+            None,
+            Some(Run::Plugin(run_plugin.clone())),
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    screen.go_to_tab(1, 1).unwrap();
+    screen
+        .focus_plugin_pane(&run_plugin, false, true, false, 1, &mut None)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(1).unwrap().id, 1);
 }
 
 #[test]
