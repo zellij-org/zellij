@@ -794,14 +794,22 @@ impl SetupScreen {
                 },
             },
             Topic::Line(Line::Entry) => {
-                let windows = self
-                    .offered(Line::Entry)
-                    .iter()
-                    .any(|status| status.item == Item::StartMenu);
+                let offered = |item: Item| {
+                    self.offered(Line::Entry)
+                        .iter()
+                        .any(|status| status.item == item)
+                };
                 if let Some(app) = &self.entry_words().app {
                     paragraphs.push(format!("Puts {} in your Applications folder, so Zellij opens from Finder, Spotlight or the Dock like any other app. To update it later, install it again.", app));
-                } else if windows {
-                    paragraphs.push("Adds Zellij to the Start menu, and an \"Open Zellij here\" item when you right-click a folder in Explorer.".to_owned());
+                } else if self.on_windows() {
+                    paragraphs.push(
+                        match (offered(Item::StartMenu), offered(Item::ExplorerItem)) {
+                            (true, true) => "Adds Zellij to the Start menu, and an \"Open Zellij here\" item when you right-click a folder or a drive in Explorer.",
+                            (true, false) => "Adds Zellij to the Start menu.",
+                            _ => "Adds an \"Open Zellij here\" item when you right-click a folder or a drive in Explorer.",
+                        }
+                        .to_owned(),
+                    );
                 } else {
                     paragraphs.push("Adds Zellij to your app menu, so it opens in its own window like any other app.".to_owned());
                 }
