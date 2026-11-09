@@ -1621,6 +1621,30 @@ impl Layout {
         })
         .map(|(layout, _raw_layout)| layout)
     }
+
+    /// Semantically validate a layout using the same parser as session launch.
+    ///
+    /// Reads local files or built-in assets only. Refuses remote URLs so validation
+    /// never downloads, starts a session, spawns children, or loads plugins.
+    pub fn validate_only(
+        layout_arg: &str,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
+        if layout_arg.starts_with("http://") || layout_arg.starts_with("https://") {
+            return Err(ConfigError::DownloadError(
+                "validate-layout refuses remote URLs (no network side effects)".into(),
+            ));
+        }
+        let layout_path = PathBuf::from(layout_arg);
+        read_layout_with_verified_contents(|| {
+            Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir.clone()).map(
+                |(path_to_layout, raw_layout, raw_swap_layouts)| {
+                    (Some(path_to_layout), raw_layout, raw_swap_layouts)
+                },
+            )
+        })
+        .map(|(layout, _raw_layout)| layout)
+    }
     pub fn from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,

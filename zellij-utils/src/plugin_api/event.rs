@@ -44,6 +44,7 @@ pub use super::generated_api::api::{
         PaneManifest as ProtobufPaneManifest, PaneMetadata as ProtobufPaneMetadata,
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
+        PluginActivatedPayload as ProtobufPluginActivatedPayload,
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
         PluginInfo as ProtobufPluginInfo,
         PluginSettingsEntriesPayload as ProtobufPluginSettingsEntriesPayload,
@@ -72,9 +73,9 @@ use crate::data::{
     KeyWithModifier, KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
     LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
-    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
-    PluginInfo, PluginSettingsEntry, SelectedText, SessionInfo, SettingKey, Style, StyledText,
-    TabInfo, TabMetadata, WebServerStatus, WebSharing,
+    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginActivationContext,
+    PluginCapabilities, PluginInfo, PluginSettingsEntry, SelectedText, SessionInfo, SettingKey,
+    Style, StyledText, TabInfo, TabMetadata, WebServerStatus, WebSharing,
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{HostId, LiveViewRelease, MirrorClosedReason, MirrorState, PaneAddress};
@@ -740,6 +741,19 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the PluginSettingsEntries Event"),
+            },
+            Some(ProtobufEventType::PluginActivated) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PluginActivatedPayload(payload)) => {
+                    Ok(Event::PluginActivated(PluginActivationContext {
+                        source_client_id: payload.source_client_id as ClientId,
+                        source_pane_id: payload
+                            .source_pane_id
+                            .map(PaneId::try_from)
+                            .transpose()?,
+                        source_tab_id: payload.source_tab_id.map(|id| id as usize),
+                    }))
+                },
+                _ => Err("Malformed payload for the PluginActivated Event"),
             },
             Some(ProtobufEventType::LiveViewStateChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::LiveViewStateChangedPayload(payload)) => {
@@ -1578,6 +1592,19 @@ impl TryFrom<Event> for ProtobufEvent {
                                 title: entry.title,
                             })
                             .collect(),
+                    },
+                )),
+            }),
+            Event::PluginActivated(context) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PluginActivated as i32,
+                payload: Some(event::Payload::PluginActivatedPayload(
+                    ProtobufPluginActivatedPayload {
+                        source_client_id: context.source_client_id as u32,
+                        source_pane_id: context
+                            .source_pane_id
+                            .map(ProtobufPaneId::try_from)
+                            .transpose()?,
+                        source_tab_id: context.source_tab_id.map(|id| id as u32),
                     },
                 )),
             }),
@@ -2959,6 +2986,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SessionHistoryUpdate => EventType::SessionHistoryUpdate,
             ProtobufEventType::DesktopIntegration => EventType::DesktopIntegration,
             ProtobufEventType::PluginSettingsEntries => EventType::PluginSettingsEntries,
+            ProtobufEventType::PluginActivated => EventType::PluginActivated,
             ProtobufEventType::LiveViewStateChanged => EventType::LiveViewStateChanged,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
@@ -3039,6 +3067,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SessionHistoryUpdate => ProtobufEventType::SessionHistoryUpdate,
             EventType::DesktopIntegration => ProtobufEventType::DesktopIntegration,
             EventType::PluginSettingsEntries => ProtobufEventType::PluginSettingsEntries,
+            EventType::PluginActivated => ProtobufEventType::PluginActivated,
             EventType::LiveViewStateChanged => ProtobufEventType::LiveViewStateChanged,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
@@ -5592,6 +5621,40 @@ mod plugin_settings_entries_tests {
             EventType::try_from(protobuf).unwrap(),
             EventType::PluginSettingsEntries
         );
+    }
+}
+
+#[cfg(test)]
+mod plugin_activated_tests {
+    use super::*;
+    use prost::Message;
+
+    #[test]
+    fn plugin_activated_round_trip() {
+        let event = Event::PluginActivated(PluginActivationContext {
+            source_client_id: 9,
+            source_pane_id: Some(PaneId::Terminal(4)),
+            source_tab_id: Some(2),
+        });
+        let protobuf = ProtobufEvent::try_from(event.clone()).unwrap();
+        let decoded: ProtobufEvent = Message::decode(protobuf.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(Event::try_from(decoded).unwrap(), event);
+
+        let empty = Event::PluginActivated(PluginActivationContext {
+            source_client_id: 1,
+            source_pane_id: None,
+            source_tab_id: None,
+        });
+        let protobuf = ProtobufEvent::try_from(empty.clone()).unwrap();
+        let decoded: ProtobufEvent = Message::decode(protobuf.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(Event::try_from(decoded).unwrap(), empty);
+
+        let protobuf: ProtobufEventType = EventType::PluginActivated.try_into().unwrap();
+        assert_eq!(
+            EventType::try_from(protobuf).unwrap(),
+            EventType::PluginActivated
+        );
+        assert_eq!(ProtobufEventType::PluginActivated as i32, 73);
     }
 }
 

@@ -2860,3 +2860,68 @@ layout {
     let (tiled, _floating) = layout.new_tab();
     assert_eq!(tiled.children.len(), 3);
 }
+
+#[test]
+fn validate_only_accepts_the_builtin_default_layout() {
+    Layout::validate_only("default", None).expect("builtin default layout should validate");
+}
+
+#[test]
+fn validate_only_rejects_remote_urls_without_downloading() {
+    let err = Layout::validate_only("https://example.invalid/layout.kdl", None)
+        .expect_err("remote URLs must be refused");
+    let message = err.to_string();
+    assert!(
+        message.contains("refuses remote URLs"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn validate_only_rejects_panes_and_tabs_on_the_same_level() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("invalid.kdl");
+    std::fs::write(
+        &path,
+        r#"
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar"
+    }
+    tab name="work" {
+        pane cwd="/tmp"
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    assert!(
+        Layout::validate_only(path.to_str().unwrap(), None).is_err(),
+        "mixed pane/tab layout must fail semantic validation"
+    );
+}
+
+#[test]
+fn validate_only_accepts_a_valid_local_layout_file() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("valid.kdl");
+    std::fs::write(
+        &path,
+        r#"
+layout {
+    tab name="work" {
+        pane
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    Layout::validate_only(path.to_str().unwrap(), None)
+        .expect("valid local layout file should validate");
+}

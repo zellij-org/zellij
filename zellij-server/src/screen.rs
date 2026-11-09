@@ -118,7 +118,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style},
+    data::{
+        Event, InputMode, ModeInfo, Palette, PaletteColor, PluginActivationContext,
+        PluginCapabilities, Style,
+    },
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions},
@@ -2362,6 +2365,9 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    /// Activation context captured at LaunchOrFocusPlugin admission, keyed by
+    /// `(client_id, plugin location string)`, flushed when the plugin pane is added.
+    pending_plugin_activations: HashMap<(ClientId, String), PluginActivationContext>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
@@ -2836,6 +2842,7 @@ impl Screen {
             mirror_connector: Arc::new(zellij_utils::pane_mirror::LocalSocketConnector),
             live_views: Default::default(),
             background_plugin_subscriptions: HashMap::new(),
+            pending_plugin_activations: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
             terminal_command_submitted: false,
@@ -9194,6 +9201,25 @@ impl Screen {
         self.render(None)
     }
 
+    fn capture_plugin_activation_context(&self, client_id: ClientId) -> PluginActivationContext {
+        PluginActivationContext {
+            source_client_id: client_id,
+            source_pane_id: self.get_active_pane_id(&client_id).map(Into::into),
+            source_tab_id: self.active_tab_ids.get(&client_id).copied(),
+        }
+    }
+
+    fn send_plugin_activated(&self, plugin_id: PluginId, context: PluginActivationContext) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(plugin_id),
+                Some(context.source_client_id),
+                Event::PluginActivated(context),
+            )]));
+    }
+
     pub fn focus_plugin_pane(
         &mut self,
         run_plugin: &RunPluginOrAlias,
@@ -9202,14 +9228,14 @@ impl Screen {
         should_be_in_place: bool,
         client_id: ClientId,
         completion_tx: &mut Option<NotificationEnd>,
-    ) -> Result<bool> {
-        // true => found and focused, false => not
+    ) -> Result<Option<PluginId>> {
+        // Some(plugin_id) => found and focused, None => not found
         let err_context = || format!("failed to focus_plugin_pane");
         if let Some(plugin_id) = self.focus_popup_plugin_as_floating_pane(run_plugin, client_id) {
             if let Some(ref mut completion) = completion_tx {
                 completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
             }
-            return Ok(true);
+            return Ok(Some(plugin_id));
         }
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
@@ -9234,6 +9260,10 @@ impl Screen {
         }
         if let Some(plugin_pane_to_move_to_active_tab) = plugin_pane_to_move_to_active_tab.take() {
             let pane_id = plugin_pane_to_move_to_active_tab.pid();
+            let focused_plugin_id = match pane_id {
+                PaneId::Plugin(plugin_id) => Some(plugin_id),
+                PaneId::Terminal(_) => None,
+            };
             let new_active_tab = self.get_active_tab_mut(client_id)?;
 
             if should_float {
@@ -9259,7 +9289,7 @@ impl Screen {
             if let Some(ref mut completion) = completion_tx {
                 completion.set_affected_pane_id(pane_id);
             }
-            return Ok(true);
+            return Ok(focused_plugin_id);
         }
         match tab_index_and_plugin_pane_id {
             Some((tab_index, plugin_pane_id)) => {
@@ -9278,9 +9308,12 @@ impl Screen {
                 if let Some(ref mut completion) = completion_tx {
                     completion.set_affected_pane_id(plugin_pane_id);
                 }
-                Ok(true)
+                Ok(match plugin_pane_id {
+                    PaneId::Plugin(plugin_id) => Some(plugin_id),
+                    PaneId::Terminal(_) => None,
+                })
             },
-            None => Ok(false),
+            None => Ok(None),
         }
     }
 
@@ -14964,12 +14997,13 @@ pub(crate) fn screen_thread_main(
                     ));
                     continue;
                 }
+                let plugin_location = run_plugin_or_alias.location_string();
                 let pane_title = pane_title.unwrap_or_else(|| {
                     format!(
                         "({}) - {}",
                         cwd.map(|cwd| cwd.display().to_string())
                             .unwrap_or(".".to_owned()),
-                        run_plugin_or_alias.location_string()
+                        &plugin_location
                     )
                 });
                 let run_plugin = Run::Plugin(run_plugin_or_alias);
@@ -14977,6 +15011,14 @@ pub(crate) fn screen_thread_main(
                 // Set affected pane ID for CLI client output
                 if let Some(ref mut completion) = completion_tx {
                     completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
+                }
+                if let Some(client_id) = client_id {
+                    if let Some(context) = screen
+                        .pending_plugin_activations
+                        .remove(&(client_id, plugin_location))
+                    {
+                        screen.send_plugin_activated(plugin_id, context);
+                    }
                 }
 
                 if should_be_in_place {
@@ -15164,16 +15206,18 @@ pub(crate) fn screen_thread_main(
                         .or(client_id_and_focused_tab);
                     match resolved_tab_and_client {
                         Some((tab_index, client_id)) => {
-                            let found_and_focused = screen
-                                .focus_plugin_pane(
-                                    &run_plugin,
-                                    should_float,
-                                    move_to_focused_tab,
-                                    should_open_in_place,
-                                    client_id,
-                                    &mut completion_tx,
-                                )
-                                .unwrap_or_else(|e| {
+                            // Capture before focus moves so plugins see the triggering pane/tab.
+                            let activation = screen.capture_plugin_activation_context(client_id);
+                            let focused_plugin_id = match screen.focus_plugin_pane(
+                                &run_plugin,
+                                should_float,
+                                move_to_focused_tab,
+                                should_open_in_place,
+                                client_id,
+                                &mut completion_tx,
+                            ) {
+                                Ok(plugin_id) => plugin_id,
+                                Err(e) => {
                                     let error_message =
                                         format!("Failed to launch or focus plugin: {}", e);
                                     Err::<(), _>(e).non_fatal();
@@ -15181,12 +15225,21 @@ pub(crate) fn screen_thread_main(
                                     if let Some(completion_tx) = completion_tx.as_mut() {
                                         completion_tx.clear_affected_pane_id();
                                     }
-                                    true
-                                });
-                            if found_and_focused {
+                                    // Skip loading after a focus failure.
+                                    Some(0)
+                                },
+                            };
+                            if let Some(plugin_id) = focused_plugin_id {
+                                if plugin_id != 0 {
+                                    screen.send_plugin_activated(plugin_id, activation);
+                                }
                                 screen.render(None)?;
                                 screen.log_and_report_session_state()?;
                             } else {
+                                screen.pending_plugin_activations.insert(
+                                    (client_id, run_plugin.location_string()),
+                                    activation,
+                                );
                                 let floating_session_manager = (should_float
                                     && !should_open_in_place
                                     && popups::is_session_manager(&run_plugin))

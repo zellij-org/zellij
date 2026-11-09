@@ -5037,6 +5037,72 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
 }
 
 #[test]
+pub fn launch_or_focus_plugin_sends_activation_context_from_the_source_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    let existing_plugin_pane = TiledPaneLayout {
+        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            configuration: Default::default(),
+            ..Default::default()
+        }))),
+        ..Default::default()
+    };
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        move_to_focused_tab: true,
+        url: "file:/path/to/fake/plugin".to_owned(),
+        configuration: Default::default(),
+        skip_plugin_cache: false,
+        tab_id: None,
+    };
+    // Client 1 is the connected client with the initial layout focus.
+    send_cli_action_to_server(&session_metadata, cli_action, 1);
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let activation = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PluginInstruction::Update(updates) => updates.iter().find_map(|(_, _, event)| {
+                if let Event::PluginActivated(context) = event {
+                    Some(context.clone())
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        });
+    let context = activation.expect("PluginActivated was not sent on LaunchOrFocusPlugin reuse");
+    assert_eq!(context.source_client_id, 1);
+    assert!(
+        context.source_pane_id.is_some(),
+        "activation must capture the pane that held focus at admission"
+    );
+    assert_eq!(context.source_tab_id, Some(0));
+}
+
+#[test]
 pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_plugin_alias() {
     let size = Size {
         cols: 121,
@@ -20553,7 +20619,7 @@ fn launching_a_plugin_that_is_shown_in_a_popup_moves_the_popup_into_a_floating_p
             &mut completion,
         )
         .unwrap();
-    assert!(found);
+    assert!(found.is_some());
     let tab = screen.get_active_tab(client_id).unwrap();
     assert!(!tab.has_popup_for_client(client_id));
     assert!(tab.get_pane_with_id(PaneId::Plugin(62)).is_some());

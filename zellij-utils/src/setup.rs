@@ -297,6 +297,12 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
+    /// Validate a layout with the same semantic parser used at launch, without
+    /// starting a session, downloading plugins, or spawning children. Exits 0 on
+    /// success and non-zero with the parse error on failure.
+    #[clap(long, value_parser)]
+    pub validate_layout: Option<String>,
+
     /// Dump the specified swap layout file to stdout
     #[clap(long, value_parser)]
     pub dump_swap_layout: Option<String>,
@@ -362,11 +368,12 @@ pub struct Setup {
     pub keybinding_preset: Option<String>,
 }
 
-const SETUP_ONLY_FLAGS: [&str; 9] = [
+const SETUP_ONLY_FLAGS: [&str; 10] = [
     "dump_config",
     "clean",
     "check",
     "dump_layout",
+    "validate_layout",
     "dump_swap_layout",
     "dump_keybinds",
     "dump_plugins",
@@ -510,6 +517,19 @@ impl Setup {
         if let Some(layout) = &self.dump_layout {
             dump_specified_layout(&layout)?;
             std::process::exit(0);
+        }
+
+        if let Some(layout) = &self.validate_layout {
+            match Layout::validate_only(layout, default_layout_dir()) {
+                Ok(_) => {
+                    println!("Layout OK: {}", layout);
+                    std::process::exit(0);
+                },
+                Err(e) => {
+                    eprintln!("Layout validation failed: {}", e);
+                    std::process::exit(1);
+                },
+            }
         }
 
         if let Some(swap_layout) = &self.dump_swap_layout {

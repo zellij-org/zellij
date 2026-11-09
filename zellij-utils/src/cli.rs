@@ -2482,4 +2482,41 @@ mod tests {
     fn set_resurrect_command_requires_command_or_clear() {
         assert!(parse_set_resurrect_command(&[]).is_err());
     }
+
+    #[test]
+    fn setup_validate_layout_parses() {
+        match try_parse(&["setup", "--validate-layout", "default"])
+            .unwrap()
+            .command
+        {
+            Some(Command::Setup(setup)) => {
+                assert_eq!(setup.validate_layout.as_deref(), Some("default"));
+            },
+            other => panic!("expected setup --validate-layout, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn action_new_pane_and_new_tab_parse_no_focus() {
+        match try_parse(&["action", "new-pane", "--no-focus"])
+            .unwrap()
+            .command
+        {
+            Some(Command::Action(action)) => match *action {
+                CliAction::NewPane { no_focus: true, .. } => {},
+                other => panic!("expected new-pane --no-focus, got {:?}", other),
+            },
+            other => panic!("expected action, got {:?}", other),
+        }
+        match try_parse(&["action", "new-tab", "--no-focus"])
+            .unwrap()
+            .command
+        {
+            Some(Command::Action(action)) => match *action {
+                CliAction::NewTab { no_focus: true, .. } => {},
+                other => panic!("expected new-tab --no-focus, got {:?}", other),
+            },
+            other => panic!("expected action, got {:?}", other),
+        }
+    }
 }

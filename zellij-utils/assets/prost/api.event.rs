@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63, 64")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -140,7 +140,19 @@ pub mod event {
         LiveViewStateChangedPayload(super::LiveViewStateChangedPayload),
         #[prost(message, tag="64")]
         PluginSettingsEntriesPayload(super::PluginSettingsEntriesPayload),
+        #[prost(message, tag="65")]
+        PluginActivatedPayload(super::PluginActivatedPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginActivatedPayload {
+    #[prost(uint32, tag="1")]
+    pub source_client_id: u32,
+    #[prost(message, optional, tag="2")]
+    pub source_pane_id: ::core::option::Option<PaneId>,
+    #[prost(uint32, optional, tag="3")]
+    pub source_tab_id: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1683,6 +1695,7 @@ pub enum EventType {
     DesktopIntegration = 69,
     LiveViewStateChanged = 71,
     PluginSettingsEntries = 72,
+    PluginActivated = 73,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1761,6 +1774,7 @@ impl EventType {
             EventType::DesktopIntegration => "DesktopIntegration",
             EventType::LiveViewStateChanged => "LiveViewStateChanged",
             EventType::PluginSettingsEntries => "PluginSettingsEntries",
+            EventType::PluginActivated => "PluginActivated",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1836,6 +1850,7 @@ impl EventType {
             "DesktopIntegration" => Some(Self::DesktopIntegration),
             "LiveViewStateChanged" => Some(Self::LiveViewStateChanged),
             "PluginSettingsEntries" => Some(Self::PluginSettingsEntries),
+            "PluginActivated" => Some(Self::PluginActivated),
             _ => None,
         }
     }

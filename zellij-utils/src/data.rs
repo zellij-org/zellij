@@ -1385,6 +1385,17 @@ pub enum Event {
         source_size: Option<crate::pane_size::Size>,
         release_key: String,
     },
+    /// Delivered when a plugin is launched or focused via LaunchOrFocusPlugin.
+    /// Captures the triggering client/pane/tab at admission time (before focus moves).
+    PluginActivated(PluginActivationContext),
+}
+
+/// Source context for a plugin activation (LaunchOrFocusPlugin / reuse).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginActivationContext {
+    pub source_client_id: ClientId,
+    pub source_pane_id: Option<PaneId>,
+    pub source_tab_id: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

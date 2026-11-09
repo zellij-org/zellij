@@ -4655,6 +4655,7 @@ pub fn check_event_permission(
         | Event::SessionHistoryUpdate(..)
         | Event::DesktopIntegration(..)
         | Event::PluginSettingsEntries(..)
+        | Event::PluginActivated(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
