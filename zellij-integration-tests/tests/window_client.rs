@@ -34,7 +34,8 @@ impl WindowClient {
     }
 
     fn attach_to(session_name: &str, size: Size, pane_id: Option<(u32, bool)>) -> Self {
-        let path = zellij_utils::consts::session_socket_path(session_name);
+        let path = zellij_utils::consts::session_socket_path(session_name)
+            .unwrap_or_else(|error| panic!("session index lookup failed: {error}"));
         let stream = ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);

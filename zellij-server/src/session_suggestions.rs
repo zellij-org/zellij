@@ -1080,7 +1080,14 @@ fn to_suggestions(
 
 fn live_session_layout(name: &str) -> Option<(Vec<SessionPreviewTab>, usize)> {
     // The session-info cache is keyed by session id (== name for legacy sessions).
-    let id = zellij_utils::sessions::resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    // A lookup error must not read the display-name folder.
+    let id = match zellij_utils::sessions::session_folder_id(name) {
+        Ok(id) => id,
+        Err(error) => {
+            log::error!("Failed to resolve session {:?}: {}", name, error);
+            return None;
+        },
+    };
     let raw =
         std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(&id)).ok()?;
     let info = zellij_utils::data::SessionInfo::from_string(&raw, "").ok()?;

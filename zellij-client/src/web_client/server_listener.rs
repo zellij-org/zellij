@@ -149,7 +149,7 @@ pub fn zellij_server_listener(
                             return;
                         },
                     };
-                    let create_message = create_first_message(
+                    let create_message = match create_first_message(
                         is_read_only,
                         config_file_path.clone(),
                         client_attributes.clone(),
@@ -159,8 +159,20 @@ pub fn zellij_server_listener(
                         initial_layout.clone(),
                         switch_context.clone(),
                         focus,
-                    );
-                    let attach_message = create_first_message(
+                    ) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            log::error!(
+                                "Failed to build the create message for session {:?}: {}. \
+                                 Not using the display name as the session folder.",
+                                session_name,
+                                error
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
+                    let attach_message = match create_first_message(
                         is_read_only,
                         config_file_path.clone(),
                         client_attributes.clone(),
@@ -170,7 +182,19 @@ pub fn zellij_server_listener(
                         initial_layout,
                         switch_context,
                         focus,
-                    );
+                    ) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            log::error!(
+                                "Failed to build the attach message for session {:?}: {}. \
+                                 Not using the display name as the session folder.",
+                                session_name,
+                                error
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
 
                     if let Err(error) = session_manager.spawn_session_if_needed(
                         &session_name,

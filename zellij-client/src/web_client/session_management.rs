@@ -80,12 +80,12 @@ pub fn decide_session_create_or_attach(
             let action = match session_exists(session_name) {
                 Ok(true) => SessionEnsureAction::Attach,
                 Ok(false) => SessionEnsureAction::Create,
-                Err(kind) => {
+                Err(error) => {
                     claim.release();
                     return Err(std::io::Error::new(
-                        kind,
+                        error.kind(),
                         format!(
-                            "could not recheck session {session_name:?} while holding the creation claim"
+                            "could not recheck session {session_name:?} while holding the creation claim: {error}"
                         ),
                     ));
                 },
@@ -108,12 +108,11 @@ pub fn create_first_message(
     initial_layout: Option<LayoutInfo>,
     switch_context: Option<zellij_utils::session_history::SwitchContext>,
     focus: (Option<usize>, Option<(u32, bool)>),
-) -> ClientToServerMsg {
-    let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
+) -> Result<ClientToServerMsg, String> {
+    let resurrection_layout = resurrection_layout(session_name)?;
 
     let layout_info = if resurrection_layout.is_some() {
-        let id = zellij_utils::sessions::resolve_session_id(session_name)
-            .unwrap_or_else(|| session_name.to_string());
+        let id = zellij_utils::sessions::session_folder_id(session_name)?;
         Some(LayoutInfo::File(
             session_layout_cache_file_name(&id).display().to_string(),
             LayoutMetadata::default(),
@@ -128,10 +127,10 @@ pub fn create_first_message(
     let is_web_client = true;
     if is_read_only {
         // read only clients attach as watchers
-        ClientToServerMsg::AttachWatcherClient {
+        Ok(ClientToServerMsg::AttachWatcherClient {
             terminal_size: client_attributes.size,
             is_web_client,
-        }
+        })
     } else if should_create_session {
         config_opts.web_server = Some(true);
         config_opts.web_sharing = Some(WebSharing::On);
@@ -152,10 +151,10 @@ pub fn create_first_message(
             switch_context,
         };
 
-        ClientToServerMsg::FirstClientConnected {
+        Ok(ClientToServerMsg::FirstClientConnected {
             cli_assets,
             is_web_client,
-        }
+        })
     } else {
         let cli_assets = CliAssets {
             config_file_path,
@@ -175,7 +174,7 @@ pub fn create_first_message(
         };
         let is_web_client = true;
 
-        ClientToServerMsg::AttachClient {
+        Ok(ClientToServerMsg::AttachClient {
             cli_assets,
             tab_position_to_focus: focus.0,
             pane_to_focus: focus
@@ -185,7 +184,7 @@ pub fn create_first_message(
                     is_plugin,
                 }),
             is_web_client,
-        }
+        })
     }
 }
 
@@ -202,8 +201,14 @@ pub fn create_ipc_pipe(session_name: &str, session_exists: bool) -> std::io::Res
     zellij_utils::shared::set_permissions(&sock_dir, 0o700)?;
     let zellij_ipc_pipe: PathBuf = if session_exists {
         // Existing session: resolve its id via the session index.
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        // A database error must not connect to the display-name socket.
+        match zellij_utils::sessions::resolve_session_socket_path(session_name) {
+            Ok(Some(path)) => path,
+            Ok(None) => sock_dir.join(session_name),
+            Err(error) => {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, error));
+            },
+        }
     } else {
         // New session: register it under a fresh id.
         sock_dir.join(zellij_utils::sessions::register_session(session_name))

@@ -17,6 +17,13 @@ use zellij_utils::{
     prompt::{self, ChoiceItem, PromptElement},
 };
 
+fn existing_session_socket(session_name: &str) -> std::result::Result<PathBuf, String> {
+    match zellij_utils::sessions::resolve_session_socket_path(session_name)? {
+        Some(path) => Ok(path),
+        None => Ok(zellij_utils::consts::ZELLIJ_SOCK_DIR.join(session_name)),
+    }
+}
+
 pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,
     session_name: &str,
@@ -40,8 +47,16 @@ pub fn start_cli_client(
             );
             return 1;
         }
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return 1;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
@@ -453,8 +468,16 @@ pub fn start_prompt_client(
             );
             return prompt::EXIT_ERROR;
         }
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return prompt::EXIT_ERROR;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);
@@ -841,8 +864,16 @@ pub fn start_subscribe_client(
             );
             return 1;
         }
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return 1;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     os_input.connect_to_server(&*zellij_ipc_pipe);

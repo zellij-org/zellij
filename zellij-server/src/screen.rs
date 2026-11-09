@@ -8947,10 +8947,20 @@ impl Screen {
         let running_session_exists = match zellij_utils::sessions::session_exists(&name) {
             Ok(exists) => exists,
             Err(error) => {
-                return Ok(Err(format!(
-                    "A session using this name exists but could not be confirmed responsive: {}",
-                    std::io::Error::from(error)
-                )));
+                let message = if error.kind() == std::io::ErrorKind::TimedOut
+                    || error.get_ref().is_none()
+                {
+                    format!(
+                        "A session using this name exists but could not be confirmed responsive: {}",
+                        error
+                    )
+                } else {
+                    format!(
+                        "Could not check whether a session by this name exists: {}",
+                        error
+                    )
+                };
+                return Ok(Err(message));
             },
         };
         if self.peer_sessions_cache.contains_key(&name) || running_session_exists {

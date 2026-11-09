@@ -14,6 +14,14 @@ use zellij_utils::sessions::{
 
 use crate::ClientInfo;
 
+fn session_probe_failure(error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::TimedOut || error.get_ref().is_none() {
+        session_listing_error_message(error.kind())
+    } else {
+        format!("Failed to resolve the session: {error}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stream {
     Out,
@@ -186,10 +194,7 @@ pub fn attach_by_name(
         Some(session) if create => match session_exists(session) {
             Ok(true) => Ok(ClientInfo::Attach(session.clone(), config_options)),
             Ok(false) => Ok(ClientInfo::New(session.clone(), None, None, None)),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
-                1,
-            )),
+            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
         },
         Some(prefix) => match match_session_name(prefix) {
             Ok(SessionNameMatch::UniquePrefix(s)) | Ok(SessionNameMatch::Exact(s)) => {
@@ -207,10 +212,7 @@ pub fn attach_by_name(
                 format!("No session with the name '{}' found!", prefix),
                 1,
             )),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
-                1,
-            )),
+            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
         },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
@@ -257,11 +259,8 @@ pub fn resolve_attach(
         let session_exists = match session_name.as_ref() {
             Some(session_name) => match session_exists(session_name) {
                 Ok(exists) => exists,
-                Err(kind) => {
-                    return Err(ResolutionFailure::to_stderr(
-                        session_listing_error_message(kind),
-                        1,
-                    ));
+                Err(error) => {
+                    return Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1));
                 },
             },
             None => false,
@@ -287,8 +286,9 @@ pub fn resolve_attach(
                     session_name.clone(),
                     // The layout cache is keyed by session id (== name for legacy sessions).
                     session_layout_cache_file_name(
-                        &zellij_utils::sessions::resolve_session_id(session_name)
-                            .unwrap_or_else(|| session_name.to_string()),
+                        &zellij_utils::sessions::session_folder_id(session_name).map_err(|error| {
+                            ResolutionFailure::to_stderr(error, 2)
+                        })?,
                     ),
                     args.force_run_commands,
                     new_session_cwd,
@@ -325,10 +325,7 @@ pub fn resolve_watch(
                 format!("No session with the name '{}' found!", prefix),
                 1,
             )),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
-                1,
-            )),
+            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
         },
         None => match get_active_session() {
             ActiveSession::None => Err(ResolutionFailure::to_stderr(

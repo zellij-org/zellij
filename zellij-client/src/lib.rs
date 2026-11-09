@@ -574,7 +574,16 @@ fn create_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
 /// falling back to the name-based path of sessions from before ids.
 fn resolve_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let path = zellij_utils::consts::session_socket_path(name);
+    let path = match zellij_utils::consts::session_socket_path(name) {
+        Ok(path) => path,
+        Err(error) => exit_after_startup_error(
+            teardown,
+            format!(
+                "Failed to read the session index for {:?}: {}. Not connecting.",
+                name, error
+            ),
+        ),
+    };
     prepare_parent_dir(teardown, &path);
     path
 }

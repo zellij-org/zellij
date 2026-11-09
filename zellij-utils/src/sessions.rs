@@ -78,21 +78,40 @@ pub fn rename_session(session_id: &str, new_name: &str) -> Result<(), String> {
         })
 }
 
-/// The id of the session with this name, if the session index knows it. Callers fall back to the
-/// name itself, which is the id of sessions from before ids.
-pub fn resolve_session_id(name: &str) -> Option<String> {
-    session_index::session_id_for_name(name)
+/// The id of the session with this name.
+///
+/// `Ok(None)` means the index is missing or has no row: a session from before ids, whose
+/// folder is the name. `Err` is a failed read and must not be treated as that.
+pub fn resolve_session_id(name: &str) -> Result<Option<String>, String> {
+    session_index::session_id_for_name(name).map_err(|error| error.to_string())
 }
 
 /// The socket path of the session with this name, if the session index knows it.
-pub fn resolve_session_socket_path(name: &str) -> Option<PathBuf> {
-    resolve_session_id(name).map(|id| ZELLIJ_SOCK_DIR.join(id))
+///
+/// `Ok(None)` means the index does not know this name. A database error is `Err`, not `Ok(None)`.
+pub fn resolve_session_socket_path(name: &str) -> Result<Option<PathBuf>, String> {
+    Ok(resolve_session_id(name)?.map(|id| ZELLIJ_SOCK_DIR.join(id)))
 }
 
-/// The name of the session with this id (a socket or cache folder name), or the id itself for
-/// sessions from before ids.
+/// Folder id for `name`: the index id, or `name` when the index has no row.
+/// A read error is `Err` and is not `name`.
+pub fn session_folder_id(name: &str) -> Result<String, String> {
+    session_index::folder_id_from_lookup(name, session_index::session_id_for_name(name))
+        .map_err(|error| error.to_string())
+}
+
+/// The name of the session with this id, or the id when the index has no row.
+/// A lookup error is logged and also shown as the id. Deleting an index row must use
+/// [`session_index::session_name_for_id`] and stop on `Err` instead of this fallback.
 pub fn display_name_for_session_id(id: &str) -> String {
-    session_index::session_name_for_id(id).unwrap_or_else(|| id.to_owned())
+    match session_index::session_name_for_id(id) {
+        Ok(Some(name)) => name,
+        Ok(None) => id.to_owned(),
+        Err(error) => {
+            log::error!("Failed to look up the name of session {:?}: {}", id, error);
+            id.to_owned()
+        },
+    }
 }
 
 fn session_name(names_by_id: &HashMap<String, String>, id: String) -> String {
@@ -838,8 +857,24 @@ fn report_kill_session_error(action: &str, name: &str, error: &io::Error) {
     }
 }
 
+fn legacy_socket_path(name: &str) -> Result<PathBuf, String> {
+    Ok(match resolve_session_socket_path(name)? {
+        Some(path) => path,
+        None => ZELLIJ_SOCK_DIR.join(name),
+    })
+}
+
 pub fn kill_session(name: &str) {
-    let path = resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+    let path = match legacy_socket_path(name) {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "Failed to read the session index for {:?}: {}. The session was not killed.",
+                name, error
+            );
+            process::exit(1);
+        },
+    };
     if let Err(e) = send_kill_session(&path, SESSION_PROBE_TIMEOUT) {
         report_kill_session_error("kill", name, &e);
         process::exit(1);
@@ -848,7 +883,17 @@ pub fn kill_session(name: &str) {
 
 pub fn delete_session(name: &str, force: bool) {
     // The socket and the cache folder are named by the session id; the index row by the name.
-    let session_id = resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    // A failed index read must not delete the folder named by the display name.
+    let session_id = match session_folder_id(name) {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            eprintln!(
+                "Failed to read the session index for {:?}: {}. The session was not deleted.",
+                name, error
+            );
+            process::exit(1);
+        },
+    };
     if let Err(e) = validate_session_folder_name(&session_id) {
         eprintln!("{}", e);
         process::exit(1);
@@ -1389,8 +1434,8 @@ pub fn decide_session_name_match(
     })
 }
 
-pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
-    let observation = observe_sessions()?;
+pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::Error> {
+    let observation = observe_sessions().map_err(io::Error::from)?;
     let direct = probe_exact_session(prefix)?;
     decide_session_name_match(
         prefix,
@@ -1398,32 +1443,36 @@ pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKin
         &observation.unknown,
         direct,
     )
+    .map_err(io::Error::from)
 }
 
-fn probe_exact_session(name: &str) -> Result<SessionProbeResult, io::ErrorKind> {
+fn probe_exact_session(name: &str) -> Result<SessionProbeResult, io::Error> {
     // Exact-name/ID lookups probe the known target directly. Waiting on an enumeration of
     // unrelated candidates can exhaust the shared deadline before this socket is examined.
-    let socket_path =
-        resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-    match path_try_exists(&socket_path)? {
+    // An index error must not probe the display-name path.
+    let socket_path = legacy_socket_path(name)
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+    match path_try_exists(&socket_path).map_err(io::Error::from)? {
         false => Ok(SessionProbeResult::Absent),
         true => Ok(assert_socket_path(&socket_path, SESSION_PROBE_TIMEOUT)),
     }
 }
 
-pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+pub fn session_exists(name: &str) -> Result<bool, io::Error> {
     match probe_exact_session(name)? {
         SessionProbeResult::Responsive => Ok(true),
         SessionProbeResult::Absent => Ok(false),
         // A socket that exists but could not be confirmed live is unknown, not absent.
-        SessionProbeResult::Unknown => Err(io::ErrorKind::TimedOut),
+        SessionProbeResult::Unknown => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "session socket did not respond before the probe deadline",
+        )),
     }
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
 pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Layout>, String> {
-    let session_id = resolve_session_id(session_name_to_resurrect)
-        .unwrap_or_else(|| session_name_to_resurrect.to_owned());
+    let session_id = session_folder_id(session_name_to_resurrect)?;
     let layout_file_name = session_layout_cache_file_name(&session_id);
     resurrection_layout_from_path_with_reader_barrier(&layout_file_name, || {})
 }
@@ -1500,7 +1549,7 @@ pub fn assert_session(name: &str) {
             }
         },
         Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
+            eprintln!("Error occurred: {}", e);
         },
     };
     process::exit(1);
@@ -1521,8 +1570,15 @@ pub fn assert_dead_session(name: &str, force: bool) {
                 return;
             }
         },
-        Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
+        Err(error) => {
+            if error.kind() != io::ErrorKind::TimedOut && error.get_ref().is_some() {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. The session was not deleted.",
+                    name, error
+                );
+            } else {
+                eprintln!("Error occurred: {}", error);
+            }
         },
     };
     process::exit(1);
@@ -1575,7 +1631,7 @@ pub fn assert_session_ne(name: &str) {
             }
         }
         Ok(_) => println!("Session with name {:?} already exists. Use attach command to connect to it or specify a different name.", name),
-        Err(e) => eprintln!("Error occurred: {:?}", e),
+        Err(e) => eprintln!("Error occurred: {}", e),
     };
     process::exit(1);
 }

@@ -130,7 +130,8 @@ pub enum Role {
 /// The socket of an existing session. Sockets are named by session id, which the session index
 /// maps from the name; sessions from before ids are named after the session itself.
 pub fn socket_path(session_name: &str) -> Result<PathBuf> {
-    let path = zellij_utils::consts::session_socket_path(session_name);
+    let path = zellij_utils::consts::session_socket_path(session_name)
+        .map_err(|error| anyhow::anyhow!(error))?;
     checked_socket_path(path)
 }
 

@@ -24,7 +24,7 @@ pub struct SessionLink {
 
 impl SessionLink {
     pub fn open(session_name: &str) -> Result<Self, String> {
-        Self::open_path(&crate::consts::session_socket_path(session_name))
+        Self::open_path(&crate::consts::session_socket_path(session_name)?)
     }
     pub fn open_path(socket_path: &Path) -> Result<Self, String> {
         #[cfg(windows)]
@@ -89,7 +89,7 @@ pub fn push_session_attention(
     wait_for_reply: bool,
 ) -> Result<(), String> {
     push_session_attention_to(
-        &crate::consts::session_socket_path(target_session),
+        &crate::consts::session_socket_path(target_session)?,
         own_session,
         attention,
         wait_for_reply,
@@ -279,7 +279,14 @@ fn remote_action_worker(
 }
 
 fn session_socket_exists(session_name: &str) -> bool {
-    crate::consts::session_socket_path(session_name).exists()
+    match crate::consts::session_socket_path(session_name) {
+        Ok(path) => path.exists(),
+        // A database error is not proof the socket is gone.
+        Err(error) => {
+            log::error!("Failed to resolve session {:?}: {}", session_name, error);
+            true
+        },
+    }
 }
 
 #[cfg(test)]

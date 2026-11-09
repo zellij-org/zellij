@@ -4307,14 +4307,27 @@ fn delete_dead_session_cache_with(
     remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
     mut delete_index: impl FnMut(&str),
 ) -> Result<()> {
-    // The cache folder is keyed by session id; resolve the name (falling back to
-    // treating the argument as the id, e.g. when called with an id directly).
-    let id = zellij_utils::sessions::resolve_session_id(session_name)
-        .unwrap_or_else(|| session_name.to_owned());
+    // The cache folder is keyed by session id. `Ok(None)` keeps the name as the id.
+    // A lookup error must not remove that name's folder or an index row guessed from it.
+    let id = zellij_utils::sessions::session_folder_id(session_name).map_err(|error| {
+        anyhow!(
+            "session index lookup failed; the cache and the index row were left in place: {}",
+            error
+        )
+    })?;
     validate_session_folder_name(&id).map_err(|error| anyhow!(error))?;
     // The session index is keyed by display name, which differs from the argument
-    // when called with an id.
-    let display_name = zellij_utils::sessions::display_name_for_session_id(&id);
+    // when called with an id. A lookup error leaves the row in place.
+    let display_name = match zellij_utils::session_index::session_name_for_id(&id) {
+        Ok(Some(name)) => name,
+        Ok(None) => id.clone(),
+        Err(error) => {
+            return Err(anyhow!(
+                "session index lookup failed; the cache and the index row were left in place: {}",
+                error
+            ));
+        },
+    };
     // A failed tombstone leaves the directory and the index row in place.
     match remove_cache(&id) {
         Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => {
@@ -4773,8 +4786,18 @@ fn disconnect_other_clients(env: &PluginEnv) {
 
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
-        let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
-            .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
+        let resolved = match zellij_utils::sessions::resolve_session_socket_path(&session_name) {
+            Ok(Some(path)) => path,
+            Ok(None) => ZELLIJ_SOCK_DIR.join(&session_name),
+            Err(error) => {
+                log::error!(
+                    "Failed to resolve session {:?}: {}. The session was not killed.",
+                    session_name,
+                    error
+                );
+                continue;
+            },
+        };
         if let Err(e) = zellij_utils::sessions::send_kill_session(
             &resolved,
             std::time::Duration::from_secs(5),
@@ -4797,8 +4820,25 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
         let mut set: JoinSet<(String, std::io::Result<zellij_utils::ipc::KillReply>)> =
             JoinSet::new();
         for name in session_names {
-            let path = zellij_utils::sessions::resolve_session_socket_path(&name)
-                .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&name));
+            let path = match zellij_utils::sessions::resolve_session_socket_path(&name) {
+                Ok(Some(path)) => path,
+                Ok(None) => ZELLIJ_SOCK_DIR.join(&name),
+                Err(error) => {
+                    set.spawn(async move {
+                        (
+                            name,
+                            Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!(
+                                    "session index lookup failed; the session was not killed: {}",
+                                    error
+                                ),
+                            )),
+                        )
+                    });
+                    continue;
+                },
+            };
             set.spawn(async move {
                 let res =
                     zellij_utils::ipc::async_send_kill_and_await(&path, KILL_WEDGE_TIMEOUT).await;

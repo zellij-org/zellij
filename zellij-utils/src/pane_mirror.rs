@@ -846,7 +846,13 @@ fn run_local_connection(
     outgoing: Receiver<ViewerMessage>,
     sink: MirrorEventSink,
 ) {
-    let socket_path = crate::consts::session_socket_path(&session);
+    let socket_path = match crate::consts::session_socket_path(&session) {
+        Ok(path) => path,
+        Err(error) => {
+            sink(MirrorTransportEvent::ConnectFailed(error));
+            return;
+        },
+    };
     #[cfg(windows)]
     let connected = crate::pipe_pairs::connect_pair(&socket_path);
     #[cfg(not(windows))]

@@ -61,7 +61,7 @@ pub struct RealSessionManager;
 impl SessionManager for RealSessionManager {
     fn session_exists(&self, session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
         zellij_utils::sessions::session_exists(session_name)
-            .map_err(|e| format!("Session check failed: {:?}", e).into())
+            .map_err(|e| format!("Session check failed: {}", e).into())
     }
 
     fn list_sessions(&self) -> Vec<WebSessionInfo> {
@@ -82,9 +82,17 @@ impl SessionManager for RealSessionManager {
         &self,
         session_name: &str,
     ) -> Option<zellij_utils::input::layout::Layout> {
-        zellij_utils::sessions::resurrection_layout(session_name)
-            .ok()
-            .flatten()
+        match zellij_utils::sessions::resurrection_layout(session_name) {
+            Ok(layout) => layout,
+            Err(error) => {
+                log::error!(
+                    "Failed to read the resurrection layout for {:?}: {}",
+                    session_name,
+                    error
+                );
+                None
+            },
+        }
     }
 
     fn spawn_session_if_needed(

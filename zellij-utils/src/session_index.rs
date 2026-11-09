@@ -1076,17 +1076,65 @@ fn query_names_by_id(conn: &Connection) -> Result<HashMap<String, String>> {
     Ok(names)
 }
 
-// Lookups for callers that only map between session names and ids (listings, attaching). They
-// skip `open`'s setup and integrity check and never create the index: a missing, unreadable or
-// pre-id index knows no session, which callers take to mean "the id is the name".
-fn open_existing_default_index() -> Option<Connection> {
-    let conn = Connection::open_with_flags(
-        default_index_path(),
+// `Ok(true)` only when the index file is not there. `try_exists` failing is not absence.
+fn index_file_is_missing(path: &Path) -> Result<bool> {
+    match path.try_exists() {
+        Ok(exists) => Ok(!exists),
+        Err(error) => Err(error.into()),
+    }
+}
+
+// `SQLITE_CANTOPEN` after a missing file (a race with `try_exists`) is absence.
+// The same code is a real error when the path is still there: permissions, a
+// directory, or a lock. Other open failures are errors even if the file is gone.
+fn open_error_is_missing_index(path: &Path, error: &rusqlite::Error) -> Result<bool> {
+    let cannot_open = matches!(
+        error,
+        rusqlite::Error::SqliteFailure(ffi_error, _)
+            if ffi_error.code == rusqlite::ErrorCode::CannotOpen
+    );
+    if !cannot_open {
+        return Ok(false);
+    }
+    index_file_is_missing(path)
+}
+
+// Lookups skip `open`'s setup and integrity check and never create the index.
+// A missing file is `Ok(None)`. A locked, corrupt, or unreadable index is `Err`.
+fn open_existing_index(path: &Path) -> Result<Option<Connection>> {
+    if index_file_is_missing(path)? {
+        return Ok(None);
+    }
+    match Connection::open_with_flags(
+        path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .ok()?;
-    conn.busy_timeout(BUSY_TIMEOUT).ok()?;
-    Some(conn)
+    ) {
+        Ok(conn) => {
+            conn.busy_timeout(BUSY_TIMEOUT)?;
+            Ok(Some(conn))
+        },
+        Err(error) => {
+            if open_error_is_missing_index(path, &error)? {
+                Ok(None)
+            } else {
+                Err(error.into())
+            }
+        },
+    }
+}
+
+fn open_existing_default_index() -> Result<Option<Connection>> {
+    open_existing_index(&default_index_path())
+}
+
+/// Folder id for a display name. `Ok(None)` is a pre-id session, whose folder is `name`.
+/// `Err` is not that folder.
+pub fn folder_id_from_lookup(name: &str, lookup: Result<Option<String>>) -> Result<String> {
+    match lookup {
+        Ok(Some(id)) => Ok(id),
+        Ok(None) => Ok(name.to_owned()),
+        Err(error) => Err(error),
+    }
 }
 
 /// `Ok(is_live)` keeps the caller's classification. An inspection error is not death
@@ -1234,22 +1282,35 @@ pub fn delete_dead_sessions_in(
     }
 }
 
-pub fn session_id_for_name(name: &str) -> Option<String> {
-    query_session_id(&open_existing_default_index()?, name)
-        .ok()
-        .flatten()
+fn session_id_for_name_in(path: &Path, name: &str) -> Result<Option<String>> {
+    match open_existing_index(path)? {
+        Some(conn) => query_session_id(&conn, name),
+        None => Ok(None),
+    }
 }
 
-pub fn session_name_for_id(id: &str) -> Option<String> {
-    query_session_name(&open_existing_default_index()?, id)
-        .ok()
-        .flatten()
+fn session_name_for_id_in(path: &Path, id: &str) -> Result<Option<String>> {
+    match open_existing_index(path)? {
+        Some(conn) => query_session_name(&conn, id),
+        None => Ok(None),
+    }
 }
 
+pub fn session_id_for_name(name: &str) -> Result<Option<String>> {
+    session_id_for_name_in(&default_index_path(), name)
+}
+
+pub fn session_name_for_id(id: &str) -> Result<Option<String>> {
+    session_name_for_id_in(&default_index_path(), id)
+}
+
+/// Names for listings. An error or a missing index is an empty map, which callers
+/// use only as a display fallback (the id is shown). It must not choose a folder to delete.
 pub fn session_names_by_id() -> HashMap<String, String> {
-    open_existing_default_index()
-        .and_then(|conn| query_names_by_id(&conn).ok())
-        .unwrap_or_default()
+    let Ok(Some(conn)) = open_existing_default_index() else {
+        return HashMap::new();
+    };
+    query_names_by_id(&conn).unwrap_or_default()
 }
 
 /// Socket filenames are session ids; `names_by_id` maps them to session names (an id without an
@@ -2190,5 +2251,103 @@ mod tests {
             kept,
             "inspection error must not drop a live socket from the running set"
         );
+    }
+
+    fn assert_lookup_error_is_not_the_display_name(lookup: Result<Option<String>>) {
+        match folder_id_from_lookup("display-name", lookup) {
+            Ok(id) => panic!("a read error must not become folder id {id}"),
+            Err(_) => {},
+        }
+    }
+
+    #[test]
+    fn an_index_read_error_is_not_the_display_name_folder() {
+        let name = "display-name";
+        assert_eq!(folder_id_from_lookup(name, Ok(None)).unwrap(), name);
+
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing.sqlite");
+        assert_eq!(session_id_for_name_in(&missing, name).unwrap(), None);
+        assert_eq!(session_name_for_id_in(&missing, name).unwrap(), None);
+        assert_eq!(
+            folder_id_from_lookup(name, session_id_for_name_in(&missing, name)).unwrap(),
+            name
+        );
+
+        let cant_open = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+            Some("unable to open database file".to_owned()),
+        );
+        assert!(open_error_is_missing_index(&missing, &cant_open).unwrap());
+        let not_a_database = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTADB),
+            Some("file is not a database".to_owned()),
+        );
+        assert!(!open_error_is_missing_index(&missing, &not_a_database).unwrap());
+
+        let present = root.path().join("present.sqlite");
+        std::fs::write(&present, b"x").unwrap();
+        assert!(!open_error_is_missing_index(&present, &cant_open).unwrap());
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&present, name));
+        assert_lookup_error_is_not_the_display_name(session_name_for_id_in(&present, name));
+
+        let directory = root.path().join("index-dir");
+        std::fs::create_dir(&directory).unwrap();
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&directory, name));
+
+        let empty = root.path().join("empty.sqlite");
+        Connection::open(&empty).unwrap();
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&empty, name));
+        assert_lookup_error_is_not_the_display_name(session_name_for_id_in(&empty, name));
+
+        let indexed = root.path().join("index.sqlite");
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let id = {
+            let index = SessionIndex::open(&indexed, sock_dir, cache_dir).unwrap();
+            let id = index.register(name, 1).unwrap();
+            assert_ne!(id, name);
+            assert_eq!(
+                session_id_for_name_in(&indexed, "no-such-session").unwrap(),
+                None
+            );
+            id
+        };
+        assert_eq!(
+            folder_id_from_lookup(name, session_id_for_name_in(&indexed, name)).unwrap(),
+            id
+        );
+        assert_eq!(
+            folder_id_from_lookup("no-such-session", session_id_for_name_in(&indexed, "no-such-session"))
+                .unwrap(),
+            "no-such-session"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_index_path_is_not_a_missing_index() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let blocked = root.path().join("blocked");
+        std::fs::create_dir(&blocked).unwrap();
+        let index = blocked.join("index.sqlite");
+        std::fs::write(&index, b"not a database").unwrap();
+        let mut perms = std::fs::metadata(&blocked).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&blocked, perms).unwrap();
+        struct RestoreMode(std::path::PathBuf);
+        impl Drop for RestoreMode {
+            fn drop(&mut self) {
+                let mut perms = std::fs::metadata(&self.0).unwrap().permissions();
+                perms.set_mode(0o700);
+                std::fs::set_permissions(&self.0, perms).unwrap();
+            }
+        }
+        let _restore = RestoreMode(blocked);
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&index, "display-name"));
     }
 }

@@ -4929,10 +4929,19 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::SessionRenamed(new_name) => {
-                if let Err(e) =
-                    server_socket.rename(zellij_utils::consts::session_socket_path(&new_name))
-                {
-                    log::error!("Failed to rename ipc socket: {:?}", e);
+                match zellij_utils::consts::session_socket_path(&new_name) {
+                    Ok(path) => {
+                        if let Err(e) = server_socket.rename(path) {
+                            log::error!("Failed to rename ipc socket: {:?}", e);
+                        }
+                    },
+                    Err(error) => {
+                        log::error!(
+                            "Failed to resolve the renamed session {:?}: {}. The socket was not renamed.",
+                            new_name,
+                            error
+                        );
+                    },
                 }
                 rename_in_client_histories(&mut client_histories, &own_session_name, &new_name);
                 own_session_name = new_name;
@@ -6481,9 +6490,21 @@ fn history_move_switch(
             client_histories.insert(client_id, history.clone());
             return Err(history);
         };
-        let is_live = live_sessions
-            .is_live(&target)
-            .unwrap_or_else(|| zellij_utils::consts::session_socket_path(&target).exists());
+        let is_live = match live_sessions.is_live(&target) {
+            Some(is_live) => is_live,
+            None => match zellij_utils::consts::session_socket_path(&target) {
+                Ok(path) => path.exists(),
+                Err(error) => {
+                    log::error!(
+                        "Failed to resolve session {:?}: {}. Not treating it as a missing socket.",
+                        target,
+                        error
+                    );
+                    client_histories.insert(client_id, history.clone());
+                    return Err(history);
+                },
+            },
+        };
         if is_live {
             history.apply(history_move, own_session_name);
             return Ok(ConnectToSession {
