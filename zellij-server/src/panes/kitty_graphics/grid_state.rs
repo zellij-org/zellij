@@ -488,6 +488,16 @@ impl KittyGrid {
             // At most `MAX_SCALED_VARIANTS_PER_IMAGE` variants are kept per
             // image; a new one drops the least-recently-used other variant
             // and its cached encoding. The byte quota can drop one sooner.
+            if self
+                .kitty_image_store
+                .borrow()
+                .scale_was_refused(internal, variant_key)
+            {
+                self.kitty_image_store
+                    .borrow_mut()
+                    .touch_scaled_variant(internal, variant_key);
+                return Err(einval(command, "placement too large"));
+            }
             let expected_len = dst_w
                 .checked_mul(dst_h)
                 .and_then(|pixels| pixels.checked_mul(4));
@@ -501,6 +511,17 @@ impl KittyGrid {
                 self.kitty_image_store
                     .borrow_mut()
                     .touch_scaled_variant(internal, variant_key);
+            } else if !self
+                .kitty_image_store
+                .borrow()
+                .scaled_bytes_are_retainable(internal, dst_w, dst_h)
+            {
+                // The raster would not survive next to the other variants this
+                // image is allowed to keep. Refuse before allocating it.
+                self.kitty_image_store
+                    .borrow_mut()
+                    .remember_refused_scale(internal, variant_key);
+                return Err(einval(command, "placement too large"));
             } else {
                 let fits = expected_len
                     .map(|bytes| {
@@ -1076,16 +1097,27 @@ impl KittyGrid {
                 // placement is dropped rather than cached as an empty image.
                 let mut store = self.kitty_image_store.borrow_mut();
                 self.placements.retain(|placement| {
-                    let oversized = placement
-                        .scaled_px
-                        .is_some_and(|(width, height)| !scaled_size_is_allowed(width, height));
+                    let oversized = placement.scaled_px.is_some_and(|(width, height)| {
+                        !scaled_size_is_allowed(width, height)
+                            || !store.scaled_bytes_are_retainable(
+                                placement.internal_id,
+                                width,
+                                height,
+                            )
+                    });
                     if oversized {
                         store.free(placement.internal_id);
                     }
                     !oversized
                 });
                 drop(store);
-                regenerations.retain(|(_, key)| scaled_size_is_allowed(key.size.0, key.size.1));
+                regenerations.retain(|(internal, key)| {
+                    scaled_size_is_allowed(key.size.0, key.size.1)
+                        && self
+                            .kitty_image_store
+                            .borrow()
+                            .scaled_bytes_are_retainable(*internal, key.size.0, key.size.1)
+                });
                 for (internal, key) in regenerations {
                     let expected_len = key
                         .size

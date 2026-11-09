@@ -41,6 +41,9 @@ pub struct KittyImage {
 struct ScaledVariant {
     bytes: Vec<u8>,
     lru_stamp: u64,
+    /// The destination was refused. `bytes` is empty; the entry only stops
+    /// the same key from being scaled again. It still occupies a variant slot.
+    refused: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -178,14 +181,70 @@ impl KittyImageStore {
     pub fn has_scaled_variant(&self, id: InternalImageId, key: ScaledImageKey) -> bool {
         self.images
             .get(&id)
-            .map(|stored| stored.derived.scaled_variants.contains_key(&key))
-            .unwrap_or(false)
+            .and_then(|stored| stored.derived.scaled_variants.get(&key))
+            .is_some_and(|variant| !variant.refused)
     }
     pub fn scaled_variant(&self, id: InternalImageId, key: ScaledImageKey) -> Option<&[u8]> {
         self.images
             .get(&id)
             .and_then(|stored| stored.derived.scaled_variants.get(&key))
+            .filter(|variant| !variant.refused)
             .map(|variant| variant.bytes.as_slice())
+    }
+    pub(crate) fn scale_was_refused(&self, id: InternalImageId, key: ScaledImageKey) -> bool {
+        self.images
+            .get(&id)
+            .and_then(|stored| stored.derived.scaled_variants.get(&key))
+            .is_some_and(|variant| variant.refused)
+    }
+    /// Quota share for one scaled raster: four of these, plus the base image, fit.
+    pub(crate) fn max_synchronous_scaled_bytes(&self, id: InternalImageId) -> usize {
+        let image_bytes = self
+            .images
+            .get(&id)
+            .map(|stored| {
+                stored
+                    .image
+                    .rgba
+                    .len()
+                    .saturating_add(KITTY_IMAGE_METADATA_BYTES)
+            })
+            .unwrap_or(0);
+        self.quota_bytes.saturating_sub(image_bytes) / MAX_SCALED_VARIANTS_PER_IMAGE
+    }
+    pub(crate) fn scaled_bytes_are_retainable(
+        &self,
+        id: InternalImageId,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        width
+            .checked_mul(height)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .is_some_and(|bytes| bytes <= self.max_synchronous_scaled_bytes(id))
+    }
+    /// Remember a destination that must not be scaled. The marker is not a raster.
+    pub(crate) fn remember_refused_scale(&mut self, id: InternalImageId, key: ScaledImageKey) {
+        if self.scale_was_refused(id, key) || self.has_scaled_variant(id, key) {
+            self.touch_scaled_variant(id, key);
+            return;
+        }
+        let lru_stamp = self.bump_lru();
+        let inserted = self.images.get_mut(&id).is_some_and(|stored| {
+            stored.lru_stamp = lru_stamp;
+            stored.derived.scaled_variants.insert(
+                key,
+                ScaledVariant {
+                    bytes: Vec::new(),
+                    lru_stamp,
+                    refused: true,
+                },
+            );
+            true
+        });
+        if inserted {
+            self.drop_scaled_variants_over_cap(id, key);
+        }
     }
     /// Mark a stored variant recently used without copying or rescaling it.
     pub(crate) fn touch_scaled_variant(&mut self, id: InternalImageId, key: ScaledImageKey) {
@@ -207,6 +266,11 @@ impl KittyImageStore {
     /// Compute the bytes of a scaled variant from the base raster without
     /// touching the cache.
     fn render_scaled_variant(&self, id: InternalImageId, key: ScaledImageKey) -> Option<Vec<u8>> {
+        if self.scale_was_refused(id, key)
+            || !self.scaled_bytes_are_retainable(id, key.size.0, key.size.1)
+        {
+            return None;
+        }
         let scaled = {
             let stored = self.images.get(&id)?;
             let (width, height) = (stored.image.width as usize, stored.image.height as usize);
@@ -263,6 +327,10 @@ impl KittyImageStore {
         id: InternalImageId,
         key: ScaledImageKey,
     ) -> Option<Cow<'_, [u8]>> {
+        if self.scale_was_refused(id, key) {
+            self.touch_scaled_variant(id, key);
+            return None;
+        }
         let stamp = self.bump_lru();
         if self.has_scaled_variant(id, key) {
             if let Some(variant) = self
@@ -273,6 +341,10 @@ impl KittyImageStore {
                 variant.lru_stamp = stamp;
             }
             return self.scaled_variant(id, key).map(Cow::Borrowed);
+        }
+        if !self.scaled_bytes_are_retainable(id, key.size.0, key.size.1) {
+            self.remember_refused_scale(id, key);
+            return None;
         }
         let scaled = self.render_scaled_variant(id, key)?;
         self.add_scaled_variant(id, key, scaled.clone());
@@ -319,6 +391,17 @@ impl KittyImageStore {
         variant: Option<ScaledImageKey>,
         compressed: bool,
     ) -> Option<Arc<str>> {
+        if let Some(key) = variant {
+            if self.scale_was_refused(id, key) {
+                return None;
+            }
+            if !self.has_scaled_variant(id, key)
+                && !self.scaled_bytes_are_retainable(id, key.size.0, key.size.1)
+            {
+                self.remember_refused_scale(id, key);
+                return None;
+            }
+        }
         let cache_key = (variant, compressed);
         let stamp = self.bump_lru();
         if let Some(cached) = self
@@ -336,7 +419,8 @@ impl KittyImageStore {
             let regenerated;
             let bytes: &[u8] = match variant {
                 Some(key) => match stored.derived.scaled_variants.get(&key) {
-                    Some(cached) => &cached.bytes,
+                    Some(cached) if !cached.refused => &cached.bytes,
+                    Some(_) => return None,
                     None => {
                         regenerated = self.render_scaled_variant(id, key)?;
                         &regenerated
@@ -395,7 +479,14 @@ impl KittyImageStore {
                 let old_len = stored
                     .derived
                     .scaled_variants
-                    .insert(key, ScaledVariant { bytes, lru_stamp })
+                    .insert(
+                        key,
+                        ScaledVariant {
+                            bytes,
+                            lru_stamp,
+                            refused: false,
+                        },
+                    )
                     .map(|old| old.bytes.len())
                     .unwrap_or(0);
                 // Invalidate encodings of the replaced variant, accounting
