@@ -1013,6 +1013,30 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
 }
 
 #[test]
+fn a_tab_created_without_attached_clients_reuses_the_last_known_geometry() {
+    let size = Size {
+        rows: 32,
+        cols: 100,
+    };
+    let mut screen = create_new_screen(size, false, false);
+    screen.client_sizes.clear();
+    screen
+        .new_tab(7, (vec![], vec![]), None, None)
+        .expect("detached tab creation");
+    screen
+        .new_tab(8, (vec![], vec![]), None, None)
+        .expect("second detached tab creation");
+    assert_eq!(screen.tabs.get(&7).map(|tab| tab.size), Some(size));
+    assert_eq!(screen.tabs.get(&8).map(|tab| tab.size), Some(size));
+
+    screen.set_client_size(1, size);
+    screen
+        .add_client(1, false)
+        .expect("first client attachment");
+    assert_eq!(screen.tabs.len(), 2, "detached tabs survive first attach");
+}
+
+#[test]
 fn open_new_tab() {
     let size = Size {
         cols: 121,

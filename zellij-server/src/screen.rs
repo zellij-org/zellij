@@ -2284,6 +2284,8 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
+    /// Geometry used for detached scripted work after the last client leaves.
+    last_client_size: Option<Size>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -2756,6 +2758,7 @@ impl Screen {
             recently_disconnected_clients: VecDeque::new(),
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
+            last_client_size: None,
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             last_single_pane_tab_names: HashMap::new(),
@@ -3437,6 +3440,7 @@ impl Screen {
     }
 
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
+        self.last_client_size = Some(size);
         self.client_sizes.insert(client_id, size);
     }
 
@@ -3448,7 +3452,8 @@ impl Screen {
                     .and_then(|client_id| self.client_sizes.get(&client_id).copied())
             })
             .or_else(|| self.client_sizes.values().next().copied())
-            .unwrap_or_default()
+            .or(self.last_client_size)
+            .unwrap_or(Size { rows: 24, cols: 80 })
     }
 
     fn size_of_tab_of_client(&self, client_id: ClientId) -> Size {
