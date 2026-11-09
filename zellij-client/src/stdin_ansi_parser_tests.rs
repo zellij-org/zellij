@@ -2386,3 +2386,165 @@ fn feed_partitions_conserve_all_outputs() {
         }
     }
 }
+
+const PALETTE_QUERY_1_AND_2: &[u8] = b"\x1b]4;1;?;2;?\x1b\\";
+const FG_AND_PALETTE_QUERY: &[u8] = b"\x1b]10;?\x1b\\\x1b]4;1;?;2;?\x1b\\";
+const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?6c";
+
+fn reserialized_osc(payload: &str) -> Vec<u8> {
+    let mut bytes = b"\x1b]".to_vec();
+    bytes.extend_from_slice(payload.as_bytes());
+    bytes.extend_from_slice(b"\x1b\\");
+    bytes
+}
+
+fn forward_chunks(query: &[u8], chunks: &[&[u8]]) -> Vec<u8> {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, query);
+    let mut completed = None;
+    for chunk in chunks {
+        if let Some((token, bytes)) = parser.feed(chunk).completed_forward {
+            assert_eq!(token, 7);
+            assert!(completed.is_none(), "primary DA closed the slot twice");
+            completed = Some(bytes);
+        }
+    }
+    completed.expect("primary DA should close the forward")
+}
+
+#[test]
+fn split_osc4_replies_accumulate_for_bel_and_st() {
+    let first = b"\x1b]4;1;rgb:1111/0000/0000\x07";
+    let noise = b"\x1b]11;rgb:abcd/abcd/abcd\x1b\\zz";
+    let second = b"\x1b]4;2;rgb:0000/2222/0000\x1b\\";
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, PALETTE_QUERY_1_AND_2);
+    let opened = parser.feed(first);
+    assert!(opened.completed_forward.is_none());
+    assert!(opened.residue.is_empty());
+    let stray = parser.feed(noise);
+    assert_eq!(stray.residue, b"zz");
+    assert!(parser.feed(second).residue.is_empty());
+    let done = parser.feed(PRIMARY_DA_REPLY);
+    let (token, bytes) = done.completed_forward.expect("barrier");
+    assert_eq!(token, 7);
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+    assert!(!bytes.windows(4).any(|w| w == b"]11;"));
+    assert!(!bytes.windows(2).any(|w| w == b"zz"));
+}
+
+#[test]
+fn combined_osc4_reply_matches_once() {
+    let combined = b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x1b\\";
+    let repeat = b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x07";
+    let bytes = forward_chunks(b"\x1b]4;1;?;2;?\x07", &[combined, repeat, PRIMARY_DA_REPLY]);
+    assert_eq!(
+        bytes,
+        reserialized_osc("4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000")
+    );
+}
+
+#[test]
+fn split_palette_replies_survive_arbitrary_slices() {
+    let mut wire = b"\x1b]4;1;rgb:1111/0000/0000\x07".to_vec();
+    let boundary = wire.len();
+    wire.extend_from_slice(b"\x1b]4;2;rgb:0000/2222/0000\x1b\\");
+    wire.extend_from_slice(PRIMARY_DA_REPLY);
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+
+    assert_eq!(
+        forward_chunks(
+            PALETTE_QUERY_1_AND_2,
+            &[&wire[..boundary], &wire[boundary..]],
+        ),
+        expected,
+        "a slice boundary between the two OSC 4 replies drops a register"
+    );
+    for split in 0..=wire.len() {
+        assert_eq!(
+            forward_chunks(PALETTE_QUERY_1_AND_2, &[&wire[..split], &wire[split..]]),
+            expected,
+            "split at {split}"
+        );
+    }
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, PALETTE_QUERY_1_AND_2);
+    let mut completed = None;
+    for byte in wire.chunks(1) {
+        if let Some((token, bytes)) = parser.feed(byte).completed_forward {
+            assert_eq!(token, 7);
+            completed = Some(bytes);
+        }
+    }
+    assert_eq!(completed.expect("byte-wise feed"), expected);
+}
+
+#[test]
+fn duplicate_palette_register_does_not_cover_a_different_index() {
+    let bytes = forward_chunks(
+        PALETTE_QUERY_1_AND_2,
+        &[
+            b"\x1b]4;1;rgb:1111/0000/0000\x1b\\",
+            b"\x1b]4;1;rgb:ffff/1111/1111\x07",
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+    assert_eq!(bytes.windows(4).filter(|w| *w == b"]4;1").count(), 1);
+}
+
+#[test]
+fn unrequested_palette_register_is_not_forwarded() {
+    let bytes = forward_chunks(
+        PALETTE_QUERY_1_AND_2,
+        &[
+            b"\x1b]4;99;rgb:9999/9999/9999\x1b\\",
+            b"\x1b]4;1;rgb:dead/0000/0000;99;rgb:9999/9999/9999\x07",
+            b"\x1b]4;1;rgb:1111/0000/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    assert_eq!(bytes, reserialized_osc("4;1;rgb:1111/0000/0000"));
+    assert!(!bytes.windows(3).any(|w| w == b"99;"));
+    assert!(!bytes.windows(4).any(|w| w == b"dead"));
+}
+
+#[test]
+fn compound_foreground_and_split_palette_replies_are_forwarded() {
+    let bytes = forward_chunks(
+        FG_AND_PALETTE_QUERY,
+        &[
+            b"\x1b]10;rgb:eeee/eeee/eeee\x1b\\",
+            b"\x1b]4;1;rgb:1111/0000/0000\x07",
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("10;rgb:eeee/eeee/eeee");
+    expected.extend(reserialized_osc("4;1;rgb:1111/0000/0000"));
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+}
+
+#[test]
+fn split_palette_around_foreground_is_forwarded_in_arrival_order() {
+    let bytes = forward_chunks(
+        FG_AND_PALETTE_QUERY,
+        &[
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            b"\x1b]10;rgb:eeee/eeee/eeee\x07",
+            b"\x1b]4;1;rgb:1111/0000/0000\x07",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("4;2;rgb:0000/2222/0000");
+    expected.extend(reserialized_osc("10;rgb:eeee/eeee/eeee"));
+    expected.extend(reserialized_osc("4;1;rgb:1111/0000/0000"));
+    assert_eq!(bytes, expected);
+}

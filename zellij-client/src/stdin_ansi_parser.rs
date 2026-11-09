@@ -226,7 +226,14 @@ enum ExpectedForwardReply {
     Any,
     OscForeground,
     OscBackground,
-    OscPalette { indices: Vec<usize> },
+    /// `indices` is the original request. `outstanding` shrinks as each
+    /// accepted OSC 4 arrives. xterm may answer one register per OSC or
+    /// all of them in one OSC; a reply is forwarded only when every
+    /// register in it was requested and at least one is still outstanding.
+    OscPalette {
+        indices: Vec<usize>,
+        outstanding: Vec<usize>,
+    },
     TextAreaPixels,
     CharacterCellPixels,
     Compound(Vec<ExpectedForwardReply>),
@@ -304,7 +311,10 @@ impl ExpectedForwardReply {
             if indices.is_empty() {
                 return None;
             }
-            return Some(Self::OscPalette { indices });
+            return Some(Self::OscPalette {
+                outstanding: indices.clone(),
+                indices,
+            });
         }
         None
     }
@@ -317,7 +327,7 @@ impl ExpectedForwardReply {
         }
     }
 
-    fn matches_osc_payload(&self, payload: &[u8]) -> bool {
+    fn matches_osc_payload(&mut self, payload: &[u8]) -> bool {
         match self {
             Self::Any => true,
             Self::OscForeground => std::str::from_utf8(payload)
@@ -326,16 +336,26 @@ impl ExpectedForwardReply {
             Self::OscBackground => std::str::from_utf8(payload)
                 .map(|s| s.starts_with("11;"))
                 .unwrap_or(false),
-            Self::OscPalette { indices } => {
+            Self::OscPalette {
+                indices,
+                outstanding,
+            } => {
                 let Some(registers) = palette_registers(std::str::from_utf8(payload).unwrap_or(""))
                 else {
                     return false;
                 };
-                indices
-                    .iter()
-                    .all(|want| registers.iter().any(|(got, _)| got == want))
+                let requested = |got: &usize| indices.iter().any(|want| want == got);
+                let still_open = |got: &usize| outstanding.iter().any(|want| want == got);
+                if !registers.iter().all(|(got, _)| requested(got)) {
+                    return false;
+                }
+                if !registers.iter().any(|(got, _)| still_open(got)) {
+                    return false;
+                }
+                outstanding.retain(|want| !registers.iter().any(|(got, _)| got == want));
+                true
             },
-            Self::Compound(parts) => parts.iter().any(|p| p.matches_osc_payload(payload)),
+            Self::Compound(parts) => parts.iter_mut().any(|p| p.matches_osc_payload(payload)),
             Self::TextAreaPixels | Self::CharacterCellPixels => false,
         }
     }
@@ -354,7 +374,6 @@ impl ExpectedForwardReply {
         }
     }
 }
-
 
 /// The "slot" tracking state for a single forwarded query currently in
 /// flight to the host terminal. The parser accumulates matching raw reply
