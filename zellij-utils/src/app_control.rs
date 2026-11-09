@@ -150,9 +150,11 @@ pub fn send_app_request(request: &AppRequest) -> Result<AppReply, String> {
 
 pub fn send_app_request_to(socket: &Path, request: &AppRequest) -> Result<AppReply, String> {
     use interprocess::local_socket::traits::Stream as _;
-    let mut stream = crate::consts::ipc_connect(socket).map_err(|e| e.to_string())?;
     #[cfg(windows)]
-    let mut reply_stream = crate::consts::ipc_connect_reply(socket).map_err(|e| e.to_string())?;
+    let (mut stream, mut reply_stream) =
+        crate::pipe_pairs::connect_pair(socket).map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    let mut stream = crate::consts::ipc_connect(socket).map_err(|e| e.to_string())?;
     #[cfg(not(windows))]
     let mut reply_stream = interprocess::TryClone::try_clone(&stream).map_err(|e| e.to_string())?;
     let _ = stream.set_recv_timeout(Some(APP_REQUEST_TIMEOUT));

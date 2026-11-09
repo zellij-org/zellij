@@ -179,30 +179,23 @@ impl Iterator for BlockingSignalIterator {
     }
 }
 
-/// Set up client IPC channels from a connected socket.
+/// Connects to the server at `path`, waiting for it to start listening.
 ///
 /// On Windows we use two separate named pipes to avoid DuplicateHandle
 /// deadlock: the command pipe (socket) for client→server, and a reply pipe
-/// for server→client.
-pub(crate) fn setup_ipc(
-    socket: interprocess::local_socket::Stream,
+/// for server→client. Both are connected together, so the server can pair them.
+pub(crate) fn connect_ipc(
     path: &Path,
 ) -> (
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
 ) {
-    let reply_socket;
-    loop {
-        match zellij_utils::consts::ipc_connect_reply(path) {
-            Ok(sock) => {
-                reply_socket = sock;
-                break;
-            },
-            Err(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            },
+    let (socket, reply_socket) = loop {
+        match zellij_utils::pipe_pairs::connect_pair(path) {
+            Ok(pipes) => break pipes,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
         }
-    }
+    };
     let sender = IpcSenderWithContext::new(socket);
     let receiver = IpcReceiverWithContext::new(reply_socket);
     (sender, receiver)

@@ -672,18 +672,14 @@ pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()>
 pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        use crate::consts::{ipc_connect, ipc_connect_reply};
-        let stream = ipc_connect(&path)?;
-        let reply = ipc_connect_reply(&path);
+        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(&path)?;
         let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
         sender
             .send_client_msg(ClientToServerMsg::KillSession)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        if let Ok(reply_stream) = reply {
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                IpcReceiverWithContext::new(reply_stream);
-            let _ = receiver.recv_server_msg();
-        }
+        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+            IpcReceiverWithContext::new(reply_stream);
+        let _ = receiver.recv_server_msg();
         Ok::<(), io::Error>(())
     })
     .await

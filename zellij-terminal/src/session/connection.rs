@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
-use zellij_utils::consts::{ipc_connect, ZELLIJ_SOCK_MAX_LENGTH};
+use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
 use zellij_utils::data::{BareKey, KeyWithModifier};
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
@@ -191,8 +191,7 @@ pub fn open_at(
     starts_server: bool,
 ) -> Result<Connection> {
     let deadline = Instant::now() + opening.connect_timeout(starts_server);
-    let mut sender = connect_with_retry(path, deadline)?;
-    let receiver = reply_channel(&sender, path, deadline)?;
+    let (mut sender, receiver) = connect_with_retry(path, deadline)?;
 
     sender
         .send_client_msg(first_message)
@@ -240,13 +239,36 @@ fn asserted_capabilities(geometry: Geometry, capabilities: Capabilities) -> Vec<
     msgs
 }
 
+#[cfg(not(windows))]
 fn connect_with_retry(
     path: &Path,
     deadline: Instant,
-) -> Result<IpcSenderWithContext<ClientToServerMsg>> {
-    retry_until(deadline, || ipc_connect(path))
+) -> Result<(
+    IpcSenderWithContext<ClientToServerMsg>,
+    IpcReceiverWithContext<ServerToClientMsg>,
+)> {
+    let sender = retry_until(deadline, || zellij_utils::consts::ipc_connect(path))
         .map(IpcSenderWithContext::new)
-        .map_err(|e| anyhow!("failed to connect to {:?}: {}", path, e))
+        .map_err(|e| anyhow!("failed to connect to {:?}: {}", path, e))?;
+    let receiver = sender.get_receiver();
+    Ok((sender, receiver))
+}
+
+/// Windows connects the request and reply pipes together, so the server can pair them.
+#[cfg(windows)]
+fn connect_with_retry(
+    path: &Path,
+    deadline: Instant,
+) -> Result<(
+    IpcSenderWithContext<ClientToServerMsg>,
+    IpcReceiverWithContext<ServerToClientMsg>,
+)> {
+    let (stream, reply) = retry_until(deadline, || zellij_utils::pipe_pairs::connect_pair(path))
+        .map_err(|e| anyhow!("failed to connect to {:?}: {}", path, e))?;
+    Ok((
+        IpcSenderWithContext::new(stream),
+        IpcReceiverWithContext::new(reply),
+    ))
 }
 
 fn retry_until<T>(
@@ -264,26 +286,6 @@ fn retry_until<T>(
             },
         }
     }
-}
-
-#[cfg(not(windows))]
-fn reply_channel(
-    sender: &IpcSenderWithContext<ClientToServerMsg>,
-    _path: &Path,
-    _deadline: Instant,
-) -> Result<IpcReceiverWithContext<ServerToClientMsg>> {
-    Ok(sender.get_receiver())
-}
-
-#[cfg(windows)]
-fn reply_channel(
-    _sender: &IpcSenderWithContext<ClientToServerMsg>,
-    path: &Path,
-    deadline: Instant,
-) -> Result<IpcReceiverWithContext<ServerToClientMsg>> {
-    retry_until(deadline, || zellij_utils::consts::ipc_connect_reply(path))
-        .map(IpcReceiverWithContext::new)
-        .map_err(|e| anyhow!("failed to connect to the reply pipe of {:?}: {}", path, e))
 }
 
 pub fn send(sender: &SharedSender, msg: ClientToServerMsg) -> Result<()> {

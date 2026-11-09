@@ -22,7 +22,6 @@ use std::{
 };
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
-use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
     BreakPanesToTabWithIndexResponse, CommandType, ConfigSnapshot, ConnectToSession,
@@ -48,7 +47,6 @@ use zellij_utils::data::{
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
 use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 use zellij_utils::sessions::validate_session_folder_name;
 #[cfg(feature = "web_server_capability")]
@@ -4591,32 +4589,9 @@ fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
             .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
-        let path = &*resolved;
-        match ipc_connect(path) {
-            Ok(stream) => {
-                #[cfg(windows)]
-                {
-                    use zellij_utils::consts::ipc_connect_reply;
-                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
-                    let reply = ipc_connect_reply(path);
-                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                        .send_client_msg(ClientToServerMsg::KillSession);
-                    if let Ok(reply_stream) = reply {
-                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                            IpcReceiverWithContext::new(reply_stream);
-                        let _ = receiver.recv_server_msg();
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                        .send_client_msg(ClientToServerMsg::KillSession);
-                }
-            },
-            Err(e) => {
-                log::error!("Failed to kill session {}: {:?}", session_name, e);
-            },
-        };
+        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved) {
+            log::error!("Failed to kill session {}: {:?}", session_name, e);
+        }
     }
 }
 
