@@ -13,7 +13,10 @@ use nix::{
 use tokio::io::unix::AsyncFd;
 
 use libc::{self, ioctl, TIOCSWINSZ};
-use signal_hook::consts::*;
+use signal_hook::{
+    consts::{SIGINT, SIGTERM},
+    iterator::{backend::SignalDelivery, exfiltrator::SignalOnly},
+};
 
 use std::{
     collections::BTreeMap,
@@ -22,6 +25,7 @@ use std::{
     os::fd::{AsFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd},
     os::unix::{
         io::{AsRawFd, RawFd},
+        net::UnixStream,
         process::CommandExt,
     },
     process::{Child, Command},
@@ -30,7 +34,7 @@ use std::{
         Arc, Mutex,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
@@ -192,28 +196,237 @@ fn set_terminal_size_using_fd(
     };
 }
 
+/// SIGTERMs forwarded after a shutdown signal, then `child.kill()`.
+const SIGTERM_ATTEMPTS: u8 = 3;
+
+/// Gap between those SIGTERMs. The previous loop slept 10ms per attempt.
+const SHUTDOWN_STEP: Duration = Duration::from_millis(10);
+
+/// Wait used only when `pidfd_open` is unavailable. Not the steady-state path.
+const COARSE_EXIT_POLL_MS: i32 = 500;
+
+/// `Signals` in signal-hook 0.3 keeps its self-pipe private. `SignalDelivery`
+/// is the pipe `Signals::new` builds, and its read end implements `AsRawFd`.
+struct ShutdownWatch {
+    delivery: SignalDelivery<UnixStream, SignalOnly>,
+}
+
+impl ShutdownWatch {
+    fn arm() -> io::Result<Self> {
+        let (read, write) = UnixStream::pair()?;
+        let delivery = SignalDelivery::with_pipe(read, write, SignalOnly, [SIGINT, SIGTERM])?;
+        Ok(Self { delivery })
+    }
+
+    fn read_fd(&self) -> RawFd {
+        self.delivery.get_read().as_raw_fd()
+    }
+
+    /// Drain the self-pipe. `true` when SIGINT or SIGTERM was pending.
+    fn saw_shutdown(&mut self) -> bool {
+        let mut saw = false;
+        for signal in self.delivery.pending() {
+            if signal == SIGINT || signal == SIGTERM {
+                saw = true;
+            }
+        }
+        saw
+    }
+}
+
+enum Reaped {
+    Running,
+    Done(Option<i32>),
+}
+
+fn reap_if_exited(child: &mut Child) -> io::Result<Reaped> {
+    match child.try_wait() {
+        Ok(Some(status)) => Ok(Reaped::Done(status.code())),
+        Ok(None) => Ok(Reaped::Running),
+        Err(error) if error.raw_os_error() == Some(libc::ECHILD) => Ok(Reaped::Done(None)),
+        Err(error) => Err(error),
+    }
+}
+
+/// Poll outcome. `Child` wins over `Signal` so a dead child is reaped and
+/// not signaled.
+enum ExitWake {
+    Child,
+    Signal,
+    Timeout,
+    /// Readable for a reason other than child exit or a signal byte.
+    Other,
+}
+
+fn poll_child_or_signal(
+    pidfd: Option<RawFd>,
+    signal_fd: RawFd,
+    timeout_ms: i32,
+) -> io::Result<ExitWake> {
+    let mut fds = [
+        libc::pollfd {
+            fd: pidfd.unwrap_or(-1),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: signal_fd,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    let ready = loop {
+        // SAFETY: `fds` is a live array of two pollfds. A negative pidfd
+        // is ignored by poll, which is the coarse-wait path.
+        let rc = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout_ms) };
+        if rc < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        break rc;
+    };
+    if ready == 0 {
+        return Ok(ExitWake::Timeout);
+    }
+    let child_bits = fds[0].revents;
+    let child_ready =
+        pidfd.is_some() && (child_bits & (libc::POLLIN | libc::POLLHUP | libc::POLLERR)) != 0;
+    if child_ready {
+        return Ok(ExitWake::Child);
+    }
+    if (fds[1].revents & libc::POLLIN) != 0 {
+        return Ok(ExitWake::Signal);
+    }
+    Ok(ExitWake::Other)
+}
+
+fn poll_timeout_ms(deadline: Option<Instant>, waiting_on_pidfd: bool) -> i32 {
+    match deadline {
+        Some(deadline) => {
+            let left = deadline.saturating_duration_since(Instant::now());
+            left.as_millis().min(i32::MAX as u128) as i32
+        },
+        None if waiting_on_pidfd => -1,
+        None => COARSE_EXIT_POLL_MS,
+    }
+}
+
+/// Linux pidfd for `pid`, or `None` when the syscall is missing or fails.
+///
+/// Dropping the fd does not signal the task. Callers still `wait` to reap.
+fn open_exit_pidfd(pid: u32) -> Option<OwnedFd> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: pidfd_open returns a new fd owned by this process, or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
+        if fd < 0 {
+            log::warn!(
+                "pidfd_open failed for pid {pid}: {}; polling every {COARSE_EXIT_POLL_MS}ms",
+                io::Error::last_os_error()
+            );
+            None
+        } else {
+            // SAFETY: the syscall just created this fd and no one else owns it.
+            Some(unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
+        }
+    }
+}
+
+/// Block until `child` exits. With a pidfd, `poll` waits on that fd and the
+/// shutdown self-pipe. Without one, the same pipe is polled at
+/// `COARSE_EXIT_POLL_MS` so a missing pidfd does not spin at 10ms.
+///
+/// A reaped pid is not signaled. `child.kill` runs only while `try_wait`
+/// still reports the child running, and the pidfd is not a kill by itself.
+fn drive_child_exit(
+    child: &mut Child,
+    pid: u32,
+    watch: &mut ShutdownWatch,
+    mut pidfd: Option<OwnedFd>,
+) -> Result<Option<i32>> {
+    let mut sigterms_left = SIGTERM_ATTEMPTS;
+    let mut shutdown_deadline: Option<Instant> = None;
+
+    loop {
+        if let Reaped::Done(code) = reap_if_exited(child)? {
+            return Ok(code);
+        }
+
+        let timeout_ms = poll_timeout_ms(shutdown_deadline, pidfd.is_some());
+        match poll_child_or_signal(
+            pidfd.as_ref().map(|fd| fd.as_raw_fd()),
+            watch.read_fd(),
+            timeout_ms,
+        )? {
+            ExitWake::Child => match reap_if_exited(child)? {
+                Reaped::Done(code) => return Ok(code),
+                Reaped::Running => {
+                    // Level-triggered readiness without a waitable child
+                    // would spin. Closing the pidfd is not a kill.
+                    drop(pidfd.take());
+                },
+            },
+            ExitWake::Signal => {
+                if watch.saw_shutdown() && shutdown_deadline.is_none() {
+                    shutdown_deadline = Some(Instant::now() + SHUTDOWN_STEP);
+                }
+            },
+            ExitWake::Timeout => {},
+            ExitWake::Other => {
+                thread::sleep(Duration::from_millis(COARSE_EXIT_POLL_MS as u64));
+            },
+        }
+
+        let shutdown_due = shutdown_deadline.is_some_and(|when| Instant::now() >= when);
+        if !shutdown_due {
+            continue;
+        }
+        // The child may have exited during the wait. Reap first; do not
+        // signal a pid this function has already collected.
+        if let Reaped::Done(code) = reap_if_exited(child)? {
+            return Ok(code);
+        }
+        if sigterms_left > 0 {
+            sigterms_left -= 1;
+            kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGTERM))?;
+            shutdown_deadline = Some(Instant::now() + SHUTDOWN_STEP);
+            continue;
+        }
+        if let Err(err) = child.kill() {
+            log::warn!("failed to kill child {pid}: {err}");
+        }
+        // This function owns the wait, so reap before returning.
+        let _ = child.wait();
+        return Ok(None);
+    }
+}
+
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
 fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
-    let id = child.id();
+    let pid = child.id();
     let err_context = || {
         format!(
             "failed to handle signals and command exit for child process pid {}",
-            id
+            pid
         )
     };
 
-    let mut signals = match signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]) {
-        Ok(signals) => signals,
+    let mut watch = match ShutdownWatch::arm() {
+        Ok(watch) => watch,
         Err(error) => {
             // Without a signal iterator we cannot forward shutdown signals.
             // Fall back to a plain wait instead of failing the pane's exit
             // watcher, which would panic the PTY thread.
-            log::warn!(
-                "failed to install signal handler for child process pid {}: {}",
-                id,
-                error
-            );
+            log::warn!("failed to install signal handler for child process pid {pid}: {error}");
             return child
                 .wait()
                 .map(|status| status.code())
@@ -221,56 +434,12 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
         },
     };
 
-    // returns the exit status, if any
-    let mut should_exit = false;
-    let mut attempts = 3;
-    'handle_exit: loop {
-        // test whether the child process has exited
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                // if the child process has exited, break outside of the loop
-                // and exit this function
-                // TODO: handle errors?
-                break 'handle_exit Ok(status.code());
-            },
-            Ok(None) => {
-                thread::sleep(Duration::from_millis(10));
-            },
-            Err(e) if e.raw_os_error() == Some(libc::ECHILD) => {
-                break 'handle_exit Ok(None);
-            },
-            Err(e) => {
-                log::error!("error attempting to wait on child {}: {}", id, e);
-                break 'handle_exit Err(e).with_context(err_context);
-            },
-        }
-
-        if !should_exit {
-            for signal in signals.pending() {
-                if signal == SIGINT || signal == SIGTERM {
-                    should_exit = true;
-                }
-            }
-        } else if attempts > 0 {
-            // let's try nicely first...
-            attempts -= 1;
-            kill(
-                unistd::Pid::from_raw(child.id() as i32),
-                Some(Signal::SIGTERM),
-            )
-            .with_context(err_context)?;
-            continue;
-        } else {
-            // when I say whoa, I mean WHOA!
-            if let Err(err) = child.kill() {
-                log::warn!("failed to kill child {}: {err}", child.id());
-            }
-            // This function owns the wait, so reap the killed child before
-            // reporting it. Otherwise the pane leaves a zombie behind.
-            let _ = child.wait();
-            break 'handle_exit Ok(None);
-        }
-    }
+    // `None` on non-Linux, and on Linux when pidfd_open fails. That path
+    // polls the signal fd every COARSE_EXIT_POLL_MS instead of wait() on
+    // another thread: the thread that reaps is the thread that signals,
+    // so a collected pid is not signaled afterwards.
+    let pidfd = open_exit_pidfd(pid);
+    drive_child_exit(&mut child, pid, &mut watch, pidfd).with_context(err_context)
 }
 
 fn handle_openpty(
@@ -1268,5 +1437,48 @@ mod tests {
             libc::close(master_fd);
             libc::close(slave_fd);
         }
+    }
+
+    #[test]
+    fn handle_command_exit_reaps_an_exited_child() {
+        let child = Command::new("true").spawn().expect("spawn true");
+        let status = handle_command_exit(child).expect("reap");
+        assert_eq!(status, Some(0));
+    }
+
+    #[test]
+    fn handle_command_exit_blocks_until_the_child_exits() {
+        let child = Command::new("sleep")
+            .arg("0.3")
+            .spawn()
+            .expect("spawn sleep");
+        let started = Instant::now();
+        let status = handle_command_exit(child).expect("reap");
+        assert_eq!(status, Some(0));
+        assert!(
+            started.elapsed() >= Duration::from_millis(200),
+            "returned before the child exited"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn handle_command_exit_dropping_pidfd_does_not_kill() {
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pidfd = open_exit_pidfd(child.id());
+        assert!(
+            pidfd.is_some(),
+            "pidfd_open should attach to the live child"
+        );
+        drop(pidfd);
+        match child.try_wait().expect("try_wait") {
+            None => {},
+            Some(status) => panic!("dropping the pidfd killed the child: {status}"),
+        }
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
