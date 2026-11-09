@@ -877,6 +877,64 @@ fn front_cut_during_measurement_keeps_cursor_progress_and_matches_oracle() {
 }
 
 #[test]
+fn mixed_width_front_cuts_publish_the_pass_they_interrupted() {
+    let width = 10;
+    let retained = 400usize;
+    let quantum = 64usize;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:05}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+    assert!(!fixture.index.is_fully_measured());
+
+    let mut previous_source = 0usize;
+    let mut resets = 0usize;
+    let mut saw_exact = false;
+    let turns = (retained / quantum).saturating_mul(4).saturating_add(8);
+    for _ in 0..turns {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        let appended = fixture.append(character_row(&format!("\u{754c}{retained:05}"), false));
+        assert_eq!(appended, LineDelta::NeedsMeasure);
+        let progress = fixture.measure_next(quantum, usize::MAX);
+        if let Some(source) = fixture.index.measure_cursor_source_row() {
+            if source + quantum < previous_source {
+                resets += 1;
+            }
+            previous_source = source;
+        }
+        if progress == MeasureProgress::Done {
+            assert_exact_total(&fixture, width);
+            let mut fresh = LineIndex::new(width);
+            fresh.regroup(&fixture.rows, width);
+            fresh.measure_all(&fixture.rows);
+            let published = fixture.index.lines.front().unwrap();
+            let expected = fresh.lines.front().unwrap();
+            assert_eq!(published.row_count, expected.row_count);
+            for row in 0..published.row_count {
+                assert_eq!(
+                    published.boundary_at(row, width),
+                    expected.boundary_at(row, width),
+                    "row {row} boundary diverged after front-cut publication"
+                );
+            }
+            saw_exact = true;
+            break;
+        }
+    }
+    assert_eq!(
+        resets, 0,
+        "front eviction restarted the in-progress cursor"
+    );
+    assert!(
+        saw_exact,
+        "interrupted mixed-width passes never published"
+    );
+}
+
+#[test]
 fn back_cut_retires_a_partially_scanned_removed_row() {
     let width = 2;
     let mut fixture = Fixture::new(

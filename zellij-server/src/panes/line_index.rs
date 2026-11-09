@@ -190,8 +190,8 @@ struct MeasureCursor {
     uniform_prefix: Vec<UniformState>,
     width: usize,
     /// Wrap state still includes rows removed from the front of this line.
-    /// The cursor keeps its place; the summary is published only after a
-    /// later pass that starts at the surviving suffix.
+    /// The cursor keeps its place. The summary is published from one rescan
+    /// of the survivors when the pass completes, not by restarting at row zero.
     contaminated_prefix: bool,
 }
 
@@ -257,7 +257,8 @@ impl MeasureCursor {
     }
 
     /// Drop per-row records for `cut` leading rows. Lengths stay aligned
-    /// with `row_index`; the values may still be absolute until a clean pass.
+    /// with `row_index`. The values may still include the retired origin
+    /// until the pass publishes from the survivors.
     fn drop_recorded_prefix(&mut self, cut: usize) {
         let boundary_drop = cut.min(self.boundaries.len());
         self.boundaries.drain(..boundary_drop);
@@ -268,6 +269,19 @@ impl MeasureCursor {
         if self.cell_prefix.is_empty() {
             self.cell_prefix.push_back(0);
         }
+    }
+
+    fn apply_measurement(&mut self, measurement: LineMeasurement) {
+        self.uniform_state = UniformState {
+            width: measurement.uniform_character_width,
+            saw_content: true,
+        };
+        self.uniform_prefix.clear();
+        self.boundaries = measurement.boundaries;
+        self.state = measurement.end;
+        self.cell_prefix = measurement.cell_prefix;
+        self.cell_index = 0;
+        self.contaminated_prefix = false;
     }
 }
 
@@ -1352,12 +1366,14 @@ impl LineIndex {
             let line_row_count = self.lines[cursor.line_index].row_count;
             if cursor.row_index >= line_row_count {
                 if cursor.contaminated_prefix {
-                    // Recorded boundaries still include rows that left the
-                    // front. Publish only a pass that starts on the survivors.
-                    let line_index = cursor.line_index;
-                    let row_start = cursor.row_start;
-                    cursor.reset_for_line(line_index, row_start);
-                    continue;
+                    // The walk still includes rows that left the front. Publish
+                    // from the retained rows once, at the same moment a clean
+                    // pass stores its summary. Do not restart at row zero.
+                    let measurement = measure_rows(
+                        rows.iter().skip(cursor.row_start).take(line_row_count),
+                        self.width,
+                    );
+                    cursor.apply_measurement(measurement);
                 }
                 let height = cursor.state.height();
                 let row_count = line_row_count;

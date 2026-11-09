@@ -14794,6 +14794,61 @@ fn recount_cursor_advances_while_the_producer_evicts_the_front() {
         );
         previous = current;
     }
+
+    // The six turns above stay inside the first visit. A contaminated pass
+    // used to finish, discard every boundary, and start again at row zero,
+    // so the next front cut poisoned that pass too. Cover several full
+    // traversals while a continuation row keeps arriving.
+    let quantum = super::SCREEN_ROW_QUANTUM.max(1);
+    let traversals = (reserve / quantum).saturating_mul(3).saturating_add(quantum);
+    let mut saw_published_pass = false;
+    let mut resets = 0usize;
+    for cycle in 0..traversals {
+        let tag = reserve as u32 + 6 + cycle as u32;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+        assert_contiguous_tag_range(&scrollback_tags(&grid));
+        assert!(grid.lines_above.len() <= reserve);
+        let _ = grid.continue_display_row_recount();
+        match grid.line_index.measure_cursor_source_row() {
+            Some(source) => {
+                let current = scrollback_row_tag(&grid.lines_above[source]);
+                if current.saturating_add(quantum as u32) < previous {
+                    resets += 1;
+                }
+                previous = current;
+            },
+            None => {
+                // The cursor is cleared only after the line summary is stored.
+                // Trim may invalidate it before this assertion runs; the
+                // published total must still agree with a fresh wrap once
+                // the recount is allowed to settle below.
+                saw_published_pass = true;
+                previous = scrollback_row_tag(grid.lines_above.front().expect("scrollback"));
+            },
+        }
+    }
+    assert_eq!(
+        resets, 0,
+        "front eviction restarted the measure cursor during a pass"
+    );
+    assert!(
+        saw_published_pass,
+        "no measurement was published across {traversals} front-evicting quanta"
+    );
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < reserve {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+    assert!(
+        !grid.display_recount_pending(),
+        "recount still pending after {settle} settle quanta"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "published widths diverged from a fresh wrap of the retained rows"
+    );
 }
 
 fn mixed_tagged_scrollback_row(canonical: bool, tag: u32) -> super::Row {
