@@ -19,6 +19,7 @@ use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE, S_OK,
+    STILL_ACTIVE,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
@@ -831,21 +832,30 @@ impl WindowsPtyBackend {
 
     pub fn send_sigint(&self, pid: u32) -> Result<()> {
         let err_context = || format!("failed to send SIGINT to pid {}", pid);
-        let terminals = self
-            .terminals
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let not_ours = || {
+            Err(anyhow!(
+                "no retained process handle for pid {pid}; not signaling a recycled pid"
+            ))
+            .with_context(err_context)
+        };
+        // Hold the map lock across the exit check and the ctrl event so the
+        // handle cannot be closed, and the pid cannot be reused, in between.
+        let terminals = self.terminals.lock().unwrap_or_else(|e| e.into_inner());
         let Some(handle) = terminals
             .values()
             .flatten()
             .find(|term| term.child_pid == pid)
             .map(|term| term.process_handle)
         else {
-            return Err(anyhow!(
-                "no retained process handle for pid {pid}; not signaling a recycled pid"
-            ))
-            .with_context(err_context);
+            return not_ours();
         };
+        let mut code: u32 = 0;
+        let got = unsafe { GetExitCodeProcess(handle, &mut code) };
+        // A dead process keeps this handle, but Windows may already have
+        // given its pid to someone else. Do not signal that number.
+        if got == 0 || code != STILL_ACTIVE as u32 {
+            return not_ours();
+        }
         let ok = unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid) };
         if ok != 0 {
             return Ok(());
