@@ -990,6 +990,52 @@ fn whole_word_bar_matches_after_compressed_trailing_blank() {
 }
 
 #[test]
+fn move_up_rows_does_not_match_across_a_hard_newline() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    // Both rows are canonical, so the logical text is `foo\nbar` plus a
+    // soft-wrap `baz` that continues only `bar`. A jump of two rows searches
+    // every viewport row, which is where a hard break used to be skipped.
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("foo").canonical());
+    viewport.push_back(wrapped_row("bar").canonical());
+    assert_eq!(viewport.len(), 2);
+    assert!(viewport[0].is_canonical && viewport[1].is_canonical);
+    let mut lines_below = VecDeque::new();
+    lines_below.push_back(wrapped_row("baz"));
+    assert!(!lines_below[0].is_canonical);
+
+    terminal_pane.grid.search_results.needle = "foobaz".to_owned();
+    terminal_pane.grid.search_results.move_up_rows(
+        viewport.len(),
+        &viewport,
+        &lines_below,
+        None,
+        viewport.len(),
+    );
+    assert!(
+        found_ranges(&terminal_pane).is_empty(),
+        "move_up_rows matched foobaz across the hard newline between foo and bar"
+    );
+
+    terminal_pane.grid.search_results.selections.clear();
+    terminal_pane.grid.search_results.needle = "barbaz".to_owned();
+    terminal_pane.grid.search_results.move_up_rows(
+        viewport.len(),
+        &viewport,
+        &lines_below,
+        None,
+        viewport.len(),
+    );
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((1, 0), (2, 3))],
+        "soft-wrapped barbaz below the viewport was not found"
+    );
+}
+
+#[test]
 fn move_down_prepends_multiple_matches_in_search_order() {
     use std::collections::VecDeque;
     use zellij_utils::position::Position;

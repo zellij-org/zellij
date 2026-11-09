@@ -773,11 +773,13 @@ impl SearchResult {
                 let rows = [row];
                 leading_predecessor(&rows, index, viewport, row_above)
             };
+            // Join the physical rows first. A hard newline in the viewport
+            // must end the logical line before `lines_below` is considered.
             let below = viewport
                 .iter()
                 .skip(index + 1)
+                .chain(lines_below.iter())
                 .take_while(|row| !row.is_canonical)
-                .chain(lines_below.iter().take_while(|row| !row.is_canonical))
                 .enumerate()
                 .map(|(offset, row)| (offset + 1, row));
             self.selections
