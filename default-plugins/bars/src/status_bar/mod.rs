@@ -62,6 +62,7 @@ struct ClientState {
     global: Option<GlobalAttention>,
     focused_pane: Option<PaneInfo>,
     panes: Option<PaneManifest>,
+    done_since_ms: Option<u64>,
 }
 
 impl ClientState {
@@ -72,8 +73,28 @@ impl ClientState {
             self.global.as_ref(),
             self.focused_pane.as_ref(),
             back_keys.as_deref(),
+            self.done_since_ms,
             session_hints::now_ms(),
         )
+    }
+    fn refresh_done(&mut self, now_ms: u64) -> bool {
+        let due = session_hints::done_is_due(
+            self.history.as_ref(),
+            self.global.as_ref(),
+            self.focused_pane.as_ref(),
+            now_ms,
+        );
+        match (due, self.done_since_ms) {
+            (true, None) => {
+                self.done_since_ms = Some(now_ms);
+                true
+            },
+            (false, Some(_)) => {
+                self.done_since_ms = None;
+                false
+            },
+            _ => false,
+        }
     }
     fn refresh_focused_pane(&mut self) {
         let active_tab = self.tabs.iter().find(|t| t.active).map(|t| t.position);
@@ -624,6 +645,11 @@ impl StatusBar {
             },
             _ => {},
         };
+        if client.refresh_done(session_hints::now_ms()) {
+            should_render = true;
+            self.timer_requests
+                .push(session_hints::DONE_HINT_MS as f64 / 1000.0 + 0.2);
+        }
         should_render
     }
 

@@ -12,7 +12,18 @@ fn report(body: &str) -> PaneSignal {
 }
 
 fn tracker() -> AttentionTracker {
-    let mut tracker = AttentionTracker::new(AttentionConfig::default());
+    tracker_with(AttentionConfig::default())
+}
+
+fn command_tracker() -> AttentionTracker {
+    tracker_with(AttentionConfig {
+        track_commands: Some(true),
+        ..Default::default()
+    })
+}
+
+fn tracker_with(config: AttentionConfig) -> AttentionTracker {
+    let mut tracker = AttentionTracker::new(config);
     tracker.sync_panes(
         &[(PANE, 0), (OTHER, 0)],
         &HashSet::new(),
@@ -814,7 +825,7 @@ fn listed(tracker: &AttentionTracker) -> bool {
 
 #[test]
 fn a_long_command_is_working_once_it_passes_the_threshold() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     tracker.take_idle_checks();
     run_command(&mut tracker, "cargo build", 2_000);
     assert_eq!(status(&tracker), AttentionStatus::Idle);
@@ -837,7 +848,7 @@ fn a_long_command_is_working_once_it_passes_the_threshold() {
 
 #[test]
 fn output_shows_a_due_command_as_working_instead_of_new_output() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     run_command(&mut tracker, "make", 2_000);
     steady_output(&mut tracker, 5_000, 11_500);
     assert_eq!(status(&tracker), AttentionStatus::NewOutput);
@@ -847,7 +858,7 @@ fn output_shows_a_due_command_as_working_instead_of_new_output() {
 
 #[test]
 fn an_idle_check_rearms_the_command_check_it_replaced() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     run_command(&mut tracker, "make", 2_000);
     tracker.take_idle_checks();
     tracker.idle_check(PANE, 5_000);
@@ -870,7 +881,7 @@ fn idle_checks_keep_the_soonest_per_pane() {
 
 #[test]
 fn a_command_on_the_alternate_screen_is_never_working_or_done() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     run_command(&mut tracker, "vim notes", 2_000);
     tracker.on_signals(PANE, vec![PaneSignal::AlternateScreen(true)], 2_500);
     tracker.idle_check(PANE, 13_000);
@@ -912,7 +923,7 @@ fn typing_into_a_running_command_makes_it_interactive() {
 
 #[test]
 fn typing_into_a_command_that_already_shows_as_working_hides_it() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     run_command(&mut tracker, "ssh host", 2_000);
     tracker.idle_check(PANE, 12_100);
     assert_eq!(status(&tracker), AttentionStatus::Working);
@@ -922,7 +933,7 @@ fn typing_into_a_command_that_already_shows_as_working_hides_it() {
 
 #[test]
 fn typing_at_the_prompt_does_not_count() {
-    let mut tracker = tracker();
+    let mut tracker = command_tracker();
     tracker.on_signals(
         PANE,
         vec![
