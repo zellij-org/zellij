@@ -1429,8 +1429,14 @@ fn bounded_push(
     // measurement origin and restart the job. Admit a bounded reserve of new
     // rows instead; the recount trims back to the normal cap when it finishes.
     // If output outruns the recount, drop the newest retained rows at the 2x
-    // ceiling: the oldest line keeps its measurement origin, memory stays
-    // bounded, and the loss is reported as truncated history.
+    // ceiling: the retained window stays a contiguous chronological prefix,
+    // memory stays bounded, and the loss is reported as truncated history.
+    //
+    // Outside that temporary reserve, retention is chronological front
+    // eviction. Mixed-width front cuts invalidate the line summary and the
+    // resumable recount rebuilds it under its budget — never by shedding
+    // intermediate rows from the back of a full measured line (which would
+    // silently concatenate disjoint spans).
     let reserving_for_recount =
         line_index.front_line_unmeasured() && line_index.measurement_active();
     let row_limit = if reserving_for_recount {
@@ -1445,18 +1451,6 @@ fn bounded_push(
     };
     let mut evicted = 0usize;
     let may_drop_back = !sixel_grid.has_images() && kitty_grid.placements().is_empty();
-    let front_line_rows = line_index.front_line_row_count().unwrap_or(0);
-    let front_line_fills_scrollback =
-        scroll_buffer_size > 0 && front_line_rows >= scroll_buffer_size;
-    // Once one logical line occupies the whole retention window, every front
-    // eviction moves its origin. Keep the line stable and shed newest rows
-    // instead. When the producer starts a new line, drop the overlong line
-    // whole so ordinary rolling retention resumes.
-    let mut freeze_overlong_front = may_drop_back
-        && !reserving_for_recount
-        && front_line_fills_scrollback
-        && line_index.front_line_is_measured()
-        && !line_index.front_row_cut_is_exact();
     // Measure after trailing-blank compress. Evict on the prospective
     // total, not the total before this row: rows that each fit the
     // budget can still push the retained sum past it (2048 + 2048
@@ -1464,6 +1458,11 @@ fn bounded_push(
     // (`len >= 0`) still drains every older row and keeps the newest.
     // One newest row may exceed the budget; stop once the buffer is
     // empty and admit it anyway.
+    //
+    // Chronological front eviction replaces the old whole-line synchronous
+    // retirement: admitting one new canonical row retires only as many
+    // oldest rows as the budgets require (typically one), and any later
+    // reserve trim settles through `trim_scrollback_to_budget`'s quantum.
     let incoming = value.stored_cell_count();
     while vec.len() >= row_limit
         || (scrollback_cells.saturating_add(incoming) > cell_limit && !vec.is_empty())
@@ -1482,29 +1481,6 @@ fn bounded_push(
             *scrollback_cells = scrollback_cells.saturating_sub(row.stored_cell_count());
             line_index.note_back_rows_removed(vec, 1);
             kitty_grid.invalidate_canonical_starts();
-            *history_truncated = true;
-            continue;
-        }
-        if freeze_overlong_front {
-            if value.is_canonical {
-                let removed = front_line_rows.min(vec.len());
-                for _ in 0..removed {
-                    if retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells)
-                        .is_none()
-                    {
-                        break;
-                    }
-                    evicted += 1;
-                }
-                freeze_overlong_front = false;
-            } else {
-                let Some(row) = vec.pop_back() else {
-                    break;
-                };
-                *scrollback_cells = scrollback_cells.saturating_sub(row.stored_cell_count());
-                line_index.note_back_rows_removed(vec, 1);
-                kitty_grid.invalidate_canonical_starts();
-            }
             *history_truncated = true;
             continue;
         }
@@ -2973,6 +2949,16 @@ impl Grid {
     /// recount has finished, including the bounded trim back to the normal
     /// retention cap.
     pub(crate) fn continue_display_row_recount(&mut self) -> bool {
+        // Hold the temporary 2x reserve only while a front-line measure job is
+        // in flight. Once that job is idle, drain any excess chronologically
+        // before remasuring so trim does not throw away a just-built summary
+        // on every quantum under churn.
+        let reserving_for_recount =
+            self.line_index.front_line_unmeasured() && self.line_index.measurement_active();
+        if !reserving_for_recount && self.scrollback_over_budget() {
+            let _ = self.trim_scrollback_to_budget(SCREEN_ROW_QUANTUM);
+            return false;
+        }
         if !self.line_index.is_fully_measured()
             && self.line_index.measure_next(
                 &self.lines_above,
@@ -2981,9 +2967,10 @@ impl Grid {
         {
             return false;
         }
-        // The reserve is admitted in row quanta, so retirement is too. A
-        // single completion call must not evict an entire 2x reserve.
-        let _ = self.trim_scrollback_to_budget(SCREEN_ROW_QUANTUM);
+        if self.scrollback_over_budget() {
+            let _ = self.trim_scrollback_to_budget(SCREEN_ROW_QUANTUM);
+            return false;
+        }
         !self.display_recount_pending()
     }
     /// Finish a resize recount on the calling thread. Grid tests and any
@@ -2991,47 +2978,33 @@ impl Grid {
     /// uses [`Self::continue_display_row_recount`] one quantum at a time.
     pub(crate) fn finish_display_row_recount(&mut self) {
         loop {
-            self.line_index.measure_all(&self.lines_above);
-            let trimmed = self.trim_scrollback_to_budget(usize::MAX);
-            if !trimmed || !self.display_recount_pending() {
+            if self.scrollback_over_budget() {
+                let trimmed = self.trim_scrollback_to_budget(usize::MAX);
+                if !trimmed {
+                    break;
+                }
+                continue;
+            }
+            if self.line_index.is_fully_measured() {
                 break;
             }
+            self.line_index.measure_all(&self.lines_above);
         }
     }
-    /// Drop the bounded evacuation reserve admitted while a recount owned the
-    /// front line. Only called once every line has an exact summary.
+    /// Drop oldest scrollback rows until the normal retention cap holds.
+    /// Retirement is chronological: mixed-width front cuts invalidate the
+    /// summary and the next measure quantum rebuilds it, rather than shedding
+    /// newest rows and leaving a silent gap inside a logical line.
     fn trim_scrollback_to_budget(&mut self, max_rows: usize) -> bool {
         for _ in 0..max_rows {
             if !self.scrollback_over_budget() {
                 break;
             }
-            let images = self.sixel_grid.has_images() || !self.kitty_grid.placements().is_empty();
-            let trimmed = if self.line_index.front_row_cut_is_exact() || images {
-                self.evict_one_scrollback_row()
-            } else {
-                // Dropping the oldest rows of a mixed-width line would
-                // invalidate the summary that just finished. Shed the newest
-                // reserve rows instead; the loss is reported as truncation.
-                self.pop_scrollback_back_row()
-            };
-            if !trimmed {
+            if !self.evict_one_scrollback_row() {
                 break;
             }
         }
         !self.scrollback_over_budget()
-    }
-    fn pop_scrollback_back_row(&mut self) -> bool {
-        let Some(row) = self.lines_above.pop_back() else {
-            return false;
-        };
-        self.scrollback_cells = self
-            .scrollback_cells
-            .saturating_sub(row.stored_cell_count());
-        self.line_index.note_back_rows_removed(&self.lines_above, 1);
-        self.kitty_grid.invalidate_canonical_starts();
-        self.history_truncated = true;
-        self.content_epoch = self.content_epoch.wrapping_add(1);
-        true
     }
     fn scrollback_over_budget(&self) -> bool {
         let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();

@@ -13846,6 +13846,11 @@ fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
 
 #[test]
 fn deferred_recount_reserves_room_instead_of_starving_under_churn() {
+    // Chronological policy: while a measured mixed-width line fills the
+    // window, continued output evicts the oldest front and reopens
+    // measurement. The temporary 2x reserve must still keep the in-flight
+    // measure job from starving; after output stops, trim+measure must
+    // settle under the normal cap.
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
     let mut grid = create_grid_with_size_and_raw(5, 10, b"");
     let pattern = "\u{754c}a";
@@ -13860,67 +13865,205 @@ fn deferred_recount_reserves_room_instead_of_starving_under_churn() {
     assert!(grid.display_recount_pending());
     let max_turns = 220;
     let mut turns = 0;
-    let mut completed = false;
-    while grid.display_recount_pending() && turns < max_turns && !completed {
+    let mut saw_reserve = false;
+    let mut max_rows = grid.lines_above.len();
+    while grid.display_recount_pending() && turns < max_turns {
         feed_bytes(&mut grid, pattern.repeat(16).as_bytes());
-        completed = grid.continue_display_row_recount();
+        max_rows = max_rows.max(grid.lines_above.len());
+        if grid.retention_reserve_active() {
+            saw_reserve = true;
+        }
+        let _ = grid.continue_display_row_recount();
         turns += 1;
+        assert!(
+            grid.lines_above.len() <= scroll_buffer_size.saturating_mul(2),
+            "scrollback grew past the 2x recount reserve: {}",
+            grid.lines_above.len()
+        );
     }
     assert!(
-        completed,
-        "the recount never completed in {turns} turns under front eviction (rows={}, lines={}, front_unmeasured={})",
-        grid.lines_above.len(),
-        grid.line_index.line_count(),
-        grid.line_index.front_line_unmeasured()
+        saw_reserve || max_rows > scroll_buffer_size,
+        "churn never opened the recount reserve (max_rows={max_rows})"
     );
 
-    // Stop producing: the trim after the completed recount may have opened a
-    // final recount over the surviving front line, which must settle.
+    // Stop producing: chronological trim and remasure must settle.
     let mut settle = 0;
-    while grid.display_recount_pending() && settle < 300 {
+    while grid.display_recount_pending() && settle < 500 {
         let _ = grid.continue_display_row_recount();
         settle += 1;
     }
-    assert!(!grid.display_recount_pending());
+    assert!(
+        !grid.display_recount_pending(),
+        "recount did not settle after churn stopped (rows={}, front_unmeasured={}, settle={settle})",
+        grid.lines_above.len(),
+        grid.line_index.front_line_unmeasured()
+    );
     assert!(
         grid.lines_above.len() <= scroll_buffer_size,
         "the recount reserve was not trimmed: {} > {scroll_buffer_size}",
         grid.lines_above.len()
     );
-    assert!(
-        grid.history_was_truncated(),
-        "shedding the overlong line's reserve must report truncated history"
-    );
 }
 
 #[test]
-fn a_finished_overlong_line_is_dropped_whole_when_the_next_line_arrives() {
+fn a_finished_overlong_line_rolls_chronologically_when_the_next_line_arrives() {
+    // Declared policy: chronological front eviction. The first canonical row
+    // after a measured mixed-width line that fills the retention window must
+    // not synchronously retire the whole line (O(H)); it retires only what
+    // the budgets require — typically one oldest row — and settles any
+    // remaining measure work through the recount quantum.
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
     let mut grid = create_grid_with_size_and_raw(5, 10, b"");
-    let pattern = "\u{754c}a";
-    feed_bytes(
+    for index in 0..scroll_buffer_size {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(index == 0, index as u32),
+        );
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.line_index.line_count(), 1);
+    assert!(grid.line_index.front_line_is_measured());
+    assert!(!grid.line_index.front_row_cut_is_exact());
+    let front_before = grid.line_index.front_line_row_count().unwrap_or(0);
+    assert_eq!(front_before, scroll_buffer_size);
+    let evicted_before = grid.scrollback_rows_evicted;
+    let oldest_before = scrollback_row_tag(grid.lines_above.front().expect("scrollback"));
+
+    // First canonical row after the long mixed-width run.
+    let evicted = push_scrollback_row(
         &mut grid,
-        pattern.repeat(scroll_buffer_size * 4 + 5_000).as_bytes(),
+        mixed_tagged_scrollback_row(true, scroll_buffer_size as u32),
     );
-    grid.resize_keeping_recount_open(5, 11);
-    let mut turns = 0;
-    while grid.display_recount_pending() && turns < 1_000 {
+    assert_eq!(
+        evicted, 1,
+        "admitting one canonical row should retire one oldest front row, not the whole line"
+    );
+    assert!(
+        (grid.scrollback_rows_evicted.saturating_sub(evicted_before) as usize)
+            <= super::SCREEN_ROW_QUANTUM,
+        "first newline after a long mixed-width run must stay within one retirement quantum"
+    );
+    assert_ne!(
+        scrollback_row_tag(grid.lines_above.front().expect("scrollback")),
+        oldest_before,
+        "chronological retention must evict the oldest front row"
+    );
+    assert!(
+        (evicted as usize) < front_before,
+        "must not retire the whole overlong line at once"
+    );
+
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 500 {
         let _ = grid.continue_display_row_recount();
-        turns += 1;
+        settle += 1;
     }
     assert!(!grid.display_recount_pending());
-    assert_eq!(grid.line_index.line_count(), 1);
-
-    feed_bytes(&mut grid, b"\r\nnext line\r\n");
     assert_eq!(
         grid.scrollback_position_and_length().1,
         scrollback_recount(&mut grid),
-        "dropping the finished overlong line must stay exact"
+        "rolling the finished overlong line must stay exact after settlement"
     );
     assert!(
-        grid.line_index.line_count() > 1 || grid.lines_above.len() < scroll_buffer_size,
-        "the overlong line must not keep the retention window frozen"
+        grid.line_index.line_count() > 1,
+        "the new canonical row must start a second logical line"
     );
+}
+
+/// Declared retention policy for the measured mixed-width full-history branch:
+/// chronological front eviction. Continuation appends must keep a contiguous
+/// newest suffix — never the frozen-prefix-plus-newest-gap shape
+/// `r0..r6,r11` from the review's reduced model.
+#[test]
+fn measured_mixed_width_full_history_keeps_chronological_rows() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    // One logical line of mixed-width rows fills the retention window.
+    for index in 0..scroll_buffer_size {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(index == 0, index as u32),
+        );
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.line_index.line_count(), 1);
+    assert!(grid.line_index.front_line_is_measured());
+    assert!(
+        !grid.line_index.front_row_cut_is_exact(),
+        "tagged wide+narrow rows must take the mixed-width cut path"
+    );
+    assert_eq!(
+        grid.line_index.front_line_row_count(),
+        Some(scroll_buffer_size)
+    );
+
+    let before: Vec<u32> = grid
+        .lines_above
+        .iter()
+        .map(scrollback_row_tag)
+        .collect();
+    assert_eq!(before.first().copied(), Some(0));
+    assert_eq!(
+        before.last().copied(),
+        Some((scroll_buffer_size - 1) as u32)
+    );
+
+    // Reduced model: capacity N with continuations N..N+3. Chronological
+    // retention keeps tags 4..N+3; the rejected freeze policy kept 0..N-2,N+3.
+    let appended = 4u32;
+    for offset in 0..appended {
+        let tag = scroll_buffer_size as u32 + offset;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    // Front cuts of a mixed line reopen measurement; settle so the retained
+    // row set is stable before asserting the policy.
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 500 {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+
+    let after: Vec<u32> = grid
+        .lines_above
+        .iter()
+        .map(scrollback_row_tag)
+        .collect();
+    let expected: Vec<u32> = (appended..(scroll_buffer_size as u32 + appended)).collect();
+    assert_eq!(
+        after, expected,
+        "policy=chronological: retained rows must be the contiguous newest suffix"
+    );
+    let freeze_shaped: Vec<u32> = (0..(scroll_buffer_size as u32 - 1))
+        .chain(std::iter::once(scroll_buffer_size as u32 + appended - 1))
+        .collect();
+    assert_ne!(
+        after, freeze_shaped,
+        "must not keep the frozen-prefix-plus-newest gap shape"
+    );
+    assert!(
+        !grid.history_was_truncated(),
+        "chronological front eviction is ordinary rolling retention, not truncation"
+    );
+}
+
+fn mixed_tagged_scrollback_row(canonical: bool, tag: u32) -> super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = super::Row::new();
+    if canonical {
+        row = row.canonical();
+    }
+    // Wide + narrow makes uniform_character_width stay unset once measured.
+    row.columns.push(TerminalCharacter::new('\u{754c}'));
+    for character in format!("{tag:05}").chars() {
+        row.columns.push(TerminalCharacter::new(character));
+    }
+    row
+}
+
+fn scrollback_row_tag(row: &super::Row) -> u32 {
+    let text = row_text(row);
+    let digits: String = text.chars().skip(1).collect();
+    digits.parse().expect("tagged scrollback row")
 }
 
 fn line_index_counters() -> (usize, usize, usize) {
@@ -14135,9 +14278,9 @@ fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
     row
 }
 
-fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
+fn push_scrollback_row(grid: &mut Grid, row: super::Row) -> usize {
     grid.content_epoch = grid.content_epoch.wrapping_add(1);
-    super::bounded_push(
+    let evicted = super::bounded_push(
         &mut grid.lines_above,
         &mut grid.sixel_grid,
         &mut grid.kitty_grid,
@@ -14146,6 +14289,9 @@ fn push_scrollback_row(grid: &mut Grid, row: super::Row) {
         &mut grid.line_index,
         &mut grid.history_truncated,
     );
+    grid.scrollback_rows_evicted += evicted as u64;
+    grid.content_epoch = grid.content_epoch.wrapping_add(1);
+    evicted
 }
 
 fn assert_scrollback_admission_postcondition(grid: &Grid) {
