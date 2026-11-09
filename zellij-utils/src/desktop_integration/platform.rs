@@ -245,10 +245,8 @@ pub fn permanent_reason(environment: &Environment) -> Option<String> {
     if let Some(manager) = &environment.package_manager {
         return Some(format!("Installed by {} at {}", manager, running.display()));
     }
-    location::system_folder_for(
-        &std::fs::canonicalize(running).unwrap_or_else(|_| running.to_path_buf()),
-    )
-    .map(|folder| format!("Installed in {} at {}", folder, running.display()))
+    location::system_folder_for(&location::canonical(running))
+        .map(|folder| format!("Installed in {} at {}", folder, running.display()))
 }
 
 pub fn copy_state(environment: &Environment, destination: &Path) -> CopyState {
@@ -1411,9 +1409,11 @@ mod windows_desktop {
             environment.binary_permanent = true;
             return;
         }
-        environment.binary_permanent = copy_destination()
-            .map(|destination| location::same_file(&binary, &destination))
-            .unwrap_or(false);
+        environment.package_manager = location::package_manager_of(&binary);
+        environment.binary_permanent = location::system_install_of(&binary).is_some()
+            || copy_destination()
+                .map(|destination| location::same_file(&binary, &destination))
+                .unwrap_or(false);
         if !environment.binary_permanent {
             let downloads = known_folder(&FOLDERID_Downloads).ok();
             let temporary = vec![std::env::temp_dir()];
@@ -1470,22 +1470,27 @@ mod windows_desktop {
 
     fn copy_binary_status(environment: &Environment, _state: &IntegrationState) -> ItemStatus {
         let target = copy_destination();
+        let shadow = shadowing_copy(environment, target.as_deref());
+        let noted = |text: String| match &shadow {
+            Some(note) => format!("{} {}", text, note),
+            None => text,
+        };
         if let Some(destination) = &target {
             match super::copy_state(environment, destination) {
                 super::CopyState::Permanent(reason) => {
-                    return ItemStatus::already(Item::CopyBinary, reason);
+                    return ItemStatus::already(Item::CopyBinary, noted(reason));
                 },
                 super::CopyState::Copied => {
                     return ItemStatus::already(
                         Item::CopyBinary,
-                        format!("Copied to {}", destination.display()),
+                        noted(format!("Copied to {}", destination.display())),
                     );
                 },
                 super::CopyState::Update(upgrade) => {
                     return owned_status(
                         Item::CopyBinary,
                         Owner::Nobody,
-                        super::upgrade_state_text(&destination, &upgrade),
+                        noted(super::upgrade_state_text(destination, &upgrade)),
                     )
                     .with_upgrade(upgrade)
                     .with_target(destination.clone());
@@ -1499,18 +1504,44 @@ mod windows_desktop {
         let status = owned_status(
             Item::CopyBinary,
             Owner::Nobody,
-            format!(
-                "{}{}",
-                environment.binary_location_note.clone().unwrap_or_default(),
-                destination
-            )
-            .trim()
-            .to_owned(),
+            noted(
+                format!(
+                    "{}{}",
+                    environment.binary_location_note.clone().unwrap_or_default(),
+                    destination
+                )
+                .trim()
+                .to_owned(),
+            ),
         );
         match target {
             Some(target) => status.with_target(target),
             None => status,
         }
+    }
+
+    /// Another Zellij that comes first on the PATH, so typing zellij in a terminal runs it rather
+    /// than this one or its permanent copy.
+    fn shadowing_copy(environment: &Environment, destination: Option<&Path>) -> Option<String> {
+        let name = crate::distribution::name();
+        let first = location::find_on_path(name)?;
+        let ours = [environment.binary.as_deref(), destination];
+        if ours
+            .into_iter()
+            .flatten()
+            .any(|path| location::same_file(&first, path))
+        {
+            return None;
+        }
+        let version = super::version_of(&first)
+            .map(|version| format!(" ({})", version))
+            .unwrap_or_default();
+        Some(format!(
+            "{}{} comes first on your PATH, so typing {} in a terminal runs that one.",
+            first.display(),
+            version,
+            name
+        ))
     }
 
     fn start_menu_status(state: &IntegrationState) -> ItemStatus {
