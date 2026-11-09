@@ -40,7 +40,14 @@ fn row_mut<'a>(
     viewport.get_mut(y as usize)
 }
 
+#[cfg(test)]
+thread_local! {
+    static LINE_START_WALKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn line_start(lines_above: &VecDeque<Row>, viewport: &VecDeque<Row>, y: isize) -> isize {
+    #[cfg(test)]
+    LINE_START_WALKS.with(|c| c.set(c.get() + 1));
     let mut start = y;
     let top = -(lines_above.len() as isize);
     while start > top {
@@ -110,16 +117,27 @@ pub fn link_urls_in_lines(
     cursor: Option<(usize, usize)>,
     link_handler: &mut LinkHandler,
 ) {
-    let mut starts: Vec<isize> = lines
+    // Walk back to a logical line start once per dirty line: rows are
+    // sorted, so a dirty row already covered by a queued span needs no
+    // backward walk of its own.
+    let mut dirty: Vec<isize> = lines
         .iter()
-        .filter(|y| **y < viewport.len() as isize && row_ref(lines_above, viewport, **y).is_some())
-        .map(|y| line_start(lines_above, viewport, *y))
+        .copied()
+        .filter(|y| *y < viewport.len() as isize && row_ref(lines_above, viewport, *y).is_some())
         .collect();
-    starts.sort_unstable();
-    starts.dedup();
-    let mut cells: Vec<Cell> = Vec::new();
-    for start in starts {
+    dirty.sort_unstable();
+    dirty.dedup();
+    let mut spans: Vec<(isize, isize)> = Vec::with_capacity(dirty.len());
+    for y in dirty {
+        if spans.last().map(|&(_start, end)| y < end).unwrap_or(false) {
+            continue;
+        }
+        let start = line_start(lines_above, viewport, y);
         let end = line_rows(lines_above, viewport, start);
+        spans.push((start, end));
+    }
+    let mut cells: Vec<Cell> = Vec::new();
+    for (start, end) in spans {
         for y in start..end {
             if let Some(row) = row_mut(lines_above, viewport, y) {
                 row.link_scan_pending = false;
@@ -684,6 +702,27 @@ mod tests {
         );
         let marked = anchors(&viewport[0]);
         assert_ne!(marked[0], marked[21]);
+    }
+
+    #[test]
+    fn dirty_rows_in_one_wrapped_line_walk_back_once() {
+        // A burst of dirty rows inside one wrapped logical line resolves
+        // its start once — not once per dirty row.
+        let mut viewport: VecDeque<Row> = (0..20)
+            .map(|i| row_with("https://example.com/a", 12, i == 0))
+            .collect();
+        let mut lines_above = VecDeque::new();
+        let mut handler = LinkHandler::new();
+        LINE_START_WALKS.with(|c| c.set(0));
+        let changed: Vec<isize> = (0..20).collect();
+        link_urls_in_lines(
+            &mut lines_above,
+            &mut viewport,
+            &changed,
+            None,
+            &mut handler,
+        );
+        assert_eq!(LINE_START_WALKS.with(|c| c.get()), 1);
     }
 
     #[test]

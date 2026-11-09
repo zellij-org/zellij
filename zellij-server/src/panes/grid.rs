@@ -418,56 +418,395 @@ fn scrollback_tail_is_wrapped_at(
     }
 }
 
-fn scrollback_display_row_count(rows: &mut VecDeque<Row>, width: usize) -> usize {
-    let mut display_rows = 0;
-    let mut run_width = 0;
-    for index in 0..rows.len() {
-        let row_width = match rows.get_mut(index) {
-            Some(row) => row.width_cached(),
+/// Whether the canonical line at the head of `lines_below` is already
+/// wrapped at `width`: every stored row except the line's last must be
+/// full, meaning the next row's first character could not have fit.
+/// Rows can still carry wraps produced at a previous width after a
+/// resize (lines_below is not reflowed on resize); those fail the
+/// check and take the reflow path.
+fn lines_below_head_is_wrapped_at(lines_below: &mut VecDeque<Row>, width: usize) -> bool {
+    let Some(first) = lines_below.front() else {
+        return false;
+    };
+    if !first.is_canonical || width == 0 {
+        return false;
+    }
+    let mut previous_row_width: Option<usize> = None;
+    for index in 0..lines_below.len() {
+        if index > 0 && lines_below[index].is_canonical {
+            break; // reached the next canonical line: end of the run
+        }
+        let row = match lines_below.get_mut(index) {
+            Some(row) => row,
             None => break,
         };
-        run_width += row_width;
+        let row_width = row.width_cached();
+        if row_width > width {
+            return false;
+        }
+        if let Some(previous_row_width) = previous_row_width {
+            if previous_row_width + first_character_width(row) <= width {
+                return false;
+            }
+        }
+        previous_row_width = Some(row_width);
+    }
+    true
+}
+
+/// Width of the viewport's last row when the logical line it belongs
+/// to is wrapped at `width` within the viewport: every stored row of
+/// that line except the last must be full. The line starts at the
+/// viewport's bottom canonical row, or at the viewport's first row when
+/// the viewport is all continuation rows of a line that began above it
+/// (a line taller than the viewport) — rows above the viewport are not
+/// needed to judge the rows that follow.
+fn viewport_bottom_line_is_wrapped_at(viewport: &mut VecDeque<Row>, width: usize) -> Option<usize> {
+    if width == 0 || viewport.is_empty() {
+        return None;
+    }
+    let bottom_line_start = (0..viewport.len())
+        .rev()
+        .find(|&index| viewport[index].is_canonical)
+        .unwrap_or(0);
+    let mut previous_row_width: Option<usize> = None;
+    for index in bottom_line_start..viewport.len() {
+        let row = viewport.get_mut(index)?;
+        let row_width = row.width_cached();
+        if row_width > width {
+            return None;
+        }
+        if let Some(previous_row_width) = previous_row_width {
+            if previous_row_width + first_character_width(row) <= width {
+                return None;
+            }
+        }
+        previous_row_width = Some(row_width);
+    }
+    previous_row_width
+}
+
+/// Moves the continuation rows at the head of `lines_below` into the
+/// viewport one at a time while they are still wrapped at `width`
+/// (each must fit and the row before it must be full), until the
+/// viewport holds `target_viewport_len` rows. `previous_row_width` is
+/// the width of the viewport's last row. Only the rows actually needed
+/// are touched, so scrolling through one huge logical line costs
+/// O(rows moved) per step. Returns the number of rows moved; zero means
+/// the next stored row is stale and the line must be reflowed.
+fn move_wrapped_continuation_rows_to_viewport(
+    lines_below: &mut VecDeque<Row>,
+    viewport: &mut VecDeque<Row>,
+    target_viewport_len: usize,
+    mut previous_row_width: usize,
+    width: usize,
+) -> usize {
+    let mut moved = 0;
+    while viewport.len() < target_viewport_len {
+        let Some(row) = lines_below.front_mut() else {
+            break;
+        };
+        if row.is_canonical {
+            break;
+        }
+        let row_width = row.width_cached();
+        if row_width > width || previous_row_width + first_character_width(row) <= width {
+            break;
+        }
+        let Some(mut row) = lines_below.pop_front() else {
+            break;
+        };
+        row.expand_trailing_blanks();
+        viewport.push_back(row);
+        previous_row_width = row_width;
+        moved += 1;
+    }
+    moved
+}
+
+fn scrollback_display_row_count(rows: &mut VecDeque<Row>, width: usize) -> usize {
+    let mut display_rows = 0;
+    let mut run_start = 0;
+    for index in 0..rows.len() {
         let continues = matches!(rows.get(index + 1), Some(next_row) if !next_row.is_canonical);
         if !continues {
-            display_rows += run_display_height(run_width, width);
-            run_width = 0;
+            display_rows += run_display_height(
+                rows.range(run_start..=index).flat_map(row_display_widths),
+                width,
+            );
+            run_start = index + 1;
         }
     }
     display_rows
 }
 
+/// Per-character display widths of a stored row, with compressed
+/// trailing blanks contributing one cell each. Wrapping never splits a
+/// character, so display heights must be computed from this sequence —
+/// not from the aggregated `ceil(total_width / columns)`.
+fn row_display_widths(row: &Row) -> impl Iterator<Item = usize> + '_ {
+    row.columns
+        .iter()
+        .map(|character| character.width())
+        .chain(std::iter::repeat_n(1, row.trailing_blanks as usize))
+}
+
+/// Greedy-wrap state of one logical line at a fixed display width: the
+/// number of completed display rows plus the cells used on the open one.
+/// This is the single implementation of the wrapping rule used by
+/// `Row::rewrap_rows`: a character is never split, so it moves to the
+/// next display row when it does not fit wholly in the remaining cells.
+#[derive(Clone, Copy, Default, PartialEq)]
+struct WrapState {
+    completed_rows: usize,
+    current: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static WRAP_CHARACTER_STEPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Number of characters stepped one by one through `WrapState` (the
+/// per-cell fast path does not count), for bounding eviction work.
+#[cfg(test)]
+pub(crate) fn wrap_character_step_count() -> usize {
+    WRAP_CHARACTER_STEPS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_wrap_character_step_count() {
+    WRAP_CHARACTER_STEPS.with(|c| c.set(0));
+}
+
+impl WrapState {
+    /// `width` must be non-zero.
+    fn push_character(&mut self, character_width: usize, width: usize) {
+        #[cfg(test)]
+        WRAP_CHARACTER_STEPS.with(|c| c.set(c.get() + 1));
+        if self.current + character_width > width {
+            if self.current > 0 {
+                self.completed_rows += 1;
+            }
+            self.current = 0;
+        }
+        self.current += character_width;
+    }
+
+    /// Equivalent to `cells` calls of `push_character(1, width)` in
+    /// constant time. `width` must be non-zero.
+    fn push_single_width_cells(&mut self, cells: usize, width: usize) {
+        if cells == 0 {
+            return;
+        }
+        if self.current > width {
+            // The open row holds a character wider than the pane, so it
+            // is over-full and the first single-width cell opens a new
+            // row. The formula below assumes `current <= width`.
+            self.completed_rows += 1;
+            self.current = 0;
+        }
+        let total = self.current + cells;
+        if total <= width {
+            self.current = total;
+        } else {
+            let completed = (total - 1) / width;
+            self.completed_rows += completed;
+            self.current = total - completed * width;
+        }
+    }
+
+    fn height(&self) -> usize {
+        (self.completed_rows + usize::from(self.current > 0)).max(1)
+    }
+}
+
+/// Characters per eviction that may be wrapped one by one when the
+/// affected run holds non-single-width (wide or zero-width) characters.
+/// Beyond it the rest of the run is estimated from its cell count alone.
+const EVICTION_WIDE_CHARACTER_BUDGET: usize = 4096;
+
+/// Change in the scrollback's display-row total caused by evicting the
+/// front row `evicted` of `lines_above`, which has already been popped.
+/// The affected logical line is the evicted row plus the continuation
+/// rows now at the front of `lines_above`; its height is the greedy
+/// wrap of its characters at `width`.
+///
+/// Stored rows are not reflowed on resize, so the stored wrap may be
+/// stale and the heights have to be recomputed — but never by walking
+/// the whole run character by character on every eviction (a cat of a
+/// huge one-line file followed by a resize would make that quadratic).
+/// Rows made only of single-width characters (a cached per-row flag)
+/// are folded in constant time from their cached cell count, which is
+/// exactly what the greedy wrap yields. The evicted row itself is
+/// always walked exactly (it leaves the scrollback, so that is
+/// amortized). Remaining rows with other widths are stepped character
+/// by character with at most `EVICTION_WIDE_CHARACTER_BUDGET`
+/// characters per eviction; the rest of such a run is then estimated
+/// from its cell count, which can be off by a row. The total is recomputed exactly by every resize, so
+/// that drift cannot outlive the next resize. The heights with and
+/// without the evicted row are advanced in lockstep and the walk stops
+/// as soon as both are in the same state, since the remainder then
+/// adds equally to both.
 fn evicted_row_display_row_delta(
     lines_above: &mut VecDeque<Row>,
-    evicted_row_width: usize,
+    evicted: &mut Row,
     width: usize,
 ) -> isize {
-    let mut remaining_run_width = 0;
     let mut remaining_run_rows = 0;
     loop {
         match lines_above.get(remaining_run_rows) {
             Some(row) if !row.is_canonical => {},
             _ => break,
         }
-        remaining_run_width += match lines_above.get_mut(remaining_run_rows) {
-            Some(row) => row.width_cached(),
-            None => break,
-        };
         remaining_run_rows += 1;
     }
-    let before = run_display_height(remaining_run_width + evicted_row_width, width);
-    let after = if remaining_run_rows == 0 {
-        0
-    } else {
-        run_display_height(remaining_run_width, width)
-    };
-    after as isize - before as isize
+    if width == 0 {
+        // Every logical line occupies exactly one row.
+        return if remaining_run_rows == 0 { -1 } else { 0 };
+    }
+    // Fast path: when the stored wrap of the affected run is still
+    // valid at this width, dropping its first row removes exactly one
+    // display row — the remaining stored rows are already the greedy
+    // wrap of the remaining characters. Validity is decided per stored
+    // row from cached widths (the evicted row must fit one display row
+    // and each non-final row must be full at this width), which is
+    // O(rows in the run) and never looks at individual characters.
+    // Rows carrying wraps from before a resize fail the check and take
+    // the bounded recomputation below.
+    let evicted_cells = evicted.width_cached();
+    if remaining_run_rows == 0 && evicted_cells <= width {
+        return -1;
+    }
+    if remaining_run_rows > 0 && evicted_cells <= width {
+        let mut stored_run_is_valid = true;
+        let mut previous_row_width = evicted_cells;
+        for index in 0..remaining_run_rows {
+            let row = match lines_above.get_mut(index) {
+                Some(row) => row,
+                None => break,
+            };
+            let row_width = row.width_cached();
+            if row_width > width || previous_row_width + first_character_width(row) <= width {
+                stored_run_is_valid = false;
+                break;
+            }
+            previous_row_width = row_width;
+        }
+        if stored_run_is_valid {
+            return -1;
+        }
+    }
+    #[cfg(test)]
+    EVICTED_RUN_RESCANS.with(|c| c.set(c.get() + 1));
+
+    let mut wide_budget = EVICTION_WIDE_CHARACTER_BUDGET;
+    let mut with_evicted = WrapState::default();
+    push_evicted_row_to_wrap_state(&mut with_evicted, evicted, width);
+    if remaining_run_rows == 0 {
+        return -(with_evicted.height() as isize);
+    }
+    let mut without_evicted = WrapState::default();
+    for index in 0..remaining_run_rows {
+        let row = match lines_above.get_mut(index) {
+            Some(row) => row,
+            None => break,
+        };
+        let single_width = row.is_single_width_cached();
+        let character_count = row.columns.len() + row.trailing_blanks as usize;
+        if single_width || character_count > wide_budget {
+            let cells = row.width_cached();
+            with_evicted.push_single_width_cells(cells, width);
+            without_evicted.push_single_width_cells(cells, width);
+        } else {
+            wide_budget -= character_count;
+            for character_width in row_display_widths(row) {
+                with_evicted.push_character(character_width, width);
+                without_evicted.push_character(character_width, width);
+                if let Some(delta) = synchronized_delta(&with_evicted, &without_evicted) {
+                    return delta;
+                }
+            }
+        }
+        if let Some(delta) = synchronized_delta(&with_evicted, &without_evicted) {
+            return delta;
+        }
+    }
+    without_evicted.height() as isize - with_evicted.height() as isize
 }
 
-fn run_display_height(run_width: usize, width: usize) -> usize {
-    if run_width <= width || width == 0 {
+/// Total display-row change from evicting `evicted` (in front-to-back
+/// order) from the front of `lines_above` in one `bounded_push`. Each
+/// row's delta must be taken against the state right after that row
+/// alone was removed — the rows evicted after it are still part of its
+/// run — otherwise the deltas of a multi-row eviction do not telescope
+/// and the running total drifts. The later rows are therefore put back
+/// at the front while earlier ones are measured (last to first), then
+/// taken off again.
+fn evicted_rows_display_row_delta(
+    lines_above: &mut VecDeque<Row>,
+    evicted: Vec<Row>,
+    width: usize,
+) -> isize {
+    let mut delta = 0;
+    let mut restored = 0;
+    for mut evicted_row in evicted.into_iter().rev() {
+        delta += evicted_row_display_row_delta(lines_above, &mut evicted_row, width);
+        lines_above.push_front(evicted_row);
+        restored += 1;
+    }
+    for _ in 0..restored {
+        lines_above.pop_front();
+    }
+    delta
+}
+
+/// Once both walks are in the same open state the remaining characters
+/// advance them identically, so the height difference is already fixed.
+/// An empty open row is excluded because the empty-line minimum height
+/// could then still differ.
+fn synchronized_delta(with_evicted: &WrapState, without_evicted: &WrapState) -> Option<isize> {
+    if with_evicted.current == without_evicted.current && without_evicted.current > 0 {
+        Some(without_evicted.completed_rows as isize - with_evicted.completed_rows as isize)
+    } else {
+        None
+    }
+}
+
+/// Advances `state` over the evicted row exactly, character by
+/// character. Unlike the rows that remain in the run, the evicted row
+/// leaves the scrollback for good, so walking it once is amortized
+/// against the work that stored it; an estimate from its aggregate cell
+/// count would drift (a row of wide characters wraps to more rows than
+/// `ceil(cells / width)` at a width that is not a multiple of theirs).
+/// Compressed trailing blanks are single-width and folded in constant
+/// time.
+fn push_evicted_row_to_wrap_state(state: &mut WrapState, row: &mut Row, width: usize) {
+    if row.is_single_width_cached() {
+        state.push_single_width_cells(row.width_cached(), width);
+        return;
+    }
+    for character in row.columns.iter() {
+        state.push_character(character.width(), width);
+    }
+    state.push_single_width_cells(row.trailing_blanks as usize, width);
+}
+
+/// Display height of one logical line under the same wrapping rule as
+/// `Row::rewrap_rows`: a character is never split, so it moves to the
+/// next display row when it does not fit wholly in the remaining cells.
+fn run_display_height<I>(widths: I, width: usize) -> usize
+where
+    I: Iterator<Item = usize>,
+{
+    if width == 0 {
         return 1;
     }
-    run_width.div_ceil(width)
+    let mut state = WrapState::default();
+    for character_width in widths {
+        state.push_character(character_width, width);
+    }
+    state.height()
 }
 
 fn transfer_rows_from_lines_above_to_viewport(
@@ -477,10 +816,15 @@ fn transfer_rows_from_lines_above_to_viewport(
     kitty_grid: &mut KittyGrid,
     count: usize,
     max_viewport_width: usize,
-) -> isize {
+    scrollback_cells: &mut usize,
+) -> (isize, bool) {
     let mut next_lines: Vec<Row> = vec![];
     let mut lines_added_to_viewport: isize = 0;
     let mut display_row_delta: isize = 0;
+    // Whether the canonical structure changed (a logical line was
+    // rewrapped across the boundary). Consumers use this to decide
+    // whether canonical-space anchors must be re-derived.
+    let mut reflowed = false;
     loop {
         if lines_added_to_viewport as usize == count {
             break;
@@ -489,6 +833,8 @@ fn transfer_rows_from_lines_above_to_viewport(
             if scrollback_tail_is_wrapped_at(lines_above, viewport, max_viewport_width) {
                 match lines_above.pop_back() {
                     Some(mut next_line) => {
+                        *scrollback_cells =
+                            scrollback_cells.saturating_sub(next_line.stored_cell_count());
                         next_line.expand_trailing_blanks();
                         viewport.push_front(next_line);
                         lines_added_to_viewport += 1;
@@ -499,12 +845,20 @@ fn transfer_rows_from_lines_above_to_viewport(
                 }
             }
             let mut canonical_run = get_lines_above_bottom_canonical_row_and_wraps(lines_above);
+            *scrollback_cells = scrollback_cells.saturating_sub(
+                canonical_run
+                    .iter()
+                    .map(|row| row.stored_cell_count())
+                    .sum::<usize>(),
+            );
             if canonical_run.is_empty() {
                 break;
             }
             let rows_taken_from_lines_above = canonical_run.len();
-            let run_width: usize = canonical_run.iter_mut().map(|row| row.width_cached()).sum();
-            display_row_delta -= run_display_height(run_width, max_viewport_width) as isize;
+            display_row_delta -= run_display_height(
+                canonical_run.iter().flat_map(row_display_widths),
+                max_viewport_width,
+            ) as isize;
             let mut top_non_canonical_rows_in_dst = get_top_non_canonical_rows(viewport);
             let merged_row_count = top_non_canonical_rows_in_dst.len();
             lines_added_to_viewport -= merged_row_count as isize;
@@ -513,6 +867,7 @@ fn transfer_rows_from_lines_above_to_viewport(
             if next_lines.is_empty() {
                 break;
             }
+            reflowed = true;
             let row_count_delta = next_lines.len() as isize
                 - rows_taken_from_lines_above as isize
                 - merged_row_count as isize;
@@ -527,15 +882,18 @@ fn transfer_rows_from_lines_above_to_viewport(
         lines_added_to_viewport += 1;
     }
     for excess_row in next_lines {
-        if let Some(evicted_row_width) =
-            bounded_push(lines_above, sixel_grid, kitty_grid, excess_row)
-        {
-            display_row_delta +=
-                evicted_row_display_row_delta(lines_above, evicted_row_width, max_viewport_width);
-        }
+        let evicted_rows = bounded_push(
+            lines_above,
+            sixel_grid,
+            kitty_grid,
+            excess_row,
+            scrollback_cells,
+        );
+        display_row_delta +=
+            evicted_rows_display_row_delta(lines_above, evicted_rows, max_viewport_width);
         display_row_delta += 1;
     }
-    display_row_delta
+    (display_row_delta, reflowed)
 }
 
 fn transfer_rows_from_viewport_to_lines_above(
@@ -545,16 +903,19 @@ fn transfer_rows_from_viewport_to_lines_above(
     kitty_grid: &mut KittyGrid,
     count: usize,
     width: usize,
+    scrollback_cells: &mut usize,
 ) -> isize {
     let mut display_row_delta: isize = 0;
     let drained_lines = std::cmp::min(count, viewport.len());
     for next_line in viewport.drain(..drained_lines) {
-        if let Some(evicted_row_width) =
-            bounded_push(lines_above, sixel_grid, kitty_grid, next_line)
-        {
-            display_row_delta +=
-                evicted_row_display_row_delta(lines_above, evicted_row_width, width);
-        }
+        let evicted_rows = bounded_push(
+            lines_above,
+            sixel_grid,
+            kitty_grid,
+            next_line,
+            scrollback_cells,
+        );
+        display_row_delta += evicted_rows_display_row_delta(lines_above, evicted_rows, width);
         display_row_delta += 1;
     }
     display_row_delta
@@ -565,22 +926,63 @@ fn transfer_rows_from_lines_below_to_viewport(
     viewport: &mut VecDeque<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> bool {
     let mut next_lines: Vec<Row> = vec![];
+    // Whether any logical line had to be reconstructed. Consumers use
+    // this to decide whether canonical-space anchors must be re-derived.
+    let mut reflowed = false;
     let target_viewport_len = viewport.len() + count;
     while viewport.len() < target_viewport_len {
         if next_lines.is_empty() {
             if lines_below.is_empty() {
                 break; // no more rows
             }
-            let mut top_non_canonical_rows_in_lines_below = get_top_non_canonical_rows(lines_below);
-            if !top_non_canonical_rows_in_lines_below.is_empty() {
-                let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
-                canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
-                next_lines = Row::rewrap_rows(canonical_line, max_viewport_width);
+            let boundary_is_continuation = lines_below
+                .front()
+                .map(|row| !row.is_canonical)
+                .unwrap_or(false);
+            if boundary_is_continuation {
+                // While the boundary line's stored wraps are still valid
+                // at this width, move just the continuation rows that
+                // are needed directly instead of reconstructing the
+                // whole line (which, for a line taller than the
+                // viewport, made every scroll step O(line length)).
+                let rows_moved =
+                    match viewport_bottom_line_is_wrapped_at(viewport, max_viewport_width) {
+                        Some(last_viewport_row_width) => {
+                            move_wrapped_continuation_rows_to_viewport(
+                                lines_below,
+                                viewport,
+                                target_viewport_len,
+                                last_viewport_row_width,
+                                max_viewport_width,
+                            )
+                        },
+                        None => 0,
+                    };
+                if rows_moved > 0 {
+                    continue;
+                } else {
+                    let mut top_non_canonical_rows_in_lines_below =
+                        get_top_non_canonical_rows(lines_below);
+                    let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
+                    canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
+                    next_lines = Row::rewrap_rows(canonical_line, max_viewport_width);
+                    reflowed = true;
+                }
+            } else if lines_below_head_is_wrapped_at(lines_below, max_viewport_width) {
+                // The stored run is already wrapped at this width, so
+                // the rows can move directly instead of being
+                // reconstructed — mirroring the lines_above fast path.
+                let mut stored_rows = get_top_canonical_row_and_wraps(lines_below);
+                for row in stored_rows.iter_mut() {
+                    row.expand_trailing_blanks();
+                }
+                next_lines = stored_rows;
             } else {
                 let canonical_row = get_top_canonical_row_and_wraps(lines_below);
                 next_lines = Row::rewrap_rows(canonical_row, max_viewport_width);
+                reflowed = true;
             }
             if next_lines.is_empty() {
                 break;
@@ -591,6 +993,53 @@ fn transfer_rows_from_lines_below_to_viewport(
     for excess_row in next_lines.into_iter().rev() {
         lines_below.push_front(excess_row);
     }
+    reflowed
+}
+
+/// Cell budget for a pane serialization snapshot. Kept generous so
+/// ordinary scrollback serializes fully while pathological histories
+/// cannot copy unbounded state per snapshot pass.
+const MAX_SERIALIZE_SNAPSHOT_CELLS: usize = 4 * 1024 * 1024;
+
+#[cfg(test)]
+thread_local! {
+    static SERIALIZE_BUDGET_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn serialize_budget_rows_scanned() -> usize {
+    SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_serialize_budget_rows_scanned() {
+    SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+thread_local! {
+    static REWRAP_ROWS_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static EVICTED_RUN_RESCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn evicted_run_rescan_count() -> usize {
+    EVICTED_RUN_RESCANS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_evicted_run_rescan_count() {
+    EVICTED_RUN_RESCANS.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn rewrap_rows_call_count() -> usize {
+    REWRAP_ROWS_CALLS.with(|c| c.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_rewrap_rows_call_count() {
+    REWRAP_ROWS_CALLS.with(|c| c.set(0));
 }
 
 thread_local! {
@@ -616,12 +1065,22 @@ fn columns_with_capacity(capacity: usize) -> Vec<TerminalCharacter> {
     }
 }
 
+/// Rows entering scrollback are already wrapped, so `columns.len() +
+/// trailing_blanks` is invariant across compress/expand and measures
+/// retained scrollback honestly where the row count alone cannot: a
+/// pathological pane width would otherwise multiply every retained row.
+/// The budget equals the row cap times this width — panes up to 1024
+/// columns keep their full scrollback; wider panes shed rows to stay
+/// under the same retained-cell ceiling.
+const MAX_SCROLLBACK_ROW_CELLS: usize = 1024;
+
 fn bounded_push(
     vec: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
     mut value: Row,
-) -> Option<usize> {
+    scrollback_cells: &mut usize,
+) -> Vec<Row> {
     value.compress_trailing_blanks();
     if value.columns.capacity() > value.columns.len() {
         let mut exact = Vec::with_capacity(value.columns.len());
@@ -629,10 +1088,16 @@ fn bounded_push(
         recycle_columns(std::mem::replace(&mut value.columns, exact));
     }
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
-    let mut evicted_row_width = None;
-    if vec.len() >= scroll_buffer_size {
+    let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
+    let mut evicted_rows = Vec::new();
+    // Evict until both bounds hold: the row-count cap (one evict per
+    // push preserves it) and the retained-cell ceiling (may need
+    // several, e.g. after the pane widened). The newest row is never
+    // evicted by the cell rule even if it alone exceeds the budget.
+    while vec.len() >= scroll_buffer_size || (*scrollback_cells > cell_budget && vec.len() > 1) {
         let line = vec.pop_front();
-        if let Some(mut line) = line {
+        if let Some(line) = line {
+            *scrollback_cells = scrollback_cells.saturating_sub(line.stored_cell_count());
             sixel_grid.offset_grid_top();
             kitty_grid.offset_grid_top();
             if line.is_canonical {
@@ -646,15 +1111,18 @@ fn bounded_push(
                     };
                 kitty_grid.drop_first_canonical_anchor_line(first_canonical_row);
             }
-            evicted_row_width = Some(line.width_cached());
+            evicted_rows.push(line);
+        } else {
+            break;
         }
     }
     if vec.len() == vec.capacity() && vec.len() < scroll_buffer_size {
         let doubled = vec.capacity().max(8);
         vec.reserve_exact(doubled.min(scroll_buffer_size - vec.len()));
     }
+    *scrollback_cells += value.stored_cell_count();
     vec.push_back(value);
-    evicted_row_width
+    evicted_rows
 }
 
 pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
@@ -1030,6 +1498,7 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_display_rows: usize,
+    scrollback_cells: usize,
     scrollback_epoch: u64,
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
@@ -1427,6 +1896,7 @@ impl Grid {
             link_handler,
             ring_bell: false,
             scrollback_display_rows: 0,
+            scrollback_cells: 0,
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
             focus_event_tracking: false,
@@ -1753,8 +2223,27 @@ impl Grid {
         self.kitty_grid
             .settle_placements_below_the_viewport(rows_below_the_viewport)
     }
+    #[cfg(test)]
+    pub(crate) fn kitty_reanchor_all_from_pixels_for_test(&mut self) {
+        self.kitty_reanchor_all_from_pixels();
+    }
     fn kitty_reanchor_all_from_pixels(&mut self) {
         self.kitty_settle_placements_below_the_viewport();
+        self.kitty_reanchor_canonical_structure();
+    }
+    /// Refresh kitty bookkeeping after an ordinary one-row scroll.
+    /// The canonical-line anchor space only has to be re-derived when
+    /// the scroll step actually reflowed a logical line; moving already
+    /// wrapped rows between the collections leaves every placement's
+    /// (canonical_line, offset) anchor valid, so the O(history) starts
+    /// scan is skipped on the common path.
+    fn kitty_refresh_after_scroll_step(&mut self, canonical_structure_changed: bool) {
+        self.kitty_settle_placements_below_the_viewport();
+        if canonical_structure_changed {
+            self.kitty_reanchor_canonical_structure();
+        }
+    }
+    fn kitty_reanchor_canonical_structure(&mut self) {
         if self.kitty_grid.placement_count() == 0 {
             return;
         }
@@ -1804,16 +2293,17 @@ impl Grid {
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
 
-            let display_row_delta = transfer_rows_from_lines_above_to_viewport(
+            let (display_row_delta, reflowed) = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 1,
                 self.width,
+                &mut self.scrollback_cells,
             );
             self.apply_scrollback_display_row_delta(display_row_delta);
-            self.kitty_reanchor_all_from_pixels();
+            self.kitty_refresh_after_scroll_step(reflowed);
 
             self.selection.move_down(1);
             if let Some(command_output_flash) = self.command_output_flash.as_mut() {
@@ -1848,27 +2338,30 @@ impl Grid {
                 line_to_push_up.canonical()
             };
 
-            let evicted_row_width = bounded_push(
+            let evicted_rows = bounded_push(
                 &mut self.lines_above,
                 &mut self.sixel_grid,
                 &mut self.kitty_grid,
                 line_to_push_up,
+                &mut self.scrollback_cells,
             );
-            let mut display_row_delta = 1;
-            if let Some(evicted_row_width) = evicted_row_width {
-                let width = self.width;
-                display_row_delta +=
-                    evicted_row_display_row_delta(&mut self.lines_above, evicted_row_width, width);
-            }
+            let width = self.width;
+            let display_row_delta =
+                1 + evicted_rows_display_row_delta(&mut self.lines_above, evicted_rows, width);
             self.apply_scrollback_display_row_delta(display_row_delta);
 
-            transfer_rows_from_lines_below_to_viewport(
+            let reflowed = transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
                 1,
                 self.width,
             );
-            self.kitty_reanchor_all_from_pixels();
+            // Normalizing the pushed-up first row was already
+            // announced via insert_canonical_anchor_line_at_front; a
+            // reflow of pulled rows (stale wraps or a boundary merge)
+            // is the only other thing that can change canonical
+            // structure here.
+            self.kitty_refresh_after_scroll_step(reflowed);
 
             self.selection.move_up(1);
             if let Some(command_output_flash) = self.command_output_flash.as_mut() {
@@ -1947,9 +2440,18 @@ impl Grid {
                     && viewport_canonical_lines.is_empty()
                     && !self.lines_above.is_empty()
                 {
-                    let mut first_line_above = Row::from_rows(
-                        get_lines_above_bottom_canonical_row_and_wraps(&mut self.lines_above),
+                    let joined_rows =
+                        get_lines_above_bottom_canonical_row_and_wraps(&mut self.lines_above);
+                    // These rows leave scrollback for the viewport; debit
+                    // them like every other removal path so the cell
+                    // budget does not drift upward across reflows.
+                    self.scrollback_cells = self.scrollback_cells.saturating_sub(
+                        joined_rows
+                            .iter()
+                            .map(|row| row.stored_cell_count())
+                            .sum::<usize>(),
                     );
+                    let mut first_line_above = Row::from_rows(joined_rows);
                     first_line_above.append(&mut row);
                     viewport_canonical_lines.push(first_line_above);
                     cursor_canonical_line_index += 1;
@@ -2120,6 +2622,7 @@ impl Grid {
                         &mut self.kitty_grid,
                         row_count_to_transfer,
                         new_columns,
+                        &mut self.scrollback_cells,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
@@ -2148,6 +2651,7 @@ impl Grid {
                         &mut self.kitty_grid,
                         row_count_to_transfer,
                         new_columns,
+                        &mut self.scrollback_cells,
                     );
                 },
                 Ordering::Equal => {},
@@ -2328,6 +2832,29 @@ impl Grid {
                         .map(|(index, _)| index)
                         .unwrap_or(first_requested_index)
                 };
+                // Budget the snapshot by cells, not just row count: a
+                // logical line can span many wrapped rows, so the row
+                // cap alone does not bound the bytes copied onto the
+                // serializing thread. Rows are accumulated newest-first
+                // and cut at the oldest index that fits the budget —
+                // truncation drops the oldest history, never the tail.
+                // Only the requested rows are examined, so a small
+                // request never pays for scanning the whole history.
+                let viewport_cells: usize =
+                    self.viewport.iter().map(|row| row.snapshot_cost()).sum();
+                let mut cell_budget = MAX_SERIALIZE_SNAPSHOT_CELLS.saturating_sub(viewport_cells);
+                let mut byte_bounded_first = self.lines_above.len();
+                for index in (first_index..self.lines_above.len()).rev() {
+                    #[cfg(test)]
+                    SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
+                    let row_cells = self.lines_above[index].snapshot_cost();
+                    if row_cells > cell_budget {
+                        break;
+                    }
+                    cell_budget -= row_cells;
+                    byte_bounded_first = index;
+                }
+                let first_index = first_index.max(byte_bounded_first);
                 let mut to_serialize = vec![];
                 for line in self.lines_above.iter().skip(first_index) {
                     to_serialize.push(line.with_trailing_blanks().into_owned());
@@ -3089,6 +3616,7 @@ impl Grid {
         self.invalidate_scroll_offset();
         self.lines_above = VecDeque::new();
         self.scrollback_display_rows = 0;
+        self.scrollback_cells = 0;
     }
 
     fn pad_current_line_until(&mut self, position: usize, pad_character: TerminalCharacter) {
@@ -3317,6 +3845,7 @@ impl Grid {
         }
         self.invalidate_scroll_offset();
         self.lines_above = VecDeque::new();
+        self.scrollback_cells = 0;
         self.lines_below = VecDeque::new();
         self.is_scrolled = false;
         self.viewport = VecDeque::from(vec![Row::with_capacity(self.width).canonical()]);
@@ -4389,6 +4918,7 @@ impl Grid {
             &mut self.kitty_grid,
             count,
             width,
+            &mut self.scrollback_cells,
         );
         self.apply_scrollback_display_row_delta(display_row_delta);
         self.kitty_reanchor_all_from_pixels();
@@ -5013,6 +5543,7 @@ impl Grid {
     pub fn delete_viewport_and_scroll(&mut self) {
         self.invalidate_scroll_offset();
         self.lines_above = VecDeque::new();
+        self.scrollback_cells = 0;
         self.viewport.clear();
         self.lines_below = VecDeque::new();
         self.scrollback_display_rows = 0;
@@ -6092,6 +6623,11 @@ impl Handler for Grid {
                                     &mut self.kitty_grid,
                                     &mut self.supports_kitty_keyboard_protocol,
                                 );
+                                self.scrollback_cells = self
+                                    .lines_above
+                                    .iter()
+                                    .map(|row| row.stored_cell_count())
+                                    .sum();
                             }
                             self.alternate_screen_state = None;
                             self.shell_reports.push(
@@ -6188,6 +6724,7 @@ impl Handler for Grid {
                             // enter alternate buffer
                             let current_lines_above =
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
+                            self.scrollback_cells = 0;
                             let current_viewport = std::mem::replace(
                                 &mut self.viewport,
                                 VecDeque::from(vec![Row::new().canonical()]),
@@ -6821,6 +7358,10 @@ fn decode_width(width: Option<NonZeroU32>) -> Option<usize> {
     width.map(|width| width.get() as usize - 1)
 }
 
+/// Most OSC 133 markers one row retains. A real prompt row carries a
+/// handful; the cap bounds what cloning a row can cost.
+const MAX_OSC133_MARKERS_PER_ROW: usize = 64;
+
 #[derive(Clone, Default)]
 struct Osc133Markers(Option<Box<Vec<Osc133Marker>>>);
 
@@ -6866,6 +7407,17 @@ impl Osc133Markers {
     fn extend(&mut self, markers: impl IntoIterator<Item = Osc133Marker>) {
         for marker in markers {
             self.push(marker);
+        }
+    }
+    /// Keeps the markers at the highest columns (the most recent ones,
+    /// as the cursor moves right) when a row exceeds the per-row cap.
+    /// Expects the markers sorted by column.
+    fn enforce_cap(&mut self) {
+        if let Some(markers) = self.0.as_mut() {
+            if markers.len() > MAX_OSC133_MARKERS_PER_ROW {
+                let excess = markers.len() - MAX_OSC133_MARKERS_PER_ROW;
+                markers.drain(..excess);
+            }
         }
     }
     fn sort_by_key(&mut self, f: impl FnMut(&Osc133Marker) -> usize) {
@@ -6986,12 +7538,30 @@ impl Row {
             width + self.trailing_blanks as usize
         }
     }
+    /// Whether every character of the row is exactly one cell wide, from
+    /// the same cache as `width_cached`.
+    pub fn is_single_width_cached(&mut self) -> bool {
+        self.width_cached();
+        self.only_single_width
+    }
     pub fn width(&self) -> usize {
         let mut width = self.trailing_blanks as usize;
         for terminal_character in &self.columns {
             width += terminal_character.width();
         }
         width
+    }
+    /// Cost of cloning this row into a serialization snapshot: its
+    /// display cells plus one unit per OSC 133 marker, which a clone
+    /// copies even when the row holds no characters at all.
+    fn snapshot_cost(&self) -> usize {
+        self.width() + self.osc133_markers.as_slice().len()
+    }
+    /// Retained-cell cost of this row: `columns + trailing_blanks` is
+    /// invariant under compress/expand, so it measures the row's stored
+    /// footprint regardless of its current compression state.
+    pub fn stored_cell_count(&self) -> usize {
+        self.columns.len() + self.trailing_blanks as usize
     }
     pub fn compress_trailing_blanks(&mut self) {
         let mut kept = self.columns.len();
@@ -7353,6 +7923,7 @@ impl Row {
                             marker
                         }),
                 );
+            self.osc133_markers.enforce_cap();
         }
         let combined_width = match (decode_width(self.width), decode_width(to_append.width)) {
             (Some(own), Some(appended)) => encode_width(own + appended),
@@ -7448,6 +8019,8 @@ impl Row {
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }
     pub fn rewrap_rows(mut rows: Vec<Row>, max_row_length: usize) -> Vec<Row> {
+        #[cfg(test)]
+        REWRAP_ROWS_CALLS.with(|c| c.set(c.get() + 1));
         if rows.is_empty() {
             return vec![];
         }
@@ -7498,23 +8071,41 @@ impl Row {
                 part.is_canonical = true;
             }
         }
+        // Relocate markers in a single forward pass. width() scans a
+        // part's cells, so the old per-marker inner loop rescanning
+        // parts from the start cost O(markers * total cells) — the
+        // quadratic reflow path the audit flagged. Markers arrive in
+        // column order (sorted defensively to keep that true), so each
+        // advances the shared part cursor at most to the end.
+        let part_widths: Vec<usize> = parts.iter().map(|part| part.width()).collect();
+        markers.sort_by_key(|marker| marker.column);
+        let mut target_part = 0;
+        let mut column_offset = 0;
         for mut marker in markers {
-            let mut column_offset = 0;
-            for part_index in 0..parts.len() {
-                let part_width = parts[part_index].width();
-                if marker.column <= column_offset + part_width || part_index + 1 == parts.len() {
-                    marker.column = marker.column.saturating_sub(column_offset).min(part_width);
-                    parts[part_index].osc133_markers.push(marker);
-                    break;
-                }
-                column_offset += part_width;
+            while target_part + 1 < parts.len()
+                && marker.column > column_offset + part_widths[target_part]
+            {
+                column_offset += part_widths[target_part];
+                target_part += 1;
             }
+            let part_width = part_widths[target_part];
+            marker.column = marker.column.saturating_sub(column_offset).min(part_width);
+            parts[target_part].osc133_markers.push(marker);
         }
         parts
     }
     fn add_osc133_marker(&mut self, column: usize, kind: Osc133MarkerKind) {
+        // A marker of the same type at the same column supersedes the
+        // earlier one (a repeated `D` there carries no new information),
+        // and the per-row total is capped, so a stream of markers that
+        // never advance the cursor cannot grow a row without bound.
+        self.osc133_markers.retain(|marker| {
+            marker.column != column
+                || std::mem::discriminant(&marker.kind) != std::mem::discriminant(&kind)
+        });
         self.osc133_markers.push(Osc133Marker { column, kind });
         self.osc133_markers.sort_by_key(|marker| marker.column);
+        self.osc133_markers.enforce_cap();
     }
     pub fn last_index_in_line(&self) -> usize {
         self.columns.len()
