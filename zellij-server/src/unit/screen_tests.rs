@@ -22094,6 +22094,33 @@ mod session_rename {
             .collect()
     }
 
+    fn screen_rename_bus(
+        screen: &mut Screen,
+    ) -> (
+        crate::channels::SenderWithContext<ScreenInstruction>,
+        Receiver<(ScreenInstruction, ErrorContext)>,
+    ) {
+        let (sender, receiver) = channels::unbounded();
+        let sender = crate::channels::SenderWithContext::new(sender);
+        screen.bus.senders.to_screen = Some(sender.clone());
+        (sender, receiver)
+    }
+
+    fn apply_discovered_rename(
+        screen: &mut Screen,
+        receiver: &Receiver<(ScreenInstruction, ErrorContext)>,
+    ) {
+        let (instruction, _) = receiver
+            .recv_timeout(Duration::from_secs(20))
+            .expect("session rename discovery");
+        match instruction {
+            ScreenInstruction::CommitSessionRename(commit) => {
+                screen.commit_session_rename(*commit).expect("TEST");
+            },
+            other => panic!("expected session rename commit, got {other:?}"),
+        }
+    }
+
     fn start_renaming(h: &mut Harness, client_id: ClientId) {
         h.screen
             .change_mode(InputMode::RenameSession, Some(InputMode::Normal), client_id)
@@ -22146,9 +22173,11 @@ mod session_rename {
         start_renaming(&mut h, 1);
         type_text(&mut h, 1, "taken");
         assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("taken"));
+        let (_sender, receiver) = screen_rename_bus(&mut h.screen);
         h.screen
             .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
             .expect("TEST");
+        apply_discovered_rename(&mut h.screen, &receiver);
         assert_eq!(h.screen.session_name, "zellij-test");
         assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
         let prompts = prompts(&h);
@@ -22195,6 +22224,223 @@ mod session_rename {
         type_text(&mut h, 1, "stray");
         assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
         assert!(h.screen.session_rename_drafts.is_empty());
+    }
+
+    struct DiscoveryGate {
+        entered: Mutex<bool>,
+        entered_cv: std::sync::Condvar,
+        release: Mutex<bool>,
+        release_cv: std::sync::Condvar,
+    }
+
+    impl DiscoveryGate {
+        fn new() -> Self {
+            DiscoveryGate {
+                entered: Mutex::new(false),
+                entered_cv: std::sync::Condvar::new(),
+                release: Mutex::new(false),
+                release_cv: std::sync::Condvar::new(),
+            }
+        }
+
+        fn block(&self) {
+            {
+                let mut entered = self.entered.lock().unwrap();
+                *entered = true;
+                self.entered_cv.notify_all();
+            }
+            let mut release = self.release.lock().unwrap();
+            let started = std::time::Instant::now();
+            while !*release {
+                let remaining = Duration::from_secs(5).saturating_sub(started.elapsed());
+                assert!(!remaining.is_zero(), "discovery was not released");
+                let (guard, timeout) = self.release_cv.wait_timeout(release, remaining).unwrap();
+                release = guard;
+                if timeout.timed_out() && !*release {
+                    panic!("discovery was not released");
+                }
+            }
+        }
+
+        fn wait_until_entered(&self) {
+            let entered = self.entered.lock().unwrap();
+            let (entered, timeout) = self
+                .entered_cv
+                .wait_timeout_while(entered, Duration::from_secs(2), |entered| !*entered)
+                .unwrap();
+            assert!(*entered && !timeout.timed_out(), "discovery never started");
+        }
+
+        fn is_released(&self) -> bool {
+            *self.release.lock().unwrap()
+        }
+
+        fn release(&self) {
+            let mut release = self.release.lock().unwrap();
+            *release = true;
+            self.release_cv.notify_all();
+        }
+    }
+
+    struct ReleaseDiscovery(Arc<DiscoveryGate>);
+
+    impl Drop for ReleaseDiscovery {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum ScreenSaw {
+        HandlerReturned,
+        CacheUpdated,
+        Committed(String),
+    }
+
+    #[test]
+    fn the_screen_thread_is_not_inside_peer_discovery_while_it_blocks() {
+        // Screen is not Send. Build it on the thread that runs the rename
+        // instruction handler, and keep the probe on the discovery thread.
+        let gate = Arc::new(DiscoveryGate::new());
+        let _release_on_drop = ReleaseDiscovery(Arc::clone(&gate));
+        let discovery_thread_id = Arc::new(Mutex::new(None));
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (progress_tx, progress_rx) = std::sync::mpsc::channel();
+        let gate_for_worker = Arc::clone(&gate);
+        let discovery_thread_id_for_worker = Arc::clone(&discovery_thread_id);
+        let worker = std::thread::spawn(move || {
+            let mut h = harness();
+            assert!(
+                matches!(
+                    &h.screen.session_rename_discovery,
+                    super::super::SessionRenameDiscoveryHook::Production
+                ),
+                "production rename must keep the real session scan"
+            );
+            let fake = FakeInputOutput::default();
+            let client_messages = fake.server_to_client_messages.clone();
+            h.screen.bus.os_input = Some(Box::new(fake));
+            let (sender, receiver) = screen_rename_bus(&mut h.screen);
+            let gate = gate_for_worker;
+            let discovery_thread_id = discovery_thread_id_for_worker;
+            h.screen.session_rename_discovery =
+                super::super::SessionRenameDiscoveryHook::Override(Arc::new(move |_current, _new| {
+                    *discovery_thread_id.lock().unwrap() = Some(std::thread::current().id());
+                    gate.block();
+                    super::super::SessionRenameDiscovery {
+                        resurrectable_sessions: BTreeMap::new(),
+                        running_session_exists: Ok(false),
+                    }
+                }));
+            let screen_thread_id = std::thread::current().id();
+            ready_tx
+                .send((sender, client_messages, screen_thread_id))
+                .expect("TEST");
+            let mut screen = h.screen;
+            loop {
+                let Ok((instruction, _)) = receiver.recv_timeout(Duration::from_secs(5)) else {
+                    break;
+                };
+                match instruction {
+                    ScreenInstruction::RenameSession(name, client_id, completion) => {
+                        screen
+                            .begin_session_rename(name, client_id, false, completion)
+                            .expect("TEST");
+                        progress_tx
+                            .send(ScreenSaw::HandlerReturned)
+                            .expect("TEST");
+                    },
+                    ScreenInstruction::CommitSessionRename(commit) => {
+                        screen.commit_session_rename(*commit).expect("TEST");
+                        progress_tx
+                            .send(ScreenSaw::Committed(screen.session_name.clone()))
+                            .expect("TEST");
+                        break;
+                    },
+                    ScreenInstruction::UpdateSessionInfos(infos, resurrectable, plugin) => {
+                        screen
+                            .update_session_infos(infos, resurrectable, plugin)
+                            .expect("TEST");
+                        progress_tx.send(ScreenSaw::CacheUpdated).expect("TEST");
+                    },
+                    other => panic!("unexpected screen instruction: {other:?}"),
+                }
+            }
+            (
+                screen.session_name.clone(),
+                screen.peer_sessions_cache.contains_key("offscreen-peer"),
+            )
+        });
+
+        let (sender, client_messages, screen_thread_id) =
+            ready_rx.recv_timeout(Duration::from_secs(5)).expect("screen thread");
+        sender
+            .send(ScreenInstruction::RenameSession(
+                "offscreen-peer".to_owned(),
+                1,
+                None,
+            ))
+            .expect("TEST");
+        gate.wait_until_entered();
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("handler returned"),
+            ScreenSaw::HandlerReturned
+        );
+        let discovery_id = discovery_thread_id
+            .lock()
+            .unwrap()
+            .expect("discovery thread id");
+        assert_ne!(
+            discovery_id, screen_thread_id,
+            "peer discovery ran on the screen thread"
+        );
+        assert!(!gate.is_released());
+
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "offscreen-peer".to_owned(),
+            SessionInfo::new("offscreen-peer".to_owned()),
+        );
+        sender
+            .send(ScreenInstruction::UpdateSessionInfos(
+                infos,
+                BTreeMap::new(),
+                None,
+            ))
+            .expect("TEST");
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("cache update"),
+            ScreenSaw::CacheUpdated
+        );
+        assert!(
+            !gate.is_released(),
+            "screen work waited for peer discovery"
+        );
+
+        gate.release();
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("commit"),
+            ScreenSaw::Committed("zellij-test".to_owned())
+        );
+        let (session_name, peer_was_cached) = worker.join().expect("screen thread");
+        assert_eq!(session_name, "zellij-test");
+        assert!(peer_was_cached);
+        let messages = client_messages.lock().unwrap();
+        let lines = messages.get(&1).expect("rename failure was reported");
+        assert!(
+            lines.iter().any(|message| matches!(
+                message,
+                ServerToClientMsg::LogError { lines }
+                    if lines.iter().any(|line| line.contains("already exists"))
+            )),
+            "commit did not recheck the peer cache: {lines:?}"
+        );
     }
 }
 
