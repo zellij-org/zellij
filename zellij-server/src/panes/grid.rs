@@ -22,7 +22,7 @@ use zellij_utils::errors::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     fmt::{self, Debug, Formatter},
     num::NonZeroU32,
     str,
@@ -1999,26 +1999,128 @@ pub(crate) struct ViewportAnchor {
 /// stamps of that window in newest-screen-line-first order. Later turns copy
 /// the front of this list. A row created after the freeze is absent, and a
 /// rewrap tail stays where it sat on screen even when its stamp is newer
-/// than the lines below it. `parts` holds each quantum's text, newest first,
-/// so a turn does not recopy the text already saved.
+/// than the lines below it. A tail minted after the freeze is not in
+/// `pending`; it is copied with the row it continues. `known_stamps` is the
+/// frozen window plus those tails, so a later turn does not append the same
+/// tail again. `parts` holds each copied row, newest quantum first and
+/// oldest row first inside the quantum. A continuation that was copied and
+/// then replaced by one of those tails is in `superseded` and left out of
+/// the joined text. The screen-order links are the freeze, so that omission
+/// does not drop a different line.
 #[derive(Clone)]
 struct SerializeResume {
     request: Option<usize>,
     pending: Vec<u64>,
+    known_stamps: HashSet<u64>,
     taken_cells: usize,
     done: bool,
     started: bool,
-    parts: Vec<String>,
+    parts: Vec<Vec<(u64, String)>>,
+    screen_successor: HashMap<u64, u64>,
+    continuation_stamps: HashSet<u64>,
+    superseded: HashSet<u64>,
 }
 
 impl SerializeResume {
     fn joined(&self) -> String {
-        let mut out = String::with_capacity(self.parts.iter().map(|part| part.len()).sum());
-        for part in self.parts.iter().rev() {
-            out.push_str(part);
+        let len = self
+            .parts
+            .iter()
+            .flat_map(|turn| turn.iter())
+            .filter(|(stamp, _)| !self.superseded.contains(stamp))
+            .map(|(_, text)| text.len())
+            .sum();
+        let mut out = String::with_capacity(len);
+        for turn in self.parts.iter().rev() {
+            for (stamp, text) in turn {
+                if !self.superseded.contains(stamp) {
+                    out.push_str(text);
+                }
+            }
         }
         out
     }
+
+    /// The frozen continuation rows after `parent` were replaced by a reflow
+    /// tail. Drop them when the pass is joined.
+    fn supersede_frozen_continuations(&mut self, parent: u64) {
+        let mut cursor = parent;
+        while let Some(next) = self.screen_successor.get(&cursor).copied() {
+            if !self.continuation_stamps.contains(&next) {
+                break;
+            }
+            self.superseded.insert(next);
+            cursor = next;
+        }
+    }
+}
+
+/// Continuations that follow `rows` until a canonical row or a stamp the
+/// snapshot already knows. Returns false when that boundary is inside
+/// `rows`, so the caller must not walk into the next buffer.
+fn collect_unseen_reflow_tails<'a, I>(
+    rows: I,
+    known_stamps: &HashSet<u64>,
+    out: &mut Vec<u64>,
+) -> bool
+where
+    I: Iterator<Item = &'a Row>,
+{
+    for row in rows {
+        if row.is_canonical || known_stamps.contains(&row.row_stamp) {
+            return false;
+        }
+        out.push(row.row_stamp);
+    }
+    true
+}
+
+fn snapshot_row_for_resume(
+    viewport: &VecDeque<Row>,
+    lines_above: &VecDeque<Row>,
+    lines_below: &VecDeque<Row>,
+    stamp: u64,
+    known_stamps: &HashSet<u64>,
+) -> Option<(usize, Row, Vec<u64>)> {
+    if let Some(index) = viewport.iter().position(|row| row.row_stamp == stamp) {
+        let mut tails = Vec::new();
+        if collect_unseen_reflow_tails(viewport.iter().skip(index + 1), known_stamps, &mut tails) {
+            collect_unseen_reflow_tails(lines_below.iter(), known_stamps, &mut tails);
+        }
+        let row = &viewport[index];
+        return Some((row.snapshot_cost(), row.clone(), tails));
+    }
+    if let Some(index) = lines_above.iter().position(|row| row.row_stamp == stamp) {
+        let mut tails = Vec::new();
+        let mut proceed = collect_unseen_reflow_tails(
+            lines_above.iter().skip(index + 1),
+            known_stamps,
+            &mut tails,
+        );
+        if proceed {
+            proceed = collect_unseen_reflow_tails(viewport.iter(), known_stamps, &mut tails);
+        }
+        if proceed {
+            collect_unseen_reflow_tails(lines_below.iter(), known_stamps, &mut tails);
+        }
+        let row = &lines_above[index];
+        return Some((
+            row.snapshot_cost(),
+            row.with_trailing_blanks().into_owned(),
+            tails,
+        ));
+    }
+    if let Some(index) = lines_below.iter().position(|row| row.row_stamp == stamp) {
+        let mut tails = Vec::new();
+        collect_unseen_reflow_tails(lines_below.iter().skip(index + 1), known_stamps, &mut tails);
+        let row = &lines_below[index];
+        return Some((
+            row.snapshot_cost(),
+            row.with_trailing_blanks().into_owned(),
+            tails,
+        ));
+    }
+    None
 }
 
 impl ViewportAnchor {
@@ -2439,10 +2541,14 @@ impl Grid {
             serialize_resume: std::cell::RefCell::new(SerializeResume {
                 request: None,
                 pending: Vec::new(),
+                known_stamps: HashSet::new(),
                 taken_cells: 0,
                 done: true,
                 started: false,
                 parts: Vec::new(),
+                screen_successor: HashMap::new(),
+                continuation_stamps: HashSet::new(),
+                superseded: HashSet::new(),
             }),
         }
     }
@@ -3609,24 +3715,50 @@ impl Grid {
             for index in (history_first..history_len).rev() {
                 pending.push(self.lines_above[index].row_stamp);
             }
+            let mut screen_successor = HashMap::new();
+            let mut continuation_stamps = HashSet::new();
+            let mut previous = None;
+            let history_rows = self
+                .lines_above
+                .iter()
+                .skip(history_first)
+                .take(history_len.saturating_sub(history_first));
+            for row in history_rows.chain(self.viewport.iter()) {
+                if !row.is_canonical {
+                    continuation_stamps.insert(row.row_stamp);
+                }
+                if let Some(previous) = previous {
+                    screen_successor.insert(previous, row.row_stamp);
+                }
+                previous = Some(row.row_stamp);
+            }
             if pending.is_empty() {
                 *resume = SerializeResume {
                     request: scrollback_lines_to_serialize,
                     pending,
+                    known_stamps: HashSet::new(),
                     taken_cells: 0,
                     done: true,
                     started: true,
                     parts: Vec::new(),
+                    screen_successor,
+                    continuation_stamps,
+                    superseded: HashSet::new(),
                 };
                 return Some(String::new());
             }
+            let known_stamps = pending.iter().copied().collect();
             *resume = SerializeResume {
                 request: scrollback_lines_to_serialize,
                 pending,
+                known_stamps,
                 taken_cells: 0,
                 done: false,
                 started: true,
                 parts: Vec::new(),
+                screen_successor,
+                continuation_stamps,
+                superseded: HashSet::new(),
             };
         }
 
@@ -3637,29 +3769,38 @@ impl Grid {
         let mut copied: Vec<Row> = Vec::new();
         let mut index = 0usize;
         let mut finished = false;
+        let mut known_stamps = std::mem::take(&mut resume.known_stamps);
         while index < resume.pending.len() {
             if turn_rows_left == 0 {
                 break;
             }
             let stamp = resume.pending[index];
-            let located = if let Some(row) = self.viewport.iter().find(|row| row.row_stamp == stamp)
-            {
-                Some((row.snapshot_cost(), row.clone()))
-            } else if let Some(row) = self
-                .lines_above
-                .iter()
-                .chain(self.lines_below.iter())
-                .find(|row| row.row_stamp == stamp)
-            {
-                Some((row.snapshot_cost(), row.with_trailing_blanks().into_owned()))
-            } else {
-                None
-            };
-            let Some((cost, row)) = located else {
+            let Some((cost, row, tails)) = snapshot_row_for_resume(
+                &self.viewport,
+                &self.lines_above,
+                &self.lines_below,
+                stamp,
+                &known_stamps,
+            ) else {
                 // The row left the buffer. Skip it so the pass cannot stall.
                 index += 1;
                 continue;
             };
+            if !tails.is_empty() {
+                // Reflow minted these continuations after the freeze. They sit
+                // just after this row on screen, so they belong immediately
+                // before it in newest-first order. The frozen continuation
+                // rows of this line were already copied or are still pending;
+                // either way their text is the pre-reflow line and must not
+                // be joined as well.
+                resume.supersede_frozen_continuations(stamp);
+                let newest_first: Vec<u64> = tails.into_iter().rev().collect();
+                for tail in &newest_first {
+                    known_stamps.insert(*tail);
+                }
+                resume.pending.splice(index..index, newest_first);
+                continue;
+            }
             #[cfg(test)]
             SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
             if cost > MAX_SERIALIZE_SNAPSHOT_CELLS
@@ -3677,6 +3818,7 @@ impl Grid {
             turn_rows_left -= 1;
             index += 1;
         }
+        resume.known_stamps = known_stamps;
         if finished {
             resume.pending.clear();
         } else {
@@ -3694,26 +3836,28 @@ impl Grid {
             return Some(resume.joined());
         }
         copied.reverse();
-        // The oldest row of this quantum is copied[0]. A continuation there
-        // is the middle of a logical line; the serializer still emits a
-        // leading break because this slice starts at index 0.
-        let oldest_is_continuation = copied.first().is_some_and(|row| !row.is_canonical);
-        let Some(mut piece) = self
-            .output_buffer
-            .serialize(copied.as_slice(), self.osc8_hyperlinks, None)
-            .ok()
-        else {
-            resume.done = true;
-            return None;
-        };
-        if oldest_is_continuation {
-            if let Some(rest) = piece.strip_prefix("\n\r") {
-                piece = rest.to_string();
+        // One row at a time. A continuation is serialized with a leading
+        // break because its slice starts at index 0; that break is the
+        // middle of a logical line, so drop it. Keeping the row stamp lets a
+        // later reflow omit a continuation that this turn already copied.
+        let mut turn = Vec::with_capacity(copied.len());
+        for row in &copied {
+            let Some(mut piece) = self
+                .output_buffer
+                .serialize(std::slice::from_ref(row), self.osc8_hyperlinks, None)
+                .ok()
+            else {
+                resume.done = true;
+                return None;
+            };
+            if !row.is_canonical {
+                if let Some(rest) = piece.strip_prefix("\n\r") {
+                    piece = rest.to_string();
+                }
             }
+            turn.push((row.row_stamp, piece));
         }
-        // Newest piece first. The finished snapshot walks these backwards
-        // once, instead of recopying every saved byte on each turn.
-        resume.parts.push(piece);
+        resume.parts.push(turn);
         if resume.done {
             Some(resume.joined())
         } else {

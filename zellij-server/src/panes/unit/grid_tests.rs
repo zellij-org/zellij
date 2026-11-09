@@ -13712,6 +13712,104 @@ fn serialize_keeps_a_rewrap_tail_with_its_line() {
 }
 
 #[test]
+fn serialize_keeps_a_pending_line_rewrapped_between_quanta() {
+    // The wide line sits past the first quantum, so its stamp is still
+    // pending. Narrowing does not rewrap history. Scrolling that line into
+    // the viewport does, and the new tail gets a stamp the freeze never saw.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let mut bytes = b"WWWWWWWWWWXXXXXXXXXX\r\n".to_vec();
+    for index in 0..(quantum + 40) {
+        bytes.extend(format!("L{index:05}\r\n").into_bytes());
+    }
+    let mut grid = create_grid_with_size_and_raw(4, 20, &bytes);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    grid.change_size(4, 10);
+    assert!(
+        grid.scroll_up_rows(10_000) > 0,
+        "scrolling must pull the pending history line"
+    );
+    let rewrapped = grid.viewport.iter().any(|row| !row.is_canonical)
+        || grid.lines_above.iter().any(|row| !row.is_canonical);
+    assert!(
+        rewrapped,
+        "the wide line has to be split before the pass resumes"
+    );
+
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the pass finishes after the reflow");
+    let first = serialized.find('W').expect("the carried half survives");
+    let last = serialized.rfind('X').expect("the rewrap tail survives");
+    let between = &serialized[first..=last];
+    assert!(
+        first
+            < serialized
+                .find('X')
+                .expect("the tail follows the carried half")
+    );
+    assert_eq!(between.matches('W').count(), 10);
+    assert_eq!(between.matches('X').count(), 10);
+    assert!(
+        !between.contains('\n') && !between.contains('\r'),
+        "the pending line must stay one logical line, between: {between:?}"
+    );
+    for index in 0..(quantum + 40) {
+        let marker = format!("L{index:05}");
+        assert!(
+            serialized.contains(&marker),
+            "scrollback row {marker} must stay in the snapshot"
+        );
+    }
+}
+
+#[test]
+fn serialize_does_not_repeat_a_half_copied_before_reflow() {
+    // The continuation is inside the first quantum. The canonical row is
+    // still pending. Narrowing and scrolling rewrites the line, and the
+    // half already saved must not be written again.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let mut bytes = b"WWWWWWWWWWXXXXXXXXXX\r\n".to_vec();
+    for index in 0..(quantum - 2) {
+        bytes.extend(format!("L{index:05}\r\n").into_bytes());
+    }
+    let mut grid = create_grid_with_size_and_raw(4, 10, &bytes);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    grid.change_size(4, 5);
+    assert!(grid.scroll_up_rows(10_000) > 0);
+    assert!(
+        grid.viewport
+            .iter()
+            .chain(grid.lines_above.iter())
+            .chain(grid.lines_below.iter())
+            .any(|row| !row.is_canonical),
+        "scrolling the wide line into the narrower viewport has to rewrap it"
+    );
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the pass finishes after the reflow");
+    assert_eq!(
+        serialized.matches('W').count(),
+        10,
+        "the carried half must be saved once, snapshot:\n{serialized}"
+    );
+    assert_eq!(
+        serialized.matches('X').count(),
+        10,
+        "the half copied before the reflow must not be repeated, snapshot:\n{serialized}"
+    );
+}
+
+#[test]
 fn serialize_does_not_break_a_wrapped_line_at_a_quantum_boundary() {
     // A continuation that is the oldest row of a later quantum was saved
     // with a hard newline, splitting one logical line.
