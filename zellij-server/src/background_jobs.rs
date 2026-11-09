@@ -17,8 +17,9 @@ use zellij_utils::web_server_commands::{
 };
 
 use isahc::prelude::*;
-use isahc::AsyncReadResponseExt;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
+
+use futures_lite::io::AsyncReadExt;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -188,6 +189,100 @@ pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(4);
 pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(10);
 
 static IMMEDIATE_RENDER_REQUESTS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Debug)]
+enum WebRequestError {
+    Http(isahc::Error),
+    HostPipe,
+}
+
+impl std::fmt::Display for WebRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WebRequestError::Http(error) => write!(f, "{error}"),
+            WebRequestError::HostPipe => write!(
+                f,
+                "response exceeds the host pipe cap of {} bytes",
+                crate::plugins::WASI_HOST_PIPE_CAP
+            ),
+        }
+    }
+}
+
+impl From<isahc::Error> for WebRequestError {
+    fn from(error: isahc::Error) -> Self {
+        WebRequestError::Http(error)
+    }
+}
+
+impl From<std::io::Error> for WebRequestError {
+    fn from(error: std::io::Error) -> Self {
+        WebRequestError::Http(error.into())
+    }
+}
+
+impl From<isahc::http::Error> for WebRequestError {
+    fn from(error: isahc::http::Error) -> Self {
+        WebRequestError::Http(error.into())
+    }
+}
+
+fn web_request_failure_event(
+    error: &WebRequestError,
+    context: BTreeMap<String, String>,
+) -> Event {
+    Event::WebRequestResult(400, BTreeMap::new(), error.to_string().into_bytes(), context)
+}
+
+fn web_result_frame_fits(
+    status: u16,
+    headers: &BTreeMap<String, String>,
+    body: &[u8],
+    context: &BTreeMap<String, String>,
+) -> bool {
+    crate::plugins::host_stdin_frame_len(&Event::WebRequestResult(
+        status,
+        headers.clone(),
+        body.to_vec(),
+        context.clone(),
+    ))
+    .is_some_and(|len| len <= crate::plugins::WASI_HOST_PIPE_CAP)
+}
+
+/// Read `body` until EOF, or stop once those bytes cannot be part of a
+/// `WebRequestResult` whose stdin frame fits the host pipe. Oversized bytes
+/// are dropped; the caller reports the cap instead of a truncated success.
+async fn read_web_body_within_host_pipe<R>(
+    body: &mut R,
+    status: u16,
+    headers: &BTreeMap<String, String>,
+    context: &BTreeMap<String, String>,
+) -> Result<Vec<u8>, WebRequestError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    if !web_result_frame_fits(status, headers, &[], context) {
+        return Err(WebRequestError::HostPipe);
+    }
+    let mut collected = Vec::new();
+    let mut chunk = [0u8; 8 * 1024];
+    loop {
+        let n = body.read(&mut chunk).await?;
+        if n == 0 {
+            break;
+        }
+        let mut candidate = Vec::with_capacity(collected.len().saturating_add(n));
+        candidate.extend_from_slice(&collected);
+        candidate.extend_from_slice(&chunk[..n]);
+        if !web_result_frame_fits(status, headers, &candidate, context) {
+            drop(candidate);
+            drop(collected);
+            return Err(WebRequestError::HostPipe);
+        }
+        collected = candidate;
+    }
+    Ok(collected)
+}
 
 pub fn immediate_render_requests() -> usize {
     IMMEDIATE_RENDER_REQUESTS.load(Ordering::Relaxed)
@@ -777,10 +872,11 @@ pub(crate) fn background_jobs_main(
                             verb: HttpVerb,
                             headers: BTreeMap<String, String>,
                             body: Vec<u8>,
+                            context: &BTreeMap<String, String>,
                             http_client: HttpClient,
                         ) -> Result<
                             (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            isahc::Error,
+                            WebRequestError,
                         > {
                             let mut request = match verb {
                                 HttpVerb::Get => Request::get(url),
@@ -815,7 +911,13 @@ pub(crate) fn background_jobs_main(
                                     },
                                 })
                                 .collect();
-                            let body = res.bytes().await?;
+                            let body = read_web_body_within_host_pipe(
+                                res.body_mut(),
+                                status_code.as_u16(),
+                                &headers,
+                                context,
+                            )
+                            .await?;
                             Ok((status_code.as_u16(), headers, body))
                         }
                         let Some(http_client) = http_client else {
@@ -823,7 +925,7 @@ pub(crate) fn background_jobs_main(
                             return;
                         };
 
-                        match web_request(url, verb, headers, body, http_client).await {
+                        match web_request(url, verb, headers, body, &context, http_client).await {
                             Ok((status, headers, body)) => {
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
@@ -833,16 +935,10 @@ pub(crate) fn background_jobs_main(
                             },
                             Err(e) => {
                                 log::error!("Failed to send web request: {}", e);
-                                let error_body = e.to_string().as_bytes().to_vec();
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
-                                    Event::WebRequestResult(
-                                        400,
-                                        BTreeMap::new(),
-                                        error_body,
-                                        context,
-                                    ),
+                                    web_request_failure_event(&e, context),
                                 )]));
                             },
                         }
@@ -3928,5 +4024,100 @@ mod background_command_output_tests {
             },
             other => panic!("expected a bounded output failure, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod web_request_host_pipe_tests {
+    use super::*;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+
+    struct CountingReader {
+        remaining: usize,
+        consumed: Arc<AtomicUsize>,
+    }
+
+    impl futures_lite::io::AsyncRead for CountingReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            if self.remaining == 0 {
+                return Poll::Ready(Ok(0));
+            }
+            let n = buf.len().min(self.remaining).min(8 * 1024);
+            buf[..n].fill(b'Z');
+            self.remaining -= n;
+            self.consumed.fetch_add(n, Ordering::Relaxed);
+            Poll::Ready(Ok(n))
+        }
+    }
+
+    fn run<T>(future: impl std::future::Future<Output = T>) -> T {
+        crate::global_async_runtime::get_tokio_runtime().block_on(future)
+    }
+
+    #[test]
+    fn web_request_stops_before_an_oversized_body() {
+        let total = crate::plugins::WASI_HOST_PIPE_CAP.saturating_mul(4);
+        let consumed = Arc::new(AtomicUsize::new(0));
+        let mut reader = CountingReader {
+            remaining: total,
+            consumed: consumed.clone(),
+        };
+        let headers = BTreeMap::from([(
+            "Content-Type".to_owned(),
+            "application/octet-stream".to_owned(),
+        )]);
+        let context = BTreeMap::from([("request_id".to_owned(), "oversized".to_owned())]);
+        let error = run(read_web_body_within_host_pipe(
+            &mut reader,
+            200,
+            &headers,
+            &context,
+        ))
+        .expect_err("an oversized body must not be returned as success");
+        let read = consumed.load(Ordering::Relaxed);
+        assert!(
+            read < total,
+            "production read kept the oversized body ({read} of {total} bytes)"
+        );
+        let event = web_request_failure_event(&error, context.clone());
+        match event {
+            Event::WebRequestResult(status, event_headers, body, event_context) => {
+                assert_eq!(status, 400);
+                assert!(event_headers.is_empty());
+                assert_eq!(event_context, context);
+                let message = String::from_utf8(body.clone()).expect("error text");
+                assert!(
+                    message.contains(&crate::plugins::WASI_HOST_PIPE_CAP.to_string()),
+                    "error must name the cap, got {message}"
+                );
+                assert!(body.len() < 512, "error body must stay short");
+                assert!(!body.iter().any(|byte| *byte == b'Z'));
+            },
+            other => panic!("expected the production WebRequestResult error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn web_request_returns_a_tiny_body_unchanged() {
+        let payload = b"tiny-body".to_vec();
+        let mut reader = isahc::AsyncBody::from(payload.clone());
+        let headers = BTreeMap::from([("Content-Type".to_owned(), "text/plain".to_owned())]);
+        let context = BTreeMap::from([("request_id".to_owned(), "tiny".to_owned())]);
+        let body = run(read_web_body_within_host_pipe(
+            &mut reader,
+            201,
+            &headers,
+            &context,
+        ))
+        .expect("a tiny body must be returned");
+        assert_eq!(body, payload);
+        assert!(web_result_frame_fits(201, &headers, &body, &context));
     }
 }

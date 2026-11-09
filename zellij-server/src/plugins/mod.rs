@@ -12,6 +12,9 @@ mod zellij_exports;
 use log::info;
 
 pub use pinned_executor::PinnedExecutor;
+pub(crate) use plugin_loader::{
+    file_system_update_within_host_pipe, host_stdin_frame_len, WASI_HOST_PIPE_CAP,
+};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,

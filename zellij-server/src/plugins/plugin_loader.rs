@@ -32,9 +32,14 @@ use crate::{
 };
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
+use zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds;
 use zellij_utils::{
-    consts::ZELLIJ_TMP_DIR, data::InputMode, errors::prelude::*, input::command::TerminalAction,
-    input::plugins::PluginConfig, pane_size::Size,
+    consts::ZELLIJ_TMP_DIR,
+    data::{Event, FileMetadata, InputMode},
+    errors::prelude::*,
+    input::command::TerminalAction,
+    input::plugins::PluginConfig,
+    pane_size::Size,
 };
 
 /// Open a directory as a `File` handle for WASI pre-opening.
@@ -1040,7 +1045,62 @@ const MAX_PLUGIN_WORKERS: usize = 8;
 /// Stdout is drained only when the host renders, so a later callback must still
 /// fail once this many bytes are sitting in the pipe. Stdin appends from the host
 /// use the same check.
-const WASI_HOST_PIPE_CAP: usize = 256 * 1024;
+pub(crate) const WASI_HOST_PIPE_CAP: usize = 256 * 1024;
+
+/// Byte length of the stdin frame `apply_event_to_plugin` writes for `event`
+/// with no keybind table: protobuf bytes as JSON, plus the `\r\n` terminator.
+pub(crate) fn host_stdin_frame_len(event: &Event) -> Option<usize> {
+    let protobuf = event_to_protobuf_with_keybinds(event.clone(), None).ok()?;
+    let json = serde_json::to_string(&protobuf.encode_to_vec()).ok()?;
+    Some(json.len().saturating_add(2))
+}
+
+fn file_system_update_fits(entries: &[(PathBuf, Option<FileMetadata>)]) -> bool {
+    host_stdin_frame_len(&Event::FileSystemUpdate(entries.to_vec()))
+        .is_some_and(|len| len <= WASI_HOST_PIPE_CAP)
+}
+
+/// Read-order prefix of `entries` whose `FileSystemUpdate` stdin frame fits
+/// [`WASI_HOST_PIPE_CAP`]. One entry that cannot fit becomes an empty update
+/// so the plugin still receives a result.
+pub(crate) fn file_system_update_within_host_pipe(
+    entries: Vec<(PathBuf, Option<FileMetadata>)>,
+) -> Vec<(PathBuf, Option<FileMetadata>)> {
+    let total = entries.len();
+    if total == 0 || file_system_update_fits(&entries) {
+        return entries;
+    }
+    let mut lo = 0usize;
+    let mut hi = total;
+    while lo + 1 < hi {
+        let mid = lo + (hi - lo) / 2;
+        if file_system_update_fits(&entries[..mid]) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    // Frame length is normally monotonic, but a varint boundary can move it.
+    // Walk back to a prefix that fits, then forward while another entry still does.
+    while lo > 0 && !file_system_update_fits(&entries[..lo]) {
+        lo -= 1;
+    }
+    while lo < total && file_system_update_fits(&entries[..lo + 1]) {
+        lo += 1;
+    }
+    if lo == 0 {
+        log::warn!(
+            "FileSystemUpdate entry does not fit in the host pipe cap of {WASI_HOST_PIPE_CAP} bytes; sending an empty update"
+        );
+        return Vec::new();
+    }
+    if lo < total {
+        log::warn!(
+            "FileSystemUpdate trimmed from {total} entries to {lo} so its stdin frame fits the host pipe cap of {WASI_HOST_PIPE_CAP} bytes"
+        );
+    }
+    entries.into_iter().take(lo).collect()
+}
 
 fn enforce_worker_cap(plugin_id: PluginId, worker_count: usize) -> Result<()> {
     if worker_count > MAX_PLUGIN_WORKERS {

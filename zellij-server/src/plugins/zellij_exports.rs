@@ -5485,6 +5485,8 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                                     "Directory scan for plugin {plugin_id} stopped after {MAX_DIRECTORY_SCAN_ENTRIES} entries"
                                 );
                             }
+                            let paths_in_folder =
+                                super::file_system_update_within_host_pipe(paths_in_folder);
                             let _ = send_plugin_instructions
                                 .ok_or(anyhow!("found no sender to send plugin instruction to"))
                                 .map(|sender| {
@@ -5540,6 +5542,7 @@ fn list_windows_volumes(env: &PluginEnv) {
     thread::spawn(move || {
         let mut entries = enumerate_drives();
         entries.extend(enumerate_wsl_distributions());
+        let entries = super::file_system_update_within_host_pipe(entries);
         let _ = send_plugin_instructions
             .ok_or(anyhow!("found no sender to send plugin instruction to"))
             .map(|sender| {
@@ -7896,8 +7899,16 @@ mod admission_tests {
         }
     }
 
+    fn lock_scan_tests() -> std::sync::MutexGuard<'static, ()> {
+        static SCAN_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SCAN_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn scan_host_folder_past_the_cap_does_not_start_another_one() {
+        let _scan_tests = lock_scan_tests();
         assert_eq!(MAX_DIRECTORY_SCANS_IN_FLIGHT, 4);
         assert_eq!(MAX_DIRECTORY_SCANS_PER_PLUGIN, 1);
         assert_eq!(MAX_DIRECTORY_SCAN_ENTRIES, 4096);
@@ -7958,10 +7969,33 @@ mod admission_tests {
         );
         scan_host_folder(&env, PathBuf::from("/host"));
         let listed = wait_for_scan(&receiver);
-        assert_eq!(
-            listed.len(),
-            MAX_DIRECTORY_SCAN_ENTRIES,
-            "a scan must stop at the entry cap and still send the partial result"
+        // `extra-*` names do not fit 4096-wide in the host pipe, so the entry
+        // cap is not what truncates this listing. The result is still a
+        // read-order prefix that fits, and one more name does not.
+        assert!(
+            !listed.is_empty() && listed.len() < MAX_DIRECTORY_SCAN_ENTRIES,
+            "expected a pipe-sized prefix, got {}",
+            listed.len()
+        );
+        assert!(
+            stdin_frame_len(&Event::FileSystemUpdate(listed.clone()))
+                <= crate::plugins::WASI_HOST_PIPE_CAP
+        );
+        let mut observed = Vec::new();
+        for entry in std::fs::read_dir(host.path()).unwrap() {
+            let entry = entry.unwrap();
+            observed.push(PathBuf::from("/host").join(entry.file_name()));
+        }
+        let listed_paths: Vec<_> = listed.iter().map(|(path, _)| path.clone()).collect();
+        assert_eq!(&observed[..listed_paths.len()], listed_paths.as_slice());
+        let next = &observed[listed.len()];
+        let metadata = std::fs::symlink_metadata(host.path().join(next.file_name().unwrap()))
+            .unwrap()
+            .into();
+        let mut one_more = listed;
+        one_more.push((next.clone(), Some(metadata)));
+        assert!(
+            stdin_frame_len(&Event::FileSystemUpdate(one_more)) > crate::plugins::WASI_HOST_PIPE_CAP
         );
         wait_until_scans_idle();
     }
@@ -7992,6 +8026,95 @@ mod admission_tests {
             }
         }
         panic!("admitted directory scan did not send FileSystemUpdate");
+    }
+
+    fn stdin_frame_len(event: &Event) -> usize {
+        use prost::Message;
+        let protobuf = zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(
+            event.clone(),
+            None,
+        )
+        .expect("event protobuf");
+        let json = serde_json::to_string(&protobuf.encode_to_vec()).expect("event json");
+        json.len() + 2
+    }
+
+    #[test]
+    fn scan_host_folder_long_names_stay_within_the_host_pipe() {
+        let _scan_tests = lock_scan_tests();
+        let host = tempfile::tempdir().unwrap();
+        let name_len = 180usize;
+        for index in 0..MAX_DIRECTORY_SCAN_ENTRIES {
+            let name = format!("{index:04}{}", "n".repeat(name_len - 4));
+            assert_eq!(name.len(), name_len);
+            std::fs::write(host.path().join(name), b"x").unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(host.path()).unwrap().count(),
+            MAX_DIRECTORY_SCAN_ENTRIES
+        );
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            44,
+            host.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let listed = wait_for_scan(&receiver);
+        wait_until_scans_idle();
+
+        assert!(
+            !listed.is_empty(),
+            "a directory that has entries must still deliver a prefix"
+        );
+        assert!(
+            listed.len() < MAX_DIRECTORY_SCAN_ENTRIES,
+            "4096 long names must not fit in the host pipe unchanged"
+        );
+
+        let mut observed = Vec::new();
+        for entry in std::fs::read_dir(host.path()).unwrap() {
+            let entry = entry.unwrap();
+            observed.push(PathBuf::from("/host").join(entry.file_name()));
+        }
+        let listed_paths: Vec<_> = listed.iter().map(|(path, _)| path.clone()).collect();
+        assert_eq!(
+            &observed[..listed_paths.len()],
+            listed_paths.as_slice(),
+            "the delivered entries must be a read-order prefix"
+        );
+
+        let event = Event::FileSystemUpdate(listed.clone());
+        let frame = stdin_frame_len(&event);
+        assert!(
+            frame <= super::super::plugin_loader::WASI_HOST_PIPE_CAP,
+            "stdin frame {frame} exceeds the host pipe"
+        );
+        let protobuf = zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(
+            event.clone(),
+            None,
+        )
+        .unwrap();
+        let encoded = prost::Message::encode_to_vec(&protobuf);
+        wasi_write_object(&env, &encoded).expect("fitted FileSystemUpdate must be accepted");
+        assert_eq!(
+            env.stdin_pipe.lock().unwrap().len(),
+            frame,
+            "wasi_write_object must write the measured stdin frame"
+        );
+
+        let next = &observed[listed.len()];
+        let metadata = std::fs::symlink_metadata(host.path().join(next.file_name().unwrap()))
+            .unwrap()
+            .into();
+        let mut one_more = listed;
+        one_more.push((next.clone(), Some(metadata)));
+        let extended = stdin_frame_len(&Event::FileSystemUpdate(one_more));
+        assert!(
+            extended > super::super::plugin_loader::WASI_HOST_PIPE_CAP,
+            "one more omitted name still fit ({extended} bytes)"
+        );
     }
 
     #[test]

@@ -6575,6 +6575,7 @@ dependencies = [
  "crossbeam",
  "daemonix",
  "flate2",
+ "futures-lite",
  "highway",
  "insta",
  "interprocess",

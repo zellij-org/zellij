@@ -1,4 +1,4 @@
-use super::{PluginId, PluginInstruction};
+use super::{file_system_update_within_host_pipe, PluginId, PluginInstruction};
 use std::path::PathBuf;
 
 use crate::thread_bus::ThreadSenders;
@@ -89,12 +89,13 @@ pub fn watch_filesystem(
                     ));
                 }
                 if !update_paths.is_empty() {
+                    let entries = file_system_update_within_host_pipe(
+                        update_paths.into_iter().map(|p| (p, None)).collect(),
+                    );
                     updates.push((
                         Some(plugin_id),
                         None,
-                        Event::FileSystemUpdate(
-                            update_paths.into_iter().map(|p| (p, None)).collect(),
-                        ),
+                        Event::FileSystemUpdate(entries),
                     ));
                 }
                 if !delete_paths.is_empty() {
