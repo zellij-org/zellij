@@ -4182,24 +4182,51 @@ fn delete_session_index_row(session_name: &str) {
 }
 
 fn delete_dead_session(session_name: String) -> Result<()> {
+    delete_dead_session_cache(&session_name)
+}
+
+/// Identity, folder-name eligibility, then the publication fence (tombstone and
+/// cache removal). The index row is removed only after the cache is gone.
+fn delete_dead_session_cache(session_name: &str) -> Result<()> {
+    delete_dead_session_cache_with(
+        session_name,
+        |session_id| zellij_utils::sessions::remove_fenced_session_cache(session_id),
+        |display_name| delete_session_index_row(display_name),
+    )
+}
+
+fn delete_dead_session_cache_with(
+    session_name: &str,
+    remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
+    mut delete_index: impl FnMut(&str),
+) -> Result<()> {
     // The cache folder is keyed by session id; resolve the name (falling back to
     // treating the argument as the id, e.g. when called with an id directly).
-    let id = zellij_utils::sessions::resolve_session_id(&session_name)
-        .unwrap_or_else(|| session_name.clone());
-    validate_session_folder_name(&id).map_err(|e| anyhow!(e))?;
+    let id = zellij_utils::sessions::resolve_session_id(session_name)
+        .unwrap_or_else(|| session_name.to_owned());
+    validate_session_folder_name(&id).map_err(|error| anyhow!(error))?;
     // The session index is keyed by display name, which differs from the argument
     // when called with an id.
     let display_name = zellij_utils::sessions::display_name_for_session_id(&id);
-    delete_session_index_row(&display_name);
-    // Same fence as the CLI delete: a failed tombstone leaves the directory in place.
-    match zellij_utils::sessions::remove_fenced_session_cache(&id) {
-        Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => Ok(()),
-        Ok(zellij_utils::sessions::SessionCacheRemoval::NotFound) => Err(anyhow!(
-            "Failed to delete dead session: {:?}",
-            &session_name
-        )),
-        Err(error) => Err(error)
-            .with_context(|| format!("Failed to delete dead session: {:?}", &session_name)),
+    // A failed tombstone leaves the directory and the index row in place.
+    match remove_cache(&id) {
+        Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => {
+            delete_index(&display_name);
+            Ok(())
+        },
+        Ok(zellij_utils::sessions::SessionCacheRemoval::NotFound) => {
+            Err(anyhow!("Failed to delete dead session: {:?}", session_name))
+        },
+        Err(error) => {
+            Err(error).with_context(|| format!("Failed to delete dead session: {:?}", session_name))
+        },
+    }
+}
+
+fn delete_dead_session_reply(session_name: &str) -> DeleteDeadSessionResponse {
+    match delete_dead_session_cache(session_name) {
+        Ok(()) => DeleteDeadSessionResponse::Ok,
+        Err(error) => DeleteDeadSessionResponse::Err(format!("{error:#}")),
     }
 }
 
@@ -4721,23 +4748,10 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
-    // Cache folder is keyed by session id; resolve the display name.
-    let id = zellij_utils::sessions::resolve_session_id(&session_name)
-        .unwrap_or_else(|| session_name.clone());
-    let response = match validate_session_folder_name(&id) {
-        Err(e) => DeleteDeadSessionResponse::Err(e),
-        Ok(()) => {
-            delete_session_index_row(&session_name);
-            notify_session_index_changed(env);
-            match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {
-                Ok(()) => DeleteDeadSessionResponse::Ok,
-                Err(e) => DeleteDeadSessionResponse::Err(format!(
-                    "Failed to delete dead session {}: {}",
-                    session_name, e
-                )),
-            }
-        },
-    };
+    let response = delete_dead_session_reply(&session_name);
+    if let DeleteDeadSessionResponse::Ok = &response {
+        notify_session_index_changed(env);
+    }
     let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
     wasi_write_object(env, &protobuf_response.encode_to_vec())
         .with_context(|| "failed to write delete_dead_session response".to_string())
@@ -6852,6 +6866,8 @@ pub(crate) fn required_permission(command: &PluginCommand) -> Option<PermissionT
         | PluginCommand::Resize(..)
         | PluginCommand::ResizeWithDirection(..)
         | PluginCommand::FocusNextPane
+        | PluginCommand::FocusPreviousPane
+        | PluginCommand::FocusLastPane
         | PluginCommand::MoveFocus(..)
         | PluginCommand::MoveFocusOrTab(..)
         | PluginCommand::Detach
@@ -7030,7 +7046,30 @@ pub(crate) fn required_permission(command: &PluginCommand) -> Option<PermissionT
         },
         PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
         PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
-        _ => return None,
+        // Closed set that stays ungated. A new PluginCommand must be named on a
+        // permission arm above; this is not a wildcard and must not become one.
+        PluginCommand::Subscribe(..)
+        | PluginCommand::Unsubscribe(..)
+        | PluginCommand::SetSelectable(..)
+        | PluginCommand::ShowCursor(..)
+        | PluginCommand::GetPluginIds
+        | PluginCommand::GetZellijVersion
+        | PluginCommand::SetTimeout(..)
+        | PluginCommand::PostMessageTo(..)
+        | PluginCommand::PostMessageToPlugin(..)
+        | PluginCommand::HideSelf
+        | PluginCommand::ShowSelf(..)
+        | PluginCommand::ReportPanic(..)
+        | PluginCommand::RequestPluginPermissions(..)
+        | PluginCommand::ScanHostFolder(..)
+        | PluginCommand::CloseSelf
+        | PluginCommand::SetSelfMouseSelectionSupport(..)
+        | PluginCommand::SetSelfCollapsed(..)
+        | PluginCommand::SetSelectableSlot(..)
+        | PluginCommand::HideSlot(..)
+        | PluginCommand::ShowSlot(..)
+        | PluginCommand::CloseSlot(..)
+        | PluginCommand::SetCollapsedSlot(..) => return None,
     };
     Some(permission)
 }
@@ -7145,4 +7184,164 @@ fn set_live_view_input(env: &PluginEnv, capture: bool) {
             client_id: acting_client(env),
             capture,
         });
+}
+
+#[cfg(test)]
+mod focus_and_dead_session_tests {
+    use super::*;
+    use std::time::SystemTime;
+    use zellij_utils::consts::{
+        session_deletion_tombstone_path, session_incarnation_path, session_info_folder_for_session,
+        session_publication_lock_path,
+    };
+    use zellij_utils::sessions::{
+        clear_session_deletion_fence, ensure_session_publication_allowed,
+        is_session_publication_fenced, read_session_incarnation, SessionCacheRemoval,
+    };
+
+    fn unique_session_id(label: &str) -> String {
+        format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
+    fn remove_sidecars(session_id: &str) {
+        let _ = std::fs::remove_file(session_deletion_tombstone_path(session_id));
+        let _ = std::fs::remove_file(session_incarnation_path(session_id));
+        let _ = std::fs::remove_file(session_publication_lock_path(session_id));
+        let _ = std::fs::remove_dir_all(session_info_folder_for_session(session_id));
+        let _ = std::fs::remove_dir_all(session_deletion_tombstone_path(session_id));
+    }
+
+    #[test]
+    fn focus_previous_and_focus_last_pane_require_change_application_state() {
+        assert_eq!(
+            required_permission(&PluginCommand::FocusPreviousPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+        assert_eq!(
+            required_permission(&PluginCommand::FocusLastPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+        assert_eq!(
+            required_permission(&PluginCommand::FocusNextPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+    }
+
+    #[test]
+    fn delete_dead_session_cache_fence_refusal_does_not_drop_the_index_row() {
+        let mut deleted_index = None;
+        let mut removed_id = None;
+        let error = delete_dead_session_cache_with(
+            "plain-session",
+            |session_id| {
+                removed_id = Some(session_id.to_owned());
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "fence refused",
+                ))
+            },
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect_err("a fence error must fail the deletion");
+        assert_eq!(removed_id.as_deref(), Some("plain-session"));
+        assert!(deleted_index.is_none());
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("fence refused"),
+            "reply must carry the fence error, got {message}"
+        );
+
+        let mut deleted_index = false;
+        delete_dead_session_cache_with(
+            "../not-a-folder",
+            |_| {
+                panic!("an ineligible name must not reach the fence");
+            },
+            |_| deleted_index = true,
+        )
+        .expect_err("a path-like session id is not eligible");
+        assert!(!deleted_index);
+
+        let mut deleted_index = None;
+        delete_dead_session_cache_with(
+            "missing-cache",
+            |_| Ok(SessionCacheRemoval::NotFound),
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect_err("a missing cache is not a successful removal");
+        assert!(deleted_index.is_none());
+    }
+
+    #[test]
+    fn delete_dead_session_cache_removes_the_index_only_after_the_fence() {
+        let mut deleted_index = None;
+        delete_dead_session_cache_with(
+            "removed-cache",
+            |session_id| {
+                assert_eq!(session_id, "removed-cache");
+                Ok(SessionCacheRemoval::Removed)
+            },
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect("Removed is success");
+        assert_eq!(deleted_index.as_deref(), Some("removed-cache"));
+    }
+
+    #[test]
+    fn delete_dead_session_reply_is_ok_only_when_the_fenced_cache_is_removed() {
+        let session_id = unique_session_id("dead-reply");
+        remove_sidecars(&session_id);
+        clear_session_deletion_fence(&session_id);
+        let incarnation = read_session_incarnation(&session_id).unwrap();
+        let folder = session_info_folder_for_session(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("session-metadata.kdl"), "session").unwrap();
+
+        assert_eq!(
+            delete_dead_session_reply(&session_id),
+            DeleteDeadSessionResponse::Ok
+        );
+        assert!(
+            !folder.exists(),
+            "successful reply must remove the cache directory"
+        );
+        let tombstone = std::fs::read_to_string(session_deletion_tombstone_path(&session_id))
+            .expect("successful reply must publish the deletion tombstone");
+        assert!(
+            tombstone.contains(&format!("incarnation={incarnation}")),
+            "tombstone must name the live incarnation, got {tombstone}"
+        );
+        let fenced = ensure_session_publication_allowed(&session_id, incarnation).unwrap_err();
+        assert!(is_session_publication_fenced(&fenced));
+        remove_sidecars(&session_id);
+
+        let blocked = unique_session_id("dead-reply-blocked");
+        remove_sidecars(&blocked);
+        let folder = session_info_folder_for_session(&blocked);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("session-metadata.kdl"), "keep").unwrap();
+        std::fs::create_dir(session_deletion_tombstone_path(&blocked)).unwrap();
+        match delete_dead_session_reply(&blocked) {
+            DeleteDeadSessionResponse::Err(error) => {
+                assert!(
+                    error.contains("Failed to delete dead session"),
+                    "fence failure must be the reply error, got {error}"
+                );
+            },
+            DeleteDeadSessionResponse::Ok => panic!("fence failure must not reply Ok"),
+        }
+        assert_eq!(
+            std::fs::read_to_string(folder.join("session-metadata.kdl")).unwrap(),
+            "keep"
+        );
+        assert!(folder.exists());
+        remove_sidecars(&blocked);
+    }
 }
