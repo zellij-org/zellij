@@ -1258,10 +1258,10 @@ fn transfer_rows_from_lines_below_to_viewport(
     reflowed
 }
 
-/// Cell budget for a pane serialization snapshot. Kept generous so
-/// ordinary scrollback serializes fully while pathological histories
-/// cannot copy unbounded state per snapshot pass.
-const MAX_SERIALIZE_SNAPSHOT_CELLS: usize = 4 * 1024 * 1024;
+/// Absolute cell ceiling for one serialization snapshot. A single row
+/// above this is refused. One screen-thread turn still copies only
+/// [`SCREEN_ROW_QUANTUM`] rows and the quantum cell budget below.
+pub(crate) const MAX_SERIALIZE_SNAPSHOT_CELLS: usize = 4 * 1024 * 1024;
 
 #[cfg(test)]
 thread_local! {
@@ -3555,34 +3555,47 @@ impl Grid {
             },
             None => history_len,
         };
-        // One cell budget covers the viewport and the requested history.
-        // Rows are taken newest-first (viewport, then scrollback). A row
-        // that does not fit is dropped together with everything older, and
-        // those rows are not cloned.
-        let mut cell_budget = MAX_SERIALIZE_SNAPSHOT_CELLS;
+        // One screen-thread turn copies at most one row quantum. The cell
+        // quantum matches the other screen-thread budgets, and the absolute
+        // ceiling still refuses a single pathological row. Rows are taken
+        // newest-first (viewport, then scrollback). A row that does not fit
+        // is dropped together with everything older, and those rows are not
+        // cloned.
+        let mut rows_left = SCREEN_ROW_QUANTUM;
+        let mut cell_budget = SCREEN_ROW_QUANTUM
+            .saturating_mul(MAX_SCROLLBACK_ROW_CELLS)
+            .min(MAX_SERIALIZE_SNAPSHOT_CELLS);
         let mut viewport_keep = 0usize;
         for row in self.viewport.iter().rev() {
+            if rows_left == 0 {
+                break;
+            }
             #[cfg(test)]
             SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
             let row_cells = row.snapshot_cost();
-            if row_cells > cell_budget {
+            if row_cells > cell_budget || row_cells > MAX_SERIALIZE_SNAPSHOT_CELLS {
                 break;
             }
             cell_budget -= row_cells;
             viewport_keep += 1;
+            rows_left -= 1;
         }
         let viewport_keep_from = self.viewport.len() - viewport_keep;
         let mut history_keep_from = history_len;
         if viewport_keep_from == 0 {
             for index in (history_first..history_len).rev() {
+                if rows_left == 0 {
+                    break;
+                }
                 #[cfg(test)]
                 SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
                 let row_cells = self.lines_above[index].snapshot_cost();
-                if row_cells > cell_budget {
+                if row_cells > cell_budget || row_cells > MAX_SERIALIZE_SNAPSHOT_CELLS {
                     break;
                 }
                 cell_budget -= row_cells;
                 history_keep_from = index;
+                rows_left -= 1;
             }
         }
         let mut to_serialize = Vec::new();

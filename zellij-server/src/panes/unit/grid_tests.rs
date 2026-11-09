@@ -13586,9 +13586,11 @@ fn wide_marked_scrollback(columns: usize, line_count: usize) -> Grid {
 
 #[test]
 fn serialize_snapshot_is_bounded_by_cells_not_just_rows() {
-    // 8,000 rows of 1,000 cells is 8M cells: nearly twice the snapshot budget
-    // while far below the row cap, so only the cell budget can cut it.
+    // 8,000 rows of 1,000 cells is 8M cells: nearly twice the absolute
+    // snapshot ceiling and far above one screen-thread quantum. One call
+    // must keep the newest quantum, not fill the 4MiB ceiling.
     let budget = super::MAX_SERIALIZE_SNAPSHOT_CELLS;
+    let quantum = super::SCREEN_ROW_QUANTUM;
     let line_count = 8_000;
     let mut grid = wide_marked_scrollback(1_000, line_count);
     assert!(grid.lines_above.len() < *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000));
@@ -13598,29 +13600,39 @@ fn serialize_snapshot_is_bounded_by_cells_not_just_rows() {
         .map(|row| row.width_cached())
         .sum();
     assert!(stored_cells > budget + budget / 2);
+    assert!(grid.lines_above.len() + grid.viewport.len() > quantum);
 
+    super::reset_serialize_budget_rows_scanned();
     let serialized = grid
         .serialize(Some(usize::MAX))
         .expect("viewport+scrollback serializes");
-    let serialized_filler = serialized.matches('x').count();
+    let scanned = super::serialize_budget_rows_scanned();
     assert!(
-        serialized_filler <= budget,
-        "{serialized_filler} serialized cells exceed the {budget} budget"
+        scanned <= quantum,
+        "one serialize call scanned {scanned} rows, past the {quantum} quantum"
+    );
+    let serialized_filler = serialized.matches('x').count();
+    let quantum_cells = quantum * 1_000;
+    assert!(
+        serialized_filler <= quantum_cells.min(budget),
+        "{serialized_filler} serialized cells exceed one quantum ({quantum_cells}) and the {budget} ceiling"
     );
     assert!(
-        serialized_filler > budget / 2,
-        "{serialized_filler} serialized cells: the budget must be used, not undershot"
+        serialized_filler > quantum_cells / 2,
+        "{serialized_filler} serialized cells: the quantum must be used, not an empty snapshot"
     );
     assert!(
         !serialized.contains("00000x"),
         "the oldest rows must be the ones dropped"
     );
-    for index in (line_count - 200)..line_count {
-        assert!(
-            serialized.contains(&format!("{index:05}x")),
-            "newest row {index} must survive the budget"
-        );
-    }
+    assert!(
+        serialized.contains(&format!("{:05}x", line_count - 1)),
+        "the newest row must survive the quantum"
+    );
+    assert!(
+        !serialized.contains(&format!("{:05}x", line_count - quantum - 20)),
+        "a row older than one quantum must not be cloned in this call"
+    );
 }
 
 #[test]

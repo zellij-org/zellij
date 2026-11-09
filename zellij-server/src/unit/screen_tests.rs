@@ -18934,6 +18934,60 @@ fn a_session_with_a_collapsed_pane_serializes_as_if_the_pane_were_expanded() {
     assert_eq!(collapsed, expanded);
 }
 
+#[test]
+fn layout_metadata_copies_one_viewport_quantum_per_turn() {
+    use crate::panes::grid::{MAX_SERIALIZE_SNAPSHOT_CELLS, SCREEN_ROW_QUANTUM};
+
+    let rows = SCREEN_ROW_QUANTUM + 40;
+    let cols = 20;
+    assert!(rows * cols < MAX_SERIALIZE_SNAPSHOT_CELLS);
+    let mut screen = create_new_screen(Size { cols, rows }, false, false);
+    new_tab(&mut screen, 1, 0);
+    let mut bytes = Vec::new();
+    for index in 0..rows {
+        bytes.extend(format!("MARK{index:05}XXXXXXXX\r\n").into_bytes());
+    }
+    let leftover = screen
+        .apply_pty_bytes(1, bytes)
+        .expect("the tall viewport is parsed on the screen");
+    assert!(
+        leftover.is_none(),
+        "the markers must be in the pane before the layout dump"
+    );
+    screen.serialize_pane_viewport = true;
+    screen.scrollback_lines_to_serialize = Some(usize::MAX);
+    let metadata = screen.get_layout_metadata(None, None);
+    let manifest: zellij_utils::session_serialization::GlobalLayoutManifest = metadata.into();
+    let dumped = manifest
+        .tabs
+        .iter()
+        .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
+        .filter_map(|pane| pane.pane_contents.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let present: Vec<usize> = (0..rows)
+        .filter(|index| dumped.contains(&format!("MARK{index:05}")))
+        .collect();
+    assert!(
+        !present.is_empty(),
+        "the flag-on layout dump must include the newest viewport rows"
+    );
+    assert!(
+        present.len() <= SCREEN_ROW_QUANTUM,
+        "one get_layout_metadata turn copied {} viewport rows, past the {} quantum",
+        present.len(),
+        SCREEN_ROW_QUANTUM
+    );
+    assert!(
+        !present.contains(&0),
+        "the oldest viewport marker must stay out of this turn's snapshot"
+    );
+    assert!(
+        present.contains(&(rows - 1)),
+        "the newest marker must be in the quantum that was copied"
+    );
+}
+
 fn rendered_payload_for_client(
     server_receiver: &ServerReceiver,
     client_id: ClientId,

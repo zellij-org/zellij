@@ -37,33 +37,83 @@ pub struct ExclusiveMarkerClaim {
 
 impl ExclusiveMarkerClaim {
     pub fn try_acquire(socket_path: &Path) -> std::io::Result<Self> {
+        Self::try_acquire_with_liveness(
+            socket_path,
+            crate::sessions::liveness_of_session_marker(socket_path),
+        )
+    }
+
+    /// Same as [`Self::try_acquire`], with the marker liveness supplied by the caller.
+    ///
+    /// Production calls this with [`crate::sessions::liveness_of_session_marker`]. A leftover
+    /// lock file is replaced only when that liveness is [`crate::sessions::WindowsPidLiveness::Dead`].
+    /// Alive-but-unverified and unknown leave the lock and the marker in place.
+    pub fn try_acquire_with_liveness(
+        socket_path: &Path,
+        liveness: crate::sessions::WindowsPidLiveness,
+    ) -> std::io::Result<Self> {
         let lock_path = SessionSocketClaim::lock_path(socket_path)?;
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock_path)
-            .map_err(|err| {
-                if err.kind() == std::io::ErrorKind::AlreadyExists {
-                    std::io::Error::new(
-                        std::io::ErrorKind::AddrInUse,
-                        format!(
-                            "another server is already running on {}",
-                            socket_path.display()
-                        ),
-                    )
-                } else {
-                    err
+        match open_exclusive_lock(&lock_path) {
+            Ok(file) => Ok(ExclusiveMarkerClaim {
+                lock_path,
+                _file: file,
+            }),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !reclaim_may_remove_marker(liveness) {
+                    return Err(marker_addr_in_use(socket_path));
                 }
-            })?;
-        Ok(ExclusiveMarkerClaim {
-            lock_path,
-            _file: file,
-        })
+                // The owner died without dropping the claim, so the lock file is leftover.
+                // Replace it. The dead session marker itself is removed by [`Self::reclaim_marker`].
+                match std::fs::remove_file(&lock_path) {
+                    Ok(()) => {},
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(err) => return Err(err),
+                }
+                match open_exclusive_lock(&lock_path) {
+                    Ok(file) => Ok(ExclusiveMarkerClaim {
+                        lock_path,
+                        _file: file,
+                    }),
+                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                        Err(marker_addr_in_use(socket_path))
+                    },
+                    Err(err) => Err(err),
+                }
+            },
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Delete `socket_path` only when `liveness` is dead. The caller must already hold this claim.
+    pub fn reclaim_marker(
+        &self,
+        socket_path: &Path,
+        liveness: crate::sessions::WindowsPidLiveness,
+    ) -> std::io::Result<()> {
+        let _held = self;
+        remove_marker_if_reclaim_allowed(socket_path, liveness)
     }
 
     pub fn lock_path(&self) -> &Path {
         &self.lock_path
     }
+}
+
+fn open_exclusive_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock_path)
+}
+
+fn marker_addr_in_use(socket_path: &Path) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::AddrInUse,
+        format!(
+            "another server is already running on {}",
+            socket_path.display()
+        ),
+    )
 }
 
 impl Drop for ExclusiveMarkerClaim {
@@ -212,9 +262,8 @@ impl SessionSocketClaim {
     /// A claim is not proof the marker is stale. Delete it only when the PID is proven dead.
     #[cfg(not(unix))]
     pub fn reclaim_stale_socket(&self, socket_path: &Path) -> std::io::Result<()> {
-        let _held = &self.marker;
         let liveness = crate::sessions::liveness_of_session_marker(socket_path);
-        remove_marker_if_reclaim_allowed(socket_path, liveness)
+        self.marker.reclaim_marker(socket_path, liveness)
     }
 }
 
@@ -293,5 +342,64 @@ mod tests {
         );
         remove_marker_if_reclaim_allowed(&path, WindowsPidLiveness::Dead).unwrap();
         assert!(!path.exists(), "a dead pid may remove the marker");
+    }
+
+    #[test]
+    fn leftover_lock_of_a_dead_marker_is_replaced_and_the_marker_reclaimed() {
+        use crate::sessions::WindowsPidLiveness;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        std::fs::write(&path, b"dead-pid").unwrap();
+        let lock_path = SessionSocketClaim::lock_path(&path).unwrap();
+        std::fs::write(&lock_path, b"stale-lock").unwrap();
+
+        let claim =
+            ExclusiveMarkerClaim::try_acquire_with_liveness(&path, WindowsPidLiveness::Dead)
+                .expect("a dead owner's leftover lock must be replaceable");
+        claim
+            .reclaim_marker(&path, WindowsPidLiveness::Dead)
+            .unwrap();
+        assert!(
+            !path.exists(),
+            "reclaim after replacing the stale lock must remove the dead marker"
+        );
+        assert!(claim.lock_path().is_file(), "the replacement lock is held");
+
+        std::fs::write(&path, b"winner").unwrap();
+        let error = ExclusiveMarkerClaim::try_acquire_with_liveness(
+            &path,
+            WindowsPidLiveness::AliveUnverified,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        assert_eq!(std::fs::read(&path).unwrap(), b"winner");
+        assert!(
+            claim.lock_path().is_file(),
+            "an unverified second claim must leave the replacement lock"
+        );
+        drop(claim);
+    }
+
+    #[test]
+    fn leftover_lock_of_an_unknown_marker_stays_in_use() {
+        use crate::sessions::WindowsPidLiveness;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        std::fs::write(&path, b"unknown-pid").unwrap();
+        let lock_path = SessionSocketClaim::lock_path(&path).unwrap();
+        std::fs::write(&lock_path, b"live-lock").unwrap();
+
+        for liveness in [
+            WindowsPidLiveness::Unknown,
+            WindowsPidLiveness::AliveUnverified,
+        ] {
+            let error =
+                ExclusiveMarkerClaim::try_acquire_with_liveness(&path, liveness).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+            assert_eq!(std::fs::read(&path).unwrap(), b"unknown-pid");
+            assert_eq!(std::fs::read(&lock_path).unwrap(), b"live-lock");
+        }
     }
 }
