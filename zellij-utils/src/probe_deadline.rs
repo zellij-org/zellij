@@ -42,7 +42,13 @@ fn accept(listener: &LocalListener) -> interprocess::local_socket::Stream {
     listener.accept().expect("accept probe client")
 }
 
-fn hold_until_peer_drops(listener: LocalListener) {
+fn hold_listener_until_peer_drops(listener: LocalListener) {
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    drop(release_tx);
+    hold_until_peer_drops(listener, release_rx);
+}
+
+fn hold_until_peer_drops(listener: LocalListener, release: std::sync::mpsc::Receiver<()>) {
     use interprocess::local_socket::traits::Stream;
     let stream = accept(&listener);
     stream
@@ -52,6 +58,9 @@ fn hold_until_peer_drops(listener: LocalListener) {
     let mut buf = [0u8; 256];
     let _ = stream.read(&mut buf);
     let _ = stream.read(&mut buf);
+    // Interprocess unlinks the socket when the listener drops. The assertion
+    // below is about the probe, so keep the listener until that check runs.
+    let _ = release.recv_timeout(Duration::from_secs(3));
     drop(listener);
 }
 
@@ -82,7 +91,8 @@ fn serve_server_msg(listener: LocalListener, msg: ServerToClientMsg) {
 fn silent_peer_is_unknown_at_the_deadline() {
     let dir = tempfile::tempdir().unwrap();
     let (path, listener) = bind(dir.path(), "silent");
-    let server = thread::spawn(move || hold_until_peer_drops(listener));
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let server = thread::spawn(move || hold_until_peer_drops(listener, release_rx));
     let started = Instant::now();
     let result = assert_socket_path(&path, BUDGET);
     let elapsed = started.elapsed();
@@ -93,6 +103,7 @@ fn silent_peer_is_unknown_at_the_deadline() {
         path.exists(),
         "a timed-out probe must not unlink the socket"
     );
+    let _ = release_tx.send(());
     server.join().unwrap();
 }
 
@@ -179,7 +190,7 @@ fn a_following_probe_against_a_healthy_peer_is_responsive() {
     let dir = tempfile::tempdir().unwrap();
     let (stale_path, stale_listener) = bind(dir.path(), "stale");
     let (live_path, live_listener) = bind(dir.path(), "live");
-    let stale = thread::spawn(move || hold_until_peer_drops(stale_listener));
+    let stale = thread::spawn(move || hold_listener_until_peer_drops(stale_listener));
     let live = thread::spawn(move || serve_server_msg(live_listener, ServerToClientMsg::Connected));
 
     let started = Instant::now();
@@ -204,7 +215,7 @@ fn observe_sessions_with_returns_when_blocking_sockets_honor_the_budget() {
     for index in 0..4 {
         let name = format!("blocked-{index}");
         let (_path, listener) = bind(dir.path(), &name);
-        servers.push(thread::spawn(move || hold_until_peer_drops(listener)));
+        servers.push(thread::spawn(move || hold_listener_until_peer_drops(listener)));
         candidates.push((name.clone(), name, ()));
     }
     let started = Instant::now();
