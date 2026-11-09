@@ -2,7 +2,9 @@
 use crate::consts::ZELLIJ_PROJ_DIR;
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -72,26 +74,70 @@ fn get_db_path() -> Result<PathBuf> {
     Ok(db_path)
 }
 
-fn open_db() -> Result<Connection> {
-    let db_path = get_db_path()?;
-    let conn = Connection::open(&db_path)?;
-    init_db(&conn)?;
+/// Database files whose schema has already been set up by this process.
+///
+/// Schema setup (several `CREATE TABLE IF NOT EXISTS` statements and a
+/// migration) only has to run once per database file, not on every request.
+static INITIALIZED_DBS: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
 
-    // Set restrictive permissions on the database file
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        let _ = std::fs::set_permissions(&db_path, perms);
+#[cfg(test)]
+static SCHEMA_INIT_COUNTS: Mutex<Option<std::collections::HashMap<PathBuf, usize>>> =
+    Mutex::new(None);
+
+fn open_db() -> Result<Connection> {
+    open_db_at(&get_db_path()?)
+}
+
+fn open_db_at(db_path: &Path) -> Result<Connection> {
+    let freshly_created = create_private_db_file(db_path)?;
+    let conn = Connection::open(db_path)?;
+    // these are per-connection settings, so they have to be applied every time
+    conn.execute_batch("PRAGMA busy_timeout = 5000")?;
+    conn.execute_batch("PRAGMA foreign_keys = ON")?;
+
+    let mut initialized = INITIALIZED_DBS.lock().unwrap();
+    let initialized = initialized.get_or_insert_with(HashSet::new);
+    if freshly_created {
+        // the file was (re)created behind our back, so whatever we knew about
+        // its schema is stale
+        initialized.remove(db_path);
+    }
+    if !initialized.contains(db_path) {
+        init_db(&conn)?;
+        initialized.insert(db_path.to_path_buf());
+        #[cfg(test)]
+        {
+            *SCHEMA_INIT_COUNTS
+                .lock()
+                .unwrap()
+                .get_or_insert_with(Default::default)
+                .entry(db_path.to_path_buf())
+                .or_insert(0) += 1;
+        }
     }
 
     Ok(conn)
 }
 
-fn init_db(conn: &Connection) -> Result<()> {
-    conn.execute_batch("PRAGMA busy_timeout = 5000")?;
-    conn.execute_batch("PRAGMA foreign_keys = ON")?;
+/// Creates the database file if it does not exist yet. On unix it is created
+/// with mode 0600 right away, so there is no window in which it is readable by
+/// other users. Returns whether this call created the file.
+fn create_private_db_file(db_path: &Path) -> Result<bool> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(db_path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
 
+fn init_db(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,10 +217,14 @@ pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, St
 }
 
 pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<String> {
-    let conn = open_db()?;
+    create_session_token_on(&open_db()?, auth_token, remember_me)
+}
 
-    cleanup_expired_sessions()?;
-
+fn create_session_token_on(
+    conn: &Connection,
+    auth_token: &str,
+    remember_me: bool,
+) -> Result<String> {
     let auth_token_hash = hash_token(auth_token);
 
     let count: i64 = conn.query_row(
@@ -186,6 +236,10 @@ pub fn create_session_token(auth_token: &str, remember_me: bool) -> Result<Strin
     if count == 0 {
         return Err(TokenError::InvalidToken);
     }
+
+    // only after the credentials checked out: failed logins must not have any
+    // side effects on other people's sessions
+    cleanup_expired_sessions_on(conn)?;
 
     let session_token = Uuid::new_v4().to_string();
     let session_token_hash = hash_token(&session_token);
@@ -231,6 +285,32 @@ pub fn validate_session_token(session_token: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+/// Whether the session identified by `session_token_hash` may stay connected.
+///
+/// This is for connections that are already open and only kept the hash of
+/// their session token. A session is no longer allowed once it has been revoked
+/// (its row is gone) or, for a "remember me" session, once it has expired.
+///
+/// A session without "remember me" is only given a few minutes by
+/// `create_session_token`, enough for the browser to establish its connections;
+/// it is meant to last as long as the browser session does. Cutting off a live
+/// terminal a few minutes after login would be a change of behaviour, so for
+/// those sessions only revocation counts.
+pub fn session_allows_live_connection(session_token_hash: &str) -> Result<bool> {
+    session_allows_live_connection_on(&open_db()?, session_token_hash)
+}
+
+fn session_allows_live_connection_on(conn: &Connection, session_token_hash: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM session_tokens
+         WHERE session_token_hash = ?1
+         AND (expires_at > datetime('now') OR remember_me = 0)",
+        [&session_token_hash],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
     let conn = open_db()?;
 
@@ -252,12 +332,24 @@ pub fn is_session_token_read_only(session_token: &str) -> Result<bool> {
     Ok(read_only != 0)
 }
 
-pub fn cleanup_expired_sessions() -> Result<usize> {
-    let conn = open_db()?;
+/// How long the row of an expired session without "remember me" is kept.
+///
+/// Open connections treat a missing row as a revoked session (see
+/// `session_allows_live_connection`), and such sessions are meant to last as
+/// long as the browser session does, so their rows must not be deleted as soon
+/// as their short login window is over.
+const SHORT_SESSION_ROW_RETENTION: &str = "-28 days";
 
+pub fn cleanup_expired_sessions() -> Result<usize> {
+    cleanup_expired_sessions_on(&open_db()?)
+}
+
+fn cleanup_expired_sessions_on(conn: &Connection) -> Result<usize> {
     let rows_affected = conn.execute(
-        "DELETE FROM session_tokens WHERE expires_at <= datetime('now')",
-        [],
+        "DELETE FROM session_tokens
+         WHERE (remember_me = 1 AND expires_at <= datetime('now'))
+         OR (remember_me = 0 AND expires_at <= datetime('now', ?1))",
+        [SHORT_SESSION_ROW_RETENTION],
     )?;
 
     Ok(rows_affected)
@@ -374,7 +466,10 @@ pub fn list_tokens() -> Result<Vec<TokenInfo>> {
 pub fn delete_db() -> Result<()> {
     let db_path = get_db_path()?;
     if db_path.exists() {
-        std::fs::remove_file(db_path)?;
+        std::fs::remove_file(&db_path)?;
+    }
+    if let Some(initialized) = INITIALIZED_DBS.lock().unwrap().as_mut() {
+        initialized.remove(&db_path);
     }
     Ok(())
 }
@@ -390,4 +485,164 @@ pub fn validate_token(token: &str) -> Result<bool> {
         |row| row.get(0),
     )?;
     Ok(count > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schema_init_count(db_path: &Path) -> usize {
+        SCHEMA_INIT_COUNTS
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|counts| counts.get(db_path).copied())
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn schema_is_set_up_once_per_database_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tokens.db");
+        for _ in 0..5 {
+            let conn = open_db_at(&db_path).unwrap();
+            // the schema is there for every connection
+            conn.query_row("SELECT COUNT(*) FROM session_tokens", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap();
+        }
+        assert_eq!(schema_init_count(&db_path), 1);
+    }
+
+    #[test]
+    fn schema_is_set_up_again_if_the_database_file_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tokens.db");
+        drop(open_db_at(&db_path).unwrap());
+        std::fs::remove_file(&db_path).unwrap();
+        let conn = open_db_at(&db_path).unwrap();
+        conn.query_row("SELECT COUNT(*) FROM tokens", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(schema_init_count(&db_path), 2);
+    }
+
+    #[test]
+    fn live_connections_survive_only_unrevoked_unexpired_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+        conn.execute(
+            "INSERT INTO tokens (token_hash, name) VALUES ('auth', 'auth')",
+            [],
+        )
+        .unwrap();
+        let add_session = |hash: &str, remember_me: i64, expires_at: &str| {
+            conn.execute(
+                "INSERT INTO session_tokens
+                 (session_token_hash, auth_token_hash, remember_me, expires_at)
+                 VALUES (?1, 'auth', ?2, datetime('now', ?3))",
+                rusqlite::params![hash, remember_me, expires_at],
+            )
+            .unwrap();
+        };
+        add_session("valid", 1, "+1 hour");
+        add_session("remembered_but_expired", 1, "-1 hour");
+        add_session("short_lived_and_past_its_window", 0, "-1 hour");
+
+        let allowed = |hash: &str| session_allows_live_connection_on(&conn, hash).unwrap();
+        assert!(allowed("valid"));
+        assert!(!allowed("remembered_but_expired"));
+        assert!(allowed("short_lived_and_past_its_window"));
+        assert!(!allowed("never_existed"));
+
+        conn.execute(
+            "DELETE FROM session_tokens WHERE session_token_hash IN ('valid', 'short_lived_and_past_its_window')",
+            [],
+        )
+        .unwrap();
+        assert!(!allowed("valid"));
+        assert!(!allowed("short_lived_and_past_its_window"));
+    }
+
+    #[test]
+    fn cleanup_keeps_rows_of_live_sessions_without_remember_me() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+        conn.execute(
+            "INSERT INTO tokens (token_hash, name) VALUES ('auth', 'auth')",
+            [],
+        )
+        .unwrap();
+        for (hash, remember_me, expires_at) in [
+            ("short_past_its_login_window", 0, "-1 hour"),
+            ("short_long_gone", 0, "-35 days"),
+            ("remembered_expired", 1, "-1 hour"),
+            ("remembered_valid", 1, "+1 hour"),
+        ] {
+            conn.execute(
+                "INSERT INTO session_tokens
+                 (session_token_hash, auth_token_hash, remember_me, expires_at)
+                 VALUES (?1, 'auth', ?2, datetime('now', ?3))",
+                rusqlite::params![hash, remember_me, expires_at],
+            )
+            .unwrap();
+        }
+        assert_eq!(cleanup_expired_sessions_on(&conn).unwrap(), 2);
+        let allowed = |hash: &str| session_allows_live_connection_on(&conn, hash).unwrap();
+        assert!(allowed("short_past_its_login_window"));
+        assert!(allowed("remembered_valid"));
+        assert!(!allowed("short_long_gone"));
+        assert!(!allowed("remembered_expired"));
+    }
+
+    #[test]
+    fn a_failed_login_does_not_disturb_live_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_db_at(&dir.path().join("tokens.db")).unwrap();
+        conn.execute(
+            "INSERT INTO tokens (token_hash, name) VALUES (?1, 'auth')",
+            [hash_token("the-auth-token")],
+        )
+        .unwrap();
+        // a login without "remember me", well past its few minutes
+        let session = create_session_token_on(&conn, "the-auth-token", false).unwrap();
+        conn.execute(
+            "UPDATE session_tokens SET expires_at = datetime('now', '-1 hour')",
+            [],
+        )
+        .unwrap();
+        let session_hash = hash_token(&session);
+        let allowed = || session_allows_live_connection_on(&conn, &session_hash).unwrap();
+        assert!(allowed());
+
+        // anyone can make bad login attempts, none may cost a user their session
+        for _ in 0..3 {
+            assert!(matches!(
+                create_session_token_on(&conn, "guess", true),
+                Err(TokenError::InvalidToken)
+            ));
+        }
+        assert!(allowed(), "failed logins must not revoke live sessions");
+
+        // nor do successful ones by somebody else
+        create_session_token_on(&conn, "the-auth-token", true).unwrap();
+        assert!(allowed());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn database_file_is_private_from_the_moment_it_is_created() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("tokens.db");
+        // a permissive umask must not leak into the new file
+        let old_umask = unsafe { libc::umask(0) };
+        let created = create_private_db_file(&db_path);
+        unsafe { libc::umask(old_umask) };
+        assert!(created.unwrap());
+        let mode = std::fs::metadata(&db_path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        // creating it a second time reports that it already existed
+        assert!(!create_private_db_file(&db_path).unwrap());
+    }
 }

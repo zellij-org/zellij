@@ -147,71 +147,93 @@ fn dispatch_termwiz_event(
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{prelude::stream::SplitSink, SinkExt};
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+use crate::web_client::client_channel::ClientReceiver;
+
+/// How long a single websocket write may take before the peer is considered
+/// stuck. Without this a client that stops reading would pin its writer task
+/// (and the socket) forever once the kernel buffers are full.
+const WEBSOCKET_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+enum WriteOutcome {
+    Sent,
+    Failed,
+    Cancelled,
+}
+
+async fn write_unless_cancelled(
+    sink: &mut SplitSink<WebSocket, Message>,
+    message: Message,
+    cancellation_token: &CancellationToken,
+) -> WriteOutcome {
+    tokio::select! {
+        biased;
+        _ = cancellation_token.cancelled() => WriteOutcome::Cancelled,
+        result = tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, sink.send(message)) => match result {
+            Ok(Ok(())) => WriteOutcome::Sent,
+            _ => WriteOutcome::Failed,
+        },
+    }
+}
+
 pub fn render_to_client(
-    mut stdout_channel_rx: UnboundedReceiver<Message>,
-    mut frame_channel_rx: UnboundedReceiver<Message>,
+    mut stdout_channel_rx: ClientReceiver,
+    mut frame_channel_rx: ClientReceiver,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
     cancellation_token: CancellationToken,
     should_not_reconnect: Arc<AtomicBool>,
 ) {
     tokio::spawn(async move {
         loop {
-            tokio::select! {
+            let message = tokio::select! {
                 biased;
-                _ = cancellation_token.cancelled() => {
-                    let code = if should_not_reconnect.load(Ordering::Relaxed) {
-                        4001u16
-                    } else {
-                        axum::extract::ws::close_code::NORMAL
-                    };
-                    let close_frame = CloseFrame {
-                        code,
-                        reason: "Connection closed".into(),
-                    };
-                    let close_message = Message::Close(Some(close_frame));
-                    if client_channel_tx
-                        .send(close_message)
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                    break;
-                }
-                result = stdout_channel_rx.recv() => {
-                    match result {
-                        Some(message) => {
-                            if client_channel_tx
-                                .send(message)
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        None => break,
-                    }
-                }
-                Some(frame) = frame_channel_rx.recv() => {
-                    if client_channel_tx.send(frame).await.is_err() {
-                        break;
-                    }
-                }
+                _ = cancellation_token.cancelled() => None,
+                result = stdout_channel_rx.recv() => match result {
+                    Some(message) => Some(message),
+                    None => break,
+                },
+                Some(frame) = frame_channel_rx.recv() => Some(frame),
+            };
+            let Some(message) = message else {
+                let code = if should_not_reconnect.load(Ordering::Relaxed) {
+                    4001u16
+                } else {
+                    axum::extract::ws::close_code::NORMAL
+                };
+                let close_frame = CloseFrame {
+                    code,
+                    reason: "Connection closed".into(),
+                };
+                // the peer may not be reading, do not wait for it forever
+                let _ = tokio::time::timeout(
+                    WEBSOCKET_WRITE_TIMEOUT,
+                    client_channel_tx.send(Message::Close(Some(close_frame))),
+                )
+                .await;
+                break;
+            };
+            match write_unless_cancelled(&mut client_channel_tx, message, &cancellation_token).await
+            {
+                WriteOutcome::Sent => {},
+                WriteOutcome::Failed => break,
+                // the next pass round the loop sends the close frame
+                WriteOutcome::Cancelled => continue,
             }
         }
     });
 }
 
 pub fn send_control_messages_to_client(
-    mut control_channel_rx: UnboundedReceiver<Message>,
+    mut control_channel_rx: ClientReceiver,
     mut socket_channel_tx: SplitSink<WebSocket, Message>,
 ) {
     tokio::spawn(async move {
         while let Some(message) = control_channel_rx.recv().await {
-            if socket_channel_tx.send(message).await.is_err() {
+            let write =
+                tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, socket_channel_tx.send(message));
+            if !matches!(write.await, Ok(Ok(()))) {
                 break;
             }
         }

@@ -21,11 +21,27 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
         None => return Err(StatusCode::UNAUTHORIZED),
     };
 
-    match validate_session_token(&session_token) {
-        Ok(true) => {
-            // Check if this is a read-only token
-            let is_read_only = is_session_token_read_only(&session_token).unwrap_or(true);
+    // the token lookups open the sqlite database, which must not block the
+    // async workers that serve every other connection
+    let lookup = {
+        let session_token = session_token.clone();
+        tokio::task::spawn_blocking(move || match validate_session_token(&session_token) {
+            // a token we cannot classify is treated as read-only
+            Ok(true) => Ok(Some(
+                is_session_token_read_only(&session_token).unwrap_or(true),
+            )),
+            Ok(false) => Ok(None),
+            Err(e) => Err(e),
+        })
+        .await
+    };
+    let lookup = match lookup {
+        Ok(lookup) => lookup,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
 
+    match lookup {
+        Ok(Some(is_read_only)) => {
             // Compute session token hash for client ownership verification
             let session_token_hash = hash_token(&session_token);
 
@@ -39,7 +55,7 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
             let response = next.run(request).await;
             Ok(response)
         },
-        Ok(false) | Err(_) => {
+        Ok(None) | Err(_) => {
             // revoke session_token as if it exists it's no longer valid
             let mut response = Response::builder()
                 .status(StatusCode::UNAUTHORIZED)

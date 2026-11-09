@@ -1,18 +1,19 @@
 use crate::web_client::authentication::{IsReadOnly, SessionTokenHash};
 use crate::web_client::control_message::SetConfigPayload;
 use crate::web_client::types::{
-    record_pending_welcome_session, AppState, CreateClientIdResponse, LoginRequest, LoginResponse,
-    SessionListResponse, SessionQuery,
+    record_pending_welcome_session, AppState, ClientLimitExceeded, CreateClientIdResponse,
+    LoginRequest, LoginResponse, SessionListResponse, SessionQuery,
 };
 use crate::web_client::utils::get_mime_type;
 use axum::{
-    extract::{Path as AxumPath, Query, State},
+    extract::{ConnectInfo, Path as AxumPath, Query, State},
     http::{header, StatusCode},
     response::IntoResponse,
     Json,
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use include_dir;
+use std::net::SocketAddr;
 use uuid::Uuid;
 use zellij_utils::{
     consts::VERSION, sessions::generate_unique_session_name,
@@ -38,15 +39,38 @@ pub async fn serve_html() -> impl IntoResponse {
 
 pub async fn login_handler(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(login_request): Json<LoginRequest>,
 ) -> impl IntoResponse {
-    match create_session_token(
-        &login_request.auth_token,
-        login_request.remember_me.unwrap_or(false),
-    ) {
+    // this endpoint is unauthenticated and every attempt costs a database
+    // lookup, so cap how fast any one address can hammer it
+    let rate_limit_verdict = state.login_rate_limiter.lock().unwrap().check(peer.ip());
+    if let Err(retry_after) = rate_limit_verdict {
+        let retry_after_secs = retry_after.as_secs_f64().ceil().max(1.0) as u64;
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, retry_after_secs.to_string())],
+            Json(LoginResponse {
+                success: false,
+                message: "Too many login attempts, try again later".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let remember_me = login_request.remember_me.unwrap_or(false);
+    let auth_token = login_request.auth_token;
+    // opening the token database is blocking work
+    let session_token =
+        tokio::task::spawn_blocking(move || create_session_token(&auth_token, remember_me)).await;
+    let session_token = match session_token {
+        Ok(session_token) => session_token,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    match session_token {
         Ok(session_token) => {
             let is_https = state.is_https;
-            let cookie = if login_request.remember_me.unwrap_or(false) {
+            let cookie = if remember_me {
                 // Persistent cookie for remember_me
                 Cookie::build(("session_token", session_token))
                     .http_only(true)
@@ -109,19 +133,24 @@ pub async fn create_new_client(
             Json("Missing session info".to_string()),
         ))?;
 
-    let session_name = match params.session.filter(|name| !name.is_empty()) {
-        Some(session_name) => session_name,
-        None => {
-            let generated = generate_unique_session_name().ok_or((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json("Failed to generate unique session name".to_string()),
-            ))?;
-            if params.welcome.unwrap_or(true) {
-                record_pending_welcome_session(&state.pending_welcome_sessions, &generated);
-            }
-            generated
-        },
-    };
+    // This request carries nothing of interest, but it is not exempt from the
+    // body size limit just because no extractor reads the body (that is the
+    // only thing `DefaultBodyLimit` applies to): read it, bounded, so that an
+    // oversized one is refused instead of being left for the connection to
+    // sort out.
+    // (the only way reading fails here is the limit or the client going away)
+    if axum::body::to_bytes(
+        request.into_body(),
+        crate::web_client::MAX_REQUEST_BODY_BYTES,
+    )
+    .await
+    .is_err()
+    {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json("Request body too large".to_string()),
+        ));
+    }
 
     let web_client_id = String::from(Uuid::new_v4());
     let os_input = state
@@ -129,12 +158,52 @@ pub async fn create_new_client(
         .create_client_os_api()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
-    state.connection_table.lock().unwrap().add_new_client(
+    // an id is only handed out if it fits under the client limits
+    let added = state.connection_table.lock().unwrap().try_add_new_client(
         web_client_id.to_owned(),
         os_input,
         is_read_only,
         session_token_hash.0,
     );
+    match added {
+        Ok(()) => {},
+        Err(ClientLimitExceeded::TooManyClients) => {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json("Too many clients are connected".to_string()),
+            ))
+        },
+        Err(ClientLimitExceeded::TooManyUnattachedClients) => {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json("Too many clients are waiting to connect".to_string()),
+            ))
+        },
+    }
+
+    let session_name = match params.session.filter(|name| !name.is_empty()) {
+        Some(session_name) => session_name,
+        None => {
+            let generated = match generate_unique_session_name() {
+                Some(generated) => generated,
+                None => {
+                    state
+                        .connection_table
+                        .lock()
+                        .unwrap()
+                        .remove_client(&web_client_id);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json("Failed to generate unique session name".to_string()),
+                    ));
+                },
+            };
+            if params.welcome.unwrap_or(true) {
+                record_pending_welcome_session(&state.pending_welcome_sessions, &generated);
+            }
+            generated
+        },
+    };
 
     let config = SetConfigPayload::from(&*state.config.lock().unwrap());
 

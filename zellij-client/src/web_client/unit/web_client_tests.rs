@@ -3805,6 +3805,536 @@ mod web_client_tests {
         revoke_token(test_token_name).expect("Failed to revoke test token");
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+
+    /// Reads from a websocket until it is closed (a close frame, an error or the
+    /// end of the stream). Returns false if it is still open after `within`.
+    async fn closes_within<S>(stream: &mut S, within: Duration) -> bool
+    where
+        S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+            + Unpin,
+    {
+        let deadline = Instant::now() + within;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match timeout(remaining, stream.next()).await {
+                Err(_) => return false,
+                Ok(None) | Ok(Some(Err(_))) | Ok(Some(Ok(Message::Close(_)))) => return true,
+                Ok(Some(Ok(_))) => continue,
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_revoking_a_token_closes_its_live_websockets() {
+        let _ = delete_db();
+        let test_token_name = "test_token_revoked_while_connected";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false).expect("token");
+
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, true).await;
+
+        // several recheck intervals pass and the still valid session is left alone
+        assert!(
+            !closes_within(&mut client.control_stream, Duration::from_millis(800)).await,
+            "a valid session must keep its control websocket"
+        );
+        assert!(
+            !closes_within(&mut client.terminal_stream, Duration::from_millis(100)).await,
+            "a valid session must keep its terminal websocket"
+        );
+
+        revoke_token(test_token_name).expect("Failed to revoke test token");
+
+        assert!(
+            closes_within(&mut client.control_stream, Duration::from_secs(5)).await,
+            "the control websocket must be closed once the token is revoked"
+        );
+        assert!(
+            closes_within(&mut client.terminal_stream, Duration::from_secs(5)).await,
+            "the terminal websocket must be closed once the token is revoked"
+        );
+        assert!(
+            wait_until(Duration::from_secs(5), || client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::ClientExited))
+            .await,
+            "the session must be told that the client is gone"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    /// Attempts a websocket handshake the way a browser page would: addressed
+    /// to `127.0.0.1:port` and carrying the given `Origin`. Returns the HTTP
+    /// status of a refused handshake as the error.
+    async fn try_websocket_with_origin(
+        url: &str,
+        session_token: &str,
+        port: u16,
+        origin: &str,
+    ) -> Result<(), u16> {
+        let request = Request::builder()
+            .uri(url)
+            .header("Cookie", format!("session_token={}", session_token))
+            .header("Connection", "Upgrade")
+            .header("Upgrade", "websocket")
+            .header("Sec-WebSocket-Version", "13")
+            .header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .header("Host", format!("127.0.0.1:{}", port))
+            .header("Origin", origin)
+            .body(())
+            .unwrap();
+        match timeout(Duration::from_secs(5), connect_async(request))
+            .await
+            .expect("websocket handshake timed out")
+        {
+            Ok(_) => Ok(()),
+            Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
+                Err(response.status().as_u16())
+            },
+            Err(e) => panic!("unexpected websocket error: {:?}", e),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_websocket_upgrade_from_a_foreign_origin_is_refused() {
+        let _ = delete_db();
+        let test_token_name = "test_token_foreign_origin";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false).expect("token");
+
+        let (port, server_handle, _factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let web_client_id = create_client_session(port, &session_token).await;
+        let own_origin = format!("http://127.0.0.1:{}", port);
+
+        for (kind, path) in [
+            ("control", "ws/control?web_client_id="),
+            (
+                "terminal",
+                "ws/terminal/origin-test?rows=24&cols=80&web_client_id=",
+            ),
+        ] {
+            let url = format!("ws://127.0.0.1:{}/{}{}", port, path, web_client_id);
+            for foreign in [
+                "https://evil.example",
+                "http://127.0.0.1:1",
+                "http://localhost:80",
+                "null",
+            ] {
+                assert_eq!(
+                    try_websocket_with_origin(&url, &session_token, port, foreign).await,
+                    Err(403),
+                    "{} websocket from origin {} must be refused",
+                    kind,
+                    foreign
+                );
+            }
+            assert_eq!(
+                try_websocket_with_origin(&url, &session_token, port, &own_origin).await,
+                Ok(()),
+                "{} websocket from the server's own origin must be accepted",
+                kind
+            );
+        }
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_oversized_request_bodies_are_refused() {
+        let _ = delete_db();
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let login_url = format!("http://127.0.0.1:{}/command/login", port);
+        let oversized = serde_json::json!({ "auth_token": "a".repeat(100 * 1024) }).to_string();
+        let response = timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                isahc::Request::post(&login_url)
+                    .header("Content-Type", "application/json")
+                    .body(oversized)
+                    .unwrap()
+                    .send()
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.status(), 413);
+
+        // an ordinary login request is still judged on its merits
+        assert_eq!(post_login(port, "not-a-real-token").await.status(), 401);
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_oversized_websocket_messages_close_the_connection() {
+        let _ = delete_db();
+        let test_token_name = "test_token_oversized_ws_message";
+        let (auth_token, _) =
+            create_token(Some(test_token_name.to_string()), false).expect("token");
+
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, true).await;
+
+        // a message of an ordinary size does not bother the connection
+        client
+            .control_sink
+            .send(Message::Text("x".repeat(64 * 1024).into()))
+            .await
+            .unwrap();
+        assert!(
+            !closes_within(&mut client.control_stream, Duration::from_millis(300)).await,
+            "a modest message must not close the control websocket"
+        );
+
+        client
+            .control_sink
+            .send(Message::Text("x".repeat(3 * 1024 * 1024).into()))
+            .await
+            .unwrap();
+        assert!(
+            closes_within(&mut client.control_stream, Duration::from_secs(5)).await,
+            "an oversized message must close the control websocket"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_unattached_client_ids_are_capped_per_session() {
+        let _ = delete_db();
+        let (auth_token, _) =
+            create_token(Some("test_token_client_id_cap".to_string()), false).expect("token");
+
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let post_session = |session_token: String| {
+            let session_url = session_url.clone();
+            async move {
+                timeout(
+                    Duration::from_secs(5),
+                    tokio::task::spawn_blocking(move || {
+                        isahc::Request::post(&session_url)
+                            .header("Cookie", format!("session_token={}", session_token))
+                            .header("Content-Type", "application/json")
+                            .body("{}")
+                            .unwrap()
+                            .send()
+                    }),
+                )
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+            }
+        };
+
+        let allowed = crate::web_client::types::MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION;
+        for n in 0..allowed {
+            let response = post_session(session_token.clone()).await;
+            assert!(response.status().is_success(), "request {} must succeed", n);
+        }
+        let response = post_session(session_token.clone()).await;
+        assert_eq!(
+            response.status(),
+            429,
+            "a session that never connects its client ids is cut off"
+        );
+
+        // another login is not affected
+        let (other_auth_token, _) =
+            create_token(Some("test_token_client_id_cap_2".to_string()), false).expect("token");
+        let other_session_token = login_and_get_session_token(port, &other_auth_token).await;
+        assert!(post_session(other_session_token)
+            .await
+            .status()
+            .is_success());
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_oversized_session_request_bodies_are_refused() {
+        let _ = delete_db();
+        let (auth_token, _) =
+            create_token(Some("test_token_session_body_limit".to_string()), false).expect("token");
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+
+        let session_url = format!("http://127.0.0.1:{}/session", port);
+        let post_session = |body: String| {
+            let session_url = session_url.clone();
+            let session_token = session_token.clone();
+            async move {
+                timeout(
+                    Duration::from_secs(5),
+                    tokio::task::spawn_blocking(move || {
+                        isahc::Request::post(&session_url)
+                            .header("Cookie", format!("session_token={}", session_token))
+                            .header("Content-Type", "application/json")
+                            .body(body)
+                            .unwrap()
+                            .send()
+                    }),
+                )
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+            }
+        };
+        assert_eq!(post_session("a".repeat(100 * 1024)).await.status(), 413);
+        assert!(post_session("{}".to_string()).await.status().is_success());
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_a_second_control_websocket_replaces_the_first() {
+        let _ = delete_db();
+        let (auth_token, _) =
+            create_token(Some("test_token_single_control_ws".to_string()), false).expect("token");
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, true).await;
+
+        // the same client id, opened again and again, as an abusive client would
+        let control_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/control?web_client_id={}",
+            port, client.web_client_id
+        );
+        let mut newer = vec![];
+        for _ in 0..3 {
+            let (ws, _) = timeout(
+                Duration::from_secs(5),
+                connect_async_with_cookie(&control_ws_url, &session_token),
+            )
+            .await
+            .unwrap()
+            .expect("failed to connect to the control websocket");
+            newer.push(ws);
+        }
+
+        assert!(
+            closes_within(&mut client.control_stream, Duration::from_secs(5)).await,
+            "the control websocket that was superseded must be closed"
+        );
+        let mut last = newer.pop().unwrap();
+        for superseded in newer.iter_mut() {
+            assert!(closes_within(superseded, Duration::from_secs(5)).await);
+        }
+        assert!(
+            !closes_within(&mut last, Duration::from_millis(800)).await,
+            "the newest control websocket stays"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_a_dropped_client_that_ignores_the_close_handshake_is_cut_off() {
+        let _ = delete_db();
+        let (auth_token, _) =
+            create_token(Some("test_token_ignores_close".to_string()), false).expect("token");
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+
+        let web_client_id = create_client_session(port, &session_token).await;
+        let os_api = factory
+            .mock_apis
+            .lock()
+            .unwrap()
+            .values()
+            .last()
+            .cloned()
+            .unwrap();
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal/hostile-test-session?web_client_id={}&rows=24&cols=80",
+            port, web_client_id
+        );
+        let (terminal_ws, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .unwrap()
+        .expect("failed to connect to the terminal websocket");
+        // never read: the Close frame the server sends is never answered
+        let (mut terminal_sink, _terminal_stream) = terminal_ws.split();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // the session drops the client (a kick takes the same road as a client
+        // that does not keep up with its output)
+        os_api.queue_server_message(ServerToClientMsg::Exit {
+            exit_reason: zellij_utils::ipc::ExitReason::KickedByHost,
+        });
+
+        // meanwhile the peer pretends to be alive
+        let keep_alive = tokio::spawn(async move {
+            loop {
+                if terminal_sink
+                    .send(Message::Pong(Default::default()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+
+        assert!(
+            wait_until(Duration::from_secs(10), || os_api
+                .get_sent_messages()
+                .contains(&ClientToServerMsg::ClientExited))
+            .await,
+            "the session must be told that the client is gone, pongs or not"
+        );
+
+        keep_alive.abort();
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_a_second_terminal_websocket_does_not_start_another_listener() {
+        let _ = delete_db();
+        let (auth_token, _) =
+            create_token(Some("test_token_single_terminal_ws".to_string()), false).expect("token");
+        let (port, server_handle, factory) = spawn_structured_test_server().await;
+        let session_token = login_and_get_session_token(port, &auth_token).await;
+        let mut client = attach_test_client(port, &session_token, &factory, true).await;
+        let listeners_started = |client: &AttachedTestClient| {
+            client
+                .sent_to_session()
+                .iter()
+                .filter(|msg| matches!(msg, ClientToServerMsg::KittyGraphicsSupport { .. }))
+                .count()
+        };
+        assert!(
+            wait_until(Duration::from_secs(5), || listeners_started(&client) == 1).await,
+            "the first terminal websocket starts the session connection"
+        );
+
+        let terminal_ws_url = format!(
+            "ws://127.0.0.1:{}/ws/terminal/structured-test-session?web_client_id={}&rows=24&cols=80&structured=true",
+            port, client.web_client_id
+        );
+        let (mut second, _) = timeout(
+            Duration::from_secs(5),
+            connect_async_with_cookie(&terminal_ws_url, &session_token),
+        )
+        .await
+        .unwrap()
+        .expect("failed to connect to the terminal websocket");
+
+        assert!(
+            closes_within(&mut second, Duration::from_secs(5)).await,
+            "a second terminal websocket for an id must be refused"
+        );
+        // the first one, which may be a half-dead connection being replaced, is
+        // dropped too instead of lingering until it times out
+        assert!(closes_within(&mut client.terminal_stream, Duration::from_secs(5)).await);
+        assert!(
+            wait_until(Duration::from_secs(5), || client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::ClientExited))
+            .await
+        );
+        assert_eq!(
+            listeners_started(&client),
+            1,
+            "no second session connection may be started for the id"
+        );
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    async fn post_login(port: u16, auth_token: &str) -> isahc::Response<isahc::Body> {
+        let login_url = format!("http://127.0.0.1:{}/command/login", port);
+        let payload = serde_json::json!({ "auth_token": auth_token }).to_string();
+        timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || {
+                isahc::Request::post(&login_url)
+                    .header("Content-Type", "application/json")
+                    .body(payload)
+                    .unwrap()
+                    .send()
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_login_attempts_are_rate_limited() {
+        let _ = delete_db();
+        let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
+
+        let burst = crate::web_client::login_rate_limiter::LOGIN_BURST;
+        for attempt in 0..burst {
+            let response = post_login(port, "not-a-real-token").await;
+            assert_eq!(
+                response.status(),
+                401,
+                "attempt {} is within the burst and must be judged on its token",
+                attempt
+            );
+        }
+        let response = post_login(port, "not-a-real-token").await;
+        assert_eq!(response.status(), 429);
+        assert!(response.headers().get("retry-after").is_some());
+
+        // the limit is not about the token: even a good one is held back
+        let (auth_token, _) = create_token(Some("rate_limit_token".to_string()), false)
+            .expect("Failed to create test token");
+        let response = post_login(port, &auth_token).await;
+        assert_eq!(response.status(), 429);
+        assert!(response.headers().get("set-cookie").is_none());
+
+        server_handle.abort();
+        let _ = delete_db();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -3,11 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::client_channel::ClientSender;
 use crate::web_client::control_message::SetConfigPayload;
+use crate::web_client::login_rate_limiter::LoginRateLimiter;
 use crate::web_client::session_management::spawn_new_session;
 use std::path::PathBuf;
 use zellij_utils::{
@@ -105,14 +106,31 @@ pub struct ConnectionTable {
 
 const MAX_PENDING_CONTROL_MESSAGES: usize = 64;
 
+/// How many web clients (attached or not) the server holds at once.
+pub const MAX_WEB_CLIENTS: usize = 256;
+/// How many web clients a single login session may have that have not opened
+/// their terminal websocket yet. `POST /session` hands one out per call.
+pub const MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION: usize = 16;
+/// How long a web client id may wait for its terminal websocket before it is
+/// forgotten. A browser opens it right after getting the id.
+pub const UNATTACHED_WEB_CLIENT_TTL: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientLimitExceeded {
+    TooManyClients,
+    TooManyUnattachedClients,
+}
+
 #[derive(Debug, Clone)]
 pub struct ClientChannels {
     pub os_api: Box<dyn ClientOsApi>,
-    pub control_channel_tx: Option<UnboundedSender<Message>>,
-    pub terminal_channel_tx: Option<UnboundedSender<Message>>,
+    pub control_channel_tx: Option<ClientSender>,
+    pub terminal_channel_tx: Option<ClientSender>,
     terminal_channel_cancellation_token: Option<CancellationToken>,
+    control_channel_cancellation_token: Option<CancellationToken>,
     pub should_not_reconnect: Arc<AtomicBool>,
     pending_control_messages: Vec<Message>,
+    pub created_at: Instant,
 }
 
 impl ClientChannels {
@@ -122,14 +140,35 @@ impl ClientChannels {
             control_channel_tx: None,
             terminal_channel_tx: None,
             terminal_channel_cancellation_token: None,
+            control_channel_cancellation_token: None,
             should_not_reconnect: Arc::new(AtomicBool::new(false)),
             pending_control_messages: Vec::new(),
+            created_at: Instant::now(),
         }
     }
 
-    pub fn add_control_tx(&mut self, control_channel_tx: UnboundedSender<Message>) {
+    /// Whether the client's terminal websocket has been opened.
+    pub fn is_attached(&self) -> bool {
+        self.terminal_channel_tx.is_some()
+    }
+
+    /// Makes this the control channel of the client. A control websocket that
+    /// was registered before is told to go away (through its cancellation
+    /// token): there is one control channel per client id, so that the number of
+    /// connections a client can hold open stays tied to the number of ids.
+    pub fn add_control_tx(
+        &mut self,
+        control_channel_tx: ClientSender,
+        cancellation_token: CancellationToken,
+    ) {
+        if let Some(previous) = self
+            .control_channel_cancellation_token
+            .replace(cancellation_token)
+        {
+            previous.cancel();
+        }
         for message in self.pending_control_messages.drain(..) {
-            let _ = control_channel_tx.send(message);
+            let _ = control_channel_tx.try_send(message);
         }
         self.control_channel_tx = Some(control_channel_tx);
     }
@@ -141,7 +180,7 @@ impl ClientChannels {
         self.pending_control_messages.push(message);
     }
 
-    pub fn add_terminal_tx(&mut self, terminal_channel_tx: UnboundedSender<Message>) {
+    pub fn add_terminal_tx(&mut self, terminal_channel_tx: ClientSender) {
         self.terminal_channel_tx = Some(terminal_channel_tx);
     }
 
@@ -151,11 +190,18 @@ impl ClientChannels {
     ) {
         self.terminal_channel_cancellation_token = Some(terminal_channel_cancellation_token);
     }
+    /// Tells both of the client's websockets (their writers and their readers)
+    /// to wind down.
     pub fn cleanup(&mut self) {
         if let Some(terminal_channel_cancellation_token) =
             self.terminal_channel_cancellation_token.take()
         {
             terminal_channel_cancellation_token.cancel();
+        }
+        if let Some(control_channel_cancellation_token) =
+            self.control_channel_cancellation_token.take()
+        {
+            control_channel_cancellation_token.cancel();
         }
     }
 }
@@ -163,8 +209,8 @@ impl ClientChannels {
 #[derive(Debug)]
 pub struct ClientConnectionBus {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
-    pub stdout_channel_tx: Option<UnboundedSender<Message>>,
-    pub control_channel_tx: Option<UnboundedSender<Message>>,
+    pub stdout_channel_tx: Option<ClientSender>,
+    pub control_channel_tx: Option<ClientSender>,
     pub web_client_id: String,
 }
 
@@ -226,6 +272,7 @@ pub struct AppState {
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
     pub is_https: bool,
     pub pending_welcome_sessions: PendingWelcomeSessions,
+    pub login_rate_limiter: Arc<Mutex<LoginRateLimiter>>,
 }
 
 #[derive(Serialize)]
