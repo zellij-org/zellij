@@ -1798,11 +1798,20 @@ impl TerminalPane {
     }
 
     fn input_is_parkable(&self, bytes: &[u8]) -> bool {
+        let queued = &self.pending_pty_input[self.pending_pty_offset..];
+        // An introducer can straddle the queue/new-chunk boundary.
+        const BOUNDARY: usize = 6;
+        let queued_len = queued.len().min(BOUNDARY);
+        let new_len = bytes.len().min(BOUNDARY);
+        let mut joined = [0u8; BOUNDARY * 2];
+        joined[..queued_len].copy_from_slice(&queued[queued.len() - queued_len..]);
+        joined[queued_len..queued_len + new_len].copy_from_slice(&bytes[..new_len]);
         self.kitty_interceptor.is_ground()
             && self.vte_parser.is_ground()
             && !self.held_escape
             && !Self::bytes_may_place_image(bytes)
-            && !Self::bytes_may_place_image(&self.pending_pty_input[self.pending_pty_offset..])
+            && !Self::bytes_may_place_image(queued)
+            && !Self::bytes_may_place_image(&joined[..queued_len + new_len])
     }
 
     fn with_live_terminal<R>(

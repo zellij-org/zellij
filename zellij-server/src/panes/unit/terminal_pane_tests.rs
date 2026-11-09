@@ -235,6 +235,12 @@ fn image_capable_chunks_do_not_park_scrolled_panes() {
         "a queued image suffix must revoke parking"
     );
     pane.pending_pty_input.clear();
+    pane.pending_pty_input = b"queued \x1b".to_vec();
+    assert!(
+        !pane.input_is_parkable(b"Pq#0;2;0;0;0"),
+        "an introducer split across the queue boundary must revoke parking"
+    );
+    pane.pending_pty_input.clear();
     pane.held_escape = true;
     assert!(
         !pane.input_is_parkable(b"text"),

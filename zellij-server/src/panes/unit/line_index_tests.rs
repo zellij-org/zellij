@@ -843,6 +843,31 @@ fn back_cut_retires_a_partially_scanned_removed_row() {
 }
 
 #[test]
+fn back_cuts_at_every_cell_boundary_match_the_fresh_oracle() {
+    let width = 2;
+    for measured_cells in 1..6 {
+        for cut in 0..=2 {
+            let mut fixture = Fixture::new(
+                vec![
+                    character_row("ab", true),
+                    character_row("cd", false),
+                    character_row("ef", false),
+                ],
+                80,
+            );
+            fixture.set_width(width);
+            assert_eq!(
+                fixture.measure_next(8, measured_cells),
+                MeasureProgress::Pending
+            );
+            fixture.take_back(cut);
+            fixture.measure_all();
+            assert_exact_total(&fixture, width);
+        }
+    }
+}
+
+#[test]
 fn transferring_every_row_empties_the_index() {
     let width = 5;
     let mut fixture = Fixture::new(
