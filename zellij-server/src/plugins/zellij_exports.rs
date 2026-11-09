@@ -3463,11 +3463,24 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
         );
         return;
     };
-    // Use tokio runtime for async I/O (timer operation)
+    // Use tokio runtime for async I/O (timer operation).
+    // The permit is dropped as soon as this load is dead, not after the
+    // remaining sleep. A live load still waits out its own deadline.
     get_tokio_runtime().spawn(async move {
         let _permit = permit;
         let start_time = Instant::now();
-        tokio::time::sleep(Duration::from_secs_f64(secs)).await;
+        let sleep = tokio::time::sleep(Duration::from_secs_f64(secs));
+        tokio::pin!(sleep);
+        loop {
+            if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
+                return;
+            }
+            tokio::select! {
+                biased;
+                _ = &mut sleep => break,
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+            }
+        }
         if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
             return;
         }
@@ -7606,6 +7619,24 @@ mod admission_tests {
         PLUGIN_TIMERS.lock().unwrap().total
     }
 
+    fn timers_for(plugin_id: PluginId) -> usize {
+        PLUGIN_TIMERS
+            .lock()
+            .unwrap()
+            .per_plugin
+            .get(&plugin_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Timer tests share the process-wide permit counter.
+    fn lock_timer_tests() -> std::sync::MutexGuard<'static, ()> {
+        static TIMER_TESTS: Mutex<()> = Mutex::new(());
+        TIMER_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn scans_in_flight() -> usize {
         DIRECTORY_SCANS.lock().unwrap().total
     }
@@ -7629,6 +7660,7 @@ mod admission_tests {
 
     #[test]
     fn plugin_timeout_past_the_cap_does_not_start_another_one() {
+        let _timer_tests = lock_timer_tests();
         assert_eq!(MAX_PLUGIN_TIMERS_PER_PLUGIN, 64);
         assert_eq!(MAX_PLUGIN_TIMERS_IN_FLIGHT, 256);
 
@@ -7721,6 +7753,65 @@ mod admission_tests {
             }
         }
         assert_eq!(fired, 2, "timers of the same duration must not be deduped");
+    }
+
+    #[test]
+    fn a_dead_load_releases_its_timer_permit_without_waiting() {
+        let _timer_tests = lock_timer_tests();
+        let (to_dead, dead_receiver) = channels::unbounded();
+        let dead = plugin_env(90210, std::env::temp_dir(), SenderWithContext::new(to_dead));
+        let dead_alive = dead.load_alive.clone();
+        let (to_live, live_receiver) = channels::unbounded();
+        let live = plugin_env(90211, std::env::temp_dir(), SenderWithContext::new(to_live));
+        set_timeout(&dead, 30.0);
+        set_timeout(&live, 0.05);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90210) != 1 || timers_for(90211) != 1 {
+            assert!(Instant::now() < deadline, "timer permits were not acquired");
+            thread::sleep(Duration::from_millis(5));
+        }
+        dead_alive.store(false, std::sync::atomic::Ordering::Release);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90210) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "unloaded plugin kept its timer permit"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            !recv_until(&dead_receiver, Duration::from_millis(200), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 90210,
+                        ..
+                    }
+                )
+            }),
+            "a dead load must not receive ApplyTimer"
+        );
+        assert!(
+            recv_until(&live_receiver, Duration::from_secs(2), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 90211,
+                        generation: 9,
+                        ..
+                    }
+                )
+            }),
+            "a live load must still receive its timer"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90211) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "live timer permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     #[test]
