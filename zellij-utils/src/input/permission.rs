@@ -136,15 +136,84 @@ fn with_permission_cache_lock<T>(
 #[cfg(unix)]
 fn exclusive_lock(file: fs::File) -> std::io::Result<nix::fcntl::Flock<fs::File>> {
     use nix::fcntl::{Flock, FlockArg};
+    // Blocking exclusive flock. `Flock` releases it on drop, including unwind.
     Flock::lock(file, FlockArg::LockExclusive).map_err(|(_file, errno)| std::io::Error::from(errno))
 }
 
-#[cfg(not(unix))]
-fn exclusive_lock(file: fs::File) -> std::io::Result<fs::File> {
-    // Cross-process locking is unix-only here; same-process writers are still
-    // serialized by the plugin thread. Atomic publish still avoids torn reads.
-    let _ = &file;
-    Ok(file)
+/// Whole-file byte range passed to `LockFileEx` / `UnlockFileEx`.
+#[cfg(windows)]
+const WHOLE_FILE_LOCK_LEN: u32 = u32::MAX;
+
+/// Holds a `LockFileEx` exclusive lock. Drop unlocks, so a panic cannot leave
+/// the cache lock stuck for other processes.
+#[cfg(windows)]
+struct WindowsPermissionLock {
+    file: fs::File,
+}
+
+#[cfg(windows)]
+impl Drop for WindowsPermissionLock {
+    fn drop(&mut self) {
+        if let Err(err) = windows_whole_file_lock(&self.file, false) {
+            log::error!("Failed to unlock permission cache lock: {err}");
+        }
+    }
+}
+
+#[cfg(windows)]
+fn exclusive_lock(file: fs::File) -> std::io::Result<WindowsPermissionLock> {
+    windows_whole_file_lock(&file, true)?;
+    Ok(WindowsPermissionLock { file })
+}
+
+#[cfg(windows)]
+fn windows_whole_file_lock(file: &fs::File, exclusive: bool) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::{
+        LockFileEx, UnlockFileEx, LOCKFILE_EXCLUSIVE_LOCK,
+    };
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    // Synchronous `std::fs::File` handles block inside `LockFileEx` until the
+    // exclusive lock is granted. Offset zero plus `u32::MAX` covers the file.
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    let handle = file.as_raw_handle() as HANDLE;
+    let ok = unsafe {
+        if exclusive {
+            LockFileEx(
+                handle,
+                LOCKFILE_EXCLUSIVE_LOCK,
+                0,
+                WHOLE_FILE_LOCK_LEN,
+                WHOLE_FILE_LOCK_LEN,
+                &mut overlapped,
+            )
+        } else {
+            UnlockFileEx(
+                handle,
+                0,
+                WHOLE_FILE_LOCK_LEN,
+                WHOLE_FILE_LOCK_LEN,
+                &mut overlapped,
+            )
+        }
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn exclusive_lock(_file: fs::File) -> std::io::Result<fs::File> {
+    // No cross-process lock on this target. Fail closed instead of publishing
+    // a read-modify-write that another process can overwrite.
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "permission cache locking is not implemented on this platform",
+    ))
 }
 
 fn write_atomically(path: &PathBuf, contents: &[u8]) -> std::io::Result<()> {
@@ -422,9 +491,7 @@ mod tests {
             "plugin-a".to_owned(),
             &vec![PermissionType::ReadApplicationState]
         ));
-        assert!(
-            cache.check_permissions("plugin-b".to_owned(), &vec![PermissionType::WriteToStdin])
-        );
+        assert!(cache.check_permissions("plugin-b".to_owned(), &vec![PermissionType::WriteToStdin]));
         let shared: HashSet<_> = cache
             .get_permissions("plugin-shared".to_owned())
             .into_iter()
@@ -482,5 +549,146 @@ mod tests {
             "failed publish must not leave partial temps: {leftover_temps:?}"
         );
         assert!(path.join("keep").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_threads_granting_different_permissions_keep_both() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        let barrier = Arc::new(Barrier::new(2));
+
+        let path_a = path.clone();
+        let barrier_a = barrier.clone();
+        let writer_a = std::thread::spawn(move || {
+            barrier_a.wait();
+            PermissionCache::grant_and_persist(
+                Some(path_a),
+                "plugin".to_owned(),
+                vec![PermissionType::ReadApplicationState],
+            )
+            .unwrap()
+        });
+
+        let path_b = path.clone();
+        barrier.wait();
+        assert!(PermissionCache::grant_and_persist(
+            Some(path_b),
+            "plugin".to_owned(),
+            vec![PermissionType::WriteToStdin],
+        )
+        .unwrap());
+        assert!(writer_a.join().unwrap());
+
+        let cached: HashSet<_> = PermissionCache::from_path_or_default(Some(path))
+            .get_permissions("plugin".to_owned())
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(
+            cached,
+            HashSet::from([
+                PermissionType::ReadApplicationState,
+                PermissionType::WriteToStdin,
+            ])
+        );
+    }
+
+    /// The lock file is the exclusion mechanism. A process-local mutex inside
+    /// `grant_and_persist` would not stall this caller: the other thread holds
+    /// `exclusive_lock` on that file directly. A no-op lock would publish while
+    /// the guard is still held.
+    #[cfg(unix)]
+    #[test]
+    fn lock_file_blocks_grant_and_persist_until_released() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        let lock_path = lock_path_for(&path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let lock_file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        let guard = exclusive_lock(lock_file).unwrap();
+
+        let (tid_tx, tid_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let path_worker = path.clone();
+        let worker = std::thread::spawn(move || {
+            // Linux: publish the tid before blocking so the parent can see the
+            // flock wait in /proc. Other Unix targets have no /proc wchan.
+            let _ = tid_tx.send(linux_thread_id());
+            let result = PermissionCache::grant_and_persist(
+                Some(path_worker),
+                "plugin".to_owned(),
+                vec![PermissionType::RunCommands],
+            );
+            let _ = done_tx.send(());
+            result
+        });
+
+        let tid = tid_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("worker did not start");
+        if std::path::Path::new("/proc/self/task").is_dir() {
+            assert!(
+                wait_until_blocked_on_file_lock(tid, &done_rx),
+                "grant_and_persist must block in flock while the lock file is held"
+            );
+        } else {
+            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {},
+                Ok(()) => panic!("grant_and_persist finished while the lock file was still held"),
+                Err(err) => panic!("worker ended before acquiring the lock: {err}"),
+            }
+        }
+
+        drop(guard);
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("grant_and_persist did not resume after the lock file was released");
+        assert!(worker.join().unwrap().unwrap());
+        assert!(PermissionCache::from_path_or_default(Some(path))
+            .check_permissions("plugin".to_owned(), &vec![PermissionType::RunCommands]));
+    }
+
+    #[cfg(unix)]
+    fn linux_thread_id() -> Option<u32> {
+        let status = fs::read_to_string("/proc/thread-self/status").ok()?;
+        status.lines().find_map(|line| {
+            let rest = line.strip_prefix("Pid:")?;
+            rest.trim().parse().ok()
+        })
+    }
+
+    #[cfg(unix)]
+    fn wait_until_blocked_on_file_lock(
+        tid: Option<u32>,
+        done_rx: &std::sync::mpsc::Receiver<()>,
+    ) -> bool {
+        let Some(tid) = tid else {
+            return false;
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            match done_rx.try_recv() {
+                Ok(()) => return false,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return false,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {},
+            }
+            let wchan =
+                fs::read_to_string(format!("/proc/self/task/{tid}/wchan")).unwrap_or_default();
+            // `flock` sleeps in `locks_lock_inode_wait` (older kernels say `flock`).
+            if wchan.contains("flock") || wchan.contains("lock_inode") {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
     }
 }
