@@ -13712,6 +13712,32 @@ fn serialize_keeps_a_rewrap_tail_with_its_line() {
 }
 
 #[test]
+fn serialize_does_not_break_a_wrapped_line_at_a_quantum_boundary() {
+    // A continuation that is the oldest row of a later quantum was saved
+    // with a hard newline, splitting one logical line.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let width = 10;
+    let rows = quantum + 1;
+    let grid = create_grid_with_size_and_raw(4, width, &vec![b'B'; rows * width]);
+    let mut serialized = None;
+    for _ in 0..4 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the wrapped line finishes");
+    let first = serialized.find('B').expect("the line has cells");
+    let last = serialized.rfind('B').expect("the line has cells");
+    let between = &serialized[first..=last];
+    assert_eq!(between.matches('B').count(), rows * width);
+    assert!(
+        !between.contains('\n') && !between.contains('\r'),
+        "a wrapped line must stay one line across the quantum boundary:\n{serialized}"
+    );
+}
+
+#[test]
 fn serialize_budget_only_scans_the_requested_rows() {
     // Well under the cell budget, so a scan that ignored the request
     // would walk all 3,000 rows before running out of history.
