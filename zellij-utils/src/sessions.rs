@@ -1164,6 +1164,11 @@ pub fn remove_fenced_session_cache(session_id: &str) -> io::Result<SessionCacheR
 
 /// Fence `session_id` and remove its folder under `cache_dir` while holding that
 /// directory's publication lock. On fence failure the folder stays.
+///
+/// Tombstones whatever incarnation is current at lock time. A caller that
+/// selected this session earlier must pass that lifetime to
+/// [`remove_fenced_session_cache_for_lifetime`] instead. The lock serializes
+/// the write, but it does not keep the earlier death decision.
 pub(crate) fn remove_fenced_session_cache_in(
     cache_dir: &Path,
     session_id: &str,
@@ -1171,12 +1176,117 @@ pub(crate) fn remove_fenced_session_cache_in(
     let (lock_path, incarnation_path, tombstone_path, folder) =
         cache_publication_paths(cache_dir, session_id);
     let _lock = lock_session_publication_at(&lock_path)?;
-    write_deletion_tombstone_at(&incarnation_path, &tombstone_path)?;
+    fence_and_remove_locked(&incarnation_path, &tombstone_path, &folder)
+}
+
+/// Incarnation observed when a session was classified dead.
+///
+/// `Absent` is a missing incarnation file, not "any incarnation". A file that
+/// appears later is a different lifetime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectedSessionLifetime {
+    Absent,
+    Present(u128),
+}
+
+pub(crate) fn selected_session_lifetime(
+    cache_dir: &Path,
+    session_id: &str,
+) -> io::Result<SelectedSessionLifetime> {
+    let (_, incarnation_path, _, _) = cache_publication_paths(cache_dir, session_id);
+    match read_incarnation_file(&incarnation_path)? {
+        Some(incarnation) => Ok(SelectedSessionLifetime::Present(incarnation)),
+        None => Ok(SelectedSessionLifetime::Absent),
+    }
+}
+
+fn selected_lifetime_is_current(selected: SelectedSessionLifetime, current: Option<u128>) -> bool {
+    match (selected, current) {
+        (SelectedSessionLifetime::Absent, None) => true,
+        (SelectedSessionLifetime::Present(selected), Some(current)) => selected == current,
+        _ => false,
+    }
+}
+
+#[derive(Debug)]
+struct SelectedLifetimeMismatch {
+    session_id: String,
+}
+
+impl std::fmt::Display for SelectedLifetimeMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "session {} changed incarnation after it was selected for deletion",
+            self.session_id
+        )
+    }
+}
+
+impl std::error::Error for SelectedLifetimeMismatch {}
+
+pub(crate) fn is_selected_lifetime_mismatch(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<SelectedLifetimeMismatch>())
+}
+
+fn selected_lifetime_mismatch(session_id: &str) -> io::Error {
+    io::Error::other(SelectedLifetimeMismatch {
+        session_id: session_id.to_owned(),
+    })
+}
+
+/// Fence and remove only if the incarnation under the publication lock is still
+/// `selected`. A newer incarnation is not tombstoned and its folder stays.
+///
+/// The comparison runs after the lock is held. An earlier unlocked read is not
+/// enough: admission writes the new incarnation under the same lock.
+pub(crate) fn remove_fenced_session_cache_for_lifetime(
+    cache_dir: &Path,
+    session_id: &str,
+    selected: SelectedSessionLifetime,
+) -> io::Result<SessionCacheRemoval> {
+    let (lock_path, incarnation_path, tombstone_path, folder) =
+        cache_publication_paths(cache_dir, session_id);
+    let _lock = lock_session_publication_at(&lock_path)?;
+    let current = read_incarnation_file(&incarnation_path)?;
+    if !selected_lifetime_is_current(selected, current) {
+        return Err(selected_lifetime_mismatch(session_id));
+    }
+    fence_and_remove_locked(&incarnation_path, &tombstone_path, &folder)
+}
+
+fn fence_and_remove_locked(
+    incarnation_path: &Path,
+    tombstone_path: &Path,
+    folder: &Path,
+) -> io::Result<SessionCacheRemoval> {
+    write_deletion_tombstone_at(incarnation_path, tombstone_path)?;
     match fs::remove_dir_all(folder) {
         Ok(()) => Ok(SessionCacheRemoval::Removed),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(SessionCacheRemoval::NotFound),
         Err(error) => Err(error),
     }
+}
+
+/// Remove `session_id`'s cache only when a socket inventory says it is dead.
+///
+/// The same inventory as bulk deletion: an unreadable directory yields no dead
+/// ids, so this refuses. The incarnation read with that decision is checked
+/// again under the publication lock.
+pub fn remove_fenced_dead_session_cache(
+    sock_dir: &Path,
+    cache_dir: &Path,
+    session_id: &str,
+) -> io::Result<SessionCacheRemoval> {
+    if !crate::session_index::session_id_is_definitely_dead(sock_dir, cache_dir, session_id) {
+        return Err(io::Error::other(format!(
+            "session {session_id} is not definitely dead; its cache and index row were left in place"
+        )));
+    }
+    let selected = selected_session_lifetime(cache_dir, session_id)?;
+    remove_fenced_session_cache_for_lifetime(cache_dir, session_id, selected)
 }
 
 /// Whether a deletion tombstone is present.
@@ -1228,7 +1338,7 @@ fn admit_session_incarnation(session_id: &str) -> io::Result<()> {
     admit_session_incarnation_in(&*ZELLIJ_SESSION_INFO_CACHE_DIR, session_id).map(|_| ())
 }
 
-fn admit_session_incarnation_in(cache_dir: &Path, session_id: &str) -> io::Result<u128> {
+pub(crate) fn admit_session_incarnation_in(cache_dir: &Path, session_id: &str) -> io::Result<u128> {
     let (lock_path, incarnation_path, tombstone_path, _) =
         cache_publication_paths(cache_dir, session_id);
     let _lock = lock_session_publication_at(&lock_path)?;
@@ -1450,8 +1560,8 @@ fn probe_exact_session(name: &str) -> Result<SessionProbeResult, io::Error> {
     // Exact-name/ID lookups probe the known target directly. Waiting on an enumeration of
     // unrelated candidates can exhaust the shared deadline before this socket is examined.
     // An index error must not probe the display-name path.
-    let socket_path = legacy_socket_path(name)
-        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+    let socket_path =
+        legacy_socket_path(name).map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
     match path_try_exists(&socket_path).map_err(io::Error::from)? {
         false => Ok(SessionProbeResult::Absent),
         true => Ok(assert_socket_path(&socket_path, SESSION_PROBE_TIMEOUT)),

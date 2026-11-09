@@ -4313,12 +4313,20 @@ fn delete_dead_session(session_name: String) -> Result<()> {
     delete_dead_session_cache(&session_name)
 }
 
-/// Identity, folder-name eligibility, then the publication fence (tombstone and
-/// cache removal). The index row is removed only after the cache is gone.
+/// Identity, folder-name eligibility, then a socket-inventory death check and
+/// the publication fence (tombstone and cache removal). The index row is
+/// removed only after the cache is gone. A live socket, or an inventory that
+/// cannot be read, is not death: the cache and the row stay.
 fn delete_dead_session_cache(session_name: &str) -> Result<()> {
     delete_dead_session_cache_with(
         session_name,
-        |session_id| zellij_utils::sessions::remove_fenced_session_cache(session_id),
+        |session_id| {
+            zellij_utils::sessions::remove_fenced_dead_session_cache(
+                &ZELLIJ_SOCK_DIR,
+                &ZELLIJ_SESSION_INFO_CACHE_DIR,
+                session_id,
+            )
+        },
         |display_name| delete_session_index_row(display_name),
     )
 }
@@ -7538,6 +7546,80 @@ mod focus_and_dead_session_tests {
         );
         assert!(folder.exists());
         remove_sidecars(&blocked);
+    }
+
+    #[test]
+    fn live_session_is_not_removed_by_the_single_session_delete() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static LIVE_IDS: AtomicU32 = AtomicU32::new(0);
+
+        let session_id = format!(
+            "dl{:x}{:x}",
+            std::process::id(),
+            LIVE_IDS.fetch_add(1, Ordering::Relaxed)
+        );
+        let sock_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&session_id);
+        assert!(
+            sock_path.as_os_str().len() < zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH,
+            "socket path exceeds the platform limit: {}",
+            sock_path.display()
+        );
+        remove_sidecars(&session_id);
+        let _ = std::fs::remove_file(&sock_path);
+        std::fs::create_dir_all(&*zellij_utils::consts::ZELLIJ_SOCK_DIR).unwrap();
+        std::fs::create_dir_all(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR).unwrap();
+
+        struct Cleanup {
+            session_id: String,
+            sock_path: std::path::PathBuf,
+        }
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.sock_path);
+                remove_sidecars(&self.session_id);
+                if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+                    let _ = index.delete(&self.session_id);
+                }
+            }
+        }
+        let _cleanup = Cleanup {
+            session_id: session_id.clone(),
+            sock_path: sock_path.clone(),
+        };
+
+        let folder = session_info_folder_for_session(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        let marker = folder.join("session-metadata.kdl");
+        std::fs::write(&marker, "live-cache").unwrap();
+        #[cfg(unix)]
+        let _listener = std::os::unix::net::UnixListener::bind(&sock_path)
+            .unwrap_or_else(|error| panic!("bind {}: {error}", sock_path.display()));
+        #[cfg(not(unix))]
+        std::fs::write(&sock_path, b"").unwrap();
+
+        let index =
+            zellij_utils::session_index::SessionIndex::open_default().expect("session index");
+        index.ensure_row(&session_id, 1).unwrap();
+
+        match delete_dead_session_reply(&session_id) {
+            DeleteDeadSessionResponse::Err(error) => {
+                assert!(
+                    error.contains("not definitely dead"),
+                    "a live session must be refused, got {error}"
+                );
+            },
+            DeleteDeadSessionResponse::Ok => panic!("a live session must not be deleted"),
+        }
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "live-cache");
+        assert!(folder.exists());
+        assert!(
+            index.get(&session_id).unwrap().is_some(),
+            "the index row of a live session must stay"
+        );
+        assert!(
+            !session_deletion_tombstone_path(&session_id).exists(),
+            "a live session must not be tombstoned"
+        );
     }
 }
 

@@ -1241,44 +1241,132 @@ pub fn dead_session_ids_in(sock_dir: &Path, cache_dir: &Path) -> Vec<String> {
     dead_session_ids_from_socket_entries(socket_entries, cache_ids)
 }
 
-pub fn delete_dead_sessions_in(
-    sock_dir: &Path,
+/// `true` only when `session_id` is in the dead set from a complete socket
+/// inventory. An unreadable inventory yields no ids, so this is `false`.
+pub fn session_id_is_definitely_dead(sock_dir: &Path, cache_dir: &Path, session_id: &str) -> bool {
+    dead_session_ids_in(sock_dir, cache_dir)
+        .iter()
+        .any(|id| id == session_id)
+}
+
+/// A dead session plus the incarnation observed at selection.
+///
+/// Deletion must pass this lifetime under the publication lock. Re-reading the
+/// socket directory later does not preserve the death decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SelectedDeadSession {
+    pub id: String,
+    pub lifetime: crate::sessions::SelectedSessionLifetime,
+}
+
+pub(crate) struct DeadSessionSelection {
+    pub sessions: Vec<SelectedDeadSession>,
+    pub error: Option<String>,
+}
+
+/// Classify dead sessions and capture each incarnation in the same pass.
+///
+/// An incarnation file that cannot be read is not selected. That session stays,
+/// and `error` records why, so a missing lifetime cannot be treated as "delete
+/// whatever is current".
+pub(crate) fn select_dead_sessions_in(sock_dir: &Path, cache_dir: &Path) -> DeadSessionSelection {
+    let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
+    let mut sessions = Vec::with_capacity(dead_sessions.len());
+    let mut error = None;
+    for session_id in dead_sessions {
+        match crate::sessions::selected_session_lifetime(cache_dir, &session_id) {
+            Ok(lifetime) => sessions.push(SelectedDeadSession {
+                id: session_id,
+                lifetime,
+            }),
+            Err(read_error) => {
+                error.get_or_insert_with(|| {
+                    format!(
+                        "Failed to read the incarnation of dead session {:?}: {}",
+                        session_id, read_error
+                    )
+                });
+            },
+        }
+    }
+    DeadSessionSelection { sessions, error }
+}
+
+pub(crate) fn delete_selected_dead_sessions_in(
     cache_dir: &Path,
     index: Option<&SessionIndex>,
+    selected: &[SelectedDeadSession],
 ) -> std::result::Result<usize, String> {
-    let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
-    if dead_sessions.is_empty() {
-        return Ok(0);
-    }
     let mut first_error = None;
+    let deleted = delete_selected_dead_sessions(cache_dir, index, selected, &mut first_error);
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(deleted),
+    }
+}
+
+fn delete_selected_dead_sessions(
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+    selected: &[SelectedDeadSession],
+    first_error: &mut Option<String>,
+) -> usize {
     let mut deleted = 0;
-    for session_id in &dead_sessions {
-        match crate::sessions::remove_fenced_session_cache_in(cache_dir, session_id) {
+    for session in selected {
+        match crate::sessions::remove_fenced_session_cache_for_lifetime(
+            cache_dir,
+            &session.id,
+            session.lifetime,
+        ) {
             Ok(crate::sessions::SessionCacheRemoval::Removed) => {
                 deleted += 1;
                 // The row goes only after this session's cache is gone. A later
                 // session whose fence fails keeps its own row.
                 if let Some(index) = index {
-                    if let Err(e) = index.delete_by_ids(std::slice::from_ref(session_id)) {
+                    if let Err(e) = index.delete_by_ids(std::slice::from_ref(&session.id)) {
                         log::error!(
                             "Failed to remove dead session {:?} from the session index: {}",
-                            session_id,
+                            session.id,
                             e
                         );
                     }
                 }
             },
             Ok(crate::sessions::SessionCacheRemoval::NotFound) => {},
-            Err(e) => {
+            Err(error) if crate::sessions::is_selected_lifetime_mismatch(&error) => {
+                log::warn!(
+                    "dead session {:?} was admitted again; its cache was left in place",
+                    session.id
+                );
+            },
+            Err(error) => {
                 first_error.get_or_insert_with(|| {
-                    format!("Failed to delete dead session {:?}: {}", session_id, e)
+                    format!("Failed to delete dead session {:?}: {}", session.id, error)
                 });
             },
         }
     }
-    match first_error {
-        Some(e) => Err(e),
-        None => Ok(deleted),
+    deleted
+}
+
+pub fn delete_dead_sessions_in(
+    sock_dir: &Path,
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+) -> std::result::Result<usize, String> {
+    let DeadSessionSelection { sessions, error } = select_dead_sessions_in(sock_dir, cache_dir);
+    if sessions.is_empty() {
+        return match error {
+            Some(error) => Err(error),
+            None => Ok(0),
+        };
+    }
+    match delete_selected_dead_sessions_in(cache_dir, index, &sessions) {
+        Ok(deleted) => match error {
+            Some(error) => Err(error),
+            None => Ok(deleted),
+        },
+        Err(delete_error) => Err(error.unwrap_or(delete_error)),
     }
 }
 
@@ -2242,6 +2330,72 @@ mod tests {
     }
 
     #[test]
+    fn stale_dead_selection_does_not_remove_a_newer_incarnation() {
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        let resurrected = "resurrected";
+        let stable = "stable-dead";
+        for name in [resurrected, stable] {
+            test.add(name, context("/a", None, None), 1);
+            test.mark_resumable(name);
+        }
+        let old = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        let stable_incarnation =
+            crate::sessions::admit_session_incarnation_in(&cache_dir, stable).unwrap();
+
+        let selection = select_dead_sessions_in(&sock_dir, &cache_dir);
+        assert!(
+            selection.error.is_none(),
+            "selection must name the dead lifetime: {:?}",
+            selection.error
+        );
+        let selected_lifetime = selection
+            .sessions
+            .iter()
+            .find(|session| session.id == resurrected)
+            .map(|session| session.lifetime);
+        assert_eq!(
+            selected_lifetime,
+            Some(crate::sessions::SelectedSessionLifetime::Present(old))
+        );
+
+        let new = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        assert_ne!(new, old);
+        assert_ne!(new, stable_incarnation);
+        let layout = cache_dir.join(resurrected).join(SESSION_LAYOUT_FILE_NAME);
+        let new_layout = b"layout {\n    resurrected\n}\n";
+        std::fs::write(&layout, new_layout).unwrap();
+        test.index.touch(resurrected, 50).unwrap();
+
+        let deleted =
+            delete_selected_dead_sessions_in(&cache_dir, Some(&test.index), &selection.sessions)
+                .unwrap();
+        assert_eq!(deleted, 1, "only the still-dead incarnation is removed");
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        let row = test
+            .index
+            .get(resurrected)
+            .unwrap()
+            .expect("index row stays");
+        assert_eq!(row.last_used_at, 50);
+        let tombstone = cache_dir.join(format!("{resurrected}.deleted"));
+        assert!(
+            !tombstone.exists(),
+            "a newer incarnation must not be tombstoned"
+        );
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "the admitted incarnation must still be current, got {incarnation_file}"
+        );
+        assert!(test.index.get(stable).unwrap().is_none());
+        assert!(!cache_dir.join(stable).exists());
+    }
+
+    #[test]
     fn running_session_names_keep_an_unreadable_socket() {
         let kept = socket_type_error_is_not_death(Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -2320,8 +2474,11 @@ mod tests {
             id
         );
         assert_eq!(
-            folder_id_from_lookup("no-such-session", session_id_for_name_in(&indexed, "no-such-session"))
-                .unwrap(),
+            folder_id_from_lookup(
+                "no-such-session",
+                session_id_for_name_in(&indexed, "no-such-session")
+            )
+            .unwrap(),
             "no-such-session"
         );
     }
