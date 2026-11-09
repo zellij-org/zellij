@@ -91,27 +91,54 @@ pub fn plugin_worker(mut worker: RunningWorker) -> Sender<MessageToWorker> {
                         // A fatal error may have quarantined the plugin while this worker was
                         // waiting, and an unload may have retired this load. Do not enter the
                         // guest once either has happened; messages already queued are discarded.
+                        // The guest itself runs on the blocking pool. This runtime has four
+                        // worker threads, and a wasmi call on one of them stalls the rest.
                         if !worker_callback_is_current(&load_alive, &quarantined) {
                             break;
                         }
-                        if let Err(e) = worker.send_message(message, payload) {
-                            log::error!("Failed to send message to worker: {:?}", e);
-                            // Other failures leave the plugin running, as they always have. A
-                            // worker that exhausts its fuel is what a runaway plugin looks like,
-                            // so it is treated like the plugin's own callbacks doing so.
-                            // TODO(plugin-hardening): ordinary worker traps (panics) are still
-                            // only logged; quarantine the plugin on those as well once it is
-                            // decided that a crashed worker should stop its plugin.
-                            if crate::plugins::shared::is_out_of_fuel(&e) {
-                                let data = worker.store.data();
-                                crate::plugins::wasm_bridge::handle_plugin_crash(
-                                    data.plugin_id,
-                                    data.generation,
-                                    format!("{:?}", e).replace("\n", "\n\r"),
-                                    data.senders.clone(),
-                                );
-                                break;
+                        let call_alive = load_alive.clone();
+                        let call_quarantined = quarantined.clone();
+                        let call = tokio::task::spawn_blocking(move || {
+                            // Retirement can land after this message was accepted and before a
+                            // blocking thread starts it. Check again on that thread, with no
+                            // await between the check and the guest call.
+                            if !worker_callback_is_current(&call_alive, &call_quarantined) {
+                                return (worker, None);
                             }
+                            let result = worker.send_message(message, payload);
+                            (worker, Some(result))
+                        });
+                        match call.await {
+                            Ok((returned, Some(Ok(())))) => {
+                                worker = returned;
+                            },
+                            Ok((_returned, None)) => {
+                                break;
+                            },
+                            Ok((returned, Some(Err(e)))) => {
+                                log::error!("Failed to send message to worker: {:?}", e);
+                                // Other failures leave the plugin running, as they always have. A
+                                // worker that exhausts its fuel is what a runaway plugin looks like,
+                                // so it is treated like the plugin's own callbacks doing so.
+                                // TODO(plugin-hardening): ordinary worker traps (panics) are still
+                                // only logged; quarantine the plugin on those as well once it is
+                                // decided that a crashed worker should stop its plugin.
+                                if crate::plugins::shared::is_out_of_fuel(&e) {
+                                    let data = returned.store.data();
+                                    crate::plugins::wasm_bridge::handle_plugin_crash(
+                                        data.plugin_id,
+                                        data.generation,
+                                        format!("{:?}", e).replace("\n", "\n\r"),
+                                        data.senders.clone(),
+                                    );
+                                    break;
+                                }
+                                worker = returned;
+                            },
+                            Err(error) => {
+                                log::error!("Plugin worker panicked: {}", error);
+                                break;
+                            },
                         }
                     },
                     Some(MessageToWorker::Exit) => {
