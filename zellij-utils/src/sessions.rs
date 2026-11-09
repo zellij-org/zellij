@@ -816,13 +816,17 @@ pub fn resurrectable_sessions_to_delete(
         .collect()
 }
 
+/// Send `KillSession` on a paired connection.
+///
+/// On Windows the request and reply pipes are connected together, and the
+/// reply is read so the request is not dropped before the server has it.
+/// The timeout bounds the connect and the reply read. It does not cancel a
+/// write that is already blocked in the pipe.
 pub fn send_kill_session(path: &Path, timeout: Duration) -> io::Result<()> {
     #[cfg(windows)]
     {
         use interprocess::local_socket::prelude::*;
-        // Both pipes connect together so the server pairs them by process.
-        // The timeout bounds the reply read. connect_pair itself has no deadline yet.
-        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
+        let (stream, reply_stream) = crate::pipe_pairs::connect_pair_with_timeout(path, timeout)?;
         IpcSenderWithContext::<ClientToServerMsg>::new(stream)
             .send_client_msg(ClientToServerMsg::KillSession)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;

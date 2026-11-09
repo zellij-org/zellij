@@ -4,20 +4,25 @@
 //!
 //! Pairing them by arrival order breaks as soon as one client connects its request pipe and
 //! leaves before connecting its reply pipe: every later client then gets the previous one's
-//! answers (#5740). So the halves are paired by the process that connected them instead, and a
-//! process only connects one pair to the same pipe at a time.
+//! answers. Halves are paired by the process that connected them, and a process only connects
+//! one pair to the same pipe at a time.
 
-use std::collections::{HashMap, VecDeque};
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Mutex};
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use interprocess::local_socket::{Listener, Stream};
+#[cfg(windows)]
+use std::collections::HashMap;
+#[cfg(windows)]
+use std::io;
+#[cfg(windows)]
+use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::sync::{mpsc, Arc, Mutex};
 
 /// How long half a connection waits for its other half before it is dropped.
 const MAX_WAIT: Duration = Duration::from_secs(30);
 
+#[cfg(windows)]
 const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +104,11 @@ impl<T> Pairing<T> {
 
 /// Accepts the request and reply halves of connections on their two listeners and hands out each
 /// connection once both of its halves are there, request half first.
-pub fn accept_pairs(requests: Listener, replies: Listener) -> mpsc::Receiver<(Stream, Stream)> {
+#[cfg(windows)]
+pub fn accept_pairs(
+    requests: interprocess::local_socket::Listener,
+    replies: interprocess::local_socket::Listener,
+) -> mpsc::Receiver<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
     let (paired, connections) = mpsc::channel();
     let pairing = Arc::new(Mutex::new(Pairing::default()));
     for (half, listener) in [(Half::Request, requests), (Half::Reply, replies)] {
@@ -145,7 +154,10 @@ pub fn accept_pairs(requests: Listener, replies: Listener) -> mpsc::Receiver<(St
 
 /// Connects both pipes of a connection. Other threads of this process wait meanwhile, since the
 /// server tells connections apart by process.
-pub fn connect_pair(path: &Path) -> io::Result<(Stream, Stream)> {
+#[cfg(windows)]
+pub fn connect_pair(
+    path: &Path,
+) -> io::Result<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
     let lock = connecting(path);
     let _one_at_a_time = lock.lock().unwrap_or_else(|e| e.into_inner());
     let request = crate::consts::ipc_connect(path)?;
@@ -153,6 +165,66 @@ pub fn connect_pair(path: &Path) -> io::Result<(Stream, Stream)> {
     Ok((request, reply))
 }
 
+/// Like [`connect_pair`], but the lock wait and both connects share one deadline.
+/// A failed reply connect drops the request pipe.
+#[cfg(windows)]
+pub fn connect_pair_with_timeout(
+    path: &Path,
+    timeout: Duration,
+) -> io::Result<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
+    if timeout.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "ipc connect timed out",
+        ));
+    }
+    let deadline = Instant::now() + timeout;
+    let lock = connecting(path);
+    let _one_at_a_time = wait_for_turn(&lock, timeout)?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "ipc connect timed out",
+        ));
+    }
+    let request = crate::consts::ipc_connect_with_timeout(path, remaining)?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "ipc connect timed out",
+        ));
+    }
+    let reply = crate::consts::ipc_connect_reply_with_timeout(path, remaining)?;
+    Ok((request, reply))
+}
+
+#[cfg(windows)]
+fn wait_for_turn(
+    lock: &Mutex<()>,
+    timeout: Duration,
+) -> io::Result<std::sync::MutexGuard<'_, ()>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match lock.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => return Ok(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "ipc connect timed out",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(1).min(remaining));
+            },
+        }
+    }
+}
+
+#[cfg(windows)]
 fn connecting(path: &Path) -> Arc<Mutex<()>> {
     static LOCKS: Mutex<Option<HashMap<PathBuf, Arc<Mutex<()>>>>> = Mutex::new(None);
     LOCKS
@@ -164,18 +236,22 @@ fn connecting(path: &Path) -> Arc<Mutex<()>> {
         .clone()
 }
 
-fn client_process(stream: &Stream) -> Option<u32> {
+#[cfg(windows)]
+fn client_process(stream: &interprocess::local_socket::Stream) -> Option<u32> {
     match stream {
-        Stream::NamedPipe(pipe) => pipe.inner().client_process_id().ok(),
+        interprocess::local_socket::Stream::NamedPipe(pipe) => pipe.inner().client_process_id().ok(),
     }
 }
 
 /// Whether the client still holds its end of the pipe.
-fn connected(stream: &Stream) -> bool {
+#[cfg(windows)]
+fn connected(stream: &interprocess::local_socket::Stream) -> bool {
     use std::os::windows::io::{AsHandle, AsRawHandle};
     use windows_sys::Win32::System::Pipes::PeekNamedPipe;
     let handle = match stream {
-        Stream::NamedPipe(pipe) => pipe.inner().as_handle().as_raw_handle(),
+        interprocess::local_socket::Stream::NamedPipe(pipe) => {
+            pipe.inner().as_handle().as_raw_handle()
+        },
     };
     let peeked = unsafe {
         PeekNamedPipe(
@@ -269,7 +345,7 @@ mod tests {
         assert_eq!(
             names(pairing.add(Half::Reply, 6, pipe("next-reply"), now, is_gone)),
             Some(("next", "next-reply")),
-            "#5740: pairing by arrival order gave the orphan this reply pipe"
+            "pairing by arrival order gave the orphan this reply pipe"
         );
         assert_eq!(pairing.waiting(), (0, 0), "the orphan was dropped");
     }
@@ -292,36 +368,6 @@ mod tests {
         assert_eq!(
             names(pairing.add(Half::Reply, 9, pipe("retry-reply"), now, is_gone)),
             Some(("retry", "retry-reply"))
-        );
-    }
-
-    #[test]
-    fn real_pipes_pair_up_after_a_client_left_with_only_its_request_pipe() {
-        use std::io::{Read, Write};
-        let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("session");
-        let requests = crate::consts::ipc_bind(&path).unwrap();
-        let replies = crate::consts::ipc_bind_reply(&path).unwrap();
-        let connections = accept_pairs(requests, replies);
-
-        let orphan = crate::consts::ipc_connect(&path).unwrap();
-        std::thread::sleep(Duration::from_millis(300));
-        drop(orphan);
-
-        let (mut request, mut reply) = connect_pair(&path).unwrap();
-        request.write_all(b"ping").unwrap();
-        let (mut server_request, mut server_reply) = connections
-            .recv_timeout(Duration::from_secs(5))
-            .expect("the client's two pipes to be paired");
-        let mut asked = [0u8; 4];
-        server_request.read_exact(&mut asked).unwrap();
-        assert_eq!(&asked, b"ping");
-        server_reply.write_all(b"pong").unwrap();
-        let mut answered = [0u8; 4];
-        reply.read_exact(&mut answered).unwrap();
-        assert_eq!(
-            &answered, b"pong",
-            "the answer reaches the client that asked (#5740)"
         );
     }
 

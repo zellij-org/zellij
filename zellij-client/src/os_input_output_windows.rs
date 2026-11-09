@@ -179,23 +179,35 @@ impl Iterator for BlockingSignalIterator {
     }
 }
 
-/// Connects to the server at `path`, waiting for it to start listening.
+/// Connects both named pipes together so the server can pair them by process.
 ///
-/// On Windows we use two separate named pipes to avoid DuplicateHandle
-/// deadlock: the command pipe (socket) for client→server, and a reply pipe
-/// for server→client. Both are connected together, so the server can pair them.
-pub(crate) fn connect_ipc(
+/// One attempt. The caller retries.
+pub(crate) fn setup_ipc(
     path: &Path,
 ) -> std::io::Result<(
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
 )> {
-    // One attempt. The caller retries. Both pipes connect together so the
-    // server can pair them by process.
     let (socket, reply_socket) = zellij_utils::pipe_pairs::connect_pair(path)?;
-    let sender = IpcSenderWithContext::new(socket);
-    let receiver = IpcReceiverWithContext::new(reply_socket);
-    Ok((sender, receiver))
+    Ok((
+        IpcSenderWithContext::new(socket),
+        IpcReceiverWithContext::new(reply_socket),
+    ))
+}
+
+pub(crate) fn setup_ipc_within(
+    path: &Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<(
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+)> {
+    let (socket, reply_socket) =
+        zellij_utils::pipe_pairs::connect_pair_with_timeout(path, timeout)?;
+    Ok((
+        IpcSenderWithContext::new(socket),
+        IpcReceiverWithContext::new(reply_socket),
+    ))
 }
 
 /// Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so that ConPTY enters

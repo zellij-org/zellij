@@ -76,13 +76,33 @@ impl Iterator for BlockingSignalIterator {
 /// Connects to the server at `path`. One Unix socket is cloned for both directions.
 ///
 /// One attempt. The caller retries.
-pub(crate) fn connect_ipc(
+pub(crate) fn setup_ipc(
     path: &Path,
 ) -> std::io::Result<(
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
 )> {
     let socket = zellij_utils::consts::ipc_connect(path)?;
+    channels_from_socket(socket)
+}
+
+pub(crate) fn setup_ipc_within(
+    path: &Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<(
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+)> {
+    let socket = zellij_utils::consts::ipc_connect_with_timeout(path, timeout)?;
+    channels_from_socket(socket)
+}
+
+fn channels_from_socket(
+    socket: interprocess::local_socket::Stream,
+) -> std::io::Result<(
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+)> {
     let sender = IpcSenderWithContext::new(socket);
     let receiver = sender.get_receiver()?;
     Ok((sender, receiver))

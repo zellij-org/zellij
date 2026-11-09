@@ -4184,6 +4184,7 @@ pub fn start_server_impl(
 
                 // On Windows, named pipes are half-duplex, so a connection has a separate reply
                 // pipe. The two pipes are accepted separately and paired by client process.
+                // Admission still runs once per paired connection.
                 #[cfg(windows)]
                 {
                     let reply_listener = match zellij_utils::consts::ipc_bind_reply(&socket_path) {

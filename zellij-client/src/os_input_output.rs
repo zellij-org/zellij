@@ -4,13 +4,13 @@ use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
 use crate::os_input_output_unix::{
-    connect_ipc, disable_mouse_support, enable_mouse_support, AsyncSignalListener,
+    disable_mouse_support, enable_mouse_support, setup_ipc, setup_ipc_within, AsyncSignalListener,
     BlockingSignalIterator,
 };
 #[cfg(windows)]
 use crate::os_input_output_windows::{
-    connect_ipc, disable_mouse_support, enable_mouse_support, restore_console_mode,
-    AsyncSignalListener, BlockingSignalIterator,
+    disable_mouse_support, enable_mouse_support, restore_console_mode, setup_ipc,
+    setup_ipc_within, AsyncSignalListener, BlockingSignalIterator,
 };
 
 use std::io::prelude::*;
@@ -482,10 +482,10 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        // Retry until both directions are up. On Windows that is one paired
-        // connect, not a request pipe followed by a later reply.
+        // Desktop attach blocks until both directions are up. On Windows that
+        // is one locked pair, not a request pipe followed by a later reply.
         loop {
-            match connect_ipc(path) {
+            match setup_ipc(path) {
                 Ok((sender, receiver)) => {
                     *self.send_instructions_to_server.lock().unwrap() = Some(sender);
                     *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
@@ -514,38 +514,46 @@ impl ClientOsApi for ClientOsInputOutput {
                 ));
             }
             let attempt = remaining.min(time::Duration::from_millis(50));
-            match zellij_utils::consts::ipc_connect_with_timeout(path, attempt) {
-                Ok(sock) => {
+            if self.ipc_cancel.load(Ordering::Relaxed) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "ipc connect cancelled",
+                ));
+            }
+            match setup_ipc_within(path, attempt) {
+                Ok((sender, receiver)) => {
                     if self.ipc_cancel.load(Ordering::Relaxed) {
                         return Err(io::Error::new(
                             io::ErrorKind::Interrupted,
                             "ipc connect cancelled",
                         ));
                     }
-                    match setup_ipc(sock, path) {
-                        Ok((sender, receiver)) => {
-                            if self.ipc_cancel.load(Ordering::Relaxed) {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::Interrupted,
-                                    "ipc connect cancelled",
-                                ));
-                            }
-                            *self
-                                .send_instructions_to_server
-                                .lock()
-                                .unwrap_or_else(|p| p.into_inner()) = Some(sender);
-                            *self
-                                .receive_instructions_from_server
-                                .lock()
-                                .unwrap_or_else(|p| p.into_inner()) = Some(receiver);
-                            return Ok(());
-                        },
-                        Err(e) => {
-                            log::warn!("failed to set up client IPC channels: {}", e);
-                        },
+                    *self
+                        .send_instructions_to_server
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner()) = Some(sender);
+                    *self
+                        .receive_instructions_from_server
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner()) = Some(receiver);
+                    return Ok(());
+                },
+                Err(e) => {
+                    // Refused, missing, and timed-out attempts are the retry.
+                    // Anything else used to surface from channel setup.
+                    if !matches!(
+                        e.kind(),
+                        io::ErrorKind::NotFound
+                            | io::ErrorKind::ConnectionRefused
+                            | io::ErrorKind::TimedOut
+                            | io::ErrorKind::WouldBlock
+                            | io::ErrorKind::Interrupted
+                            | io::ErrorKind::ConnectionReset
+                            | io::ErrorKind::ConnectionAborted
+                    ) {
+                        log::warn!("failed to set up client IPC channels: {}", e);
                     }
                 },
-                Err(_) => {},
             }
             self.wait_connect_retry(deadline)?;
         }

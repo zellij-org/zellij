@@ -1160,7 +1160,10 @@ pub async fn async_send_kill_and_await(
     // write is not an acknowledgement.
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(&path)?;
+        // Both pipes, under the per-process lock. A failed reply connect drops
+        // the request instead of leaving a half the server can mis-pair.
+        // `budget` still does not cancel a write blocked in the pipe.
+        let (stream, mut reply_stream) = crate::pipe_pairs::connect_pair(&path)?;
         let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
         sender
             .send_client_msg(ClientToServerMsg::KillSession)

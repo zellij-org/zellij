@@ -424,6 +424,29 @@ pub fn ipc_connect_reply(
 }
 
 #[cfg(windows)]
+pub fn ipc_connect_reply_with_timeout(
+    path: &std::path::Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::{
+        local_socket::{prelude::*, ConnectOptions, GenericNamespaced},
+        ConnectWaitMode,
+    };
+    if timeout.is_zero() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "ipc connect timed out",
+        ));
+    }
+    let name = format!("{}-reply", path.to_string_lossy());
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    ConnectOptions::new()
+        .name(ns_name)
+        .wait_mode(ConnectWaitMode::Timeout(timeout))
+        .connect_sync()
+}
+
+#[cfg(windows)]
 pub fn ipc_bind_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Listener> {

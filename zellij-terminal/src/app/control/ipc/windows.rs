@@ -15,7 +15,7 @@ impl Replies {
     }
 }
 
-/// A connection's request and reply pipes are accepted separately, and paired up by the client
+/// A connection's request and reply pipes are accepted separately, and paired by the client
 /// process that connected them.
 pub fn connections(listener: Listener, replies: Replies) -> impl Iterator<Item = (Stream, Stream)> {
     pipe_pairs::accept_pairs(listener, replies.0).into_iter()

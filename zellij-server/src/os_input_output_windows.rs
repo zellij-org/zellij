@@ -30,9 +30,9 @@ use windows_sys::Win32::System::Console::{
 use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
+    InitializeProcThreadAttributeList, TerminateProcess, UpdateProcThreadAttribute,
     WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
+    PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
@@ -59,6 +59,11 @@ struct ConPtyTerminal {
     /// `None` until the run that owns this console is bound. A stamped
     /// write is refused until it matches.
     generation: Option<u64>,
+    /// Process handle from `CreateProcessW`, kept until this run is dropped.
+    /// Terminate uses it. Closing it and reopening the numeric pid can signal
+    /// a process that reused the id.
+    process_handle: HANDLE,
+    child_pid: u32,
 }
 
 // HANDLE/HPCON are raw pointers in windows-sys >= 0.59; OS handles are
@@ -74,6 +79,9 @@ impl Drop for ConPtyTerminal {
             // drain it. Then close the remaining handle.
             ClosePseudoConsole(self.hpcon);
             CloseHandle(self.input_write_handle);
+            if !self.process_handle.is_null() {
+                CloseHandle(self.process_handle);
+            }
         }
     }
 }
@@ -430,19 +438,13 @@ fn spawn_child_process(
     Ok((pi.hProcess, pi.hThread, pi.dwProcessId))
 }
 
-fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
-    unsafe {
-        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-        if handle.is_null() {
-            return Err(std::io::Error::last_os_error());
-        }
-        let ok = TerminateProcess(handle, 1);
-        CloseHandle(handle);
-        if ok == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+fn terminate_handle(handle: HANDLE) -> io::Result<()> {
+    let ok = unsafe { TerminateProcess(handle, 1) };
+    if ok == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -553,6 +555,21 @@ impl WindowsPtyBackend {
         // Thread handle is not needed after spawn.
         unsafe { CloseHandle(thread_handle) };
 
+        // The waiter gets a duplicate. The original stays on the terminal
+        // until that run is dropped, so terminate does not reopen the pid.
+        let waiter_handle = match duplicate_write_handle(process_handle) {
+            Ok(handle) => handle,
+            Err(e) => {
+                unsafe {
+                    CloseHandle(process_handle);
+                    ClosePseudoConsole(hpcon);
+                    CloseHandle(input_write);
+                    CloseHandle(output_read);
+                }
+                return Err(e).with_context(|| err_context(&cmd));
+            },
+        };
+
         // 6. Store per-terminal state
         self.terminals.lock().unwrap().insert(
             terminal_id,
@@ -560,21 +577,25 @@ impl WindowsPtyBackend {
                 hpcon,
                 input_write_handle: input_write,
                 generation: None,
+                process_handle,
+                child_pid,
             }),
         );
 
-        // 7. Exit-monitoring thread (zero CPU — spends all time in kernel wait)
-        // Pass the HANDLE through as `usize` because raw pointers are not
-        // Send. Windows OS handles are safe to use cross-thread.
+        // 7. Exit-monitoring thread (zero CPU — spends all time in kernel wait).
+        // Its duplicate is closed after `quit_cb`, not before: the callback
+        // can still terminate through the handle stored above.
         let cmd_for_monitor = cmd.clone();
-        let process_handle_addr = process_handle as usize;
+        // Raw handles are not `Send`. The address is, and the OS handle is
+        // safe to use from the waiter thread.
+        let waiter_handle_addr = waiter_handle as usize;
         std::thread::spawn(move || {
-            let process_handle = process_handle_addr as HANDLE;
+            let waiter_handle = waiter_handle_addr as HANDLE;
+            let _close_waiter = CloseOnDrop(waiter_handle);
             let exit_code = unsafe {
-                WaitForSingleObject(process_handle, INFINITE);
+                WaitForSingleObject(waiter_handle, INFINITE);
                 let mut code: u32 = 0;
-                GetExitCodeProcess(process_handle, &mut code);
-                CloseHandle(process_handle);
+                GetExitCodeProcess(waiter_handle, &mut code);
                 code
             };
             quit_cb(
@@ -778,25 +799,59 @@ impl WindowsPtyBackend {
         Ok(())
     }
 
+    fn terminate_retained(&self, pid: u32) -> io::Result<()> {
+        // Hold the map lock across TerminateProcess so a concurrent drop
+        // cannot close the handle and let the numeric pid be reused first.
+        let terminals = self.terminals.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(handle) = terminals
+            .values()
+            .flatten()
+            .find(|term| term.child_pid == pid)
+            .map(|term| term.process_handle)
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "no retained process handle for this pid; not signaling a recycled pid",
+            ));
+        };
+        terminate_handle(handle)
+    }
+
     pub fn kill(&self, pid: u32) -> Result<()> {
-        terminate_process(pid).with_context(|| format!("failed to kill pid {}", pid))?;
+        self.terminate_retained(pid)
+            .with_context(|| format!("failed to kill pid {}", pid))?;
         Ok(())
     }
 
     pub fn force_kill(&self, pid: u32) -> Result<()> {
-        terminate_process(pid).with_context(|| format!("failed to force-kill pid {}", pid))?;
+        self.terminate_retained(pid)
+            .with_context(|| format!("failed to force-kill pid {}", pid))?;
         Ok(())
     }
 
     pub fn send_sigint(&self, pid: u32) -> Result<()> {
+        let err_context = || format!("failed to send SIGINT to pid {}", pid);
+        let terminals = self
+            .terminals
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let Some(handle) = terminals
+            .values()
+            .flatten()
+            .find(|term| term.child_pid == pid)
+            .map(|term| term.process_handle)
+        else {
+            return Err(anyhow!(
+                "no retained process handle for pid {pid}; not signaling a recycled pid"
+            ))
+            .with_context(err_context);
+        };
         let ok = unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid) };
         if ok != 0 {
-            Ok(())
-        } else {
-            terminate_process(pid)
-                .with_context(|| format!("failed to send SIGINT to pid {}", pid))?;
-            Ok(())
+            return Ok(());
         }
+        terminate_handle(handle).with_context(err_context)?;
+        Ok(())
     }
 
     pub fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
