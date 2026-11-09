@@ -1813,12 +1813,15 @@ where
 
 // How to write one unit to a host terminal; produced by `prepare_unit`.
 pub struct UnitText {
-    // The unit's full text, VS16 removed if `strip_vs16`; a space if the unit is empty.
+    // What the host should paint. VS16 is removed when `strip_vs16`. A cluster wider than
+    // the unit's allocated columns is replaced with one space per column; an empty unit is
+    // one space. The grid's stored characters are not changed.
     pub text: String,
     // VS16 was removed because the host would otherwise draw the unit wider than its columns.
     pub strip_vs16: bool,
     // The host might draw the text at a different width than the unit's columns, so it must
-    // be written with erase + absolute cursor move.
+    // be written with erase + absolute cursor move. Never set when `text` was narrowed to
+    // the allocated columns: that placeholder is exactly as wide as the unit.
     pub complex: bool,
 }
 
@@ -1843,14 +1846,30 @@ pub fn prepare_unit(
         draw_width = unicode_width::UnicodeWidthStr::width(text.as_str());
         strip_vs16 = true;
     }
+    // The host paints `text` at `draw_width`. Erasing the unit and moving the cursor
+    // afterwards does not undo columns that paint already covered, so a unit stored in
+    // fewer columns than that must not send the cluster — attachments and groups included.
+    // One space per allocated column is the same placeholder a clipped plain wide glyph
+    // uses. This replaces only the host representation.
+    let wider_than_allocated = columns > 0 && draw_width > columns;
+    if wider_than_allocated {
+        text.clear();
+        for _ in 0..columns {
+            text.push(' ');
+        }
+        draw_width = columns;
+    }
     // A unit is "complex" when the host could disagree with us about its width:
     // - a group of several cells always is: hosts that join the sequence draw it narrower
     //   than our per-code-point columns, hosts that don't join it draw each piece;
     // - a single cell is when the widths don't all agree: the sum of each code point's own
     //   width (what a host that doesn't join clusters draws), the width of the whole string
     //   (what a host that does join draws), and the columns our grid gave it.
-    // Only when all three are equal is it safe to write the text plainly.
-    let complex = if cells.len() > 1 {
+    // Only when all three are equal is it safe to write the text plainly. A placeholder
+    // narrowed above is exactly `columns` wide, so it is plain.
+    let complex = if wider_than_allocated {
+        false
+    } else if cells.len() > 1 {
         true
     } else {
         let summed: usize = text.chars().map(|c| c.width().unwrap_or(0)).sum();

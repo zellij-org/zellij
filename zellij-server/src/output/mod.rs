@@ -963,7 +963,9 @@ fn push_decimal(out: &mut String, value: usize) {
 //                 so the rest of the row lands where our grid says regardless of how far
 //                 the host's cursor actually moved
 // Plain text, where every width agrees, is written as is so ordinary output costs nothing
-// extra.
+// extra. A cluster wider than the columns the unit was stored in is not sent at all:
+// `prepare_unit` replaces it with one space per allocated column. Repositioning the cursor
+// cannot take back a glyph the host has already painted into the next cell.
 /// A clipped plain wide glyph is stored in one column, but the host draws the
 /// original character at its Unicode width. Emit one space per stored column
 /// instead of that character.

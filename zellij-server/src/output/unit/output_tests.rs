@@ -2994,6 +2994,37 @@ fn clipped_wide_cjk_is_emitted_as_a_single_column_placeholder() {
 }
 
 #[test]
+fn a_one_column_clipped_cluster_is_not_written_wider_than_its_cell() {
+    // Attached and grouped units go through `write_unit_text`. A one-column cell whose
+    // cluster is two columns wide must not be written before the sentinel: the host paints
+    // that cluster into the next column, and a later cursor move does not undo it.
+    let cases: [&[(&str, usize)]; 2] = [
+        &[("你\u{0301}", 1), ("X", 1)],
+        &[("\u{1F468}\u{200D}\u{1F469}", 1), ("X", 1)],
+    ];
+    for parts in cases {
+        for grouped in [false, true] {
+            let cells = cells_of(parts);
+            let chunk = if grouped {
+                grouped_chunk(cells, 0, 0)
+            } else {
+                CharacterChunk::new(cells, 0, 0)
+            };
+            let output = ansi_for(chunk, None);
+            let sentinel = output.find('X').expect("sentinel");
+            let before = &output[..sentinel];
+            assert!(
+                !before.contains('你')
+                    && !before.contains('\u{1F468}')
+                    && !before.contains('\u{1F469}'),
+                "grouped={grouped} output={output:?}"
+            );
+            assert_eq!(output, "\u{1b}[1;1H\u{1b}[m X", "grouped={grouped}");
+        }
+    }
+}
+
+#[test]
 fn a_plain_ascii_chunk_serializes_exactly_as_before() {
     let output = ansi_for(create_character_chunk_from_str("abc", 2, 1), None);
     assert_eq!(output, "\u{1b}[2;3H\u{1b}[mabc");
