@@ -4001,6 +4001,21 @@ impl Screen {
         token
     }
 
+    /// Register a query the pane has just been paused on. Output may have
+    /// piled up behind it while the instruction was queued, or while the
+    /// pane was being created, so the buffer limit is checked again.
+    pub fn handle_forward_host_query(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+    ) -> u32 {
+        let token = self.forward_host_query(pane_id, query);
+        if let PaneId::Terminal(pid) = pane_id {
+            self.enforce_forward_buffer_limit(pid);
+        }
+        token
+    }
+
     fn enqueue_clipboard_forward(
         &mut self,
         pane_id: PaneId,
@@ -4214,6 +4229,62 @@ impl Screen {
             self.dispatch_forward(next.token, next.pane_id, next.query);
         }
         Ok(())
+    }
+
+    /// Stop waiting for the host to answer the query `pane_id` is paused
+    /// on, exactly as if the server-side timeout had fired: the pane gets
+    /// the cache-synthesized (or empty) reply and processes the output it
+    /// buffered meanwhile. A reply that arrives later is dropped as stale
+    /// by the token guard. Returns `false` if no forward for the pane is
+    /// registered yet (its `ForwardHostQuery` is still in the queue).
+    pub fn stop_waiting_for_forward_reply(&mut self, pane_id: PaneId) -> Result<bool> {
+        let in_flight_token = self
+            .forward_in_flight_token
+            .into_iter()
+            .chain(self.clipboard_forward_in_flight_token)
+            .find(|token| {
+                [
+                    &self.pending_forwarded_queries,
+                    &self.pending_clipboard_forwards,
+                ]
+                .iter()
+                .any(|entries| entries.get(token).map(|e| e.pane_id) == Some(pane_id))
+            });
+        if let Some(token) = in_flight_token {
+            if self.clipboard_forward_in_flight_token == Some(token) {
+                // The client still has its window open for this query and
+                // would attribute the host's late answer to whichever
+                // clipboard query it opens next. Resume the pane but keep
+                // the slot until the client's reply or timeout for this
+                // token arrives; that reply then finds no entry and is
+                // dropped, and only then does the next query dispatch.
+                if let Some(entry) = self.pending_clipboard_forwards.remove(&token) {
+                    self.resume_pane_after_forward(pane_id, entry.query.empty_reply_bytes())?;
+                    return Ok(true);
+                }
+            }
+            self.handle_forwarded_reply_from_host(token, Vec::new())?;
+            return Ok(true);
+        }
+        // The forward may still be queued behind another pane's.
+        if let Some(index) = self.forward_queue.iter().position(|f| f.pane_id == pane_id) {
+            if let Some(queued) = self.forward_queue.remove(index) {
+                let payload = self.synthesize_cached_reply(&queued.query);
+                self.resume_pane_after_forward(pane_id, payload)?;
+                return Ok(true);
+            }
+        }
+        if let Some(index) = self
+            .clipboard_forward_queue
+            .iter()
+            .position(|f| f.pane_id == pane_id)
+        {
+            if let Some(queued) = self.clipboard_forward_queue.remove(index) {
+                self.resume_pane_after_forward(pane_id, queued.query.empty_reply_bytes())?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// Deliver a forwarded reply (or cache-fallback synthesis, or a
@@ -9370,6 +9441,30 @@ impl Screen {
             .or(reason_from_tabs)
             .unwrap_or(PaneNotCreatedReason::Unknown)
     }
+    /// If terminal pane `pid` is paused on a host query with more output
+    /// buffered than it may hold, stop waiting for the reply, the same as
+    /// when the timeout fires. Does nothing while the pane's
+    /// `ForwardHostQuery` is still in the queue; it is checked again when
+    /// that forward is registered.
+    fn enforce_forward_buffer_limit(&mut self, pid: u32) {
+        let exceeded = self
+            .tabs
+            .values()
+            .any(|tab| tab.pending_pty_input_exceeds_forward_limit(pid));
+        if !exceeded {
+            return;
+        }
+        let stopped = self.stop_waiting_for_forward_reply(PaneId::Terminal(pid));
+        if matches!(stopped, Ok(true)) {
+            log::warn!(
+                "pane {} buffered more than {} bytes of output while waiting for a host \
+                 terminal reply; resuming without waiting for it",
+                pid,
+                crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED
+            );
+        }
+        stopped.map(|_| ()).non_fatal();
+    }
     fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
         self.pane_output_activity
             .insert(PaneId::Terminal(pid), Instant::now());
@@ -9393,6 +9488,7 @@ impl Screen {
                 break;
             }
         }
+        self.enforce_forward_buffer_limit(pid);
         if title_changed {
             self.generate_and_report_pane_state()
                 .map(|_| ())
@@ -13320,7 +13416,7 @@ pub(crate) fn screen_thread_main(
                 screen.handle_render_frame_ack(client_id, seq)?;
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
-                screen.forward_host_query(pane_id, query);
+                screen.handle_forward_host_query(pane_id, query);
             },
             ScreenInstruction::NestedSessionMessageFromPane { pane_id, message } => {
                 screen.handle_nested_session_message_from_pane(pane_id, message);

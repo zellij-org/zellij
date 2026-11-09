@@ -12,10 +12,10 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
-use crate::vt_parser;
+use crate::vt_parser::{self, Handler as _};
 use crate::ClientId;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
@@ -40,6 +40,21 @@ use zellij_utils::{
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
+
+/// Most output a pane may have buffered behind an unanswered host
+/// query. Past this the server stops waiting for the host reply and
+/// resumes the pane as if the reply had timed out.
+#[cfg(not(test))]
+pub const MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED: usize = 4 * 1024 * 1024;
+// Smaller under test so that exceeding it does not mean pushing megabytes
+// through the unoptimized grid.
+#[cfg(test)]
+pub const MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED: usize = 256 * 1024;
+
+/// Pending PTY bytes are scanned for kitty graphics APCs in blocks of
+/// this size, so that resuming after a query does not rescan the whole
+/// buffered remainder.
+const PTY_SCAN_BLOCK_SIZE: usize = 16 * 1024;
 
 // Some keys in different formats but are used in the code
 const LEFT_ARROW: &[u8] = &[27, 91, 68];
@@ -174,13 +189,19 @@ pub struct TerminalPane {
     guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
     guest_session_name: Option<String>,
     guest_modal_shortcuts: GuestModalShortcuts,
-    /// PTY bytes that have not yet been fed to vte. Single source of
-    /// truth: `handle_pty_bytes` always appends here, and processing
-    /// pops one byte at a time and advances the vte parser. Processing
-    /// stops as soon as Grid produces a forward-bound query, leaving
-    /// remaining bytes in the queue to be drained after the host reply
-    /// has been written.
-    pending_pty_input: VecDeque<u8>,
+    /// PTY bytes that have not yet been fed to vte, starting at
+    /// `pending_pty_offset` (everything before it was already consumed).
+    /// While the pane is forward-paused `handle_pty_bytes` appends here;
+    /// processing feeds the bytes front to back, advancing the offset
+    /// past what was consumed, and stops as soon as Grid produces a
+    /// forward-bound query. The remainder stays in place, so a resume
+    /// continues where processing stopped instead of re-copying it.
+    pending_pty_input: Vec<u8>,
+    pending_pty_offset: usize,
+    /// Total bytes copied into `pending_pty_input`, to let tests check
+    /// that resuming does not re-copy the buffered remainder.
+    #[cfg(test)]
+    pending_bytes_appended: usize,
     held_escape: bool,
     kitty_interceptor: KittyApcInterceptor,
     mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
@@ -244,102 +265,25 @@ impl Pane for TerminalPane {
         };
         if self.forward_paused {
             // A host-forward initiated by this pane is outstanding.
-            // Buffer the bytes; Tab drains them on resume.
-            self.pending_pty_input.extend(bytes);
+            // Buffer the bytes; Tab resumes processing them in order.
+            self.append_pending_pty_input(&bytes);
             return;
         }
-        if self.kitty_interceptor.is_ground() && memchr::memmem::find(&bytes, b"\x1b_").is_none() {
-            let ends_in_escape = bytes.last() == Some(&0x1b);
-            let head = if ends_in_escape {
-                &bytes[..bytes.len() - 1]
-            } else {
-                &bytes[..]
-            };
-            let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
-            if consumed < head.len() {
-                self.pending_pty_input.extend(&bytes[consumed..]);
-            } else if ends_in_escape {
-                self.held_escape = true;
+        if self.pending_pty_offset == self.pending_pty_input.len() {
+            // Nothing is queued ahead of these bytes: feed them straight
+            // from the caller's buffer and keep only what was not
+            // consumed.
+            let (consumed, replay) = self.feed_pty_bytes(&bytes);
+            if !replay.is_empty() {
+                self.append_pending_pty_input(&replay);
+            }
+            if consumed < bytes.len() {
+                self.append_pending_pty_input(&bytes[consumed..]);
             }
             return;
         }
-        let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
-        let mut index = 0;
-        let mut capture_started = false;
-        while index < bytes.len() {
-            if self.kitty_interceptor.is_ground() {
-                let rest = &bytes[index..];
-                let run = rest
-                    .iter()
-                    .position(|byte| *byte == 0x1b)
-                    .unwrap_or(rest.len());
-                if run > 0 {
-                    capture_started = false;
-                    forwarded.extend_from_slice(&rest[..run]);
-                    index += run;
-                    continue;
-                }
-            }
-            let byte = bytes[index];
-            index += 1;
-            match self.kitty_interceptor.advance(byte) {
-                InterceptorResult::Forward(fwd) => {
-                    capture_started = false;
-                    forwarded.extend_from_slice(fwd.as_slice());
-                },
-                InterceptorResult::Swallow => {
-                    if !capture_started {
-                        capture_started = true;
-                        // Drain everything before the sequence now, so a pause
-                        // in the middle of this flush can never strand a
-                        // capture that has already left the input buffer.
-                        if !forwarded.is_empty() {
-                            let consumed = self
-                                .vte_parser
-                                .feed_until_paused(&mut self.grid, &forwarded);
-                            if consumed < forwarded.len() {
-                                self.pending_pty_input.extend(&forwarded[consumed..]);
-                                self.pending_pty_input.extend(&bytes[index - 1..]);
-                                self.kitty_interceptor.reset();
-                                return;
-                            }
-                            forwarded.clear();
-                        }
-                    }
-                },
-                InterceptorResult::Captured(cmd) => {
-                    capture_started = false;
-                    if !forwarded.is_empty() {
-                        let consumed = self
-                            .vte_parser
-                            .feed_until_paused(&mut self.grid, &forwarded);
-                        if consumed < forwarded.len() {
-                            self.pending_pty_input.extend(&forwarded[consumed..]);
-                            self.pending_pty_input.extend(b"\x1b_G");
-                            self.pending_pty_input.extend(&cmd);
-                            self.pending_pty_input.extend(b"\x1b\\");
-                            self.pending_pty_input.extend(&bytes[index..]);
-                            return;
-                        }
-                        forwarded.clear();
-                    }
-                    self.grid.handle_kitty_apc(&cmd);
-                    if !self.grid.pending_forwarded_queries.is_empty() {
-                        // Grid produced a forward. Stop feeding; queue the
-                        // un-fed remainder so Tab can replay it after the
-                        // reply.
-                        self.pending_pty_input.extend(&bytes[index..]);
-                        return;
-                    }
-                },
-            }
-        }
-        let consumed = self
-            .vte_parser
-            .feed_until_paused(&mut self.grid, &forwarded);
-        if consumed < forwarded.len() {
-            self.pending_pty_input.extend(&forwarded[consumed..]);
-        }
+        self.append_pending_pty_input(&bytes);
+        self.process_pending_pty_input();
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
@@ -1002,7 +946,20 @@ impl Pane for TerminalPane {
     }
 
     fn drain_pending_pty_input(&mut self) -> Vec<u8> {
-        self.pending_pty_input.drain(..).collect()
+        let mut pending = std::mem::take(&mut self.pending_pty_input);
+        pending.drain(..self.pending_pty_offset);
+        self.pending_pty_offset = 0;
+        pending
+    }
+
+    fn has_pending_pty_input(&self) -> bool {
+        self.pending_pty_offset < self.pending_pty_input.len()
+    }
+
+    fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
+        self.forward_paused
+            && self.pending_pty_input.len() - self.pending_pty_offset
+                > MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED
     }
 
     fn is_forward_paused(&self) -> bool {
@@ -1587,6 +1544,140 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    #[cfg(test)]
+    pub(crate) fn pending_bytes_appended(&self) -> usize {
+        self.pending_bytes_appended
+    }
+
+    fn append_pending_pty_input(&mut self, bytes: &[u8]) {
+        #[cfg(test)]
+        {
+            self.pending_bytes_appended += bytes.len();
+        }
+        self.pending_pty_input.extend_from_slice(bytes);
+    }
+
+    /// Feed the queued PTY bytes to vte front to back. Only the bytes
+    /// that were consumed are skipped, so the unprocessed remainder is
+    /// never copied: each byte is fed once, however many forward-bound
+    /// queries interrupt the stream.
+    fn process_pending_pty_input(&mut self) {
+        let mut buffer = std::mem::take(&mut self.pending_pty_input);
+        let start = self.pending_pty_offset;
+        let (consumed, replay) = self.feed_pty_bytes(&buffer[start..]);
+        let mut offset = start + consumed;
+        if !replay.is_empty() {
+            buffer.splice(offset..offset, replay);
+        }
+        if offset == buffer.len() {
+            buffer.clear();
+            offset = 0;
+            if buffer.capacity() > PTY_SCAN_BLOCK_SIZE * 4 {
+                // Don't keep a multi-megabyte allocation per pane after a
+                // burst of buffered output.
+                buffer = Vec::new();
+            }
+        } else if offset >= buffer.len() / 2 {
+            // Reclaim the consumed prefix once it is at least as large as
+            // what remains, so the cost is paid for by the consumed bytes.
+            buffer.drain(..offset);
+            offset = 0;
+        }
+        self.pending_pty_input = buffer;
+        self.pending_pty_offset = offset;
+    }
+
+    /// Feed `bytes` through the kitty graphics interceptor and the vte
+    /// parser, stopping as soon as Grid produces a forward-bound query.
+    /// Returns how many leading bytes were consumed. If stopping in the
+    /// middle of bytes the interceptor was already holding from an
+    /// earlier call, those bytes are returned as well; they have to be
+    /// put back in front of the unconsumed remainder.
+    fn feed_pty_bytes(&mut self, bytes: &[u8]) -> (usize, Vec<u8>) {
+        let mut pos = 0;
+        while pos < bytes.len() {
+            if self.grid.paused() {
+                return (pos, Vec::new());
+            }
+            let end = (pos + PTY_SCAN_BLOCK_SIZE).min(bytes.len());
+            let block = &bytes[pos..end];
+            if self.kitty_interceptor.is_ground() && memchr::memmem::find(block, b"\x1b_").is_none()
+            {
+                let ends_in_escape = block.last() == Some(&0x1b);
+                let head = if ends_in_escape {
+                    &block[..block.len() - 1]
+                } else {
+                    block
+                };
+                let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
+                pos += consumed;
+                if consumed < head.len() {
+                    return (pos, Vec::new());
+                }
+                if ends_in_escape && end == bytes.len() {
+                    self.held_escape = true;
+                    pos = end;
+                }
+                continue;
+            }
+            let mut index = pos;
+            while index < end {
+                if self.grid.paused() {
+                    return (index, Vec::new());
+                }
+                if self.kitty_interceptor.is_ground() {
+                    let rest = &bytes[index..end];
+                    let run = rest
+                        .iter()
+                        .position(|byte| *byte == 0x1b)
+                        .unwrap_or(rest.len());
+                    if run > 0 {
+                        let consumed = self
+                            .vte_parser
+                            .feed_until_paused(&mut self.grid, &rest[..run]);
+                        index += consumed;
+                        if consumed < run {
+                            return (index, Vec::new());
+                        }
+                        continue;
+                    }
+                }
+                let byte = bytes[index];
+                index += 1;
+                match self.kitty_interceptor.advance(byte) {
+                    InterceptorResult::Forward(forwarded) => {
+                        let forwarded = forwarded.as_slice();
+                        let consumed = self.vte_parser.feed_until_paused(&mut self.grid, forwarded);
+                        if consumed < forwarded.len() {
+                            // Paused part way through bytes the interceptor
+                            // had been holding. Replay the rest from a
+                            // clean interceptor state, including the
+                            // current byte if the interceptor kept it.
+                            let holds_current_byte =
+                                byte == 0x1b && !self.kitty_interceptor.is_ground();
+                            let mut replay = forwarded[consumed..].to_vec();
+                            if holds_current_byte {
+                                replay.push(0x1b);
+                            }
+                            self.kitty_interceptor.reset();
+                            return if index >= replay.len() {
+                                (index - replay.len(), Vec::new())
+                            } else {
+                                (index, replay)
+                            };
+                        }
+                    },
+                    InterceptorResult::Swallow => {},
+                    InterceptorResult::Captured(cmd) => {
+                        self.grid.handle_kitty_apc(&cmd);
+                    },
+                }
+            }
+            pos = index;
+        }
+        (bytes.len(), Vec::new())
+    }
+
     fn title_with_bell_indicator(&self, title: String) -> String {
         if self.has_bell_notification && !self.attention_markers_enabled {
             format!("{} [!]", title)
@@ -1714,7 +1805,10 @@ impl TerminalPane {
             guest_choice_indicators: HashMap::new(),
             guest_session_name: None,
             guest_modal_shortcuts: GuestModalShortcuts::default(),
-            pending_pty_input: VecDeque::new(),
+            pending_pty_input: Vec::new(),
+            pending_pty_offset: 0,
+            #[cfg(test)]
+            pending_bytes_appended: 0,
             held_escape: false,
             kitty_interceptor: KittyApcInterceptor::new(),
             mirror_pinned_size: None,

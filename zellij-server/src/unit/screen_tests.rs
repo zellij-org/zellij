@@ -11210,6 +11210,354 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
     );
 }
 
+// A stream of numbered lines, each followed by a query that is
+// forwarded to the host terminal. The queries cover the BEL and ST
+// terminators; ST makes vte pause on the ESC of `ESC \`, in the middle of
+// bytes the kitty interceptor was holding. With `noise`, an unrelated APC
+// follows every line so that the stream takes the interceptor path.
+fn numbered_lines_with_queries(count: usize, noise: bool) -> (Vec<u8>, Vec<String>) {
+    let queries: [&[u8]; 4] = [
+        b"\x1b[14t",
+        b"\x1b[16t",
+        b"\x1b]11;?\x07",
+        b"\x1b]10;?\x1b\\",
+    ];
+    let mut stream = Vec::new();
+    let mut lines = Vec::new();
+    for i in 0..count {
+        let line = format!("line{:04}", i);
+        stream.extend_from_slice(line.as_bytes());
+        stream.extend_from_slice(b"\r\n");
+        if noise {
+            stream.extend_from_slice(b"\x1b_Xnoise\x1b\\");
+        }
+        stream.extend_from_slice(queries[i % queries.len()]);
+        lines.push(line);
+    }
+    (stream, lines)
+}
+
+fn screen_lines_starting_with_line(pane: &TerminalPane) -> Vec<String> {
+    pane.dump_screen(true, None)
+        .lines()
+        .map(|l| l.trim().to_owned())
+        .filter(|l| l.starts_with("line"))
+        .collect()
+}
+
+/// What Tab does after each batch of bytes: a forward arms the pause.
+fn arm_pause_if_forwarded(pane: &mut TerminalPane, queries_seen: &mut usize) {
+    let forwarded = pane.drain_forwarded_queries().len();
+    if forwarded > 0 {
+        *queries_seen += forwarded;
+        pane.arm_forward_pause();
+    }
+}
+
+/// What Tab does when a reply (or the timeout) resumes a paused pane.
+fn resume_paused_pane(pane: &mut TerminalPane, queries_seen: &mut usize) {
+    while pane.is_forward_paused() {
+        pane.clear_forward_pause();
+        if pane.has_pending_pty_input() {
+            pane.handle_pty_bytes(Vec::new());
+        }
+        arm_pause_if_forwarded(pane, queries_seen);
+    }
+}
+
+#[test]
+fn buffered_output_behind_many_queries_is_processed_once_in_order() {
+    for noise in [false, true] {
+        let count = 200;
+        let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+        let mut pane = new_terminal_pane_for_pause_test(1);
+        pane.arm_forward_pause();
+        for chunk in stream.chunks(1000) {
+            pane.handle_pty_bytes(chunk.to_vec());
+        }
+        let mut queries_seen = 0;
+        assert_eq!(
+            pane.drain_forwarded_queries().len(),
+            0,
+            "nothing is processed while paused"
+        );
+        resume_paused_pane(&mut pane, &mut queries_seen);
+
+        assert_eq!(queries_seen, count, "every query is forwarded exactly once");
+        assert_eq!(
+            screen_lines_starting_with_line(&pane),
+            expected_lines,
+            "every line is printed once, in order (noise: {noise})"
+        );
+        assert!(!pane.has_pending_pty_input());
+        assert_eq!(
+            pane.pending_bytes_appended(),
+            stream.len(),
+            "each byte is buffered once; resuming after a query must not \
+             re-copy the buffered remainder (noise: {noise})"
+        );
+    }
+}
+
+#[test]
+fn unbuffered_output_with_many_queries_is_processed_once_in_order() {
+    for noise in [false, true] {
+        let count = 200;
+        let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+        let mut pane = new_terminal_pane_for_pause_test(1);
+        let mut queries_seen = 0;
+        pane.handle_pty_bytes(stream);
+        arm_pause_if_forwarded(&mut pane, &mut queries_seen);
+        resume_paused_pane(&mut pane, &mut queries_seen);
+
+        assert_eq!(queries_seen, count);
+        assert_eq!(screen_lines_starting_with_line(&pane), expected_lines);
+        assert!(!pane.has_pending_pty_input());
+    }
+}
+
+#[test]
+fn output_split_at_every_boundary_around_queries_is_processed_in_order() {
+    // Odd chunk sizes land chunk ends inside escape sequences, with the
+    // pane sometimes paused (bytes buffered) and sometimes not.
+    for noise in [false, true] {
+        for chunk_size in [1, 2, 3, 5, 7, 13] {
+            let count = 40;
+            let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+            let mut pane = new_terminal_pane_for_pause_test(1);
+            let mut queries_seen = 0;
+            for (i, chunk) in stream.chunks(chunk_size).enumerate() {
+                pane.handle_pty_bytes(chunk.to_vec());
+                arm_pause_if_forwarded(&mut pane, &mut queries_seen);
+                if i % 3 == 2 {
+                    resume_paused_pane(&mut pane, &mut queries_seen);
+                }
+            }
+            resume_paused_pane(&mut pane, &mut queries_seen);
+
+            assert_eq!(
+                queries_seen, count,
+                "chunk size {chunk_size}, noise {noise}"
+            );
+            assert_eq!(
+                screen_lines_starting_with_line(&pane),
+                expected_lines,
+                "chunk size {chunk_size}, noise {noise}"
+            );
+            assert!(!pane.has_pending_pty_input());
+        }
+    }
+}
+
+#[test]
+fn pane_reports_when_buffered_output_exceeds_the_forward_limit() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    assert!(!pane.pending_pty_input_exceeds_forward_limit());
+    pane.arm_forward_pause();
+    pane.handle_pty_bytes(vec![b'x'; LIMIT]);
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "exactly the limit is still allowed"
+    );
+    pane.handle_pty_bytes(vec![b'x']);
+    assert!(pane.pending_pty_input_exceeds_forward_limit());
+    pane.clear_forward_pause();
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "only a paused pane is waiting on a reply"
+    );
+}
+
+#[test]
+fn output_buffered_behind_a_host_query_is_capped() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // The pane asks the host a question that is never answered.
+    screen
+        .apply_pty_bytes(1, b"before\x1b[14t".to_vec())
+        .unwrap();
+    let token = screen.forward_host_query(pane_id, crate::host_query::HostQuery::TextAreaPixelSize);
+    assert_eq!(capture.drain_forward_queries().len(), 1);
+    let is_paused = |screen: &mut Screen| {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.get_pane_with_id(pane_id).unwrap().is_forward_paused()
+    };
+    assert!(is_paused(&mut screen));
+
+    // The pane keeps writing. Up to the limit the output is held back.
+    let chunk = vec![b'x'; 16 * 1024];
+    let mut sent = 0;
+    while sent + chunk.len() <= LIMIT {
+        screen.apply_pty_bytes(1, chunk.clone()).unwrap();
+        sent += chunk.len();
+        assert!(is_paused(&mut screen), "still waiting at {sent} bytes");
+    }
+    assert!(!screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .pending_pty_input_exceeds_forward_limit(1));
+
+    // The chunk that crosses the limit ends the wait, as the timeout would.
+    screen.apply_pty_bytes(1, chunk.clone()).unwrap();
+    assert!(
+        !is_paused(&mut screen),
+        "the pane resumes once over the limit"
+    );
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert!(
+        pane.dump_screen(true, None).contains("xxxx"),
+        "the buffered output was processed"
+    );
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "nothing is left buffered over the limit"
+    );
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+
+    // The reply that finally arrives is stale and must not touch the pane.
+    screen
+        .handle_forwarded_reply_from_host(token, b"\x1b[4;100;200t".to_vec())
+        .unwrap();
+    assert!(capture.drain_pty_writes().is_empty());
+}
+
+fn pane_is_forward_paused(screen: &mut Screen, pane_id: PaneId) -> bool {
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.get_pane_with_id(pane_id).unwrap().is_forward_paused()
+}
+
+#[test]
+fn a_pane_flooding_queries_cannot_keep_more_than_the_limit_buffered() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // The host never answers, and the pane never stops asking.
+    screen.apply_pty_bytes(1, b"\x1b[14t".to_vec()).unwrap();
+    screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
+    let flood = b"\x1b[14t".repeat(20_000);
+    for round in 0..(4 * LIMIT / flood.len() + 4) {
+        screen.apply_pty_bytes(1, flood.clone()).unwrap();
+        if pane_is_forward_paused(&mut screen, pane_id) && screen.forward_in_flight_token.is_none()
+        {
+            // The pane paused on another query; its instruction is handled.
+            screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
+        }
+        assert!(
+            !screen
+                .get_active_tab_mut(1)
+                .unwrap()
+                .pending_pty_input_exceeds_forward_limit(1),
+            "buffer over the limit after round {round}"
+        );
+    }
+}
+
+#[test]
+fn output_buffered_while_the_forward_was_queued_is_capped_once_it_is_registered() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // Replaying the output of a pane that was just created: the pane
+    // pauses on its query and buffers the rest, but the ForwardHostQuery
+    // instruction is only handled afterwards.
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.handle_pty_bytes(1, b"\x1b[14t".to_vec()).unwrap();
+    tab.handle_pty_bytes(1, vec![b'x'; LIMIT + 1]).unwrap();
+    assert!(tab.pending_pty_input_exceeds_forward_limit(1));
+    assert!(pane_is_forward_paused(&mut screen, pane_id));
+
+    screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
+
+    assert!(!pane_is_forward_paused(&mut screen, pane_id));
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert!(pane.dump_screen(true, None).contains("xxxx"));
+    assert!(!pane.has_pending_pty_input());
+}
+
+#[test]
+fn the_limit_applies_to_a_pane_hidden_behind_the_scrollback_editor() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    // Pane 1 is stored under the key of the editor pane that replaced it.
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(1))
+        .unwrap();
+
+    screen
+        .apply_pty_bytes(1, b"before\x1b[14t".to_vec())
+        .unwrap();
+    screen.handle_forward_host_query(PaneId::Terminal(1), HostQuery::TextAreaPixelSize);
+    assert!(screen.forward_in_flight_token.is_some());
+
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.handle_pty_bytes(1, vec![b'x'; LIMIT + 1]).unwrap();
+    assert!(tab.pending_pty_input_exceeds_forward_limit(1));
+
+    screen.enforce_forward_buffer_limit(1);
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+    assert!(!screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .pending_pty_input_exceeds_forward_limit(1));
+}
+
+#[test]
+fn a_cancelled_clipboard_read_holds_the_slot_until_the_client_is_done_with_it() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    // Only pane 2 exists, a queued read for a closed pane is skipped.
+    new_tab(&mut screen, 2, 0);
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let second_token = screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+    assert_eq!(capture.drain_forward_queries().len(), 1);
+
+    // Pane 1 is given up on, e.g. because it buffered too much output.
+    assert!(screen
+        .stop_waiting_for_forward_reply(PaneId::Terminal(1))
+        .unwrap());
+    assert_eq!(
+        capture.drain_pty_writes(),
+        vec![(b"\x1b]52;c;\x1b\\".to_vec(), 1)]
+    );
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "dispatching the next read would make the client mix up the two"
+    );
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(first_token));
+    assert_eq!(screen.clipboard_forward_queue.len(), 1);
+
+    // The host's answer to the cancelled read is dropped, not delivered.
+    screen
+        .handle_forwarded_reply_from_host(first_token, b"\x1b]52;c;bGF0ZQ==\x1b\\".to_vec())
+        .unwrap();
+    assert!(capture.drain_pty_writes().is_empty());
+
+    // Only now does the next read go out.
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1);
+    assert_eq!(forwards[0].0, second_token);
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(second_token));
+}
+
 fn create_non_mirrored_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();

@@ -819,11 +819,21 @@ pub trait Pane {
     fn clear_forward_pause(&mut self) -> bool {
         false
     }
-    /// Drain and return any PTY bytes that arrived while the pane was
-    /// forward-paused. Tab calls this on resume and re-feeds the bytes
-    /// through `handle_pty_bytes`. Default empty for non-terminal panes.
+    /// Drain and return any PTY bytes that have been buffered but not
+    /// yet processed. Default empty for non-terminal panes.
     fn drain_pending_pty_input(&mut self) -> Vec<u8> {
         vec![]
+    }
+    /// Whether PTY bytes are buffered waiting to be processed. After
+    /// clearing the forward pause, Tab resumes the pane by calling
+    /// `handle_pty_bytes` with no new bytes.
+    fn has_pending_pty_input(&self) -> bool {
+        false
+    }
+    /// Whether the pane is forward-paused with more buffered output than
+    /// it is allowed to hold while waiting for the host.
+    fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
+        false
     }
     /// Whether this pane is currently waiting for a host-forward reply.
     fn is_forward_paused(&self) -> bool {
@@ -5254,9 +5264,9 @@ impl Tab {
             self.write_to_pane_id_without_preprocessing(reply_bytes, PaneId::Terminal(pid))
                 .with_context(err_context)?;
         }
-        // Clear the pause and pull out any bytes that were buffered
-        // while it waited for the host reply.
-        let buffered = if let Some(terminal_output) = self
+        // Clear the pause; any bytes buffered while it waited for the
+        // host reply are processed in place, in order.
+        let has_buffered = if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
             .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
@@ -5267,18 +5277,37 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             }) {
             terminal_output.clear_forward_pause();
-            terminal_output.drain_pending_pty_input()
+            terminal_output.has_pending_pty_input()
         } else {
             // Pane closed between forward dispatch and reply arrival.
             return Ok(());
         };
-        if !buffered.is_empty() {
-            self.process_pty_bytes(pid, buffered)
+        if has_buffered {
+            self.process_pty_bytes(pid, Vec::new())
                 .with_context(err_context)?;
         }
         Ok(())
     }
-    fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+    /// Whether the terminal pane `pid` is waiting on a host reply with
+    /// more output buffered than it may hold.
+    pub fn pending_pty_input_exceeds_forward_limit(&self, pid: u32) -> bool {
+        // Find the pane the way `process_pty_bytes` does: a pane hidden
+        // behind the scrollback editor is stored under the editor's id.
+        let pane_id = PaneId::Terminal(pid);
+        self.floating_panes
+            .get_pane(pane_id)
+            .map(Box::as_ref)
+            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .map(|s_p| s_p.1.as_ref())
+                    .find(|pane| pane.pid() == pane_id)
+            })
+            .map(|pane| pane.pending_pty_input_exceeds_forward_limit())
+            .unwrap_or(false)
+    }
+    fn process_pty_bytes(&mut self, pid: u32, mut bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
         if let Some(terminal_output) = self
@@ -5301,21 +5330,44 @@ impl Tab {
                 )
                 .with_context(err_context)?;
             }
-            terminal_output.handle_pty_bytes(bytes);
-            let messages_to_pty = terminal_output.drain_messages_to_pty();
-            let forwarded_queries = terminal_output.drain_forwarded_queries();
-            // If at least one forward was produced, the pane stopped
-            // processing its `pending_pty_input` queue at the byte
-            // that produced the forward. Arm the pause so subsequent
-            // PTY bytes accumulate in the same queue rather than
-            // being processed; they will be drained in stream order
-            // when the host reply (or cache-fallback synthesis, or
-            // 500 ms timeout) lands via `resume_pane_after_forward`.
-            // Pause arming is independent of which forward bears the
-            // reply: resume is keyed by pane_id, not by token, so a
-            // single flag suffices for any number of queued forwards.
-            if !forwarded_queries.is_empty() {
+            let mut messages_to_pty = vec![];
+            let mut dropped_queries = 0;
+            let forwarded_queries = loop {
+                terminal_output.handle_pty_bytes(std::mem::take(&mut bytes));
+                messages_to_pty.extend(terminal_output.drain_messages_to_pty());
+                let forwarded_queries = terminal_output.drain_forwarded_queries();
+                if forwarded_queries.is_empty() {
+                    break forwarded_queries;
+                }
+                // If at least one forward was produced, the pane stopped
+                // processing its `pending_pty_input` queue at the byte
+                // that produced the forward. Arm the pause so subsequent
+                // PTY bytes accumulate in the same queue rather than
+                // being processed; they will be drained in stream order
+                // when the host reply (or cache-fallback synthesis, or
+                // 500 ms timeout) lands via `resume_pane_after_forward`.
+                // Pause arming is independent of which forward bears the
+                // reply: resume is keyed by pane_id, not by token, so a
+                // single flag suffices for any number of queued forwards.
                 terminal_output.arm_forward_pause();
+                if !terminal_output.pending_pty_input_exceeds_forward_limit() {
+                    break forwarded_queries;
+                }
+                // Too much output is queued behind this query to wait
+                // for the host. Leave the query unanswered and keep
+                // processing, so that a pane flooding queries cannot keep
+                // the buffer above the limit one query at a time.
+                terminal_output.clear_forward_pause();
+                dropped_queries += forwarded_queries.len();
+            };
+            if dropped_queries > 0 {
+                log::warn!(
+                    "pane {} has more than {} bytes of output queued behind host terminal \
+                     queries; not forwarding {} of them",
+                    pid,
+                    crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED,
+                    dropped_queries
+                );
             }
             let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
