@@ -58,9 +58,10 @@ use attributes::{
 };
 pub(crate) use attributes::{startup_attributes, WindowOptions};
 use platform::{
-    activate_app, is_wayland, named, set_accessory, set_option_as_alt, set_see_through,
-    skip_taskbar, square_without_system_border, tray_work_area, with_activation_token,
-    with_option_as_alt, Activation, Shell, WindowMemory,
+    activate_app, bring_opened_window_forward, created_hidden, is_wayland, named, set_accessory,
+    set_option_as_alt, set_see_through, show_cloaked, skip_taskbar, square_without_system_border,
+    tray_work_area, uncloak, with_activation_token, with_option_as_alt, Activation, Shell,
+    WindowMemory,
 };
 pub(crate) use run::{
     as_panel, run, run_desktop, run_notice, terminal_app, with_activation, TerminalWindow,

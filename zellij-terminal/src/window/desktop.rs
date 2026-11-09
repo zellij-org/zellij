@@ -65,10 +65,19 @@ struct PanelWindow {
     on_edge: bool,
 }
 
+/// Where the panel was and how big it was when it last closed, so it opens there again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PanelFrame {
+    cols: usize,
+    rows: usize,
+    position: Option<(f64, f64)>,
+}
+
 struct Pending {
     prepared: PreparedWindow,
     anchor: Option<Anchor>,
     token: Option<String>,
+    position: Option<(f64, f64)>,
 }
 
 struct World<'a> {
@@ -104,6 +113,7 @@ pub(crate) struct Desktop {
     pending: HashMap<u64, Pending>,
     arrived: HashMap<u64, Connection>,
     panel: Option<PanelWindow>,
+    panel_frame: Option<PanelFrame>,
     activation: super::Activation,
 }
 
@@ -120,6 +130,7 @@ impl Desktop {
             pending: HashMap::new(),
             arrived: HashMap::new(),
             panel: None,
+            panel_frame: None,
             activation: super::Activation::new(),
         }
     }
@@ -213,7 +224,7 @@ impl Desktop {
             Effect::Discard { ticket } => self.discard(ticket),
             Effect::ClosePanel => self.close_panel(),
             Effect::ReleasePanel => {
-                if let Some(mut panel) = self.panel.take() {
+                if let Some(mut panel) = self.take_panel() {
                     if let Some(mut session) = panel.app.take_session() {
                         session.collect();
                     }

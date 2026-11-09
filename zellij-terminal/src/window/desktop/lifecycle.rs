@@ -145,6 +145,7 @@ impl Desktop {
                 prepared,
                 anchor: None,
                 token,
+                position: None,
             },
         );
         let spawned = std::thread::Builder::new()
@@ -224,6 +225,9 @@ impl Desktop {
         if verdict == Verdict::Close {
             self.drop_window(ticket);
             return false;
+        }
+        if let Some(window) = self.windows.get(&ticket).and_then(|app| app.window()) {
+            crate::window::bring_opened_window_forward(window);
         }
         true
     }

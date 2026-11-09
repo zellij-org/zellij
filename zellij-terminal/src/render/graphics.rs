@@ -60,8 +60,16 @@ pub fn create_context(
     for request in context_attempts(platform) {
         match unsafe { display.create_context(config, &request.attributes(handle)) } {
             Ok(context) => {
-                if platform != Platform::Linux {
-                    report!("drawing through {}", request.describe());
+                // Every window and panel opening gets here, so only a fallback is worth saying
+                // out loud; the usual choice goes to the log.
+                if refusals.is_empty() {
+                    log::info!("drawing through {}", request.describe());
+                } else {
+                    report!(
+                        "drawing through {} ({})",
+                        request.describe(),
+                        refusals.join("; ")
+                    );
                 }
                 return Ok(context);
             },

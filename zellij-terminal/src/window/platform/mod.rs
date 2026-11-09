@@ -10,5 +10,6 @@ pub(super) use macos::{
 };
 pub(super) use wayland::{is_wayland, named, with_activation_token, Activation};
 pub(super) use windows::{
-    skip_taskbar, square_without_system_border, tray_work_area, Shell, WindowMemory,
+    bring_opened_window_forward, created_hidden, show_cloaked, skip_taskbar,
+    square_without_system_border, tray_work_area, uncloak, Shell, WindowMemory,
 };
