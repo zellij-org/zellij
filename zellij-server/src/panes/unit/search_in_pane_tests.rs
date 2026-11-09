@@ -838,10 +838,41 @@ fn move_down_rows_prepends_new_matches_in_search_order() {
     terminal_pane
         .grid
         .search_results
-        .move_down_rows(2, &viewport, 3);
+        .move_down_rows(2, &viewport, None, 3);
 
     assert_eq!(
         found_ranges(&terminal_pane),
         vec![((0, 0), (0, 1)), ((1, 0), (1, 1)), ((2, 0), (2, 1))]
+    );
+}
+
+#[test]
+fn move_down_rows_whole_word_does_not_match_across_a_soft_wrap() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "bar".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+
+    // `foo` stays above the viewport, so the revealed `bar` is a soft wrap
+    // at index 0. A following hard break is its own word.
+    let above = wrapped_row("foo");
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("bar"));
+    viewport.push_back(wrapped_row("bar").canonical());
+    assert!(!viewport[0].is_canonical);
+    assert!(viewport[1].is_canonical);
+
+    terminal_pane.grid.search_results.move_down_rows(
+        viewport.len(),
+        &viewport,
+        Some(&above),
+        viewport.len(),
+    );
+
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((1, 0), (1, 3))],
+        "soft-wrapped foobar matched whole-word bar, or the hard break did not"
     );
 }

@@ -4601,8 +4601,12 @@ impl Grid {
         if let Some(command_output_flash) = self.command_output_flash.as_mut() {
             command_output_flash.move_down(added);
         }
-        self.search_results
-            .move_down_rows(added, &self.viewport, self.height);
+        self.search_results.move_down_rows(
+            added,
+            &self.viewport,
+            self.lines_above.back(),
+            self.height,
+        );
         self.kitty_refresh_after_scroll_step(reflowed);
         self.output_buffer.update_all_lines();
         added
@@ -6787,8 +6791,12 @@ impl Grid {
         if let Some(command_output_flash) = self.command_output_flash.as_mut() {
             command_output_flash.move_down(added);
         }
-        self.search_results
-            .move_down_rows(added, &self.viewport, self.height);
+        self.search_results.move_down_rows(
+            added,
+            &self.viewport,
+            self.lines_above.back(),
+            self.height,
+        );
         self.kitty_refresh_after_scroll_step(reflowed);
         self.output_buffer.update_all_lines();
     }

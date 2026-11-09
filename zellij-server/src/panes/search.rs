@@ -203,6 +203,27 @@ fn viewport_line<'a>(viewport: &'a VecDeque<Row>, index: usize) -> Vec<&'a Row> 
     rows
 }
 
+/// Whole-word predecessor at the start of a logical line. A canonical row is
+/// a hard break (`None`). A soft wrap uses the last character of the previous
+/// physical row: `row_above` at viewport index 0, otherwise the previous
+/// viewport row.
+fn leading_predecessor<'a>(
+    rows: &[&Row],
+    index: usize,
+    viewport: &'a VecDeque<Row>,
+    row_above: Option<&'a Row>,
+) -> Option<char> {
+    if !rows.first().is_some_and(|row| !row.is_canonical) {
+        return None;
+    }
+    let previous = if index == 0 {
+        row_above
+    } else {
+        viewport.get(index - 1)
+    };
+    previous.and_then(row_last_char)
+}
+
 struct FoldedText {
     text: String,
     original_starts: Vec<(usize, usize)>,
@@ -660,11 +681,13 @@ impl SearchResult {
 
     /// `move_down` for a viewport that jumped `amount` rows in one transfer.
     /// Existing hits shift by the whole distance; only lines still on screen
-    /// are searched, at their final indexes.
+    /// are searched, at their final indexes. `row_above` is the physical row
+    /// just above the viewport, used when a revealed line is a soft wrap.
     pub(crate) fn move_down_rows(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) {
         if amount == 0 {
@@ -683,12 +706,17 @@ impl SearchResult {
         let mut index = 0;
         while index < visible_new {
             let rows = viewport_line(viewport, index);
+            let line_len = rows.len();
             new_selections.extend(
-                self.search_rows(index, &rows)
-                    .into_iter()
-                    .filter(|selection| (selection.start.line() as usize) < visible_new),
+                self.search_line(
+                    index,
+                    &rows,
+                    leading_predecessor(&rows, index, viewport, row_above),
+                )
+                .into_iter()
+                .filter(|selection| (selection.start.line() as usize) < visible_new),
             );
-            index += rows.len();
+            index += line_len;
         }
         self.selections.splice(0..0, new_selections);
     }
@@ -811,16 +839,8 @@ impl Grid {
         while index < self.viewport.len() {
             let rows = viewport_line(&self.viewport, index);
             let line_len = rows.len();
-            let leading_predecessor = if rows.first().is_some_and(|row| !row.is_canonical) {
-                let previous = if index == 0 {
-                    self.lines_above.back()
-                } else {
-                    self.viewport.get(index - 1)
-                };
-                previous.and_then(row_last_char)
-            } else {
-                None
-            };
+            let leading_predecessor =
+                leading_predecessor(&rows, index, &self.viewport, self.lines_above.back());
             let selections = self
                 .search_results
                 .search_line(index, &rows, leading_predecessor);
