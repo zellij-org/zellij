@@ -1,5 +1,5 @@
 use super::*;
-use crate::os_input_output::{ChildPidFd, ServerOsApi};
+use crate::os_input_output::{ChildPidFd, ForegroundSignal, ServerOsApi};
 use crate::plugins::PluginInstruction;
 use crate::thread_bus::Bus;
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -32,6 +32,10 @@ struct MockOsApi {
     spawn_plan: Arc<Mutex<VecDeque<MockSpawnOutcome>>>,
     cleared_terminal_ids: Arc<Mutex<Vec<u32>>>,
     quit_cb: Arc<Mutex<Option<Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>>>>,
+    /// `tcgetpgrp` result. `None` means the master has no foreground group.
+    foreground_pgrp: Arc<Mutex<Option<i32>>>,
+    /// Group-signal attempts `(signal, terminal_id)`. Not numeric shell kills.
+    foreground_group_attempts: Arc<Mutex<Vec<(&'static str, u32)>>>,
 }
 
 impl MockOsApi {
@@ -46,10 +50,15 @@ impl MockOsApi {
             spawn_plan: Arc::new(Mutex::new(VecDeque::new())),
             cleared_terminal_ids: Arc::new(Mutex::new(Vec::new())),
             quit_cb: Arc::new(Mutex::new(None)),
+            foreground_pgrp: Arc::new(Mutex::new(None)),
+            foreground_group_attempts: Arc::new(Mutex::new(Vec::new())),
         }
     }
     fn signals(&self) -> Vec<(&'static str, u32)> {
         self.signals.lock().unwrap().clone()
+    }
+    fn foreground_group_attempts(&self) -> Vec<(&'static str, u32)> {
+        self.foreground_group_attempts.lock().unwrap().clone()
     }
     fn set_cwd(&self, pid: u32, path: PathBuf) {
         self.cwds.lock().unwrap().insert(pid, path);
@@ -154,6 +163,24 @@ impl ServerOsApi for MockOsApi {
     fn send_sigint(&self, pid: u32) -> anyhow::Result<()> {
         self.signals.lock().unwrap().push(("SIGINT", pid));
         Ok(())
+    }
+    fn signal_terminal_foreground_group(
+        &self,
+        terminal_id: u32,
+        signal: ForegroundSignal,
+    ) -> anyhow::Result<bool> {
+        let name = match signal {
+            ForegroundSignal::Interrupt => "SIGINT",
+            ForegroundSignal::Kill => "SIGKILL",
+        };
+        self.foreground_group_attempts
+            .lock()
+            .unwrap()
+            .push((name, terminal_id));
+        // `None` is tcgetpgrp returning no group: killpg is not attempted,
+        // and this is not a numeric signal of the shell pid.
+        let pgid = *self.foreground_pgrp.lock().unwrap();
+        Ok(pgid.filter(|pgid| *pgid > 0).is_some())
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
@@ -1012,6 +1039,60 @@ fn close_pane_uses_the_supplied_pidfd_and_does_not_numeric_kill() {
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert!(pty.child_pidfds.get(&7).is_none());
     assert_eq!(pty.id_to_child_pid.get(&7), None);
+    assert_eq!(mock.signals(), vec![]);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn sigint_and_sigkill_without_a_pidfd_do_not_numeric_kill() {
+    // The mock spawn stores a pid and no pidfd. The foreground group is
+    // unset, so tcgetpgrp is None. Neither signal may fall back to kill(pid).
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
+    assert!(pty.child_pidfds.get(&7).is_none());
+    assert_eq!(*mock.foreground_pgrp.lock().unwrap(), None);
+
+    pty.send_sigint_to_pane(PaneId::Terminal(7));
+    pty.send_sigkill_to_pane(PaneId::Terminal(7));
+
+    assert_eq!(
+        mock.foreground_group_attempts(),
+        vec![("SIGINT", 7), ("SIGKILL", 7)]
+    );
+    assert_eq!(mock.signals(), vec![]);
+    assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn sigint_and_sigkill_use_the_stored_pidfd_when_tcgetpgrp_is_none() {
+    // Opening `/dev/null` is not `pidfd_open`. The mock cannot see the
+    // pidfd syscall; the numeric vec must stay empty and the fd must stay
+    // in the map because the signal borrows it.
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    let fd: ChildPidFd = std::fs::File::open("/dev/null")
+        .expect("open /dev/null")
+        .into();
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+    let generation = pty.child_run_generations.get(&7).copied().unwrap();
+    pty.remember_run(7, Some(4242), Some(fd), generation);
+    assert_eq!(*mock.foreground_pgrp.lock().unwrap(), None);
+
+    pty.send_sigint_to_pane(PaneId::Terminal(7));
+    pty.send_sigkill_to_pane(PaneId::Terminal(7));
+
+    assert_eq!(
+        pty.child_pidfds
+            .get(&7)
+            .map(std::os::fd::AsRawFd::as_raw_fd),
+        Some(raw)
+    );
+    assert_eq!(
+        mock.foreground_group_attempts(),
+        vec![("SIGINT", 7), ("SIGKILL", 7)]
+    );
     assert_eq!(mock.signals(), vec![]);
 }
 

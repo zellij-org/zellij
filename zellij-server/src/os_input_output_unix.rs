@@ -1,5 +1,6 @@
 use crate::os_input_output::{
-    command_exists, AsyncReader, ChildPidFd, PaneEnv, TerminalRunChangedBeforeWrite,
+    command_exists, AsyncReader, ChildPidFd, ForegroundSignal, PaneEnv,
+    TerminalRunChangedBeforeWrite,
 };
 use crate::panes::PaneId;
 
@@ -968,24 +969,58 @@ impl UnixPtyBackend {
         self.signal_terminal_foreground(terminal_id, shell_pid, Signal::SIGKILL)
     }
 
+    pub fn signal_terminal_foreground_group(
+        &self,
+        terminal_id: u32,
+        signal: ForegroundSignal,
+    ) -> Result<bool> {
+        let signal = match signal {
+            ForegroundSignal::Interrupt => Signal::SIGINT,
+            ForegroundSignal::Kill => Signal::SIGKILL,
+        };
+        self.signal_foreground_group(terminal_id, signal)
+    }
+
+    /// `killpg` the foreground group of the PTY master this process owns.
+    /// `Ok(true)` means the signal was delivered or the group is already gone.
+    fn signal_foreground_group(&self, terminal_id: u32, signal: Signal) -> Result<bool> {
+        let Some(pgid) = self.tcgetpgrp(terminal_id).filter(|pgid| *pgid > 0) else {
+            return Ok(false);
+        };
+        match killpg(unistd::Pid::from_raw(pgid), Some(signal)) {
+            Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(true),
+            Err(error) => {
+                log::debug!(
+                    "failed to send {signal} to foreground process group {pgid} of terminal {terminal_id}: {error}"
+                );
+                Ok(false)
+            },
+        }
+    }
+
     /// Signal the terminal's foreground process group so applications such
-    /// as `vim` receive it, falling back to the shell pid when the group
-    /// cannot be determined or signalled.
+    /// as `vim` receive it. Non-Linux then falls back to the shell pid.
+    /// Linux does not: the pid may have been reused after the exit watcher
+    /// reaped the child and before this thread drops the stored number.
+    /// The PTY thread signals the spawn-time pidfd in that case.
     fn signal_terminal_foreground(
         &self,
         terminal_id: u32,
         shell_pid: u32,
         signal: Signal,
     ) -> Result<()> {
-        if let Some(pgid) = self.tcgetpgrp(terminal_id).filter(|pgid| *pgid > 0) {
-            match killpg(unistd::Pid::from_raw(pgid), Some(signal)) {
-                Ok(()) | Err(nix::errno::Errno::ESRCH) => return Ok(()),
-                Err(error) => log::debug!(
-                    "failed to send {signal} to foreground process group {pgid} of terminal {terminal_id}: {error}; falling back to shell pid {shell_pid}"
-                ),
-            }
+        if self.signal_foreground_group(terminal_id, signal)? {
+            return Ok(());
         }
-        signal_pid(shell_pid, signal)
+        #[cfg(not(target_os = "linux"))]
+        {
+            signal_pid(shell_pid, signal)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = shell_pid;
+            Ok(())
+        }
     }
 
     pub fn reserve_terminal_id(&self, terminal_id: u32) {

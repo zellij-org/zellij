@@ -655,6 +655,13 @@ impl std::fmt::Display for TerminalRunChangedBeforeWrite {
 
 impl std::error::Error for TerminalRunChangedBeforeWrite {}
 
+/// A signal for a terminal's foreground process group, not a numeric pid.
+#[derive(Clone, Copy, Debug)]
+pub enum ForegroundSignal {
+    Interrupt,
+    Kill,
+}
+
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
@@ -735,6 +742,19 @@ pub trait ServerOsApi: Send + Sync {
     /// `pid` when the group cannot be determined.
     fn force_kill_terminal(&self, _terminal_id: u32, pid: u32) -> Result<()> {
         self.force_kill(pid)
+    }
+    /// `killpg` the terminal's foreground group.
+    ///
+    /// `Ok(true)` when the group was signaled or is already gone (`ESRCH`).
+    /// `Ok(false)` when `tcgetpgrp` finds no positive group or `killpg` fails
+    /// for another reason. Does not signal a numeric pid. The default reports
+    /// no group so callers can choose their own fallback.
+    fn signal_terminal_foreground_group(
+        &self,
+        _terminal_id: u32,
+        _signal: ForegroundSignal,
+    ) -> Result<bool> {
+        Ok(false)
     }
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
@@ -920,6 +940,15 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(unix)]
     fn force_kill_terminal(&self, terminal_id: u32, pid: u32) -> Result<()> {
         self.pty_backend.force_kill_terminal(terminal_id, pid)
+    }
+    #[cfg(unix)]
+    fn signal_terminal_foreground_group(
+        &self,
+        terminal_id: u32,
+        signal: ForegroundSignal,
+    ) -> Result<bool> {
+        self.pty_backend
+            .signal_terminal_foreground_group(terminal_id, signal)
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || format!("failed to send message to client {client_id}");

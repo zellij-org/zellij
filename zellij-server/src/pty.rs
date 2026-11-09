@@ -1,7 +1,9 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
-use crate::os_input_output::{env_value, AsyncReader, ChildPidFd, NullAsyncReader, PaneEnv};
+use crate::os_input_output::{
+    env_value, AsyncReader, ChildPidFd, ForegroundSignal, NullAsyncReader, PaneEnv,
+};
 use crate::pty_writer::PtyWriteInstruction;
 use crate::route::NotificationEnd;
 use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
@@ -2901,18 +2903,24 @@ impl Pty {
     }
 
     pub fn send_sigint_to_pane(&self, pane_id: PaneId) {
-        let err_context = || format!("failed to send SIGINT to pane {:?}", pane_id);
+        self.signal_pane(pane_id, ForegroundSignal::Interrupt);
+    }
+
+    pub fn send_sigkill_to_pane(&self, pane_id: PaneId) {
+        self.signal_pane(pane_id, ForegroundSignal::Kill);
+    }
+
+    fn signal_pane(&self, pane_id: PaneId, signal: ForegroundSignal) {
+        let signal_name = match signal {
+            ForegroundSignal::Interrupt => "SIGINT",
+            ForegroundSignal::Kill => "SIGKILL",
+        };
+        let err_context = || format!("failed to send {signal_name} to pane {:?}", pane_id);
 
         match pane_id {
             PaneId::Terminal(terminal_id) => {
                 if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .context("no OS I/O interface found")
-                        .and_then(|os_input| {
-                            os_input.send_sigint_to_terminal(terminal_id, child_pid)
-                        })
+                    self.deliver_terminal_signal(terminal_id, child_pid, signal)
                         .with_context(err_context)
                         .non_fatal();
                 } else {
@@ -2920,30 +2928,59 @@ impl Pty {
                 }
             },
             PaneId::Plugin(plugin_id) => {
-                log::warn!("Cannot send SIGINT to plugin pane {}", plugin_id);
+                log::warn!("Cannot send {signal_name} to plugin pane {}", plugin_id);
             },
         }
     }
 
-    pub fn send_sigkill_to_pane(&self, pane_id: PaneId) {
-        let err_context = || format!("failed to send SIGKILL to pane {:?}", pane_id);
+    /// Foreground group first (`vim` must receive Ctrl-C). The shell pid is
+    /// only a fallback, and on Linux it is not a kill target: the exit
+    /// watcher reaps on another thread and enqueues the identity clear
+    /// afterwards, so this instruction can still hold a reused number.
+    fn deliver_terminal_signal(
+        &self,
+        terminal_id: u32,
+        child_pid: u32,
+        signal: ForegroundSignal,
+    ) -> Result<()> {
+        let os_input = self
+            .bus
+            .os_input
+            .as_ref()
+            .context("no OS I/O interface found")?;
+        #[cfg(target_os = "linux")]
+        {
+            if os_input.signal_terminal_foreground_group(terminal_id, signal)? {
+                return Ok(());
+            }
+            self.signal_stored_pidfd(terminal_id, child_pid, signal);
+            return Ok(());
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            match signal {
+                ForegroundSignal::Interrupt => {
+                    os_input.send_sigint_to_terminal(terminal_id, child_pid)
+                },
+                ForegroundSignal::Kill => os_input.force_kill_terminal(terminal_id, child_pid),
+            }
+        }
+    }
 
-        match pane_id {
-            PaneId::Terminal(terminal_id) => {
-                if let Some(&child_pid) = self.id_to_child_pid.get(&terminal_id) {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .context("no OS I/O interface found")
-                        .and_then(|os_input| os_input.force_kill_terminal(terminal_id, child_pid))
-                        .with_context(err_context)
-                        .non_fatal();
-                } else {
-                    log::warn!("Terminal pane {} not found or not running", terminal_id);
-                }
-            },
-            PaneId::Plugin(plugin_id) => {
-                log::warn!("Cannot send SIGKILL to plugin pane {}", plugin_id);
+    /// Borrow the spawn-time pidfd. Close still owns the map entry.
+    /// No pidfd: log and return. Do not `kill` the stored number.
+    #[cfg(target_os = "linux")]
+    fn signal_stored_pidfd(&self, terminal_id: u32, child_pid: u32, signal: ForegroundSignal) {
+        let (signo, name) = match signal {
+            ForegroundSignal::Interrupt => (libc::SIGINT, "SIGINT"),
+            ForegroundSignal::Kill => (libc::SIGKILL, "SIGKILL"),
+        };
+        match self.child_pidfds.get(&terminal_id) {
+            Some(pidfd) => signal_pidfd(pidfd, signo, name),
+            None => {
+                log::warn!(
+                    "not sending {name} to pane {terminal_id} (pid {child_pid}): no pidfd, refusing a numeric kill"
+                );
             },
         }
     }
@@ -3052,19 +3089,27 @@ impl Drop for Pty {
 }
 
 /// SIGHUP, the same signal as `ServerOsApi::kill` / `signal_pid(..., SIGHUP)`.
-/// ESRCH means the process is already gone, which is the outcome close wants.
-/// The fd is closed when `pidfd` is dropped.
+/// The fd is closed when `pidfd` is dropped. SIGINT and SIGKILL borrow the
+/// map entry instead of taking it.
 #[cfg(target_os = "linux")]
 fn signal_pidfd_sighup(pidfd: std::os::fd::OwnedFd) {
-    use std::os::fd::AsRawFd;
-    // SAFETY: `pidfd` is an open pidfd. A null siginfo and zero flags send
-    // the signal to that process the way kill(2) would, without following a
-    // reused pid number.
+    signal_pidfd(&pidfd, libc::SIGHUP, "SIGHUP");
+}
+
+/// `pidfd_send_signal` does not consume the fd. ESRCH means the process is
+/// already gone, which is success. Any other errno is logged, not turned
+/// into a numeric kill.
+#[cfg(target_os = "linux")]
+fn signal_pidfd(pidfd: &impl std::os::fd::AsRawFd, signal: i32, name: &str) {
+    // SAFETY: `pidfd` is an open fd held by the caller. A null siginfo and
+    // zero flags send `signal` to that process the way kill(2) would,
+    // without following a reused pid number. A non-pidfd (a test stand-in)
+    // fails the syscall and is not a kill of any pid.
     let rc = unsafe {
         libc::syscall(
             libc::SYS_pidfd_send_signal,
             pidfd.as_raw_fd(),
-            libc::SIGHUP,
+            signal,
             std::ptr::null_mut::<libc::siginfo_t>(),
             0u32,
         )
@@ -3072,7 +3117,7 @@ fn signal_pidfd_sighup(pidfd: std::os::fd::OwnedFd) {
     if rc < 0 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() != Some(libc::ESRCH) {
-            log::warn!("failed to send SIGHUP through pidfd: {err}");
+            log::warn!("failed to send {name} through pidfd: {err}");
         }
     }
 }
