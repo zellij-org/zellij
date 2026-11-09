@@ -869,6 +869,133 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
         .is_incomplete(plugin_id));
 }
 
+fn pane_report(
+    client_id: ClientId,
+    panes: &[(zellij_utils::data::PaneId, &str)],
+) -> PaneRenderReport {
+    let mut report = PaneRenderReport::default();
+    for (pane_id, line) in panes {
+        report.add_pane_contents(
+            &[client_id],
+            *pane_id,
+            PaneContents {
+                viewport: vec![(*line).to_owned()],
+                ..PaneContents::default()
+            },
+        );
+    }
+    report
+}
+
+fn pane_viewport(contents: &PaneContents) -> &str {
+    contents.viewport.first().map(String::as_str).unwrap_or("")
+}
+
+/// Permission delivery is held, so the real pane-report path caches deltas.
+/// Two disjoint pane changes must both survive, and a later update replaces
+/// only that pane. Whole-snapshot replacement keeps whichever report arrived last.
+#[test]
+fn pending_pane_render_reports_keep_disjoint_panes_until_release() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let plugin_id = 11;
+    let client_id = 1;
+    let other_client = 2;
+    bridge
+        .plugin_ids_waiting_for_permission_request
+        .insert(plugin_id);
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    let pane_a = zellij_utils::data::PaneId::Terminal(1);
+    let pane_b = zellij_utils::data::PaneId::Terminal(2);
+    bridge
+        .handle_pane_render_report(
+            pane_report(client_id, &[(pane_a, "alpha")]),
+            shutdown_sender.clone(),
+        )
+        .unwrap();
+    bridge
+        .handle_pane_render_report(
+            pane_report(client_id, &[(pane_a, "alpha"), (pane_b, "beta")]),
+            shutdown_sender.clone(),
+        )
+        .unwrap();
+    bridge
+        .handle_pane_render_report(
+            pane_report(client_id, &[(pane_a, "alpha-2"), (pane_b, "beta")]),
+            shutdown_sender.clone(),
+        )
+        .unwrap();
+    bridge
+        .handle_pane_render_report(
+            pane_report(other_client, &[(pane_b, "other-client")]),
+            shutdown_sender.clone(),
+        )
+        .unwrap();
+
+    let released = bridge
+        .cached_events_for_pending_plugins
+        .cached_events(plugin_id);
+    assert_eq!(
+        bridge
+            .cached_events_for_pending_plugins
+            .cached_bytes(plugin_id),
+        released
+            .iter()
+            .map(event_or_pipe_message_bytes)
+            .fold(0usize, usize::saturating_add)
+            + released.len() * PENDING_CACHE_ENTRY_OVERHEAD,
+        "merging pane deltas must account for the combined report, not a discarded copy"
+    );
+    bridge
+        .apply_cached_events(vec![plugin_id], true, shutdown_sender)
+        .unwrap();
+    assert!(
+        !bridge
+            .cached_events_for_pending_plugins
+            .contains(&plugin_id),
+        "releasing permission delivery must drain the pending report"
+    );
+    assert!(!bridge
+        .plugin_ids_waiting_for_permission_request
+        .contains(&plugin_id));
+
+    assert_eq!(
+        released.len(),
+        2,
+        "each client keeps one coalesced pane report"
+    );
+    let EventOrPipeMessage::Event(Event::PaneRenderReport(panes), Some(released_client), _) =
+        &released[0]
+    else {
+        panic!("pending delivery was not a pane render report: {released:?}");
+    };
+    assert_eq!(*released_client, client_id);
+    assert_eq!(
+        panes.len(),
+        2,
+        "a later pane must not erase an earlier pending pane"
+    );
+    assert_eq!(
+        pane_viewport(panes.get(&pane_a).expect("pane a")),
+        "alpha-2",
+        "a later update of the same pane replaces only that pane"
+    );
+    assert_eq!(pane_viewport(panes.get(&pane_b).expect("pane b")), "beta");
+    let EventOrPipeMessage::Event(Event::PaneRenderReport(other_panes), Some(released_client), _) =
+        &released[1]
+    else {
+        panic!("other client report missing: {released:?}");
+    };
+    assert_eq!(*released_client, other_client);
+    assert_eq!(
+        pane_viewport(other_panes.get(&pane_b).expect("other client pane")),
+        "other-client"
+    );
+}
+
 #[test]
 fn pending_cache_lifecycle_event_that_cannot_fit_is_not_applied() {
     let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();

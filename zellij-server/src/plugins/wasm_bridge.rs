@@ -150,8 +150,9 @@ impl PendingPluginCaches {
             event_or_pipe_message_bytes(&entry).saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
         // A newer full-state snapshot replaces the cached view of that same kind
         // instead of appending another copy or evicting a one-shot fact.
+        // Pane render reports are per-pane deltas and are merged below.
         if self.has_snapshot(plugin_id, &entry) {
-            return self.replace_snapshot(plugin_id, entry, bytes);
+            return self.replace_snapshot(plugin_id, entry);
         }
         let over_entries = {
             let cache = &self.plugins[&plugin_id];
@@ -200,13 +201,18 @@ impl PendingPluginCaches {
         &mut self,
         plugin_id: PluginId,
         entry: EventOrPipeMessage,
-        bytes: usize,
     ) -> Result<(), PendingCacheRejection> {
         let index = self.plugins[&plugin_id]
             .entries
             .iter()
             .position(|existing| same_snapshot(existing, &entry))
             .expect("cached snapshot");
+        // Keep every pane already pending. Fall back to replacing the whole
+        // snapshot only when the cached event cannot be updated in place.
+        let entry = coalesce_pane_render_delta(&self.plugins[&plugin_id].entries[index], &entry)
+            .unwrap_or(entry);
+        let bytes =
+            event_or_pipe_message_bytes(&entry).saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
         let old_bytes = event_or_pipe_message_bytes(&self.plugins[&plugin_id].entries[index])
             .saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
         let next_plugin_bytes = self.plugins[&plugin_id]
@@ -281,8 +287,10 @@ impl PendingPluginCaches {
 }
 
 /// Kinds of event that are a full view of one piece of state. A later event of
-/// the same kind, for the same client, replaces the cached one. One-shot facts
-/// (permission results, keys, command results, pipes) are not snapshots.
+/// the same kind, for the same client, replaces the cached one. Pane render
+/// reports are the exception: the producer sends only changed panes, so a later
+/// report replaces those panes and keeps every other pane already pending.
+/// One-shot facts (permission results, keys, command results, pipes) are not snapshots.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SnapshotKind {
     Mode,
@@ -347,6 +355,44 @@ fn same_snapshot(left: &EventOrPipeMessage, right: &EventOrPipeMessage) -> bool 
         (Some(left_key), Some(right_key)) => left_key == right_key,
         _ => false,
     }
+}
+
+/// Fold `incoming` pane deltas into the cached report. The same pane is
+/// replaced; a different pane is kept. Returns None when the cached event is
+/// not a pane report, or its client or marker differs, so the caller must
+/// replace the whole snapshot instead of inventing a full-screen view.
+fn coalesce_pane_render_delta(
+    existing: &EventOrPipeMessage,
+    incoming: &EventOrPipeMessage,
+) -> Option<EventOrPipeMessage> {
+    let EventOrPipeMessage::Event(
+        Event::PaneRenderReport(existing_panes),
+        existing_client,
+        existing_marker,
+    ) = existing
+    else {
+        return None;
+    };
+    let EventOrPipeMessage::Event(
+        Event::PaneRenderReport(incoming_panes),
+        incoming_client,
+        incoming_marker,
+    ) = incoming
+    else {
+        return None;
+    };
+    if existing_client != incoming_client || existing_marker != incoming_marker {
+        return None;
+    }
+    let mut panes = existing_panes.clone();
+    for (pane_id, contents) in incoming_panes {
+        panes.insert(*pane_id, contents.clone());
+    }
+    Some(EventOrPipeMessage::Event(
+        Event::PaneRenderReport(panes),
+        *existing_client,
+        *existing_marker,
+    ))
 }
 
 const REPLACEABLE_RESIZE: u64 = 1;
