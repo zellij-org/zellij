@@ -804,3 +804,229 @@ mod payload_accounting {
         );
     }
 }
+
+#[cfg(not(windows))]
+mod bounded_command_tests {
+    use super::super::{run_bounded_with, BoundedOutput};
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    // Every test gets its own reader thread budget so that the threads one
+    // test leaves behind cannot make another one refuse to run.
+    fn run_bounded(
+        command: Command,
+        timeout: Duration,
+        max_output: usize,
+    ) -> std::io::Result<BoundedOutput> {
+        run_bounded_with(
+            command,
+            timeout,
+            max_output,
+            leaked_counter(0),
+            &real_spawner,
+        )
+    }
+
+    fn sh(script: &str) -> Command {
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(script);
+        command
+    }
+
+    #[test]
+    fn output_and_status_are_returned() {
+        let output = run_bounded(
+            sh("printf out; printf err >&2; exit 3"),
+            Duration::from_secs(5),
+            1024,
+        )
+        .expect("completes");
+        assert_eq!(output.status.code(), Some(3));
+        assert_eq!(output.stdout, b"out");
+        assert_eq!(output.stderr, b"err");
+    }
+
+    #[test]
+    fn retained_output_is_capped_while_the_child_runs_to_completion() {
+        let output = run_bounded(
+            sh("head -c 1000000 /dev/zero; printf done >&2"),
+            Duration::from_secs(10),
+            4096,
+        )
+        .expect("completes");
+        assert!(output.status.success());
+        assert_eq!(output.stdout.len(), 4096);
+        assert_eq!(output.stderr, b"done");
+    }
+
+    #[test]
+    fn a_hanging_child_is_killed_at_the_deadline() {
+        let started = Instant::now();
+        let error = run_bounded(sh("sleep 30"), Duration::from_millis(200), 1024)
+            .err()
+            .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn a_background_process_holding_the_pipes_cannot_outlast_the_deadline() {
+        // The hook exits at once, but a background process inherits its
+        // stdout and keeps it open; collecting output must still give up at
+        // the deadline instead of blocking until the background job ends.
+        let started = Instant::now();
+        let error = run_bounded(
+            sh("sleep 3 & printf early"),
+            Duration::from_millis(300),
+            1024,
+        )
+        .err()
+        .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn processes_left_behind_by_a_timed_out_command_are_killed() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("still-running");
+        let script = format!("(sleep 1; touch '{}') & printf early", marker.display());
+        let error = run_bounded(sh(&script), Duration::from_millis(300), 1024)
+            .err()
+            .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(
+            !marker.exists(),
+            "the background process must be killed with the command's group"
+        );
+    }
+
+    fn leaked_counter(initial: usize) -> &'static std::sync::atomic::AtomicUsize {
+        Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(initial)))
+    }
+
+    fn real_spawner(name: &str, work: Box<dyn FnOnce() + Send + 'static>) -> std::io::Result<()> {
+        std::thread::Builder::new()
+            .name(name.to_owned())
+            .spawn(work)
+            .map(|_| ())
+    }
+
+    fn wait_for_count(counter: &std::sync::atomic::AtomicUsize, expected: usize) {
+        let started = Instant::now();
+        while counter.load(std::sync::atomic::Ordering::Acquire) != expected {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "reader threads were not released"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn reader_threads_are_released_when_a_run_completes() {
+        let counter = leaked_counter(0);
+        let output = run_bounded_with(
+            sh("printf out"),
+            Duration::from_secs(5),
+            1024,
+            counter,
+            &real_spawner,
+        )
+        .expect("completes");
+        assert_eq!(output.stdout, b"out");
+        wait_for_count(counter, 0);
+    }
+
+    #[test]
+    fn a_run_is_refused_without_starting_the_command_when_the_reader_cap_is_reached() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let at_cap = super::super::MAX_OUTSTANDING_HOOK_READER_THREADS - 1;
+        let counter = leaked_counter(at_cap);
+        let script = format!("touch '{}'", marker.display());
+        let error = run_bounded_with(
+            sh(&script),
+            Duration::from_secs(5),
+            1024,
+            counter,
+            &real_spawner,
+        )
+        .err()
+        .expect("refused");
+        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+        assert!(!marker.exists(), "the command must not have been started");
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Acquire), at_cap);
+    }
+
+    #[test]
+    fn leaked_readers_of_a_process_outside_the_group_are_capped() {
+        // `setsid` puts the background process out of reach of the group
+        // kill, so it keeps both pipes (and both reader threads) open.
+        if Command::new("setsid").arg("--version").output().is_err() {
+            return;
+        }
+        let max = super::super::MAX_OUTSTANDING_HOOK_READER_THREADS;
+        let counter = leaked_counter(0);
+        let mut refused = 0;
+        let mut timed_out = 0;
+        for _ in 0..(max / 2 + 2) {
+            match run_bounded_with(
+                sh("setsid sleep 4 & printf early"),
+                Duration::from_millis(200),
+                1024,
+                counter,
+                &real_spawner,
+            ) {
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => timed_out += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => refused += 1,
+                other => panic!("unexpected result: {:?}", other.map(|o| o.stdout)),
+            }
+            assert!(counter.load(std::sync::atomic::Ordering::Acquire) <= max);
+        }
+        assert_eq!(timed_out, max / 2);
+        assert_eq!(refused, 2);
+        // The stragglers end with the background processes.
+        wait_for_count(counter, 0);
+    }
+
+    #[test]
+    fn a_reader_thread_that_cannot_be_started_is_an_error_not_a_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("still-running");
+        for fail_on_call in [0usize, 1] {
+            let counter = leaked_counter(0);
+            let calls = std::sync::atomic::AtomicUsize::new(0);
+            let spawner = |name: &str, work: Box<dyn FnOnce() + Send + 'static>| {
+                if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == fail_on_call {
+                    // Dropping `work` releases its slot, as a failed
+                    // Builder::spawn does.
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "no threads",
+                    ))
+                } else {
+                    real_spawner(name, work)
+                }
+            };
+            let script = format!("(sleep 1; touch '{}') & sleep 30", marker.display());
+            let started = Instant::now();
+            let error = run_bounded_with(
+                sh(&script),
+                Duration::from_secs(20),
+                1024,
+                counter,
+                &spawner,
+            )
+            .err()
+            .expect("fails");
+            assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+            assert!(started.elapsed() < Duration::from_secs(10));
+            // The command is killed with its group, and every slot comes back.
+            wait_for_count(counter, 0);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(!marker.exists(), "the command's group must be killed");
+    }
+}

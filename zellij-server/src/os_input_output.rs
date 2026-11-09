@@ -1102,37 +1102,244 @@ fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> 
         .collect()
 }
 
-#[cfg(not(windows))]
+/// The post-command discovery hook runs synchronously on the PTY thread for
+/// every foreground command lookup. A hook that hangs, or that leaves a
+/// background process holding its output open, must not wedge that thread,
+/// and its output must not grow without limit.
+const COMMAND_HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const COMMAND_HOOK_MAX_OUTPUT: usize = 64 * 1024;
+
 fn run_command_hook(
     original_command: &str,
     hook_script: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("sh")
-        .arg("-c")
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut command = Command::new("sh");
+        command.arg("-c");
+        command
+    };
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.arg("/C");
+        command
+    };
+    command
         .arg(hook_script)
-        .env("RESURRECT_COMMAND", original_command)
-        .output()?;
-
+        .env("RESURRECT_COMMAND", original_command);
+    let output = run_bounded(command, COMMAND_HOOK_TIMEOUT, COMMAND_HOOK_MAX_OUTPUT)?;
     if !output.status.success() {
         return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-#[cfg(windows)]
-fn run_command_hook(
-    original_command: &str,
-    hook_script: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("cmd")
-        .arg("/C")
-        .arg(hook_script)
-        .env("RESURRECT_COMMAND", original_command)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+struct BoundedOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// Run `command` to completion within `timeout`, keeping at most
+/// `max_output` bytes of each output stream.
+///
+/// On Unix the child runs in its own process group, and the whole group is
+/// killed if the child is still running at the deadline. Its output pipes
+/// are drained on helper threads so a chatty child cannot block on a full
+/// pipe; both streams must also reach end-of-file before the deadline,
+/// since a background process that inherited them can keep them open after
+/// the child itself exits. Such a process is killed with the group. One
+/// that left the group (e.g. with `setsid`) keeps the helper threads alive
+/// until it closes the pipes, and the run reports a timeout either way. The
+/// number of such threads that exist at once is capped globally; a run that
+/// would exceed the cap fails without starting the command.
+fn run_bounded(
+    command: Command,
+    timeout: std::time::Duration,
+    max_output: usize,
+) -> io::Result<BoundedOutput> {
+    run_bounded_with(
+        command,
+        timeout,
+        max_output,
+        &HOOK_READER_THREADS,
+        &|name, work| {
+            std::thread::Builder::new()
+                .name(name.to_owned())
+                .spawn(work)
+                .map(|_| ())
+        },
+    )
+}
+
+/// Upper bound on hook output reader threads that have not finished yet.
+///
+/// A process that left the hook's process group (e.g. via `setsid`) cannot
+/// be killed on timeout and keeps the output pipes, and with them the two
+/// reader threads of that run, alive for as long as it likes. Without a
+/// bound, a hook that does this on every lookup would leak two threads per
+/// lookup. Lookups that would exceed the bound skip the hook instead.
+const MAX_OUTSTANDING_HOOK_READER_THREADS: usize = 8;
+const HOOK_READER_THREADS_PER_RUN: usize = 2;
+
+static HOOK_READER_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// One unit of the reader thread budget. Released when dropped, which
+/// happens when the thread finishes, or at once if it could not be started.
+struct ReaderSlot(&'static std::sync::atomic::AtomicUsize);
+
+impl ReaderSlot {
+    fn acquire_many(
+        counter: &'static std::sync::atomic::AtomicUsize,
+        count: usize,
+        max: usize,
+    ) -> Option<Vec<ReaderSlot>> {
+        use std::sync::atomic::Ordering;
+        counter
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current + count <= max).then_some(current + count)
+            })
+            .ok()?;
+        Some((0..count).map(|_| ReaderSlot(counter)).collect())
     }
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+impl Drop for ReaderSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
+type ReaderSpawner<'a> = &'a dyn Fn(&str, Box<dyn FnOnce() + Send + 'static>) -> io::Result<()>;
+
+fn run_bounded_with(
+    mut command: Command,
+    timeout: std::time::Duration,
+    max_output: usize,
+    reader_threads: &'static std::sync::atomic::AtomicUsize,
+    spawn_reader: ReaderSpawner,
+) -> io::Result<BoundedOutput> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    let deadline = Instant::now() + timeout;
+    let mut slots = ReaderSlot::acquire_many(
+        reader_threads,
+        HOOK_READER_THREADS_PER_RUN,
+        MAX_OUTSTANDING_HOOK_READER_THREADS,
+    )
+    .ok_or_else(|| {
+        log::warn!(
+            "Skipping command hook: {} of its output reader threads are still blocked",
+            MAX_OUTSTANDING_HOOK_READER_THREADS
+        );
+        io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "too many earlier hook runs still hold output pipes open",
+        )
+    })?;
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let (output_tx, output_rx) = mpsc::channel::<(bool, Vec<u8>)>();
+    let mut drain = |mut stream: Box<dyn Read + Send>, is_stdout: bool| -> io::Result<()> {
+        let output_tx = output_tx.clone();
+        let slot = slots.pop();
+        spawn_reader(
+            "command-hook-reader",
+            Box::new(move || {
+                let _slot = slot;
+                let mut retained = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match stream.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let room = max_output.saturating_sub(retained.len());
+                            retained.extend_from_slice(&chunk[..n.min(room)]);
+                        },
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+                let _ = output_tx.send((is_stdout, retained));
+            }),
+        )
+    };
+    let started = match child.stdout.take() {
+        Some(stdout) => drain(Box::new(stdout), true),
+        None => Ok(()),
+    }
+    .and_then(|_| match child.stderr.take() {
+        Some(stderr) => drain(Box::new(stderr), false),
+        None => Ok(()),
+    });
+    drop(output_tx);
+    if let Err(e) = started {
+        // Without both readers the output cannot be collected, and a child
+        // that fills a pipe nobody reads would hang until the deadline.
+        kill_process_group(&mut child);
+        let _ = child.wait();
+        return Err(e);
+    }
+
+    let timed_out = || io::Error::new(io::ErrorKind::TimedOut, "command timed out");
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            kill_process_group(&mut child);
+            let _ = child.wait();
+            return Err(timed_out());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+
+    let (mut stdout, mut stderr) = (None, None);
+    while stdout.is_none() || stderr.is_none() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match output_rx.recv_timeout(remaining) {
+            Ok((true, bytes)) => stdout = Some(bytes),
+            Ok((false, bytes)) => stderr = Some(bytes),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // The child has exited, but processes it left behind still
+                // hold its output open; the group outlives its leader. (If
+                // all of them left the group, its id is unused and could only
+                // have been reused if the pid space wrapped within the
+                // deadline.)
+                kill_process_group(&mut child);
+                return Err(timed_out());
+            },
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    Ok(BoundedOutput {
+        status,
+        stdout: stdout.unwrap_or_default(),
+        stderr: stderr.unwrap_or_default(),
+    })
+}
+
+/// Kill `child` together with any processes it started in its group.
+fn kill_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{killpg, Signal};
+        use nix::unistd::Pid;
+        if let Ok(pgid) = i32::try_from(child.id()) {
+            let _ = killpg(Pid::from_raw(pgid), Signal::SIGKILL);
+        }
+    }
+    let _ = child.kill();
 }
 
 #[cfg(test)]
