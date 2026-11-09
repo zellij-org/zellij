@@ -4617,24 +4617,24 @@ fn kill_sessions(session_names: Vec<String>) {
     }
 }
 
-// Wedge timeout: only guards against a peer that neither shuts down nor
-// crashes. Normal kill latency is tens of milliseconds (peer's route loop
-// reads the message, server sends Exit back), so 500 ms is several times the
-// expected worst case while still feeling instant to the user. Applied as a
-// single budget over the whole batch -- per-session kills are issued
-// concurrently so killing many sessions does not multiply the wait.
+// Wedge timeout: one budget for writing KillSession and reading a decoded
+// Exit frame. It does not mean the server process was observed to exit.
+// OutcomeUnknown (no decoded Exit) is a failure, same as a send error.
+// Applied over the whole batch -- per-session kills run concurrently.
 const KILL_WEDGE_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
     use tokio::task::JoinSet;
     let runtime = get_tokio_runtime();
     let result: Result<(), String> = runtime.block_on(async {
-        let mut set: JoinSet<(String, std::io::Result<()>)> = JoinSet::new();
+        let mut set: JoinSet<(String, std::io::Result<zellij_utils::ipc::KillReply>)> =
+            JoinSet::new();
         for name in session_names {
             let path = zellij_utils::sessions::resolve_session_socket_path(&name)
                 .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&name));
             set.spawn(async move {
-                let res = zellij_utils::ipc::async_send_kill_and_await(&path).await;
+                let res =
+                    zellij_utils::ipc::async_send_kill_and_await(&path, KILL_WEDGE_TIMEOUT).await;
                 (name, res)
             });
         }
@@ -4642,10 +4642,20 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
             let mut first_err: Option<String> = None;
             while let Some(joined) = set.join_next().await {
                 match joined {
-                    Ok((_name, Ok(()))) => {},
+                    Ok((
+                        _name,
+                        Ok(zellij_utils::ipc::KillReply::ShutdownAcknowledged),
+                    )) => {},
+                    Ok((name, Ok(zellij_utils::ipc::KillReply::OutcomeUnknown))) => {
+                        if first_err.is_none() {
+                            first_err = Some(format!(
+                                "Session {name}: kill request was written but no Exit reply was decoded; process exit was not observed"
+                            ));
+                        }
+                    },
                     Ok((name, Err(e))) => {
                         if first_err.is_none() {
-                            first_err = Some(format!("Failed to kill session {}: {}", name, e));
+                            first_err = Some(format!("Failed to send kill to session {name}: {e}"));
                         }
                     },
                     Err(e) => {

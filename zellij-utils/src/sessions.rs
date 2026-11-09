@@ -1,3 +1,5 @@
+#[cfg(any(windows, test))]
+use crate::ipc::IpcReceiverWithContext;
 use crate::{
     consts::{
         is_ipc_socket, session_deletion_tombstone_path, session_info_folder_for_session,
@@ -9,8 +11,6 @@ use crate::{
     ipc::{ClientToServerMsg, IpcSenderWithContext, ServerToClientMsg},
     session_index::{self, SessionIndex},
 };
-#[cfg(windows)]
-use crate::ipc::IpcReceiverWithContext;
 use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
@@ -453,52 +453,50 @@ fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> SessionProbeRe
     assert_socket_path(&dir.join(name), timeout)
 }
 
-/// Probe the socket at `path` with one absolute deadline covering connect + send + receive.
+/// Probe the socket at `path` with one absolute deadline covering connect, the
+/// `ConnStatus` write, and the whole reply frame.
+///
+/// A socket read timeout is an inactivity timer, so it is refreshed from that
+/// deadline before every read and write. Timeout, short read, hang-up, an
+/// oversized length prefix, and any message other than `Connected` are
+/// [`SessionProbeResult::Unknown`]. Refused and missing paths stay
+/// [`SessionProbeResult::Absent`] and are not unlinked.
 #[cfg(unix)]
 fn assert_socket_path(path: &Path, timeout: Duration) -> SessionProbeResult {
     use crate::consts::ipc_connect_with_timeout;
+    use crate::ipc::{
+        encode_client_frame, read_server_frame_until_deadline, write_all_until_deadline,
+        PROBE_MAX_FRAME_BYTES,
+    };
+
     if timeout.is_zero() {
         return SessionProbeResult::Unknown;
     }
-    let started = Instant::now();
-    match ipc_connect_with_timeout(path, timeout) {
-        Ok(stream) => {
-            let remaining = timeout.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
-                return SessionProbeResult::Unknown;
-            }
-            // A wedged server accepts connections but never replies; bound the receive with
-            // whatever of the overall deadline remains after connect.
-            {
-                use interprocess::local_socket::prelude::*;
-                let _ = stream.set_recv_timeout(Some(remaining));
-            }
-            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
-                IpcSenderWithContext::new(stream);
-            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
-            let Ok(mut receiver) = sender.get_receiver::<ServerToClientMsg>() else {
-                return SessionProbeResult::Unknown;
-            };
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => SessionProbeResult::Responsive,
-                // Timeout, hang-up or unexpected reply: unknown, not proven dead.
-                None | Some((_, _)) => SessionProbeResult::Unknown,
-            }
-        },
+    let deadline = Instant::now() + timeout;
+    let mut stream = match ipc_connect_with_timeout(path, timeout) {
+        Ok(stream) => stream,
         // Refused / missing: proven gone for observation. Do not unlink — a concurrent
         // replacement may already own this pathname.
-        Err(e)
+        Err(err)
             if matches!(
-                e.kind(),
+                err.kind(),
                 io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
             ) =>
         {
-            SessionProbeResult::Absent
+            return SessionProbeResult::Absent;
         },
-        Err(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => {
-            SessionProbeResult::Unknown
-        },
-        Err(_) => SessionProbeResult::Unknown,
+        Err(_) => return SessionProbeResult::Unknown,
+    };
+    let frame = match encode_client_frame(ClientToServerMsg::ConnStatus) {
+        Ok(frame) => frame,
+        Err(_) => return SessionProbeResult::Unknown,
+    };
+    if write_all_until_deadline(&mut stream, &frame, deadline).is_err() {
+        return SessionProbeResult::Unknown;
+    }
+    match read_server_frame_until_deadline(&mut stream, deadline, PROBE_MAX_FRAME_BYTES) {
+        Ok(ServerToClientMsg::Connected) => SessionProbeResult::Responsive,
+        Ok(_) | Err(_) => SessionProbeResult::Unknown,
     }
 }
 
@@ -510,6 +508,7 @@ fn assert_socket_path(path: &Path, timeout: Duration) -> SessionProbeResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowsPidLiveness {
     /// `OpenProcess` returned a handle. Identity with the recorded server is not proven.
+    /// The session probe maps this to [`SessionProbeResult::Unknown`], not Responsive.
     AliveUnverified,
     /// Process is gone (`ERROR_INVALID_PARAMETER` after a null handle).
     Dead,
@@ -523,7 +522,7 @@ pub const WINDOWS_ERROR_ACCESS_DENIED: u32 = 5;
 pub const WINDOWS_ERROR_INVALID_PARAMETER: u32 = 87;
 
 /// Pure classifier for unit tests and the Windows probe. `last_error` is meaningful only when
-/// `handle_is_null` is true.
+/// `handle_is_null` is true. Access denied is not death.
 pub fn classify_windows_open_process(handle_is_null: bool, last_error: u32) -> WindowsPidLiveness {
     if !handle_is_null {
         return WindowsPidLiveness::AliveUnverified;
@@ -532,6 +531,19 @@ pub fn classify_windows_open_process(handle_is_null: bool, last_error: u32) -> W
         WINDOWS_ERROR_INVALID_PARAMETER => WindowsPidLiveness::Dead,
         WINDOWS_ERROR_ACCESS_DENIED => WindowsPidLiveness::Unknown,
         _ => WindowsPidLiveness::Unknown,
+    }
+}
+
+/// Map a Windows PID check onto a session probe result.
+///
+/// [`WindowsPidLiveness::AliveUnverified`] is not [`SessionProbeResult::Responsive`]:
+/// a reused PID is not proof of the recorded server. [`WindowsPidLiveness::Dead`]
+/// stays absent. Access denied and every other non-death result stay unknown.
+pub fn probe_result_for_windows_liveness(liveness: WindowsPidLiveness) -> SessionProbeResult {
+    match liveness {
+        WindowsPidLiveness::AliveUnverified => SessionProbeResult::Unknown,
+        WindowsPidLiveness::Dead => SessionProbeResult::Absent,
+        WindowsPidLiveness::Unknown => SessionProbeResult::Unknown,
     }
 }
 
@@ -574,11 +586,7 @@ fn assert_socket_path(path: &Path, _timeout: Duration) -> SessionProbeResult {
             (false, 0)
         }
     };
-    match classify_windows_open_process(handle_is_null, last_error) {
-        WindowsPidLiveness::AliveUnverified => SessionProbeResult::Responsive,
-        WindowsPidLiveness::Dead => SessionProbeResult::Absent,
-        WindowsPidLiveness::Unknown => SessionProbeResult::Unknown,
-    }
+    probe_result_for_windows_liveness(classify_windows_open_process(handle_is_null, last_error))
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -1814,6 +1822,29 @@ mod windows_pid_liveness_tests {
     }
 
     #[test]
+    fn alive_unverified_is_unknown_not_responsive() {
+        assert_eq!(
+            probe_result_for_windows_liveness(WindowsPidLiveness::AliveUnverified),
+            SessionProbeResult::Unknown
+        );
+        assert_eq!(
+            probe_result_for_windows_liveness(WindowsPidLiveness::Dead),
+            SessionProbeResult::Absent
+        );
+        assert_eq!(
+            probe_result_for_windows_liveness(WindowsPidLiveness::Unknown),
+            SessionProbeResult::Unknown
+        );
+        assert_eq!(
+            probe_result_for_windows_liveness(classify_windows_open_process(
+                true,
+                WINDOWS_ERROR_ACCESS_DENIED,
+            )),
+            SessionProbeResult::Unknown
+        );
+    }
+
+    #[test]
     fn null_handle_without_a_known_death_error_is_unknown() {
         assert_eq!(
             classify_windows_open_process(true, 0),
@@ -2027,3 +2058,7 @@ layout {{
         assert_eq!(loaded_contents(&layout), vec!["new contents".to_owned()]);
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "probe_deadline.rs"]
+mod probe_deadline;
