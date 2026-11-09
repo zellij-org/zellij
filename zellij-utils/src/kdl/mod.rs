@@ -1668,51 +1668,12 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             let g = channel(channels.next().unwrap())?;
             let b = channel(channels.next().unwrap())?;
             Ok(PaletteColor::Rgb((r, g, b)))
-        } else if is_three_digit_hex() {
-            // eg. #fff (hex, will be converted to rgb)
-            let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
-            s.remove(0);
-            let r = u8::from_str_radix(&s[0..1], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            let g = u8::from_str_radix(&s[1..2], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            let b = u8::from_str_radix(&s[2..3], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            Ok(PaletteColor::Rgb((r, g, b)))
-        } else if is_six_digit_hex() {
-            // eg. #ffffff (hex, will be converted to rgb)
-            let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
-            s.remove(0);
-            let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })?;
-            let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })?;
-            let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| {
+        } else if is_three_digit_hex() || is_six_digit_hex() {
+            // eg. #fff / #ffffff (hex, converted to rgb). Validate ASCII
+            // before slicing so a multi-byte UTF-8 body of the "right"
+            // byte length cannot panic on a mid-character index.
+            let s = kdl_first_entry_as_string!(color).unwrap();
+            let (r, g, b) = crate::input::theme::parse_hex_rgb(s).ok_or_else(|| {
                 ConfigError::new_kdl_error(
                     "Failed to parse hex color".into(),
                     color.span().offset(),

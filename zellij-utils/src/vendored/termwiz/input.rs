@@ -1691,7 +1691,11 @@ impl InputParser {
                     if let Some(idx) = self.buf.find_subsequence(offset, end_paste) {
                         let pasted =
                             String::from_utf8_lossy(&self.buf.as_slice()[0..idx]).to_string();
-                        self.buf.advance(pasted.len() + end_paste.len());
+                        // Advance by the raw delimiter offset, not the lossy
+                        // decoded length: U+FFFD replacement can make the
+                        // String longer than the source span and would
+                        // otherwise consume following input.
+                        self.buf.advance(idx + end_paste.len());
                         callback(InputEvent::Paste(pasted), self.buf.len());
                         self.state = InputState::Normal;
                     } else {
@@ -2549,6 +2553,45 @@ mod test {
         p.parse(input2, |e| inputs.push(e), false);
 
         assert_eq!(vec![InputEvent::Paste("12345678".to_owned())], inputs)
+    }
+
+    #[test]
+    fn invalid_utf8_paste_advances_by_raw_bytes_and_keeps_following_input() {
+        let mut p = InputParser::new();
+        // One invalid byte becomes U+FFFD (3 UTF-8 bytes). Advancing by the
+        // decoded length would consume the trailing "xY".
+        let mut input = b"\x1b[200~".to_vec();
+        input.push(0xff);
+        input.extend_from_slice(b"\x1b[201~xY");
+
+        let events = p.parse_as_vec(&input, false);
+        assert_eq!(
+            events[0],
+            InputEvent::Paste("\u{FFFD}".to_owned()),
+            "paste payload must decode lossily without claiming extra source bytes"
+        );
+        assert!(
+            events.len() > 1,
+            "bytes after the paste end marker must remain available, got {:?}",
+            events
+        );
+        let rest: String = events[1..]
+            .iter()
+            .filter_map(|event| match event {
+                InputEvent::Key(key) => match key.key {
+                    KeyCode::Char(c) => Some(c),
+                    _ => None,
+                },
+                InputEvent::Paste(text) => Some(text.chars().next().unwrap_or('\0')),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            rest.contains('x') && rest.contains('Y'),
+            "expected trailing keys xY preserved, got events {:?} / rest {:?}",
+            events,
+            rest
+        );
     }
 
     #[test]

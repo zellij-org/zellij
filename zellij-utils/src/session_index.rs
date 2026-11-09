@@ -341,7 +341,19 @@ fn sanitize_identifier(name: &str) -> String {
 }
 
 fn json_path_for_fact(name: &str) -> String {
-    format!("$.\"{}\"", name.replace('"', ""))
+    // Quoted JSON-path member with backslash doubling. Keys containing `"`
+    // are not given an expression-index path: bundled SQLite 3.44 does not
+    // accept a faithful encoding for them, and inventing one would point at
+    // the wrong key. Lookups use json_each with bound parameters instead.
+    format!("$.\"{}\"", name.replace('\\', "\\\\"))
+}
+
+fn sql_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn fact_can_use_extract_index(name: &str) -> bool {
+    !name.contains('"')
 }
 
 impl SessionIndex {
@@ -411,10 +423,15 @@ impl SessionIndex {
         if self.indexed_facts.contains(fact) {
             return Ok(());
         }
+        if !fact_can_use_extract_index(fact) {
+            // Still remember the fact so we do not retry a doomed DDL path.
+            self.indexed_facts.insert(fact.to_owned());
+            return Ok(());
+        }
         let statement = format!(
-            "CREATE INDEX IF NOT EXISTS sessions_fact_{} ON sessions(json_extract(facts, '{}'))",
+            "CREATE INDEX IF NOT EXISTS sessions_fact_{} ON sessions(json_extract(facts, {}))",
             sanitize_identifier(fact),
-            json_path_for_fact(fact)
+            sql_string_literal(&json_path_for_fact(fact))
         );
         self.conn.execute_batch(&statement)?;
         self.indexed_facts.insert(fact.to_owned());
@@ -764,12 +781,15 @@ impl SessionIndex {
 
     pub fn rows_with_fact(&mut self, fact: &str, value: &str) -> Result<Vec<SessionRow>> {
         self.ensure_fact_index(fact)?;
-        let sql = format!(
-            "SELECT {} FROM sessions WHERE json_extract(facts, '{}') = ?1",
-            Self::COLUMNS,
-            json_path_for_fact(fact)
-        );
-        self.query_rows(&sql, &[&value])
+        // Bind the fact name and value as parameters. json_each matches the
+        // real JSON object key, including apostrophes, quotes and Unicode,
+        // without interpolating a path into SQL.
+        let sql = "SELECT DISTINCT sessions.name, sessions.folder, sessions.repo, \
+                   sessions.worktree, sessions.branch, sessions.facts, \
+                   sessions.created_at, sessions.last_used_at \
+                   FROM sessions, json_each(sessions.facts) AS fact \
+                   WHERE fact.key = ?1 AND fact.atom = ?2";
+        self.query_rows(sql, &[&fact, &value])
     }
 
     pub fn recent_rows(&self, limit: usize, offset: usize) -> Result<Vec<SessionRow>> {
@@ -1525,6 +1545,35 @@ mod tests {
         let rows = test.index.rows_matching_rule(&ctx, &rule).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].name, "proj");
+    }
+
+    #[test]
+    fn fact_names_with_apostrophes_and_quotes_round_trip_through_the_index() {
+        let mut test = TestIndex::new();
+        for (fact, value, session) in [
+            ("user's-tag", "yes", "apos"),
+            ("say\"hi", "yes", "quote"),
+            ("path\\key", "yes", "slash"),
+            ("界", "yes", "cjk"),
+            ("DROP TABLE sessions; --", "yes", "inject"),
+        ] {
+            let mut facts = BTreeMap::new();
+            facts.insert(fact.to_owned(), value.to_owned());
+            test.add(
+                session,
+                SessionContext {
+                    facts,
+                    ..Default::default()
+                },
+                1,
+            );
+            let rows = test.index.rows_with_fact(fact, value).unwrap();
+            assert_eq!(
+                rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+                vec![session],
+                "fact {fact:?} should select only its own session"
+            );
+        }
     }
 
     #[test]

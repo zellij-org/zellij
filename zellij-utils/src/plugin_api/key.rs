@@ -14,7 +14,7 @@ impl TryFrom<ProtobufMainKey> for BareKey {
     type Error = &'static str;
     fn try_from(protobuf_main_key: ProtobufMainKey) -> Result<Self, &'static str> {
         match protobuf_main_key {
-            ProtobufMainKey::Char(character) => Ok(BareKey::Char(char_index_to_char(character))),
+            ProtobufMainKey::Char(character) => Ok(BareKey::Char(char_index_to_char(character)?)),
             ProtobufMainKey::Key(key_index) => {
                 let key = ProtobufNamedKey::try_from(key_index)
                     .ok()
@@ -144,8 +144,11 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
     }
 }
 
-fn char_index_to_char(char_index: i32) -> char {
-    char_index as u8 as char
+fn char_index_to_char(char_index: i32) -> Result<char, &'static str> {
+    let Ok(scalar) = u32::try_from(char_index) else {
+        return Err("invalid unicode scalar");
+    };
+    char::try_from(scalar).map_err(|_| "invalid unicode scalar")
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
@@ -182,5 +185,41 @@ fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {
         ProtobufNamedKey::Menu => BareKey::Menu,
         ProtobufNamedKey::NumLock => BareKey::NumLock,
         ProtobufNamedKey::Enter => BareKey::Enter,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip_char(character: char) {
+        let encoded: ProtobufMainKey = BareKey::Char(character).try_into().unwrap();
+        let decoded: BareKey = encoded.try_into().unwrap();
+        assert_eq!(decoded, BareKey::Char(character));
+    }
+
+    #[test]
+    fn unicode_scalars_round_trip_through_protobuf_main_key() {
+        for character in ['a', 'ä', '界', '€', '🙂'] {
+            round_trip_char(character);
+        }
+    }
+
+    #[test]
+    fn unicode_key_with_modifier_round_trips() {
+        let original = KeyWithModifier {
+            bare_key: BareKey::Char('界'),
+            key_modifiers: BTreeSet::from([KeyModifier::Ctrl]),
+        };
+        let encoded: ProtobufKey = original.clone().try_into().unwrap();
+        let decoded: KeyWithModifier = encoded.try_into().unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn negative_and_surrogate_scalars_are_rejected() {
+        assert!(BareKey::try_from(ProtobufMainKey::Char(-1)).is_err());
+        assert!(BareKey::try_from(ProtobufMainKey::Char(0xD800)).is_err());
+        assert!(BareKey::try_from(ProtobufMainKey::Char(0x110000)).is_err());
     }
 }

@@ -270,23 +270,43 @@ fn parse_disabled(stringified: &mut String) -> bool {
 }
 
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
-    stringified
-        .chars()
-        .collect::<Vec<_>>()
-        .iter()
-        .rposition(|c| c == &'$')
-        .map(|last_position| stringified.drain(0..=last_position).collect::<String>())
-        .map(|indices_string| {
-            let mut all_indices = vec![];
-            let raw_indices_for_each_variant = indices_string.split('$');
-            for index_string in raw_indices_for_each_variant {
-                let indices_for_variant = index_string
-                    .split(',')
-                    .filter_map(|s| s.parse::<usize>().ok())
-                    .collect();
-                all_indices.push(indices_for_variant)
-            }
-            all_indices
-        })
-        .unwrap_or_default()
+    let Some(last_byte) = stringified.rfind('$') else {
+        return Vec::new();
+    };
+    let indices_string: String = stringified.drain(0..=last_byte).collect();
+    let mut all_indices = vec![];
+    for index_string in indices_string.split('$') {
+        let indices_for_variant = index_string
+            .split(',')
+            .filter_map(|s| s.parse::<usize>().ok())
+            .collect();
+        all_indices.push(indices_for_variant);
+    }
+    all_indices
+}
+
+#[cfg(test)]
+mod parse_indices_tests {
+    use super::parse_indices;
+
+    #[test]
+    fn parse_indices_uses_byte_offsets_around_unicode() {
+        // Char index of '$' is 2; its byte index is 5. Feeding the char
+        // index into String::drain would panic on a mid-character boundary.
+        let mut stringified = String::from("éé$rest");
+        let indices = parse_indices(&mut stringified);
+        // "éé$" splits into a non-numeric group and the empty group after `$`.
+        let expected: Vec<Vec<usize>> = vec![vec![], vec![]];
+        assert_eq!(indices, expected);
+        assert_eq!(stringified, "rest");
+    }
+
+    #[test]
+    fn parse_indices_keeps_numeric_groups() {
+        let mut stringified = String::from("0,2$1$hello");
+        let indices = parse_indices(&mut stringified);
+        let expected: Vec<Vec<usize>> = vec![vec![0, 2], vec![1], vec![]];
+        assert_eq!(indices, expected);
+        assert_eq!(stringified, "hello");
+    }
 }

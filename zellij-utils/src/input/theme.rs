@@ -150,6 +150,29 @@ impl From<HexColor> for (u8, u8, u8) {
     }
 }
 
+/// Parse `#RGB` / `#RRGGBB` (optional leading `#`) into RGB channels.
+/// Rejects non-ASCII input before any byte slicing so multi-byte UTF-8
+/// never hits a mid-character index panic.
+pub fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let s = s.strip_prefix('#').unwrap_or(s);
+    if !s.is_ascii() || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    match s.len() {
+        3 => Some((
+            u8::from_str_radix(&s[0..1], 16).ok()? * 0x11,
+            u8::from_str_radix(&s[1..2], 16).ok()? * 0x11,
+            u8::from_str_radix(&s[2..3], 16).ok()? * 0x11,
+        )),
+        6 => Some((
+            u8::from_str_radix(&s[0..2], 16).ok()?,
+            u8::from_str_radix(&s[2..4], 16).ok()?,
+            u8::from_str_radix(&s[4..6], 16).ok()?,
+        )),
+        _ => None,
+    }
+}
+
 pub struct HexColorVisitor();
 
 impl<'de> Visitor<'de> for HexColorVisitor {
@@ -163,27 +186,11 @@ impl<'de> Visitor<'de> for HexColorVisitor {
     where
         E: Error,
     {
-        if let Some(stripped) = s.strip_prefix('#') {
-            return self.visit_str(stripped);
-        }
-
-        if s.len() == 3 {
-            Ok(HexColor(
-                u8::from_str_radix(&s[0..1], 16).map_err(E::custom)? * 0x11,
-                u8::from_str_radix(&s[1..2], 16).map_err(E::custom)? * 0x11,
-                u8::from_str_radix(&s[2..3], 16).map_err(E::custom)? * 0x11,
-            ))
-        } else if s.len() == 6 {
-            Ok(HexColor(
-                u8::from_str_radix(&s[0..2], 16).map_err(E::custom)?,
-                u8::from_str_radix(&s[2..4], 16).map_err(E::custom)?,
-                u8::from_str_radix(&s[4..6], 16).map_err(E::custom)?,
-            ))
-        } else {
-            Err(Error::custom(
-                "Hex color must be of form \"#RGB\" or \"#RRGGBB\"",
-            ))
-        }
+        parse_hex_rgb(s)
+            .map(|(r, g, b)| HexColor(r, g, b))
+            .ok_or_else(|| {
+                Error::custom("Hex color must be of form \"#RGB\" or \"#RRGGBB\"")
+            })
     }
 }
 
