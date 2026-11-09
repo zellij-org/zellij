@@ -256,6 +256,9 @@ pub(crate) struct Pty {
     child_run_generations: HashMap<u32, u64>,
     next_run_generation: u64,
     session_id: String,
+    // Read once in `pty_thread_main`, after the session has claimed an
+    // incarnation. Not refreshed: a newer file must not reauthorize this thread.
+    session_incarnation: Option<u128>,
     originating_plugins: HashMap<u32, OriginatingPlugin>,
     origin_pane_ids: HashMap<u32, PaneId>,
     debug_to_file: bool,
@@ -276,6 +279,11 @@ pub(crate) struct Pty {
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
     pty.session_id = session_id.clone();
+    pty.session_incarnation = if session_id.is_empty() {
+        None
+    } else {
+        zellij_utils::sessions::read_session_incarnation(&session_id).ok()
+    };
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -915,24 +923,33 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 ) {
                     Ok(kdl_and_files) => {
                         // Cache is keyed by the stable session id, not the name.
-                        match write_session_state_to_disk(
-                            session_id.clone(),
-                            session_info,
-                            kdl_and_files.clone(),
-                        ) {
-                            Ok(()) => {
-                                // Update session save time for plugin query
-                                let timestamp_millis = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis()
-                                    as u64;
-                                let _ = pty.bus.senders.send_to_plugin(
-                                    PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
+                        match pty.session_incarnation {
+                            None => {
+                                log::error!(
+                                    "Refusing to persist session state for {} without a captured incarnation",
+                                    session_id
                                 );
                             },
-                            Err(e) => {
-                                log::error!("Failed to persist session state to disk: {}", e);
+                            Some(incarnation) => match write_session_state_to_disk(
+                                session_id.clone(),
+                                incarnation,
+                                session_info,
+                                kdl_and_files.clone(),
+                            ) {
+                                Ok(()) => {
+                                    // Update session save time for plugin query
+                                    let timestamp_millis = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis()
+                                        as u64;
+                                    let _ = pty.bus.senders.send_to_plugin(
+                                        PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
+                                    );
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to persist session state to disk: {}", e);
+                                },
                             },
                         }
 
@@ -1073,6 +1090,7 @@ impl Pty {
             child_run_generations: HashMap::new(),
             next_run_generation: 0,
             session_id: String::new(),
+            session_incarnation: None,
             debug_to_file,
             task_handles: HashMap::new(),
             default_editor,

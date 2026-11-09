@@ -2,8 +2,9 @@
 use crate::ipc::IpcReceiverWithContext;
 use crate::{
     consts::{
-        is_ipc_socket, session_deletion_tombstone_path, session_info_folder_for_session,
-        session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+        is_ipc_socket, session_deletion_tombstone_path, session_incarnation_path,
+        session_info_folder_for_session, session_layout_cache_file_name,
+        session_publication_lock_path, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     data::SessionInfo,
     envs,
@@ -14,8 +15,9 @@ use crate::{
 use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use std::{fs, io, process};
@@ -738,19 +740,21 @@ pub fn delete_session(name: &str, force: bool) {
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
     }
-    // Fence late writers *before* removing the folder: a sleep/probe is not a
-    // writer fence (#5709). The tombstone is a sibling of the session folder
-    // so it survives `remove_dir_all`.
-    fence_session_deletion(&session_id);
-    if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(&session_id)) {
-        if e.kind() == std::io::ErrorKind::NotFound {
+    // Fence and remove under one per-session lock. A fence failure must not
+    // report success: the directory stays, and the process does not exit 0.
+    match remove_fenced_session_cache(&session_id) {
+        Ok(SessionCacheRemoval::Removed) => {
+            println!("Session: {:?} successfully deleted.", name);
+        },
+        Ok(SessionCacheRemoval::NotFound) => {
             eprintln!("Session: {:?} not found.", name);
             process::exit(2);
-        } else {
-            log::error!("Failed to remove session {:?}: {:?}", name, e);
-        }
-    } else {
-        println!("Session: {:?} successfully deleted.", name);
+        },
+        Err(error) => {
+            eprintln!("Failed to delete session {:?}: {}", name, error);
+            log::error!("Failed to delete session {:?}: {}", name, error);
+            process::exit(1);
+        },
     }
 }
 
@@ -779,39 +783,317 @@ fn sessions_for_display(
         .collect()
 }
 
-/// Publish a deletion tombstone for `session_id`. Writers that observe this
-/// marker must refuse to republish session metadata/layout for that id.
-pub fn fence_session_deletion(session_id: &str) {
-    let path = session_deletion_tombstone_path(session_id);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let generation = SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let contents = format!("deleted\ngeneration={generation}\n");
-    if let Err(e) = std::fs::write(&path, contents) {
-        log::error!(
-            "Failed to write session deletion tombstone {}: {:?}",
-            path.display(),
-            e
-        );
+/// Why a publication attempt was refused.
+///
+/// Returned as the inner error of an [`io::Error`] with
+/// [`io::ErrorKind::PermissionDenied`]. A fenced save is never `Ok(())`.
+/// Identify it with [`is_session_publication_fenced`]; a plain permission
+/// error from the filesystem does not downcast to this type.
+#[derive(Debug)]
+pub struct SessionPublicationFenced {
+    pub session_id: String,
+    pub incarnation: u128,
+}
+
+impl std::fmt::Display for SessionPublicationFenced {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "session publication fenced for {} incarnation {}",
+            self.session_id, self.incarnation
+        )
     }
 }
 
-/// True when a deletion tombstone fences writers for this session id.
+impl std::error::Error for SessionPublicationFenced {}
+
+/// `true` when `error` is a fenced publication ([`SessionPublicationFenced`]).
+pub fn is_session_publication_fenced(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<SessionPublicationFenced>())
+}
+
+fn publication_fenced_error(session_id: &str, incarnation: u128) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        SessionPublicationFenced {
+            session_id: session_id.to_owned(),
+            incarnation,
+        },
+    )
+}
+
+/// Outcome of [`remove_fenced_session_cache`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionCacheRemoval {
+    Removed,
+    NotFound,
+}
+
+/// Exclusive cross-process lock for one session id.
+///
+/// The lock file is a sibling of the session directory, so `remove_dir_all`
+/// of that directory does not drop the lock. Different session ids lock
+/// different files. Hold the guard from the eligibility check through staging
+/// and persist, and across the tombstone write plus directory removal.
+pub struct SessionPublicationLock {
+    #[cfg(unix)]
+    _file: nix::fcntl::Flock<fs::File>,
+    #[cfg(windows)]
+    _file: fs::File,
+    #[cfg(not(any(unix, windows)))]
+    _file: (),
+}
+
+/// Block until this process holds the per-session publication lock.
+///
+/// Fails closed when the lock cannot be acquired. On Windows the lock is
+/// `LockFileEx`; there is no silent no-op.
+pub fn lock_session_publication(session_id: &str) -> io::Result<SessionPublicationLock> {
+    let path = session_publication_lock_path(session_id);
+    if let Some(parent) = path.parent() {
+        // The cache directory, not the session folder. Creating the session
+        // folder is what a fenced writer must not do.
+        fs::create_dir_all(parent)?;
+    }
+    let mut options = fs::OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(&path)?;
+    SessionPublicationLock::from_file(file)
+}
+
+impl SessionPublicationLock {
+    #[cfg(unix)]
+    fn from_file(file: fs::File) -> io::Result<Self> {
+        use nix::fcntl::{Flock, FlockArg};
+        let file = Flock::lock(file, FlockArg::LockExclusive)
+            .map_err(|(_file, errno)| io::Error::from(errno))?;
+        Ok(SessionPublicationLock { _file: file })
+    }
+
+    #[cfg(windows)]
+    fn from_file(file: fs::File) -> io::Result<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+        use windows_sys::Win32::System::IO::OVERLAPPED;
+        // Synchronous handle: a zeroed OVERLAPPED makes LockFileEx wait.
+        let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+        let locked = unsafe {
+            LockFileEx(
+                file.as_raw_handle() as _,
+                LOCKFILE_EXCLUSIVE_LOCK,
+                0,
+                u32::MAX,
+                u32::MAX,
+                &mut overlapped,
+            )
+        };
+        if locked == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(SessionPublicationLock { _file: file })
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    fn from_file(_file: fs::File) -> io::Result<Self> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "session publication lock is unavailable on this platform",
+        ))
+    }
+}
+
+/// Read the incarnation file once, when a writer is created.
+///
+/// Store the value and pass it to later publication attempts. Re-reading at
+/// publish time and adopting a newer value would let a new owner reauthorize
+/// a writer that was admitted under the deleted incarnation.
+pub fn read_session_incarnation(session_id: &str) -> io::Result<u128> {
+    match read_incarnation_file(&session_incarnation_path(session_id))? {
+        Some(incarnation) => Ok(incarnation),
+        None => Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no publication incarnation for session {session_id}"),
+        )),
+    }
+}
+
+/// Caller must hold [`lock_session_publication`] for `session_id` across this
+/// check and the following `create_dir_all` / persist.
+///
+/// `Ok(())` only when `incarnation` equals the incarnation file and the
+/// tombstone does not name it. Otherwise a [`SessionPublicationFenced`] error
+/// (`PermissionDenied`). Other IO failures are returned unchanged, never `Ok`.
+pub fn ensure_session_publication_allowed(session_id: &str, incarnation: u128) -> io::Result<()> {
+    let live = read_incarnation_file(&session_incarnation_path(session_id))?;
+    let blocked = tombstone_blocks_incarnation(session_id, incarnation)?;
+    if live != Some(incarnation) || blocked {
+        Err(publication_fenced_error(session_id, incarnation))
+    } else {
+        Ok(())
+    }
+}
+
+/// Publish a deletion tombstone naming the current live incarnation.
+///
+/// Holds the per-session publication lock while the tombstone is written.
+/// Returns `Err` when the marker cannot be written; callers must not remove
+/// the session directory in that case. A missing incarnation file is recorded
+/// as incarnation `0` (no admitted writer) and is still a successful fence.
+pub fn fence_session_deletion(session_id: &str) -> io::Result<()> {
+    let _lock = lock_session_publication(session_id)?;
+    write_deletion_tombstone(session_id)
+}
+
+/// Fence `session_id` and remove its cache folder while holding the
+/// per-session publication lock.
+///
+/// On fence failure the folder is left in place and the error is returned.
+/// If removal fails after a successful fence, the tombstone stays.
+pub fn remove_fenced_session_cache(session_id: &str) -> io::Result<SessionCacheRemoval> {
+    let _lock = lock_session_publication(session_id)?;
+    write_deletion_tombstone(session_id)?;
+    match fs::remove_dir_all(session_info_folder_for_session(session_id)) {
+        Ok(()) => Ok(SessionCacheRemoval::Removed),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(SessionCacheRemoval::NotFound),
+        Err(error) => Err(error),
+    }
+}
+
+/// True when a deletion tombstone file exists for this session id.
 pub fn session_deletion_is_fenced(session_id: &str) -> bool {
     session_deletion_tombstone_path(session_id).exists()
 }
 
-/// Clear a deletion tombstone when a fresh session claims the same id
-/// (should be rare — ids are random — but kept for symmetry with creation).
+/// Admit a new incarnation and drop any deletion tombstone.
+///
+/// Called before writers are started. A writer that already captured the
+/// previous incarnation stays refused after this returns, because publication
+/// compares that stored value to the file. Failures are logged; this still
+/// returns `()`.
 pub fn clear_session_deletion_fence(session_id: &str) {
-    let path = session_deletion_tombstone_path(session_id);
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
+    if let Err(error) = admit_session_incarnation(session_id) {
+        log::error!(
+            "Failed to clear session deletion fence for {}: {}",
+            session_id,
+            error
+        );
     }
+}
+
+fn admit_session_incarnation(session_id: &str) -> io::Result<()> {
+    let _lock = lock_session_publication(session_id)?;
+    let incarnation = mint_session_incarnation();
+    write_sibling_atomically(
+        &session_incarnation_path(session_id),
+        format!("{incarnation}\n").as_bytes(),
+    )?;
+    match fs::remove_file(session_deletion_tombstone_path(session_id)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn mint_session_incarnation() -> u128 {
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let nanos = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let tick = COUNTER.fetch_add(1, Ordering::Relaxed) as u128;
+    let pid = std::process::id() as u128;
+    // Time in the high half, pid and a per-process counter in the low half.
+    // The counter keeps two claims in the same nanosecond distinct.
+    let low = (pid << 32) | (tick & 0xffff_ffff);
+    let value = ((nanos as u64) as u128) << 64 | low;
+    if value == 0 {
+        1
+    } else {
+        value
+    }
+}
+
+fn read_incarnation_file(path: &Path) -> io::Result<Option<u128>> {
+    match fs::read_to_string(path) {
+        Ok(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "empty session incarnation file",
+                ));
+            }
+            text.parse::<u128>().map(Some).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid session incarnation: {error}"),
+                )
+            })
+        },
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn tombstone_blocks_incarnation(session_id: &str, incarnation: u128) -> io::Result<bool> {
+    let text = match fs::read_to_string(session_deletion_tombstone_path(session_id)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    // A tombstone that does not name an incarnation (older marker, or a
+    // truncated write) fences every writer. A named one fences only that
+    // incarnation.
+    match named_tombstone_incarnation(&text) {
+        Some(named) => Ok(named == incarnation),
+        None => Ok(true),
+    }
+}
+
+fn named_tombstone_incarnation(text: &str) -> Option<u128> {
+    for line in text.lines() {
+        if let Some(value) = line.trim().strip_prefix("incarnation=") {
+            return value.trim().parse().ok();
+        }
+    }
+    None
+}
+
+fn write_deletion_tombstone(session_id: &str) -> io::Result<()> {
+    let incarnation = read_incarnation_file(&session_incarnation_path(session_id))?.unwrap_or(0);
+    let contents = format!("deleted\nincarnation={incarnation}\n");
+    write_sibling_atomically(
+        &session_deletion_tombstone_path(session_id),
+        contents.as_bytes(),
+    )
+}
+
+/// Atomic replace of a cache-directory sibling. Does not create the session folder.
+fn write_sibling_atomically(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "session publication path has no parent directory",
+            )
+        })?;
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".zellij-session-meta-")
+        .tempfile_in(parent)?;
+    temporary.write_all(contents)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    Ok(())
 }
 
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
@@ -1390,21 +1672,49 @@ mod session_folder_name_tests {
 #[cfg(test)]
 mod deletion_fence_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::Instant;
+
+    fn unique_session_id(label: &str) -> String {
+        format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
+    fn remove_sidecars(session_id: &str) {
+        let _ = fs::remove_file(session_deletion_tombstone_path(session_id));
+        let _ = fs::remove_file(session_incarnation_path(session_id));
+        let _ = fs::remove_file(session_publication_lock_path(session_id));
+        let _ = fs::remove_dir_all(session_info_folder_for_session(session_id));
+    }
 
     #[test]
     fn deletion_tombstone_fences_writers_and_survives_folder_removal() {
-        let session_id = format!("tombstone-test-{}", std::process::id());
+        let session_id = unique_session_id("tombstone-test");
         let folder = session_info_folder_for_session(&session_id);
-        let _ = fs::remove_dir_all(&folder);
+        remove_sidecars(&session_id);
         clear_session_deletion_fence(&session_id);
+        let incarnation = read_session_incarnation(&session_id).unwrap();
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("session-metadata.kdl"), "session").unwrap();
 
         assert!(!session_deletion_is_fenced(&session_id));
-        fence_session_deletion(&session_id);
+        assert_eq!(
+            remove_fenced_session_cache(&session_id).unwrap(),
+            SessionCacheRemoval::Removed
+        );
         assert!(session_deletion_is_fenced(&session_id));
-
-        fs::remove_dir_all(&folder).unwrap();
+        let tombstone = fs::read_to_string(session_deletion_tombstone_path(&session_id)).unwrap();
+        assert!(
+            tombstone.contains(&format!("incarnation={incarnation}")),
+            "tombstone must name the live incarnation, got {tombstone}"
+        );
         assert!(
             session_deletion_is_fenced(&session_id),
             "tombstone must survive remove_dir_all of the session folder"
@@ -1413,6 +1723,63 @@ mod deletion_fence_tests {
 
         clear_session_deletion_fence(&session_id);
         assert!(!session_deletion_is_fenced(&session_id));
+        let renewed = read_session_incarnation(&session_id).unwrap();
+        assert_ne!(renewed, incarnation);
+        remove_sidecars(&session_id);
+    }
+
+    #[test]
+    fn fence_failure_leaves_the_session_directory_in_place() {
+        let session_id = unique_session_id("fence-fail");
+        let folder = session_info_folder_for_session(&session_id);
+        let tombstone = session_deletion_tombstone_path(&session_id);
+        remove_sidecars(&session_id);
+        clear_session_deletion_fence(&session_id);
+        fs::create_dir_all(&folder).unwrap();
+        let metadata = folder.join("session-metadata.kdl");
+        fs::write(&metadata, "keep").unwrap();
+        // A directory where the tombstone file must be written is a real IO failure.
+        fs::create_dir(&tombstone).unwrap();
+
+        let fence_error = fence_session_deletion(&session_id).unwrap_err();
+        assert!(!is_session_publication_fenced(&fence_error));
+        let removal_error = remove_fenced_session_cache(&session_id).unwrap_err();
+        assert!(!is_session_publication_fenced(&removal_error));
+        assert_eq!(fs::read_to_string(&metadata).unwrap(), "keep");
+        assert!(folder.exists(), "fence failure must not delete the session");
+
+        let _ = fs::remove_dir_all(&tombstone);
+        remove_sidecars(&session_id);
+    }
+
+    #[test]
+    fn publication_fence_locks_are_per_session() {
+        let first = unique_session_id("lock-a");
+        let second = unique_session_id("lock-b");
+        remove_sidecars(&first);
+        remove_sidecars(&second);
+        let arrived = std::sync::Arc::new(AtomicUsize::new(0));
+        let mut handles = Vec::new();
+        for session_id in [first.clone(), second.clone()] {
+            let arrived = std::sync::Arc::clone(&arrived);
+            handles.push(thread::spawn(move || {
+                let _lock = lock_session_publication(&session_id)
+                    .unwrap_or_else(|error| panic!("lock {session_id}: {error}"));
+                arrived.fetch_add(1, Ordering::SeqCst);
+                let started = Instant::now();
+                while arrived.load(Ordering::SeqCst) < 2 {
+                    if started.elapsed() > Duration::from_secs(3) {
+                        panic!("two session ids serialized on one publication lock");
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        remove_sidecars(&first);
+        remove_sidecars(&second);
     }
 }
 
