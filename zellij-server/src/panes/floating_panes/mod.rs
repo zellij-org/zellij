@@ -90,7 +90,9 @@ impl FloatingPanes {
         senders: ThreadSenders,
     ) -> Self {
         let active_panes = match senders.to_pty_writer.clone() {
-            Some(pty_writer) => ActivePanes::with_pty_writer(&os_input, pty_writer),
+            Some(pty_writer) => {
+                ActivePanes::with_pty_writer(&os_input, pty_writer, senders.pty_ingress.clone())
+            },
             None => ActivePanes::new(&os_input),
         };
         FloatingPanes {

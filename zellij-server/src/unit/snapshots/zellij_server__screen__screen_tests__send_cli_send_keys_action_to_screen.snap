@@ -1,20 +1,29 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 3041
 expression: "format!(\"{:#?}\", received_write_instructions)"
 ---
 [
     Write(
-        [
-            1,
-        ],
-        0,
-        None,
+        AdmittedWrite {
+            bytes: [
+                1,
+            ],
+            terminal_id: 0,
+            completion: None,
+            budget: false,
+            handed_off: true,
+        },
     ),
     Write(
-        [
-            120,
-        ],
-        0,
-        None,
+        AdmittedWrite {
+            bytes: [
+                120,
+            ],
+            terminal_id: 0,
+            completion: None,
+            budget: false,
+            handed_off: true,
+        },
     ),
 ]

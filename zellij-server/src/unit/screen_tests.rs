@@ -833,6 +833,7 @@ impl MockScreen {
                 to_pty_writer: Some(to_pty_writer.clone()),
                 to_background_jobs: Some(to_background_jobs.clone()),
                 to_server: Some(to_server.clone()),
+                pty_ingress: None,
                 should_silently_fail: true,
             },
             default_shell: None,
@@ -9968,7 +9969,8 @@ impl ForwardCapture {
     fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
-            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let (bytes, terminal_id, _, _) = write.into_parts();
                 out.push((bytes, terminal_id));
             }
         }
@@ -11029,7 +11031,8 @@ impl ThemeCapture {
     fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
-            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let (bytes, terminal_id, _, _) = write.into_parts();
                 out.push((bytes, terminal_id));
             }
         }
@@ -12962,7 +12965,11 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
         .unwrap()
         .iter()
         .find_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                decode_nested_frame(write.bytes())
+            },
             _ => None,
         })
         .expect("an announce_ack frame written to the guest pane");
@@ -13017,7 +13024,11 @@ pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
         .unwrap()
         .iter()
         .find_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                decode_nested_frame(write.bytes())
+            },
             _ => None,
         })
         .expect("an announce_ack frame written to the guest pane even in never mode");
@@ -13075,10 +13086,14 @@ pub fn nested_guest_bye_stops_liveness_pings() {
         .unwrap()
         .iter()
         .filter(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => matches!(
-                decode_nested_frame(bytes),
-                Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
-            ),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                matches!(
+                    decode_nested_frame(write.bytes()),
+                    Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
+                )
+            },
             _ => false,
         })
         .count();
@@ -16100,7 +16115,11 @@ mod nested_hint_reporting {
             self.pty_writer_receiver
                 .try_iter()
                 .filter_map(|(instruction, _)| match instruction {
-                    PtyWriteInstruction::Write(bytes, 1, None) => decode_nested_frame(&bytes),
+                    PtyWriteInstruction::Write(write)
+                        if write.terminal_id() == 1 && write.completion().is_none() =>
+                    {
+                        decode_nested_frame(write.bytes())
+                    },
                     _ => None,
                 })
                 .collect()
@@ -18400,7 +18419,10 @@ impl MockScreenWithPrompt {
         self.pty_writer_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
-                PtyWriteInstruction::Write(bytes, terminal_id, _) => Some((bytes, terminal_id)),
+                PtyWriteInstruction::Write(write) => {
+                    let (bytes, terminal_id, _, _) = write.into_parts();
+                    Some((bytes, terminal_id))
+                },
                 _ => None,
             })
             .collect()

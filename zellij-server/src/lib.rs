@@ -27,6 +27,7 @@ mod pane_groups;
 pub mod pane_mirror;
 mod plugins;
 mod pty;
+mod pty_ingress;
 mod pty_writer;
 mod route;
 mod screen;
@@ -41,7 +42,7 @@ mod ui;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
-use pty_writer::{pty_writer_main, PtyWriteInstruction};
+use pty_writer::{pty_writer_main, AdmittedWrite, PtyWriteInstruction};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::{
     net::{IpAddr, Ipv4Addr},
@@ -1194,9 +1195,7 @@ impl SessionMetaData {
                         &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
                     );
                     let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
-                        frame,
-                        terminal_id,
-                        None,
+                        AdmittedWrite::new(frame, terminal_id, None, None),
                     ));
                 }
             }
@@ -1767,17 +1766,29 @@ impl SessionState {
     pub fn clear_forward_in_flight(&mut self, token: u32) {
         self.forwards_in_flight.remove(&token);
     }
-    /// Client to route a host-query forward to. Prefers whichever
-    /// client most recently interacted with the session; falls back
-    /// to any currently-connected non-watcher client. Returns `None`
-    /// only when no regular client is connected.
+    /// Client to route a host-query forward to.
+    ///
+    /// Last-active is used only when that client is an attached host:
+    /// present in `clients` with size data, and not a pipe. Otherwise
+    /// the first client with the same eligibility. Watchers are not in
+    /// `clients`. Returns `None` when no attached host is connected.
     pub fn pick_forward_target(&self) -> Option<ClientId> {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        let eligible = |client_id: ClientId| {
+            self.clients
+                .get(&client_id)
+                .is_some_and(|data| data.is_some())
+                && !pipe_ids.contains(&client_id)
+        };
         if let Some(candidate) = self.last_active_client {
-            if self.clients.contains_key(&candidate) {
+            if eligible(candidate) {
                 return Some(candidate);
             }
         }
-        self.clients.keys().copied().next()
+        self.clients
+            .keys()
+            .copied()
+            .find(|&client_id| eligible(client_id))
     }
 }
 
@@ -1923,11 +1934,15 @@ mod session_state_tests {
         s
     }
 
+    fn attach_host(session: &mut SessionState, id: ClientId) {
+        session.set_client_data(id, Size { rows: 24, cols: 80 }, false);
+    }
+
     #[test]
     fn pick_forward_target_prefers_last_active_when_still_connected() {
         let mut s = SessionState::new();
-        s.clients.insert(1, None);
-        s.clients.insert(2, None);
+        attach_host(&mut s, 1);
+        attach_host(&mut s, 2);
         s.set_last_active_client(2);
         assert_eq!(s.pick_forward_target(), Some(2));
     }
@@ -2034,16 +2049,58 @@ mod session_state_tests {
     #[test]
     fn pick_forward_target_falls_back_when_last_active_disconnected() {
         let mut s = SessionState::new();
-        s.clients.insert(1, None);
-        s.clients.insert(2, None);
+        attach_host(&mut s, 1);
+        attach_host(&mut s, 2);
         // Client 3 was last active but has since disconnected — not in
-        // `clients` map anymore. Must fall through to any connected
-        // client rather than returning None.
+        // `clients` anymore. Must fall through to an attached host
+        // rather than returning None.
         s.last_active_client = Some(3);
         let picked = s
             .pick_forward_target()
-            .expect("some client still connected");
+            .expect("some attached host still connected");
         assert!(picked == 1 || picked == 2);
+    }
+
+    #[test]
+    fn pick_forward_target_none_when_only_a_pipe_client_is_connected() {
+        let mut s = SessionState::new();
+        attach_host(&mut s, 1);
+        s.associate_pipe_with_client("pipe".to_owned(), 1);
+        s.set_last_active_client(1);
+        assert_eq!(s.pick_forward_target(), None);
+    }
+
+    #[test]
+    fn pick_forward_target_skips_a_last_active_pipe_for_an_attached_host() {
+        let mut s = SessionState::new();
+        attach_host(&mut s, 1);
+        s.associate_pipe_with_client("pipe".to_owned(), 1);
+        attach_host(&mut s, 2);
+        s.set_last_active_client(1);
+        assert_eq!(s.pick_forward_target(), Some(2));
+    }
+
+    #[test]
+    fn pick_forward_target_none_when_no_client_is_attached() {
+        let mut s = SessionState::new();
+        s.clients.insert(1, None);
+        s.clients.insert(2, None);
+        s.set_last_active_client(1);
+        assert_eq!(s.attached_client_count(), 0);
+        assert_eq!(s.pick_forward_target(), None);
+    }
+
+    #[test]
+    fn pick_forward_target_does_not_select_a_watcher() {
+        let mut s = SessionState::new();
+        let watcher = s.new_client();
+        s.convert_client_to_watcher(watcher, false);
+        s.set_last_active_client(watcher);
+        assert!(s.is_watcher(&watcher));
+        assert_eq!(s.pick_forward_target(), None);
+
+        attach_host(&mut s, 2);
+        assert_eq!(s.pick_forward_target(), Some(2));
     }
 
     #[test]
@@ -4002,6 +4059,22 @@ fn attach_client(
     }
 }
 
+/// Drop the server mailbox, then join session workers.
+///
+/// Workers can block in `send_to_server` on this bounded mailbox. The
+/// receiver has to be gone before `SessionMetaData::drop` joins them, and
+/// the session write lock cannot be held across that join.
+fn retire_session_workers<R>(server_receiver: R, session_data: &RwLock<Option<SessionMetaData>>) {
+    drop(server_receiver);
+    let session = {
+        let mut session_data = session_data.write().unwrap();
+        let session = session_data.take();
+        drop(session_data);
+        session
+    };
+    drop(session);
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
@@ -4623,8 +4696,9 @@ pub fn start_server_impl(
                     }
                     // SAFETY: lock poison implies prior panic
                     if !session_state.read().unwrap().active_clients_are_connected() {
-                        // SAFETY: lock poison implies prior panic
-                        *session_data.write().unwrap() = None;
+                        // Workers are joined once, after this loop drops the
+                        // server receiver. Joining here would block on a full
+                        // mailbox that this thread is still responsible for.
                         let client_ids_to_cleanup: Vec<ClientId> = session_state
                             .read()
                             // SAFETY: lock poison implies prior panic
@@ -5589,7 +5663,12 @@ pub fn start_server_impl(
                                             &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
                                         );
                                         let _ = session_data.senders.send_to_pty_writer(
-                                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                                            PtyWriteInstruction::Write(AdmittedWrite::new(
+                                                frame,
+                                                terminal_id,
+                                                None,
+                                                None,
+                                            )),
                                         );
                                     }
                                 }
@@ -5609,7 +5688,12 @@ pub fn start_server_impl(
                                         },
                                     );
                                     let _ = session_data.senders.send_to_pty_writer(
-                                        PtyWriteInstruction::Write(frame, terminal_id, None),
+                                        PtyWriteInstruction::Write(AdmittedWrite::new(
+                                            frame,
+                                            terminal_id,
+                                            None,
+                                            None,
+                                        )),
                                     );
                                 }
                             }
@@ -5646,8 +5730,8 @@ pub fn start_server_impl(
         }
     }
 
-    // Drop cached session data before exit.
-    *session_data.write().unwrap() = None;
+    // Drop the mailbox before joining workers. This is the only join.
+    retire_session_workers(server_receiver, &session_data);
 
     server_socket.remove_on_exit();
     if delete_session_on_exit {
@@ -5752,22 +5836,25 @@ fn init_session(
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
     let live_view_captures = crate::pane_mirror::SharedLiveViewCaptures::default();
     let applied_env = AppliedEnv::at_startup(config.env.inner());
+    let pty_ingress = Arc::new(pty_ingress::PtyIngressBudget::new());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
             let layout = layout.clone();
+            let mut pty_bus = Bus::new(
+                vec![pty_receiver],
+                Some(&to_screen_bounded),
+                None,
+                Some(&to_plugin),
+                Some(&to_server),
+                Some(&to_pty_writer),
+                Some(&to_background_jobs),
+                Some(os_input.clone()),
+            );
+            pty_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
             let pty = Pty::new(
-                Bus::new(
-                    vec![pty_receiver],
-                    Some(&to_screen_bounded),
-                    None,
-                    Some(&to_plugin),
-                    Some(&to_server),
-                    Some(&to_pty_writer),
-                    Some(&to_background_jobs),
-                    Some(os_input.clone()),
-                ),
+                pty_bus,
                 cli_assets.is_debug,
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
@@ -5783,7 +5870,7 @@ fn init_session(
     let screen_thread = thread::Builder::new()
         .name("screen".to_string())
         .spawn({
-            let screen_bus = Bus::new(
+            let mut screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
                 Some(&to_screen), // there are certain occasions (eg. caching) where the screen
                 // needs to send messages to itself
@@ -5795,6 +5882,7 @@ fn init_session(
                 Some(os_input.clone()),
             )
             .with_priority(screen_priority_receiver, &to_screen_priority);
+            screen_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
             let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
@@ -5830,7 +5918,7 @@ fn init_session(
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let plugin_bus = Bus::new(
+            let mut plugin_bus = Bus::new(
                 vec![plugin_receiver],
                 Some(&to_screen_bounded),
                 Some(&to_pty),
@@ -5840,6 +5928,7 @@ fn init_session(
                 Some(&to_background_jobs),
                 None,
             );
+            plugin_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
             let engine = get_engine();
 
             let layout = layout.clone();
@@ -5878,7 +5967,7 @@ fn init_session(
     let pty_writer_thread = thread::Builder::new()
         .name("pty_writer".to_string())
         .spawn({
-            let pty_writer_bus = Bus::new(
+            let mut pty_writer_bus = Bus::new(
                 vec![pty_writer_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
@@ -5888,6 +5977,7 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
+            pty_writer_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
             || pty_writer_main(pty_writer_bus).fatal()
         })
         // infallible: thread spawn only fails under OS resource exhaustion
@@ -5898,7 +5988,7 @@ fn init_session(
         .name("background_jobs".to_string())
         .spawn({
             let live_sessions = live_sessions.clone();
-            let background_jobs_bus = Bus::new(
+            let mut background_jobs_bus = Bus::new(
                 vec![background_jobs_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
@@ -5908,6 +5998,7 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
+            background_jobs_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
             let web_server_base_url = web_server_base_url(
                 web_server_ip,
                 web_server_port,
@@ -5979,6 +6070,7 @@ fn init_session(
             to_pty_writer: Some(to_pty_writer),
             to_background_jobs: Some(to_background_jobs),
             to_server: Some(to_server),
+            pty_ingress: Some(pty_ingress),
             should_silently_fail: false,
         },
         default_shell,
@@ -6903,8 +6995,8 @@ mod server_mailbox_tests {
     use crate::thread_bus::ThreadSenders;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::sync::{Arc, RwLock};
-    use std::time::Duration;
+    use std::sync::{Arc, Barrier, RwLock};
+    use std::time::{Duration, Instant};
     use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
     use zellij_utils::data::{Palette, WebSharing};
     use zellij_utils::errors::prelude::*;
@@ -7169,5 +7261,80 @@ mod server_mailbox_tests {
             instruction,
             super::ServerInstruction::UnblockInputThread(None)
         ));
+    }
+
+    #[test]
+    fn shutdown_drops_the_server_mailbox_before_retire_session_workers_join() {
+        let (sender, receiver) = channels::bounded::<u8>(1);
+        sender
+            .send(0)
+            .expect("capacity 1 should accept the first message");
+
+        let gate = Arc::new(Barrier::new(2));
+        let worker_gate = Arc::clone(&gate);
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            worker_gate.wait();
+            let result = sender.send_timeout(1, Duration::from_secs(2));
+            let _ = result_tx.send(result);
+            // Keep the join in progress long enough that holding the session
+            // write lock across it misses the lock deadline below.
+            std::thread::sleep(Duration::from_millis(500));
+        });
+
+        let mut session = session_holding(Arc::new(std::sync::atomic::AtomicBool::new(true)));
+        session.screen_thread = Some(worker);
+        let session_data = Arc::new(RwLock::new(Some(session)));
+
+        gate.wait();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let session_for_lock = Arc::clone(&session_data);
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            loop {
+                if let Ok(guard) = session_for_lock.try_write() {
+                    if guard.is_none() {
+                        let _ = locked_tx.send(started.elapsed());
+                        return;
+                    }
+                }
+                if started.elapsed() > Duration::from_millis(300) {
+                    let _ = locked_tx.send(started.elapsed());
+                    return;
+                }
+                std::thread::yield_now();
+            }
+        });
+
+        let started = Instant::now();
+        super::retire_session_workers(receiver, &session_data);
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(1500),
+            "retire_session_workers blocked on the worker send: {elapsed:?}"
+        );
+
+        let lock_wait = locked_rx
+            .recv_timeout(Duration::from_millis(500))
+            .expect("session write lock was not acquired while workers were joining");
+        assert!(
+            lock_wait < Duration::from_millis(300),
+            "session write lock was held across the worker join: {lock_wait:?}"
+        );
+
+        let send_result = result_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("worker did not finish send_timeout");
+        match send_result {
+            Ok(()) => panic!("worker send succeeded; the server receiver was still alive"),
+            Err(err) if err.is_disconnected() => {},
+            Err(err) if err.is_timeout() => {
+                panic!("worker send timed out; the server receiver was still alive")
+            },
+            Err(err) => panic!("unexpected worker send error: {err:?}"),
+        }
+        assert!(session_data.read().unwrap().is_none());
     }
 }

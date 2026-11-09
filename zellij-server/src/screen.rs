@@ -111,7 +111,7 @@ use crate::{
         DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset, PromptCaller,
     },
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    pty_writer::PtyWriteInstruction,
+    pty_writer::{AdmittedWrite, PtyWriteInstruction},
     tab::{GuestChoiceIndicator, Pane, PaneLocation, PaneNotCreatedReason, SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::loading_indication::LoadingIndication,
@@ -4679,7 +4679,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(reply_bytes, terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    reply_bytes,
+                    terminal_id,
+                    None,
+                    None,
+                )));
             log::debug!(
                 "ResumePaneAfterForward: pane {:?} not in any tab, fell back to direct PTY write",
                 pane_id
@@ -4906,13 +4911,14 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .send_to_pty_writer(PtyWriteInstruction::Write(
+            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                 nested_session::encode_frame(&NestedSessionMessage::RequestGuestKeybinds {
                     request_id,
                 }),
                 terminal_id,
                 None,
-            ));
+                None,
+            )));
     }
 
     fn answer_keybinds_request(
@@ -5215,11 +5221,12 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .send_to_pty_writer(PtyWriteInstruction::Write(
+            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                 nested_session::encode_frame(&announce_ack),
                 terminal_id,
                 None,
-            ));
+                None,
+            )));
         let _ = self
             .bus
             .senders
@@ -5290,13 +5297,14 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                     nested_session::encode_frame(&NestedSessionMessage::FocusGained {
                         from_direction: None,
                     }),
                     terminal_id,
                     None,
-                ));
+                    None,
+                )));
         }
     }
 
@@ -5909,7 +5917,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(frame.clone(), terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    frame.clone(),
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
     }
 
@@ -5980,7 +5993,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(frame.clone(), terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    frame.clone(),
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
     }
 
@@ -6074,11 +6092,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                     nested_session::encode_frame(&message),
                     terminal_id,
                     None,
-                ));
+                    None,
+                )));
         }
     }
 
@@ -6213,11 +6232,12 @@ impl Screen {
                     let _ = self
                         .bus
                         .senders
-                        .send_to_pty_writer(PtyWriteInstruction::Write(
+                        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                             nested_session::encode_frame(&NestedSessionMessage::Ping),
                             terminal_id,
                             None,
-                        ));
+                            None,
+                        )));
                     log::debug!("pinged nested session guest in pane {:?}", pane_id);
                 }
             },
@@ -10831,7 +10851,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(bytes, terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    bytes,
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
 
         self.render(None)?;

@@ -38,7 +38,7 @@ use zellij_utils::structured_render::{
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::panes::CoveredPanes;
-use crate::pty_writer::PtyWriteInstruction;
+use crate::pty_writer::{AdmittedWrite, PtyWriteInstruction};
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
@@ -5051,9 +5051,7 @@ impl Tab {
         if let Some(focus_event) = focus_event {
             if self.senders.to_pty_writer.is_some() {
                 let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
-                    focus_event.into_bytes(),
-                    terminal_id,
-                    None,
+                    AdmittedWrite::new(focus_event.into_bytes(), terminal_id, None, None),
                 ));
             } else {
                 // Test and embedded buses have no writer thread.
@@ -6113,11 +6111,12 @@ impl Tab {
                             }
                         }
                         self.senders
-                            .send_to_pty_writer(PtyWriteInstruction::Write(
+                            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                                 adjusted_input,
                                 active_terminal_id,
                                 completion_tx,
-                            ))
+                                None,
+                            )))
                             .with_context(err_context)?;
                     },
                     Some(AdjustedInput::ReRunCommandInThisPane(command)) => {
@@ -6244,11 +6243,12 @@ impl Tab {
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 self.senders
-                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                    .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                         raw_input_bytes,
                         active_terminal_id,
                         None,
-                    ))
+                        None,
+                    )))
                     .with_context(err_context)?;
                 should_update_ui = true;
             },

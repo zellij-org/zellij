@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 use std::time::Duration;
 
 use zellij_utils::channels;
@@ -6,8 +7,112 @@ use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
 use crate::diagnostics;
 use crate::os_input_output::{ServerOsApi, TerminalRunChangedBeforeWrite};
+use crate::pty_ingress::PtyIngressBudget;
 use crate::route::NotificationEnd;
 use crate::thread_bus::Bus;
+
+const SHUTDOWN_BEFORE_WRITE: &str = "the pty writer shut down before this input was written";
+
+/// A `Write` admitted onto the pty-writer inbox, or rejected before send.
+///
+/// The budget is `Some` only after `try_reserve` succeeds. Drop releases that
+/// reservation and fails the completion unless `into_parts` handed the fields
+/// to a `PendingWrite` (or the overflow path that settles them itself).
+pub struct AdmittedWrite {
+    bytes: Vec<u8>,
+    terminal_id: u32,
+    completion: Option<NotificationEnd>,
+    budget: Option<Arc<PtyIngressBudget>>,
+    handed_off: bool,
+}
+
+impl AdmittedWrite {
+    pub fn new(
+        bytes: Vec<u8>,
+        terminal_id: u32,
+        completion: Option<NotificationEnd>,
+        budget: Option<Arc<PtyIngressBudget>>,
+    ) -> Self {
+        Self {
+            bytes,
+            terminal_id,
+            completion,
+            budget,
+            handed_off: false,
+        }
+    }
+
+    /// Move the fields out. Drop then does nothing: the caller owns the
+    /// reservation and the completion.
+    pub fn into_parts(
+        mut self,
+    ) -> (
+        Vec<u8>,
+        u32,
+        Option<NotificationEnd>,
+        Option<Arc<PtyIngressBudget>>,
+    ) {
+        self.handed_off = true;
+        (
+            std::mem::take(&mut self.bytes),
+            self.terminal_id,
+            self.completion.take(),
+            self.budget.take(),
+        )
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn terminal_id(&self) -> u32 {
+        self.terminal_id
+    }
+
+    pub fn completion(&self) -> Option<&NotificationEnd> {
+        self.completion.as_ref()
+    }
+}
+
+impl Clone for AdmittedWrite {
+    fn clone(&self) -> Self {
+        // The clone must not release the original reservation or signal its
+        // completion. `NotificationEnd`'s clone already drops the oneshot.
+        Self {
+            bytes: self.bytes.clone(),
+            terminal_id: self.terminal_id,
+            completion: self.completion.clone(),
+            budget: None,
+            handed_off: true,
+        }
+    }
+}
+
+impl Drop for AdmittedWrite {
+    fn drop(&mut self) {
+        if self.handed_off {
+            return;
+        }
+        if let Some(completion) = self.completion.as_mut() {
+            completion.set_error_message(SHUTDOWN_BEFORE_WRITE.to_string());
+        }
+        if let Some(budget) = self.budget.take() {
+            budget.release(self.terminal_id, self.bytes.len());
+        }
+    }
+}
+
+impl std::fmt::Debug for AdmittedWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdmittedWrite")
+            .field("bytes", &self.bytes)
+            .field("terminal_id", &self.terminal_id)
+            .field("completion", &self.completion)
+            .field("budget", &self.budget.is_some())
+            .field("handed_off", &self.handed_off)
+            .finish()
+    }
+}
 
 // we separate these instruction to a different thread because some programs get deadlocked if
 // you write into their STDIN while reading from their STDOUT (I'm looking at you, vim)
@@ -15,7 +120,7 @@ use crate::thread_bus::Bus;
 // here anyway, so
 #[derive(Debug, Clone)]
 pub enum PtyWriteInstruction {
-    Write(Vec<u8>, u32, Option<NotificationEnd>),
+    Write(AdmittedWrite),
     ResizePty(u32, u16, u16, Option<u16>, Option<u16>),
     StartCachingResizes,
     ApplyCachedResizes,
@@ -74,6 +179,19 @@ struct PendingWrite {
     /// before the screen processed `TerminalRunStarted` and are kept across
     /// the first adoption.
     run_generation: Option<u64>,
+    terminal_id: u32,
+    /// Ingress reservation for `bytes.len()`, released exactly once when this
+    /// write leaves the queue. `None` when the sender had no budget.
+    budget: Option<Arc<PtyIngressBudget>>,
+}
+
+impl Drop for PendingWrite {
+    fn drop(&mut self) {
+        // The reserved amount is the backing buffer, not the unwritten suffix.
+        if let Some(budget) = self.budget.take() {
+            budget.release(self.terminal_id, self.bytes.len());
+        }
+    }
 }
 
 #[derive(Default)]
@@ -223,147 +341,209 @@ fn fail_pending_writes(pending: &mut HashMap<u32, PendingQueue>, reason: &str) {
     }
 }
 
-pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
-    let err_context = || "failed to write to pty".to_string();
-    let mut pending: HashMap<u32, PendingQueue> = HashMap::new();
-    let mut adopted_runs: HashMap<u32, u64> = HashMap::new();
-    let mut drain_made_progress = false;
+const DISCONNECT_BEFORE_WRITE: &str = "the pty writer disconnected before this input was written";
 
-    loop {
-        // If we have pending writes, use a short timeout so we can keep
-        // draining. Otherwise, block until a new instruction arrives.
-        // While the last pass still wrote bytes, poll without waiting so a
-        // large burst keeps its throughput; only fall back to the timeout
-        // when every pending terminal refused bytes in the previous pass.
-        let has_pending = pending.values().any(|q| !q.is_empty());
-        let event = if has_pending {
-            let timeout = if drain_made_progress {
-                Duration::ZERO
-            } else {
-                PENDING_DRAIN_TIMEOUT
-            };
-            match bus.recv_timeout(timeout) {
-                Ok(pair) => Some(pair),
-                Err(channels::RecvTimeoutError::Timeout) => None,
-                Err(channels::RecvTimeoutError::Disconnected) => {
-                    fail_pending_writes(
-                        &mut pending,
-                        "the pty writer disconnected before this input was written",
-                    );
-                    return Ok(());
-                },
-            }
-        } else {
-            Some(bus.recv().with_context(err_context)?)
-        };
+/// Fails still-queued writes and any `Write` left in the inbox. Drop runs this
+/// on every exit, including panic, so a `NotificationEnd` cannot publish
+/// success for input the writer never finished.
+struct PtyWriterLoop {
+    pending: HashMap<u32, PendingQueue>,
+    adopted_runs: HashMap<u32, u64>,
+    bus: Bus<PtyWriteInstruction>,
+    exit_reason: &'static str,
+    settled: bool,
+}
 
-        let mut os_input = bus
-            .os_input
-            .clone()
-            .context("no OS input API found")
-            .with_context(err_context)?;
-
-        // Process the instruction if we received one
-        if let Some((event, mut err_ctx)) = event {
-            err_ctx.add_call(ContextType::PtyWrite((&event).into()));
-            match event {
-                PtyWriteInstruction::Write(bytes, terminal_id, completion) => {
-                    let run_generation = adopted_runs.get(&terminal_id).copied();
-                    let queue = pending.entry(terminal_id).or_default();
-                    if queue.remaining_bytes.saturating_add(bytes.len()) > MAX_PENDING_BYTES {
-                        log::error!(
-                            "dropping write buffer for terminal {} \
-                             ({} + {} bytes exceeds {} limit)",
-                            terminal_id,
-                            queue.remaining_bytes,
-                            bytes.len(),
-                            MAX_PENDING_BYTES,
-                        );
-                        queue.fail_all(
-                            "pty write queue overflowed the pending byte limit; \
-                             the write was discarded before reaching the terminal",
-                        );
-                        if let Some(mut completion) = completion {
-                            completion.set_error_message(
-                                "pty write rejected: pending byte limit already exceeded"
-                                    .to_string(),
-                            );
-                        }
-                    } else {
-                        queue.push_back(PendingWrite {
-                            bytes,
-                            offset: 0,
-                            completion,
-                            run_generation,
-                        });
-                        diagnostics::record_pty_pending_bytes(queue.remaining_bytes);
-                    }
-                },
-                PtyWriteInstruction::ResizePty(
-                    terminal_id,
-                    columns,
-                    rows,
-                    width_in_pixels,
-                    height_in_pixels,
-                ) => {
-                    os_input
-                        .set_terminal_size_using_terminal_id(
-                            terminal_id,
-                            columns,
-                            rows,
-                            width_in_pixels,
-                            height_in_pixels,
-                        )
-                        .with_context(err_context)
-                        .non_fatal();
-                },
-                PtyWriteInstruction::StartCachingResizes => {
-                    // we do this because there are some logic traps inside the screen/tab/layout code
-                    // the cause multiple resizes to be sent to the pty - while the last one is always
-                    // the correct one, many programs and shells debounce those (I guess due to the
-                    // trauma of dealing with GUI resizes of the controlling terminal window), and this
-                    // then causes glitches and missing redraws
-                    // so we do this to play nice and always only send the last resize instruction to
-                    // each pane
-                    // the logic for this happens in the main Screen event loop
-                    os_input.cache_resizes();
-                },
-                PtyWriteInstruction::ApplyCachedResizes => {
-                    os_input.apply_cached_resizes();
-                },
-                PtyWriteInstruction::AdoptRun(terminal_id, generation) => {
-                    adopt_run(&mut adopted_runs, &mut pending, terminal_id, generation);
-                },
-                PtyWriteInstruction::ForgetRun(terminal_id) => {
-                    adopted_runs.remove(&terminal_id);
-                },
-                PtyWriteInstruction::Exit => {
-                    fail_pending_writes(
-                        &mut pending,
-                        "the pty writer shut down before this input was written",
-                    );
-                    return Ok(());
-                },
-            }
-        }
-
-        // Drain pending writes — one pass across all terminals. Each
-        // terminal gets a bounded turn so a fast consumer with a large
-        // queued burst cannot monopolize the writer while other terminals
-        // wait; partial-write offsets keep delivery ordered.
-        drain_made_progress = false;
-        let terminal_ids: Vec<u32> = pending.keys().copied().collect();
-        for tid in terminal_ids {
-            let queue = match pending.get_mut(&tid) {
-                Some(q) if !q.is_empty() => q,
-                _ => continue,
-            };
-
-            let adopted = adopted_runs.get(&tid).copied();
-            drain_made_progress |= drain_terminal_turn(queue, tid, adopted, os_input.as_ref());
-        }
-        pending.retain(|_, q| !q.is_empty());
+impl Drop for PtyWriterLoop {
+    fn drop(&mut self) {
+        self.settle();
     }
+}
+
+impl PtyWriterLoop {
+    fn new(bus: Bus<PtyWriteInstruction>) -> Self {
+        Self {
+            pending: HashMap::new(),
+            adopted_runs: HashMap::new(),
+            bus,
+            exit_reason: SHUTDOWN_BEFORE_WRITE,
+            settled: false,
+        }
+    }
+
+    fn settle(&mut self) {
+        if self.settled {
+            return;
+        }
+        self.settled = true;
+        // Pending completions were handed off; fail_all reports them. A drained
+        // Write still owns its guard, so dropping it settles the reservation.
+        // Anything that arrives after this drain is settled when the receiver drops.
+        fail_pending_writes(&mut self.pending, self.exit_reason);
+        for instruction in self.bus.drain_available() {
+            drop(instruction);
+        }
+    }
+
+    fn run(&mut self) -> Result<()> {
+        let err_context = || "failed to write to pty".to_string();
+        let mut drain_made_progress = false;
+
+        loop {
+            // If we have pending writes, use a short timeout so we can keep
+            // draining. Otherwise, block until a new instruction arrives.
+            // While the last pass still wrote bytes, poll without waiting so a
+            // large burst keeps its throughput; only fall back to the timeout
+            // when every pending terminal refused bytes in the previous pass.
+            let has_pending = self.pending.values().any(|q| !q.is_empty());
+            let event = if has_pending {
+                let timeout = if drain_made_progress {
+                    Duration::ZERO
+                } else {
+                    PENDING_DRAIN_TIMEOUT
+                };
+                match self.bus.recv_timeout(timeout) {
+                    Ok(pair) => Some(pair),
+                    Err(channels::RecvTimeoutError::Timeout) => None,
+                    Err(channels::RecvTimeoutError::Disconnected) => {
+                        self.exit_reason = DISCONNECT_BEFORE_WRITE;
+                        return Ok(());
+                    },
+                }
+            } else {
+                match self.bus.recv() {
+                    Ok(pair) => Some(pair),
+                    Err(error) => {
+                        self.exit_reason = DISCONNECT_BEFORE_WRITE;
+                        return Err(error).with_context(err_context);
+                    },
+                }
+            };
+
+            let mut os_input = self
+                .bus
+                .os_input
+                .clone()
+                .context("no OS input API found")
+                .with_context(err_context)?;
+
+            // Process the instruction if we received one
+            if let Some((event, mut err_ctx)) = event {
+                err_ctx.add_call(ContextType::PtyWrite((&event).into()));
+                match event {
+                    PtyWriteInstruction::Write(admitted) => {
+                        // Disarm the guard before any early return. The overflow
+                        // path has to release and fail the completion itself.
+                        let (bytes, terminal_id, completion, budget) = admitted.into_parts();
+                        let run_generation = self.adopted_runs.get(&terminal_id).copied();
+                        let queue = self.pending.entry(terminal_id).or_default();
+                        if queue.remaining_bytes.saturating_add(bytes.len()) > MAX_PENDING_BYTES {
+                            log::error!(
+                                "dropping write buffer for terminal {} \
+                                 ({} + {} bytes exceeds {} limit)",
+                                terminal_id,
+                                queue.remaining_bytes,
+                                bytes.len(),
+                                MAX_PENDING_BYTES,
+                            );
+                            queue.fail_all(
+                                "pty write queue overflowed the pending byte limit; \
+                                 the write was discarded before reaching the terminal",
+                            );
+                            if let Some(budget) = budget {
+                                budget.release(terminal_id, bytes.len());
+                            }
+                            if let Some(mut completion) = completion {
+                                completion.set_error_message(
+                                    "pty write rejected: pending byte limit already exceeded"
+                                        .to_string(),
+                                );
+                            }
+                        } else {
+                            queue.push_back(PendingWrite {
+                                bytes,
+                                offset: 0,
+                                completion,
+                                run_generation,
+                                terminal_id,
+                                budget,
+                            });
+                            diagnostics::record_pty_pending_bytes(queue.remaining_bytes);
+                        }
+                    },
+                    PtyWriteInstruction::ResizePty(
+                        terminal_id,
+                        columns,
+                        rows,
+                        width_in_pixels,
+                        height_in_pixels,
+                    ) => {
+                        os_input
+                            .set_terminal_size_using_terminal_id(
+                                terminal_id,
+                                columns,
+                                rows,
+                                width_in_pixels,
+                                height_in_pixels,
+                            )
+                            .with_context(err_context)
+                            .non_fatal();
+                    },
+                    PtyWriteInstruction::StartCachingResizes => {
+                        // we do this because there are some logic traps inside the screen/tab/layout code
+                        // the cause multiple resizes to be sent to the pty - while the last one is always
+                        // the correct one, many programs and shells debounce those (I guess due to the
+                        // trauma of dealing with GUI resizes of the controlling terminal window), and this
+                        // then causes glitches and missing redraws
+                        // so we do this to play nice and always only send the last resize instruction to
+                        // each pane
+                        // the logic for this happens in the main Screen event loop
+                        os_input.cache_resizes();
+                    },
+                    PtyWriteInstruction::ApplyCachedResizes => {
+                        os_input.apply_cached_resizes();
+                    },
+                    PtyWriteInstruction::AdoptRun(terminal_id, generation) => {
+                        adopt_run(
+                            &mut self.adopted_runs,
+                            &mut self.pending,
+                            terminal_id,
+                            generation,
+                        );
+                    },
+                    PtyWriteInstruction::ForgetRun(terminal_id) => {
+                        self.adopted_runs.remove(&terminal_id);
+                    },
+                    PtyWriteInstruction::Exit => {
+                        self.exit_reason = SHUTDOWN_BEFORE_WRITE;
+                        return Ok(());
+                    },
+                }
+            }
+
+            // Drain pending writes — one pass across all terminals. Each
+            // terminal gets a bounded turn so a fast consumer with a large
+            // queued burst cannot monopolize the writer while other terminals
+            // wait; partial-write offsets keep delivery ordered.
+            drain_made_progress = false;
+            let terminal_ids: Vec<u32> = self.pending.keys().copied().collect();
+            for tid in terminal_ids {
+                let queue = match self.pending.get_mut(&tid) {
+                    Some(q) if !q.is_empty() => q,
+                    _ => continue,
+                };
+
+                let adopted = self.adopted_runs.get(&tid).copied();
+                drain_made_progress |= drain_terminal_turn(queue, tid, adopted, os_input.as_ref());
+            }
+            self.pending.retain(|_, q| !q.is_empty());
+        }
+    }
+}
+
+pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
+    let mut writer = PtyWriterLoop::new(bus);
+    writer.run()
 }
 
 /// Give one terminal its bounded turn. Returns whether the turn made
@@ -451,18 +631,24 @@ mod tests {
             offset: 0,
             completion: Some(NotificationEnd::new(ok_tx)),
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"lost1".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(fail_tx1)),
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"lost2".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(fail_tx2)),
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
 
         queue.advance(4);
@@ -491,12 +677,16 @@ mod tests {
             offset: 0,
             completion: None,
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         queue.push_back(PendingWrite {
             bytes: vec![0u8; 5],
             offset: 0,
             completion: None,
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         assert_eq!(queue.remaining_bytes, 15);
         queue.advance(4);
@@ -519,6 +709,8 @@ mod tests {
             offset: 0,
             completion: Some(NotificationEnd::new(keep_tx)),
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         pending.insert(1, queue);
 
@@ -550,12 +742,16 @@ mod tests {
             offset: 0,
             completion: Some(NotificationEnd::new(stale_tx)),
             run_generation: Some(1),
+            terminal_id: 0,
+            budget: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"live".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(live_tx)),
             run_generation: Some(2),
+            terminal_id: 0,
+            budget: None,
         });
         assert!(queue.reject_other_run(Some(2)));
         assert_eq!(queue.front_remaining(), Some(&b"live"[..]));
@@ -574,6 +770,8 @@ mod tests {
             offset: 2,
             completion: Some(NotificationEnd::new(partial_tx)),
             run_generation: Some(1),
+            terminal_id: 0,
+            budget: None,
         });
         assert!(queue.reject_other_run(Some(2)));
         let message = partial_rx
@@ -597,6 +795,8 @@ mod tests {
             offset: 2,
             completion: Some(NotificationEnd::new(partial_tx)),
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
         queue.fail_all(
             "pty write queue overflowed the pending byte limit; \
@@ -628,12 +828,16 @@ mod tests {
             offset: 3,
             completion: Some(NotificationEnd::new(partial_tx)),
             run_generation: Some(1),
+            terminal_id: 0,
+            budget: None,
         });
         queue.push_back(PendingWrite {
             bytes: b"later".to_vec(),
             offset: 0,
             completion: Some(NotificationEnd::new(rest_tx)),
             run_generation: Some(1),
+            terminal_id: 0,
+            budget: None,
         });
         queue.fail_after_write_error("broken pipe");
         let partial = partial_rx.blocking_recv().expect("partial write resolves");
@@ -650,6 +854,78 @@ mod tests {
         let rest_message = rest.error_message.unwrap();
         assert!(rest_message.contains("discarded before reaching the terminal"));
         assert!(!rest_message.contains("already written"));
+    }
+
+    #[test]
+    fn partial_retirement_releases_the_full_reserved_length() {
+        let budget = Arc::new(crate::pty_ingress::PtyIngressBudget::new());
+        budget.try_reserve(1, b"abcdefgh".len()).unwrap();
+        let mut queue = PendingQueue::default();
+        let (partial_tx, partial_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"abcdefgh".to_vec(),
+            offset: 3,
+            completion: Some(NotificationEnd::new(partial_tx)),
+            run_generation: None,
+            terminal_id: 1,
+            budget: Some(Arc::clone(&budget)),
+        });
+        queue.fail_all("the pty writer shut down before this input was written");
+        let message = partial_rx
+            .blocking_recv()
+            .expect("partial write resolves")
+            .error_message
+            .unwrap();
+        assert!(
+            message.contains("3 bytes of this write were already written"),
+            "{message}"
+        );
+        assert_eq!(budget.reserved_bytes(), 0);
+
+        budget.try_reserve(2, b"abcd".len()).unwrap();
+        let mut queue = PendingQueue::default();
+        let (error_tx, error_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"abcd".to_vec(),
+            offset: 2,
+            completion: Some(NotificationEnd::new(error_tx)),
+            run_generation: None,
+            terminal_id: 2,
+            budget: Some(Arc::clone(&budget)),
+        });
+        queue.fail_after_write_error("broken pipe");
+        let message = error_rx
+            .blocking_recv()
+            .expect("failed write resolves")
+            .error_message
+            .unwrap();
+        assert!(
+            message.contains("2 bytes of this write were already written"),
+            "{message}"
+        );
+        assert_eq!(budget.reserved_bytes(), 0);
+
+        budget.try_reserve(3, b"done".len()).unwrap();
+        let mut queue = PendingQueue::default();
+        let (ok_tx, ok_rx) = oneshot::channel();
+        queue.push_back(PendingWrite {
+            bytes: b"done".to_vec(),
+            offset: 0,
+            completion: Some(NotificationEnd::new(ok_tx)),
+            run_generation: None,
+            terminal_id: 3,
+            budget: Some(Arc::clone(&budget)),
+        });
+        queue.advance(4);
+        assert_eq!(
+            ok_rx
+                .blocking_recv()
+                .expect("completed write resolves")
+                .error_message,
+            None
+        );
+        assert_eq!(budget.reserved_bytes(), 0);
+        assert_eq!(budget.terminal_reserved(3), 0);
     }
 }
 

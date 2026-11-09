@@ -1,8 +1,15 @@
 //! Definitions and helpers for sending and receiving messages between threads.
 
+use std::sync::Arc;
+
+use crate::pty_ingress::PtyIngressBudget;
 use crate::{
-    background_jobs::BackgroundJob, os_input_output::ServerOsApi, plugins::PluginInstruction,
-    pty::PtyInstruction, pty_writer::PtyWriteInstruction, screen::ScreenInstruction,
+    background_jobs::BackgroundJob,
+    os_input_output::ServerOsApi,
+    plugins::PluginInstruction,
+    pty::PtyInstruction,
+    pty_writer::{AdmittedWrite, PtyWriteInstruction},
+    screen::ScreenInstruction,
     ServerInstruction,
 };
 use zellij_utils::errors::prelude::*;
@@ -18,6 +25,9 @@ pub struct ThreadSenders {
     pub to_server: Option<SenderWithContext<ServerInstruction>>,
     pub to_pty_writer: Option<SenderWithContext<PtyWriteInstruction>>,
     pub to_background_jobs: Option<SenderWithContext<BackgroundJob>>,
+    /// Shared admission budget for `PtyWriteInstruction::Write`. `None` keeps
+    /// the historical unmetered send used by tests that never install one.
+    pub pty_ingress: Option<Arc<PtyIngressBudget>>,
     // this is a convenience for the unit tests
     // it's not advisable to set it to true in production code
     pub should_silently_fail: bool,
@@ -121,12 +131,22 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_pty_writer
+            let sender = self
+                .to_pty_writer
                 .as_ref()
-                .context("failed to get pty writer sender")?
-                .send(instruction)
-                .to_anyhow()
-                .context("failed to send message to pty writer")
+                .context("failed to get pty writer sender")?;
+            let instruction = reserve_pty_write(&self.pty_ingress, instruction)?;
+            match sender.send(instruction) {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let (failed, _) = error.into_inner();
+                    fail_unsent_pty_write(failed);
+                    Err(anyhow::anyhow!(
+                        "the pty writer is gone and the write was not performed"
+                    ))
+                    .context("failed to send message to pty writer")
+                },
+            }
         }
     }
     pub fn send_to_background_jobs(&self, background_job: BackgroundJob) -> Result<()> {
@@ -223,6 +243,7 @@ impl<T> Bus<T> {
                 to_server: to_server.cloned(),
                 to_pty_writer: to_pty_writer.cloned(),
                 to_background_jobs: to_background_jobs.cloned(),
+                pty_ingress: None,
                 should_silently_fail: false,
             },
             os_input: os_input.clone(),
@@ -251,6 +272,7 @@ impl<T> Bus<T> {
                 to_server: None,
                 to_pty_writer: None,
                 to_background_jobs: None,
+                pty_ingress: None,
                 should_silently_fail: true,
             },
             os_input: None,
@@ -338,6 +360,56 @@ impl<T> Bus<T> {
             Err(_) => Err(channels::RecvTimeoutError::Timeout),
         }
     }
+
+    /// Non-blocking drain of every queue this bus owns. Stops when each
+    /// receiver is empty or disconnected; it does not wait for a new message.
+    pub fn drain_available(&self) -> Vec<T> {
+        let mut drained = Vec::new();
+        for receiver in &self.receivers {
+            while let Ok((message, _)) = receiver.try_recv() {
+                drained.push(message);
+            }
+        }
+        if let Some(priority_receiver) = &self.priority_receiver {
+            while let Ok((message, _)) = priority_receiver.try_recv() {
+                drained.push(message);
+            }
+        }
+        drained
+    }
+}
+
+fn reserve_pty_write(
+    budget: &Option<Arc<PtyIngressBudget>>,
+    instruction: PtyWriteInstruction,
+) -> Result<PtyWriteInstruction> {
+    let PtyWriteInstruction::Write(admitted) = instruction else {
+        return Ok(instruction);
+    };
+    let Some(budget) = budget else {
+        return Ok(PtyWriteInstruction::Write(admitted));
+    };
+    // Disarm the caller's guard before try_reserve. Rejection must not build
+    // another one: nothing was reserved, so nothing may be released.
+    let (bytes, terminal_id, mut completion, _caller_budget) = admitted.into_parts();
+    if let Err(message) = budget.try_reserve(terminal_id, bytes.len()) {
+        if let Some(completion) = completion.as_mut() {
+            completion.set_error_message(message.clone());
+        }
+        return Err(anyhow::anyhow!(message)).context("failed to send message to pty writer");
+    }
+    Ok(PtyWriteInstruction::Write(AdmittedWrite::new(
+        bytes,
+        terminal_id,
+        completion,
+        Some(Arc::clone(budget)),
+    )))
+}
+
+/// The send failed after admission. Dropping a `Write` releases its reservation
+/// and fails the completion. A control instruction is not a `Write`.
+fn fail_unsent_pty_write(instruction: PtyWriteInstruction) {
+    drop(instruction);
 }
 
 #[cfg(test)]

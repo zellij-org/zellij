@@ -1,9 +1,14 @@
 use crate::tab::Pane;
 
 use crate::{
-    os_input_output::ServerOsApi, panes::PaneId, pty_writer::PtyWriteInstruction, ClientId,
+    os_input_output::ServerOsApi,
+    panes::PaneId,
+    pty_ingress::PtyIngressBudget,
+    pty_writer::{AdmittedWrite, PtyWriteInstruction},
+    ClientId,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 use zellij_utils::channels::SenderWithContext;
 
 #[derive(Clone)]
@@ -12,6 +17,9 @@ pub struct ActivePanes {
     last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
     pty_writer: Option<SenderWithContext<PtyWriteInstruction>>,
+    /// Same admission budget as `ThreadSenders::send_to_pty_writer`. `None`
+    /// keeps the direct send used when no budget was installed.
+    pty_ingress: Option<Arc<PtyIngressBudget>>,
 }
 
 impl std::fmt::Debug for ActivePanes {
@@ -28,14 +36,17 @@ impl ActivePanes {
             last_panes: HashMap::new(),
             os_api,
             pty_writer: None,
+            pty_ingress: None,
         }
     }
     pub fn with_pty_writer(
         os_api: &Box<dyn ServerOsApi>,
         pty_writer: SenderWithContext<PtyWriteInstruction>,
+        pty_ingress: Option<Arc<PtyIngressBudget>>,
     ) -> Self {
         let mut active_panes = Self::new(os_api);
         active_panes.pty_writer = Some(pty_writer);
+        active_panes.pty_ingress = pty_ingress;
         active_panes
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
@@ -145,11 +156,23 @@ impl ActivePanes {
     }
     fn send_focus_event(&self, terminal_id: u32, focus_event: String) {
         if let Some(pty_writer) = &self.pty_writer {
-            let _ = pty_writer.send(PtyWriteInstruction::Write(
-                focus_event.into_bytes(),
+            let bytes = focus_event.into_bytes();
+            // Build the guard only after try_reserve. A failed send drops it,
+            // and that drop releases. Do not release again here.
+            let budget = if let Some(budget) = &self.pty_ingress {
+                if budget.try_reserve(terminal_id, bytes.len()).is_err() {
+                    return;
+                }
+                Some(Arc::clone(budget))
+            } else {
+                None
+            };
+            let _ = pty_writer.send(PtyWriteInstruction::Write(AdmittedWrite::new(
+                bytes,
                 terminal_id,
                 None,
-            ));
+                budget,
+            )));
         } else {
             let _ = self
                 .os_api
@@ -325,15 +348,19 @@ mod tests {
         let mut panes = BTreeMap::from([(PaneId::Terminal(2), focus_reporting_pane(2))]);
         let (to_pty_writer, pty_writer_instructions): ChannelWithContext<PtyWriteInstruction> =
             unbounded();
-        let mut active_panes =
-            ActivePanes::with_pty_writer(&boxed_os_api, SenderWithContext::new(to_pty_writer));
+        let mut active_panes = ActivePanes::with_pty_writer(
+            &boxed_os_api,
+            SenderWithContext::new(to_pty_writer),
+            None,
+        );
 
         active_panes.insert(1, PaneId::Terminal(2), &mut panes);
         let (instruction, _) = pty_writer_instructions.try_recv().unwrap();
         assert!(
             matches!(
                 instruction,
-                PtyWriteInstruction::Write(bytes, 2, None) if bytes == b"focus-in"
+                PtyWriteInstruction::Write(write)
+                    if write.bytes() == b"focus-in" && write.terminal_id() == 2
             ),
             "focus event did not go through the pty writer"
         );
@@ -343,7 +370,8 @@ mod tests {
         let (instruction, _) = pty_writer_instructions.try_recv().unwrap();
         assert!(matches!(
             instruction,
-            PtyWriteInstruction::Write(bytes, 2, None) if bytes == b"focus-out"
+            PtyWriteInstruction::Write(write)
+                if write.bytes() == b"focus-out" && write.terminal_id() == 2
         ));
         assert!(writes.lock().unwrap().is_empty());
 
@@ -371,6 +399,61 @@ mod tests {
         assert!(
             active_panes.pane_id_is_focused_for_query(&PaneId::Terminal(3), &nobody),
             "with no connected clients, remembered focus is kept for reattach"
+        );
+    }
+
+    #[test]
+    fn pty_ingress_focus_is_dropped_when_saturated_and_queued_when_there_is_room() {
+        use crate::pty_ingress::PER_TERMINAL_LIMIT;
+
+        let boxed_os_api: Box<dyn ServerOsApi> = Box::new(TestOsApi::default());
+        let mut panes = BTreeMap::from([(PaneId::Terminal(2), focus_reporting_pane(2))]);
+        let terminal_id = 2;
+
+        let saturated = Arc::new(PtyIngressBudget::new());
+        saturated
+            .try_reserve(terminal_id, PER_TERMINAL_LIMIT)
+            .unwrap();
+        let (saturated_sender, saturated_instructions): ChannelWithContext<PtyWriteInstruction> =
+            unbounded();
+        let mut saturated_panes = ActivePanes::with_pty_writer(
+            &boxed_os_api,
+            SenderWithContext::new(saturated_sender),
+            Some(Arc::clone(&saturated)),
+        );
+        saturated_panes.insert(1, PaneId::Terminal(terminal_id), &mut panes);
+        assert!(
+            saturated_instructions.try_recv().is_err(),
+            "a saturated terminal must not receive the focus write"
+        );
+        assert_eq!(saturated.reserved_bytes(), PER_TERMINAL_LIMIT);
+        assert_eq!(saturated.terminal_reserved(terminal_id), PER_TERMINAL_LIMIT);
+
+        let already_reserved = 64;
+        let room = Arc::new(PtyIngressBudget::new());
+        room.try_reserve(terminal_id, already_reserved).unwrap();
+        let (room_sender, room_instructions): ChannelWithContext<PtyWriteInstruction> = unbounded();
+        let mut room_panes = ActivePanes::with_pty_writer(
+            &boxed_os_api,
+            SenderWithContext::new(room_sender),
+            Some(Arc::clone(&room)),
+        );
+        room_panes.insert(1, PaneId::Terminal(terminal_id), &mut panes);
+        let (instruction, _) = room_instructions.try_recv().unwrap();
+        let PtyWriteInstruction::Write(write) = instruction else {
+            panic!("focus event was not a write");
+        };
+        assert_eq!(write.terminal_id(), terminal_id);
+        assert!(write.completion().is_none());
+        assert_eq!(write.bytes(), b"focus-in");
+        assert!(room_instructions.try_recv().is_err());
+        assert_eq!(
+            room.terminal_reserved(terminal_id),
+            already_reserved + write.bytes().len()
+        );
+        assert_eq!(
+            room.reserved_bytes(),
+            already_reserved + write.bytes().len()
         );
     }
 }

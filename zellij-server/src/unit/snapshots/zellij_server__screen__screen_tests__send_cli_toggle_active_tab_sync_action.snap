@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 3939
 expression: "format!(\"{:?}\", received_write_instructions)"
 ---
-[Write([102, 111, 111], 0, None), Write([102, 111, 111], 1, None)]
+[Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 0, completion: None, budget: false, handed_off: true }), Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 1, completion: None, budget: false, handed_off: true })]

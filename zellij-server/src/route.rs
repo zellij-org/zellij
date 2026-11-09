@@ -42,6 +42,31 @@ pub use popup_keys::PopupScroll;
 
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
+fn abandoned_action_result(action_name: &str, why: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {action_name} {why}, its outcome is unknown"
+        )),
+        stdout_message: None,
+    }
+}
+
+fn timed_out_action_result(action_name: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {} did not complete within {:?}, its outcome is unknown",
+            action_name, ACTION_COMPLETION_TIMEOUT
+        )),
+        stdout_message: None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
@@ -63,13 +88,7 @@ pub fn wait_for_action_completion(
                 Ok(result) => result,
                 Err(e) => {
                     log::error!("Failed to wait for action {}: {}", action_name, e);
-                    ActionCompletionResult {
-                        exit_status: None,
-                        affected_pane_id: None,
-                        affected_tab_id: None,
-                        error_message: None,
-                        stdout_message: None,
-                    }
+                    abandoned_action_result(action_name, "was abandoned before it finished")
                 },
             }
         })
@@ -78,19 +97,17 @@ pub fn wait_for_action_completion(
             .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
         {
             Ok(Ok(result)) => result,
-            Err(_) | Ok(Err(_)) => {
+            Ok(Err(e)) => {
+                log::error!("Failed to wait for action {}: {}", action_name, e);
+                abandoned_action_result(action_name, "was abandoned before it finished")
+            },
+            Err(_) => {
                 log::error!(
                     "Action {} did not complete within {:?} timeout",
                     action_name,
                     ACTION_COMPLETION_TIMEOUT
                 );
-                ActionCompletionResult {
-                    exit_status: None,
-                    affected_pane_id: None,
-                    affected_tab_id: None,
-                    error_message: None,
-                    stdout_message: None,
-                }
+                timed_out_action_result(action_name)
             },
         }
     }
@@ -105,12 +122,9 @@ fn wait_for_cli_action_completion(
         .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
     {
         Ok(Ok(result)) => result,
-        Ok(Err(_)) => ActionCompletionResult {
-            exit_status: None,
-            affected_pane_id: None,
-            affected_tab_id: None,
-            error_message: None,
-            stdout_message: None,
+        Ok(Err(error)) => {
+            log::error!("Failed to wait for action {}: {}", action_name, error);
+            abandoned_action_result(action_name, "was abandoned before it finished")
         },
         Err(_) => {
             log::error!(
@@ -118,16 +132,7 @@ fn wait_for_cli_action_completion(
                 action_name,
                 ACTION_COMPLETION_TIMEOUT
             );
-            ActionCompletionResult {
-                exit_status: None,
-                affected_pane_id: None,
-                affected_tab_id: None,
-                error_message: Some(format!(
-                    "Action {} did not complete within {:?}, its outcome is unknown",
-                    action_name, ACTION_COMPLETION_TIMEOUT
-                )),
-                stdout_message: None,
-            }
+            timed_out_action_result(action_name)
         },
     }
 }
@@ -4680,5 +4685,84 @@ mod tests {
         assert_eq!(cloned.affected_tab_id, Some(99));
         // But channel should be None (as per the Clone implementation comment)
         assert!(cloned.channel.is_none());
+    }
+
+    fn sample_result(message: &str) -> ActionCompletionResult {
+        ActionCompletionResult {
+            exit_status: Some(0),
+            affected_pane_id: Some(PaneId::Terminal(3)),
+            affected_tab_id: Some(4),
+            error_message: Some(message.to_owned()),
+            stdout_message: Some("out".to_owned()),
+        }
+    }
+
+    #[test]
+    fn wait_for_cli_action_completion_preserves_a_real_result() {
+        let (tx, rx) = oneshot::channel();
+        let expected = sample_result("real");
+        tx.send(expected.clone()).unwrap();
+        let result = wait_for_cli_action_completion(rx, "Write");
+        assert_eq!(result.exit_status, expected.exit_status);
+        assert_eq!(result.affected_pane_id, expected.affected_pane_id);
+        assert_eq!(result.affected_tab_id, expected.affected_tab_id);
+        assert_eq!(result.error_message.as_deref(), Some("real"));
+        assert_eq!(result.stdout_message.as_deref(), Some("out"));
+    }
+
+    #[test]
+    fn wait_for_action_completion_preserves_a_real_result() {
+        let (tx, rx) = oneshot::channel();
+        let expected = sample_result("real");
+        tx.send(expected.clone()).unwrap();
+        let result = wait_for_action_completion(rx, "Write", true);
+        assert_eq!(result.error_message.as_deref(), Some("real"));
+        assert_eq!(result.stdout_message.as_deref(), Some("out"));
+        assert_eq!(result.exit_status, Some(0));
+    }
+
+    #[test]
+    fn wait_for_cli_action_completion_reports_unknown_when_the_channel_closes() {
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_cli_action_completion(rx, "Write");
+        let message = result
+            .error_message
+            .expect("a closed completion is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("abandoned"), "{message}");
+    }
+
+    #[test]
+    fn wait_for_action_completion_reports_unknown_when_the_channel_closes() {
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_action_completion(rx, "Write", true);
+        let message = result
+            .error_message
+            .expect("a closed completion is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("abandoned"), "{message}");
+
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_action_completion(rx, "Write", false);
+        let message = result
+            .error_message
+            .expect("a closed completion is not a timeout success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(
+            !message.contains("did not complete within"),
+            "closed channel must not be reported as a timeout: {message}"
+        );
+    }
+
+    #[test]
+    fn wait_for_action_completion_reports_unknown_on_timeout() {
+        let (_tx, rx) = oneshot::channel::<ActionCompletionResult>();
+        let result = wait_for_action_completion(rx, "Write", false);
+        let message = result.error_message.expect("timeout is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("did not complete within"), "{message}");
     }
 }

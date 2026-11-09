@@ -1,7 +1,8 @@
 use super::*;
 use crate::os_input_output::{AsyncReader, ServerOsApi, TerminalRunChangedBeforeWrite};
 use crate::panes::PaneId;
-use crate::thread_bus::Bus;
+use crate::pty_ingress::{PtyIngressBudget, AGGREGATE_LIMIT, PER_TERMINAL_LIMIT};
+use crate::thread_bus::{Bus, ThreadSenders};
 use interprocess::local_socket::Stream as LocalSocketStream;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -234,12 +235,16 @@ fn pending_queue_tracks_remaining_bytes_incrementally() {
         offset: 0,
         completion: None,
         run_generation: None,
+        terminal_id: 0,
+        budget: None,
     });
     queue.push_back(PendingWrite {
         bytes: b" world".to_vec(),
         offset: 2,
         completion: None,
         run_generation: None,
+        terminal_id: 0,
+        budget: None,
     });
 
     assert_eq!(queue.remaining_bytes, 9);
@@ -278,7 +283,12 @@ fn full_write_completes_immediately() {
     run_pty_writer(
         bus,
         sender,
-        vec![PtyWriteInstruction::Write(b"hello world".to_vec(), 1, None)],
+        vec![PtyWriteInstruction::Write(AdmittedWrite::new(
+            b"hello world".to_vec(),
+            1,
+            None,
+            None,
+        ))],
     );
 
     let written = mock_clone.get_written_bytes(1);
@@ -296,7 +306,12 @@ fn partial_write_is_buffered_and_drained() {
     run_pty_writer(
         bus,
         sender,
-        vec![PtyWriteInstruction::Write(b"abcdefghij".to_vec(), 1, None)],
+        vec![PtyWriteInstruction::Write(AdmittedWrite::new(
+            b"abcdefghij".to_vec(),
+            1,
+            None,
+            None,
+        ))],
     );
 
     let written = mock_clone.get_written_bytes(1);
@@ -320,8 +335,8 @@ fn eagain_on_one_terminal_does_not_block_another() {
         bus,
         sender,
         vec![
-            PtyWriteInstruction::Write(b"stuck data".to_vec(), 1, None),
-            PtyWriteInstruction::Write(b"good data".to_vec(), 2, None),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"stuck data".to_vec(), 1, None, None)),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"good data".to_vec(), 2, None, None)),
         ],
     );
 
@@ -343,11 +358,12 @@ fn exit_fails_writes_still_waiting_to_be_sent() {
     run_pty_writer(
         bus,
         sender,
-        vec![PtyWriteInstruction::Write(
+        vec![PtyWriteInstruction::Write(AdmittedWrite::new(
             b"never sent".to_vec(),
             1,
             Some(NotificationEnd::new(completion_tx)),
-        )],
+            None,
+        ))],
     );
 
     let result = completion_rx.blocking_recv().expect("write resolves");
@@ -365,11 +381,12 @@ fn a_disconnected_writer_fails_writes_still_waiting_to_be_sent() {
     let (completion_tx, completion_rx) = oneshot::channel();
 
     sender
-        .send(PtyWriteInstruction::Write(
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
             b"never sent".to_vec(),
             1,
             Some(NotificationEnd::new(completion_tx)),
-        ))
+            None,
+        )))
         .unwrap();
     drop(sender);
     pty_writer_main(bus).unwrap();
@@ -393,9 +410,9 @@ fn writes_to_same_terminal_preserve_order() {
         bus,
         sender,
         vec![
-            PtyWriteInstruction::Write(b"AAAA".to_vec(), 1, None),
-            PtyWriteInstruction::Write(b"BBBB".to_vec(), 1, None),
-            PtyWriteInstruction::Write(b"CCCC".to_vec(), 1, None),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"AAAA".to_vec(), 1, None, None)),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"BBBB".to_vec(), 1, None, None)),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"CCCC".to_vec(), 1, None, None)),
         ],
     );
 
@@ -419,11 +436,21 @@ fn memory_cap_drops_buffer_when_exceeded() {
     let chunk_size = 1024 * 1024; // 1 MB
     let mut instructions = Vec::new();
     for _ in 0..(MAX_PENDING_BYTES / chunk_size + 1) {
-        instructions.push(PtyWriteInstruction::Write(vec![0x42; chunk_size], 1, None));
+        instructions.push(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x42; chunk_size],
+            1,
+            None,
+            None,
+        )));
     }
     // After the cap is exceeded, send a write to terminal 2 to verify
     // the writer thread is still functional
-    instructions.push(PtyWriteInstruction::Write(b"still alive".to_vec(), 2, None));
+    instructions.push(PtyWriteInstruction::Write(AdmittedWrite::new(
+        b"still alive".to_vec(),
+        2,
+        None,
+        None,
+    )));
     mock_clone.set_behavior(2, WriteBehavior::AcceptAll);
 
     run_pty_writer(bus, sender, instructions);
@@ -449,10 +476,20 @@ fn fast_terminal_burst_yields_to_sparse_terminal() {
 
     let burst_size = 8 * 1024 * 1024; // under MAX_PENDING_BYTES
     sender
-        .send(PtyWriteInstruction::Write(vec![0xAA; burst_size], 1, None))
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0xAA; burst_size],
+            1,
+            None,
+            None,
+        )))
         .unwrap();
     sender
-        .send(PtyWriteInstruction::Write(b"sparse".to_vec(), 2, None))
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+            b"sparse".to_vec(),
+            2,
+            None,
+            None,
+        )))
         .unwrap();
 
     let writer = std::thread::spawn(move || pty_writer_main(bus));
@@ -506,7 +543,12 @@ fn stalled_terminals_resume_draining_without_new_instructions() {
     let (bus, sender) = make_test_bus(mock);
 
     sender
-        .send(PtyWriteInstruction::Write(b"blocked".to_vec(), 1, None))
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+            b"blocked".to_vec(),
+            1,
+            None,
+            None,
+        )))
         .unwrap();
 
     let writer = std::thread::spawn(move || pty_writer_main(bus));
@@ -553,7 +595,12 @@ fn progressing_terminal_drains_without_waiting_between_passes() {
     let (bus, sender) = make_test_bus(mock);
     let payload = vec![0x5A; MAX_DRAIN_CALLS_PER_TURN * 400];
     sender
-        .send(PtyWriteInstruction::Write(payload.clone(), 1, None))
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+            payload.clone(),
+            1,
+            None,
+            None,
+        )))
         .unwrap();
 
     let started = Instant::now();
@@ -590,6 +637,8 @@ fn empty_writes_spend_the_turn_budget() {
             offset: 0,
             completion: None,
             run_generation: None,
+            terminal_id: 0,
+            budget: None,
         });
     }
     queue.push_back(PendingWrite {
@@ -597,6 +646,8 @@ fn empty_writes_spend_the_turn_budget() {
         offset: 0,
         completion: None,
         run_generation: None,
+        terminal_id: 0,
+        budget: None,
     });
 
     assert!(drain_terminal_turn(&mut queue, 1, None, &mock));
@@ -626,9 +677,9 @@ fn write_error_clears_terminal_queue() {
         bus,
         sender,
         vec![
-            PtyWriteInstruction::Write(b"will fail".to_vec(), 1, None),
-            PtyWriteInstruction::Write(b"also queued".to_vec(), 1, None),
-            PtyWriteInstruction::Write(b"should work".to_vec(), 2, None),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"will fail".to_vec(), 1, None, None)),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"also queued".to_vec(), 1, None, None)),
+            PtyWriteInstruction::Write(AdmittedWrite::new(b"should work".to_vec(), 2, None, None)),
         ],
     );
 
@@ -660,6 +711,8 @@ fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
             offset: 0,
             completion: None,
             run_generation: writer_adopted,
+            terminal_id: 0,
+            budget: None,
         });
         super::drain_terminal_turn(&mut queue, 1, writer_adopted, &os);
         assert_eq!(queue.writes.len(), 1, "{bytes:?} did not stay queued");
@@ -680,7 +733,298 @@ fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
         offset: 0,
         completion: None,
         run_generation: Some(2),
+        terminal_id: 0,
+        budget: None,
     });
     assert!(super::drain_terminal_turn(&mut live, 1, Some(2), &os));
     assert_eq!(os.get_written_bytes(1), b"for-the-new-run");
+}
+
+fn budgeted_senders(
+    sender: SenderWithContext<PtyWriteInstruction>,
+    budget: Arc<PtyIngressBudget>,
+) -> ThreadSenders {
+    ThreadSenders {
+        to_pty_writer: Some(sender),
+        pty_ingress: Some(budget),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn pty_ingress_rejects_a_saturated_terminal_but_still_admits_control_and_another_terminal() {
+    let budget = Arc::new(PtyIngressBudget::new());
+    let (sender, receiver) = channels::unbounded();
+    let senders = budgeted_senders(SenderWithContext::new(sender), Arc::clone(&budget));
+    let _hold_receiver = receiver;
+
+    let chunk = 1024 * 1024;
+    for _ in 0..(PER_TERMINAL_LIMIT / chunk) {
+        senders
+            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                vec![0x11; chunk],
+                1,
+                None,
+                None,
+            )))
+            .expect("terminal 1 is under its cap");
+    }
+    assert_eq!(budget.terminal_reserved(1), PER_TERMINAL_LIMIT);
+
+    let (rejected_tx, rejected_rx) = oneshot::channel();
+    let rejected = senders.send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+        vec![0x22; chunk],
+        1,
+        Some(NotificationEnd::new(rejected_tx)),
+        None,
+    )));
+    assert!(
+        rejected.is_err(),
+        "the next write must be refused before enqueue"
+    );
+    let rejected_message = rejected_rx
+        .blocking_recv()
+        .expect("rejected write resolves")
+        .error_message
+        .expect("rejection is not success");
+    assert!(
+        rejected_message.contains("rejected before it was queued"),
+        "{rejected_message}"
+    );
+    assert_eq!(budget.terminal_reserved(1), PER_TERMINAL_LIMIT);
+
+    assert!(
+        senders
+            .send_to_pty_writer(PtyWriteInstruction::ResizePty(1, 80, 24, None, None))
+            .is_ok(),
+        "control instructions are not charged against the write budget"
+    );
+    let (still_rejected_tx, still_rejected_rx) = oneshot::channel();
+    assert!(senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![1],
+            1,
+            Some(NotificationEnd::new(still_rejected_tx)),
+            None
+        )))
+        .is_err());
+    assert!(still_rejected_rx
+        .blocking_recv()
+        .expect("saturated write resolves")
+        .error_message
+        .is_some());
+
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x33],
+            2,
+            None,
+            None,
+        )))
+        .expect("a different terminal can still enqueue");
+    let rest_of_terminal_2 = PER_TERMINAL_LIMIT - 1;
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x33; rest_of_terminal_2],
+            2,
+            None,
+            None,
+        )))
+        .unwrap();
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x44; PER_TERMINAL_LIMIT],
+            3,
+            None,
+            None,
+        )))
+        .unwrap();
+    let room = AGGREGATE_LIMIT - budget.reserved_bytes();
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x55; room],
+            4,
+            None,
+            None,
+        )))
+        .unwrap();
+    assert_eq!(budget.reserved_bytes(), AGGREGATE_LIMIT);
+
+    let (aggregate_tx, aggregate_rx) = oneshot::channel();
+    assert!(senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![1],
+            5,
+            Some(NotificationEnd::new(aggregate_tx)),
+            None
+        )))
+        .is_err());
+    let aggregate_message = aggregate_rx
+        .blocking_recv()
+        .expect("aggregate rejection resolves")
+        .error_message
+        .expect("aggregate rejection is not success");
+    assert!(
+        aggregate_message.contains("rejected before it was queued"),
+        "{aggregate_message}"
+    );
+    assert_eq!(budget.reserved_bytes(), AGGREGATE_LIMIT);
+    assert!(
+        senders
+            .send_to_pty_writer(PtyWriteInstruction::Exit)
+            .is_ok(),
+        "Exit still enqueues after writes are saturated"
+    );
+}
+
+#[test]
+fn pty_ingress_exit_ahead_of_write_fails_the_inbox_write_without_sending_it() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptAll);
+    let mock_clone = mock.clone();
+    let (mut bus, sender) = make_test_bus(mock);
+    let budget = Arc::new(PtyIngressBudget::new());
+    bus.senders.pty_ingress = Some(Arc::clone(&budget));
+    let senders = budgeted_senders(sender, Arc::clone(&budget));
+
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Exit)
+        .unwrap();
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let payload = b"still-in-the-inbox".to_vec();
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            payload.clone(),
+            1,
+            Some(NotificationEnd::new(completion_tx)),
+            None,
+        )))
+        .unwrap();
+    assert_eq!(budget.reserved_bytes(), payload.len());
+
+    pty_writer_main(bus).unwrap();
+
+    let message = completion_rx
+        .blocking_recv()
+        .expect("inbox write resolves")
+        .error_message
+        .expect("a write left behind Exit is not success");
+    assert!(
+        message.contains("shut down before this input was written"),
+        "{message}"
+    );
+    assert!(
+        mock_clone.get_written_bytes(1).is_empty(),
+        "Exit must settle the later write before any native write"
+    );
+    assert_eq!(budget.reserved_bytes(), 0);
+    assert_eq!(budget.terminal_reserved(1), 0);
+}
+
+#[test]
+fn pty_ingress_disconnected_receiver_fails_the_reserved_write_and_releases() {
+    let budget = Arc::new(PtyIngressBudget::new());
+    let (sender, receiver) = channels::unbounded();
+    let senders = budgeted_senders(SenderWithContext::new(sender), Arc::clone(&budget));
+    drop(receiver);
+
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let sent = senders.send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+        b"never-queued".to_vec(),
+        7,
+        Some(NotificationEnd::new(completion_tx)),
+        None,
+    )));
+    let send_error = sent.expect_err("a disconnected writer rejects the send");
+    assert!(
+        format!("{send_error:#}")
+            .contains("the pty writer is gone and the write was not performed"),
+        "{send_error:#}"
+    );
+    let message = completion_rx
+        .blocking_recv()
+        .expect("unsent write resolves")
+        .error_message
+        .expect("a vanished writer is not success");
+    assert!(
+        message.contains("shut down before this input was written"),
+        "{message}"
+    );
+    assert_eq!(budget.reserved_bytes(), 0);
+    assert_eq!(budget.terminal_reserved(7), 0);
+}
+
+#[test]
+fn admitted_write_is_settled_when_the_receiver_drops() {
+    let budget = Arc::new(PtyIngressBudget::new());
+    let (sender, receiver) = channels::unbounded();
+    let senders = budgeted_senders(SenderWithContext::new(sender), Arc::clone(&budget));
+    let (completion_tx, completion_rx) = oneshot::channel();
+    senders
+        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+            b"still-queued".to_vec(),
+            4,
+            Some(NotificationEnd::new(completion_tx)),
+            None,
+        )))
+        .expect("the receiver is still alive");
+    assert_eq!(budget.reserved_bytes(), b"still-queued".len());
+    drop(receiver);
+
+    let message = completion_rx
+        .blocking_recv()
+        .expect("dropped receiver resolves")
+        .error_message
+        .expect("shutdown is not success");
+    assert!(message.contains("shut down"), "{message}");
+    assert_eq!(budget.reserved_bytes(), 0);
+}
+
+#[test]
+fn local_pending_limit_releases_the_ingress_reservation() {
+    let mock = MockServerOsApi::new();
+    mock.set_behavior(1, WriteBehavior::AcceptNone);
+    let (mut bus, sender) = make_test_bus(mock);
+    let budget = Arc::new(PtyIngressBudget::new());
+    bus.senders.pty_ingress = Some(Arc::clone(&budget));
+    // Held outside the writer so its reservation must survive queue settlement.
+    budget.try_reserve(9, 100).unwrap();
+
+    let chunk = 1024 * 1024;
+    let queued = MAX_PENDING_BYTES / chunk;
+    for _ in 0..queued {
+        budget.try_reserve(1, chunk).unwrap();
+        sender
+            .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+                vec![0x42; chunk],
+                1,
+                None,
+                Some(Arc::clone(&budget)),
+            )))
+            .unwrap();
+    }
+    // The overflow chunk is past both the ingress cap and the writer cap, so
+    // it cannot be reserved. The queued reservations must still come back.
+    let (rejected_tx, rejected_rx) = oneshot::channel();
+    sender
+        .send(PtyWriteInstruction::Write(AdmittedWrite::new(
+            vec![0x42; chunk],
+            1,
+            Some(NotificationEnd::new(rejected_tx)),
+            None,
+        )))
+        .unwrap();
+    sender.send(PtyWriteInstruction::Exit).unwrap();
+
+    pty_writer_main(bus).unwrap();
+
+    let message = rejected_rx
+        .blocking_recv()
+        .expect("overflowed write resolves")
+        .error_message
+        .expect("the local cap is not success");
+    assert!(message.contains("pending byte limit"), "{message}");
+    assert_eq!(budget.terminal_reserved(1), 0);
+    assert_eq!(budget.terminal_reserved(9), 100);
+    assert_eq!(budget.reserved_bytes(), 100);
 }

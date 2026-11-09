@@ -177,10 +177,10 @@ impl MockPtyInstructionBus {
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
-                        PtyWriteInstruction::Write(msg, _, _) => output
+                        PtyWriteInstruction::Write(write) => output
                             .lock()
                             .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string()),
+                            .push(String::from_utf8_lossy(write.bytes()).to_string()),
                         PtyWriteInstruction::Exit => break,
                         _ => {},
                     }

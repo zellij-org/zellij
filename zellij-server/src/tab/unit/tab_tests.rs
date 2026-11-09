@@ -18103,9 +18103,9 @@ pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            let s = String::from_utf8_lossy(bytes);
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            let s = String::from_utf8_lossy(write.bytes());
             assert!(
                 s.starts_with("\u{1b}[<64;"),
                 "expected SGR wheel-up (button 64) prefix, got {s:?}"
@@ -18131,9 +18131,9 @@ pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            let s = String::from_utf8_lossy(bytes);
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            let s = String::from_utf8_lossy(write.bytes());
             assert!(
                 s.starts_with("\u{1b}[<65;"),
                 "expected SGR wheel-down (button 65) prefix, got {s:?}"
@@ -18158,9 +18158,9 @@ pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            assert_eq!(bytes.as_slice(), b"\x1b[A");
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            assert_eq!(write.bytes(), b"\x1b[A");
         },
         other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
     }
@@ -18181,9 +18181,9 @@ pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            assert_eq!(bytes.as_slice(), b"\x1b[B");
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            assert_eq!(write.bytes(), b"\x1b[B");
         },
         other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
     }
@@ -18525,6 +18525,7 @@ fn create_tab_with_receivers_without_layout(
         to_server: Some(SenderWithContext::new(to_server)),
         to_pty_writer: Some(SenderWithContext::new(to_pty_writer)),
         to_background_jobs: Some(SenderWithContext::new(to_background_jobs)),
+        pty_ingress: None,
         should_silently_fail,
     };
     let client_id = 1;
@@ -21466,8 +21467,8 @@ pub fn a_click_reaches_a_program_that_asked_for_the_mouse() {
     assert!(
         writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<0;")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<0;")
         )),
         "expected the click to be forwarded, got {writes:?}"
     );
@@ -21491,8 +21492,8 @@ pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
     assert!(
         !writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<")
         )),
         "shift must hold the click back from the program so the terminal can use it, got {writes:?}"
     );
@@ -21522,8 +21523,8 @@ pub fn a_shift_right_click_opens_the_context_menu_instead_of_going_to_the_progra
     assert!(
         !writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<")
         )),
         "shift must hold the right click back from the program, got {writes:?}"
     );
@@ -21660,8 +21661,8 @@ fn written_strings(
     drain_pty_writer(rx)
         .into_iter()
         .filter_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, _, _) => {
-                Some(String::from_utf8_lossy(&bytes).into_owned())
+            PtyWriteInstruction::Write(write) => {
+                Some(String::from_utf8_lossy(write.bytes()).into_owned())
             },
             _ => None,
         })
