@@ -7,6 +7,7 @@ use crate::window::desktop::start_grip;
 use crate::window::desktop::Hover;
 use crate::window::desktop::PanelWindow;
 use crate::window::desktop::Pending;
+use crate::window::desktop::PreparedWindow;
 use crate::window::desktop::WindowOps;
 use crate::window::Desktop;
 use crate::window::{as_panel, terminal_app, with_activation, App, Verdict, Wake};
@@ -42,23 +43,57 @@ pub(super) fn view_payload(view: Option<PopupView>) -> &'static str {
     }
 }
 
+/// Where the panel opens, given its size in logical pixels.
 pub(super) fn placement(
     event_loop: &ActiveEventLoop,
     anchor: Option<Anchor>,
-    size: (u32, u32),
+    size: (f64, f64),
 ) -> Option<winit::dpi::Position> {
     if crate::window::is_wayland(event_loop) {
         return None;
     }
-    let (x, y) = match anchor {
+    let (x, y) = anchor_point(event_loop, anchor)?;
+    let scale = scale_at(event_loop, x, y);
+    let (left, top) = centred_in(work_area(event_loop, x, y), size, scale);
+    Some(winit::dpi::PhysicalPosition::new(left, top).into())
+}
+
+/// The work area is in physical pixels and the panel's size in logical ones, so the size is
+/// scaled to the monitor the panel opens on before it is centred.
+pub(super) fn centred_in(area: (f64, f64, f64, f64), size: (f64, f64), scale: f64) -> (f64, f64) {
+    let (left, top, right, bottom) = area;
+    (
+        centered(left, right, size.0 * scale),
+        centered(top, bottom, size.1 * scale),
+    )
+}
+
+pub(super) fn centered(start: f64, end: f64, length: f64) -> f64 {
+    let room = (end - start).max(0.0);
+    start + ((room - length) / 2.0).max(0.0)
+}
+
+/// The panel window's size in logical pixels, as the window asks for it: its cells and the
+/// padding around them.
+fn logical_size(prepared: &PreparedWindow) -> (f64, f64) {
+    let geometry = &prepared.geometry;
+    let padding = prepared.options.padding;
+    (
+        (geometry.cell_width * geometry.cols) as f64 + padding.horizontal() as f64,
+        (geometry.cell_height * geometry.rows) as f64 + padding.vertical() as f64,
+    )
+}
+
+fn anchor_point(event_loop: &ActiveEventLoop, anchor: Option<Anchor>) -> Option<(f64, f64)> {
+    match anchor {
         Some(Anchor::Below { x, y }) => {
             let scale = event_loop
                 .primary_monitor()
                 .map(|m| m.scale_factor())
                 .unwrap_or(1.0);
-            (x * scale, y * scale)
+            Some((x * scale, y * scale))
         },
-        Some(Anchor::Above { x, y } | Anchor::At { x, y }) => (x, y),
+        Some(Anchor::Above { x, y } | Anchor::At { x, y }) => Some((x, y)),
         None => event_loop
             .primary_monitor()
             .or_else(|| event_loop.available_monitors().next())
@@ -68,21 +103,32 @@ pub(super) fn placement(
                     p.x as f64 + s.width as f64 / 2.0,
                     p.y as f64 + s.height as f64 / 2.0,
                 )
-            })?,
-    };
-    let (left, top, right, bottom) = work_area(event_loop, x, y);
-    Some(
-        winit::dpi::PhysicalPosition::new(
-            centered(left, right, size.0),
-            centered(top, bottom, size.1),
-        )
-        .into(),
-    )
+            }),
+    }
 }
 
-pub(super) fn centered(start: f64, end: f64, length: u32) -> f64 {
-    let room = (end - start).max(0.0);
-    start + ((room - length as f64) / 2.0).max(0.0)
+fn monitor_at(
+    event_loop: &ActiveEventLoop,
+    x: f64,
+    y: f64,
+) -> Option<winit::monitor::MonitorHandle> {
+    event_loop
+        .available_monitors()
+        .find(|m| {
+            let (p, s) = (m.position(), m.size());
+            x >= p.x as f64
+                && y >= p.y as f64
+                && x < p.x as f64 + s.width as f64
+                && y < p.y as f64 + s.height as f64
+        })
+        .or_else(|| event_loop.primary_monitor())
+        .or_else(|| event_loop.available_monitors().next())
+}
+
+fn scale_at(event_loop: &ActiveEventLoop, x: f64, y: f64) -> f64 {
+    monitor_at(event_loop, x, y)
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0)
 }
 
 pub(super) fn work_area(event_loop: &ActiveEventLoop, x: f64, y: f64) -> (f64, f64, f64, f64) {
@@ -90,22 +136,16 @@ pub(super) fn work_area(event_loop: &ActiveEventLoop, x: f64, y: f64) -> (f64, f
 }
 
 pub(super) fn monitor_area(event_loop: &ActiveEventLoop, x: f64, y: f64) -> (f64, f64, f64, f64) {
-    let monitors: Vec<_> = event_loop.available_monitors().collect();
-    let area = |m: &winit::monitor::MonitorHandle| {
-        let p = m.position();
-        let s = m.size();
-        (
-            p.x as f64,
-            p.y as f64,
-            p.x as f64 + s.width as f64,
-            p.y as f64 + s.height as f64,
-        )
-    };
-    monitors
-        .iter()
-        .map(area)
-        .find(|(l, t, r, b)| x >= *l && x < *r && y >= *t && y < *b)
-        .or_else(|| event_loop.primary_monitor().as_ref().map(area))
+    monitor_at(event_loop, x, y)
+        .map(|m| {
+            let (p, s) = (m.position(), m.size());
+            (
+                p.x as f64,
+                p.y as f64,
+                p.x as f64 + s.width as f64,
+                p.y as f64 + s.height as f64,
+            )
+        })
         .unwrap_or((0.0, 0.0, f64::MAX / 4.0, f64::MAX / 4.0))
 }
 
@@ -128,28 +168,12 @@ impl Desktop {
         event_loop: &ActiveEventLoop,
         anchor: Option<Anchor>,
     ) -> (f64, f64) {
-        let (x, y) = match anchor {
-            Some(Anchor::Below { x, y } | Anchor::Above { x, y } | Anchor::At { x, y }) => (x, y),
-            None => (0.0, 0.0),
+        let Some((x, y)) = anchor_point(event_loop, anchor) else {
+            return (1280.0, 800.0);
         };
-        let monitor = event_loop
-            .available_monitors()
-            .find(|m| {
-                let (p, s) = (m.position(), m.size());
-                x >= p.x as f64
-                    && y >= p.y as f64
-                    && x < p.x as f64 + s.width as f64
-                    && y < p.y as f64 + s.height as f64
-            })
-            .or_else(|| event_loop.primary_monitor())
-            .or_else(|| event_loop.available_monitors().next());
-        match monitor {
-            Some(monitor) => {
-                let size = monitor.size().to_logical::<f64>(monitor.scale_factor());
-                (size.width, size.height)
-            },
-            None => (1280.0, 800.0),
-        }
+        let scale = scale_at(event_loop, x, y);
+        let (left, top, right, bottom) = work_area(event_loop, x, y);
+        ((right - left) / scale, (bottom - top) / scale)
     }
 
     pub(super) fn open_panel(
@@ -223,12 +247,7 @@ impl Desktop {
             anchor,
             token,
         } = pending;
-        let (cell_width, cell_height) =
-            (prepared.geometry.cell_width, prepared.geometry.cell_height);
-        let size = (
-            (cell_width * prepared.geometry.cols) as u32,
-            (cell_height * prepared.geometry.rows) as u32,
-        );
+        let size = logical_size(&prepared);
         let border = prepared.border;
         let mut made = hosting.maker.make(connection, prepared);
         made.remember = false;
@@ -309,5 +328,36 @@ impl Desktop {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn at_200_percent_the_panel_is_centred_by_its_size_in_pixels() {
+        let above_the_taskbar = (0.0, 0.0, 2880.0, 1704.0);
+        assert_eq!(
+            centred_in(above_the_taskbar, (1240.0, 693.0), 2.0),
+            (200.0, 159.0),
+            "1240x693 logical pixels cover 2480x1386 physical ones"
+        );
+    }
+
+    #[test]
+    fn at_100_percent_logical_and_physical_pixels_are_the_same() {
+        assert_eq!(
+            centred_in((0.0, 0.0, 1920.0, 1040.0), (1240.0, 693.0), 1.0),
+            (340.0, 173.5)
+        );
+    }
+
+    #[test]
+    fn a_panel_larger_than_the_work_area_starts_at_its_corner() {
+        assert_eq!(
+            centred_in((100.0, 50.0, 900.0, 650.0), (1240.0, 693.0), 1.0),
+            (100.0, 50.0)
+        );
     }
 }
