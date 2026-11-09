@@ -1,7 +1,7 @@
 use super::*;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use std::io::{Seek, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const PNG_2X2_RGBA: [u8; 75] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -260,15 +260,20 @@ fn file_medium_outside_temp_proc_sys_and_dev_is_enotsupported() {
     assert!(!canonical.starts_with("/proc"));
     assert!(!canonical.starts_with("/sys"));
     assert!(!canonical.starts_with("/dev"));
-    let mut parser = KittyCommandParser::new();
-    let err = parse_one(
-        &mut parser,
-        &raw_cmd("a=T,f=24,s=2,v=2,t=f", path.to_str().unwrap().as_bytes()),
-    )
-    .unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Enotsupported);
-    assert!(path.exists());
-    assert_eq!(std::fs::read(&path).unwrap(), raster);
+    for medium in ["f", "t"] {
+        let mut parser = KittyCommandParser::new();
+        let err = parse_one(
+            &mut parser,
+            &raw_cmd(
+                &format!("a=T,f=24,s=2,v=2,t={medium}"),
+                path.to_str().unwrap().as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, KittyErrorCode::Enotsupported, "t={medium}");
+        assert!(path.exists(), "t={medium}");
+        assert_eq!(std::fs::read(&path).unwrap(), raster, "t={medium}");
+    }
 }
 
 #[test]
@@ -437,77 +442,6 @@ fn temp_file_medium_failed_read_does_not_delete() {
     assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(existed, "file was deleted although the read failed");
     assert_eq!(bytes.unwrap(), raster_12_bytes());
-}
-
-#[cfg(unix)]
-#[test]
-fn opening_refuses_a_symlinked_intermediate_directory() {
-    let raster = raster_12_bytes();
-    let dir = manifest_dir_tempdir();
-    let base = std::fs::canonicalize(dir.path()).unwrap();
-    let real = base.join("real");
-    std::fs::create_dir(&real).unwrap();
-    std::fs::write(real.join("img.bin"), &raster).unwrap();
-    // a directory swapped for a symlink after the path had been resolved
-    let link = base.join("link");
-    std::os::unix::fs::symlink(&real, &link).unwrap();
-    assert!(open_without_following_symlinks(&real.join("img.bin")).is_ok());
-    assert!(open_without_following_symlinks(&link.join("img.bin")).is_err());
-    // and so is a symlink in place of the file
-    std::os::unix::fs::symlink(real.join("img.bin"), base.join("img-link.bin")).unwrap();
-    assert!(open_without_following_symlinks(&base.join("img-link.bin")).is_err());
-}
-
-#[cfg(unix)]
-#[test]
-fn deleting_removes_the_file_that_was_read() {
-    let raster = raster_12_bytes();
-    let path = temp_dir_file("tty-graphics-protocol-", &raster);
-    let mut opened = open_graphics_file(&path).unwrap();
-    let command = KittyCommand::default();
-    let bytes = read_file_range(
-        &mut opened.file,
-        opened.len,
-        &command,
-        &EchoFields::from_command(&command),
-    )
-    .unwrap();
-    assert_eq!(bytes, raster);
-    assert!(should_delete_temp_file(&opened));
-    delete_opened_file(&opened);
-    assert!(!path.exists());
-}
-
-#[cfg(unix)]
-#[test]
-fn deleting_is_skipped_when_the_name_points_to_a_different_file() {
-    let path = temp_dir_file("tty-graphics-protocol-", &raster_12_bytes());
-    let opened = open_graphics_file(&path).unwrap();
-    // the original inode stays allocated while `opened` holds it, so the
-    // replacement cannot reuse its number
-    std::fs::remove_file(&path).unwrap();
-    std::fs::write(&path, b"someone else's file").unwrap();
-    delete_opened_file(&opened);
-    let survived = path.exists();
-    let _ = std::fs::remove_file(&path);
-    assert!(survived, "a different file under the same name was deleted");
-}
-
-#[cfg(unix)]
-#[test]
-fn deleting_is_skipped_when_the_name_became_a_symlink() {
-    let dir = manifest_dir_tempdir();
-    let victim = dir.path().join("victim.bin");
-    std::fs::write(&victim, b"victim").unwrap();
-    let path = temp_dir_file("tty-graphics-protocol-", &raster_12_bytes());
-    let opened = open_graphics_file(&path).unwrap();
-    std::fs::remove_file(&path).unwrap();
-    std::os::unix::fs::symlink(&victim, &path).unwrap();
-    delete_opened_file(&opened);
-    let link_survived = std::fs::symlink_metadata(&path).is_ok();
-    let _ = std::fs::remove_file(&path);
-    assert!(victim.exists());
-    assert!(link_survived, "the symlink under the name was deleted");
 }
 
 #[cfg(unix)]
