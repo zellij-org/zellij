@@ -1,7 +1,6 @@
 use super::super::TerminalPane;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
-use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
@@ -40,7 +39,6 @@ fn create_pane() -> TerminalPane {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -437,7 +435,6 @@ fn create_pane_with_content(content: &str, cols: usize) -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),

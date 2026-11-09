@@ -8,7 +8,7 @@ const TERMINATOR: &str = "\u{1b}\\";
 const MAX_LINK_URI_BYTES: usize = 8 * 1024;
 /// Longest OSC 8 `id=` parameter retained; longer ids are dropped.
 const MAX_LINK_ID_BYTES: usize = 256;
-/// Total URI and id bytes retained per handler, counting both stored copies
+/// Total URI and id bytes retained per handler (that is, per pane), counting both stored copies
 /// of each target. Link ids are never reused while cells may still
 /// reference them, so without this bound output could pin up to 65,536
 /// maximum-length targets.
@@ -20,6 +20,10 @@ enum LinkTarget {
     Detected(String),
 }
 
+/// The table of hyperlink targets for one pane. Cells store only an id into
+/// it, so a pane owns its handler and keeps it wherever the pane is shown;
+/// sharing one between panes (or per tab) would let ids resolve to targets
+/// another pane registered once a pane changes tabs.
 #[derive(Debug, Clone)]
 pub struct LinkHandler {
     links: HashMap<u16, Link>,

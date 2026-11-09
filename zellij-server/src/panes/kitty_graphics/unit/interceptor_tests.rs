@@ -2,7 +2,6 @@ use super::{InterceptorResult, KittyApcInterceptor};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::terminal_pane::TerminalPane;
-use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
@@ -242,7 +241,6 @@ fn terminal_pane_grid_shows_ab_around_captured_apc() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),

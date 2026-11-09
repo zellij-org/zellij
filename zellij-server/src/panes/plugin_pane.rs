@@ -94,6 +94,8 @@ pub(crate) struct PluginPane {
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    /// Owned by this pane (shared by its per-client grids) so that the link
+    /// ids in its cells keep resolving after the pane moves to another tab.
     link_handler: Rc<RefCell<LinkHandler>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     vte_parsers: HashMap<ClientId, vt_parser::Parser>,
@@ -129,7 +131,6 @@ impl PluginPane {
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
-        link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         currently_connected_clients: Vec<ClientId>,
         style: Style,
@@ -158,7 +159,7 @@ impl PluginPane {
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             exclude_from_sync: false,
-            link_handler,
+            link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             character_cell_size,
             sixel_image_store,
             kitty_image_store,

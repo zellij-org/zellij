@@ -259,7 +259,6 @@ impl Tab {
             self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             vec![client_id],
             self.style,

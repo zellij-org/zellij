@@ -21651,3 +21651,70 @@ pub fn making_a_pane_tiled_by_pane_id_hides_floating_panes_and_focuses_it() {
     assert!(!tab.are_floating_panes_visible());
     assert_eq!(tab.get_active_pane_id(client_id), Some(new_pane_id));
 }
+
+fn rendered_ansi(tab: &mut Tab) -> String {
+    let mut output = crate::output::Output::new(
+        Default::default(),
+        Default::default(),
+        false,
+        true,
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+    );
+    tab.render(&mut output, None).unwrap();
+    output
+        .serialize()
+        .unwrap()
+        .get(&1)
+        .unwrap()
+        .ansi()
+        .to_string()
+}
+
+#[test]
+fn a_moved_pane_keeps_resolving_its_hyperlinks_to_its_own_targets() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    // Both tabs hand out link id 0 first, to different targets, so an id
+    // resolved through the wrong tab's table shows the other tab's target.
+    let mut source_tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut source_tab, 2);
+    source_tab
+        .handle_pty_bytes(
+            2,
+            b"\x1b]8;;https://moved.example/own\x1b\\moved-text\x1b]8;;\x1b\\".to_vec(),
+        )
+        .unwrap();
+
+    let mut destination_tab = create_new_tab(size, false);
+    destination_tab
+        .handle_pty_bytes(
+            1,
+            b"\x1b]8;;https://other.example/first\x1b\\first\x1b]8;;\x1b\\\
+              \x1b]8;;https://other.example/second\x1b\\second\x1b]8;;\x1b\\"
+                .to_vec(),
+        )
+        .unwrap();
+
+    let pane = source_tab
+        .extract_pane(PaneId::Terminal(2), true)
+        .expect("the pane is in the source tab");
+    destination_tab
+        .add_tiled_pane(pane, PaneId::Terminal(2), false, Some(1))
+        .unwrap();
+
+    let after_move = rendered_ansi(&mut destination_tab);
+    assert!(after_move.contains("moved-text"), "the moved pane is drawn");
+    assert!(
+        after_move.contains("https://moved.example/own"),
+        "the moved pane's link still resolves to its own target"
+    );
+    assert!(after_move.contains("https://other.example/first"));
+    assert!(after_move.contains("https://other.example/second"));
+}

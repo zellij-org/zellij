@@ -2901,6 +2901,7 @@ impl Grid {
         let plugin_highlight_selections = self.compute_plugin_highlight_selections();
 
         for character_chunk in character_chunks.iter_mut() {
+            character_chunk.link_handler = Some(self.link_handler.clone());
             character_chunk.add_changed_colors(self.changed_colors);
             // CharacterChunk still carries `Option<AnsiCode>` because
             // `adjust_styles_for_custom_bg_fg` assigns the value into

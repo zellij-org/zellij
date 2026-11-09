@@ -716,11 +716,14 @@ impl Pane for TerminalPane {
             styles.foreground = Some(text_color.into());
         });
         self.fake_cursor_locations.insert((cursor_y, cursor_x));
-        Some(CharacterChunk::new(
+        let mut chunk = CharacterChunk::new(
             vec![character_under_cursor],
             self.get_content_x() + cursor_x,
             self.get_content_y() + cursor_y,
-        ))
+        );
+        // the cell under the cursor may carry one of this pane's link ids
+        chunk.link_handler = Some(self.grid.link_handler.clone());
+        Some(chunk)
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
@@ -1639,7 +1642,6 @@ impl TerminalPane {
         style: Style,
         pane_index: usize,
         pane_name: String,
-        link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
@@ -1661,7 +1663,7 @@ impl TerminalPane {
             position_and_size.cols.as_usize(),
             terminal_emulator_colors,
             terminal_emulator_color_codes,
-            link_handler,
+            Rc::new(RefCell::new(LinkHandler::new())),
             character_cell_size,
             sixel_image_store,
             kitty_image_store,

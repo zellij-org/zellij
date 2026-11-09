@@ -10981,7 +10981,6 @@ fn new_terminal_pane_for_pause_test(pid: u32) -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(Some(SizeInPixels {
             width: 8,
             height: 16,
