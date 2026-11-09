@@ -519,6 +519,9 @@ pub struct WindowsRecord {
     pub start_menu: Option<PathBuf>,
     pub explorer_item: bool,
     pub jump_list: bool,
+    /// The folder Zellij added to the user's PATH, so that only Zellij takes it away again.
+    #[serde(default)]
+    pub added_to_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

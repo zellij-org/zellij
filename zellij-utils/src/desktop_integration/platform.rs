@@ -1671,17 +1671,33 @@ mod windows_desktop {
         };
         update(move |state: &mut IntegrationState| state.binary_copy = Some(record))?;
         if !location::path_contains(&folder) {
-            lines.push(format!(
-                "{} is not on your PATH; add it to run zellij from a terminal",
-                folder.display()
-            ));
+            lines.push(match add_to_user_path(&folder) {
+                Ok(added) => {
+                    if added {
+                        let recorded = folder.clone();
+                        update(move |state: &mut IntegrationState| {
+                            state.windows.added_to_path = Some(recorded)
+                        })?;
+                    }
+                    format!(
+                        "{} is on your PATH for terminals started from now on",
+                        folder.display()
+                    )
+                },
+                Err(e) => format!(
+                    "{} could not be added to your PATH ({:#}); add it to run {} from a terminal",
+                    folder.display(),
+                    e,
+                    crate::distribution::name()
+                ),
+            });
         }
         Ok(lines.join("\n"))
     }
 
     fn remove_copy() -> Result<String> {
         let state = load();
-        let message = super::remove_recorded_copy(&state)?;
+        let mut message = super::remove_recorded_copy(&state)?;
         if let Some(record) = &state.binary_copy {
             if let Some(folder) = record.destination.parent() {
                 let launcher = folder.join(format!("{}-terminal.exe", crate::distribution::name()));
@@ -1690,7 +1706,109 @@ mod windows_desktop {
                 }
             }
         }
+        let copy_gone = state
+            .binary_copy
+            .as_ref()
+            .map(|record| !record.destination.exists())
+            .unwrap_or(true);
+        if let (Some(folder), true) = (&state.windows.added_to_path, copy_gone) {
+            if remove_from_user_path(folder)? {
+                message.push_str(&format!("\nRemoved {} from your PATH", folder.display()));
+            }
+            update(|state: &mut IntegrationState| state.windows.added_to_path = None)?;
+        }
         Ok(message)
+    }
+
+    const ENVIRONMENT_KEY: &str = "Environment";
+
+    /// Adds `folder` at the end of the user's PATH, as the installer does. Tells whether it was
+    /// added, as opposed to there already.
+    fn add_to_user_path(folder: &Path) -> Result<bool> {
+        use windows_sys::Win32::System::Registry::REG_EXPAND_SZ;
+        let (value, kind) =
+            registry::get_raw_text(registry::Root::CurrentUser, ENVIRONMENT_KEY, "Path")
+                .unwrap_or_else(|| (String::new(), REG_EXPAND_SZ));
+        let Some(updated) = path_with(&value, &folder.display().to_string()) else {
+            return Ok(false);
+        };
+        registry::set_text(
+            registry::Root::CurrentUser,
+            ENVIRONMENT_KEY,
+            "Path",
+            &updated,
+            kind,
+        )?;
+        announce_environment_change();
+        Ok(true)
+    }
+
+    fn remove_from_user_path(folder: &Path) -> Result<bool> {
+        let Some((value, kind)) =
+            registry::get_raw_text(registry::Root::CurrentUser, ENVIRONMENT_KEY, "Path")
+        else {
+            return Ok(false);
+        };
+        let Some(updated) = path_without(&value, &folder.display().to_string()) else {
+            return Ok(false);
+        };
+        registry::set_text(
+            registry::Root::CurrentUser,
+            ENVIRONMENT_KEY,
+            "Path",
+            &updated,
+            kind,
+        )?;
+        announce_environment_change();
+        Ok(true)
+    }
+
+    /// Lets Explorer, and the programs it starts from now on, see the new PATH.
+    fn announce_environment_change() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
+        };
+        let area = registry::wide(ENVIRONMENT_KEY);
+        unsafe {
+            SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SETTINGCHANGE,
+                0,
+                area.as_ptr() as isize,
+                SMTO_ABORTIFHUNG,
+                5000,
+                std::ptr::null_mut(),
+            );
+        }
+    }
+
+    /// The PATH with `folder` added at the end, or nothing when it is there already.
+    fn path_with(value: &str, folder: &str) -> Option<String> {
+        if value.split(';').any(|entry| same_entry(entry, folder)) {
+            return None;
+        }
+        let kept = value.trim_end_matches(';');
+        Some(if kept.is_empty() {
+            folder.to_owned()
+        } else {
+            format!("{};{}", kept, folder)
+        })
+    }
+
+    /// The PATH without `folder`, or nothing when it is not there.
+    fn path_without(value: &str, folder: &str) -> Option<String> {
+        let entries: Vec<&str> = value.split(';').collect();
+        let kept: Vec<&str> = entries
+            .iter()
+            .copied()
+            .filter(|entry| !same_entry(entry, folder))
+            .collect();
+        (kept.len() != entries.len()).then(|| kept.join(";"))
+    }
+
+    fn same_entry(entry: &str, folder: &str) -> bool {
+        let tidy = |text: &str| text.trim().trim_end_matches('\\').to_lowercase();
+        !entry.trim().is_empty() && tidy(entry) == tidy(folder)
     }
 
     fn install_start_menu() -> Result<String> {
@@ -1769,7 +1887,8 @@ mod windows_desktop {
         use windows_sys::Win32::System::Registry::{
             RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegGetValueW, RegOpenKeyExW,
             RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE,
-            REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+            REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RRF_NOEXPAND, RRF_RT_REG_DWORD,
+            RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
         };
 
         #[derive(Clone, Copy)]
@@ -1785,7 +1904,7 @@ mod windows_desktop {
             }
         }
 
-        fn wide(text: &str) -> Vec<u16> {
+        pub(super) fn wide(text: &str) -> Vec<u16> {
             text.encode_utf16().chain(std::iter::once(0)).collect()
         }
 
@@ -1802,14 +1921,34 @@ mod windows_desktop {
         }
 
         pub fn get_string(at: Root, key: &str, name: &str) -> Option<String> {
+            get_text(at, key, name, RRF_RT_REG_SZ).map(|(text, _)| text)
+        }
+
+        /// A text value as it is stored, `%VARIABLES%` unexpanded, with its type.
+        pub fn get_raw_text(at: Root, key: &str, name: &str) -> Option<(String, REG_VALUE_TYPE)> {
+            get_text(
+                at,
+                key,
+                name,
+                RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+            )
+        }
+
+        fn get_text(
+            at: Root,
+            key: &str,
+            name: &str,
+            flags: u32,
+        ) -> Option<(String, REG_VALUE_TYPE)> {
             let mut size: u32 = 0;
+            let mut kind: REG_VALUE_TYPE = REG_SZ;
             let first = unsafe {
                 RegGetValueW(
                     root(at),
                     wide(key).as_ptr(),
                     wide(name).as_ptr(),
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
+                    flags,
+                    &mut kind,
                     std::ptr::null_mut(),
                     &mut size,
                 )
@@ -1823,8 +1962,8 @@ mod windows_desktop {
                     root(at),
                     wide(key).as_ptr(),
                     wide(name).as_ptr(),
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
+                    flags,
+                    &mut kind,
                     buffer.as_mut_ptr() as *mut _,
                     &mut size,
                 )
@@ -1833,7 +1972,7 @@ mod windows_desktop {
                 return None;
             }
             let end = buffer.iter().position(|c| *c == 0).unwrap_or(buffer.len());
-            Some(String::from_utf16_lossy(&buffer[..end]))
+            Some((String::from_utf16_lossy(&buffer[..end]), kind))
         }
 
         pub fn get_dword(at: Root, key: &str, name: &str) -> Option<u32> {
@@ -1854,6 +1993,16 @@ mod windows_desktop {
         }
 
         pub fn set_string(at: Root, key: &str, name: &str, value: &str) -> Result<()> {
+            set_text(at, key, name, value, REG_SZ)
+        }
+
+        pub fn set_text(
+            at: Root,
+            key: &str,
+            name: &str,
+            value: &str,
+            kind: REG_VALUE_TYPE,
+        ) -> Result<()> {
             let mut handle: HKEY = std::ptr::null_mut();
             let created = unsafe {
                 RegCreateKeyExW(
@@ -1878,7 +2027,7 @@ mod windows_desktop {
                     handle,
                     name.as_ptr(),
                     0,
-                    REG_SZ,
+                    kind,
                     data.as_ptr() as *const u8,
                     (data.len() * std::mem::size_of::<u16>()) as u32,
                 )
@@ -1896,6 +2045,47 @@ mod windows_desktop {
                 ERROR_SUCCESS | ERROR_FILE_NOT_FOUND => Ok(()),
                 error => bail!("failed to remove {} (error {})", key, error),
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_copy_folder_is_added_at_the_end_of_the_path_once() {
+            let folder = r"C:\Users\me\AppData\Local\Programs\Zellij";
+            assert_eq!(
+                path_with(r"%USERPROFILE%\bin;C:\tools", folder).as_deref(),
+                Some(r"%USERPROFILE%\bin;C:\tools;C:\Users\me\AppData\Local\Programs\Zellij")
+            );
+            assert_eq!(
+                path_with(r"C:\tools;", folder).as_deref(),
+                Some(r"C:\tools;C:\Users\me\AppData\Local\Programs\Zellij")
+            );
+            assert_eq!(path_with("", folder).as_deref(), Some(folder));
+            assert_eq!(
+                path_with(
+                    r"c:\users\ME\appdata\local\programs\zellij\;C:\tools",
+                    folder
+                ),
+                None,
+                "already there, spelled differently"
+            );
+        }
+
+        #[test]
+        fn only_the_copy_folder_is_taken_off_the_path() {
+            let folder = r"C:\Users\me\AppData\Local\Programs\Zellij";
+            assert_eq!(
+                path_without(
+                    r"C:\tools;C:\Users\me\AppData\Local\Programs\Zellij;%USERPROFILE%\bin",
+                    folder
+                )
+                .as_deref(),
+                Some(r"C:\tools;%USERPROFILE%\bin")
+            );
+            assert_eq!(path_without(r"C:\tools", folder), None);
         }
     }
 }
