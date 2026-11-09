@@ -19899,6 +19899,45 @@ pub fn background_tab_reports_the_remembered_floating_focus() {
     assert_eq!(focused, vec![3]);
 }
 
+/// #5468: after a second client detaches, list-panes focus must not keep
+/// reporting that client's pane as FOCUSED while another client remains.
+#[test]
+pub fn detached_clients_focus_is_not_reported_while_others_remain() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    tab.add_client(2, None).unwrap();
+    // Seed a stale per-client focus after live focus settles. `focus_pane`
+    // mirrors to all clients, so set client 2's leftover entry explicitly.
+    tab.floating_panes
+        .force_active_pane_for_test(2, PaneId::Terminal(2));
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(2))
+    );
+    tab.remove_client(2);
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(2)),
+        "active_panes may still remember the detached client's focus"
+    );
+    let focused_after: Vec<_> = tab
+        .floating_panes
+        .pane_info(&HashMap::new())
+        .into_iter()
+        .filter(|p| p.is_focused)
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(
+        focused_after,
+        vec![3],
+        "disconnected client 2 must not keep pane 2 FOCUSED while client 1 remains"
+    );
+}
+
 #[test]
 pub fn moving_a_missing_floating_pane_reports_no_move() {
     let mut tab = tab_with_two_floating_panes();

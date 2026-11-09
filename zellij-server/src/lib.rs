@@ -1896,6 +1896,26 @@ mod session_state_tests {
         assert_eq!(s.pick_forward_target(), Some(2));
     }
 
+    /// #5546: freed numeric IDs must not be reused while later IDs are still
+    /// available — otherwise a delayed RemoveClient can evict a replacement.
+    #[test]
+    fn new_client_does_not_reuse_a_freed_id_while_monotonic_ids_remain() {
+        let mut s = SessionState::new();
+        let first = s.new_client();
+        let second = s.new_client();
+        assert_eq!(first, 1);
+        assert_eq!(second, 2);
+        s.remove_client(first);
+        let third = s.new_client();
+        assert_eq!(
+            third, 3,
+            "must not reuse id 1 while next_client_id can still advance"
+        );
+        assert!(!s.clients.contains_key(&first));
+        assert!(s.clients.contains_key(&second));
+        assert!(s.clients.contains_key(&third));
+    }
+
     #[test]
     fn pick_forward_target_falls_back_when_last_active_disconnected() {
         let mut s = SessionState::new();

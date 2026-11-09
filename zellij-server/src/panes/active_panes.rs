@@ -162,6 +162,21 @@ impl ActivePanes {
             .find(|p_id| **p_id == *pane_id)
             .is_some()
     }
+    /// Focus reported to queries / list-panes: only currently connected
+    /// clients count. When nobody is connected, remembered focus is kept so a
+    /// background tab can restore it on the next attach.
+    pub fn pane_id_is_focused_for_query(
+        &self,
+        pane_id: &PaneId,
+        connected_clients: &HashSet<ClientId>,
+    ) -> bool {
+        if connected_clients.is_empty() {
+            return self.pane_id_is_focused(pane_id);
+        }
+        self.active_panes
+            .iter()
+            .any(|(client_id, focused)| connected_clients.contains(client_id) && focused == pane_id)
+    }
 }
 
 #[cfg(test)]
@@ -335,5 +350,27 @@ mod tests {
         let mut writerless = ActivePanes::new(&boxed_os_api);
         writerless.insert(1, PaneId::Terminal(2), &mut panes);
         assert_eq!(*writes.lock().unwrap(), vec![(2, "focus-in".to_owned())]);
+    }
+
+    #[test]
+    fn query_focus_ignores_disconnected_clients_but_remembers_when_alone() {
+        let boxed_os_api: Box<dyn ServerOsApi> = Box::new(TestOsApi::default());
+        let mut panes = BTreeMap::from([
+            (PaneId::Terminal(2), focus_reporting_pane(2)),
+            (PaneId::Terminal(3), focus_reporting_pane(3)),
+        ]);
+        let mut active_panes = ActivePanes::new(&boxed_os_api);
+        active_panes.insert(1, PaneId::Terminal(2), &mut panes);
+        active_panes.insert(2, PaneId::Terminal(3), &mut panes);
+
+        let only_client_one: HashSet<ClientId> = [1].into_iter().collect();
+        assert!(active_panes.pane_id_is_focused_for_query(&PaneId::Terminal(2), &only_client_one));
+        assert!(!active_panes.pane_id_is_focused_for_query(&PaneId::Terminal(3), &only_client_one));
+
+        let nobody: HashSet<ClientId> = HashSet::new();
+        assert!(
+            active_panes.pane_id_is_focused_for_query(&PaneId::Terminal(3), &nobody),
+            "with no connected clients, remembered focus is kept for reattach"
+        );
     }
 }

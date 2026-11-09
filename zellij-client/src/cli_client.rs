@@ -749,13 +749,10 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) -> Option<i32> {
-    let is_blocking = matches!(
-        &action,
-        Action::NewBlockingPane {
-            unblock_condition: Some(_),
-            ..
-        }
-    );
+    // Plain `--blocking` has `unblock_condition: None` but still waits for the
+    // accepted target pane/run. Unrelated pane closes used to broadcast
+    // `UnblockInputThread` to every client; those must not satisfy this waiter.
+    let is_blocking = matches!(&action, Action::NewBlockingPane { .. });
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,

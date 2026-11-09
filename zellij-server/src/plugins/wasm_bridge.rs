@@ -1111,6 +1111,7 @@ impl WasmBridge {
         let mut cleanups: Vec<PluginWork> = Vec::with_capacity(plugins_to_cleanup.len());
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
+            running_plugin.lock().unwrap().store.data().retire_load();
             // Release this plugin's key intercept for the client without asking the
             // RunningPlugin whether it has one: its execution mutex is held for the whole of a
             // guest callback, and the management thread must not wait on that to unload. The
@@ -2308,6 +2309,9 @@ impl WasmBridge {
             return;
         }
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in instances {
+            // Retire before async host work (timers) can deliver into a
+            // replacement instance that reused (plugin_id, client_id).
+            running_plugin.lock().unwrap().store.data().retire_load();
             // as in unload_plugin: no lock on the guest's execution mutex here
             let _ = self
                 .senders

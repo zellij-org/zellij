@@ -9,7 +9,7 @@ use zellij_utils::cli::PromptCli;
 use zellij_utils::data::Palette;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::Action;
-use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
+use zellij_utils::ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::Size;
 use zellij_utils::prompt::PromptElement;
 
@@ -77,15 +77,22 @@ impl ClientOsApi for ScriptedOsApi {
         Box::new(self.clone())
     }
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        if let ClientToServerMsg::Action {
-            action: Action::CliPipe { payload, .. },
-            ..
-        } = msg
-        {
-            self.sent_payloads.lock().unwrap().push(payload);
-            if let Some(replies) = self.replies.lock().unwrap().pop_front() {
-                self.inbox.lock().unwrap().extend(replies);
-            }
+        match msg {
+            ClientToServerMsg::Action {
+                action: Action::CliPipe { payload, .. },
+                ..
+            } => {
+                self.sent_payloads.lock().unwrap().push(payload);
+                if let Some(replies) = self.replies.lock().unwrap().pop_front() {
+                    self.inbox.lock().unwrap().extend(replies);
+                }
+            },
+            ClientToServerMsg::Action { .. } => {
+                if let Some(replies) = self.replies.lock().unwrap().pop_front() {
+                    self.inbox.lock().unwrap().extend(replies);
+                }
+            },
+            _ => {},
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
@@ -624,5 +631,76 @@ fn queued_prompt_lines_are_sent_together_but_pipe_lines_are_not() {
     assert_eq!(
         crate::cli_client::next_payload(&mut queued, false),
         Some(Some("a\n".to_owned()))
+    );
+}
+
+fn blocking_new_pane(with_condition: bool) -> Action {
+    use zellij_utils::data::{NewPanePlacement, UnblockCondition};
+    Action::NewBlockingPane {
+        placement: NewPanePlacement::Floating(None),
+        pane_name: Some("long".to_owned()),
+        command: None,
+        unblock_condition: with_condition.then_some(UnblockCondition::OnAnyExit),
+        near_current_pane: false,
+        no_focus: false,
+        tab_id: None,
+    }
+}
+
+/// #5752: plain `--blocking` must ignore an unrelated UnblockInputThread
+/// (broadcast when another pane closes) and wait for its own Exit.
+#[test]
+fn plain_blocking_new_pane_ignores_unrelated_unblock() {
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![
+            ServerToClientMsg::UnblockInputThread,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::CustomExitStatus(0),
+            },
+        ]],
+    );
+    assert_eq!(run(&os_api, blocking_new_pane(false)), 0);
+}
+
+/// Non-blocking actions still complete on UnblockInputThread.
+#[test]
+fn non_blocking_action_still_completes_on_unblock() {
+    let os_api = ScriptedOsApi::new(None, vec![vec![ServerToClientMsg::UnblockInputThread]]);
+    assert_eq!(
+        run(
+            &os_api,
+            Action::NewPane {
+                direction: None,
+                pane_name: None,
+                start_suppressed: false,
+            }
+        ),
+        0
+    );
+}
+
+/// #5382: list-panes completes on its Log payload (not an empty success).
+#[test]
+fn list_panes_completes_on_log_payload() {
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![ServerToClientMsg::Log {
+            lines: vec!["1\ttrue\tpane".to_owned()],
+        }]],
+    );
+    assert_eq!(
+        run(
+            &os_api,
+            Action::ListPanes {
+                show_tab: false,
+                show_command: false,
+                show_state: false,
+                show_geometry: false,
+                show_all: false,
+                output_json: false,
+            }
+        ),
+        0
     );
 }

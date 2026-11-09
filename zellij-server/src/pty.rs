@@ -683,20 +683,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     .with_context(err_context)?;
             },
             PtyInstruction::ClosePane(id, completion_tx) => {
+                // Completion is owned by `completion_tx` (request/target) when
+                // present. Do not broadcast UnblockInputThread on child-exit or
+                // other unscoped closes — that wakes unrelated CLI waiters
+                // (#5752 long/short pane, #5382 concurrent list-panes).
                 let close_result = pty.close_pane(id);
-                let action_unblocks_its_own_client = completion_tx.is_some();
                 drop(completion_tx);
-                close_result
-                    .and_then(|_| {
-                        if action_unblocks_its_own_client {
-                            Ok(())
-                        } else {
-                            pty.bus
-                                .senders
-                                .send_to_server(ServerInstruction::UnblockInputThread)
-                        }
-                    })
-                    .with_context(|| format!("failed to close pane {:?}", id))?;
+                close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
             PtyInstruction::ClosePaneThatWasNotCreated(id, completion_tx) => {
                 let close_result = pty.close_pane(id);
@@ -708,13 +701,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
             },
             PtyInstruction::ClearPaneProcessIdentity(PaneId::Plugin(_), _) => {},
             PtyInstruction::CloseTab(ids) => {
-                pty.close_tab(ids)
-                    .and_then(|_| {
-                        pty.bus
-                            .senders
-                            .send_to_server(ServerInstruction::UnblockInputThread)
-                    })
-                    .context("failed to close tabs")?;
+                // Same as ClosePane: tab teardown must not broadcast a
+                // session-wide unblock that can satisfy foreign CLI waiters.
+                pty.close_tab(ids).context("failed to close tabs")?;
             },
             PtyInstruction::ReRunCommandInPane(pane_id, run_command, completion_tx) => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);

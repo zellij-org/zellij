@@ -371,6 +371,11 @@ impl FloatingPanes {
     pub fn active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
+    #[cfg(test)]
+    pub fn force_active_pane_for_test(&mut self, client_id: ClientId, pane_id: PaneId) {
+        self.active_panes
+            .insert(client_id, pane_id, &mut self.panes);
+    }
     pub fn get_pane_z_index(&self, pane_id: PaneId) -> Option<usize> {
         self.z_indices.iter().position(|id| id == &pane_id)
     }
@@ -1888,9 +1893,12 @@ impl FloatingPanes {
     }
     pub fn pane_info(&self, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];
+        let connected_clients = self.connected_clients.borrow().clone();
         for (pane_id, pane) in self.panes.iter() {
             let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, current_pane_group);
-            let is_focused = self.pane_is_remembered_as_focused(pane_id);
+            let is_focused = self
+                .active_panes
+                .pane_id_is_focused_for_query(pane_id, &connected_clients);
             pane_info_for_pane.is_floating = true;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_focused = is_focused;

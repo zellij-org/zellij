@@ -415,6 +415,10 @@ pub fn next_plugin_generation() -> u64 {
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub generation: u64,
+    /// Cleared when this load instance is retired (unload / client remove /
+    /// reload). Async host work scheduled by this instance (timers) must check
+    /// it before delivering into a possibly-replaced `(plugin_id, client_id)`.
+    pub load_alive: Arc<AtomicBool>,
     pub plugin: PluginConfig,
     pub plugin_digest: String,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
@@ -556,6 +560,10 @@ impl PluginEnv {
             self.plugin.path.display().to_string(),
             self.plugin_id
         )
+    }
+
+    pub fn retire_load(&self) {
+        self.load_alive.store(false, Ordering::Release);
     }
 
     pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {

@@ -3330,10 +3330,17 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
     let update_target = Some(env.plugin_id);
     let client_id = acting_client(env);
     let plugin_name = env.name();
+    // Own this load instance: after unload/reload/client-remove the same
+    // (plugin_id, client_id) may name a replacement. Do not duration-dedupe.
+    let load_alive = env.load_alive.clone();
+    let scheduled_generation = env.generation;
     // Use tokio runtime for async I/O (timer operation)
     get_tokio_runtime().spawn(async move {
         let start_time = Instant::now();
         tokio::time::sleep(Duration::from_secs_f64(secs)).await;
+        if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
         // FIXME: The way that elapsed time is being calculated here is not exact; it doesn't take into account the
         // time it takes an event to actually reach the plugin after it's sent to the `wasm` thread.
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
@@ -3351,8 +3358,8 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
             })
             .with_context(|| {
                 format!(
-                    "failed to set host timeout of {secs} s for plugin {}",
-                    plugin_name
+                    "failed to set host timeout of {secs} s for plugin {} (generation {})",
+                    plugin_name, scheduled_generation
                 )
             })
             .non_fatal();

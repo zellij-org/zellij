@@ -531,6 +531,7 @@ impl PluginLoader {
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             generation: self.generation,
+            load_alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             client_id: self.client_id,
             plugin: self.plugin_config.clone(), // TODO: change field name in PluginEnv to plugin_config
             plugin_digest: self.plugin_digest.clone(),
@@ -648,6 +649,7 @@ impl PluginLoader {
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             generation: self.generation,
+            load_alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             client_id: self.client_id,
             plugin: plugin_config,
             plugin_digest: self.plugin_digest.clone(),

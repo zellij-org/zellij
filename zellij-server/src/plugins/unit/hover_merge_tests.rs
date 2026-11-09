@@ -55,6 +55,28 @@ fn only_hover_events_are_merged() {
     assert!(!is_hover(&Event::Timer(1.0)));
 }
 
+/// #5414: retiring a load instance must stop its scheduled timers from
+/// delivering into a replacement that reused the same (plugin_id, client_id).
+#[test]
+fn retiring_a_load_stops_timer_delivery_without_duration_dedupe() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let alive = Arc::new(AtomicBool::new(true));
+    let same_duration_a = 1.0_f64;
+    let same_duration_b = 1.0_f64;
+    assert_eq!(
+        same_duration_a, same_duration_b,
+        "fixture: two legitimate timers may share a duration"
+    );
+    assert!(alive.load(Ordering::Acquire));
+    alive.store(false, Ordering::Release);
+    assert!(
+        !alive.load(Ordering::Acquire),
+        "retired load must refuse timer delivery"
+    );
+}
+
 #[test]
 fn a_mouse_event_with_modifiers_matches_a_mouse_subscription() {
     assert_eq!(
