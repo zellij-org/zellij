@@ -25,13 +25,16 @@ pub struct SessionSocketClaim {
     marker: ExclusiveMarkerClaim,
 }
 
-/// Exclusive claim that does not use `flock`, so non-Unix `try_acquire` and Linux tests share it.
+/// Exclusive claim shared by non-Unix `try_acquire` and Linux tests.
 ///
-/// The lock file is the claim marker. A second acquire fails with [`std::io::ErrorKind::AddrInUse`]
-/// and must not unlink the winner's marker.
+/// The lock file is created with `create_new` (Windows `CREATE_NEW`). A leftover
+/// file is taken only with the OS file lock (`LockFileEx` / `flock` via
+/// [`std::fs::File::try_lock`]), never by unlinking a path that may already be a
+/// newer claim. Drop unlinks only when the marker still contains this claim's nonce.
 #[derive(Debug)]
 pub struct ExclusiveMarkerClaim {
     lock_path: PathBuf,
+    nonce: [u8; 16],
     _file: std::fs::File,
 }
 
@@ -46,39 +49,28 @@ impl ExclusiveMarkerClaim {
     /// Same as [`Self::try_acquire`], with the marker liveness supplied by the caller.
     ///
     /// Production calls this with [`crate::sessions::liveness_of_session_marker`]. A leftover
-    /// lock file is replaced only when that liveness is [`crate::sessions::WindowsPidLiveness::Dead`].
-    /// Alive-but-unverified and unknown leave the lock and the marker in place.
+    /// lock file is taken only when that liveness is [`crate::sessions::WindowsPidLiveness::Dead`]
+    /// and the OS lock is free. Alive-but-unverified and unknown leave the lock and the marker
+    /// in place. Two reclaimers that both observed `Dead` cannot unlink each other's marker:
+    /// the loser of [`std::fs::File::try_lock`] gets [`std::io::ErrorKind::AddrInUse`].
     pub fn try_acquire_with_liveness(
         socket_path: &Path,
         liveness: crate::sessions::WindowsPidLiveness,
     ) -> std::io::Result<Self> {
         let lock_path = SessionSocketClaim::lock_path(socket_path)?;
         match open_exclusive_lock(&lock_path) {
-            Ok(file) => Ok(ExclusiveMarkerClaim {
-                lock_path,
-                _file: file,
-            }),
+            Ok(file) => finish_exclusive_claim(file, lock_path, socket_path),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
                 if !reclaim_may_remove_marker(liveness) {
                     return Err(marker_addr_in_use(socket_path));
                 }
-                // The owner died without dropping the claim, so the lock file is leftover.
-                // Replace it. The dead session marker itself is removed by [`Self::reclaim_marker`].
-                match std::fs::remove_file(&lock_path) {
-                    Ok(()) => {},
-                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(err) => return Err(err),
-                }
-                match open_exclusive_lock(&lock_path) {
-                    Ok(file) => Ok(ExclusiveMarkerClaim {
-                        lock_path,
-                        _file: file,
-                    }),
-                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                        Err(marker_addr_in_use(socket_path))
-                    },
-                    Err(err) => Err(err),
-                }
+                // The previous process is dead, but a concurrent reclaimer may already
+                // hold this path. Lock the existing file; do not unlink it.
+                let file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&lock_path)?;
+                finish_exclusive_claim(file, lock_path, socket_path)
             },
             Err(err) => Err(err),
         }
@@ -101,9 +93,96 @@ impl ExclusiveMarkerClaim {
 
 fn open_exclusive_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
     std::fs::OpenOptions::new()
+        .read(true)
         .write(true)
         .create_new(true)
         .open(lock_path)
+}
+
+fn fresh_claim_nonce() -> [u8; 16] {
+    *uuid::Uuid::new_v4().as_bytes()
+}
+
+/// `true` only when `contents` is exactly the nonce this claim published.
+///
+/// A replacement marker, an empty file, or a different claim must not match.
+pub fn marker_contents_belong_to_claim(contents: &[u8], claim_nonce: &[u8]) -> bool {
+    !claim_nonce.is_empty() && contents == claim_nonce
+}
+
+fn try_lock_claim(file: &std::fs::File, socket_path: &Path) -> std::io::Result<()> {
+    match file.try_lock() {
+        Ok(()) => Ok(()),
+        Err(std::fs::TryLockError::WouldBlock) => Err(marker_addr_in_use(socket_path)),
+        Err(std::fs::TryLockError::Error(err)) => Err(err),
+    }
+}
+
+fn publish_nonce(file: &mut std::fs::File, nonce: &[u8]) -> std::io::Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
+    file.seek(SeekFrom::Start(0))?;
+    file.set_len(0)?;
+    file.write_all(nonce)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// Unlink `path` only when it still contains `claim_nonce`.
+///
+/// Returns `Ok(false)` when the path is missing or names a replacement. The
+/// caller must not treat that as a failed claim it is allowed to destroy.
+fn unlink_marker_if_owned(path: &Path, claim_nonce: &[u8]) -> std::io::Result<bool> {
+    let contents = match std::fs::read(path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err),
+    };
+    if !marker_contents_belong_to_claim(&contents, claim_nonce) {
+        return Ok(false);
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err),
+    }
+}
+
+fn release_failed_publish(path: &Path, nonce: &[u8]) {
+    match std::fs::read(path) {
+        Ok(contents)
+            if contents.is_empty() || marker_contents_belong_to_claim(&contents, nonce) =>
+        {
+            let _ = std::fs::remove_file(path);
+        },
+        _ => {},
+    }
+}
+
+fn finish_exclusive_claim(
+    mut file: std::fs::File,
+    lock_path: PathBuf,
+    socket_path: &Path,
+) -> std::io::Result<ExclusiveMarkerClaim> {
+    try_lock_claim(&file, socket_path)?;
+    let nonce = fresh_claim_nonce();
+    if let Err(err) = publish_nonce(&mut file, &nonce) {
+        // Truncate our inode, then unlink only if the path is still that inode
+        // (empty or our nonce). A replacement's nonce stays on its own path.
+        let _ = file.set_len(0);
+        release_failed_publish(&lock_path, &nonce);
+        return Err(err);
+    }
+    match std::fs::read(&lock_path) {
+        Ok(contents) if marker_contents_belong_to_claim(&contents, &nonce) => {
+            Ok(ExclusiveMarkerClaim {
+                lock_path,
+                nonce,
+                _file: file,
+            })
+        },
+        Ok(_) => Err(marker_addr_in_use(socket_path)),
+        Err(err) => Err(err),
+    }
 }
 
 fn marker_addr_in_use(socket_path: &Path) -> std::io::Error {
@@ -118,8 +197,8 @@ fn marker_addr_in_use(socket_path: &Path) -> std::io::Error {
 
 impl Drop for ExclusiveMarkerClaim {
     fn drop(&mut self) {
-        // A failed second acquire never builds a claim, so it cannot unlink this marker.
-        let _ = std::fs::remove_file(&self.lock_path);
+        // Unlink by identity, not by pathname. A newer claim's marker must survive.
+        let _ = unlink_marker_if_owned(&self.lock_path, &self.nonce);
     }
 }
 
@@ -401,5 +480,75 @@ mod tests {
             assert_eq!(std::fs::read(&path).unwrap(), b"unknown-pid");
             assert_eq!(std::fs::read(&lock_path).unwrap(), b"live-lock");
         }
+    }
+
+    #[test]
+    fn marker_ownership_matches_only_this_claim_nonce() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("marker");
+        let first = b"claim-nonce-aaaa";
+        let second = *b"claim-nonce-bbbb";
+        assert_eq!(first.len(), second.len());
+        std::fs::write(&path, second).unwrap();
+        let contents = std::fs::read(&path).unwrap();
+        assert!(
+            !marker_contents_belong_to_claim(&contents, first),
+            "a different claim must not own the marker"
+        );
+        assert!(marker_contents_belong_to_claim(&contents, &second));
+        assert!(!marker_contents_belong_to_claim(&contents, b""));
+        assert!(
+            !unlink_marker_if_owned(&path, first).unwrap(),
+            "dropping an older nonce must not unlink the replacement"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), second);
+        assert!(unlink_marker_if_owned(&path, &second).unwrap());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn dropping_a_claim_does_not_unlink_a_replacement_nonce() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let claim = ExclusiveMarkerClaim::try_acquire(&path).unwrap();
+        let lock_path = claim.lock_path().to_path_buf();
+        let replacement = b"replacement-nonce";
+        std::fs::write(&lock_path, replacement).unwrap();
+        drop(claim);
+        assert_eq!(
+            std::fs::read(&lock_path).unwrap(),
+            replacement,
+            "drop must leave a marker whose nonce is not this claim"
+        );
+    }
+
+    #[test]
+    fn a_second_dead_reclaimer_does_not_unlink_the_holder() {
+        use crate::sessions::WindowsPidLiveness;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        std::fs::write(&path, b"dead-pid").unwrap();
+        let lock_path = SessionSocketClaim::lock_path(&path).unwrap();
+        std::fs::write(&lock_path, b"stale-lock").unwrap();
+
+        let first =
+            ExclusiveMarkerClaim::try_acquire_with_liveness(&path, WindowsPidLiveness::Dead)
+                .expect("the first dead reclaimer takes the leftover lock");
+        let held = std::fs::read(first.lock_path()).unwrap();
+        let error =
+            ExclusiveMarkerClaim::try_acquire_with_liveness(&path, WindowsPidLiveness::Dead)
+                .expect_err("the lock holder must exclude the second reclaimer");
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        assert_eq!(
+            std::fs::read(first.lock_path()).unwrap(),
+            held,
+            "the loser must not replace or unlink the holder's marker"
+        );
+        drop(first);
+        assert!(
+            !lock_path.exists(),
+            "the holder still owned the nonce, so drop may unlink it"
+        );
     }
 }

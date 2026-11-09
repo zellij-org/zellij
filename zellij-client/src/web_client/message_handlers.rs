@@ -191,12 +191,14 @@ pub fn render_to_client(
                 biased;
                 _ = cancellation_token.cancelled() => None,
                 result = stdout_channel_rx.recv() => match result {
-                    Some(message) => Some(message),
+                    Some(reserved) => Some(reserved),
                     None => break,
                 },
-                Some(frame) = frame_channel_rx.recv() => Some(frame),
+                Some(reserved) = frame_channel_rx.recv() => Some(reserved),
             };
-            let Some(message) = message else {
+            // Keep the byte reservation until this write finishes, fails, or is
+            // cancelled. Dequeue alone must not free the budget.
+            let Some(reserved) = message else {
                 let code = if should_not_reconnect.load(Ordering::Relaxed) {
                     4001u16
                 } else {
@@ -214,6 +216,7 @@ pub fn render_to_client(
                 .await;
                 break;
             };
+            let (message, _reservation) = reserved.into_parts();
             match write_unless_cancelled(&mut client_channel_tx, message, &cancellation_token).await
             {
                 WriteOutcome::Sent => {},
@@ -234,7 +237,8 @@ pub fn send_control_messages_to_client(
     cancellation_token: CancellationToken,
 ) {
     tokio::spawn(async move {
-        while let Some(message) = control_channel_rx.recv().await {
+        while let Some(reserved) = control_channel_rx.recv().await {
+            let (message, _reservation) = reserved.into_parts();
             let write =
                 tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, socket_channel_tx.send(message));
             if !matches!(write.await, Ok(Ok(()))) {

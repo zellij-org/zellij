@@ -435,12 +435,14 @@ mod tests {
             CancellationToken::new(),
         );
 
-        let first = control_channel_rx
+        let (first, _first_reservation) = control_channel_rx
             .try_recv()
-            .expect("the first buffered control message must be flushed on registration");
-        let second = control_channel_rx
+            .expect("the first buffered control message must be flushed on registration")
+            .into_parts();
+        let (second, _second_reservation) = control_channel_rx
             .try_recv()
-            .expect("the second buffered control message must be flushed on registration");
+            .expect("the second buffered control message must be flushed on registration")
+            .into_parts();
 
         assert!(message_text(&first).contains("QueryTerminalSize"));
         assert!(message_text(&second).contains("SetSoftKeyboard"));
@@ -460,9 +462,10 @@ mod tests {
         let mut bus = ClientConnectionBus::new("client", &connection_table);
         bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
 
-        let message = control_channel_rx
+        let (message, _reservation) = control_channel_rx
             .try_recv()
-            .expect("a registered control channel must receive messages directly");
+            .expect("a registered control channel must receive messages directly")
+            .into_parts();
         assert!(message_text(&message).contains("QueryTerminalSize"));
     }
 
@@ -487,9 +490,10 @@ mod tests {
         );
         bus.send_control(WebServerToWebClientControlMessage::SetSoftKeyboard { on: true });
 
-        let message = second_rx
+        let (message, _reservation) = second_rx
             .try_recv()
-            .expect("the replacement control channel receives the next message");
+            .expect("the replacement control channel receives the next message")
+            .into_parts();
         assert!(message_text(&message).contains("SetSoftKeyboard"));
         assert!(first_rx.try_recv().is_err());
     }
@@ -513,9 +517,10 @@ mod tests {
             replacement_tx,
             CancellationToken::new(),
         );
-        let message = replacement_rx
+        let (message, _reservation) = replacement_rx
             .try_recv()
-            .expect("the queued message is flushed to the replacement channel");
+            .expect("the queued message is flushed to the replacement channel")
+            .into_parts();
         assert!(message_text(&message).contains("QueryTerminalSize"));
     }
 

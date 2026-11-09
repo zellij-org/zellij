@@ -3,8 +3,9 @@
 //! The zellij server produces output as fast as it likes, a browser consumes it
 //! as fast as its connection allows. These channels sit in between and have a
 //! hard limit, both in the number of queued messages and in the number of
-//! queued bytes. A sender that hits the limit gets `SendFailure::Full` and is
-//! expected to disconnect the client instead of buffering without bound.
+//! queued bytes. Bytes stay reserved through dequeue until the websocket send
+//! finishes or fails. A sender that hits the limit gets `SendFailure::Full` and
+//! is expected to disconnect the client instead of buffering without bound.
 
 use axum::extract::ws::Message;
 use std::sync::{
@@ -44,6 +45,36 @@ pub struct ClientReceiver {
     queued_bytes: Arc<AtomicUsize>,
 }
 
+/// Byte budget held from accept until the websocket write settles.
+///
+/// Drop releases the reservation, including when the send fails or the task is
+/// cancelled. Dropping the [`Message`] alone does not.
+#[must_use = "dropping the reservation releases the byte budget"]
+pub struct ByteReservation {
+    queued_bytes: Arc<AtomicUsize>,
+    size: usize,
+}
+
+impl Drop for ByteReservation {
+    fn drop(&mut self) {
+        release_queued_bytes(&self.queued_bytes, self.size);
+        self.size = 0;
+    }
+}
+
+/// One dequeued websocket message whose bytes are still in the budget.
+#[must_use = "hold the reservation until the websocket send finishes or fails"]
+pub struct ReservedMessage {
+    message: Message,
+    reservation: ByteReservation,
+}
+
+impl ReservedMessage {
+    pub fn into_parts(self) -> (Message, ByteReservation) {
+        (self.message, self.reservation)
+    }
+}
+
 pub fn client_channel(max_messages: usize, max_bytes: usize) -> (ClientSender, ClientReceiver) {
     let (tx, rx) = mpsc::channel(max_messages);
     let queued_bytes = Arc::new(AtomicUsize::new(0));
@@ -65,44 +96,74 @@ fn message_size(message: &Message) -> usize {
     }
 }
 
+fn release_queued_bytes(queued_bytes: &AtomicUsize, size: usize) {
+    if size > 0 {
+        queued_bytes.fetch_sub(size, Ordering::AcqRel);
+    }
+}
+
+fn reserve_message(queued_bytes: &Arc<AtomicUsize>, message: Message) -> ReservedMessage {
+    let size = message_size(&message);
+    ReservedMessage {
+        message,
+        reservation: ByteReservation {
+            queued_bytes: queued_bytes.clone(),
+            size,
+        },
+    }
+}
+
 impl ClientSender {
     pub fn try_send(&self, message: Message) -> Result<(), SendFailure> {
         let size = message_size(&message);
+        // A frame bigger than the cap can never be sent, including when the
+        // queue is empty. Letting it through would blow the byte budget.
+        if size > self.max_bytes {
+            return Err(SendFailure::Full);
+        }
         let queued_before = self.queued_bytes.fetch_add(size, Ordering::AcqRel);
-        // a single message larger than the whole budget is still let through
-        // when nothing else is queued, otherwise it could never be delivered
-        if queued_before > 0 && queued_before.saturating_add(size) > self.max_bytes {
-            self.queued_bytes.fetch_sub(size, Ordering::AcqRel);
+        if queued_before.saturating_add(size) > self.max_bytes {
+            release_queued_bytes(&self.queued_bytes, size);
             return Err(SendFailure::Full);
         }
         match self.tx.try_send(message) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(_)) => {
-                self.queued_bytes.fetch_sub(size, Ordering::AcqRel);
+                release_queued_bytes(&self.queued_bytes, size);
                 Err(SendFailure::Full)
             },
             Err(TrySendError::Closed(_)) => {
-                self.queued_bytes.fetch_sub(size, Ordering::AcqRel);
+                release_queued_bytes(&self.queued_bytes, size);
                 Err(SendFailure::Closed)
             },
         }
     }
+
+    #[cfg(test)]
+    fn reserved_bytes_for_test(&self) -> usize {
+        self.queued_bytes.load(Ordering::Acquire)
+    }
 }
 
 impl ClientReceiver {
-    pub async fn recv(&mut self) -> Option<Message> {
+    pub async fn recv(&mut self) -> Option<ReservedMessage> {
         let message = self.rx.recv().await?;
-        self.queued_bytes
-            .fetch_sub(message_size(&message), Ordering::AcqRel);
-        Some(message)
+        Some(reserve_message(&self.queued_bytes, message))
     }
 
     #[cfg(test)]
-    pub fn try_recv(&mut self) -> Result<Message, mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<ReservedMessage, mpsc::error::TryRecvError> {
         let message = self.rx.try_recv()?;
-        self.queued_bytes
-            .fetch_sub(message_size(&message), Ordering::AcqRel);
-        Ok(message)
+        Ok(reserve_message(&self.queued_bytes, message))
+    }
+}
+
+impl Drop for ClientReceiver {
+    fn drop(&mut self) {
+        // Messages never handed to a sender task are not in flight.
+        while let Ok(message) = self.rx.try_recv() {
+            release_queued_bytes(&self.queued_bytes, message_size(&message));
+        }
     }
 }
 
@@ -121,8 +182,9 @@ mod tests {
             assert_eq!(tx.try_send(text(1)), Ok(()));
         }
         assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
-        // room comes back as the receiver drains
-        rx.try_recv().unwrap();
+        // a free queue slot comes back as the receiver drains
+        let _released = rx.try_recv().unwrap();
+        drop(_released);
         assert_eq!(tx.try_send(text(1)), Ok(()));
     }
 
@@ -132,17 +194,36 @@ mod tests {
         assert_eq!(tx.try_send(text(6)), Ok(()));
         assert_eq!(tx.try_send(text(4)), Ok(()));
         assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
-        rx.try_recv().unwrap();
+        let in_flight = rx.try_recv().unwrap();
+        assert_eq!(
+            tx.try_send(text(1)),
+            Err(SendFailure::Full),
+            "dequeued bytes stay reserved until the send finishes"
+        );
+        drop(in_flight);
         assert_eq!(tx.try_send(text(1)), Ok(()));
     }
 
     #[test]
-    fn one_oversized_message_is_delivered_when_the_queue_is_empty() {
+    fn rejects_an_oversized_frame_even_when_the_queue_is_empty() {
         let (tx, mut rx) = client_channel(100, 10);
-        assert_eq!(tx.try_send(text(50)), Ok(()));
+        assert_eq!(tx.try_send(text(11)), Err(SendFailure::Full));
+        assert_eq!(tx.try_send(text(10)), Ok(()));
+        let in_flight = rx.try_recv().unwrap();
         assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
-        rx.try_recv().unwrap();
+        drop(in_flight);
         assert_eq!(tx.try_send(text(1)), Ok(()));
+    }
+
+    #[test]
+    fn a_failed_send_releases_the_byte_reservation() {
+        let (tx, mut rx) = client_channel(100, 10);
+        assert_eq!(tx.try_send(text(10)), Ok(()));
+        let in_flight = rx.try_recv().unwrap();
+        assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
+        // The writer drops the reservation when the websocket write fails.
+        drop(in_flight);
+        assert_eq!(tx.try_send(text(10)), Ok(()));
     }
 
     #[test]
@@ -153,11 +234,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bytes_are_released_when_messages_are_received() {
+    async fn bytes_stay_reserved_until_the_send_settles() {
         let (tx, mut rx) = client_channel(100, 10);
         for _ in 0..100 {
             assert_eq!(tx.try_send(text(10)), Ok(()));
-            assert!(rx.recv().await.is_some());
+            let reserved = rx.recv().await.expect("queued message");
+            assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
+            let (message, reservation) = reserved.into_parts();
+            drop(message);
+            assert_eq!(tx.try_send(text(1)), Err(SendFailure::Full));
+            drop(reservation);
+            assert_eq!(tx.reserved_bytes_for_test(), 0);
         }
     }
 }
