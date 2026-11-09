@@ -453,6 +453,7 @@ fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
 #[derive(Clone)]
 pub(crate) struct WindowsPtyBackend {
     terminals: Arc<Mutex<BTreeMap<u32, Option<ConPtyTerminal>>>>,
+    last_terminal_sizes: Arc<Mutex<BTreeMap<u32, (u16, u16)>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
 }
 
@@ -460,8 +461,20 @@ impl WindowsPtyBackend {
     pub fn new() -> Result<Self, io::Error> {
         Ok(Self {
             terminals: Arc::new(Mutex::new(BTreeMap::new())),
+            last_terminal_sizes: Arc::new(Mutex::new(BTreeMap::new())),
             next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
+    }
+
+    fn initial_size_for(&self, terminal_id: u32) -> (u16, u16) {
+        if let Ok(sizes) = self.last_terminal_sizes.lock() {
+            if let Some((cols, rows)) = sizes.get(&terminal_id) {
+                if *cols > 0 && *rows > 0 {
+                    return (*cols, *rows);
+                }
+            }
+        }
+        (80, 24)
     }
 
     /// Core spawn logic — creates ConPTY, spawns child, sets up exit monitor.
@@ -494,8 +507,13 @@ impl WindowsPtyBackend {
             return Err(io::Error::last_os_error()).with_context(|| err_context(&cmd));
         }
 
-        // 3. Create pseudo console
-        let hpcon = match create_conpty(80, 24, input_read, output_write) {
+        // 3. Create pseudo console with the last known size (or 80x24) so a
+        // rerun never starts the child at an empty ConPTY.
+        let (cols, rows) = self.initial_size_for(terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.insert(terminal_id, (cols, rows));
+        }
+        let hpcon = match create_conpty(cols, rows, input_read, output_write) {
             Ok(h) => h,
             Err(e) => {
                 unsafe {
@@ -627,10 +645,19 @@ impl WindowsPtyBackend {
                         Err::<(), _>(anyhow!("ResizePseudoConsole failed: HRESULT 0x{:08x}", hr))
                             .with_context(err_context)
                             .non_fatal();
+                    } else if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(terminal_id, (cols, rows));
                     }
                 }
             },
             _ => {
+                // Remember the intended size even when ConPTY is not yet open
+                // so the next spawn creates a nonzero pseudo console.
+                if cols > 0 && rows > 0 {
+                    if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(terminal_id, (cols, rows));
+                    }
+                }
                 Err::<(), _>(anyhow!("no ConPTY terminal found for id {}", terminal_id))
                     .with_context(err_context)
                     .non_fatal();
@@ -779,6 +806,9 @@ impl WindowsPtyBackend {
 
     pub fn clear_terminal_id(&self, terminal_id: u32) {
         self.terminals.lock().unwrap().remove(&terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.remove(&terminal_id);
+        }
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
@@ -850,5 +880,22 @@ mod tests {
         // closing quote. The trailing backslash must be doubled.
         let s = build_command_line_string(&cmd("prog", &["C:\\my path\\"]));
         assert_eq!(s, "\"prog\" \"C:\\my path\\\\\"");
+    }
+
+    #[test]
+    fn initial_conpty_size_defaults_to_nonzero_geometry() {
+        let backend = WindowsPtyBackend::new().expect("backend");
+        assert_eq!(backend.initial_size_for(1), (80, 24));
+    }
+
+    #[test]
+    fn set_terminal_size_remembers_geometry_for_the_next_spawn() {
+        let backend = WindowsPtyBackend::new().expect("backend");
+        backend
+            .set_terminal_size(4, 132, 43, None, None)
+            .expect("remember size without an open ConPTY");
+        assert_eq!(backend.initial_size_for(4), (132, 43));
+        backend.clear_terminal_id(4);
+        assert_eq!(backend.initial_size_for(4), (80, 24));
     }
 }

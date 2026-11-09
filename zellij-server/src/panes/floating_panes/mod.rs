@@ -422,7 +422,8 @@ impl FloatingPanes {
     ) -> Result<PaneGeom> {
         let err_context = || format!("failed to find position for floating pane");
         let position = self.find_room_for_new_pane().with_context(err_context)?;
-        Ok(self.apply_floating_pane_layout_to_position(position, floating_pane_layout))
+        self.apply_floating_pane_layout_to_position(position, floating_pane_layout)
+            .with_context(err_context)
     }
     pub fn position_floating_pane_layout_or(
         &mut self,
@@ -434,6 +435,10 @@ impl FloatingPanes {
             fallback_position
         });
         self.apply_floating_pane_layout_to_position(position, floating_pane_layout)
+            .unwrap_or_else(|err| {
+                log::error!("Failed to fit floating pane layout into viewport: {err}");
+                fallback_position
+            })
     }
     pub fn position_floating_pane_layout_or_fill_viewport(
         &mut self,
@@ -453,7 +458,7 @@ impl FloatingPanes {
         &self,
         mut position: PaneGeom,
         floating_pane_layout: &FloatingPaneLayout,
-    ) -> PaneGeom {
+    ) -> Result<PaneGeom> {
         let viewport = *self.viewport.borrow();
         position.apply_floating_pane_position(
             floating_pane_layout.x.clone(),
@@ -468,25 +473,14 @@ impl FloatingPanes {
         if let Some(logical_position) = &floating_pane_layout.logical_position {
             position.logical_position = Some(*logical_position);
         }
-        if position.cols.as_usize() > viewport.cols {
-            position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
-        }
-        if position.rows.as_usize() > viewport.rows {
-            position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
-        }
-        let max_x = viewport.x + viewport.cols;
-        let max_y = viewport.y + viewport.rows;
-        if position.x + position.cols.as_usize() > max_x {
-            position.x = position
-                .x
-                .saturating_sub((position.x + position.cols.as_usize()) - max_x);
-        }
-        if position.y + position.rows.as_usize() > max_y {
-            position.y = position
-                .y
-                .saturating_sub((position.y + position.rows.as_usize()) - max_y);
-        }
-        position
+        // Same rectangle-fitting contract as dynamic coordinates: preserve a
+        // valid frame minimum when the viewport allows, otherwise error.
+        position.fit_into_viewport_with_minimum(
+            viewport,
+            MIN_TERMINAL_WIDTH,
+            MIN_TERMINAL_HEIGHT,
+        )?;
+        Ok(position)
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
@@ -1329,7 +1323,9 @@ impl FloatingPanes {
                     pane.set_borderless(false);
                 };
             }
-            pane_geom.adjust_coordinates(new_coordinates, viewport);
+            pane_geom
+                .adjust_coordinates(new_coordinates, viewport)
+                .with_context(err_context)?;
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
 

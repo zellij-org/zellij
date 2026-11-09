@@ -9212,7 +9212,9 @@ impl Tab {
                 if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
                     pane.set_pinned(*pinned);
                 }
-                new_pane_geom.adjust_coordinates(floating_pane_coordinates.clone(), *viewport);
+                new_pane_geom
+                    .adjust_coordinates(floating_pane_coordinates.clone(), *viewport)
+                    .with_context(err_context)?;
                 self.swap_layouts.set_is_floating_damaged();
             }
             pane.set_active_at(Instant::now());

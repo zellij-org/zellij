@@ -3,10 +3,20 @@ use std::{
     fmt::Display,
     hash::{Hash, Hasher},
 };
+use thiserror::Error;
 
 use crate::data::FloatingPaneCoordinates;
 use crate::input::layout::{PercentOrFixed, SplitDirection, SplitSize};
 use crate::position::Position;
+
+/// Why a pane could not be fitted into a viewport without inventing invalid geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum FitViewportError {
+    #[error("viewport has no positive size")]
+    EmptyViewport,
+    #[error("pane geometry collapsed to an empty size")]
+    ZeroSizedPane,
+}
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
@@ -299,11 +309,57 @@ impl PaneGeom {
             None => self.y,
         };
     }
+    /// Fit this rectangle into `viewport` under one shared contract:
+    /// keep a positive size (at least `min_cols`×`min_rows`, capped by the
+    /// viewport) and shift the origin so the whole pane stays inside.
+    /// Exact edge and beyond-edge origins are treated the same; an empty
+    /// viewport is an explicit error instead of manufacturing 0×0 geometry.
+    pub fn fit_into_viewport_with_minimum(
+        &mut self,
+        viewport: Viewport,
+        min_cols: usize,
+        min_rows: usize,
+    ) -> Result<(), FitViewportError> {
+        if !viewport.has_positive_size() {
+            return Err(FitViewportError::EmptyViewport);
+        }
+
+        let min_cols = min_cols.max(1).min(viewport.cols);
+        let min_rows = min_rows.max(1).min(viewport.rows);
+        let cols = self.cols.as_usize().max(min_cols).min(viewport.cols);
+        let rows = self.rows.as_usize().max(min_rows).min(viewport.rows);
+        self.cols.set_inner(cols);
+        self.rows.set_inner(rows);
+
+        let max_x = viewport.x + viewport.cols.saturating_sub(cols);
+        let max_y = viewport.y + viewport.rows.saturating_sub(rows);
+        if self.x < viewport.x {
+            self.x = viewport.x;
+        } else if self.x > max_x {
+            self.x = max_x;
+        }
+        if self.y < viewport.y {
+            self.y = viewport.y;
+        } else if self.y > max_y {
+            self.y = max_y;
+        }
+
+        if !self.is_at_least_minimum_size() {
+            return Err(FitViewportError::ZeroSizedPane);
+        }
+        Ok(())
+    }
+
+    /// Fit with a content minimum of 1×1 cell.
+    pub fn fit_into_viewport(&mut self, viewport: Viewport) -> Result<(), FitViewportError> {
+        self.fit_into_viewport_with_minimum(viewport, 1, 1)
+    }
+
     pub fn adjust_coordinates(
         &mut self,
         floating_pane_coordinates: FloatingPaneCoordinates,
         viewport: Viewport,
-    ) {
+    ) -> Result<(), FitViewportError> {
         self.apply_floating_pane_position(
             floating_pane_coordinates.x,
             floating_pane_coordinates.y,
@@ -311,24 +367,7 @@ impl PaneGeom {
             floating_pane_coordinates.height,
             viewport,
         );
-        if self.x < viewport.x {
-            self.x = viewport.x;
-        } else if self.x > viewport.x + viewport.cols {
-            self.x = (viewport.x + viewport.cols).saturating_sub(self.cols.as_usize());
-        }
-        if self.y < viewport.y {
-            self.y = viewport.y;
-        } else if self.y > viewport.y + viewport.rows {
-            self.y = (viewport.y + viewport.rows).saturating_sub(self.rows.as_usize());
-        }
-        if self.x + self.cols.as_usize() > viewport.x + viewport.cols {
-            let new_cols = (viewport.x + viewport.cols).saturating_sub(self.x);
-            self.cols.set_inner(new_cols);
-        }
-        if self.y + self.rows.as_usize() > viewport.y + viewport.rows {
-            let new_rows = (viewport.y + viewport.rows).saturating_sub(self.y);
-            self.rows.set_inner(new_rows);
-        }
+        self.fit_into_viewport(viewport)
     }
     pub fn combine_vertically_with(&self, geom_below: &PaneGeom) -> Option<Self> {
         match (self.rows.constraint, geom_below.rows.constraint) {
@@ -519,14 +558,30 @@ impl From<&Size> for PaneGeom {
 mod tests {
     use super::*;
 
-    #[test]
-    fn floating_positions_are_relative_to_a_nonzero_viewport_origin() {
-        let viewport = Viewport {
+    fn viewport() -> Viewport {
+        Viewport {
             x: 20,
             y: 5,
             cols: 100,
             rows: 40,
-        };
+        }
+    }
+
+    fn floating_at(x: usize, y: usize, width: usize, height: usize) -> FloatingPaneCoordinates {
+        FloatingPaneCoordinates {
+            x: Some(PercentOrFixed::Fixed(x)),
+            y: Some(PercentOrFixed::Fixed(y)),
+            width: Some(PercentOrFixed::Fixed(width)),
+            height: Some(PercentOrFixed::Fixed(height)),
+            pinned: None,
+            borderless: None,
+            border_style: None,
+        }
+    }
+
+    #[test]
+    fn floating_positions_are_relative_to_a_nonzero_viewport_origin() {
+        let viewport = viewport();
         let mut geom = PaneGeom::default();
         geom.apply_floating_pane_position(
             Some(PercentOrFixed::Percent(50)),
@@ -546,5 +601,102 @@ mod tests {
             viewport,
         );
         assert_eq!((centered.x, centered.y), (65, 23));
+    }
+
+    #[test]
+    fn exact_right_edge_keeps_width_like_beyond_edge() {
+        let viewport = viewport();
+        let mut on_edge = PaneGeom::default();
+        on_edge
+            .adjust_coordinates(floating_at(100, 0, 30, 4), viewport)
+            .expect("exact edge must fit");
+        let mut beyond = PaneGeom::default();
+        beyond
+            .adjust_coordinates(floating_at(101, 0, 30, 4), viewport)
+            .expect("beyond edge must fit");
+
+        assert_eq!((on_edge.x, on_edge.cols.as_usize()), (90, 30));
+        assert_eq!((beyond.x, beyond.cols.as_usize()), (90, 30));
+        assert_eq!(on_edge.x + on_edge.cols.as_usize(), viewport.x + viewport.cols);
+    }
+
+    #[test]
+    fn exact_bottom_edge_keeps_height_like_beyond_edge() {
+        let viewport = viewport();
+        let mut on_edge = PaneGeom::default();
+        on_edge
+            .adjust_coordinates(floating_at(0, 40, 10, 8), viewport)
+            .expect("exact edge must fit");
+        let mut beyond = PaneGeom::default();
+        beyond
+            .adjust_coordinates(floating_at(0, 41, 10, 8), viewport)
+            .expect("beyond edge must fit");
+
+        assert_eq!((on_edge.y, on_edge.rows.as_usize()), (37, 8));
+        assert_eq!((beyond.y, beyond.rows.as_usize()), (37, 8));
+    }
+
+    #[test]
+    fn out_of_range_origin_is_shifted_back_into_the_viewport() {
+        let viewport = viewport();
+        let mut geom = PaneGeom::default();
+        geom.adjust_coordinates(floating_at(500, 500, 12, 6), viewport)
+            .expect("out of range must fit");
+        assert_eq!(geom.x, viewport.x + viewport.cols - 12);
+        assert_eq!(geom.y, viewport.y + viewport.rows - 6);
+        assert!(geom.is_at_least_minimum_size());
+    }
+
+    #[test]
+    fn zero_viewport_is_an_explicit_error() {
+        let mut geom = PaneGeom {
+            cols: Dimension::fixed(10),
+            rows: Dimension::fixed(4),
+            ..Default::default()
+        };
+        assert_eq!(
+            geom.fit_into_viewport(Viewport::default()),
+            Err(FitViewportError::EmptyViewport)
+        );
+        assert_eq!(
+            geom.adjust_coordinates(floating_at(0, 0, 10, 4), Viewport::default()),
+            Err(FitViewportError::EmptyViewport)
+        );
+    }
+
+    #[test]
+    fn minimum_frame_and_content_sizes_are_preserved_when_the_viewport_allows() {
+        let viewport = viewport();
+        let mut content = PaneGeom {
+            cols: Dimension::fixed(0),
+            rows: Dimension::fixed(0),
+            ..Default::default()
+        };
+        content
+            .fit_into_viewport(viewport)
+            .expect("content minimum");
+        assert_eq!((content.cols.as_usize(), content.rows.as_usize()), (1, 1));
+
+        let mut framed = PaneGeom {
+            cols: Dimension::fixed(2),
+            rows: Dimension::fixed(2),
+            ..Default::default()
+        };
+        framed
+            .fit_into_viewport_with_minimum(viewport, 5, 5)
+            .expect("frame minimum");
+        assert_eq!((framed.cols.as_usize(), framed.rows.as_usize()), (5, 5));
+        assert_eq!((framed.x, framed.y), (viewport.x, viewport.y));
+    }
+
+    #[test]
+    fn large_width_is_capped_to_the_viewport() {
+        let viewport = viewport();
+        let mut geom = PaneGeom::default();
+        geom.adjust_coordinates(floating_at(10, 2, 1000, 4), viewport)
+            .expect("oversized width must fit");
+        assert_eq!(geom.cols.as_usize(), viewport.cols);
+        assert_eq!(geom.x, viewport.x);
+        assert!(geom.x + geom.cols.as_usize() <= viewport.x + viewport.cols);
     }
 }

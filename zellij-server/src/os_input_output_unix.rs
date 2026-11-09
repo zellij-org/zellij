@@ -12,7 +12,7 @@ use nix::{
 };
 use tokio::io::unix::AsyncFd;
 
-use libc::{self, ioctl, TIOCSWINSZ};
+use libc::{self, ioctl, TIOCGWINSZ, TIOCSWINSZ};
 use signal_hook::consts::*;
 
 use std::{
@@ -350,21 +350,22 @@ fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
     orig_termios: Option<termios::Termios>,
+    winsize: Option<Winsize>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
     pane_env: &PaneEnv,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
-    // Create a pipe to allow the child the communicate the shell's pid to its
-    // parent.
-    match openpty(None, &orig_termios) {
+    // Seed winsize before exec so the child never observes 0×0.
+    match openpty(winsize.as_ref(), &orig_termios) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id, pane_env),
         Err(e) => match failover_cmd {
             Some(failover_cmd) => handle_terminal(
                 failover_cmd,
                 None,
                 orig_termios,
+                winsize,
                 quit_cb,
                 terminal_id,
                 pane_env,
@@ -397,6 +398,10 @@ pub(crate) struct UnixPtyBackend {
     /// descriptor is installed and not yet bound, so a stamped write
     /// is refused until [`Self::bind_terminal_generation`].
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<TerminalEndpoint>>>>,
+    /// Last nonzero winsize applied to each terminal id. Reused when opening a
+    /// replacement PTY for a rerun so the child never starts at 0×0 even when
+    /// the pane's cached geometry is unchanged.
+    last_terminal_sizes: Arc<Mutex<BTreeMap<u32, (u16, u16, Option<u16>, Option<u16>)>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
 }
 
@@ -452,8 +457,30 @@ impl UnixPtyBackend {
         Ok(Self {
             orig_termios: Arc::new(Mutex::new(current_termios)),
             terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+            last_terminal_sizes: Arc::new(Mutex::new(BTreeMap::new())),
             next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
+    }
+
+    fn initial_winsize_for(&self, terminal_id: u32) -> Winsize {
+        if let Ok(sizes) = self.last_terminal_sizes.lock() {
+            if let Some((cols, rows, width_in_pixels, height_in_pixels)) = sizes.get(&terminal_id) {
+                if *cols > 0 && *rows > 0 {
+                    return Winsize {
+                        ws_col: *cols,
+                        ws_row: *rows,
+                        ws_xpixel: width_in_pixels.unwrap_or(0),
+                        ws_ypixel: height_in_pixels.unwrap_or(0),
+                    };
+                }
+            }
+        }
+        Winsize {
+            ws_col: 80,
+            ws_row: 24,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        }
     }
 
     pub fn spawn_terminal(
@@ -469,10 +496,23 @@ impl UnixPtyBackend {
             .lock()
             .to_anyhow()
             .context("failed to lock orig_termios")?;
+        let winsize = self.initial_winsize_for(terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.insert(
+                terminal_id,
+                (
+                    winsize.ws_col,
+                    winsize.ws_row,
+                    Some(winsize.ws_xpixel).filter(|v| *v > 0),
+                    Some(winsize.ws_ypixel).filter(|v| *v > 0),
+                ),
+            );
+        }
         let (pid_primary, child_fd) = handle_terminal(
             cmd,
             failover_cmd,
             orig_termios.clone(),
+            Some(winsize),
             quit_cb,
             terminal_id,
             pane_env,
@@ -564,6 +604,9 @@ impl UnixPtyBackend {
         {
             Some(Some(endpoint)) => {
                 if cols > 0 && rows > 0 {
+                    // Always apply to the current endpoint. A rerun opens a new
+                    // PTY whose size must be written even when it equals the
+                    // previous run's cached dimensions.
                     set_terminal_size_using_fd(
                         endpoint.fd.as_raw_fd(),
                         cols,
@@ -571,9 +614,25 @@ impl UnixPtyBackend {
                         width_in_pixels,
                         height_in_pixels,
                     );
+                    if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(
+                            terminal_id,
+                            (cols, rows, width_in_pixels, height_in_pixels),
+                        );
+                    }
                 }
             },
             _ => {
+                // Remember the intended size even when the endpoint is not yet
+                // open so the next spawn seeds openpty with a nonzero winsize.
+                if cols > 0 && rows > 0 {
+                    if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(
+                            terminal_id,
+                            (cols, rows, width_in_pixels, height_in_pixels),
+                        );
+                    }
+                }
                 Err::<(), _>(anyhow!("failed to find terminal fd for id {terminal_id}"))
                     .with_context(err_context)
                     .non_fatal();
@@ -735,6 +794,9 @@ impl UnixPtyBackend {
             .lock()
             .unwrap()
             .remove(&terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.remove(&terminal_id);
+        }
     }
 
     pub fn next_terminal_id(&self) -> Option<u32> {
@@ -1141,6 +1203,57 @@ mod tests {
 
         assert_eq!(written, 0, "expected zero bytes written on full buffer");
 
+        unsafe {
+            libc::close(master_fd);
+            libc::close(slave_fd);
+        }
+    }
+
+    #[test]
+    fn initial_winsize_defaults_to_nonzero_geometry() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let winsize = backend.initial_winsize_for(1);
+        assert!(winsize.ws_col > 0 && winsize.ws_row > 0);
+        assert_eq!((winsize.ws_col, winsize.ws_row), (80, 24));
+    }
+
+    #[test]
+    fn set_terminal_size_remembers_geometry_for_the_next_spawn() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        backend
+            .set_terminal_size(3, 120, 40, Some(960), Some(640))
+            .expect("remember size without an open endpoint");
+        let winsize = backend.initial_winsize_for(3);
+        assert_eq!(
+            (winsize.ws_col, winsize.ws_row, winsize.ws_xpixel, winsize.ws_ypixel),
+            (120, 40, 960, 640)
+        );
+
+        backend.clear_terminal_id(3);
+        let reset = backend.initial_winsize_for(3);
+        assert_eq!((reset.ws_col, reset.ws_row), (80, 24));
+    }
+
+    #[test]
+    fn openpty_is_seeded_with_the_remembered_nonzero_winsize() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        backend
+            .set_terminal_size(11, 100, 32, None, None)
+            .expect("seed remembered size");
+        let winsize = backend.initial_winsize_for(11);
+        let pty = openpty(Some(&winsize), &None).expect("openpty");
+        let master_fd = pty.master.into_raw_fd();
+        let slave_fd = pty.slave.into_raw_fd();
+        let mut readback = Winsize {
+            ws_row: 0,
+            ws_col: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        #[allow(clippy::useless_conversion)]
+        let rc = unsafe { ioctl(master_fd, TIOCGWINSZ.into(), &mut readback) };
+        assert_eq!(rc, 0, "TIOCGWINSZ must succeed");
+        assert_eq!((readback.ws_col, readback.ws_row), (100, 32));
         unsafe {
             libc::close(master_fd);
             libc::close(slave_fd);
