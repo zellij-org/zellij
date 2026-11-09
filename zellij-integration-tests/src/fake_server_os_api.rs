@@ -92,7 +92,12 @@ impl ServerOsApi for FakeServerOsApi {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
         pane_env: &PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        u32,
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<zellij_server::os_input_output::ChildPidFd>,
+    )> {
         let terminal_id = self.shared_ptys.next_terminal_id();
         let opened_file_contents = match &terminal_action {
             TerminalAction::OpenFile(payload) => self
@@ -119,6 +124,7 @@ impl ServerOsApi for FakeServerOsApi {
             terminal_id,
             fake_async_reader,
             Some(FAKE_PID_BASE + terminal_id),
+            None,
         ))
     }
     fn reserve_terminal_id(&self) -> Result<u32> {
@@ -237,9 +243,13 @@ impl ServerOsApi for FakeServerOsApi {
         _run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<zellij_server::os_input_output::ChildPidFd>,
+    )> {
         let fake_async_reader = self.shared_ptys.rerun(terminal_id, quit_cb);
-        Ok((fake_async_reader, Some(FAKE_PID_BASE + terminal_id)))
+        Ok((fake_async_reader, Some(FAKE_PID_BASE + terminal_id), None))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
         self.shared_ptys.remove(terminal_id);

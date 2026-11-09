@@ -38,6 +38,19 @@ use std::{
     time::Duration,
 };
 
+/// Pidfd opened in the spawning thread, before the exit watcher can reap.
+/// Other targets have no pidfd; callers return `None`.
+#[cfg(target_os = "linux")]
+pub type ChildPidFd = std::os::fd::OwnedFd;
+
+/// Pidfd opened in the spawning thread, before the exit watcher can reap.
+/// Other targets have no pidfd; callers return `None`.
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug)]
+pub struct ChildPidFd {
+    _private: (),
+}
+
 pub use async_trait::async_trait;
 
 /// Check whether a candidate path refers to an executable file, considering
@@ -657,13 +670,14 @@ pub trait ServerOsApi: Send + Sync {
     /// - terminal_id (u32)
     /// - an async reader for the PTY output
     /// - the child process PID, if available (Option<u32>)
+    /// - the pidfd opened before the exit watcher can reap, if available
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
         pane_env: &PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)>;
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32> {
         unimplemented!()
@@ -765,7 +779,7 @@ pub trait ServerOsApi: Send + Sync {
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)>;
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
     fn cache_resizes(&mut self) {}
     fn apply_cached_resizes(&mut self) {}
@@ -810,7 +824,7 @@ impl ServerOsApi for ServerOsInputOutput {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
         pane_env: &PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
         let err_context = || "failed to spawn terminal".to_string();
 
         let terminal_id = self
@@ -826,7 +840,7 @@ impl ServerOsApi for ServerOsInputOutput {
 
         let (cmd, failover_cmd) = build_command(terminal_action, default_editor, pane_env);
 
-        let (async_reader, child_fd) =
+        let (async_reader, child_fd, child_pidfd) =
             match self
                 .pty_backend
                 .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
@@ -839,7 +853,12 @@ impl ServerOsApi for ServerOsInputOutput {
                 },
             };
 
-        Ok((terminal_id, async_reader, Some(child_fd as u32)))
+        Ok((
+            terminal_id,
+            async_reader,
+            Some(child_fd as u32),
+            child_pidfd,
+        ))
     }
     fn reserve_terminal_id(&self) -> Result<u32> {
         let terminal_id = self
@@ -1117,11 +1136,11 @@ impl ServerOsApi for ServerOsInputOutput {
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
-        let (async_reader, child_fd) =
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
+        let (async_reader, child_fd, child_pidfd) =
             self.pty_backend
                 .spawn_terminal(run_command, None, quit_cb, terminal_id, pane_env)?;
-        Ok((async_reader, Some(child_fd as u32)))
+        Ok((async_reader, Some(child_fd as u32), child_pidfd))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
         self.pty_backend.clear_terminal_id(terminal_id);

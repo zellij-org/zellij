@@ -1,7 +1,7 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
-use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
+use crate::os_input_output::{env_value, AsyncReader, ChildPidFd, NullAsyncReader, PaneEnv};
 use crate::pty_writer::PtyWriteInstruction;
 use crate::route::NotificationEnd;
 use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
@@ -258,8 +258,9 @@ pub(crate) struct Pty {
     /// A numeric kill is forbidden once this matches the slot's generation.
     /// The pidfd, when present, is dropped in the same step.
     reaped_child_runs: HashMap<u32, u64>,
-    /// pidfd opened when the pid was stored. It keeps naming that process
-    /// after the pid number is reused. Empty when `pidfd_open` failed.
+    /// Pidfd captured at spawn, before the exit watcher can reap. It keeps
+    /// naming that process after the pid is reused. Empty when that open
+    /// failed, or when a test stored only a pid.
     #[cfg(target_os = "linux")]
     child_pidfds: HashMap<u32, std::os::fd::OwnedFd>,
     next_run_generation: u64,
@@ -1260,9 +1261,15 @@ impl Pty {
     }
     #[cfg(test)]
     fn record_child_pid(&mut self, terminal_id: u32, child_pid: u32, run_generation: u64) {
-        self.remember_run(terminal_id, Some(child_pid), run_generation);
+        self.remember_run(terminal_id, Some(child_pid), None, run_generation);
     }
-    fn remember_run(&mut self, terminal_id: u32, child_pid: Option<u32>, run_generation: u64) {
+    fn remember_run(
+        &mut self,
+        terminal_id: u32,
+        child_pid: Option<u32>,
+        child_pidfd: Option<ChildPidFd>,
+        run_generation: u64,
+    ) {
         self.child_run_generations
             .insert(terminal_id, run_generation);
         // A new generation is a different process. An exit mark for the
@@ -1270,7 +1277,7 @@ impl Pty {
         self.reaped_child_runs.remove(&terminal_id);
         if let Some(child_pid) = child_pid {
             self.id_to_child_pid.insert(terminal_id, child_pid);
-            self.store_child_pidfd(terminal_id, child_pid);
+            self.store_child_pidfd(terminal_id, child_pidfd);
         }
         // The endpoint was inserted by spawn, still unbound. Binding it
         // here is what lets a stamped write for this run through, and what
@@ -1360,12 +1367,13 @@ impl Pty {
             None => false,
         }
     }
-    fn store_child_pidfd(&mut self, terminal_id: u32, pid: u32) {
+    fn store_child_pidfd(&mut self, terminal_id: u32, pidfd: Option<ChildPidFd>) {
         #[cfg(target_os = "linux")]
         {
-            // Replace any fd for the previous process of this pane. A failed
-            // open must not leave that previous fd associated with the new pid.
-            match open_child_pidfd(pid) {
+            // Replace any fd for the previous process of this pane. A missing
+            // fd must not leave that previous fd associated with the new pid.
+            // The fd was opened at spawn. Do not call pidfd_open here.
+            match pidfd {
                 Some(pidfd) => {
                     self.child_pidfds.insert(terminal_id, pidfd);
                 },
@@ -1376,7 +1384,7 @@ impl Pty {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = (terminal_id, pid);
+            let _ = (terminal_id, pidfd);
         }
     }
     fn drop_child_pidfd(&mut self, terminal_id: u32) {
@@ -1414,9 +1422,9 @@ impl Pty {
             return;
         }
         // Linux never numeric-kills here. Without a pidfd the number may
-        // already belong to another process (`pidfd_open` failed, or tests
-        // store a synthetic pid). Non-Linux has no pidfd and still signals
-        // the stored pid while this thread has not observed the exit.
+        // already belong to another process (the spawn-time open failed, or
+        // tests stored a synthetic pid). Non-Linux has no pidfd and still
+        // signals the stored pid while this thread has not observed the exit.
         #[cfg(target_os = "linux")]
         {
             if let Some(child_pid) = child_pid {
@@ -1576,9 +1584,13 @@ impl Pty {
                     .insert(spawned_terminal_id, origin_pane_id);
             }
         }
-        let (terminal_id, reader, child_pid): (u32, Box<dyn AsyncReader>, Option<u32>) =
-            spawn_result.with_context(err_context)?;
-        self.remember_run(terminal_id, child_pid, run_generation);
+        let (terminal_id, reader, child_pid, child_pidfd): (
+            u32,
+            Box<dyn AsyncReader>,
+            Option<u32>,
+            Option<ChildPidFd>,
+        ) = spawn_result.with_context(err_context)?;
+        self.remember_run(terminal_id, child_pid, child_pidfd, run_generation);
         if let Some(child_pid) = child_pid {
             self.capture_initial_cwd(terminal_id, child_pid);
         }
@@ -2180,8 +2192,8 @@ impl Pty {
                         )
                         .with_context(err_context)
                     {
-                        Ok((terminal_id, reader, child_pid)) => {
-                            self.remember_run(terminal_id, child_pid, run_generation);
+                        Ok((terminal_id, reader, child_pid, child_pidfd)) => {
+                            self.remember_run(terminal_id, child_pid, child_pidfd, run_generation);
                             if let Some(child_pid) = child_pid {
                                 self.capture_initial_cwd(terminal_id, child_pid);
                             }
@@ -2223,8 +2235,8 @@ impl Pty {
                     )
                     .with_context(err_context)
                 {
-                    Ok((terminal_id, reader, child_pid)) => {
-                        self.remember_run(terminal_id, child_pid, run_generation);
+                    Ok((terminal_id, reader, child_pid, child_pidfd)) => {
+                        self.remember_run(terminal_id, child_pid, child_pidfd, run_generation);
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
@@ -2268,8 +2280,8 @@ impl Pty {
                     )
                     .with_context(err_context)
                 {
-                    Ok((terminal_id, reader, child_pid)) => {
-                        self.remember_run(terminal_id, child_pid, run_generation);
+                    Ok((terminal_id, reader, child_pid, child_pidfd)) => {
+                        self.remember_run(terminal_id, child_pid, child_pidfd, run_generation);
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
@@ -2309,8 +2321,8 @@ impl Pty {
                     )
                     .with_context(err_context)
                 {
-                    Ok((terminal_id, reader, child_pid)) => {
-                        self.remember_run(terminal_id, child_pid, run_generation);
+                    Ok((terminal_id, reader, child_pid, child_pidfd)) => {
+                        self.remember_run(terminal_id, child_pid, child_pidfd, run_generation);
                         if let Some(child_pid) = child_pid {
                             self.capture_initial_cwd(terminal_id, child_pid);
                         }
@@ -2475,7 +2487,11 @@ impl Pty {
                 });
                 let pane_env =
                     pane_env_with_origin(&self.pane_env, self.origin_pane_ids.get(&id).copied());
-                let (reader, child_pid): (Box<dyn AsyncReader>, Option<u32>) = self
+                let (reader, child_pid, child_pidfd): (
+                    Box<dyn AsyncReader>,
+                    Option<u32>,
+                    Option<ChildPidFd>,
+                ) = self
                     .bus
                     .os_input
                     .as_mut()
@@ -2491,7 +2507,7 @@ impl Pty {
                     task.abort();
                 }
                 let _ = self.forget_child_pid(id); // if all is well, this shouldn't be here
-                self.remember_run(id, child_pid, run_generation);
+                self.remember_run(id, child_pid, child_pidfd, run_generation);
                 if let Some(child_pid) = child_pid {
                     self.capture_initial_cwd(id, child_pid);
                 }
@@ -3031,37 +3047,6 @@ impl Drop for Pty {
             self.close_pane(PaneId::Terminal(id))
                 .with_context(|| format!("failed to close pane for pid {id}"))
                 .fatal();
-        }
-    }
-}
-
-/// Open a pidfd for `pid` at the moment it is stored.
-///
-/// Failure leaves the caller with no fd. On Linux a later close then logs
-/// and does not numeric-kill, because the pid may have been reused. Unit
-/// tests store synthetic pids and always take this path: `pidfd_open` is
-/// not called.
-#[cfg(target_os = "linux")]
-fn open_child_pidfd(pid: u32) -> Option<std::os::fd::OwnedFd> {
-    #[cfg(test)]
-    {
-        let _ = pid;
-        return None;
-    }
-    #[cfg(not(test))]
-    {
-        use std::os::fd::{FromRawFd, OwnedFd};
-        // SAFETY: pidfd_open returns a new fd owned by this process, or -1.
-        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
-        if fd < 0 {
-            log::warn!(
-                "pidfd_open failed for pid {pid}: {}",
-                std::io::Error::last_os_error()
-            );
-            None
-        } else {
-            // SAFETY: the syscall just created this fd and no one else owns it.
-            Some(unsafe { OwnedFd::from_raw_fd(fd as std::os::fd::RawFd) })
         }
     }
 }

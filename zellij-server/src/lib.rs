@@ -7030,7 +7030,12 @@ mod server_mailbox_tests {
             _: Box<dyn Fn(crate::panes::PaneId, Option<i32>, RunCommand) + Send>,
             _: Option<PathBuf>,
             _: &PaneEnv,
-        ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+        ) -> Result<(
+            u32,
+            Box<dyn AsyncReader>,
+            Option<u32>,
+            Option<crate::os_input_output::ChildPidFd>,
+        )> {
             unimplemented!()
         }
         fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> Result<usize> {
@@ -7086,7 +7091,11 @@ mod server_mailbox_tests {
             _: RunCommand,
             _: Box<dyn Fn(crate::panes::PaneId, Option<i32>, RunCommand) + Send>,
             _: &PaneEnv,
-        ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+        ) -> Result<(
+            Box<dyn AsyncReader>,
+            Option<u32>,
+            Option<crate::os_input_output::ChildPidFd>,
+        )> {
             unimplemented!()
         }
         fn clear_terminal_id(&self, _: u32) -> Result<()> {

@@ -1,4 +1,6 @@
-use crate::os_input_output::{command_exists, AsyncReader, PaneEnv, TerminalRunChangedBeforeWrite};
+use crate::os_input_output::{
+    command_exists, AsyncReader, ChildPidFd, PaneEnv, TerminalRunChangedBeforeWrite,
+};
 use crate::panes::PaneId;
 
 use nix::{
@@ -314,6 +316,21 @@ fn poll_timeout_ms(deadline: Option<Instant>, waiting_on_pidfd: bool) -> i32 {
     }
 }
 
+/// Turn the spawn-time pidfd into the type the server API returns.
+/// On non-Linux there is no pidfd, and `open_exit_pidfd` already returned `None`.
+#[cfg(target_os = "linux")]
+fn child_pidfd_for_caller(pidfd: Option<OwnedFd>) -> Option<ChildPidFd> {
+    pidfd
+}
+
+/// Turn the spawn-time pidfd into the type the server API returns.
+/// On non-Linux there is no pidfd, and `open_exit_pidfd` already returned `None`.
+#[cfg(not(target_os = "linux"))]
+fn child_pidfd_for_caller(pidfd: Option<OwnedFd>) -> Option<ChildPidFd> {
+    let _ = pidfd;
+    None
+}
+
 /// Linux pidfd for `pid`, or `None` when the syscall is missing or fails.
 ///
 /// Dropping the fd does not signal the task. Callers still `wait` to reap.
@@ -329,7 +346,7 @@ fn open_exit_pidfd(pid: u32) -> Option<OwnedFd> {
         let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
         if fd < 0 {
             log::warn!(
-                "pidfd_open failed for pid {pid}: {}; polling every {COARSE_EXIT_POLL_MS}ms",
+                "pidfd_open failed for pid {pid}: {}; the exit watcher will poll every {COARSE_EXIT_POLL_MS}ms and close will not signal this pid",
                 io::Error::last_os_error()
             );
             None
@@ -411,7 +428,7 @@ fn drive_child_exit(
 
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
-fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
+fn handle_command_exit(mut child: Child, pidfd: Option<OwnedFd>) -> Result<Option<i32>> {
     let pid = child.id();
     let err_context = || {
         format!(
@@ -434,11 +451,9 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
         },
     };
 
-    // `None` on non-Linux, and on Linux when pidfd_open fails. That path
-    // polls the signal fd every COARSE_EXIT_POLL_MS instead of wait() on
-    // another thread: the thread that reaps is the thread that signals,
-    // so a collected pid is not signaled afterwards.
-    let pidfd = open_exit_pidfd(pid);
+    // `pidfd` was opened (and duplicated) before this thread existed, or is
+    // `None` when that open failed. This thread does not call `pidfd_open`:
+    // a second open can name a pid this thread has already reaped.
     drive_child_exit(&mut child, pid, &mut watch, pidfd).with_context(err_context)
 }
 
@@ -448,7 +463,7 @@ fn handle_openpty(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
     pane_env: &PaneEnv,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(RawFd, RawFd, Option<ChildPidFd>)> {
     let err_context = |cmd: &RunCommand| {
         format!(
             "failed to open PTY for command '{}'",
@@ -509,19 +524,36 @@ fn handle_openpty(
     };
 
     let child_id = child.id();
+    // The child may already be a zombie, but nothing has waited on it yet,
+    // so its pid cannot have been reused. Open before the watcher exists.
+    // The watcher polls a duplicate and does not call pidfd_open itself.
+    let child_pidfd = open_exit_pidfd(child_id);
+    let watcher_pidfd = match child_pidfd.as_ref().map(OwnedFd::try_clone) {
+        Some(Ok(pidfd)) => Some(pidfd),
+        Some(Err(error)) => {
+            log::warn!("failed to duplicate pidfd for pid {child_id}: {error}");
+            None
+        },
+        None => None,
+    };
     thread::spawn(move || {
-        let exit_status = match handle_command_exit(child).with_context(|| err_context(&cmd)) {
-            Ok(exit_status) => exit_status,
-            Err(error) => {
-                log::error!("{:?}", error);
-                None
-            },
-        };
+        let exit_status =
+            match handle_command_exit(child, watcher_pidfd).with_context(|| err_context(&cmd)) {
+                Ok(exit_status) => exit_status,
+                Err(error) => {
+                    log::error!("{:?}", error);
+                    None
+                },
+            };
         let _ = unistd::close(pid_secondary);
         quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
     });
 
-    Ok((pid_primary, child_id as RawFd))
+    Ok((
+        pid_primary,
+        child_id as RawFd,
+        child_pidfd_for_caller(child_pidfd),
+    ))
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
@@ -534,7 +566,7 @@ fn handle_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
     pane_env: &PaneEnv,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(RawFd, RawFd, Option<ChildPidFd>)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
     // Seed winsize before exec so the child never observes 0×0.
@@ -551,7 +583,7 @@ fn handle_terminal(
                 pane_env,
             )
             .with_context(err_context),
-            None => Err::<(i32, i32), _>(e)
+            None => Err::<(RawFd, RawFd, Option<ChildPidFd>), _>(e)
                 .context("failed to start pty")
                 .with_context(err_context)
                 .to_log(),
@@ -670,7 +702,7 @@ impl UnixPtyBackend {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, RawFd)> {
+    ) -> Result<(Box<dyn AsyncReader>, RawFd, Option<ChildPidFd>)> {
         let orig_termios = self
             .orig_termios
             .lock()
@@ -688,7 +720,7 @@ impl UnixPtyBackend {
                 ),
             );
         }
-        let (pid_primary, child_fd) = handle_terminal(
+        let (pid_primary, child_fd, child_pidfd) = handle_terminal(
             cmd,
             failover_cmd,
             orig_termios.clone(),
@@ -715,7 +747,7 @@ impl UnixPtyBackend {
                 return Err(anyhow::anyhow!("failed to create async reader: {}", e));
             },
         };
-        Ok((async_reader, child_fd))
+        Ok((async_reader, child_fd, child_pidfd))
     }
 
     /// Duplicate the primary side with `duplicate` and register the owned copy
@@ -1442,7 +1474,7 @@ mod tests {
     #[test]
     fn handle_command_exit_reaps_an_exited_child() {
         let child = Command::new("true").spawn().expect("spawn true");
-        let status = handle_command_exit(child).expect("reap");
+        let status = handle_command_exit(child, None).expect("reap");
         assert_eq!(status, Some(0));
     }
 
@@ -1453,7 +1485,7 @@ mod tests {
             .spawn()
             .expect("spawn sleep");
         let started = Instant::now();
-        let status = handle_command_exit(child).expect("reap");
+        let status = handle_command_exit(child, None).expect("reap");
         assert_eq!(status, Some(0));
         assert!(
             started.elapsed() >= Duration::from_millis(200),

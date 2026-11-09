@@ -484,7 +484,11 @@ impl WindowsPtyBackend {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, u32)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        u32,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         let err_context = |c: &RunCommand| {
             format!(
                 "failed to spawn terminal for '{}'",
@@ -584,7 +588,7 @@ impl WindowsPtyBackend {
         let owned = unsafe { OwnedHandle::from_raw_handle(output_read as *mut core::ffi::c_void) };
         let reader = Box::new(ConPtyAsyncReader::new(owned)) as Box<dyn AsyncReader>;
 
-        Ok((reader, child_pid))
+        Ok((reader, child_pid, None))
     }
 
     pub fn spawn_terminal(
@@ -594,7 +598,11 @@ impl WindowsPtyBackend {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, u32)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        u32,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         if let Some(resolved) = resolve_command(&cmd, pane_env) {
             cmd.command = resolved;
             return self.do_spawn(cmd, quit_cb, terminal_id, pane_env);

@@ -168,7 +168,7 @@ fn spawn_and_read_output() {
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
         Box::new(|_pane_id, _exit_status, _run_command| {});
 
-    let (_terminal_id, mut reader, _child_pid) = server
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
         .spawn_terminal(action, quit_cb, None, &Default::default())
         .expect("spawn_terminal should succeed");
 
@@ -242,7 +242,7 @@ fn an_interactive_shell_in_a_pane_waits_for_input() {
         command: PathBuf::from("cmd"),
         ..Default::default()
     };
-    let (_terminal_id, _reader, child_pid) = server
+    let (_terminal_id, _reader, child_pid, _child_pidfd) = server
         .spawn_terminal(
             TerminalAction::RunCommand(cmd),
             quit_cb,
@@ -302,7 +302,7 @@ fn tcgetpgrp_returns_foreground_group() {
         ..Default::default()
     };
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
-    let (terminal_id, _reader, child_pid) = server
+    let (terminal_id, _reader, child_pid, _child_pidfd) = server
         .spawn_terminal(
             TerminalAction::RunCommand(cmd),
             quit_cb,
@@ -441,7 +441,7 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     );
     pane_env.insert("HOME".to_owned(), None);
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
-    let (_terminal_id, mut reader, _child_pid) = server
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
         .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None, &pane_env)
         .expect("spawn_terminal should succeed");
     let expected = "start:from the config:unset:end";

@@ -1,5 +1,5 @@
 use super::*;
-use crate::os_input_output::ServerOsApi;
+use crate::os_input_output::{ChildPidFd, ServerOsApi};
 use crate::plugins::PluginInstruction;
 use crate::thread_bus::Bus;
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -94,7 +94,7 @@ impl ServerOsApi for MockOsApi {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
         if let Some(outcome) = self.spawn_plan.lock().unwrap().pop_front() {
             return match outcome {
                 MockSpawnOutcome::Success {
@@ -106,6 +106,7 @@ impl ServerOsApi for MockOsApi {
                         terminal_id,
                         Box::new(crate::os_input_output::NullAsyncReader),
                         Some(child_pid),
+                        None,
                     ))
                 },
                 MockSpawnOutcome::Error(message) => Err(anyhow::anyhow!(message)),
@@ -133,6 +134,7 @@ impl ServerOsApi for MockOsApi {
             7,
             Box::new(crate::os_input_output::NullAsyncReader),
             Some(child_pid),
+            None,
         ))
     }
     fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> anyhow::Result<usize> {
@@ -222,7 +224,7 @@ impl ServerOsApi for MockOsApi {
         _: RunCommand,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> anyhow::Result<()> {
@@ -979,13 +981,37 @@ fn closing_a_pane_whose_child_is_running_still_hangs_it_up() {
 #[test]
 #[cfg(target_os = "linux")]
 fn close_pane_without_pidfd_does_not_kill() {
-    // `open_child_pidfd` returns None under `cfg(test)`, so this stored
-    // child has no pidfd. Close must not numeric-kill it.
+    // The mock spawn supplies a pid and no pidfd. Close must not numeric-kill.
     let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
     handle_forget_requests(&mut pty);
     assert_eq!(pty.id_to_child_pid.get(&7), Some(&4242));
     assert!(pty.child_pidfds.get(&7).is_none());
     pty.close_pane(PaneId::Terminal(7)).unwrap();
+    assert_eq!(mock.signals(), vec![]);
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn close_pane_uses_the_supplied_pidfd_and_does_not_numeric_kill() {
+    // The fd is supplied by the caller. Close must signal that fd and must
+    // not fall through to a numeric kill. Opening `/dev/null` is not `pidfd_open`.
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
+    let fd: ChildPidFd = std::fs::File::open("/dev/null")
+        .expect("open /dev/null")
+        .into();
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
+    let generation = pty.child_run_generations.get(&7).copied().unwrap();
+    pty.remember_run(7, Some(4242), Some(fd), generation);
+    assert_eq!(
+        pty.child_pidfds
+            .get(&7)
+            .map(std::os::fd::AsRawFd::as_raw_fd),
+        Some(raw)
+    );
+    pty.close_pane(PaneId::Terminal(7)).unwrap();
+    assert!(pty.child_pidfds.get(&7).is_none());
+    assert_eq!(pty.id_to_child_pid.get(&7), None);
     assert_eq!(mock.signals(), vec![]);
 }
 
