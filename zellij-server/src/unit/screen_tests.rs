@@ -1,12 +1,15 @@
 use super::{
-    screen_thread_main, ClosePaneSource, CopyOptions, KeybindIntercepts, Screen, ScreenInstruction,
-    MAX_REMEMBERED_PANES_NEVER_CREATED,
+    push_pending_tab_event, screen_thread_main, ClosePaneSource, CopyOptions, KeybindIntercepts,
+    Screen, ScreenInstruction, MAX_PENDING_TAB_EVENTS, MAX_REMEMBERED_PANES_NEVER_CREATED,
 };
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
 use crate::{
-    channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
-    thread_bus::Bus, ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
+    channels::SenderWithContext,
+    os_input_output::ServerOsApi,
+    route::{route_action, NotificationEnd},
+    thread_bus::Bus,
+    ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
 };
 use insta::assert_snapshot;
 use std::net::{IpAddr, Ipv4Addr};
@@ -22458,4 +22461,48 @@ fn settled_run_exit_is_released_after_pending_rep_is_applied() {
             .is_none(),
         "the exit is released once the repeat is applied"
     );
+}
+
+#[test]
+fn pending_tab_admission_rejects_a_full_queue() {
+    assert_eq!(MAX_PENDING_TAB_EVENTS, 1024);
+
+    let mut queue = Vec::new();
+    for _ in 0..1024 {
+        push_pending_tab_event(
+            &mut queue,
+            ScreenInstruction::SetPaneCollapsed(PaneId::Terminal(1), false),
+        );
+    }
+    assert_eq!(queue.len(), 1024);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    push_pending_tab_event(
+        &mut queue,
+        ScreenInstruction::MoveTabWithTabId(3, Direction::Left, Some(NotificationEnd::new(tx))),
+    );
+    assert_eq!(queue.len(), 1024);
+    assert!(queue
+        .iter()
+        .all(|event| matches!(event, ScreenInstruction::SetPaneCollapsed(..))));
+    let result = rx.blocking_recv().expect("rejected move completes");
+    assert_eq!(result.exit_status, Some(1));
+    let message = result
+        .error_message
+        .expect("rejection names the full queue");
+    assert!(
+        message.contains("queue is full"),
+        "error should mention the queue is full: {message}"
+    );
+
+    let mut left_moves = Vec::new();
+    for _ in 0..1024 {
+        push_pending_tab_event(&mut left_moves, ScreenInstruction::MoveTabLeft(1, None));
+    }
+    push_pending_tab_event(&mut left_moves, ScreenInstruction::MoveTabLeft(2, None));
+    assert_eq!(left_moves.len(), 1024);
+    assert!(left_moves.iter().all(|event| matches!(
+        event,
+        ScreenInstruction::MoveTabLeft(client_id, None) if *client_id == 1
+    )));
 }

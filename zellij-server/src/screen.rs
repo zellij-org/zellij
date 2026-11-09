@@ -12025,11 +12025,30 @@ fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message
 #[allow(clippy::boxed_local)]
 const MAX_PENDING_TAB_EVENTS: usize = 1024;
 
-fn push_pending_tab_event(queue: &mut Vec<ScreenInstruction>, event: ScreenInstruction) {
+/// The only way onto `pending_events_waiting_for_tab`. A full queue is not
+/// enqueued. A carried completion is failed before drop so `NotificationEnd`
+/// does not report success for work that never ran.
+fn push_pending_tab_event(queue: &mut Vec<ScreenInstruction>, mut event: ScreenInstruction) {
     if queue.len() < MAX_PENDING_TAB_EVENTS {
         queue.push(event);
-    } else {
-        log::warn!("Dropping a tab-deferred screen instruction: queue is full");
+        return;
+    }
+    log::warn!("Dropping a tab-deferred screen instruction: queue is full");
+    if let Some(completion) = pending_tab_completion(&mut event) {
+        mark_action_as_failed(
+            completion,
+            "tab event was rejected because the pending queue is full",
+        );
+    }
+}
+
+fn pending_tab_completion(event: &mut ScreenInstruction) -> Option<&mut Option<NotificationEnd>> {
+    match event {
+        ScreenInstruction::MoveTabLeft(_, completion)
+        | ScreenInstruction::MoveTabRight(_, completion)
+        | ScreenInstruction::MoveTabWithTabId(_, _, completion)
+        | ScreenInstruction::MoveTabToPosition(_, _, completion) => Some(completion),
+        _ => None,
     }
 }
 
@@ -13861,8 +13880,10 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.retain(|event| {
                         !matches!(event, ScreenInstruction::SetPaneCollapsed(pending_pid, _) if *pending_pid == pid)
                     });
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetPaneCollapsed(pid, collapsed));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::SetPaneCollapsed(pid, collapsed),
+                    );
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -14457,9 +14478,10 @@ pub(crate) fn screen_thread_main(
                     screen.move_active_tab_to_left(client_id)?;
                     screen.render(None)?;
                 } else {
-                    // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabLeft(client_id, completion_tx));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabLeft(client_id, completion_tx),
+                    );
                 }
             },
             ScreenInstruction::MoveTabRight(client_id, completion_tx) => {
@@ -14467,9 +14489,10 @@ pub(crate) fn screen_thread_main(
                     screen.move_active_tab_to_right(client_id)?;
                     screen.render(None)?;
                 } else {
-                    // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabRight(client_id, completion_tx),
+                    );
                 }
             },
             ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
