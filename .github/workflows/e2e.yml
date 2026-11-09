@@ -17,7 +17,7 @@ jobs:
 
     services:
       ssh:
-        image: ghcr.io/linuxserver/openssh-server
+        image: ghcr.io/linuxserver/openssh-server@sha256:161e0b670b31d9539ca1718bc5943e981779331b4e1c9d32e8929d7652a1f22f
         env:
           PUID: 1001
           PGID: 1000

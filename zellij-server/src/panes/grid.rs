@@ -3528,64 +3528,65 @@ impl Grid {
         )
     }
     pub fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
-        match scrollback_lines_to_serialize {
-            Some(scrollback_lines_to_serialize) => {
-                let first_index = if scrollback_lines_to_serialize == 0 {
-                    0
-                } else {
-                    let first_requested_index = self
-                        .lines_above
-                        .len()
-                        .saturating_sub(scrollback_lines_to_serialize);
-                    self.lines_above
-                        .iter()
-                        .enumerate()
-                        .skip(first_requested_index)
-                        .find(|(_, row)| row.is_canonical)
-                        .map(|(index, _)| index)
-                        .unwrap_or(first_requested_index)
-                };
-                // Budget the snapshot by cells, not just row count: a
-                // logical line can span many wrapped rows, so the row
-                // cap alone does not bound the bytes copied onto the
-                // serializing thread. Rows are accumulated newest-first
-                // and cut at the oldest index that fits the budget —
-                // truncation drops the oldest history, never the tail.
-                // Only the requested rows are examined, so a small
-                // request never pays for scanning the whole history.
-                let viewport_cells: usize =
-                    self.viewport.iter().map(|row| row.snapshot_cost()).sum();
-                let mut cell_budget = MAX_SERIALIZE_SNAPSHOT_CELLS.saturating_sub(viewport_cells);
-                let mut byte_bounded_first = self.lines_above.len();
-                for index in (first_index..self.lines_above.len()).rev() {
-                    #[cfg(test)]
-                    SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
-                    let row_cells = self.lines_above[index].snapshot_cost();
-                    if row_cells > cell_budget {
-                        break;
-                    }
-                    cell_budget -= row_cells;
-                    byte_bounded_first = index;
-                }
-                let first_index = first_index.max(byte_bounded_first);
-                let mut to_serialize = vec![];
-                for line in self.lines_above.iter().skip(first_index) {
-                    to_serialize.push(line.with_trailing_blanks().into_owned());
-                }
-                for line in &self.viewport {
-                    to_serialize.push(line.clone())
-                }
-                self.output_buffer
-                    .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
-                    .ok()
+        let history_len = self.lines_above.len();
+        // `None` serializes the viewport only. `Some` also includes the
+        // requested scrollback, aligned to a canonical row like before.
+        let history_first = match scrollback_lines_to_serialize {
+            Some(0) => 0,
+            Some(limit) => {
+                let first_requested_index = history_len.saturating_sub(limit);
+                self.lines_above
+                    .iter()
+                    .enumerate()
+                    .skip(first_requested_index)
+                    .find(|(_, row)| row.is_canonical)
+                    .map(|(index, _)| index)
+                    .unwrap_or(first_requested_index)
             },
-            None => {
-                let viewport_vec: Vec<Row> = self.viewport.iter().cloned().collect();
-                self.output_buffer
-                    .serialize(&viewport_vec, self.osc8_hyperlinks, None)
-                    .ok()
-            },
+            None => history_len,
+        };
+        // One cell budget covers the viewport and the requested history.
+        // Rows are taken newest-first (viewport, then scrollback). A row
+        // that does not fit is dropped together with everything older, and
+        // those rows are not cloned.
+        let mut cell_budget = MAX_SERIALIZE_SNAPSHOT_CELLS;
+        let mut viewport_keep = 0usize;
+        for row in self.viewport.iter().rev() {
+            #[cfg(test)]
+            SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
+            let row_cells = row.snapshot_cost();
+            if row_cells > cell_budget {
+                break;
+            }
+            cell_budget -= row_cells;
+            viewport_keep += 1;
         }
+        let viewport_keep_from = self.viewport.len() - viewport_keep;
+        let mut history_keep_from = history_len;
+        if viewport_keep_from == 0 {
+            for index in (history_first..history_len).rev() {
+                #[cfg(test)]
+                SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
+                let row_cells = self.lines_above[index].snapshot_cost();
+                if row_cells > cell_budget {
+                    break;
+                }
+                cell_budget -= row_cells;
+                history_keep_from = index;
+            }
+        }
+        let mut to_serialize = Vec::new();
+        if viewport_keep_from == 0 {
+            for line in self.lines_above.iter().skip(history_keep_from) {
+                to_serialize.push(line.with_trailing_blanks().into_owned());
+            }
+        }
+        for line in self.viewport.iter().skip(viewport_keep_from) {
+            to_serialize.push(line.clone());
+        }
+        self.output_buffer
+            .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
+            .ok()
     }
     pub fn render(
         &mut self,

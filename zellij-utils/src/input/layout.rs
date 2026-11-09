@@ -1617,6 +1617,22 @@ impl Layout {
         .map(|(layout, _raw_layout)| layout)
     }
 
+    /// Parse `raw_layout` the way resurrection does.
+    ///
+    /// [`Layout::from_kdl`] turns a missing `contents_file` into empty pane
+    /// contents. This returns an error instead when fewer content files loaded
+    /// than the layout references.
+    pub fn from_kdl_with_verified_contents(
+        raw_layout: &str,
+        path_to_raw_layout: Option<String>,
+    ) -> Result<Self, ConfigError> {
+        let raw_layout = raw_layout.to_owned();
+        read_layout_with_verified_contents(|| {
+            Ok((path_to_raw_layout.clone(), raw_layout.clone(), None))
+        })
+        .map(|(layout, _raw_layout)| layout)
+    }
+
     /// Semantically validate a layout using the same parser as session launch.
     ///
     /// Reads local files or built-in assets only. Refuses remote URLs so validation

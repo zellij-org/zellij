@@ -13521,6 +13521,39 @@ fn serialize_budget_only_scans_the_requested_rows() {
     assert!(!serialized.contains("02000x"));
 }
 
+#[test]
+fn serialize_snapshot_viewport_is_bounded_by_cells() {
+    // The oldest viewport row's snapshot cost alone exceeds the budget, so a
+    // serialize that still cloned every viewport row would keep its marker.
+    let budget = super::MAX_SERIALIZE_SNAPSHOT_CELLS;
+    let mut grid =
+        create_grid_with_size_and_raw(2, 40, b"OLDEST_VIEWPORT_ROW\r\nNEWEST_VIEWPORT_ROW");
+    assert!(
+        grid.lines_above.is_empty(),
+        "the markers must sit in the viewport, not scrollback"
+    );
+    assert!(row_text(&grid.viewport[0]).contains("OLDEST_VIEWPORT_ROW"));
+    assert!(row_text(grid.viewport.back().expect("newest row")).contains("NEWEST_VIEWPORT_ROW"));
+    grid.viewport[0].trailing_blanks = u32::try_from(budget).expect("budget fits in u32");
+    let viewport_cells: usize = grid.viewport.iter().map(|row| row.snapshot_cost()).sum();
+    assert!(
+        viewport_cells > budget,
+        "viewport snapshot cost {viewport_cells} must exceed the {budget} budget"
+    );
+
+    let serialized = grid
+        .serialize(Some(0))
+        .expect("bounded viewport serializes");
+    assert!(
+        !serialized.contains("OLDEST_VIEWPORT_ROW"),
+        "the oldest viewport row must be dropped, not copied"
+    );
+    assert!(
+        serialized.contains("NEWEST_VIEWPORT_ROW"),
+        "the newest retained viewport row must be present"
+    );
+}
+
 fn scrollback_cells_recount(grid: &Grid) -> usize {
     grid.lines_above
         .iter()
