@@ -10588,7 +10588,13 @@ impl Screen {
             .find(|id| !self.watcher_clients.contains_key(id))
             .copied();
 
+        // A pane listed more than once is one subscription: answering each
+        // occurrence would let a request multiply the snapshots it asks for.
+        let mut requested_pane_ids = HashSet::new();
         for pane_id in &pane_ids {
+            if !requested_pane_ids.insert(*pane_id) {
+                continue;
+            }
             let server_pane_id: PaneId = (*pane_id).into();
             let mut found = false;
 

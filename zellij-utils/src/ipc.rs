@@ -35,6 +35,20 @@ const MAX_FRAME_BYTES: usize = 256 * 1024 * 1024;
 pub trait IpcStream: Read + Write + Send + 'static {
     fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>>;
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    /// Shut down both directions of the underlying connection, which
+    /// fails any read or write blocked on it, on this handle or any clone
+    /// of it. Streams that cannot do this do nothing.
+    ///
+    /// Only implemented for Unix sockets. On Windows this is a no-op for
+    /// named pipes: a write blocked on a peer that does not read is not
+    /// interrupted, and the thread in it is released only once the peer
+    /// reads or the pipe closes. Cancelling it would need CancelIoEx on the
+    /// pipe handle (or CancelSynchronousIo on the writer thread), which has
+    /// not been implemented or tested there. Callers must therefore bound
+    /// what such a thread retains by other means, as the client queue caps do.
+    fn shutdown_stream(&self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 impl IpcStream for LocalSocketStream {
@@ -45,6 +59,11 @@ impl IpcStream for LocalSocketStream {
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         use interprocess::local_socket::traits::Stream;
         self.set_recv_timeout(timeout)
+    }
+    #[cfg(unix)]
+    fn shutdown_stream(&self) -> io::Result<()> {
+        let LocalSocketStream::UdSocket(stream) = self;
+        stream.inner().shutdown(std::net::Shutdown::Both)
     }
 }
 
@@ -468,6 +487,12 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         write_protobuf_message(&mut self.sender, &proto_msg)?;
         self.sender.flush()?;
         Ok(())
+    }
+
+    /// Returns another handle to the socket this sender writes to, for
+    /// shutting it down from another thread while a write is blocked.
+    pub fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>> {
+        self.sender.get_ref().try_clone_stream()
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.

@@ -6132,6 +6132,36 @@ fn subscriber_receives_initial_delivery() {
 }
 
 #[test]
+fn repeated_pane_ids_in_a_subscription_get_one_initial_delivery() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1); 50]
+            .into_iter()
+            .chain(vec![zellij_utils::data::PaneId::Terminal(99); 50])
+            .collect(),
+        Some(0),
+        false,
+    );
+
+    let msgs = messages.lock().unwrap();
+    let client_msgs = msgs.get(&100).unwrap();
+    let snapshots = client_msgs
+        .iter()
+        .filter(|msg| matches!(msg, ServerToClientMsg::PaneRenderUpdate { .. }))
+        .count();
+    let not_found = client_msgs
+        .iter()
+        .filter(|msg| matches!(msg, ServerToClientMsg::LogError { .. }))
+        .count();
+    assert_eq!(snapshots, 1, "one snapshot per distinct pane");
+    assert_eq!(not_found, 1, "one error per distinct missing pane");
+}
+
+#[test]
 fn subscriber_receives_initial_with_scrollback() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, messages) = create_new_screen_with_message_capture(size);

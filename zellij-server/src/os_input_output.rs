@@ -17,7 +17,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     ipc::{
-        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
+        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext, IpcStream,
         ServerToClientMsg,
     },
     shared::default_palette,
@@ -31,9 +31,11 @@ use std::{
     path::PathBuf,
     process::Command,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc::RecvTimeoutError,
         Arc, Mutex,
     },
+    time::Duration,
 };
 
 pub use async_trait::async_trait;
@@ -230,57 +232,252 @@ fn build_command(
 // If the client ever becomes responsive again, we'll send one final "Buffer full" message so it
 // knows what happened.
 const CLIENT_BUFFER_LIMIT: usize = 5000;
+// A message-count cap does not bound retained payload: 5000 render
+// frames can hold gigabytes. The queue is therefore also bounded by
+// buffered payload bytes. A message is always admitted into a queue that
+// holds no payload, so a single large message cannot disconnect a client.
+const CLIENT_BUFFER_BYTE_LIMIT: usize = 256 * 1024 * 1024;
+
+/// Heap overhead charged per `String` held in a `Vec<String>`: the 24-byte
+/// header in the vector's backing allocation, plus allocator rounding. A
+/// message of many short lines is dominated by this, not by the text.
+const STRING_OVERHEAD: usize = std::mem::size_of::<String>() + 16;
+
+fn strings_bytes(strings: &[String]) -> usize {
+    strings
+        .iter()
+        .map(|string| string.len().saturating_add(STRING_OVERHEAD))
+        .sum()
+}
+
+fn opt_str_bytes(string: &Option<String>) -> usize {
+    string.as_ref().map(String::len).unwrap_or(0)
+}
+
+/// Size of the JSON form of a value, as an estimate for deeply nested
+/// types that are not worth walking by hand. Never less than the size of
+/// the value itself.
+fn serialized_bytes<T: serde::Serialize>(value: &T) -> usize {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(buf.len());
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    let _ = serde_json::to_writer(&mut counter, value);
+    counter.0.max(std::mem::size_of::<T>())
+}
+
+fn session_preview_bytes(preview: &zellij_utils::data::SessionPreview) -> usize {
+    use zellij_utils::data::{SessionPreviewPane, SessionPreviewTab};
+    let panes_bytes = |panes: &[SessionPreviewPane]| -> usize {
+        panes
+            .iter()
+            .map(|pane| {
+                std::mem::size_of::<SessionPreviewPane>()
+                    .saturating_add(pane.title.len())
+                    .saturating_add(opt_str_bytes(&pane.contents))
+            })
+            .sum()
+    };
+    let tabs_bytes: usize = preview
+        .tabs
+        .iter()
+        .map(|tab| {
+            std::mem::size_of::<SessionPreviewTab>()
+                .saturating_add(tab.name.len())
+                .saturating_add(panes_bytes(&tab.panes))
+        })
+        .sum();
+    preview
+        .contents
+        .len()
+        .saturating_add(preview.session_name.len())
+        .saturating_add(strings_bytes(&preview.tab_names))
+        .saturating_add(opt_str_bytes(&preview.error))
+        .saturating_add(tabs_bytes)
+}
+
+fn mobile_state_bytes(payload: &zellij_utils::ipc::MobileStatePayload) -> usize {
+    use zellij_utils::ipc::{MobilePanePayload, MobileSessionPayload, MobileTabPayload};
+    payload
+        .session_name
+        .len()
+        .saturating_add(
+            payload
+                .tabs
+                .iter()
+                .map(|tab| std::mem::size_of::<MobileTabPayload>() + tab.name.len())
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            payload
+                .panes
+                .iter()
+                .map(|pane| std::mem::size_of::<MobilePanePayload>() + pane.title.len())
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            payload
+                .sessions
+                .iter()
+                .map(|session| std::mem::size_of::<MobileSessionPayload>() + session.name.len())
+                .sum::<usize>(),
+        )
+}
+
+/// Approximate heap payload of a client-bound message, so the queue byte
+/// budget accounts for what it retains and not just message envelopes.
+/// Deliberately exhaustive: a new variant must decide what it is charged.
+fn server_msg_payload_bytes(msg: &ServerToClientMsg) -> usize {
+    match msg {
+        ServerToClientMsg::Render { content } => content.len(),
+        ServerToClientMsg::RenderFrame { frame } => frame.len(),
+        ServerToClientMsg::Log { lines } | ServerToClientMsg::LogError { lines } => {
+            strings_bytes(lines)
+        },
+        ServerToClientMsg::CliPipeOutput { pipe_name, output } => {
+            pipe_name.len().saturating_add(output.len())
+        },
+        ServerToClientMsg::UnblockCliPipeInput { pipe_name, .. } => pipe_name.len(),
+        ServerToClientMsg::PaneRenderUpdate {
+            viewport,
+            scrollback,
+            ..
+        } => strings_bytes(viewport).saturating_add(
+            scrollback
+                .as_ref()
+                .map(|scrollback| strings_bytes(scrollback))
+                .unwrap_or(0),
+        ),
+        ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => payload_bytes.len(),
+        ServerToClientMsg::PaneMirror { payload } => payload.len(),
+        ServerToClientMsg::ForwardQueryToHost { query_bytes, .. } => query_bytes.len(),
+        ServerToClientMsg::RenamedSession { name } => name.len(),
+        ServerToClientMsg::SessionPreview { preview } => {
+            preview.as_ref().map(session_preview_bytes).unwrap_or(0)
+        },
+        ServerToClientMsg::MobileState { payload } => mobile_state_bytes(payload),
+        ServerToClientMsg::Exit { exit_reason } => match exit_reason {
+            ExitReason::Error(error) => error.len(),
+            _ => 0,
+        },
+        ServerToClientMsg::SwitchSession { connect_to_session } => {
+            serialized_bytes(connect_to_session)
+        },
+        ServerToClientMsg::TerminalSettingsChanged { settings } => serialized_bytes(&**settings),
+        ServerToClientMsg::SessionAttention { attention } => serialized_bytes(attention),
+        ServerToClientMsg::HostProgramStatus { status } => status
+            .as_ref()
+            .map(|status| {
+                status
+                    .state
+                    .len()
+                    .saturating_add(opt_str_bytes(&status.kind))
+                    .saturating_add(status.msg.len())
+            })
+            .unwrap_or(0),
+        // No owned heap data.
+        ServerToClientMsg::UnblockInputThread
+        | ServerToClientMsg::Connected
+        | ServerToClientMsg::QueryTerminalSize
+        | ServerToClientMsg::SetSoftKeyboard { .. }
+        | ServerToClientMsg::PasteFromClipboard { .. }
+        | ServerToClientMsg::StartWebServer
+        | ServerToClientMsg::ConfigFileUpdated
+        | ServerToClientMsg::HostTerminalThemeChanged { .. }
+        | ServerToClientMsg::SubscribedPaneClosed { .. } => 0,
+    }
+}
 
 #[derive(Clone)]
 struct ClientBuffer {
-    sender: channels::Sender<ServerToClientMsg>,
+    sender: channels::Sender<(ServerToClientMsg, usize)>,
     queued: Arc<AtomicUsize>,
+    queued_bytes: Arc<AtomicUsize>,
     limit: usize,
+    byte_limit: usize,
 }
 
 struct ClientBufferReceiver {
-    receiver: channels::Receiver<ServerToClientMsg>,
+    receiver: channels::Receiver<(ServerToClientMsg, usize)>,
     queued: Arc<AtomicUsize>,
+    queued_bytes: Arc<AtomicUsize>,
 }
 
-fn client_buffer(limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
+fn client_buffer(limit: usize, byte_limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
     let (sender, receiver) = channels::unbounded();
     let queued = Arc::new(AtomicUsize::new(0));
+    let queued_bytes = Arc::new(AtomicUsize::new(0));
     (
         ClientBuffer {
             sender,
             queued: queued.clone(),
+            queued_bytes: queued_bytes.clone(),
             limit,
+            byte_limit,
         },
-        ClientBufferReceiver { receiver, queued },
+        ClientBufferReceiver {
+            receiver,
+            queued,
+            queued_bytes,
+        },
     )
 }
 
 impl ClientBuffer {
     fn try_send(&self, msg: ServerToClientMsg) -> Result<(), TrySendError<ServerToClientMsg>> {
+        let payload = server_msg_payload_bytes(&msg);
         if self.queued.fetch_add(1, Ordering::AcqRel) >= self.limit {
             self.queued.fetch_sub(1, Ordering::AcqRel);
             return Err(TrySendError::Full(msg));
         }
-        self.sender.send(msg).map_err(|err| {
+        let queued_bytes = self.queued_bytes.fetch_add(payload, Ordering::AcqRel);
+        if queued_bytes > 0 && queued_bytes.saturating_add(payload) > self.byte_limit {
+            self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
             self.queued.fetch_sub(1, Ordering::AcqRel);
-            TrySendError::Disconnected(err.0)
+            return Err(TrySendError::Full(msg));
+        }
+        self.sender.send((msg, payload)).map_err(|err| {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
+            TrySendError::Disconnected(err.0 .0)
         })
     }
 }
 
 impl ClientBufferReceiver {
     fn recv(&self) -> Option<ServerToClientMsg> {
-        let msg = self.receiver.recv().ok()?;
+        let (msg, payload) = self.receiver.recv().ok()?;
         self.queued.fetch_sub(1, Ordering::AcqRel);
+        self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
         Some(msg)
     }
 }
 
-#[derive(Clone)]
+/// How long the writer of a removed client gets to flush what is already
+/// queued for it, such as the exit notice the server sends right before
+/// removing the client. If it is still stuck in a socket write after
+/// that, its queue is dropped and the socket shut down.
+const REMOVED_CLIENT_FLUSH_GRACE: Duration = Duration::from_secs(2);
+/// How long, after the socket was shut down, the writer gets to notice and
+/// exit before the removal gives up waiting for it.
+const REMOVED_CLIENT_WRITER_EXIT_GRACE: Duration = Duration::from_secs(5);
+
 struct ClientSender {
     client_id: ClientId,
     client_buffer_sender: ClientBuffer,
+    // Dropped by the writer thread when it exits.
+    writer_done: std::sync::mpsc::Receiver<()>,
+    // Set to make the writer drop whatever is still queued.
+    abandon_queue: Arc<AtomicBool>,
+    // Another handle to the client's socket, to unblock a stuck write.
+    shutdown_handle: Option<Box<dyn IpcStream>>,
 }
 
 impl ClientSender {
@@ -295,18 +492,36 @@ impl ClientSender {
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+        let (client_buffer_sender, client_buffer_receiver) =
+            client_buffer(CLIENT_BUFFER_LIMIT, CLIENT_BUFFER_BYTE_LIMIT);
+        let (writer_done_sender, writer_done) = std::sync::mpsc::channel::<()>();
+        let abandon_queue = Arc::new(AtomicBool::new(false));
+        let shutdown_handle = sender.try_clone_stream().ok();
+        let writer_abandon_queue = abandon_queue.clone();
         std::thread::spawn(move || {
+            let _writer_done_sender = writer_done_sender;
             let err_context = || format!("failed to send message to client {client_id}");
             let mut stream_failed = false;
             while let Some(msg) = client_buffer_receiver.recv() {
+                if writer_abandon_queue.load(Ordering::Acquire) {
+                    // The client was removed while this writer was stuck;
+                    // drop the queue instead of sending it to a socket
+                    // that nobody is reading.
+                    break;
+                }
                 if let Err(error) = sender.send_server_msg(msg).with_context(err_context) {
-                    log::error!("{:?}; stopping client writer", error);
+                    if writer_abandon_queue.load(Ordering::Acquire) {
+                        log::warn!(
+                            "abandoned the queue of removed client {client_id} that was not reading"
+                        );
+                    } else {
+                        log::error!("{:?}; stopping client writer", error);
+                    }
                     stream_failed = true;
                     break;
                 }
             }
-            if !stream_failed {
+            if !stream_failed && !writer_abandon_queue.load(Ordering::Acquire) {
                 let _ = sender.send_server_msg(ServerToClientMsg::Exit {
                     exit_reason: ExitReason::Disconnect,
                 });
@@ -315,7 +530,58 @@ impl ClientSender {
         ClientSender {
             client_id,
             client_buffer_sender,
+            writer_done,
+            abandon_queue,
+            shutdown_handle,
         }
+    }
+    /// Called when the client is removed. The writer keeps flushing what is
+    /// already queued, so that a final message sent just before the removal
+    /// still goes out. If it has not finished within `grace` it is stuck
+    /// writing to a client that is not reading: have it drop its queue and
+    /// shut the socket down to fail the write it is blocked in. The
+    /// returned handle finishes once the writer is done, or once it is
+    /// given up on, and yields whether the writer actually exited.
+    ///
+    /// Platform note: shutting the socket down is what unblocks a stuck
+    /// write, and `IpcStream::shutdown_stream` does that on Unix only. On
+    /// Windows it is a no-op, so a writer blocked in a write to a named pipe
+    /// whose peer is not reading is released only when the peer reads or
+    /// the pipe closes; `abandon_queue` is checked between writes, which a
+    /// blocked write never reaches. The retained memory is still bounded by
+    /// the client queue caps, and the handle then yields `false`.
+    fn remove(self, grace: Duration) -> std::thread::JoinHandle<bool> {
+        let ClientSender {
+            client_id,
+            client_buffer_sender,
+            writer_done,
+            abandon_queue,
+            shutdown_handle,
+        } = self;
+        // With the sending half gone, the writer ends once the queue is empty.
+        drop(client_buffer_sender);
+        std::thread::spawn(move || {
+            // Nothing is ever sent: this returns once the writer drops its half.
+            match writer_done.recv_timeout(grace) {
+                Err(RecvTimeoutError::Timeout) => {},
+                _ => return true,
+            }
+            log::warn!("client {client_id} was removed while not reading; dropping its queue");
+            abandon_queue.store(true, Ordering::Release);
+            if let Some(Err(error)) = shutdown_handle.map(|handle| handle.shutdown_stream()) {
+                log::error!("failed to shut down the socket of client {client_id}: {error}");
+            }
+            match writer_done.recv_timeout(REMOVED_CLIENT_WRITER_EXIT_GRACE) {
+                Err(RecvTimeoutError::Timeout) => {
+                    log::warn!(
+                        "the writer of removed client {client_id} is still blocked in a write; \
+                         it exits when the client reads or closes its end"
+                    );
+                    false
+                },
+                _ => true,
+            }
+        })
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || {
@@ -449,6 +715,23 @@ pub trait ServerOsApi: Send + Sync {
     fn apply_cached_resizes(&mut self) {}
 }
 
+impl ServerOsInputOutput {
+    fn replace_client_sender(&self, client_id: ClientId, sender: ClientSender) -> Result<()> {
+        let previous = self
+            .client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(|| format!("failed to create new client {client_id}"))?
+            .insert(client_id, sender);
+        if let Some(previous) = previous {
+            // A new connection under the same id must not leave the old
+            // writer behind.
+            previous.remove(REMOVED_CLIENT_FLUSH_GRACE);
+        }
+        Ok(())
+    }
+}
+
 impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_terminal_id(
         &self,
@@ -538,12 +821,7 @@ impl ServerOsApi for ServerOsInputOutput {
         receiver: &IpcReceiverWithContext<ClientToServerMsg>,
     ) -> Result<()> {
         let sender = ClientSender::new(client_id, receiver.get_sender());
-        self.client_senders
-            .lock()
-            .to_anyhow()
-            .with_context(|| format!("failed to create new client {client_id}"))?
-            .insert(client_id, sender);
-        Ok(())
+        self.replace_client_sender(client_id, sender)
     }
 
     fn register_client_with_reply(
@@ -552,12 +830,7 @@ impl ServerOsApi for ServerOsInputOutput {
         reply_stream: LocalSocketStream,
     ) -> Result<()> {
         let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
-        self.client_senders
-            .lock()
-            .to_anyhow()
-            .with_context(|| format!("failed to create new client {client_id}"))?
-            .insert(client_id, sender);
-        Ok(())
+        self.replace_client_sender(client_id, sender)
     }
 
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -566,8 +839,8 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to remove client {client_id}"))?;
-        if client_senders.contains_key(&client_id) {
-            client_senders.remove(&client_id);
+        if let Some(sender) = client_senders.remove(&client_id) {
+            sender.remove(REMOVED_CLIENT_FLUSH_GRACE);
         }
         Ok(())
     }

@@ -2187,3 +2187,85 @@ fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
     let own = parser.feed(b"\x1b[?62;22c");
     assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
 }
+
+#[test]
+fn feed_partitions_conserve_all_outputs() {
+    // For short corpora, every two-way partition must emit the
+    // same replies, residue, forwards and notifications as a single
+    // feed. The parser's pending-partial machinery exists precisely so
+    // a chunk boundary inside any sequence is invisible.
+    use crate::stdin_ansi_parser::{ParseOutput, StdinAnsiParser};
+
+    let corpora: Vec<Vec<u8>> = vec![
+        // plain keys + an arrow key + an OSC 11 reply + DA barrier
+        [
+            b"abc\x1b[A".to_vec(),
+            b"\x1b]11;rgb:aa/bb/cc\x1b\\\x1b[?65;1c".to_vec(),
+        ]
+        .concat(),
+        // paste start/content/end plus trailing key
+        b"\x1b[200~hello world\x1b[201~x".to_vec(),
+        // invalid UTF-8 interleaved with keys
+        b"a\xFF\xFEz\x1b[C".to_vec(),
+        // unterminated OSC then a key
+        b"\x1b]8;;https://example".to_vec(),
+        // two replies back to back
+        b"\x1b]10;rgb:11/22/33\x1b\\\x1b]11;rgb:44/55/66\x07k".to_vec(),
+    ];
+
+    fn drain(parser: &mut StdinAnsiParser, bytes: &[u8]) -> ParseOutput {
+        parser.feed(bytes)
+    }
+    fn accumulated(mut a: ParseOutput, mut b: ParseOutput) -> (String, Vec<u8>) {
+        // Order-preserving accumulation of every produced channel:
+        // concatenate the Vec outputs and keep the first completed
+        // forward/clipboard in encounter order.
+        a.replies.extend(b.replies);
+        a.residue.extend_from_slice(&b.residue);
+        a.desktop_notifications.extend(b.desktop_notifications);
+        a.nested_frames.extend(b.nested_frames);
+        let completed_forward = a
+            .completed_forward
+            .take()
+            .or_else(|| b.completed_forward.take());
+        let completed_clipboard = a
+            .completed_clipboard_forward
+            .take()
+            .or_else(|| b.completed_clipboard_forward.take());
+        (
+            format!(
+                "{:?}|{:?}|{:?}|{:?}|{:?}",
+                a.replies,
+                a.desktop_notifications,
+                a.nested_frames,
+                completed_forward,
+                completed_clipboard,
+            ),
+            a.residue,
+        )
+    }
+
+    for (corpus_index, corpus) in corpora.iter().enumerate() {
+        let mut whole = StdinAnsiParser::new();
+        whole.open_forward(1);
+        let whole_out = drain(&mut whole, corpus);
+
+        for split in 0..=corpus.len() {
+            let mut parser = StdinAnsiParser::new();
+            parser.open_forward(1);
+            let first = drain(&mut parser, &corpus[..split]);
+            let second = drain(&mut parser, &corpus[split..]);
+            let (split_meta, split_residue) = accumulated(first, second);
+            let (whole_meta, whole_residue) =
+                accumulated(whole_out.clone(), ParseOutput::default());
+            assert_eq!(
+                split_residue, whole_residue,
+                "corpus {corpus_index} split at {split}: residue diverged"
+            );
+            assert_eq!(
+                split_meta, whole_meta,
+                "corpus {corpus_index} split at {split}: replies/forwards/notifications diverged"
+            );
+        }
+    }
+}
