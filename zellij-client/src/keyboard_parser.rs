@@ -75,6 +75,10 @@ impl KittyKeyboardParser {
     /// (or a prefix of one). Callers that may see several sequences in
     /// one chunk must use [`feed_with_consumed`] so trailing bytes are
     /// not silently dropped.
+    #[cfg_attr(
+        all(not(test), not(feature = "web_server_capability")),
+        allow(dead_code)
+    )]
     pub fn feed(&mut self, bytes: &[u8]) -> KittyParseOutcome {
         match self.feed_with_consumed(bytes) {
             (KittyParseOutcome::NoMatch, _) => KittyParseOutcome::NoMatch,

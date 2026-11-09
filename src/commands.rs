@@ -1,6 +1,9 @@
 use dialoguer::Confirm;
 use std::net::IpAddr;
-use std::{path::PathBuf, process, time::Duration};
+use std::{path::PathBuf, process};
+
+#[cfg(feature = "web_server_capability")]
+use std::time::Duration;
 
 #[cfg(feature = "web_server_capability")]
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient, Request};
