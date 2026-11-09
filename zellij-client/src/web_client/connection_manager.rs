@@ -49,10 +49,9 @@ impl ConnectionTable {
         }
         let unattached_for_this_session = self
             .client_id_to_channels
-            .iter()
-            .filter(|(id, channels)| {
-                !channels.is_attached()
-                    && self.client_session_token_hash.get(*id) == Some(&session_token_hash)
+            .values()
+            .filter(|channels| {
+                !channels.is_attached() && channels.session_token_hash == session_token_hash
             })
             .count();
         if unattached_for_this_session >= MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION {
@@ -60,12 +59,9 @@ impl ConnectionTable {
         }
         let mut channels = ClientChannels::new(client_os_api);
         channels.created_at = now;
-        self.client_id_to_channels
-            .insert(client_id.clone(), channels);
-        self.client_read_only_status
-            .insert(client_id.clone(), is_read_only);
-        self.client_session_token_hash
-            .insert(client_id, session_token_hash);
+        channels.read_only = is_read_only;
+        channels.session_token_hash = session_token_hash;
+        self.client_id_to_channels.insert(client_id, channels);
         Ok(())
     }
 
@@ -89,23 +85,23 @@ impl ConnectionTable {
     }
 
     pub fn verify_client_ownership(&self, client_id: &str, session_token_hash: &str) -> bool {
-        self.client_session_token_hash
+        self.client_id_to_channels
             .get(client_id)
-            .map(|hash| hash == session_token_hash)
+            .map(|channels| channels.session_token_hash == session_token_hash)
             .unwrap_or(false)
     }
 
     pub fn is_client_read_only(&self, client_id: &str) -> bool {
-        self.client_read_only_status
+        self.client_id_to_channels
             .get(client_id)
-            .copied()
+            .map(|channels| channels.read_only)
             .unwrap_or(false)
     }
 
     pub fn is_client_structured(&self, client_id: &str) -> bool {
-        self.client_structured_status
+        self.client_id_to_channels
             .get(client_id)
-            .copied()
+            .map(|channels| channels.is_structured())
             .unwrap_or(false)
     }
 
@@ -146,9 +142,8 @@ impl ConnectionTable {
             Some(channels) if channels.is_attached() => TerminalAttachOutcome::AlreadyAttached,
             Some(channels) => {
                 channels.add_terminal_tx(terminal_channel_tx);
+                channels.record_structured(is_structured);
                 let os_api = channels.os_api.clone();
-                self.client_structured_status
-                    .insert(client_id.to_owned(), is_structured);
                 TerminalAttachOutcome::Attached(os_api)
             },
         }
@@ -191,9 +186,6 @@ impl ConnectionTable {
         if let Some(mut client_channels) = self.client_id_to_channels.remove(client_id).take() {
             client_channels.cleanup();
         }
-        self.client_read_only_status.remove(client_id);
-        self.client_session_token_hash.remove(client_id);
-        self.client_structured_status.remove(client_id);
     }
 
     pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {

@@ -127,9 +127,6 @@ impl SessionManager for RealSessionManager {
 #[derive(Debug, Default, Clone)]
 pub struct ConnectionTable {
     pub client_id_to_channels: HashMap<String, ClientChannels>,
-    pub client_read_only_status: HashMap<String, bool>,
-    pub client_session_token_hash: HashMap<String, String>,
-    pub client_structured_status: HashMap<String, bool>,
 }
 
 const MAX_PENDING_CONTROL_MESSAGES: usize = 64;
@@ -159,6 +156,11 @@ pub struct ClientChannels {
     pub should_not_reconnect: Arc<AtomicBool>,
     pending_control_messages: Vec<Message>,
     pub created_at: Instant,
+    pub read_only: bool,
+    pub session_token_hash: String,
+    /// Written by the first terminal websocket that claims this id.
+    /// Absent until then. Readers treat absence as unstructured.
+    structured: Option<bool>,
 }
 
 impl ClientChannels {
@@ -172,7 +174,19 @@ impl ClientChannels {
             should_not_reconnect: Arc::new(AtomicBool::new(false)),
             pending_control_messages: Vec::new(),
             created_at: Instant::now(),
+            read_only: false,
+            session_token_hash: String::new(),
+            structured: None,
         }
+    }
+
+    /// Records the structured-render choice of the websocket that claimed this id.
+    pub fn record_structured(&mut self, is_structured: bool) {
+        self.structured = Some(is_structured);
+    }
+
+    pub fn is_structured(&self) -> bool {
+        self.structured.unwrap_or(false)
     }
 
     /// Whether the client's terminal websocket has been opened.
