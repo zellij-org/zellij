@@ -184,13 +184,14 @@ const ABANDONED_ON_DROP: &str =
 
 /// One non-cloneable owner of an action's completion oneshot.
 ///
-/// `complete` sends a typed outcome and consumes the owner. `transfer` moves
-/// that oneshot to the next stage and sends nothing. `abandon` reports that
-/// the outcome is unknown. Drop sends the fields the handler stored, as a
-/// finished outcome: screen, pty, and plugin handlers finish by dropping
-/// this owner, and an owner with no stored fields is success.
+/// `complete` and `complete_recorded` send a typed outcome and consume the
+/// owner. `transfer` moves that oneshot to the next stage and sends nothing.
+/// `abandon` reports that the outcome is unknown. Drop does the same when
+/// the oneshot is still held: the outcome was not recorded, so it is not
+/// success. A handler that knows the result must `complete_recorded` (or
+/// [`settle`]) before this owner drops.
 #[derive(Debug)]
-#[must_use = "complete the owner, transfer it, or abandon it"]
+#[must_use = "complete the owner, transfer it, or abandon it; dropping abandons"]
 pub struct NotificationEnd {
     channel: Option<oneshot::Sender<ActionCompletionResult>>,
     exit_status: Option<i32>,
@@ -287,12 +288,19 @@ impl NotificationEnd {
         let Some(sender) = self.channel.take() else {
             return;
         };
+        let _ = sender.send(self.into_abandoned());
+    }
+
+    fn into_abandoned(&mut self) -> ActionCompletionResult {
         let mut outcome = self.recorded(ActionCompletionKind::Abandoned);
         outcome.kind = ActionCompletionKind::Abandoned;
         outcome.exit_status = None;
+        outcome.affected_pane_id = None;
+        outcome.affected_tab_id = None;
+        outcome.stdout_message = None;
         outcome.error_message = Some(ABANDONED_ON_DROP.to_string());
         debug_assert!(!outcome.looks_like_success());
-        let _ = sender.send(outcome);
+        outcome
     }
 
     /// Move the oneshot to the next stage. This value sends nothing.
@@ -325,11 +333,57 @@ impl Drop for NotificationEnd {
         let Some(sender) = self.channel.take() else {
             return;
         };
-        // The handler applied the action and returned this owner. Stored
-        // fields are the outcome. No stored fields is success, which is how
-        // focus, scroll, and the other screen arms report completion.
-        let outcome = self.recorded(ActionCompletionKind::Finished);
-        let _ = sender.send(outcome);
+        // The handler disappeared without `complete_recorded`. Stored fields
+        // are not a result we can stand behind, so this is abandonment.
+        let _ = sender.send(self.into_abandoned());
+    }
+}
+
+/// Publishes the fields stored on `owner` as a finished outcome.
+///
+/// Empty fields are success. A stored error stays a finished failure.
+/// This is the call a handler makes when it knows the result, so a later
+/// drop cannot replace that result with abandonment.
+pub fn settle(owner: Option<NotificationEnd>) {
+    if let Some(owner) = owner {
+        owner.complete_recorded();
+    }
+}
+
+/// Owns a completion whose outcome is the fields the handler stores.
+///
+/// Dropping the guard calls [`NotificationEnd::complete_recorded`] before
+/// [`NotificationEnd`] itself drops, so abandonment does not overwrite a
+/// known result. [`RecordedCompletion::take`] moves the raw owner to the
+/// next stage and publishes nothing.
+#[derive(Debug)]
+pub struct RecordedCompletion {
+    owner: Option<NotificationEnd>,
+}
+
+impl RecordedCompletion {
+    pub fn new(owner: Option<NotificationEnd>) -> Self {
+        Self { owner }
+    }
+}
+
+impl Drop for RecordedCompletion {
+    fn drop(&mut self) {
+        settle(self.owner.take());
+    }
+}
+
+impl std::ops::Deref for RecordedCompletion {
+    type Target = Option<NotificationEnd>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.owner
+    }
+}
+
+impl std::ops::DerefMut for RecordedCompletion {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.owner
     }
 }
 
@@ -4736,8 +4790,12 @@ mod tests {
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_tab_id, None);
-        assert_eq!(result.kind, ActionCompletionKind::Finished);
-        assert!(result.looks_like_success());
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::Finished);
+        let message = result.error_message.unwrap();
+        assert!(message.contains("abandoned"), "{message}");
+        assert!(message.contains("unknown"), "{message}");
     }
 
     #[test]
@@ -4780,16 +4838,35 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_handler_owner_publishes_the_recorded_outcome() {
+    fn dropping_a_handler_owner_does_not_publish_the_recorded_outcome() {
         let (tx, rx) = oneshot::channel();
         let mut owner = NotificationEnd::new(tx);
         owner.set_affected_pane_id(PaneId::Terminal(10));
+        owner.set_error_message("pane failed".to_owned());
+        owner.set_exit_status(1);
         drop(owner);
         let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::Finished);
+        assert_ne!(result.affected_pane_id, Some(PaneId::Terminal(10)));
+        assert_eq!(result.exit_status, None);
+        assert_eq!(result.error_message.as_deref(), Some(ABANDONED_ON_DROP));
+    }
+
+    #[test]
+    fn complete_recorded_keeps_a_stored_error_that_drop_would_abandon() {
+        let (tx, rx) = oneshot::channel();
+        let mut owner = NotificationEnd::new(tx);
+        owner.set_error_message("pane failed".to_owned());
+        owner.set_exit_status(1);
+        owner.set_affected_pane_id(PaneId::Terminal(10));
+        owner.complete_recorded();
+        let result = rx.blocking_recv().unwrap();
         assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert_eq!(result.error_message.as_deref(), Some("pane failed"));
+        assert_eq!(result.exit_status, Some(1));
         assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
-        assert!(result.looks_like_success());
-        assert_ne!(result.kind, ActionCompletionKind::Abandoned);
     }
 
     #[test]

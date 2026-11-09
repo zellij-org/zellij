@@ -4657,6 +4657,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::ClientExit(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 client_histories.remove(&client_id);
                 let _ = os_input.send_to_client(
                     client_id,
@@ -4807,6 +4808,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 for client_id in &client_ids {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(*client_id);
@@ -4902,6 +4904,7 @@ pub fn start_server_impl(
                 _completion_tx, // the action ends here, dropping this will release anything waiting
                                 // for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 send_to_client!(
                     client_id,
                     os_input,
@@ -4918,6 +4921,7 @@ pub fn start_server_impl(
                 _completion_tx, // the action ends here, dropping this will release anything waiting
                                 // for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 send_to_client!(
                     client_id,
                     os_input,
@@ -4958,6 +4962,7 @@ pub fn start_server_impl(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let switching_away = connect_to_session.name.is_some()
                     && connect_to_session.name.as_deref() != Some(own_session_name.as_str());
                 let command_was_run = session_data
@@ -4978,7 +4983,7 @@ pub fn start_server_impl(
                 owner_followups.push_back(ServerInstruction::SwitchSession(
                     connect_to_session,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 ));
                 if switching_away && !command_was_run && !other_clients_attached {
                     delete_session_on_exit = true;
@@ -4986,6 +4991,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::HistoryMove(history_move, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let live_sessions = session_data
                     .read()
                     .unwrap()
@@ -5003,7 +5009,7 @@ pub fn start_server_impl(
                         owner_followups.push_back(ServerInstruction::SwitchSession(
                             connect_to_session,
                             client_id,
-                            completion_tx,
+                            completion_tx.take(),
                         ));
                     },
                     Err(history) => {
@@ -5020,6 +5026,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if connect_to_session.name.as_deref() == Some(own_session_name.as_str()) {
                     log::error!("Cannot attach to same session");
                 } else {
@@ -5078,6 +5085,7 @@ pub fn start_server_impl(
                     .associate_pipe_with_client(pipe_id, client_id);
             },
             ServerInstruction::ChangeMode(client_id, input_mode, completion) => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 // SAFETY: lock poison implies prior panic
                 let mut session_data = session_data.write().unwrap();
                 if let Some(session_data) = session_data.as_mut() {
@@ -5093,7 +5101,7 @@ pub fn start_server_impl(
                             input_mode,
                             Some(base_mode),
                             client_id,
-                            completion,
+                            completion.take(),
                         ));
                 }
             },

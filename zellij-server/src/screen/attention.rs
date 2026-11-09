@@ -48,12 +48,14 @@ impl Screen {
                         "Something else is already waiting for pane {:?}",
                         pane_id
                     ));
+                    refused.complete_recorded();
                 }
                 return;
             }
         }
         if let Some(mut waiter) = waiter {
             waiter.set_error_message(format!("There is no pane {:?} in this session", pane_id));
+            waiter.complete_recorded();
         }
     }
 

@@ -468,8 +468,9 @@ fn reserve_pty_write(
     // another one: nothing was reserved, so nothing may be released.
     let (bytes, terminal_id, mut completion, _caller_budget) = admitted.into_parts();
     if let Err(message) = budget.try_reserve(terminal_id, bytes.len()) {
-        if let Some(completion) = completion.as_mut() {
+        if let Some(mut completion) = completion {
             completion.set_error_message(message.clone());
+            completion.complete_recorded();
         }
         return Err(anyhow::anyhow!(message)).context("failed to send message to pty writer");
     }
@@ -485,8 +486,9 @@ fn reject_unadmitted(instruction: PtyWriteInstruction, message: &str) -> Result<
     if let PtyWriteInstruction::Write(admitted) = instruction {
         let (_bytes, _terminal_id, mut completion, caller_budget) = admitted.into_parts();
         drop(caller_budget);
-        if let Some(completion) = completion.as_mut() {
+        if let Some(mut completion) = completion {
             completion.set_error_message(message.to_string());
+            completion.complete_recorded();
         }
     }
     Err(anyhow::anyhow!(message.to_string())).context("failed to send message to pty writer")

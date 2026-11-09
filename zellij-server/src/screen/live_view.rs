@@ -621,5 +621,6 @@ impl Screen {
                 }
             },
         }
+        crate::route::settle(completion);
     }
 }

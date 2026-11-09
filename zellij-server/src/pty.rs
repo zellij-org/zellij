@@ -345,6 +345,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 set_blocking,
                 origin_pane_id,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
@@ -407,7 +408,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                 new_pane_placement,
                                 start_suppressed,
                                 client_or_tab_index,
-                                completion_tx,
+                                completion_tx.take(),
                                 set_blocking,
                             ))
                             .with_context(err_context)?;
@@ -464,7 +465,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         new_pane_placement,
                                         start_suppressed,
                                         client_or_tab_index,
-                                        completion_tx,
+                                        completion_tx.take(),
                                         set_blocking,
                                     ))
                                     .with_context(err_context)?;
@@ -479,7 +480,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                 }
                             } else {
                                 log::error!("Failed to spawn terminal: {:?}", err);
-                                if let Some(mut completion_tx) = completion_tx {
+                                if let Some(completion_tx) = completion_tx.as_mut() {
                                     completion_tx.set_error_message(format!("{err:#}"));
                                 }
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
@@ -487,7 +488,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             }
                         },
                         _ => {
-                            if let Some(mut completion_tx) = completion_tx {
+                            if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                             Err::<(), _>(err).non_fatal();
@@ -503,6 +504,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 completion_tx,
                 origin_pane_id,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || {
                     format!(
                         "failed to spawn terminal for {:?}",
@@ -553,7 +555,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                 invoked_with,
                                 close_replaced_pane,
                                 client_id_tab_index_or_pane_id,
-                                completion_tx,
+                                completion_tx.take(),
                             ))
                             .with_context(err_context)?;
                     },
@@ -570,7 +572,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                         invoked_with,
                                         close_replaced_pane,
                                         client_id_tab_index_or_pane_id,
-                                        completion_tx,
+                                        completion_tx.take(),
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -584,7 +586,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                 }
                             } else {
                                 log::error!("Failed to spawn terminal: {:?}", err);
-                                if let Some(mut completion_tx) = completion_tx {
+                                if let Some(completion_tx) = completion_tx.as_mut() {
                                     completion_tx.set_error_message(format!("{err:#}"));
                                 }
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
@@ -592,7 +594,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             }
                         },
                         _ => {
-                            if let Some(mut completion_tx) = completion_tx {
+                            if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                             Err::<(), _>(err).non_fatal();
@@ -606,6 +608,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 client_tab_index_or_pane_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("failed to open in-place editor for client");
 
                 let run_generation = pty.mint_run_generation();
@@ -629,7 +632,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             .with_context(err_context)?;
                     },
                     Err(e) => {
-                        if let Some(mut completion_tx) = completion_tx {
+                        if let Some(completion_tx) = completion_tx.as_mut() {
                             completion_tx.set_error_message(format!("{e:#}"));
                         }
                         Err::<(), _>(e).with_context(err_context).non_fatal();
@@ -660,6 +663,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 client_id_and_is_web_client,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || "failed to open new tab";
                 log::info!(
                     "PtyInstruction::NewTab: spawning terminals for tab {}",
@@ -682,7 +686,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     client_id_and_is_web_client,
-                    completion_tx,
+                    completion_tx.take(),
                 ) {
                     Err::<(), _>(err).with_context(err_context).non_fatal();
                 }
@@ -696,6 +700,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || "failed to override layout";
 
                 let mut all_tab_results = Vec::new();
@@ -736,11 +741,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                         client_id,
-                        completion_tx,
+                        completion_tx.take(),
                     ))
                     .with_context(err_context)?;
             },
             PtyInstruction::ClosePane(id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // Completion is owned by `completion_tx` (request/target) when
                 // present. Do not broadcast UnblockInputThread on child-exit or
                 // other unscoped closes — that wakes unrelated CLI waiters
@@ -750,6 +756,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
             PtyInstruction::ClosePaneThatWasNotCreated(id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let close_result = pty.close_pane(id);
                 drop(completion_tx);
                 close_result.with_context(|| format!("failed to close pane {:?}", id))?;
@@ -764,6 +771,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 pty.close_tab(ids).context("failed to close tabs")?;
             },
             PtyInstruction::ReRunCommandInPane(pane_id, run_command, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
                 let run_generation = pty.mint_run_generation();
 
@@ -798,12 +806,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                     ))
                                     .with_context(err_context)?;
                                 drop(completion_tx);
-                            } else if let Some(mut completion_tx) = completion_tx {
+                            } else if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                         },
                         _ => {
-                            if let Some(mut completion_tx) = completion_tx {
+                            if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                             Err::<(), _>(err).non_fatal();
@@ -817,6 +825,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 working_dir,
                 completion_tx,
             } => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
                 let run_generation = pty.mint_run_generation();
 
@@ -837,12 +846,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     Ok(..) => drop(completion_tx),
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { .. }) => {
-                            if let Some(mut completion_tx) = completion_tx {
+                            if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                         },
                         _ => {
-                            if let Some(mut completion_tx) = completion_tx {
+                            if let Some(completion_tx) = completion_tx.as_mut() {
                                 completion_tx.set_error_message(format!("{err:#}"));
                             }
                             Err::<(), _>(err).non_fatal();
@@ -851,6 +860,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 }
             },
             PtyInstruction::DumpLayout(mut session_layout_metadata, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
@@ -862,7 +872,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             .send_to_server(ServerInstruction::Log(
                                 vec![kdl_layout],
                                 client_id,
-                                completion_tx,
+                                completion_tx.take(),
                             ))
                             .with_context(err_context)
                             .non_fatal();
@@ -873,7 +883,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             .send_to_server(ServerInstruction::Log(
                                 vec![e.to_owned()],
                                 client_id,
-                                completion_tx,
+                                completion_tx.take(),
                             ))
                             .with_context(err_context)
                             .non_fatal();
@@ -885,6 +895,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
@@ -895,7 +906,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             session_layout_metadata.list_clients_metadata(),
                         )],
                         client_id,
-                        completion_tx,
+                        completion_tx.take(),
                     ))
                     .with_context(err_context)
                     .non_fatal();
@@ -966,6 +977,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 mut session_layout_metadata,
                 completion_tx: _completion_tx, // Dropped at end to signal completion
             } => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 match session_serialization::serialize_session_layout(
                     session_layout_metadata.into(),
@@ -1028,6 +1040,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 completion_tx,
                 activation_token,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 pty.fill_plugin_cwd(
                     should_float,
                     should_be_open_in_place,
@@ -1042,7 +1055,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     cwd,
                     should_focus_plugin,
                     floating_pane_coordinates,
-                    completion_tx,
+                    completion_tx.take(),
                     activation_token,
                 )?;
             },
@@ -1097,6 +1110,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 Err(e) => {
                     if let Some(mut completion_tx) = completion_tx {
                         completion_tx.set_error_message(format!("{e:#}"));
+                        completion_tx.complete_recorded();
                     }
                     Err::<(), _>(e).non_fatal();
                 },
@@ -1106,8 +1120,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 resurrect,
                 completion_tx,
             } => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Err(message) = pty.set_resurrect_command(terminal_id, resurrect) {
-                    if let Some(mut completion_tx) = completion_tx {
+                    if let Some(completion_tx) = completion_tx.as_mut() {
                         completion_tx.set_error_message(message);
                     }
                 }
@@ -1744,8 +1759,9 @@ impl Pty {
             .bus
             .senders
             .send_to_screen(ScreenInstruction::LayoutSpawnFailed(tab_index));
-        if let Some(completion_tx) = completion_tx.as_mut() {
+        if let Some(mut completion_tx) = completion_tx {
             completion_tx.set_error_message(format!("{error:#}"));
+            completion_tx.complete_recorded();
         }
         Err(error)
     }

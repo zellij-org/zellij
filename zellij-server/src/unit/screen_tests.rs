@@ -18057,7 +18057,7 @@ pub fn a_pane_that_was_not_created_for_an_unknown_reason_is_closed() {
         &mut completion,
         &mut Default::default(),
     );
-    drop(completion);
+    crate::route::settle(completion);
     assert_eq!(
         closed_pane_ids_from(&pty_receiver),
         vec![PaneId::Terminal(5)]

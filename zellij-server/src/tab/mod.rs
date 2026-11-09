@@ -4540,12 +4540,13 @@ impl Tab {
         };
         match replaced_pane {
             Ok(replaced_pane) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
                 let pane_id = replaced_pane.pid();
                 self.forget_typed_input(pane_id);
                 let _ = self
                     .senders
-                    .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
+                    .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx.take()));
                 let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
@@ -6096,6 +6097,7 @@ impl Tab {
                 .any(|byte| *byte != b'\r' && *byte != b'\n');
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 match active_pane.adjust_input_to_terminal(
                     key_with_modifier,
                     raw_input_bytes,
@@ -6114,7 +6116,7 @@ impl Tab {
                             .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                                 adjusted_input,
                                 active_terminal_id,
-                                completion_tx,
+                                completion_tx.take(),
                                 None,
                             )))
                             .with_context(err_context)?;
@@ -6125,7 +6127,7 @@ impl Tab {
                             .send_to_pty(PtyInstruction::ReRunCommandInPane(
                                 PaneId::Terminal(active_terminal_id),
                                 command,
-                                completion_tx,
+                                completion_tx.take(),
                             ))
                             .with_context(err_context)?;
                         should_update_ui = true;
@@ -6141,7 +6143,7 @@ impl Tab {
                                 pane_id: PaneId::Terminal(active_terminal_id),
                                 shell: Some(self.default_shell.clone()),
                                 working_dir,
-                                completion_tx,
+                                completion_tx: completion_tx.take(),
                             })
                             .with_context(err_context)?;
                         should_update_ui = true;
@@ -9442,6 +9444,9 @@ impl Tab {
             reason.message()
         );
         reason.mark_completion(&mut notification_end);
+        // The failure is known here. The close instruction must not be the
+        // thing that publishes it: dropping that owner is abandonment.
+        crate::route::settle(notification_end.take());
         self.panes_not_created.insert(pane_id, reason);
         let pane_to_flag = client_id.and_then(|client_id| self.get_active_pane_id(client_id));
         if let (Some(pane_to_flag), Some(pane_error_text)) =
@@ -9458,7 +9463,7 @@ impl Tab {
             .senders
             .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
                 pane_id,
-                notification_end,
+                None,
             ));
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             None,
@@ -9588,19 +9593,21 @@ impl Tab {
             .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
         {
             Some(pane_to_rerun) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Some(command_to_rerun) = pane_to_rerun.rerun() {
                     self.pending_vte.remove(&terminal_pane_id);
                     self.pids_waiting_resize.insert(terminal_pane_id);
                     let _ = self.senders.send_to_pty(PtyInstruction::ReRunCommandInPane(
                         pane_id,
                         command_to_rerun,
-                        completion_tx,
+                        completion_tx.take(),
                     ));
                 } else {
                     log::error!("Pane is still running!")
                 }
             },
             None => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 log::error!(
                     "Failed to find terminal pane with id {} to rerun in tab",
                     terminal_pane_id

@@ -485,6 +485,7 @@ pub(crate) fn plugin_thread_main(
                 completion_tx,
                 activation_token,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd).or_else(|| {
                     if let Some(plugin_id) = focused_plugin_id {
@@ -518,7 +519,7 @@ pub(crate) fn plugin_thread_main(
                             floating_pane_coordinates,
                             should_focus_plugin,
                             Some(client_id),
-                            completion_tx,
+                            completion_tx.take(),
                             activation_token,
                         )));
 
@@ -670,6 +671,7 @@ pub(crate) fn plugin_thread_main(
                 completion_tx,
                 client_id,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 match run_plugin_or_alias.get_run_plugin() {
                     Some(run_plugin) => {
@@ -719,7 +721,7 @@ pub(crate) fn plugin_thread_main(
                                                     None,
                                                     None,
                                                     None,
-                                                    completion_tx,
+                                                    completion_tx.take(),
                                                     None,
                                                 ),
                                             ));
@@ -771,6 +773,7 @@ pub(crate) fn plugin_thread_main(
                 (client_id, is_web_client),
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
@@ -871,7 +874,7 @@ pub(crate) fn plugin_thread_main(
                     block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::OverrideLayout(
@@ -883,6 +886,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // 1. Prefer connected clients over CLI clients
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
                     client_id
@@ -965,7 +969,7 @@ pub(crate) fn plugin_thread_main(
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::ApplyCachedEvents {
@@ -1089,6 +1093,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -1098,7 +1103,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::ListClientsMetadata(
@@ -1106,6 +1111,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -1115,7 +1121,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin {

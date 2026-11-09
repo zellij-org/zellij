@@ -79,8 +79,9 @@ impl Drop for AdmittedWrite {
         if self.handed_off {
             return;
         }
-        if let Some(completion) = self.completion.as_mut() {
+        if let Some(mut completion) = self.completion.take() {
             completion.set_error_message(SHUTDOWN_BEFORE_WRITE.to_string());
+            completion.complete_recorded();
         }
         if let Some(budget) = self.budget.take() {
             budget.release(self.terminal_id, self.bytes.len());
@@ -242,6 +243,7 @@ impl PendingQueue {
                 "the pane started another command before this input was written",
                 write.offset,
             ));
+            completion.complete_recorded();
         }
         true
     }
@@ -253,6 +255,7 @@ impl PendingQueue {
         for mut write in self.writes.drain(..) {
             if let Some(mut completion) = write.completion.take() {
                 completion.set_error_message(Self::failure_message(reason, write.offset));
+                completion.complete_recorded();
             }
         }
         self.remaining_bytes = 0;
@@ -290,6 +293,7 @@ impl PendingQueue {
                     )
                 };
                 completion.set_error_message(message);
+                completion.complete_recorded();
             }
         }
         self.remaining_bytes = 0;
@@ -447,6 +451,7 @@ impl PtyWriterLoop {
                                     "pty write rejected: pending byte limit already exceeded"
                                         .to_string(),
                                 );
+                                completion.complete_recorded();
                             }
                         } else {
                             queue.push_back(PendingWrite {
