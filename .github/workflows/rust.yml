@@ -11,6 +11,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit locked dependencies
+        run: cargo audit
+
   build:
     name: Build
 
