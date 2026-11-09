@@ -8290,6 +8290,55 @@ fn is_selection_boundary_character(character: char, word_separators: &str) -> bo
     character.is_ascii_whitespace() || word_separators.contains(character)
 }
 
+/// Sizes of the state a `Grid` retains, read by the hostile-output soak test.
+#[cfg(test)]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct RetainedState {
+    pub lines_above: usize,
+    pub viewport: usize,
+    pub lines_below: usize,
+    pub saved_lines_above: usize,
+    pub saved_viewport: usize,
+    pub title_bytes: usize,
+    pub title_stack_depth: usize,
+    pub longest_stacked_title: usize,
+    pub pending_ui_component_bytes: usize,
+    pub pending_nested_frame_bytes: usize,
+    pub pending_xtgettcap_bytes: usize,
+    pub tracked_notification_id_bytes: usize,
+    pub widest_viewport_row: usize,
+}
+
+#[cfg(test)]
+impl Grid {
+    pub(crate) fn retained_state(&mut self) -> RetainedState {
+        let (saved_lines_above, saved_viewport) = match &self.alternate_screen_state {
+            Some(saved) => (saved.lines_above.len(), saved.viewport.len()),
+            None => (0, 0),
+        };
+        RetainedState {
+            lines_above: self.lines_above.len(),
+            viewport: self.viewport.len(),
+            lines_below: self.lines_below.len(),
+            saved_lines_above,
+            saved_viewport,
+            title_bytes: self.title.as_ref().map_or(0, String::len),
+            title_stack_depth: self.title_stack.len(),
+            longest_stacked_title: self.title_stack.iter().map(String::len).max().unwrap_or(0),
+            pending_ui_component_bytes: self.ui_component_bytes.as_ref().map_or(0, Vec::len),
+            pending_nested_frame_bytes: self.nested_frame_bytes.as_ref().map_or(0, Vec::len),
+            pending_xtgettcap_bytes: self.xtgettcap_bytes.as_ref().map_or(0, Vec::len),
+            tracked_notification_id_bytes: self
+                .notification_tracker
+                .known_ids
+                .iter()
+                .map(String::len)
+                .sum(),
+            widest_viewport_row: self.viewport.iter().map(Row::width).max().unwrap_or(0),
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "./unit/grid_tests.rs"]
 mod grid_tests;

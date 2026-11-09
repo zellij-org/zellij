@@ -160,6 +160,12 @@ impl LinkHandler {
         })
     }
 
+    /// Bytes retained for link targets and the cap they are held to.
+    #[cfg(test)]
+    pub(crate) fn retained_bytes_and_cap(&self) -> (usize, usize) {
+        (self.retained_bytes, MAX_LINK_BYTES_TOTAL)
+    }
+
     #[cfg(test)]
     pub fn links(&self) -> HashMap<u16, Link> {
         self.links.clone()

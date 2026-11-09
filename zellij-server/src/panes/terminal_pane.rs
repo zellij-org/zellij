@@ -2090,6 +2090,10 @@ pub(crate) fn crop_and_pad_chunks(
 }
 
 #[cfg(test)]
+#[path = "./unit/hostile_output_tests.rs"]
+mod hostile_output_tests;
+
+#[cfg(test)]
 #[path = "./unit/terminal_pane_tests.rs"]
 mod grid_tests;
 
