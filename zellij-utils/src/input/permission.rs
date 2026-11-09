@@ -13,13 +13,21 @@ pub struct PermissionCache {
 impl PermissionCache {
     /// Add grants to the existing set for this plugin. Permissions are never
     /// removed here; a denial for a new request must not revoke earlier ones.
-    pub fn grant_permissions(&mut self, plugin_name: String, permissions: Vec<PermissionType>) {
+    /// Returns whether the durable set grew (new plugin key or new permission).
+    pub fn grant_permissions(
+        &mut self,
+        plugin_name: String,
+        permissions: Vec<PermissionType>,
+    ) -> bool {
+        let mut changed = !self.granted.contains_key(&plugin_name);
         let granted = self.granted.entry(plugin_name).or_default();
         for permission in permissions {
             if !granted.contains(&permission) {
                 granted.push(permission);
+                changed = true;
             }
         }
+        changed
     }
 
     pub fn get_permissions(&self, plugin_name: String) -> Option<&Vec<PermissionType>> {
@@ -70,6 +78,73 @@ impl PermissionCache {
         }
         write_atomically(&self.path, contents.as_bytes())
     }
+
+    /// Fresh-read the on-disk cache, apply a grant delta, and publish under a
+    /// short exclusive lock. The lock is held only for this transaction — never
+    /// across user prompts, plugin execution, or network waits.
+    ///
+    /// Returns whether the durable set grew (and therefore whether bytes were
+    /// published). Unchanged grants leave the file untouched, including any
+    /// trailing comments a test or operator may have appended.
+    pub fn grant_and_persist(
+        cache_path: Option<PathBuf>,
+        plugin_name: String,
+        permissions: Vec<PermissionType>,
+    ) -> std::io::Result<bool> {
+        let path = cache_path.unwrap_or(ZELLIJ_PLUGIN_PERMISSIONS_CACHE.to_path_buf());
+        with_permission_cache_lock(&path, || {
+            let mut cache = PermissionCache::from_path_or_default(Some(path.clone()));
+            // Ensure we always write to the intended path even if the default
+            // const would otherwise differ (tests pass an explicit path).
+            cache.path = path.clone();
+            let changed = cache.grant_permissions(plugin_name, permissions);
+            if changed {
+                cache.write_to_file()?;
+            }
+            Ok(changed)
+        })
+    }
+}
+
+fn lock_path_for(cache_path: &PathBuf) -> PathBuf {
+    let mut lock = cache_path.clone();
+    let file_name = cache_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "permissions.kdl".to_owned());
+    lock.set_file_name(format!(".{file_name}.lock"));
+    lock
+}
+
+fn with_permission_cache_lock<T>(
+    cache_path: &PathBuf,
+    body: impl FnOnce() -> std::io::Result<T>,
+) -> std::io::Result<T> {
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let lock_path = lock_path_for(cache_path);
+    let lock_file = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)?;
+    let _guard = exclusive_lock(lock_file)?;
+    body()
+}
+
+#[cfg(unix)]
+fn exclusive_lock(file: fs::File) -> std::io::Result<nix::fcntl::Flock<fs::File>> {
+    use nix::fcntl::{Flock, FlockArg};
+    Flock::lock(file, FlockArg::LockExclusive).map_err(|(_file, errno)| std::io::Error::from(errno))
+}
+
+#[cfg(not(unix))]
+fn exclusive_lock(file: fs::File) -> std::io::Result<fs::File> {
+    // Cross-process locking is unix-only here; same-process writers are still
+    // serialized by the plugin thread. Atomic publish still avoids torn reads.
+    let _ = &file;
+    Ok(file)
 }
 
 fn write_atomically(path: &PathBuf, contents: &[u8]) -> std::io::Result<()> {
@@ -93,7 +168,9 @@ fn write_atomically(path: &PathBuf, contents: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::data::PermissionType;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
+    use std::io::Write;
+    use std::sync::{Arc, Barrier};
 
     #[test]
     fn write_to_file_replaces_atomically_and_leaves_no_temp() {
@@ -156,15 +233,17 @@ mod tests {
     #[test]
     fn grants_add_to_the_existing_set_without_duplicates_or_replacement() {
         let mut cache = PermissionCache::default();
-        cache.grant_permissions(
+        assert!(cache.grant_permissions(
             "example".to_owned(),
             vec![PermissionType::ReadApplicationState],
+        ));
+        assert!(
+            cache.grant_permissions("example".to_owned(), vec![PermissionType::ReadPaneContents])
         );
-        cache.grant_permissions("example".to_owned(), vec![PermissionType::ReadPaneContents]);
-        cache.grant_permissions(
+        assert!(!cache.grant_permissions(
             "example".to_owned(),
             vec![PermissionType::ReadApplicationState],
-        );
+        ));
         let granted = cache.get_permissions("example".to_owned()).unwrap();
         assert_eq!(
             granted,
@@ -173,5 +252,235 @@ mod tests {
                 PermissionType::ReadPaneContents
             ]
         );
+    }
+
+    #[test]
+    fn grant_and_persist_keeps_earlier_disk_grants_and_skips_unchanged_rewrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        // Disk-only grant from an earlier session.
+        assert!(PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::WriteToStdin],
+        )
+        .unwrap());
+
+        assert!(PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::ReadApplicationState],
+        )
+        .unwrap());
+        assert!(PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::RunCommands],
+        )
+        .unwrap());
+
+        let untouched = "// untouched\n";
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(untouched.as_bytes())
+            .unwrap();
+
+        // Denial is a no-op at the cache boundary (callers must not persist it).
+        // Re-granting an already-held permission must not rewrite the file.
+        assert!(!PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::ReadApplicationState],
+        )
+        .unwrap());
+        assert!(
+            fs::read_to_string(&path).unwrap().ends_with(untouched),
+            "unchanged grant must leave trailing comments intact"
+        );
+
+        let cached: HashSet<_> = PermissionCache::from_path_or_default(Some(path))
+            .get_permissions("plugin".to_owned())
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(
+            cached,
+            HashSet::from([
+                PermissionType::WriteToStdin,
+                PermissionType::ReadApplicationState,
+                PermissionType::RunCommands,
+            ])
+        );
+    }
+
+    #[test]
+    fn concurrent_writers_both_read_base_then_both_deltas_survive() {
+        // Schedule: seed {A}; force both writers to start together so each would
+        // otherwise read the same base before publishing {A,B} / {A,C}. The
+        // transaction lock must keep both accepted deltas.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        assert!(PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::WriteToStdin],
+        )
+        .unwrap());
+
+        let start = Arc::new(Barrier::new(2));
+        let path_b = path.clone();
+        let start_b = start.clone();
+        let writer_b = std::thread::spawn(move || {
+            start_b.wait();
+            PermissionCache::grant_and_persist(
+                Some(path_b),
+                "plugin".to_owned(),
+                vec![PermissionType::ReadApplicationState],
+            )
+            .unwrap()
+        });
+        start.wait();
+        assert!(PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::RunCommands],
+        )
+        .unwrap());
+        assert!(writer_b.join().unwrap());
+
+        let cached: HashSet<_> = PermissionCache::from_path_or_default(Some(path))
+            .get_permissions("plugin".to_owned())
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(
+            cached,
+            HashSet::from([
+                PermissionType::WriteToStdin,
+                PermissionType::ReadApplicationState,
+                PermissionType::RunCommands,
+            ]),
+            "both concurrent deltas must survive on top of the seeded base"
+        );
+    }
+
+    #[test]
+    fn concurrent_grant_and_persist_keeps_both_writers_grants() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        let barrier = Arc::new(Barrier::new(2));
+
+        let path_a = path.clone();
+        let barrier_a = barrier.clone();
+        let a = std::thread::spawn(move || {
+            barrier_a.wait();
+            for _ in 0..40 {
+                PermissionCache::grant_and_persist(
+                    Some(path_a.clone()),
+                    "plugin-a".to_owned(),
+                    vec![PermissionType::ReadApplicationState],
+                )
+                .unwrap();
+                PermissionCache::grant_and_persist(
+                    Some(path_a.clone()),
+                    "plugin-shared".to_owned(),
+                    vec![PermissionType::RunCommands],
+                )
+                .unwrap();
+            }
+        });
+
+        let path_b = path.clone();
+        let barrier_b = barrier;
+        let b = std::thread::spawn(move || {
+            barrier_b.wait();
+            for _ in 0..40 {
+                PermissionCache::grant_and_persist(
+                    Some(path_b.clone()),
+                    "plugin-b".to_owned(),
+                    vec![PermissionType::WriteToStdin],
+                )
+                .unwrap();
+                PermissionCache::grant_and_persist(
+                    Some(path_b.clone()),
+                    "plugin-shared".to_owned(),
+                    vec![PermissionType::ReadPaneContents],
+                )
+                .unwrap();
+            }
+        });
+
+        a.join().unwrap();
+        b.join().unwrap();
+
+        let cache = PermissionCache::from_path_or_default(Some(path.clone()));
+        assert!(cache.check_permissions(
+            "plugin-a".to_owned(),
+            &vec![PermissionType::ReadApplicationState]
+        ));
+        assert!(
+            cache.check_permissions("plugin-b".to_owned(), &vec![PermissionType::WriteToStdin])
+        );
+        let shared: HashSet<_> = cache
+            .get_permissions("plugin-shared".to_owned())
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(
+            shared,
+            HashSet::from([
+                PermissionType::RunCommands,
+                PermissionType::ReadPaneContents,
+            ])
+        );
+
+        // Failed publish must not leave partial temps behind.
+        let leftover_temps: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".zellij-permissions-")
+            })
+            .collect();
+        assert!(leftover_temps.is_empty(), "{leftover_temps:?}");
+    }
+
+    #[test]
+    fn a_failed_write_keeps_the_old_cache_and_leaves_no_partial_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("permissions.kdl");
+        // Make the destination a directory so persist/rename fails after the
+        // temporary has been written.
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("keep"), "").unwrap();
+
+        let err = PermissionCache::grant_and_persist(
+            Some(path.clone()),
+            "plugin".to_owned(),
+            vec![PermissionType::RunCommands],
+        );
+        assert!(err.is_err());
+
+        let leftover_temps: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.starts_with(".zellij-permissions-")
+            })
+            .collect();
+        assert!(
+            leftover_temps.is_empty(),
+            "failed publish must not leave partial temps: {leftover_temps:?}"
+        );
+        assert!(path.join("keep").exists());
     }
 }

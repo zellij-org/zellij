@@ -3210,9 +3210,10 @@ impl WasmBridge {
             running_plugin.store.data().plugin_digest
         );
         if status == PermissionStatus::Granted {
-            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-            permission_cache.grant_permissions(permission_cache_key, permissions);
-            permission_cache.write_to_file().with_context(err_context)?;
+            // Fresh-read → apply delta → publish under a short lock. Do not hold
+            // that lock across the user prompt that produced this grant.
+            PermissionCache::grant_and_persist(cache_path, permission_cache_key, permissions)
+                .with_context(err_context)?;
         }
         Ok(())
     }
@@ -4958,3 +4959,7 @@ mod hardening_tests;
 #[cfg(test)]
 #[path = "unit/startup_tests.rs"]
 mod startup_tests;
+
+#[cfg(test)]
+#[path = "unit/permission_grant_tests.rs"]
+mod permission_grant_tests;

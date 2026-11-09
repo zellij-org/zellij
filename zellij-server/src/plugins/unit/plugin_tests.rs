@@ -6419,7 +6419,9 @@ pub fn denied_permission_request_result() {
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
     let permissions = permission_cache.get_permissions(fixture_permission_cache_key());
-
+    // Intentional no-denial-cache contract: a first denial on a fresh path must
+    // leave no entry (not Some([])). Do not persist empty grant lists for denials.
+    assert_eq!(permissions, None);
     assert_snapshot!(format!("{:#?}", permissions));
 }
 
