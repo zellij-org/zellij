@@ -12005,12 +12005,64 @@ fn inserting_a_line_below_the_rows_of_a_fresh_alternate_screen_does_not_panic() 
 
 #[test]
 fn a_cursor_position_report_above_the_scroll_region_does_not_underflow() {
+    // DECOM off: CPR is absolute. Cursor at screen row 1 with a mid-screen
+    // scroll region must still report 1 (never underflow via region math).
     let mut grid = empty_grid(20, 80, false);
     vt_parser::Parser::new().feed(&mut grid, b"\x1b[5;10r\x1b[1;1H\x1b[6n");
     assert_eq!(
         grid.pending_messages_to_pty.last().map(|m| m.as_slice()),
         Some(&b"\x1b[1;1R"[..])
     );
+}
+
+#[test]
+fn cursor_position_reports_respect_origin_mode_and_scroll_region() {
+    // (label, input, expected CPR bytes)
+    let cases: &[(&str, &[u8], &[u8])] = &[
+        // DECOM off + scroll region: absolute screen row (not region-relative).
+        (
+            "decom_off_absolute_inside_region",
+            b"\x1b[5;10r\x1b[7;1H\x1b[6n",
+            b"\x1b[7;1R",
+        ),
+        (
+            "decom_off_absolute_above_region",
+            b"\x1b[5;10r\x1b[1;1H\x1b[6n",
+            b"\x1b[1;1R",
+        ),
+        // DECOM on: CPR rows are relative to the scroll-region top.
+        (
+            "decom_on_relative_home",
+            b"\x1b[5;10r\x1b[?6h\x1b[1;1H\x1b[6n",
+            b"\x1b[1;1R",
+        ),
+        (
+            "decom_on_relative_row_three",
+            b"\x1b[5;10r\x1b[?6h\x1b[3;1H\x1b[6n",
+            b"\x1b[3;1R",
+        ),
+        (
+            "decom_cleared_returns_to_absolute",
+            b"\x1b[5;10r\x1b[?6h\x1b[3;1H\x1b[?6l\x1b[6n",
+            b"\x1b[7;1R",
+        ),
+    ];
+    for (label, input, expected) in cases {
+        let mut grid = empty_grid(20, 80, false);
+        vt_parser::Parser::new().feed(&mut grid, input);
+        assert_eq!(
+            grid.pending_messages_to_pty.last().map(|m| m.as_slice()),
+            Some(*expected),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn ed2_preserves_the_scroll_region() {
+    let mut grid = empty_grid(20, 80, false);
+    vt_parser::Parser::new().feed(&mut grid, b"\x1b[5;10r\x1b[2J");
+    assert_eq!(grid.scroll_region, (4, 9));
 }
 
 fn linked_uris(grid: &Grid) -> Vec<String> {

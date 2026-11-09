@@ -1902,7 +1902,7 @@ pub struct Grid {
     render_lock_opened_at: Option<std::time::Instant>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
-    pub erasure_mode: bool,         // ERM
+    pub origin_mode: bool, // DECOM — origin mode: CUP/CPR relative to scroll region
     pub sixel_scrolling: bool,      // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
@@ -2349,7 +2349,7 @@ impl Grid {
             change_counter: 0,
             cursor_key_mode: false,
             bracketed_paste_mode: false,
-            erasure_mode: false,
+            origin_mode: false,
             sixel_scrolling: false,
             insert_mode: false,
             disable_linewrap: false,
@@ -4986,7 +4986,7 @@ impl Grid {
     pub fn move_cursor_to(&mut self, x: usize, y: usize, pad_character: TerminalCharacter) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         self.cursor.x = std::cmp::min(self.width - 1, x);
-        let y_offset = if self.erasure_mode {
+        let y_offset = if self.origin_mode {
             scroll_region_top
         } else {
             0
@@ -5227,7 +5227,7 @@ impl Grid {
         self.horizontal_tabstops = create_horizontal_tabstops(self.width);
         self.preceding_char = None;
         self.active_charset = Default::default();
-        self.erasure_mode = false;
+        self.origin_mode = false;
         self.disable_linewrap = false;
         self.new_line_mode = false;
         self.cursor.change_shape(CursorShape::Initial);
@@ -8392,7 +8392,7 @@ impl Handler for Grid {
                 } else if clear_type == 1 {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
-                    self.set_scroll_region_to_viewport_size();
+                    // ED2 clears the display; it must not reset DECSTBM.
                     self.fill_viewport(char_to_replace);
                     if let Some(images_to_reap) = self.sixel_grid.clear() {
                         self.sixel_grid.reap_images(images_to_reap);
@@ -8495,7 +8495,7 @@ impl Handler for Grid {
                             self.cursor.y = 0;
                         },
                         6 => {
-                            self.erasure_mode = false;
+                            self.origin_mode = false;
                         },
                         7 => {
                             self.disable_linewrap = true;
@@ -8624,7 +8624,7 @@ impl Handler for Grid {
                             self.cursor.y = 0;
                         },
                         6 => {
-                            self.erasure_mode = true;
+                            self.origin_mode = true;
                         },
                         7 => {
                             self.disable_linewrap = false;
@@ -8710,7 +8710,7 @@ impl Handler for Grid {
                     .filter(|&param| param != 0)
                     .map(|bottom| bottom.saturating_sub(1));
                 // an invalid region is ignored and leaves the cursor where it was
-                if self.set_scroll_region(top, bottom) && self.erasure_mode {
+                if self.set_scroll_region(top, bottom) && self.origin_mode {
                     self.move_cursor_to_line(top, EMPTY_TERMINAL_CHARACTER);
                     self.move_cursor_to_beginning_of_line();
                 }
@@ -8986,15 +8986,17 @@ impl Handler for Grid {
                             .push(all_good.as_bytes().to_vec());
                     },
                     6 => {
-                        // CPR - cursor position report
-
-                        // Note that this is relative to scrolling region.
-                        let offset = self.scroll_region.0; // scroll_region_top
-                        let position_report = format!(
-                            "\u{1b}[{};{}R",
-                            (self.cursor.y + 1).saturating_sub(offset).max(1),
-                            self.cursor.x + 1
-                        );
+                        // CPR - cursor position report.
+                        // Region-relative only when DECOM (origin mode) is set;
+                        // otherwise report the absolute 1-based screen row.
+                        let row = if self.origin_mode {
+                            let offset = self.scroll_region.0;
+                            (self.cursor.y + 1).saturating_sub(offset).max(1)
+                        } else {
+                            (self.cursor.y + 1).max(1)
+                        };
+                        let position_report =
+                            format!("\u{1b}[{};{}R", row, self.cursor.x + 1);
                         self.pending_messages_to_pty
                             .push(position_report.as_bytes().to_vec());
                     },

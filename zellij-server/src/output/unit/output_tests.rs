@@ -2782,6 +2782,46 @@ mod blink_serialization {
     }
 }
 
+mod intensity_style_diff {
+    use crate::panes::terminal_character::{AnsiCode, CharacterStyles, DEFAULT_STYLES};
+
+    fn diff_emitted(from: CharacterStyles, to: CharacterStyles) -> String {
+        let mut current = from;
+        let diff = current
+            .update_and_return_diff(&to, None)
+            .expect("styles changed");
+        format!("{}", diff)
+    }
+
+    #[test]
+    fn sgr22_reapplies_the_remaining_intensity_after_a_shared_reset() {
+        let bold_on = Some(AnsiCode::On);
+        let dim_on = Some(AnsiCode::On);
+        let reset = Some(AnsiCode::Reset);
+        let both_on = DEFAULT_STYLES.bold(bold_on).dim(dim_on);
+
+        let cases: &[(&str, CharacterStyles, CharacterStyles, &str)] = &[
+            // bold+dim → bold off (SGR 22) while dim stays: must re-emit dim.
+            (
+                "bold_resets_dim_remains",
+                both_on,
+                DEFAULT_STYLES.bold(reset).dim(dim_on),
+                "\u{1b}[22m\u{1b}[2m",
+            ),
+            // bold+dim → dim off (SGR 22) while bold stays: must re-emit bold.
+            (
+                "dim_resets_bold_remains",
+                both_on,
+                DEFAULT_STYLES.bold(bold_on).dim(reset),
+                "\u{1b}[1m\u{1b}[22m\u{1b}[1m",
+            ),
+        ];
+        for (label, from, to, expected) in cases {
+            assert_eq!(diff_emitted(*from, *to), *expected, "{label}");
+        }
+    }
+}
+
 mod scroll_hints_on_the_wire {
     use super::super::super::{scroll_hints, PaneScroll, TrackedScroll};
     use crate::panes::PaneId;

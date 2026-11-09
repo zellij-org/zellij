@@ -597,6 +597,21 @@ impl CharacterStyles {
         if self.dim != new_styles.dim {
             diff.dim = new_styles.dim;
         }
+        // SGR 22 clears both bold and dim. When only one intensity changes to
+        // Reset, re-emit the remaining On attribute so bold+dim → 22 → dim
+        // (or bold) does not drop the survivor on the wire.
+        if diff.bold == Some(AnsiCode::Reset)
+            && new_styles.dim == Some(AnsiCode::On)
+            && diff.dim.is_none()
+        {
+            diff.dim = Some(AnsiCode::On);
+        }
+        if diff.dim == Some(AnsiCode::Reset)
+            && new_styles.bold == Some(AnsiCode::On)
+            && diff.bold.is_none()
+        {
+            diff.bold = Some(AnsiCode::On);
+        }
         if self.italic != new_styles.italic {
             diff.italic = new_styles.italic;
         }
