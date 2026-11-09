@@ -5852,7 +5852,8 @@ impl Tab {
         client_id: ClientId,
     ) -> Result<bool> {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
-        // ctrl-c)
+        // ctrl-c). One recipient's failure must not skip the others. The
+        // first error is returned so the screen owner can record it.
         let mut should_trigger_ui_change = false;
         let mut pane_ids = self.get_static_and_floating_pane_ids();
         pane_ids.extend(
@@ -5861,22 +5862,35 @@ impl Tab {
                 .filter(|member| self.pane_is_hidden_stack_list_member(member))
                 .copied(),
         );
+        let mut recipient_failure = None;
         for pane_id in pane_ids {
-            let ui_change_triggered = self
-                .write_to_pane_id(
-                    key_with_modifier,
-                    raw_input_bytes.clone(),
-                    raw_input_bytes_are_kitty,
-                    pane_id,
-                    Some(client_id),
-                    None,
-                )
-                .context("failed to write to terminals on current tab")?;
-            if ui_change_triggered {
-                should_trigger_ui_change = true;
+            match self.write_to_pane_id(
+                key_with_modifier,
+                raw_input_bytes.clone(),
+                raw_input_bytes_are_kitty,
+                pane_id,
+                Some(client_id),
+                None,
+            ) {
+                Ok(ui_change_triggered) => {
+                    if ui_change_triggered {
+                        should_trigger_ui_change = true;
+                    }
+                },
+                Err(error) => {
+                    let error = error.context("failed to write to terminals on current tab");
+                    if recipient_failure.is_none() {
+                        recipient_failure = Some(error);
+                    } else {
+                        log::error!("{error:#}");
+                    }
+                },
             }
         }
-        Ok(should_trigger_ui_change)
+        match recipient_failure {
+            Some(error) => Err(error),
+            None => Ok(should_trigger_ui_change),
+        }
     }
 
     pub fn write_to_active_terminal(
@@ -5958,15 +5972,27 @@ impl Tab {
         &mut self,
         bytes: Vec<u8>,
         pane_id: PaneId,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let bytes = without_paste_markers(bytes);
+        // Plugin panes collect the paste across begin, body, and end, and
+        // emit PastedText from the end marker. Those steps are not pty writes.
+        if matches!(pane_id, PaneId::Plugin(_)) {
+            return self.paste_in_marker_steps(bytes, pane_id, completion);
+        }
+        self.paste_terminal_in_one_write(bytes, pane_id, completion)
+    }
+
+    /// Plugin paste protocol: begin arms the buffer, the body appends, and
+    /// the end marker delivers `PastedText`. None of those is a pty admission.
+    fn paste_in_marker_steps(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
         mut completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
-        let bytes = without_paste_markers(bytes);
-
-        // Begin and body are separate writes. A rejection of either returns
-        // before `completion` is attached to the end marker; record it or the
-        // owner drops as success.
         if let Err(error) =
             self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)
         {
@@ -5978,6 +6004,68 @@ impl Tab {
             return Err(error);
         }
         self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
+        Ok(())
+    }
+
+    /// Begin, body, and end are one byte string, so a rejected admission
+    /// cannot deliver the begin marker without the end marker.
+    fn paste_terminal_in_one_write(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+        if self.get_pane_with_id(pane_id).is_none() {
+            let error = anyhow!("failed to find pane with id {pane_id:?}")
+                .context(format!("failed to write to pane with id {pane_id:?}"));
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        // Adjusting the begin marker reports whether this pane keeps it.
+        // The result is not admitted. A held pane does not answer with the
+        // marker, so it keeps the three-step path and still writes nothing
+        // until the real key is applied.
+        let keeps_bracketed_paste = {
+            let pane = self
+                .get_pane_with_id_mut(pane_id)
+                .expect("pane was present");
+            match pane.adjust_input_to_terminal(&None, bracketed_paste_begin.clone(), false, None)
+            {
+                Some(AdjustedInput::WriteBytesToTerminal(adjusted)) => {
+                    adjusted.as_slice() == bracketed_paste_begin.as_slice()
+                },
+                _ => false,
+            }
+        };
+        if !keeps_bracketed_paste {
+            let held = self
+                .get_pane_with_id(pane_id)
+                .map(|pane| pane.is_held())
+                .unwrap_or(false);
+            if held {
+                return self.paste_in_marker_steps(bytes, pane_id, completion);
+            }
+        }
+        let payload = if keeps_bracketed_paste {
+            let mut payload = Vec::with_capacity(
+                bracketed_paste_begin.len() + bytes.len() + bracketed_paste_end.len(),
+            );
+            payload.extend_from_slice(&bracketed_paste_begin);
+            payload.extend_from_slice(&bytes);
+            payload.extend_from_slice(&bracketed_paste_end);
+            payload
+        } else {
+            bytes
+        };
+        if let Err(error) =
+            self.write_to_pane_id(&None, payload, false, pane_id, None, completion)
+        {
+            // Admission failure already published the completion. A miss
+            // before that publish is recorded above.
+            return Err(error);
+        }
         Ok(())
     }
 
