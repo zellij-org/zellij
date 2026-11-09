@@ -97,11 +97,38 @@ fn session_name(names_by_id: &HashMap<String, String>, id: String) -> String {
 }
 
 /// How long the socket of a single session may take to answer before that
-/// session is considered dead, and how long listing may take in total.
+/// session is treated as unknown (not dead), and how long listing may take in total.
 const SESSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Upper bound on sockets probed at once, so a directory full of wedged
 /// sockets is scanned in parallel without one thread per entry.
 const MAX_CONCURRENT_SESSION_PROBES: usize = 8;
+
+/// Result of probing one session socket / marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionProbeResult {
+    /// The server answered and is confirmed live.
+    Responsive,
+    /// A socket or marker exists but liveness could not be established (timeout,
+    /// unexpected reply, access denied, unreadable marker, or never probed before
+    /// the shared deadline). Must not be treated as absent.
+    Unknown,
+    /// Proven gone: no socket, connection refused (and cleaned), or process death
+    /// established by platform-specific evidence.
+    Absent,
+}
+
+/// Bounded discovery outcome: responsive sessions plus candidates that stayed unknown.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionObservation {
+    pub responsive: Vec<(String, Duration)>,
+    pub unknown: Vec<(String, Duration)>,
+}
+
+impl SessionObservation {
+    pub fn is_definitely_empty(&self) -> bool {
+        self.responsive.is_empty() && self.unknown.is_empty()
+    }
+}
 
 /// The socket/named-pipe file name of a directory entry, if it could be a session.
 fn session_socket_id(file: &fs::DirEntry) -> Option<String> {
@@ -125,40 +152,52 @@ fn session_age(file: &fs::DirEntry) -> Duration {
     Duration::from_secs(age.as_secs())
 }
 
-/// Probe `(id, name, payload)` candidates concurrently and return the live ones
-/// in candidate order. A single overall deadline bounds the whole call: when it
-/// expires, sockets that have not been probed yet are treated as dead.
+/// Probe `(id, name, payload)` candidates concurrently and return the responsive
+/// ones in candidate order. Unknown / unprobed candidates are omitted here; use
+/// [`observe_sessions_with`] when the caller must distinguish unknown from absent.
 fn live_sessions<T: Clone + Send + Sync>(
     dir: &Path,
     candidates: Vec<(String, String, T)>,
     deadline: Duration,
 ) -> Vec<(String, T)> {
-    live_sessions_with(candidates, deadline, |id, remaining| {
+    observe_sessions_with(candidates, deadline, |id, remaining| {
         assert_socket_in(dir, id, remaining)
     })
+    .responsive
 }
 
-fn live_sessions_with<T, F>(
+#[derive(Clone, Copy)]
+enum ObservedSlot {
+    Responsive,
+    Unknown,
+}
+
+fn observe_sessions_with<T, F>(
     candidates: Vec<(String, String, T)>,
     deadline: Duration,
     probe: F,
-) -> Vec<(String, T)>
+) -> SessionObservationPayload<T>
 where
     T: Clone + Send + Sync,
-    F: Fn(&str, Duration) -> bool + Sync,
+    F: Fn(&str, Duration) -> SessionProbeResult + Sync,
 {
+    let mut observation = SessionObservationPayload {
+        responsive: Vec::new(),
+        unknown: Vec::new(),
+    };
     if candidates.is_empty() {
-        return Vec::new();
+        return observation;
     }
     if candidates.len() == 1 {
         let (id, name, payload) = candidates.into_iter().next().unwrap();
-        return if probe(&id, deadline) {
-            vec![(name, payload)]
-        } else {
-            Vec::new()
-        };
+        match probe(&id, deadline) {
+            SessionProbeResult::Responsive => observation.responsive.push((name, payload)),
+            SessionProbeResult::Unknown => observation.unknown.push((name, payload)),
+            SessionProbeResult::Absent => {},
+        }
+        return observation;
     }
-    let results: Vec<Mutex<Option<(String, T)>>> =
+    let results: Vec<Mutex<Option<(ObservedSlot, String, T)>>> =
         candidates.iter().map(|_| Mutex::new(None)).collect();
     let next = AtomicUsize::new(0);
     let started = Instant::now();
@@ -171,37 +210,60 @@ where
                     break;
                 };
                 let remaining = deadline.saturating_sub(started.elapsed());
-                if remaining.is_zero() {
-                    break;
-                }
-                if probe(id, remaining) {
+                let outcome = if remaining.is_zero() {
+                    // Never reached before the shared deadline: unknown, not absent.
+                    SessionProbeResult::Unknown
+                } else {
+                    probe(id, remaining)
+                };
+                let slot = match outcome {
+                    SessionProbeResult::Responsive => Some(ObservedSlot::Responsive),
+                    SessionProbeResult::Unknown => Some(ObservedSlot::Unknown),
+                    SessionProbeResult::Absent => None,
+                };
+                if let Some(slot) = slot {
                     let payload = candidates[index].2.clone();
                     *results[index]
                         .lock()
                         .expect("session probe result lock poisoned") =
-                        Some((name.clone(), payload));
+                        Some((slot, name.clone(), payload));
                 }
             });
         }
     });
-    results
-        .into_iter()
-        .filter_map(|slot| slot.into_inner().unwrap_or_else(|e| e.into_inner()))
-        .collect()
+    for slot in results {
+        if let Some((kind, name, payload)) = slot.into_inner().unwrap_or_else(|e| e.into_inner()) {
+            match kind {
+                ObservedSlot::Responsive => observation.responsive.push((name, payload)),
+                ObservedSlot::Unknown => observation.unknown.push((name, payload)),
+            }
+        }
+    }
+    observation
+}
+
+struct SessionObservationPayload<T> {
+    responsive: Vec<(String, T)>,
+    unknown: Vec<(String, T)>,
 }
 
 pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    get_sessions_in(&ZELLIJ_SOCK_DIR)
+    Ok(observe_sessions()?.responsive)
 }
 
-fn get_sessions_in(dir: &Path) -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    get_sessions_in_with(dir, SESSION_PROBE_TIMEOUT)
+/// Discover sessions while preserving unknown/unresponsive candidates separately from absent.
+pub fn observe_sessions() -> Result<SessionObservation, io::ErrorKind> {
+    observe_sessions_in(&ZELLIJ_SOCK_DIR)
 }
 
-fn get_sessions_in_with(
+fn observe_sessions_in(dir: &Path) -> Result<SessionObservation, io::ErrorKind> {
+    observe_sessions_in_with(dir, SESSION_PROBE_TIMEOUT)
+}
+
+fn observe_sessions_in_with(
     dir: &Path,
     deadline: Duration,
-) -> Result<Vec<(String, Duration)>, io::ErrorKind> {
+) -> Result<SessionObservation, io::ErrorKind> {
     match fs::read_dir(dir) {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
@@ -213,10 +275,16 @@ fn get_sessions_in_with(
                     Some((id, name, session_age(&file)))
                 })
                 .collect();
-            Ok(live_sessions(dir, candidates, deadline))
+            let observed = observe_sessions_with(candidates, deadline, |id, remaining| {
+                assert_socket_in(dir, id, remaining)
+            });
+            Ok(SessionObservation {
+                responsive: observed.responsive,
+                unknown: observed.unknown,
+            })
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
-        Err(_) => Ok(Vec::with_capacity(0)),
+        Err(_) => Ok(SessionObservation::default()),
     }
 }
 
@@ -374,80 +442,154 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 ///
 /// On Unix, connects and sends a `ConnStatus` message to verify the server responds.
 /// On Windows, reads the server PID from the marker file and checks process liveness.
+///
+/// Ordinary probing is observational: a refused connection proves absence for discovery
+/// purposes but does **not** unlink the path. Stale-path reclamation belongs exclusively to
+/// [`crate::session_socket_claim::SessionSocketClaim::reclaim_stale_socket`].
 #[cfg(unix)]
-fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> bool {
-    use crate::consts::ipc_connect;
+fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> SessionProbeResult {
+    assert_socket_path(&dir.join(name), timeout)
+}
+
+/// Probe the socket at `path` with one absolute deadline covering connect + send + receive.
+#[cfg(unix)]
+fn assert_socket_path(path: &Path, timeout: Duration) -> SessionProbeResult {
+    use crate::consts::ipc_connect_with_timeout;
     if timeout.is_zero() {
-        return false;
+        return SessionProbeResult::Unknown;
     }
-    let path = dir.join(name);
-    match ipc_connect(&path) {
+    let started = Instant::now();
+    match ipc_connect_with_timeout(path, timeout) {
         Ok(stream) => {
-            // a wedged server accepts connections but never replies; without a
-            // read timeout `zellij ls` would block forever on recv below
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return SessionProbeResult::Unknown;
+            }
+            // A wedged server accepts connections but never replies; bound the receive with
+            // whatever of the overall deadline remains after connect.
             {
                 use interprocess::local_socket::prelude::*;
-                let _ = stream.set_recv_timeout(Some(timeout));
+                let _ = stream.set_recv_timeout(Some(remaining));
             }
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
+                Some((ServerToClientMsg::Connected, _)) => SessionProbeResult::Responsive,
+                // Timeout, hang-up or unexpected reply: unknown, not proven dead.
+                None | Some((_, _)) => SessionProbeResult::Unknown,
             }
         },
-        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-            drop(fs::remove_file(&path));
-            false
+        // Refused / missing: proven gone for observation. Do not unlink — a concurrent
+        // replacement may already own this pathname.
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+            ) =>
+        {
+            SessionProbeResult::Absent
         },
-        Err(_) => false,
+        Err(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => {
+            SessionProbeResult::Unknown
+        },
+        Err(_) => SessionProbeResult::Unknown,
+    }
+}
+
+/// Classification of a Windows `OpenProcess` result for a session marker PID.
+///
+/// A successful handle only means *some* process currently has that PID — not that it is the
+/// recorded Zellij server (PID reuse). Access denied / other failures stay unknown; only a clear
+/// no-such-PID error authorises treating the marker as dead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowsPidLiveness {
+    /// `OpenProcess` returned a handle. Identity with the recorded server is not proven.
+    AliveUnverified,
+    /// Process is gone (`ERROR_INVALID_PARAMETER` after a null handle).
+    Dead,
+    /// Inspection failed without proving death (access denied, other errors, missing GetLastError).
+    Unknown,
+}
+
+/// `ERROR_ACCESS_DENIED` from Win32.
+pub const WINDOWS_ERROR_ACCESS_DENIED: u32 = 5;
+/// `ERROR_INVALID_PARAMETER` from Win32 — documented for `OpenProcess` when the PID does not exist.
+pub const WINDOWS_ERROR_INVALID_PARAMETER: u32 = 87;
+
+/// Pure classifier for unit tests and the Windows probe. `last_error` is meaningful only when
+/// `handle_is_null` is true.
+pub fn classify_windows_open_process(handle_is_null: bool, last_error: u32) -> WindowsPidLiveness {
+    if !handle_is_null {
+        return WindowsPidLiveness::AliveUnverified;
+    }
+    match last_error {
+        WINDOWS_ERROR_INVALID_PARAMETER => WindowsPidLiveness::Dead,
+        WINDOWS_ERROR_ACCESS_DENIED => WindowsPidLiveness::Unknown,
+        _ => WindowsPidLiveness::Unknown,
     }
 }
 
 /// On Windows, reads the server PID from the marker file and checks whether
-/// the process is still alive via `OpenProcess`. Cleans up stale marker files.
+/// the process is still alive via `OpenProcess`. Observation never deletes markers;
+/// reclamation is reserved for [`SessionSocketClaim::reclaim_stale_socket`].
 #[cfg(windows)]
-fn assert_socket_in(dir: &Path, name: &str, _timeout: Duration) -> bool {
-    use windows_sys::Win32::Foundation::CloseHandle;
+fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> SessionProbeResult {
+    assert_socket_path(&dir.join(name), timeout)
+}
+
+#[cfg(windows)]
+fn assert_socket_path(path: &Path, _timeout: Duration) -> SessionProbeResult {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-    let path = dir.join(name);
-    let pid_str = match fs::read_to_string(&path) {
+    let pid_str = match fs::read_to_string(path) {
         Ok(s) => s,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            return SessionProbeResult::Absent;
+        },
         Err(_) => {
-            drop(fs::remove_file(&path));
-            return false;
+            // Unreadable marker: unknown, do not delete (may be a permissions race).
+            return SessionProbeResult::Unknown;
         },
     };
     let pid: u32 = match pid_str.trim().parse() {
         Ok(p) => p,
         Err(_) => {
-            // Marker file exists but has no valid PID (e.g. empty from old version).
-            // Treat as stale.
-            drop(fs::remove_file(&path));
-            return false;
+            // Marker exists but has no valid PID — observationally absent, leave the file.
+            return SessionProbeResult::Absent;
         },
     };
-    let alive = unsafe {
+    let (handle_is_null, last_error) = unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if handle.is_null() {
-            false
+            (true, GetLastError())
         } else {
             CloseHandle(handle);
-            true
+            (false, 0)
         }
     };
-    if !alive {
-        drop(fs::remove_file(&path));
+    match classify_windows_open_process(handle_is_null, last_error) {
+        WindowsPidLiveness::AliveUnverified => SessionProbeResult::Responsive,
+        WindowsPidLiveness::Dead => SessionProbeResult::Absent,
+        WindowsPidLiveness::Unknown => SessionProbeResult::Unknown,
     }
-    alive
 }
 
 #[cfg(not(any(unix, windows)))]
-fn assert_socket_in(_dir: &Path, _name: &str, _timeout: Duration) -> bool {
-    true
+fn assert_socket_in(_dir: &Path, _name: &str, _timeout: Duration) -> SessionProbeResult {
+    SessionProbeResult::Responsive
+}
+
+#[cfg(not(any(unix, windows)))]
+fn assert_socket_path(_path: &Path, _timeout: Duration) -> SessionProbeResult {
+    SessionProbeResult::Responsive
+}
+
+/// Error-preserving path presence check. [`Path::exists`] maps inspection failures to `false`.
+fn path_try_exists(path: &Path) -> Result<bool, io::ErrorKind> {
+    path.try_exists().map_err(|err| err.kind())
 }
 
 pub fn print_sessions(
@@ -517,12 +659,23 @@ pub enum ActiveSession {
     None,
     One(String),
     Many,
+    /// Socket(s) exist but none answered before the probe deadline. Must not be reported as
+    /// "no active session".
+    Unresponsive(Vec<String>),
 }
 
 pub fn get_active_session() -> ActiveSession {
-    match get_sessions() {
-        Ok(sessions) if sessions.is_empty() => ActiveSession::None,
-        Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap().0),
+    match observe_sessions() {
+        Ok(obs) if obs.is_definitely_empty() => ActiveSession::None,
+        Ok(obs) if obs.responsive.is_empty() => ActiveSession::Unresponsive(
+            obs.unknown
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect(),
+        ),
+        Ok(mut obs) if obs.responsive.len() == 1 => {
+            ActiveSession::One(obs.responsive.pop().unwrap().0)
+        },
         Ok(_) => ActiveSession::Many,
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -585,32 +738,59 @@ pub fn delete_session(name: &str, force: bool) {
     }
 }
 
+/// Combine resurrectable layouts with a live observation for display.
+///
+/// Unknown (unresponsive) sockets that also have a saved layout must **not** be marked EXITED —
+/// a timeout is weaker evidence than process death.
+fn sessions_for_display(
+    observation: &SessionObservation,
+    resurrectable: Vec<(String, Duration)>,
+) -> Vec<(String, Duration, bool)> {
+    let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable
+        .into_iter()
+        .map(|(name, timestamp)| (name, (timestamp, true)))
+        .collect();
+    for (session_name, duration) in &observation.responsive {
+        all_sessions.insert(session_name.clone(), (*duration, false));
+    }
+    for (session_name, _) in &observation.unknown {
+        // Drop any EXITED entry inherited from a layout; the unresponsive footer reports them.
+        all_sessions.remove(session_name);
+    }
+    all_sessions
+        .into_iter()
+        .map(|(name, (timestamp, is_dead))| (name, timestamp, is_dead))
+        .collect()
+}
+
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
-    let exit_code = match get_sessions() {
-        Ok(running_sessions) => {
-            let resurrectable_sessions = get_resurrectable_sessions();
-            let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
-                .iter()
-                .map(|(name, timestamp)| (name.clone(), (timestamp.clone(), true)))
-                .collect();
-            for (session_name, duration) in running_sessions {
-                all_sessions.insert(session_name.clone(), (duration, false));
-            }
-            if all_sessions.is_empty() {
+    let exit_code = match observe_sessions() {
+        Ok(observation) => {
+            let all_sessions =
+                sessions_for_display(&observation, get_resurrectable_sessions());
+            if all_sessions.is_empty() && observation.unknown.is_empty() {
                 eprintln!("No active zellij sessions found.");
                 1
-            } else {
-                print_sessions(
-                    all_sessions
-                        .iter()
-                        .map(|(name, (timestamp, is_dead))| {
-                            (name.clone(), timestamp.clone(), *is_dead)
-                        })
-                        .collect(),
-                    no_formatting,
-                    short,
-                    reverse,
+            } else if all_sessions.is_empty() {
+                // Unknown sockets must not become a successful empty inventory.
+                eprintln!(
+                    "Found session socket(s) that did not respond in time; \
+                     cannot claim there are no active sessions:"
                 );
+                for (name, _) in &observation.unknown {
+                    eprintln!("  {} (unresponsive)", name);
+                }
+                1
+            } else {
+                print_sessions(all_sessions, no_formatting, short, reverse);
+                if !observation.unknown.is_empty() {
+                    eprintln!(
+                        "Also found session socket(s) that did not respond in time:"
+                    );
+                    for (name, _) in &observation.unknown {
+                        eprintln!("  {} (unresponsive)", name);
+                    }
+                }
                 0
             }
         },
@@ -654,21 +834,18 @@ pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKin
 }
 
 pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
-    match match_session_name(name) {
-        Ok(SessionNameMatch::Exact(_)) => Ok(true),
-        Ok(_) => {
-            // A socket that could not be probed before the shared deadline is
-            // unknown, not absent. Treating it as absent lets callers create a
-            // second server for a live session.
-            let socket_path =
-                resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-            if socket_path.exists() {
-                Err(io::ErrorKind::TimedOut)
-            } else {
-                Ok(false)
-            }
+    // Exact-name/ID lookups probe the known target directly. Waiting on an enumeration of
+    // unrelated candidates can exhaust the shared deadline before this socket is examined.
+    let socket_path =
+        resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+    match path_try_exists(&socket_path)? {
+        false => Ok(false),
+        true => match assert_socket_path(&socket_path, SESSION_PROBE_TIMEOUT) {
+            SessionProbeResult::Responsive => Ok(true),
+            SessionProbeResult::Absent => Ok(false),
+            // A socket that exists but could not be confirmed live is unknown, not absent.
+            SessionProbeResult::Unknown => Err(io::ErrorKind::TimedOut),
         },
-        Err(e) => Err(e),
     }
 }
 
@@ -833,6 +1010,12 @@ pub fn assert_session_ne(name: &str) {
 }
 
 pub fn session_listing_error_message(kind: io::ErrorKind) -> String {
+    if kind == io::ErrorKind::TimedOut {
+        return "A session socket exists but did not respond before the probe deadline.\n\
+                Refusing to treat it as absent or to create a replacement session.\n\
+                Re-try once the session responds, or inspect it with `zellij list-sessions`."
+            .to_owned();
+    }
     format!(
         "Failed to list existing Zellij sessions in the socket directory:\n  {}\n\n\
          Reason: {}\n\n\
@@ -1189,12 +1372,13 @@ mod session_probe_tests {
             ("fast".to_owned(), "fast".to_owned(), ()),
         ];
 
-        let live = live_sessions_with(candidates, Duration::from_secs(2), |id, _| {
+        let live = observe_sessions_with(candidates, Duration::from_secs(2), |id, _| {
             if id == "slow" {
                 thread::sleep(Duration::from_millis(300));
             }
-            true
-        });
+            SessionProbeResult::Responsive
+        })
+        .responsive;
 
         let names: Vec<&str> = live.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, vec!["slow", "fast"]);
@@ -1208,18 +1392,20 @@ mod session_probe_tests {
         ];
 
         let started = Instant::now();
-        let sessions =
-            live_sessions_with(candidates, Duration::from_millis(500), |id, remaining| {
+        let observed =
+            observe_sessions_with(candidates, Duration::from_millis(500), |id, remaining| {
                 if id == "wedged" {
                     thread::sleep(remaining);
-                    false
+                    SessionProbeResult::Unknown
                 } else {
-                    true
+                    SessionProbeResult::Responsive
                 }
             });
 
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].0, "live");
+        assert_eq!(observed.responsive.len(), 1);
+        assert_eq!(observed.responsive[0].0, "live");
+        assert_eq!(observed.unknown.len(), 1);
+        assert_eq!(observed.unknown[0].0, "wedged");
         assert!(
             started.elapsed() < Duration::from_secs(3),
             "probing took {:?}",
@@ -1237,21 +1423,376 @@ mod session_probe_tests {
             .collect();
 
         let started = Instant::now();
-        let sessions =
-            live_sessions_with(candidates, Duration::from_millis(400), |_, remaining| {
+        let observed =
+            observe_sessions_with(candidates, Duration::from_millis(400), |_, remaining| {
                 // A wedged socket spends its whole budget waiting for a reply.
                 thread::sleep(remaining);
-                false
+                SessionProbeResult::Unknown
             });
         let elapsed = started.elapsed();
 
-        assert!(sessions.is_empty());
+        assert!(observed.responsive.is_empty());
+        assert_eq!(observed.unknown.len(), 12);
         // Sequentially this would take twelve probe timeouts.
         assert!(
             elapsed < Duration::from_secs(2),
             "probing twelve wedged sockets took {:?}",
             elapsed
         );
+    }
+
+    #[test]
+    fn alive_but_slow_server_is_unknown_not_absent() {
+        let candidates = vec![("slow".to_owned(), "slow".to_owned(), ())];
+        let observed =
+            observe_sessions_with(candidates, Duration::from_millis(50), |_, remaining| {
+                thread::sleep(remaining + Duration::from_millis(20));
+                SessionProbeResult::Responsive
+            });
+        // The probe itself overran; classification still depends on what the probe returns.
+        // Explicit unknown from deadline exhaustion is covered below.
+        let _ = observed;
+        let candidates = vec![("slow".to_owned(), "slow".to_owned(), ())];
+        let observed = observe_sessions_with(candidates, Duration::from_millis(1), |_, _| {
+            thread::sleep(Duration::from_millis(30));
+            SessionProbeResult::Unknown
+        });
+        assert!(observed.responsive.is_empty());
+        assert_eq!(observed.unknown.len(), 1);
+        assert_eq!(observed.unknown[0].0, "slow");
+    }
+
+    #[test]
+    fn eight_slow_candidates_still_surface_a_healthy_ninth_past_the_shared_deadline() {
+        // Nine candidates with eight workers: the healthy session is last in the queue, so it is
+        // only claimed after a slow worker frees a slot. Slow probes return promptly as Unknown
+        // (simulating a timed-out ConnStatus) so the healthy ninth still runs inside the shared
+        // deadline — whereas sequential probing would spend eight full timeouts first.
+        let mut candidates: Vec<(String, String, ())> = (0..8)
+            .map(|index| {
+                let name = format!("slow-{index}");
+                (name.clone(), name, ())
+            })
+            .collect();
+        candidates.push(("healthy".to_owned(), "healthy".to_owned(), ()));
+
+        let started = Instant::now();
+        let observed =
+            observe_sessions_with(candidates, Duration::from_millis(500), |id, _remaining| {
+                if id == "healthy" {
+                    SessionProbeResult::Responsive
+                } else {
+                    thread::sleep(Duration::from_millis(40));
+                    SessionProbeResult::Unknown
+                }
+            });
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            observed
+                .responsive
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>(),
+            vec!["healthy"]
+        );
+        assert_eq!(observed.unknown.len(), 8);
+        assert!(
+            elapsed < Duration::from_millis(400),
+            "parallel probing took {:?}, expected well under eight sequential timeouts",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn candidates_never_reached_before_the_deadline_are_unknown_not_omitted_as_absent() {
+        // Saturate all workers with blockers that consume the shared budget so a trailing
+        // candidate is never probed in time. It must be recorded as Unknown, not dropped as Absent.
+        let mut candidates: Vec<(String, String, ())> = (0..MAX_CONCURRENT_SESSION_PROBES)
+            .map(|index| {
+                let name = format!("blocker-{index}");
+                (name.clone(), name, ())
+            })
+            .collect();
+        candidates.push(("late".to_owned(), "late".to_owned(), ()));
+
+        let observed =
+            observe_sessions_with(candidates, Duration::from_millis(80), |id, remaining| {
+                if id == "late" {
+                    SessionProbeResult::Responsive
+                } else {
+                    thread::sleep(remaining);
+                    SessionProbeResult::Unknown
+                }
+            });
+
+        assert!(
+            observed.responsive.is_empty(),
+            "late candidate should not have been probed as responsive: {:?}",
+            observed.responsive
+        );
+        assert!(
+            observed
+                .unknown
+                .iter()
+                .any(|(name, _)| name == "late"),
+            "unprobed late candidate must stay unknown, got {:?}",
+            observed.unknown
+        );
+        assert_eq!(
+            observed.unknown.len(),
+            MAX_CONCURRENT_SESSION_PROBES + 1,
+            "every candidate must be classified; none may vanish as false absence"
+        );
+    }
+
+    #[test]
+    fn discovery_error_is_preserved_by_observe_sessions_in() {
+        // NotFound is empty success; a non-directory path must surface an error rather than
+        // a successful empty inventory.
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("not-a-dir");
+        fs::write(&file_path, b"x").unwrap();
+        let err = observe_sessions_in(&file_path).unwrap_err();
+        assert_ne!(err, io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn unknown_sessions_with_layouts_are_not_marked_exited() {
+        let observation = SessionObservation {
+            responsive: vec![("live".to_owned(), Duration::from_secs(1))],
+            unknown: vec![("slow".to_owned(), Duration::from_secs(2))],
+        };
+        let resurrectable = vec![
+            ("slow".to_owned(), Duration::from_secs(9)),
+            ("dead".to_owned(), Duration::from_secs(8)),
+        ];
+        let displayed = sessions_for_display(&observation, resurrectable);
+        let by_name: HashMap<_, _> = displayed
+            .into_iter()
+            .map(|(name, ts, is_dead)| (name, (ts, is_dead)))
+            .collect();
+        assert_eq!(by_name.get("live"), Some(&(Duration::from_secs(1), false)));
+        assert_eq!(by_name.get("dead"), Some(&(Duration::from_secs(8), true)));
+        assert!(
+            !by_name.contains_key("slow"),
+            "unresponsive+layout must not appear as EXITED: {:?}",
+            by_name
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn observational_probe_does_not_unlink_on_connection_refused() {
+        use std::os::unix::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stale-session");
+        // std's UnixListener leaves the pathname on drop; interprocess unlinks.
+        {
+            let _listener = UnixListener::bind(&path).unwrap();
+        }
+        assert!(
+            path_try_exists(&path).unwrap(),
+            "dropping the listener must leave the pathname"
+        );
+        assert_eq!(
+            assert_socket_path(&path, Duration::from_secs(1)),
+            SessionProbeResult::Absent
+        );
+        assert!(
+            path_try_exists(&path).unwrap(),
+            "ordinary probing must not reclaim a refused socket without a claim"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reclaim_under_claim_unlinks_after_identity_recheck() {
+        use crate::session_socket_claim::SessionSocketClaim;
+        use std::os::unix::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reclaim-session");
+        {
+            let _listener = UnixListener::bind(&path).unwrap();
+        }
+        let claim = SessionSocketClaim::try_acquire(&path).unwrap();
+        claim.reclaim_stale_socket(&path).unwrap();
+        assert!(
+            !path_try_exists(&path).unwrap(),
+            "owner may reclaim after confirming the path is still abandoned"
+        );
+        claim.release();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reclaim_under_claim_leaves_a_live_replacement_alone() {
+        use crate::session_socket_claim::SessionSocketClaim;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live-session");
+        // Listener without the claim models a path that became live again before reclaim.
+        let _listener = crate::consts::ipc_bind(&path).unwrap();
+        let claim = SessionSocketClaim::try_acquire(&path).unwrap();
+        let err = claim.reclaim_stale_socket(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AddrInUse);
+        assert!(
+            path_try_exists(&path).unwrap(),
+            "a live socket must survive reclaim"
+        );
+        claim.release();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exact_target_probe_classifies_missing_socket_as_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing");
+        assert_eq!(
+            assert_socket_path(&path, Duration::from_millis(200)),
+            SessionProbeResult::Absent
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timed_connect_to_a_missing_path_returns_promptly() {
+        use crate::consts::ipc_connect_with_timeout;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing-socket");
+        let started = Instant::now();
+        let err = ipc_connect_with_timeout(&path, Duration::from_millis(200)).unwrap_err();
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(
+                err.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ),
+            "unexpected error kind: {err:?}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "timed connect to a missing path took {elapsed:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_deadline_covers_connect_send_and_receive_against_a_live_server() {
+        use interprocess::local_socket::traits::Listener as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live-probe");
+        let listener = crate::consts::ipc_bind(&path).unwrap();
+        let server = thread::spawn(move || {
+            let stream = listener.accept().expect("accept probe client");
+            let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+                IpcReceiverWithContext::new(stream);
+            let (msg, _) = receiver.recv_client_msg().expect("ConnStatus");
+            assert!(matches!(msg, ClientToServerMsg::ConnStatus));
+            let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+            sender
+                .send_server_msg(ServerToClientMsg::Connected)
+                .expect("Connected reply");
+        });
+        let started = Instant::now();
+        assert_eq!(
+            assert_socket_path(&path, Duration::from_secs(2)),
+            SessionProbeResult::Responsive
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "live probe overran its deadline"
+        );
+        server.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod windows_pid_liveness_tests {
+    use super::*;
+
+    #[test]
+    fn access_denied_stays_unknown() {
+        assert_eq!(
+            classify_windows_open_process(true, WINDOWS_ERROR_ACCESS_DENIED),
+            WindowsPidLiveness::Unknown
+        );
+    }
+
+    #[test]
+    fn invalid_parameter_is_dead() {
+        assert_eq!(
+            classify_windows_open_process(true, WINDOWS_ERROR_INVALID_PARAMETER),
+            WindowsPidLiveness::Dead
+        );
+    }
+
+    #[test]
+    fn successful_handle_is_alive_but_unverified() {
+        assert_eq!(
+            classify_windows_open_process(false, 0),
+            WindowsPidLiveness::AliveUnverified
+        );
+    }
+
+    #[test]
+    fn null_handle_without_a_known_death_error_is_unknown() {
+        assert_eq!(
+            classify_windows_open_process(true, 0),
+            WindowsPidLiveness::Unknown
+        );
+        assert_eq!(
+            classify_windows_open_process(true, 12345),
+            WindowsPidLiveness::Unknown
+        );
+    }
+}
+
+#[cfg(test)]
+mod concurrent_creation_claim_tests {
+    use super::*;
+    use crate::session_socket_claim::SessionSocketClaim;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    #[cfg(unix)]
+    #[test]
+    fn only_one_of_two_concurrent_creators_wins_the_socket_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = Arc::new(dir.path().join("race-session"));
+        let barrier = Arc::new(Barrier::new(2));
+        let wins = Arc::new(AtomicUsize::new(0));
+        let losses = Arc::new(AtomicUsize::new(0));
+
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                let path = Arc::clone(&path);
+                let barrier = Arc::clone(&barrier);
+                let wins = Arc::clone(&wins);
+                let losses = Arc::clone(&losses);
+                scope.spawn(move || {
+                    barrier.wait();
+                    match SessionSocketClaim::try_acquire(&path) {
+                        Ok(claim) => {
+                            wins.fetch_add(1, Ordering::SeqCst);
+                            thread::sleep(Duration::from_millis(50));
+                            claim.release();
+                        },
+                        Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
+                            losses.fetch_add(1, Ordering::SeqCst);
+                        },
+                        Err(err) => panic!("unexpected claim error: {err}"),
+                    }
+                });
+            }
+        });
+
+        assert_eq!(wins.load(Ordering::SeqCst), 1);
+        assert_eq!(losses.load(Ordering::SeqCst), 1);
     }
 }
 

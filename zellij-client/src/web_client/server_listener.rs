@@ -137,17 +137,46 @@ pub fn zellij_server_listener(
                         return;
                     }
 
-                    let should_create_new_session = !session_exists;
-                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout, switch_context, focus);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name, session_exists);
+                    let create_message = create_first_message(
+                        is_read_only,
+                        config_file_path.clone(),
+                        client_attributes.clone(),
+                        config_options.clone(),
+                        true,
+                        &session_name,
+                        initial_layout.clone(),
+                        switch_context.clone(),
+                        focus,
+                    );
+                    let attach_message = create_first_message(
+                        is_read_only,
+                        config_file_path.clone(),
+                        client_attributes.clone(),
+                        config_options.clone(),
+                        false,
+                        &session_name,
+                        initial_layout,
+                        switch_context,
+                        focus,
+                    );
 
-                    session_manager.spawn_session_if_needed(
+                    if let Err(error) = session_manager.spawn_session_if_needed(
                         &session_name,
                         os_input.clone(),
                         session_exists,
                         &zellij_ipc_pipe,
-                        first_message,
-                    );
+                        create_message,
+                        attach_message,
+                    ) {
+                        log::error!(
+                            "Failed to ensure session {:?}: {}; closing web client",
+                            session_name,
+                            error
+                        );
+                        client_connection_bus.close_connection();
+                        return;
+                    }
 
                     if let Some(pixel_dims) = client_pixel_dims {
                         os_input.send_to_server(ClientToServerMsg::TerminalPixelDimensions {

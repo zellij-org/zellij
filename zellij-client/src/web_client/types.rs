@@ -9,7 +9,9 @@ use crate::os_input_output::ClientOsApi;
 use crate::web_client::client_channel::ClientSender;
 use crate::web_client::control_message::SetConfigPayload;
 use crate::web_client::login_rate_limiter::LoginRateLimiter;
-use crate::web_client::session_management::spawn_new_session;
+use crate::web_client::session_management::{
+    decide_session_create_or_attach, spawn_new_session, SessionEnsureAction,
+};
 use std::path::PathBuf;
 use zellij_utils::{
     input::{config::Config, options::Options},
@@ -38,14 +40,19 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         &self,
         session_name: &str,
     ) -> Option<zellij_utils::input::layout::Layout>;
+    /// Ensure a server is available for `session_name`, then connect and send the appropriate
+    /// first message. When `session_exists` is false, takes the shared startup claim, rechecks,
+    /// and either spawns (create message) or attaches (attach message). Returns whether a new
+    /// server was spawned by this caller.
     fn spawn_session_if_needed(
         &self,
         session_name: &str,
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         zellij_ipc_pipe: &PathBuf,
-        first_message: ClientToServerMsg,
-    );
+        create_message: ClientToServerMsg,
+        attach_message: ClientToServerMsg,
+    ) -> Result<bool, Box<dyn std::error::Error>>;
 }
 
 #[derive(Debug, Clone)]
@@ -86,13 +93,34 @@ impl SessionManager for RealSessionManager {
         os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         zellij_ipc_pipe: &PathBuf,
-        first_message: ClientToServerMsg,
-    ) {
-        if !session_exists {
-            spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe);
+        create_message: ClientToServerMsg,
+        attach_message: ClientToServerMsg,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let attach_on_race = attach_message.clone();
+        let (should_spawn, first_message) = if session_exists {
+            (false, attach_message)
+        } else {
+            match decide_session_create_or_attach(session_name, zellij_ipc_pipe)? {
+                SessionEnsureAction::Create => (true, create_message),
+                SessionEnsureAction::Attach => (false, attach_message),
+            }
+        };
+        if should_spawn {
+            if let Err(err) = spawn_new_session(session_name, os_input.clone(), zellij_ipc_pipe) {
+                // Lost a post-claim race: another server may own the socket now — attach instead.
+                log::warn!(
+                    "Failed to spawn session {:?}: {}; attempting to attach to an existing owner",
+                    session_name,
+                    err
+                );
+                os_input.connect_to_server(zellij_ipc_pipe);
+                os_input.send_to_server(attach_on_race);
+                return Ok(false);
+            }
         }
-        os_input.connect_to_server(&zellij_ipc_pipe);
+        os_input.connect_to_server(zellij_ipc_pipe);
         os_input.send_to_server(first_message);
+        Ok(should_spawn)
     }
 }
 

@@ -48,11 +48,54 @@ pub fn spawn_new_session(
     session_name: &str,
     mut os_input: Box<dyn ClientOsApi>,
     zellij_ipc_pipe: &PathBuf,
-) {
+) -> std::io::Result<()> {
     let debug = false;
     envs::set_session_name(session_name.to_owned());
     os_input.update_session_name(session_name.to_owned());
-    spawn_server(&*zellij_ipc_pipe, debug).unwrap();
+    spawn_server(&*zellij_ipc_pipe, debug)
+}
+
+/// Outcome of an exclusive create-or-attach attempt for a session socket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionEnsureAction {
+    /// We hold (or held) the creation claim and should spawn a new server, then send the create message.
+    Create,
+    /// Another owner holds the socket claim, or a recheck found the session; attach only.
+    Attach,
+}
+
+/// Take the shared startup claim, recheck liveness, and decide whether this caller may create.
+///
+/// The claim is released before returning so the server process can acquire the same lock on bind.
+/// A lost claim (`AddrInUse`) means another owner already exists — never spawn a replacement.
+pub fn decide_session_create_or_attach(
+    session_name: &str,
+    zellij_ipc_pipe: &PathBuf,
+) -> std::io::Result<SessionEnsureAction> {
+    use zellij_utils::session_socket_claim::SessionSocketClaim;
+    use zellij_utils::sessions::session_exists;
+
+    match SessionSocketClaim::try_acquire(zellij_ipc_pipe) {
+        Ok(claim) => {
+            let action = match session_exists(session_name) {
+                Ok(true) => SessionEnsureAction::Attach,
+                Ok(false) => SessionEnsureAction::Create,
+                Err(kind) => {
+                    claim.release();
+                    return Err(std::io::Error::new(
+                        kind,
+                        format!(
+                            "could not recheck session {session_name:?} while holding the creation claim"
+                        ),
+                    ));
+                },
+            };
+            claim.release();
+            Ok(action)
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => Ok(SessionEnsureAction::Attach),
+        Err(err) => Err(err),
+    }
 }
 
 pub fn create_first_message(

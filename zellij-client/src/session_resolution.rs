@@ -218,6 +218,14 @@ pub fn attach_by_name(
                 "No active zellij sessions found.",
                 1,
             )),
+            ActiveSession::Unresponsive(names) => Err(ResolutionFailure::to_stderr(
+                format!(
+                    "Found session socket(s) that did not respond in time; \
+                     cannot claim there is no active session: {}",
+                    names.join(", ")
+                ),
+                1,
+            )),
             ActiveSession::One(session_name) => {
                 Ok(ClientInfo::Attach(session_name, config_options))
             },
@@ -325,6 +333,14 @@ pub fn resolve_watch(
         None => match get_active_session() {
             ActiveSession::None => Err(ResolutionFailure::to_stderr(
                 "No active zellij sessions found.",
+                1,
+            )),
+            ActiveSession::Unresponsive(names) => Err(ResolutionFailure::to_stderr(
+                format!(
+                    "Found session socket(s) that did not respond in time; \
+                     cannot claim there is no active session: {}",
+                    names.join(", ")
+                ),
                 1,
             )),
             ActiveSession::One(name) => Ok(ClientInfo::Watch(name, config_options)),

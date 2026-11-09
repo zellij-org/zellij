@@ -44,12 +44,25 @@ use zellij_utils::{
 pub(crate) use zellij_utils::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
-    match get_sessions() {
-        Ok(sessions) if sessions.is_empty() => {
+    match zellij_utils::sessions::observe_sessions() {
+        Ok(obs) if obs.is_definitely_empty() => {
             eprintln!("No active zellij sessions found.");
             process::exit(1);
         },
-        Ok(sessions) => {
+        Ok(obs) if obs.responsive.is_empty() => {
+            eprintln!(
+                "Found session socket(s) that did not respond in time; \
+                 refusing to treat them as absent: {}",
+                obs.unknown
+                    .iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            process::exit(1);
+        },
+        Ok(obs) => {
+            let sessions = obs.responsive;
             if !yes {
                 println!("WARNING: this action will kill all sessions.");
                 if !Confirm::new()
@@ -540,6 +553,14 @@ pub(crate) fn send_action_to_session(
             eprintln!("There is no active session!");
             std::process::exit(1);
         },
+        ActiveSession::Unresponsive(names) => {
+            eprintln!(
+                "Found session socket(s) that did not respond in time; \
+                 cannot claim there is no active session: {}",
+                names.join(", ")
+            );
+            std::process::exit(1);
+        },
         ActiveSession::One(session_name) => {
             if let Some(requested_session_name) = requested_session_name {
                 if requested_session_name != session_name {
@@ -588,6 +609,14 @@ pub(crate) fn subscribe_to_session(
     let session_name = match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
+            std::process::exit(1);
+        },
+        ActiveSession::Unresponsive(names) => {
+            eprintln!(
+                "Found session socket(s) that did not respond in time; \
+                 cannot claim there is no active session: {}",
+                names.join(", ")
+            );
             std::process::exit(1);
         },
         ActiveSession::One(session_name) => {

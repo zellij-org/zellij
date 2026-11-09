@@ -3477,86 +3477,18 @@ fn handle_client_connection(
 }
 
 /// Proof that this server owns the session socket. Only the owner may delete the socket file.
-#[cfg(unix)]
-struct SocketOwnership {
-    lock: nix::fcntl::Flock<std::fs::File>,
-    lock_path: PathBuf,
+/// Reuses the shared [`zellij_utils::session_socket_claim::SessionSocketClaim`] so client creation
+/// and server bind contend for the same lock.
+type SocketOwnership = zellij_utils::session_socket_claim::SessionSocketClaim;
+
+trait SocketOwnershipExt {
+    fn acquire(socket_path: &Path) -> std::io::Result<SocketOwnership>;
 }
 
-#[cfg(unix)]
-impl SocketOwnership {
-    // Binding a Unix socket requires deleting any leftover socket file first, so without a lock a
-    // second server could delete the socket of a live one. The OS releases the lock if we crash.
-    fn acquire(socket_path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        let lock_path = Self::lock_path(socket_path)?;
-        loop {
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .mode(0o600)
-                .open(&lock_path)?;
-            let lock = Flock::lock(file, FlockArg::LockExclusiveNonblock).map_err(
-                |(_, errno)| match errno {
-                    nix::errno::Errno::EWOULDBLOCK => std::io::Error::new(
-                        std::io::ErrorKind::AddrInUse,
-                        format!(
-                            "another server is already running on {}",
-                            socket_path.display()
-                        ),
-                    ),
-                    errno => std::io::Error::from(errno),
-                },
-            )?;
-            // An exiting owner may have deleted the lock file between our open and lock. Retry,
-            // otherwise two servers could each hold a lock on a different file.
-            let held = lock.metadata()?;
-            match std::fs::metadata(&lock_path) {
-                Ok(current) if current.dev() == held.dev() && current.ino() == held.ino() => {
-                    return Ok(SocketOwnership { lock, lock_path });
-                },
-                _ => continue,
-            }
-        }
+impl SocketOwnershipExt for SocketOwnership {
+    fn acquire(socket_path: &Path) -> std::io::Result<SocketOwnership> {
+        SocketOwnership::try_acquire(socket_path)
     }
-
-    // The lock file is deleted while the lock is still held, so no new server can lock it in
-    // between.
-    fn release(self) {
-        drop(std::fs::remove_file(&self.lock_path));
-        drop(self.lock);
-    }
-
-    fn lock_path(socket_path: &Path) -> std::io::Result<PathBuf> {
-        let file_name = socket_path.file_name().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "session socket path {} has no file name",
-                    socket_path.display()
-                ),
-            )
-        })?;
-        let mut lock_name = std::ffi::OsString::from(".");
-        lock_name.push(file_name);
-        lock_name.push(".lock");
-        Ok(socket_path.with_file_name(lock_name))
-    }
-}
-
-#[cfg(not(unix))]
-struct SocketOwnership;
-
-#[cfg(not(unix))]
-impl SocketOwnership {
-    // Windows refuses to create a second pipe with the same name and writes the marker file only
-    // after a successful bind, so no lock is needed.
-    fn acquire(_socket_path: &Path) -> std::io::Result<Self> {
-        Ok(SocketOwnership)
-    }
-
-    fn release(self) {}
 }
 
 /// The server's socket path. Only a server that bound the socket may remove it on exit: a server
@@ -3582,7 +3514,7 @@ impl ServerSocket {
     fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
         let path = self.path();
         let ownership = SocketOwnership::acquire(&path)?;
-        drop(std::fs::remove_file(&path));
+        ownership.reclaim_stale_socket(&path)?;
         let listener = zellij_utils::consts::ipc_bind(&path)?;
         *self.ownership.lock().unwrap() = Some(ownership);
         Ok(listener)
@@ -3872,6 +3804,22 @@ pub fn start_server_impl(
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                // A concurrent creator may lose the socket claim yet still send FirstClientConnected.
+                // Never re-initialise an already running session — attach instead.
+                if session_data.read().unwrap().is_some() {
+                    log::warn!(
+                        "Client {} sent FirstClientConnected to an already-initialized session; treating as attach",
+                        client_id
+                    );
+                    let _ = to_server.send(ServerInstruction::AttachClient(
+                        cli_assets,
+                        None,
+                        None,
+                        is_web_client,
+                        client_id,
+                    ));
+                    continue;
+                }
                 let is_resumed_session = match &cli_assets.layout {
                     Some(LayoutInfo::File(path, _)) => Path::new(path)
                         .starts_with(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR),

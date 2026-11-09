@@ -169,6 +169,43 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     LocalSocketStream::connect(ns_name)
 }
 
+/// Connect with an absolute wait bound. Session probes must use this so a full accept queue
+/// cannot stall past the remaining discovery deadline before a read timeout is installed.
+#[cfg(unix)]
+pub fn ipc_connect_with_timeout(
+    path: &std::path::Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::{
+        local_socket::{prelude::*, ConnectOptions, GenericFilePath},
+        ConnectWaitMode,
+    };
+    let fs_name = path.to_fs_name::<GenericFilePath>()?;
+    ConnectOptions::new()
+        .name(fs_name)
+        .wait_mode(ConnectWaitMode::Timeout(timeout))
+        .connect_sync()
+}
+
+/// Windows named-pipe connect does not honour `ConnectWaitMode::Timeout` the same way Unix does,
+/// but probes still go through this API so the call site always passes the remaining deadline.
+#[cfg(windows)]
+pub fn ipc_connect_with_timeout(
+    path: &std::path::Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<interprocess::local_socket::Stream> {
+    use interprocess::{
+        local_socket::{prelude::*, ConnectOptions, GenericNamespaced},
+        ConnectWaitMode,
+    };
+    let name = path.to_string_lossy().to_string();
+    let ns_name = name.to_ns_name::<GenericNamespaced>()?;
+    ConnectOptions::new()
+        .name(ns_name)
+        .wait_mode(ConnectWaitMode::Timeout(timeout))
+        .connect_sync()
+}
+
 #[cfg(unix)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};

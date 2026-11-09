@@ -4419,19 +4419,23 @@ impl SessionManager for MockSessionManager {
         _os_input: Box<dyn ClientOsApi>,
         session_exists: bool,
         _zellij_ipc_pipe: &PathBuf,
-        first_message: ClientToServerMsg,
-    ) {
-        self.first_messages_sent
-            .lock()
-            .unwrap()
-            .push((session_name.to_owned(), first_message.clone()));
-
-        if !session_exists {
+        create_message: ClientToServerMsg,
+        attach_message: ClientToServerMsg,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let (created, first_message) = if session_exists {
+            (false, attach_message)
+        } else {
             self.sessions_created
                 .lock()
                 .unwrap()
                 .insert(session_name.to_owned());
-        }
+            (true, create_message)
+        };
+        self.first_messages_sent
+            .lock()
+            .unwrap()
+            .push((session_name.to_owned(), first_message));
+        Ok(created)
     }
 }
 
