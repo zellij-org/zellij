@@ -865,7 +865,7 @@ impl Tab {
             .unwrap_or_default()
     }
     pub fn mouse_gesture_is_held(&self) -> bool {
-        self.selecting_with_mouse_in_pane.is_some()
+        !self.selecting_with_mouse_in_pane.is_empty()
             || self.pane_being_resized_with_mouse.is_some()
             || self.floating_panes.pane_is_being_moved_with_mouse()
             || !self.pane_drawings.is_empty()

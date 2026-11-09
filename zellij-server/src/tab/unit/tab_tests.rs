@@ -17403,6 +17403,64 @@ pub fn half_page_scroll_down_by_pane_id() {
     let _ = tab.half_page_scroll_down_by_pane_id(pane_id);
 }
 
+fn lines_below(tab: &Tab, pane_id: PaneId) -> usize {
+    tab.get_pane_with_id(pane_id)
+        .unwrap()
+        .viewport_scroll_state()
+        .unwrap()
+        .0
+}
+
+fn framed_pane_with_scrollback(rows: usize) -> (Tab, PaneId, usize) {
+    let size = Size { cols: 40, rows };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    {
+        let pane = tab.get_pane_with_id_mut(pane_id).unwrap();
+        let mut geom = pane.position_and_size();
+        geom.rows.set_inner(rows);
+        pane.set_geom(geom);
+        pane.set_borderless(false);
+    }
+    let (pane_rows, content_rows) = {
+        let pane = tab.get_pane_with_id(pane_id).unwrap();
+        (pane.rows(), pane.get_content_rows())
+    };
+    assert!(
+        pane_rows > content_rows,
+        "a frame makes rows() larger than the content height"
+    );
+    for line in 0..80 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    assert_eq!(lines_below(&tab, pane_id), 0);
+    (tab, pane_id, content_rows)
+}
+
+#[test]
+pub fn targeted_page_and_half_page_scrolls_use_content_rows() {
+    let (mut tab, pane_id, content_rows) = framed_pane_with_scrollback(21);
+    let pane_rows = tab.get_pane_with_id(pane_id).unwrap().rows();
+    let rows_minus_one = pane_rows.saturating_sub(1);
+    assert_ne!(content_rows, rows_minus_one);
+    assert_ne!(content_rows / 2, rows_minus_one / 2);
+
+    tab.page_scroll_up_by_pane_id(pane_id);
+    assert_eq!(lines_below(&tab, pane_id), content_rows);
+
+    tab.get_pane_with_id_mut(pane_id)
+        .unwrap()
+        .scroll_down(content_rows, 1);
+    assert_eq!(lines_below(&tab, pane_id), 0);
+
+    tab.half_page_scroll_up_by_pane_id(pane_id);
+    let half = content_rows / 2;
+    assert_eq!(lines_below(&tab, pane_id), half);
+    tab.half_page_scroll_down_by_pane_id(pane_id).unwrap();
+    assert_eq!(lines_below(&tab, pane_id), 0);
+}
+
 #[test]
 pub fn page_scroll_rows_use_content_height_and_always_move() {
     assert_eq!(super::terminal_page_scroll_rows(0), 1);

@@ -241,7 +241,7 @@ fn pending_permission_cache_is_bounded_by_bytes_and_entries() {
     assert!(matches!(
         bridge.cached_events_for_pending_plugins.try_push(
             plugin_id,
-            EventOrPipeMessage::Event(oversized, None),
+            EventOrPipeMessage::Event(oversized, None, None),
             false,
         ),
         Err(PendingCacheRejection::ByteLimit)
@@ -252,7 +252,7 @@ fn pending_permission_cache_is_bounded_by_bytes_and_entries() {
             .cached_events_for_pending_plugins
             .try_push(
                 plugin_id,
-                EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None),
+                EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None, None),
                 false,
             )
             .unwrap();
@@ -260,7 +260,7 @@ fn pending_permission_cache_is_bounded_by_bytes_and_entries() {
     assert!(matches!(
         bridge.cached_events_for_pending_plugins.try_push(
             plugin_id,
-            EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None),
+            EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), None, None),
             false,
         ),
         Err(PendingCacheRejection::EntryLimit)

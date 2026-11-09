@@ -15123,6 +15123,7 @@ pub(crate) fn screen_thread_main(
                         *tab_index,
                         size,
                         completion_tx,
+                        None,
                     ))?;
             },
             ScreenInstruction::AddPlugin(

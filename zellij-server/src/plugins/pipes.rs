@@ -2,7 +2,7 @@ use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_map::RunningPlugin;
 use crate::plugins::wasm_bridge::{apply_pending_popup_size, PluginRenderAsset};
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use zellij_utils::data::{PipeMessage, PipeSource};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
@@ -25,23 +25,35 @@ pub struct PipeRelease {
     pub exit_code: Option<i32>,
 }
 
+const FINISHED_PIPE_CAP: usize = 4096;
+
 #[derive(Debug, Clone, Default)]
 pub struct PendingPipes {
     pipes: HashMap<String, PendingPipeInfo>,
     exit_codes: HashMap<String, (i32, PluginId)>,
-    finished: HashSet<String>,
+    // Insertion order. Past the cap, one new id forgets the oldest id only.
+    finished: VecDeque<String>,
 }
 
 impl PendingPipes {
     pub fn set_exit_code(&mut self, pipe_id: &str, exit_code: i32, plugin_id: PluginId) {
-        if self.finished.contains(pipe_id) {
+        if self.is_finished(pipe_id) {
             return;
         }
         self.exit_codes
             .insert(pipe_id.to_owned(), (exit_code, plugin_id));
     }
     pub fn is_finished(&self, pipe_id: &str) -> bool {
-        self.finished.contains(pipe_id)
+        self.finished.iter().any(|finished| finished == pipe_id)
+    }
+    fn remember_finished(&mut self, pipe_id: String) {
+        if self.is_finished(&pipe_id) {
+            return;
+        }
+        if self.finished.len() == FINISHED_PIPE_CAP {
+            self.finished.pop_front();
+        }
+        self.finished.push_back(pipe_id);
     }
     pub fn is_pending(&self, pipe_id: &str) -> bool {
         self.pipes.contains_key(pipe_id)
@@ -56,14 +68,14 @@ impl PendingPipes {
         };
         if exit_code.is_some() {
             self.pipes.remove(&pipe_id);
-            self.finished.insert(pipe_id.clone());
+            self.remember_finished(pipe_id.clone());
         }
         PipeRelease { pipe_id, exit_code }
     }
     pub fn release_with_code(&mut self, pipe_id: &str, exit_code: i32) -> PipeRelease {
         self.exit_codes.remove(pipe_id);
         self.pipes.remove(pipe_id);
-        self.finished.insert(pipe_id.to_owned());
+        self.remember_finished(pipe_id.to_owned());
         PipeRelease {
             pipe_id: pipe_id.to_owned(),
             exit_code: Some(exit_code),
@@ -76,7 +88,7 @@ impl PendingPipes {
         plugin_id: &PluginId,
         client_id: &ClientId,
     ) -> Vec<PipeRelease> {
-        if self.finished.contains(cli_pipe_name) {
+        if self.is_finished(cli_pipe_name) {
             return vec![];
         }
         let is_final = matches!(
@@ -568,5 +580,45 @@ mod tests {
             .update_pipe_state_change("p", PipeStateChange::Unblock, &PLUGIN, &CLIENT)
             .is_empty());
         assert!(pipes.unload_plugin(&PLUGIN).is_empty());
+    }
+
+    #[test]
+    fn finished_pipes_forget_only_the_oldest_id_past_the_cap() {
+        let mut pipes = PendingPipes::default();
+        for index in 0..FINISHED_PIPE_CAP {
+            let pipe_id = format!("p{index}");
+            if index == 0 {
+                pipes.mark_being_processed(&pipe_id, &PLUGIN, &CLIENT);
+                pipes.set_exit_code(&pipe_id, 0, PLUGIN);
+                pipes.update_pipe_state_change(
+                    &pipe_id,
+                    PipeStateChange::Unblock,
+                    &PLUGIN,
+                    &CLIENT,
+                );
+            } else {
+                pipes.release_with_code(&pipe_id, 0);
+            }
+            assert!(pipes.is_finished(&pipe_id));
+        }
+        pipes.release_with_code("newest", 0);
+        assert!(pipes.is_finished("newest"));
+        assert!(
+            !pipes.is_finished("p0"),
+            "settling one more pipe forgets only the oldest id"
+        );
+        for index in 1..FINISHED_PIPE_CAP {
+            assert!(
+                pipes.is_finished(&format!("p{index}")),
+                "p{index} was forgotten with the oldest id"
+            );
+        }
+        assert_eq!(
+            pipes
+                .update_pipe_state_change("p1", PipeStateChange::Unblock, &PLUGIN, &CLIENT)
+                .len(),
+            0
+        );
+        assert!(pipes.is_finished("p1"));
     }
 }

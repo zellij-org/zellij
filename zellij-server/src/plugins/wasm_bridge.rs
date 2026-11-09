@@ -83,7 +83,7 @@ fn make_plugin_url_path_safe(url: String) -> String {
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
-    Event(Event, Option<ClientId>),
+    Event(Event, Option<ClientId>, Option<u64>),
     PipeMessage(PipeMessage, Option<ClientId>),
 }
 
@@ -366,7 +366,7 @@ fn pipe_message_payload_bytes(message: &PipeMessage) -> usize {
 
 fn event_or_pipe_message_bytes(entry: &EventOrPipeMessage) -> usize {
     match entry {
-        EventOrPipeMessage::Event(event, _) => event_payload_bytes(event),
+        EventOrPipeMessage::Event(event, _, _) => event_payload_bytes(event),
         EventOrPipeMessage::PipeMessage(message, _) => pipe_message_payload_bytes(message),
     }
 }
@@ -677,6 +677,8 @@ pub struct WasmBridge {
     shared_slot_owner: HashMap<PluginId, PluginId>,
 
     settings_entries: SettingsEntries,
+    /// Generation captured by `set_timeout`, consumed by the next `update_plugins`.
+    scheduled_timer_generation: Option<u64>,
 }
 
 impl WasmBridge {
@@ -755,6 +757,7 @@ impl WasmBridge {
             shared_slot_owner: HashMap::new(),
 
             settings_entries: SettingsEntries::default(),
+            scheduled_timer_generation: None,
         }
     }
     pub fn load_plugin(
@@ -1729,11 +1732,15 @@ impl WasmBridge {
         }
         Ok(())
     }
+    pub fn set_scheduled_timer_generation(&mut self, generation: u64) {
+        self.scheduled_timer_generation = Some(generation);
+    }
     pub fn update_plugins(
         &mut self,
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
+        let scheduled_timer_generation = self.scheduled_timer_generation.take();
         for (plugin_id, client_id, event) in updates.iter() {
             if plugin_id.is_none() && client_id.is_none() {
                 if let Event::HostTerminalThemeChanged(mode) = event {
@@ -1798,6 +1805,7 @@ impl WasmBridge {
                                 let event = event.clone();
                                 let _s = shutdown_sender.clone();
                                 let plugin_subs = subs.clone();
+                                let scheduled_timer_generation = scheduled_timer_generation;
                                 move |senders,
                                       _plugin_map,
                                       _connected_clients,
@@ -1827,6 +1835,7 @@ impl WasmBridge {
                                         &mut plugin_render_assets,
                                         senders.clone(),
                                         &plugin_subs,
+                                        scheduled_timer_generation,
                                     ) {
                                         Ok(()) => {
                                             let _ = senders.send_to_screen(
@@ -1863,6 +1872,11 @@ impl WasmBridge {
         // being loaded, we'll send them these events when they load)
         let quarantined_plugins = self.quarantine.ids().clone();
         for (pid, cid, event) in updates.drain(..) {
+            let timer_generation = if matches!(event, Event::Timer(_)) {
+                scheduled_timer_generation
+            } else {
+                None
+            };
             let targets: Vec<PluginId> = self
                 .cached_events_for_pending_plugins
                 .plugin_ids()
@@ -1875,7 +1889,7 @@ impl WasmBridge {
             for plugin_id in targets {
                 if let Err(rejection) = self.cached_events_for_pending_plugins.try_push(
                     plugin_id,
-                    EventOrPipeMessage::Event(event.clone(), cid),
+                    EventOrPipeMessage::Event(event.clone(), cid, timer_generation),
                     false,
                 ) {
                     log::warn!(
@@ -2564,7 +2578,7 @@ impl WasmBridge {
         if self.cached_events_for_pending_plugins.contains(&plugin_id) {
             if let Err(rejection) = self.cached_events_for_pending_plugins.try_push(
                 plugin_id,
-                EventOrPipeMessage::Event(event, Some(client_id)),
+                EventOrPipeMessage::Event(event, Some(client_id), None),
                 true,
             ) {
                 log::warn!(
@@ -2804,7 +2818,11 @@ impl WasmBridge {
                                 }
                                 for event_or_pipe_message in events_or_pipe_messages {
                                     match event_or_pipe_message {
-                                        EventOrPipeMessage::Event(event, target_client_id) => {
+                                        EventOrPipeMessage::Event(
+                                            event,
+                                            target_client_id,
+                                            scheduled_timer_generation,
+                                        ) => {
                                             if target_client_id
                                                 .map(|target| target != client_id)
                                                 .unwrap_or(false)
@@ -2832,6 +2850,7 @@ impl WasmBridge {
                                                         &mut plugin_render_assets,
                                                         senders.clone(),
                                                         &subs,
+                                                        scheduled_timer_generation,
                                                     ) {
                                                         Ok(()) => {
                                                             let _ = senders.send_to_screen(
@@ -4791,6 +4810,19 @@ pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bo
     changed
 }
 
+pub(crate) fn stale_timer_for_load(
+    event: &Event,
+    scheduled_generation: Option<u64>,
+    running_generation: u64,
+) -> bool {
+    match event {
+        Event::Timer(_) => {
+            scheduled_generation.is_some_and(|scheduled| scheduled < running_generation)
+        },
+        _ => false,
+    }
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -4799,7 +4831,15 @@ pub fn apply_event_to_plugin(
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: ThreadSenders,
     plugin_subscriptions: &HashSet<EventType>,
+    scheduled_timer_generation: Option<u64>,
 ) -> Result<()> {
+    if stale_timer_for_load(
+        event,
+        scheduled_timer_generation,
+        running_plugin.store.data().generation,
+    ) {
+        return Ok(());
+    }
     let instance = running_plugin.instance.clone();
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
@@ -4997,6 +5037,34 @@ pub(crate) fn is_hover(event: &Event) -> bool {
         Event::Mouse(zellij_utils::data::Mouse::Hover(..))
             | Event::MouseWithModifiers(zellij_utils::data::Mouse::Hover(..), _)
     )
+}
+
+#[cfg(test)]
+mod timer_generation_tests {
+    use super::stale_timer_for_load;
+    use zellij_utils::data::Event;
+
+    #[test]
+    fn a_timer_scheduled_against_generation_g_is_not_applied_to_generation_g2() {
+        let generation_g = 4;
+        let generation_g2 = 9;
+        let timer = Event::Timer(0.25);
+        assert!(
+            stale_timer_for_load(&timer, Some(generation_g), generation_g2),
+            "generation {generation_g2} must not receive a timer from {generation_g}"
+        );
+        assert!(!stale_timer_for_load(
+            &timer,
+            Some(generation_g2),
+            generation_g2
+        ));
+        assert!(!stale_timer_for_load(&timer, None, generation_g2));
+        assert!(!stale_timer_for_load(
+            &Event::InputReceived,
+            Some(generation_g),
+            generation_g2
+        ));
+    }
 }
 
 #[cfg(test)]

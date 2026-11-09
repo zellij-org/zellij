@@ -557,7 +557,7 @@ pub(crate) struct Tab {
     /// was hit. Not the steady state: quanta are supposed to drain the backlog.
     #[cfg(test)]
     pending_vte_bytes_dropped: HashMap<u32, u64>,
-    pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
+    pub selecting_with_mouse_in_pane: HashMap<ClientId, PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
     // Resolves link ids on chunks that carry no handler of their own (live
     // views, popups). Panes own their handlers, so a pane's cells never
@@ -1523,7 +1523,7 @@ impl Tab {
             #[cfg(test)]
             pending_vte_bytes_dropped: HashMap::new(),
             connected_clients,
-            selecting_with_mouse_in_pane: None,
+            selecting_with_mouse_in_pane: HashMap::new(),
             pane_being_resized_with_mouse: None,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
@@ -3288,9 +3288,11 @@ impl Tab {
         }
     }
     fn forget_held_mouse_gestures(&mut self) {
-        if let Some(pane_id) = self.selecting_with_mouse_in_pane.take() {
+        let selections: Vec<(ClientId, PaneId)> =
+            self.selecting_with_mouse_in_pane.drain().collect();
+        for (client_id, pane_id) in selections {
             if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-                pane.reset_selection(None);
+                pane.reset_selection(Some(client_id));
             }
         }
         self.pane_being_resized_with_mouse = None;
@@ -7555,9 +7557,8 @@ impl Tab {
         ignore_suppressed_panes: bool,
         exit_status: Option<i32>,
     ) {
-        if self.selecting_with_mouse_in_pane == Some(id) {
-            self.selecting_with_mouse_in_pane = None;
-        }
+        self.selecting_with_mouse_in_pane
+            .retain(|_, pane_id| *pane_id != id);
         self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
@@ -10172,7 +10173,7 @@ impl Tab {
     pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(pane.get_content_rows());
             pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
@@ -10187,14 +10188,14 @@ impl Tab {
     pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
             pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
     pub fn half_page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
             pane.scroll_down(scroll_rows, fictitious_client_id);
         }
         Ok(())

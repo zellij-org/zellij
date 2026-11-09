@@ -713,6 +713,7 @@ pub fn a_shared_plugin_reloaded_by_url_loses_its_settings_entry() {
         1,
         Size { cols: 80, rows: 5 },
         None,
+        None,
     ));
     screen.wait_until("the observer no longer lists the entry", |renders| {
         observed_settings_entries(renders).as_deref() == Some("PluginSettingsEntries([])")

@@ -612,7 +612,7 @@ impl MouseHandler {
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
         Self::forget_unfinished_pane_drawing(tab, event, client_id);
-        Self::forget_selection_without_release(tab, event);
+        Self::forget_selection_without_release(tab, event, client_id);
         let click_count = Self::count_click(tab, event, client_id);
         let mut context =
             Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
@@ -641,11 +641,11 @@ impl MouseHandler {
         }
     }
 
-    fn forget_selection_without_release(tab: &mut Tab, event: &MouseEvent) {
+    fn forget_selection_without_release(tab: &mut Tab, event: &MouseEvent, client_id: ClientId) {
         if event.event_type == MouseEventType::Press && event.left {
-            if let Some(pane_id) = tab.selecting_with_mouse_in_pane.take() {
+            if let Some(pane_id) = tab.selecting_with_mouse_in_pane.remove(&client_id) {
                 if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
-                    pane.reset_selection(None);
+                    pane.reset_selection(Some(client_id));
                 }
             }
         }
@@ -893,7 +893,7 @@ impl MouseHandler {
             active_pane_id,
             floating_visible,
             pane_being_resized: tab.pane_being_resized_with_mouse.is_some(),
-            selecting_with_mouse: tab.selecting_with_mouse_in_pane.is_some(),
+            selecting_with_mouse: tab.selecting_with_mouse_in_pane.contains_key(&client_id),
             pane_being_moved: tab.floating_panes.pane_is_being_moved_with_mouse(),
             drawing_pane: tab.pane_drawings.contains_key(&client_id),
             clicked_pane,
@@ -1362,7 +1362,7 @@ impl MouseHandler {
                     leave_clipboard_message = true;
                 }
                 if pane.supports_mouse_selection() || matches!(pane_id, PaneId::Plugin(_)) {
-                    tab.selecting_with_mouse_in_pane = Some(pane_id);
+                    tab.selecting_with_mouse_in_pane.insert(client_id, pane_id);
                 }
                 if leave_clipboard_message {
                     Ok(MouseEffect::state_changed_and_leave_clipboard_message())
@@ -1371,7 +1371,9 @@ impl MouseHandler {
                 }
             },
             MouseAction::UpdateSelection { position } => {
-                if let Some(pane_id_with_selection) = tab.selecting_with_mouse_in_pane {
+                if let Some(pane_id_with_selection) =
+                    tab.selecting_with_mouse_in_pane.get(&client_id).copied()
+                {
                     if let Some(pane_with_selection) =
                         tab.get_pane_with_id_mut(pane_id_with_selection)
                     {
@@ -1690,8 +1692,8 @@ impl MouseHandler {
                 dragging_in_plugin = Some(pane_id);
             }
         }
-        if dragging_in_plugin.is_some() {
-            tab.selecting_with_mouse_in_pane = dragging_in_plugin;
+        if let Some(pane_id) = dragging_in_plugin {
+            tab.selecting_with_mouse_in_pane.insert(client_id, pane_id);
         }
 
         if tab.floating_panes.panes_are_visible() {
@@ -1700,7 +1702,7 @@ impl MouseHandler {
                 .floating_panes
                 .move_pane_with_mouse(position, search_selectable);
             if moved_pane_with_mouse && dragging_in_plugin.is_some() {
-                tab.selecting_with_mouse_in_pane = None;
+                tab.selecting_with_mouse_in_pane.remove(&client_id);
             }
             let active_pane_id_after = tab
                 .get_active_pane_id(client_id)
@@ -1770,7 +1772,8 @@ impl MouseHandler {
                 pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
                 if pane.supports_mouse_selection() || matches!(active_pane_id, PaneId::Plugin(_)) {
-                    tab.selecting_with_mouse_in_pane = Some(active_pane_id);
+                    tab.selecting_with_mouse_in_pane
+                        .insert(client_id, active_pane_id);
                 }
             }
         }
@@ -1779,9 +1782,14 @@ impl MouseHandler {
     }
 
     fn forget_selection_in_missing_pane(tab: &mut Tab) {
-        if let Some(pane_id) = tab.selecting_with_mouse_in_pane {
+        let tracked: Vec<(ClientId, PaneId)> = tab
+            .selecting_with_mouse_in_pane
+            .iter()
+            .map(|(client_id, pane_id)| (*client_id, *pane_id))
+            .collect();
+        for (client_id, pane_id) in tracked {
             if tab.get_pane_with_id(pane_id).is_none() {
-                tab.selecting_with_mouse_in_pane = None;
+                tab.selecting_with_mouse_in_pane.remove(&client_id);
             }
         }
     }
@@ -1799,7 +1807,7 @@ impl MouseHandler {
         // program), so the release is ours as well, even if the program wants the mouse
         if let Some(pane_with_selection) = tab
             .selecting_with_mouse_in_pane
-            .take()
+            .remove(&client_id)
             .and_then(|p_id| tab.get_pane_with_id_mut(p_id))
         {
             let relative_position = pane_with_selection.relative_position(&position);

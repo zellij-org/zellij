@@ -86,13 +86,20 @@ pub enum PluginInstruction {
     Quarantine(PluginId, u64), // plugin id, generation of the instance that hit a fatal error
     SharedInstanceLoadFailed(PluginId),
     Reload(
-        Option<bool>,   // should float
-        Option<String>, // pane title
+        Option<bool>,        // should float
+        Option<String>,      // pane title
         RunPluginOrAlias,
-        usize, // tab index
+        usize,                // tab index
         Size,
         Option<NotificationEnd>,
+        Option<ClientId>,     // requester, when the reload carries one
     ),
+    ApplyTimer {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        elapsed_seconds: f64,
+        generation: u64,
+    },
     ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
@@ -305,6 +312,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
             PluginInstruction::LoadPopup { .. } => PluginContext::LoadPopup,
             PluginInstruction::Update(..) => PluginContext::Update,
+            PluginInstruction::ApplyTimer { .. } => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Quarantine(..) => PluginContext::Unload,
             PluginInstruction::SharedInstanceLoadFailed(..) => PluginContext::Unload,
@@ -621,6 +629,22 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
+            PluginInstruction::ApplyTimer {
+                plugin_id,
+                client_id,
+                elapsed_seconds,
+                generation,
+            } => {
+                wasm_bridge.set_scheduled_timer_generation(generation);
+                wasm_bridge.update_plugins(
+                    vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::Timer(elapsed_seconds),
+                    )],
+                    shutdown_send.clone(),
+                )?;
+            },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
             },
@@ -637,15 +661,21 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 size,
                 completion_tx,
+                client_id,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 match run_plugin_or_alias.get_run_plugin() {
                     Some(run_plugin) => {
                         match wasm_bridge.reload_plugin(&run_plugin) {
                             Ok(_) => {
-                                let _ = bus
-                                    .senders
-                                    .send_to_server(ServerInstruction::UnblockInputThread);
+                                // No client on this reload: `completion_tx` is the waiter.
+                                // Do not broadcast UnblockInputThread to every client.
+                                if let Some(client_id) = client_id {
+                                    let _ = bus.senders.send_to_server(
+                                        ServerInstruction::UnblockInputThread(Some(client_id)),
+                                    );
+                                }
+                                drop(completion_tx);
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {

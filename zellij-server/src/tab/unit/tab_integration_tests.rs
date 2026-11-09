@@ -3037,7 +3037,7 @@ fn mark_text_inside_floating_pane() {
     )
     .unwrap();
     assert!(
-        tab.selecting_with_mouse_in_pane.is_some(),
+        tab.selecting_with_mouse_in_pane.contains_key(&client_id),
         "started selecting with mouse on click"
     );
     tab.handle_mouse_event(
@@ -3046,7 +3046,7 @@ fn mark_text_inside_floating_pane() {
     )
     .unwrap();
     assert!(
-        tab.selecting_with_mouse_in_pane.is_none(),
+        !tab.selecting_with_mouse_in_pane.contains_key(&client_id),
         "stopped selecting with mouse on release"
     );
     tab.render(&mut output, None).unwrap();
@@ -13162,7 +13162,7 @@ fn test_right_click_on_active_pane_without_mouse_reporting_opens_context_menu() 
     assert_eq!(request.pane_id, PaneId::Terminal(1));
     assert_eq!(request.kind, zellij_utils::data::ContextMenuKind::Pane);
     assert_eq!(request.position, Position::new(10, 60));
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -15798,7 +15798,7 @@ fn click_outside_highlight_starts_normal_selection() {
     );
 
     // Selection should have started
-    assert!(tab.selecting_with_mouse_in_pane.is_some());
+    assert!(tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -16113,7 +16113,7 @@ fn plain_click_on_highlight_does_not_send_highlight_clicked() {
     );
 
     // Selection should have started instead
-    assert!(tab.selecting_with_mouse_in_pane.is_some());
+    assert!(tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -17304,7 +17304,7 @@ fn mouse_click_through_starts_selection_on_non_mouse_mode_pane() {
 
     // Selection should have started
     assert_eq!(
-        tab.selecting_with_mouse_in_pane,
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
         Some(PaneId::Terminal(1)),
         "Expected text selection to start on the newly focused pane"
     );
@@ -18822,23 +18822,29 @@ fn mouse_selection_is_released_when_the_selecting_plugin_pane_closes() {
     let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
         .unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Plugin(7))
+    );
 
     tab.close_pane(PaneId::Plugin(7), false, None);
     tab.handle_mouse_event(&MouseEvent::new_left_release_event(plugin_point), client_id)
         .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 
     let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Terminal(1))
+    );
     tab.handle_mouse_event(
         &MouseEvent::new_left_release_event(terminal_point),
         client_id,
     )
     .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -18849,17 +18855,21 @@ fn mouse_events_work_again_when_the_selecting_pane_is_gone() {
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    tab.selecting_with_mouse_in_pane = Some(PaneId::Plugin(99));
+    tab.selecting_with_mouse_in_pane
+        .insert(client_id, PaneId::Plugin(99));
     let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Terminal(1))
+    );
     tab.handle_mouse_event(
         &MouseEvent::new_left_release_event(terminal_point),
         client_id,
     )
     .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -18881,13 +18891,14 @@ fn a_new_left_press_replaces_a_selection_whose_release_was_lost() {
         None,
     )
     .unwrap();
-    tab.selecting_with_mouse_in_pane = Some(PaneId::Plugin(7));
+    tab.selecting_with_mouse_in_pane
+        .insert(client_id, PaneId::Plugin(7));
 
     let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
     assert_eq!(
-        tab.selecting_with_mouse_in_pane,
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
         Some(PaneId::Terminal(1)),
         "a fresh left press proves the previous release was lost"
     );
@@ -18896,7 +18907,7 @@ fn a_new_left_press_replaces_a_selection_whose_release_was_lost() {
         client_id,
     )
     .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
 }
 
 #[test]
@@ -18921,10 +18932,13 @@ fn a_shift_click_selection_in_a_pane_with_mouse_reporting_ends_on_release() {
     let mut shift_release = MouseEvent::new_left_release_event(position);
     shift_release.shift = true;
     tab.handle_mouse_event(&shift_press, client_id).unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Terminal(1))
+    );
     tab.handle_mouse_event(&shift_release, client_id).unwrap();
     assert!(
-        tab.selecting_with_mouse_in_pane.is_none(),
+        !tab.selecting_with_mouse_in_pane.contains_key(&client_id),
         "releasing the button ends the selection"
     );
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
@@ -19357,6 +19371,73 @@ fn a_program_with_mouse_reporting_gets_both_raw_clicks_of_a_double_click() {
 }
 
 #[test]
+fn another_clients_left_press_does_not_clear_an_in_progress_selection() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_a = 1;
+    let client_b = 2;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_a, None, None)
+        .unwrap();
+    tab.add_client(client_b, None).unwrap();
+    tab.handle_pty_bytes(1, Vec::from("alpha beta gamma".as_bytes()))
+        .unwrap();
+    let pane_a = PaneId::Terminal(1);
+    let pane = tab.get_pane_with_id(pane_a).unwrap();
+    let start = Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16);
+    let dragged = Position::new(start.line() as i32, (start.column() + 5) as u16);
+    // The left pane is not active after the split, so the first press only focuses it.
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(start), client_a)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(start), client_a)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(start), client_a)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(dragged), client_a)
+        .unwrap();
+    let selected = tab
+        .get_pane_with_id(pane_a)
+        .unwrap()
+        .get_selected_text(client_a);
+    assert!(selected.is_some(), "client A started a selection");
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_a).copied(),
+        Some(pane_a)
+    );
+
+    let pane_b = center_of_pane(&tab, PaneId::Terminal(2));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(pane_b), client_b)
+        .unwrap();
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_a).copied(),
+        Some(pane_a),
+        "client B's press must leave client A's selection in place"
+    );
+    assert_eq!(
+        tab.get_pane_with_id(pane_a)
+            .unwrap()
+            .get_selected_text(client_a),
+        selected
+    );
+
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(pane_b), client_a)
+        .unwrap();
+    assert_ne!(
+        tab.selecting_with_mouse_in_pane.get(&client_a).copied(),
+        Some(pane_a)
+    );
+    assert!(
+        tab.get_pane_with_id(pane_a)
+            .unwrap()
+            .get_selected_text(client_a)
+            .is_none(),
+        "client A's own later press may clear client A's selection"
+    );
+}
+
+#[test]
 fn double_and_triple_clicks_select_a_word_and_a_line_through_the_default_bindings() {
     let size = Size {
         cols: 121,
@@ -19519,13 +19600,16 @@ fn dragging_in_an_unselectable_plugin_pane_sends_hold_and_release_to_the_plugin(
     );
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
         .unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Plugin(7))
+    );
     assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
     tab.handle_mouse_event(&MouseEvent::new_left_motion_event(moved_point), client_id)
         .unwrap();
     tab.handle_mouse_event(&MouseEvent::new_left_release_event(moved_point), client_id)
         .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
     let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
     let kinds: Vec<&'static str> = events
         .iter()
@@ -19559,11 +19643,14 @@ fn a_middle_click_on_an_unselectable_plugin_pane_does_not_start_a_drag() {
     let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
     tab.handle_mouse_event(&MouseEvent::new_middle_press_event(plugin_point), client_id)
         .unwrap();
-    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    assert!(!tab.selecting_with_mouse_in_pane.contains_key(&client_id));
     let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
-    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane.get(&client_id).copied(),
+        Some(PaneId::Terminal(1))
+    );
 }
 
 #[test]

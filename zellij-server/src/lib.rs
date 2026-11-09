@@ -131,7 +131,7 @@ pub enum ServerInstruction {
         ClientId,
     ),
     Render(Option<HashMap<ClientId, RenderPayload>>),
-    UnblockInputThread,
+    UnblockInputThread(Option<ClientId>),
     ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
     Error(String),
@@ -263,7 +263,7 @@ impl From<&ServerInstruction> for ServerContext {
         match *server_instruction {
             ServerInstruction::FirstClientConnected(..) => ServerContext::NewClient,
             ServerInstruction::Render(..) => ServerContext::Render,
-            ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
+            ServerInstruction::UnblockInputThread(..) => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
@@ -4498,9 +4498,9 @@ pub fn start_server_impl(
                             ));
                 }
             },
-            ServerInstruction::UnblockInputThread => {
-                let client_ids = session_state.read().unwrap().client_ids();
-                for client_id in client_ids {
+            ServerInstruction::UnblockInputThread(only_client) => {
+                let connected = session_state.read().unwrap().client_ids();
+                for client_id in unblock_input_recipients(&connected, only_client) {
                     send_to_client!(
                         client_id,
                         os_input,
@@ -6868,11 +6868,28 @@ mod setup_screen_session_tests {
     }
 }
 
+/// Who should receive `UnblockInputThread`.
+/// `None` keeps the historical broadcast. A reload names its requester, or
+/// names nobody and completes `completion_tx` instead of waking every client.
+pub(crate) fn unblock_input_recipients(
+    connected_clients: &[ClientId],
+    only_client: Option<ClientId>,
+) -> Vec<ClientId> {
+    match only_client {
+        Some(client_id) => connected_clients
+            .iter()
+            .copied()
+            .filter(|id| *id == client_id)
+            .collect(),
+        None => connected_clients.to_vec(),
+    }
+}
+
 #[cfg(test)]
 mod server_mailbox_tests {
     use super::{
-        attach_duplicate_first_client, ClientId, SessionMetaData, SessionState,
-        SERVER_INSTRUCTION_CHANNEL_CAPACITY,
+        attach_duplicate_first_client, unblock_input_recipients, ClientId, SessionMetaData,
+        SessionState, SERVER_INSTRUCTION_CHANNEL_CAPACITY,
     };
     use crate::os_input_output::{AsyncReader, PaneEnv, ServerOsApi};
     use crate::plugins::PluginInstruction;
@@ -7009,6 +7026,18 @@ mod server_mailbox_tests {
     }
 
     #[test]
+    fn a_reload_unblock_for_client_b_does_not_enqueue_client_a() {
+        let connected = [1, 2];
+        let recipients = unblock_input_recipients(&connected, Some(2));
+        assert_eq!(recipients, vec![2]);
+        assert!(
+            !recipients.contains(&1),
+            "client A's waiter must not see client B's reload"
+        );
+        assert!(unblock_input_recipients(&connected, None).len() == connected.len());
+    }
+
+    #[test]
     fn production_server_mailbox_stays_bounded_at_50() {
         assert_eq!(SERVER_INSTRUCTION_CHANNEL_CAPACITY, 50);
         let (sender, _receiver) = channels::bounded::<u8>(SERVER_INSTRUCTION_CHANNEL_CAPACITY);
@@ -7028,7 +7057,7 @@ mod server_mailbox_tests {
             channels::bounded(capacity);
         let to_server = SenderWithContext::new(sender.clone());
         to_server
-            .send(super::ServerInstruction::UnblockInputThread)
+            .send(super::ServerInstruction::UnblockInputThread(None))
             .unwrap();
         to_server
             .send(super::ServerInstruction::TerminalCommandSubmitted)
@@ -7132,7 +7161,7 @@ mod server_mailbox_tests {
             .expect("full mailbox could not be drained after attach");
         assert!(matches!(
             instruction,
-            super::ServerInstruction::UnblockInputThread
+            super::ServerInstruction::UnblockInputThread(None)
         ));
     }
 }

@@ -3329,7 +3329,7 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
 
 fn set_timeout(env: &PluginEnv, secs: f64) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
-    let update_target = Some(env.plugin_id);
+    let plugin_id = env.plugin_id;
     let client_id = acting_client(env);
     let plugin_name = env.name();
     // Own this load instance: after unload/reload/client-remove the same
@@ -3351,11 +3351,12 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
             .ok_or(anyhow!("found no sender to send plugin instruction to"))
             .and_then(|sender| {
                 sender
-                    .send(PluginInstruction::Update(vec![(
-                        update_target,
-                        Some(client_id),
-                        Event::Timer(elapsed_time),
-                    )]))
+                    .send(PluginInstruction::ApplyTimer {
+                        plugin_id,
+                        client_id,
+                        elapsed_seconds: elapsed_time,
+                        generation: scheduled_generation,
+                    })
                     .to_anyhow()
             })
             .with_context(|| {
