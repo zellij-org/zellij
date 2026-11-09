@@ -8,13 +8,11 @@ use crate::{
 use interprocess::local_socket::Stream as LocalSocketStream;
 use log::warn;
 use serde::{Deserialize, Serialize};
-#[cfg(unix)]
-use std::time::Instant;
 use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Read, Write},
     marker::PhantomData,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 // Protobuf imports
@@ -69,6 +67,17 @@ pub trait IpcStream: Read + Write + Send + 'static {
     fn shutdown_stream(&self) -> io::Result<()> {
         Ok(())
     }
+
+    /// Arm `SO_SNDTIMEO` for the next write. `None` restores the default
+    /// (block forever). Streams that cannot do this return an error so a
+    /// caller does not mistake an unbounded write for a deadline.
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        let _ = timeout;
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this ipc stream has no write deadline",
+        ))
+    }
 }
 
 impl IpcStream for LocalSocketStream {
@@ -79,6 +88,11 @@ impl IpcStream for LocalSocketStream {
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         use interprocess::local_socket::traits::Stream;
         self.set_recv_timeout(timeout)
+    }
+    #[cfg(unix)]
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        use interprocess::local_socket::traits::Stream;
+        self.set_send_timeout(timeout)
     }
     #[cfg(unix)]
     fn shutdown_stream(&self) -> io::Result<()> {
@@ -502,6 +516,55 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         Ok(())
     }
 
+    /// Write one client frame, the same bytes as [`Self::send_client_msg`],
+    /// but stop at `deadline`. A partial or timed-out write is an error:
+    /// the frame is not a delivered message. The `BufWriter` must be empty;
+    /// this writes the frame straight to the socket so the deadline covers
+    /// every syscall.
+    pub fn send_client_msg_until(
+        &mut self,
+        msg: ClientToServerMsg,
+        deadline: Instant,
+    ) -> io::Result<()> {
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc write deadline exhausted",
+            ));
+        }
+        #[cfg(unix)]
+        {
+            self.send_client_frame_until(msg, deadline)
+        }
+        #[cfg(not(unix))]
+        {
+            // Named-pipe sends cannot take SO_SNDTIMEO. A deadline that has
+            // already expired fails closed; a blocked pipe write still cannot
+            // be interrupted (see [`IpcStream::shutdown_stream`]).
+            self.send_client_msg(msg)
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
+        }
+    }
+
+    #[cfg(unix)]
+    fn send_client_frame_until(
+        &mut self,
+        msg: ClientToServerMsg,
+        deadline: Instant,
+    ) -> io::Result<()> {
+        let frame = encode_client_frame(msg)?;
+        if !self.sender.buffer().is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "ipc send buffer is not empty",
+            ));
+        }
+        let inner = self.sender.get_mut();
+        write_all_ipc_until_deadline(inner.as_mut(), &frame, deadline)?;
+        let _ = inner.set_write_timeout(None);
+        Ok(())
+    }
+
     pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
         let proto_msg: ProtoServerToClientMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
@@ -743,6 +806,50 @@ where
             Err(err) => return Err(err),
         }
     }
+    Ok(())
+}
+
+/// `write_all` + `flush` on an [`IpcStream`], refreshing `SO_SNDTIMEO` from
+/// `deadline` before every syscall. A trickle of progress cannot extend the
+/// deadline. `WouldBlock` / `TimedOut` from the socket timer retry until the
+/// deadline, then return [`io::ErrorKind::TimedOut`].
+#[cfg(unix)]
+fn write_all_ipc_until_deadline(
+    writer: &mut dyn IpcStream,
+    buf: &[u8],
+    deadline: Instant,
+) -> io::Result<()> {
+    let mut written = 0;
+    while written < buf.len() {
+        let remaining = remaining_until(deadline)?;
+        writer.set_write_timeout(Some(remaining))?;
+        match writer.write(&buf[written..]) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "write returned 0 before the deadline",
+                ));
+            },
+            Ok(n) => written += n,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err)
+                if err.kind() == io::ErrorKind::WouldBlock
+                    || err.kind() == io::ErrorKind::TimedOut =>
+            {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "ipc write deadline exhausted",
+                    ));
+                }
+                continue;
+            },
+            Err(err) => return Err(err),
+        }
+    }
+    let remaining = remaining_until(deadline)?;
+    writer.set_write_timeout(Some(remaining))?;
+    writer.flush()?;
     Ok(())
 }
 

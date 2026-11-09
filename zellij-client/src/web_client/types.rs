@@ -52,6 +52,7 @@ pub trait SessionManager: Send + Sync + std::fmt::Debug {
         zellij_ipc_pipe: &PathBuf,
         create_message: ClientToServerMsg,
         attach_message: ClientToServerMsg,
+        connect_deadline: Instant,
     ) -> Result<bool, Box<dyn std::error::Error>>;
 }
 
@@ -103,6 +104,7 @@ impl SessionManager for RealSessionManager {
         zellij_ipc_pipe: &PathBuf,
         create_message: ClientToServerMsg,
         attach_message: ClientToServerMsg,
+        connect_deadline: Instant,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let attach_on_race = attach_message.clone();
         let (should_spawn, first_message) = if session_exists {
@@ -121,13 +123,13 @@ impl SessionManager for RealSessionManager {
                     session_name,
                     err
                 );
-                os_input.connect_to_server(zellij_ipc_pipe);
-                os_input.send_to_server(attach_on_race);
+                os_input.connect_to_server_until(zellij_ipc_pipe, connect_deadline)?;
+                os_input.try_send_to_server_until(attach_on_race, connect_deadline)?;
                 return Ok(false);
             }
         }
-        os_input.connect_to_server(zellij_ipc_pipe);
-        os_input.send_to_server(first_message);
+        os_input.connect_to_server_until(zellij_ipc_pipe, connect_deadline)?;
+        os_input.try_send_to_server_until(first_message, connect_deadline)?;
         Ok(should_spawn)
     }
 }
@@ -147,6 +149,11 @@ pub const MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION: usize = 16;
 /// How long a web client id may wait for its terminal websocket before it is
 /// forgotten. A browser opens it right after getting the id.
 pub const UNATTACHED_WEB_CLIENT_TTL: Duration = Duration::from_secs(60);
+/// How long a terminal websocket waits for the session socket, and how long
+/// the listener retries that connect. Past this the client id is released.
+pub const WEB_SESSION_ATTACH_BUDGET: Duration = Duration::from_secs(10);
+/// How long one web-client IPC write may block before it is a failed delivery.
+pub const WEB_IPC_WRITE_BUDGET: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientLimitExceeded {

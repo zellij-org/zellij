@@ -3,16 +3,27 @@ use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::types::BRACKETED_PASTE_END;
 use crate::web_client::types::BRACKETED_PASTE_START;
+use crate::web_client::types::WEB_IPC_WRITE_BUDGET;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
+use std::time::Instant;
 use zellij_utils::{
     input::{actions::Action, cast_termwiz_key, mouse::MouseEvent},
     ipc::ClientToServerMsg,
     vendored::termwiz::input::{InputEvent, InputParser},
 };
+
+/// Write one client message with the web IPC deadline. `Ok` is the only
+/// delivered state; a blocked or failed write is logged and dropped.
+fn deliver_session_msg(os_input: &dyn ClientOsApi, msg: ClientToServerMsg) {
+    let deadline = Instant::now() + WEB_IPC_WRITE_BUDGET;
+    if let Err(error) = os_input.try_send_to_server_until(msg, deadline) {
+        log::warn!("web client input was not delivered: {error}");
+    }
+}
 
 /// Per-WebSocket-connection parsing state. Owns the Kitty and termwiz
 /// parsers so a CSI / Kitty sequence split across two WebSocket frames
@@ -85,59 +96,80 @@ fn dispatch_termwiz_event(
         InputEvent::Key(key_event) => {
             let raw_bytes_vec = raw_bytes.to_vec();
             let key = cast_termwiz_key(key_event.clone(), &raw_bytes_vec, None);
-            os_input.send_to_server(ClientToServerMsg::Key {
-                key: key.clone(),
-                raw_bytes: raw_bytes_vec,
-                is_kitty_keyboard_protocol: false,
-            });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Key {
+                    key: key.clone(),
+                    raw_bytes: raw_bytes_vec,
+                    is_kitty_keyboard_protocol: false,
+                },
+            );
         },
         InputEvent::FocusGained => {
-            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::HostTerminalFocusChanged { focused: true },
+            );
         },
         InputEvent::FocusLost => {
-            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::HostTerminalFocusChanged { focused: false },
+            );
         },
         InputEvent::Mouse(mouse_event) => {
             let mouse_event = from_termwiz(mouse_old_event, mouse_event);
             let action = Action::MouseEvent { event: mouse_event };
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action,
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                },
+            );
         },
         InputEvent::Paste(pasted_text) => {
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: BRACKETED_PASTE_START.to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_START.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: pasted_text.as_bytes().to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            );
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: pasted_text.as_bytes().to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: BRACKETED_PASTE_END.to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            );
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_END.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
+            );
         },
         _ => {
             log::error!("Unsupported event: {:#?}", input_event);
@@ -258,11 +290,14 @@ pub fn parse_stdin(
     if !session.explicitly_disable_kitty_keyboard_protocol {
         match session.kitty_parser.feed(buf) {
             KittyParseOutcome::Complete(key_with_modifier) => {
-                os_input.send_to_server(ClientToServerMsg::Key {
-                    key: key_with_modifier.clone(),
-                    raw_bytes: buf.to_vec(),
-                    is_kitty_keyboard_protocol: true,
-                });
+                deliver_session_msg(
+                    &*os_input,
+                    ClientToServerMsg::Key {
+                        key: key_with_modifier.clone(),
+                        raw_bytes: buf.to_vec(),
+                        is_kitty_keyboard_protocol: true,
+                    },
+                );
                 return;
             },
             KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
@@ -302,11 +337,14 @@ pub fn parse_stdin(
                     }
                 };
                 let key = cast_termwiz_key(key_event.clone(), &raw_bytes, None);
-                os_input.send_to_server(ClientToServerMsg::Key {
-                    key: key.clone(),
-                    raw_bytes,
-                    is_kitty_keyboard_protocol: false,
-                });
+                deliver_session_msg(
+                    &*os_input,
+                    ClientToServerMsg::Key {
+                        key: key.clone(),
+                        raw_bytes,
+                        is_kitty_keyboard_protocol: false,
+                    },
+                );
             },
             other => {
                 dispatch_termwiz_event(&*os_input, mouse_old_event, other, buf);

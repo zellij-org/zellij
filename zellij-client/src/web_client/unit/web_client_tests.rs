@@ -4421,6 +4421,7 @@ impl SessionManager for MockSessionManager {
         _zellij_ipc_pipe: &PathBuf,
         create_message: ClientToServerMsg,
         attach_message: ClientToServerMsg,
+        _connect_deadline: std::time::Instant,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let (created, first_message) = if session_exists {
             (false, attach_message)
@@ -4542,4 +4543,123 @@ impl ClientOsApi for MockClientOsApi {
     fn disable_mouse(&self) -> anyhow::Result<()> {
         Ok(())
     }
+}
+
+/// Session index stand-in: the session is treated as already existing so
+/// [`RealSessionManager`] only runs the real connect/send path.
+#[derive(Debug)]
+struct AttachExistingSession;
+
+impl crate::web_client::types::SessionManager for AttachExistingSession {
+    fn session_exists(&self, _session_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(true)
+    }
+
+    fn list_sessions(&self) -> Vec<WebSessionInfo> {
+        Vec::new()
+    }
+
+    fn get_resurrection_layout(
+        &self,
+        _session_name: &str,
+    ) -> Option<zellij_utils::input::layout::Layout> {
+        None
+    }
+
+    fn spawn_session_if_needed(
+        &self,
+        session_name: &str,
+        os_input: Box<dyn ClientOsApi>,
+        _session_exists: bool,
+        zellij_ipc_pipe: &std::path::PathBuf,
+        create_message: ClientToServerMsg,
+        attach_message: ClientToServerMsg,
+        connect_deadline: std::time::Instant,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        crate::web_client::types::RealSessionManager.spawn_session_if_needed(
+            session_name,
+            os_input,
+            true,
+            zellij_ipc_pipe,
+            create_message,
+            attach_message,
+            connect_deadline,
+        )
+    }
+}
+
+#[test]
+#[serial]
+fn failed_attach_drops_the_client_slot_instead_of_retrying_forever() {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    let web_client_id = "web-ipc-attach".to_string();
+    let connection_table = Arc::new(Mutex::new(
+        crate::web_client::types::ConnectionTable::default(),
+    ));
+    let os_input = crate::os_input_output::get_client_os_input().expect("os api");
+    connection_table
+        .lock()
+        .unwrap()
+        .try_add_new_client(
+            web_client_id.clone(),
+            Box::new(os_input),
+            false,
+            "token".to_string(),
+        )
+        .expect("add client");
+    let (terminal_tx, _terminal_rx) = crate::web_client::client_channel::client_channel(4, 4096);
+    let attached =
+        connection_table
+            .lock()
+            .unwrap()
+            .attach_terminal(&web_client_id, false, terminal_tx);
+    let crate::web_client::connection_manager::TerminalAttachOutcome::Attached(os_input) = attached
+    else {
+        panic!("client was not attached");
+    };
+    assert!(connection_table
+        .lock()
+        .unwrap()
+        .get_client_terminal_tx(&web_client_id)
+        .is_some());
+
+    let budget = Duration::from_millis(200);
+    crate::web_client::server_listener::zellij_server_listener(
+        os_input,
+        connection_table.clone(),
+        Some("web-ipc-attach-session".to_string()),
+        Config::default(),
+        Options::default(),
+        None,
+        web_client_id.clone(),
+        Arc::new(AttachExistingSession),
+        None,
+        Some(Size { rows: 24, cols: 80 }),
+        None,
+        Arc::new(Mutex::new(std::collections::VecDeque::new())),
+        false,
+        budget,
+    );
+
+    let started = Instant::now();
+    let mut dropped = false;
+    while started.elapsed() < Duration::from_secs(2) {
+        if connection_table
+            .lock()
+            .unwrap()
+            .get_client_os_api(&web_client_id)
+            .is_none()
+        {
+            dropped = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(dropped, "a failed attach left the client id attached");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "attach retry was not bounded"
+    );
 }

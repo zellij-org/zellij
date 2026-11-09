@@ -16,6 +16,7 @@ use crate::os_input_output_windows::{
 use std::io::prelude::*;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
 use zellij_utils::{
@@ -23,7 +24,7 @@ use zellij_utils::{
     errors::ErrorContext,
     ipc::{
         ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
+        IpcStream, ServerToClientMsg,
     },
     shared::default_palette,
 };
@@ -91,6 +92,14 @@ pub(crate) fn get_terminal_size() -> Size {
 pub struct ClientOsInputOutput {
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
+    /// Serializes web writes. Not held by the desktop `send_to_server` path.
+    ipc_write: Arc<Mutex<()>>,
+    /// Set when a web attach is abandoned. The connect retry and the in-flight
+    /// write both observe it.
+    ipc_cancel: Arc<AtomicBool>,
+    /// Clone of the socket a web write is blocked on, so cancel can shut it
+    /// down without taking `send_instructions_to_server` for the whole write.
+    ipc_cancel_stream: Arc<Mutex<Option<Box<dyn IpcStream>>>>,
     reading_from_stdin: Arc<Mutex<Option<Vec<u8>>>>,
     session_name: Arc<Mutex<Option<String>>>,
     host_state: Arc<Mutex<RememberedHostState>>,
@@ -164,6 +173,30 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
     fn send_to_server(&self, msg: ClientToServerMsg);
+    /// Send `msg` using the same frame bytes as [`ClientOsApi::send_to_server`].
+    /// Returns `Ok` only when those bytes were written. A deadline that expires
+    /// first, a closed pipe, or no connection is an error: the message was not
+    /// delivered. The default reports success after `send_to_server`, which is
+    /// what test doubles that record messages do.
+    fn try_send_to_server_until(
+        &self,
+        msg: ClientToServerMsg,
+        deadline: time::Instant,
+    ) -> io::Result<()> {
+        if time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc write deadline exhausted",
+            ));
+        }
+        self.send_to_server(msg);
+        Ok(())
+    }
+    /// Stop a web connect retry and any write blocked on the session pipe.
+    fn cancel_session_ipc(&self) {}
+    fn session_ipc_cancelled(&self) -> bool {
+        false
+    }
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
@@ -180,6 +213,19 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     );
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
+    /// Like [`ClientOsApi::connect_to_server`], but return once `deadline`
+    /// passes or [`ClientOsApi::cancel_session_ipc`] was called. The default
+    /// calls `connect_to_server` when the deadline has not already passed.
+    fn connect_to_server_until(&self, path: &Path, deadline: time::Instant) -> io::Result<()> {
+        if time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc connect deadline exhausted",
+            ));
+        }
+        self.connect_to_server(path);
+        Ok(())
+    }
     fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
         crate::spawn_server(socket_path, debug)
     }
@@ -309,6 +355,83 @@ impl ClientOsApi for ClientOsInputOutput {
             },
         }
     }
+    fn try_send_to_server_until(
+        &self,
+        msg: ClientToServerMsg,
+        deadline: time::Instant,
+    ) -> io::Result<()> {
+        // The write lock serializes frames. It is not the sender mutex: that
+        // one is released before the write so a cancel can shut the socket
+        // down, and so a stuck pipe cannot pin every other client operation.
+        let _write = self.ipc_write.lock().unwrap_or_else(|p| p.into_inner());
+        if self.ipc_cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "ipc write cancelled",
+            ));
+        }
+        if time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc write deadline exhausted",
+            ));
+        }
+        let mut sender = {
+            let mut guard = self
+                .send_instructions_to_server
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            guard
+                .take()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "server not ready"))?
+        };
+        if let Ok(cancel_stream) = sender.try_clone_stream() {
+            *self
+                .ipc_cancel_stream
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = Some(cancel_stream);
+        }
+        let result = sender.send_client_msg_until(msg, deadline);
+        *self
+            .ipc_cancel_stream
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+        if result.is_ok() && !self.ipc_cancel.load(Ordering::Relaxed) {
+            let mut guard = self
+                .send_instructions_to_server
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            // A connect that landed during the write owns the slot now.
+            if guard.is_none() {
+                *guard = Some(sender);
+            }
+        }
+        result
+    }
+    fn cancel_session_ipc(&self) {
+        self.ipc_cancel.store(true, Ordering::Relaxed);
+        if let Some(stream) = self
+            .ipc_cancel_stream
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            let _ = stream.shutdown_stream();
+        }
+        if let Some(sender) = self
+            .send_instructions_to_server
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
+            if let Ok(stream) = sender.try_clone_stream() {
+                let _ = stream.shutdown_stream();
+            }
+        }
+    }
+    fn session_ipc_cancelled(&self) -> bool {
+        self.ipc_cancel.load(Ordering::Relaxed)
+    }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
         self.try_recv_from_server().ok()
     }
@@ -375,6 +498,58 @@ impl ClientOsApi for ClientOsInputOutput {
             }
         }
     }
+    fn connect_to_server_until(&self, path: &Path, deadline: time::Instant) -> io::Result<()> {
+        loop {
+            if self.ipc_cancel.load(Ordering::Relaxed) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "ipc connect cancelled",
+                ));
+            }
+            let remaining = deadline.saturating_duration_since(time::Instant::now());
+            if remaining < time::Duration::from_millis(1) {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "ipc connect deadline exhausted",
+                ));
+            }
+            let attempt = remaining.min(time::Duration::from_millis(50));
+            match zellij_utils::consts::ipc_connect_with_timeout(path, attempt) {
+                Ok(sock) => {
+                    if self.ipc_cancel.load(Ordering::Relaxed) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Interrupted,
+                            "ipc connect cancelled",
+                        ));
+                    }
+                    match setup_ipc(sock, path) {
+                        Ok((sender, receiver)) => {
+                            if self.ipc_cancel.load(Ordering::Relaxed) {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::Interrupted,
+                                    "ipc connect cancelled",
+                                ));
+                            }
+                            *self
+                                .send_instructions_to_server
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner()) = Some(sender);
+                            *self
+                                .receive_instructions_from_server
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner()) = Some(receiver);
+                            return Ok(());
+                        },
+                        Err(e) => {
+                            log::warn!("failed to set up client IPC channels: {}", e);
+                        },
+                    }
+                },
+                Err(_) => {},
+            }
+            self.wait_connect_retry(deadline)?;
+        }
+    }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of
         // windows terminal and FreeBSD): https://github.com/zellij-org/zellij/issues/538
@@ -423,26 +598,64 @@ impl Clone for Box<dyn ClientOsApi> {
     }
 }
 
-pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let reading_from_stdin = Arc::new(Mutex::new(None));
-    Ok(ClientOsInputOutput {
+impl ClientOsInputOutput {
+    fn wait_connect_retry(&self, deadline: time::Instant) -> io::Result<()> {
+        let slice_end = time::Instant::now() + time::Duration::from_millis(50);
+        let limit = if slice_end < deadline {
+            slice_end
+        } else {
+            deadline
+        };
+        while time::Instant::now() < limit {
+            if self.ipc_cancel.load(Ordering::Relaxed) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "ipc connect cancelled",
+                ));
+            }
+            let nap = limit
+                .saturating_duration_since(time::Instant::now())
+                .min(time::Duration::from_millis(10));
+            if nap.is_zero() {
+                break;
+            }
+            thread::sleep(nap);
+        }
+        if self.ipc_cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "ipc connect cancelled",
+            ));
+        }
+        if time::Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc connect deadline exhausted",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn new_client_os_input() -> ClientOsInputOutput {
+    ClientOsInputOutput {
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
-        reading_from_stdin,
+        ipc_write: Arc::new(Mutex::new(())),
+        ipc_cancel: Arc::new(AtomicBool::new(false)),
+        ipc_cancel_stream: Arc::new(Mutex::new(None)),
+        reading_from_stdin: Arc::new(Mutex::new(None)),
         session_name: Arc::new(Mutex::new(None)),
         host_state: Arc::new(Mutex::new(RememberedHostState::default())),
-    })
+    }
+}
+
+pub fn get_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
+    Ok(new_client_os_input())
 }
 
 pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, std::io::Error> {
-    let reading_from_stdin = Arc::new(Mutex::new(None));
-    Ok(ClientOsInputOutput {
-        send_instructions_to_server: Arc::new(Mutex::new(None)),
-        receive_instructions_from_server: Arc::new(Mutex::new(None)),
-        reading_from_stdin,
-        session_name: Arc::new(Mutex::new(None)),
-        host_state: Arc::new(Mutex::new(RememberedHostState::default())),
-    })
+    Ok(new_client_os_input())
 }
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
@@ -513,5 +726,164 @@ mod tests {
         let size = os_input.get_terminal_size();
         assert!(size.rows > 0, "rows should be positive");
         assert!(size.cols > 0, "cols should be positive");
+    }
+
+    #[test]
+    fn a_send_with_no_session_is_not_delivered() {
+        let os_input = get_client_os_input().unwrap();
+        let error = os_input.try_send_to_server_until(
+            ClientToServerMsg::ConnStatus,
+            time::Instant::now() + time::Duration::from_secs(1),
+        );
+        assert!(
+            error.is_err(),
+            "a missing session pipe must not count as a delivered message"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn connect_to_server_until_stops_when_the_deadline_passes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.sock");
+        let os_input = get_client_os_input().unwrap();
+        let budget = time::Duration::from_millis(150);
+        let started = time::Instant::now();
+        let error = os_input.connect_to_server_until(&path, started + budget);
+        assert!(error.is_err());
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < time::Duration::from_secs(2),
+            "connect retry ran for {elapsed:?}"
+        );
+        assert!(
+            elapsed + time::Duration::from_millis(40) >= budget,
+            "connect returned in {elapsed:?}, before the deadline"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancel_session_ipc_stops_the_connect_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.sock");
+        let os_input = get_client_os_input().unwrap();
+        let cancel = os_input.clone();
+        thread::spawn(move || {
+            thread::sleep(time::Duration::from_millis(80));
+            cancel.cancel_session_ipc();
+        });
+        let started = time::Instant::now();
+        let error =
+            os_input.connect_to_server_until(&path, started + time::Duration::from_secs(30));
+        assert!(error.is_err());
+        assert!(
+            started.elapsed() < time::Duration::from_secs(2),
+            "cancel did not stop the connect retry"
+        );
+        assert!(os_input.session_ipc_cancelled());
+    }
+
+    #[cfg(unix)]
+    fn wide_action(marker: u8) -> ClientToServerMsg {
+        ClientToServerMsg::Action {
+            action: zellij_utils::input::actions::Action::Write {
+                key_with_modifier: None,
+                bytes: vec![marker; 64 * 1024],
+                is_kitty_keyboard_protocol: false,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        }
+    }
+
+    #[cfg(unix)]
+    fn accept_one_client(
+        path: &std::path::Path,
+    ) -> (
+        ClientOsInputOutput,
+        std::sync::mpsc::Receiver<interprocess::local_socket::Stream>,
+    ) {
+        use interprocess::local_socket::traits::Listener;
+        let listener = zellij_utils::consts::ipc_bind(path).expect("bind");
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let stream = listener.accept().expect("accept");
+            let _ = tx.send(stream);
+        });
+        let os_input = get_client_os_input().unwrap();
+        os_input
+            .connect_to_server_until(path, time::Instant::now() + time::Duration::from_secs(2))
+            .expect("connect");
+        (os_input, rx)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_bounded_write_delivers_the_same_client_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live.sock");
+        let (os_input, rx) = accept_one_client(&path);
+        let server = rx.recv_timeout(time::Duration::from_secs(2)).unwrap();
+        let mut receiver =
+            zellij_utils::ipc::IpcReceiverWithContext::<ClientToServerMsg>::new(server);
+        receiver
+            .set_read_timeout(Some(time::Duration::from_secs(2)))
+            .unwrap();
+        os_input
+            .try_send_to_server_until(
+                ClientToServerMsg::ConnStatus,
+                time::Instant::now() + time::Duration::from_secs(1),
+            )
+            .expect("delivered");
+        let (msg, _) = receiver.try_recv_client_msg().expect("frame");
+        assert!(matches!(msg, ClientToServerMsg::ConnStatus));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_blocked_write_is_not_a_delivered_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blocked.sock");
+        let (os_input, rx) = accept_one_client(&path);
+        let server = rx.recv_timeout(time::Duration::from_secs(2)).unwrap();
+        let mut delivered = Vec::new();
+        let mut blocked = None;
+        for marker in 0..200u8 {
+            let msg = wide_action(marker);
+            let started = time::Instant::now();
+            match os_input
+                .try_send_to_server_until(msg.clone(), started + time::Duration::from_millis(80))
+            {
+                Ok(()) => delivered.push(msg),
+                Err(_) => {
+                    assert!(
+                        started.elapsed() < time::Duration::from_secs(2),
+                        "blocked write was not bounded"
+                    );
+                    blocked = Some(msg);
+                    break;
+                },
+            }
+        }
+        let blocked = blocked.expect("the socket buffer never filled");
+        let mut receiver =
+            zellij_utils::ipc::IpcReceiverWithContext::<ClientToServerMsg>::new(server);
+        receiver
+            .set_read_timeout(Some(time::Duration::from_millis(200)))
+            .unwrap();
+        let mut got = Vec::new();
+        loop {
+            match receiver.try_recv_client_msg() {
+                Ok((msg, _)) => got.push(msg),
+                Err(_) => break,
+            }
+        }
+        assert_eq!(got, delivered);
+        assert!(
+            !got.contains(&blocked),
+            "a blocked write was decoded as a delivered frame"
+        );
     }
 }

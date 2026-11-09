@@ -1,3 +1,4 @@
+use crate::os_input_output::ClientOsApi;
 use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::client_channel::{
     client_channel, CONTROL_CHANNEL_MAX_BYTES, CONTROL_CHANNEL_MAX_MESSAGES,
@@ -13,7 +14,9 @@ use crate::web_client::message_handlers::{
     parse_stdin, render_to_client, send_control_messages_to_client, StdinSession,
 };
 use crate::web_client::server_listener::zellij_server_listener;
-use crate::web_client::types::{AppState, ControlParams, TerminalParams};
+use crate::web_client::types::{
+    AppState, ControlParams, TerminalParams, WEB_IPC_WRITE_BUDGET, WEB_SESSION_ATTACH_BUDGET,
+};
 use crate::web_client::utils::websocket_origin_is_allowed;
 
 use axum::{
@@ -40,6 +43,56 @@ use zellij_utils::{
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(45);
+
+/// Run a session write off the async worker. `true` only if the write
+/// returned success before the deadline. A blocked write is cancelled and
+/// is not reported as delivered.
+async fn deliver_from_async_task(
+    os_input: Box<dyn ClientOsApi>,
+    msg: ClientToServerMsg,
+    budget: Duration,
+) -> bool {
+    let cancel = os_input.clone();
+    let deadline = std::time::Instant::now() + budget;
+    let send =
+        tokio::task::spawn_blocking(move || os_input.try_send_to_server_until(msg, deadline));
+    match tokio::time::timeout(budget + Duration::from_millis(250), send).await {
+        Ok(Ok(Ok(()))) => true,
+        Ok(Ok(Err(error))) => {
+            log::warn!("web ipc write was not delivered: {error}");
+            false
+        },
+        Ok(Err(_)) => false,
+        Err(_) => {
+            cancel.cancel_session_ipc();
+            log::warn!("web ipc write blocked past its deadline and was not delivered");
+            false
+        },
+    }
+}
+
+/// Releases the client id if attachment does not succeed. Dropped while
+/// still armed when the wait times out, the listener gives up, or this task
+/// is cancelled because the websocket went away.
+struct AttachFailure {
+    armed: bool,
+    os_input: Box<dyn ClientOsApi>,
+    connection_table: Arc<std::sync::Mutex<crate::web_client::types::ConnectionTable>>,
+    web_client_id: String,
+}
+
+impl Drop for AttachFailure {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.os_input.cancel_session_ipc();
+        self.connection_table
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove_client(&self.web_client_id);
+    }
+}
 
 /// How long a connection that we decided to close (a client that does not
 /// keep up, one that was kicked, a control websocket superseded by a newer
@@ -282,7 +335,7 @@ async fn handle_ws_control(
     let mut session_watch = SessionWatch::new(session_token_hash.0);
     let mut close_grace = CloseGrace::new();
 
-    let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
+    let prepare_server_message = |deserialized_msg: WebClientToWebServerControlMessage| {
         let (client_os_api, is_structured) = {
             let connection_table = state
                 .connection_table
@@ -297,15 +350,10 @@ async fn handle_ws_control(
         };
         let Some(client_connection) = client_os_api else {
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
-            return;
+            return None;
         };
-        let Some(client_msg) =
-            control_payload_to_server_msg(deserialized_msg.payload, is_structured)
-        else {
-            return;
-        };
-
-        let _ = client_connection.send_to_server(client_msg);
+        let client_msg = control_payload_to_server_msg(deserialized_msg.payload, is_structured)?;
+        Some((client_connection, client_msg))
     };
 
     loop {
@@ -394,7 +442,16 @@ async fn handle_ws_control(
                             );
                             return;
                         }
-                        send_message_to_server(deserialized_msg);
+                        if let Some((client_connection, client_msg)) =
+                            prepare_server_message(deserialized_msg)
+                        {
+                            let _delivered = deliver_from_async_task(
+                                client_connection,
+                                client_msg,
+                                WEB_IPC_WRITE_BUDGET,
+                            )
+                            .await;
+                        }
                     },
                     Err(e) => {
                         log::error!("Failed to deserialize client msg: {:?}", e);
@@ -509,7 +566,15 @@ async fn handle_ws_terminal(
         client_pixel_dims,
         state.pending_welcome_sessions.clone(),
         is_structured_client,
+        WEB_SESSION_ATTACH_BUDGET,
     );
+
+    let mut attach_failure = AttachFailure {
+        armed: true,
+        os_input: os_input.clone(),
+        connection_table: state.connection_table.clone(),
+        web_client_id: web_client_id.clone(),
+    };
 
     let terminal_channel_cancellation_token = CancellationToken::new();
     let should_not_reconnect = state
@@ -543,7 +608,16 @@ async fn handle_ws_terminal(
         .map(|e| !e)
         .unwrap_or(false);
 
-    let _ = attachment_complete_rx.await;
+    match tokio::time::timeout(WEB_SESSION_ATTACH_BUDGET, attachment_complete_rx).await {
+        Ok(Ok(())) => {
+            attach_failure.armed = false;
+        },
+        Ok(Err(_)) | Err(_) => {
+            // Armed drop cancels the connect retry and releases the slot.
+            // A failed attach must not fall through into the heartbeat loop.
+            return;
+        },
+    }
 
     let mut mouse_old_event = MouseEvent::new();
     // Per-connection parser state. Hoisted so a CSI / Kitty sequence
@@ -624,15 +698,29 @@ async fn handle_ws_terminal(
             TerminalSocketEvent::FinalizeIdle => {
                 // Idle timeout fired with `pending_finalize` set:
                 // drain any ambiguous-but-complete events termwiz held
-                // back on the previous frame.
-                if let Some(client_connection) = state
+                // back on the previous frame. Drop the table lock before
+                // awaiting the blocking write.
+                let client_connection = state
                     .connection_table
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
-                    .cloned()
-                {
-                    stdin_session.finalize(&*client_connection, &mut mouse_old_event);
+                    .cloned();
+                if let Some(client_connection) = client_connection {
+                    let mut mouse = mouse_old_event;
+                    let mut session = stdin_session;
+                    let joined = tokio::task::spawn_blocking(move || {
+                        session.finalize(&*client_connection, &mut mouse);
+                        (mouse, session)
+                    })
+                    .await;
+                    match joined {
+                        Ok(restored) => {
+                            mouse_old_event = restored.0;
+                            stdin_session = restored.1;
+                        },
+                        Err(_) => break,
+                    }
                 } else {
                     // No client to send drained events to — clear the
                     // flag so we don't busy-loop the idle timer.
@@ -653,12 +741,17 @@ async fn handle_ws_terminal(
                     log::error!("Unknown web_client_id: {}", web_client_id);
                     continue;
                 };
-                parse_stdin(
-                    &buf,
-                    client_connection.clone(),
+                let owned = buf.to_vec();
+                if !drive_stdin(
+                    owned,
+                    client_connection,
                     &mut mouse_old_event,
                     &mut stdin_session,
-                );
+                )
+                .await
+                {
+                    break;
+                }
             },
             Message::Text(msg) => {
                 let Some(client_connection) = state
@@ -671,12 +764,17 @@ async fn handle_ws_terminal(
                     log::error!("Unknown web_client_id: {}", web_client_id);
                     continue;
                 };
-                parse_stdin(
-                    msg.as_bytes(),
-                    client_connection.clone(),
+                let owned = msg.as_bytes().to_vec();
+                if !drive_stdin(
+                    owned,
+                    client_connection,
                     &mut mouse_old_event,
                     &mut stdin_session,
-                );
+                )
+                .await
+                {
+                    break;
+                }
             },
             Message::Pong(_) => {
                 heartbeat.pong_received();
@@ -700,7 +798,37 @@ async fn handle_ws_terminal(
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .remove_client(&web_client_id);
-    os_input.send_to_server(ClientToServerMsg::ClientExited);
+    let _delivered = deliver_from_async_task(
+        os_input,
+        ClientToServerMsg::ClientExited,
+        WEB_IPC_WRITE_BUDGET,
+    )
+    .await;
+}
+
+/// Parse terminal input off the async worker. The write inside has its own
+/// deadline; this task only waits for that result.
+async fn drive_stdin(
+    buf: Vec<u8>,
+    client_connection: Box<dyn ClientOsApi>,
+    mouse_old_event: &mut MouseEvent,
+    stdin_session: &mut StdinSession,
+) -> bool {
+    let mut mouse = std::mem::replace(mouse_old_event, MouseEvent::new());
+    let mut session = std::mem::replace(stdin_session, StdinSession::new(false));
+    let joined = tokio::task::spawn_blocking(move || {
+        parse_stdin(&buf, client_connection, &mut mouse, &mut session);
+        (mouse, session)
+    })
+    .await;
+    match joined {
+        Ok((mouse, session)) => {
+            *mouse_old_event = mouse;
+            *stdin_session = session;
+            true
+        },
+        Err(_) => false,
+    }
 }
 
 /// The smallest and largest size a client may ask for. A real terminal never
@@ -894,6 +1022,55 @@ fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn async_delivery_does_not_report_a_blocked_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blocked.sock");
+        use interprocess::local_socket::traits::Listener;
+        let listener = zellij_utils::consts::ipc_bind(&path).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let stream = listener.accept().expect("accept");
+            let _ = tx.send(stream);
+        });
+        let os_input = crate::os_input_output::get_client_os_input().unwrap();
+        os_input
+            .connect_to_server_until(&path, std::time::Instant::now() + Duration::from_secs(2))
+            .expect("connect");
+        let _server = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("accepted socket");
+        let budget = Duration::from_millis(80);
+        let mut saw_failure = false;
+        let started = std::time::Instant::now();
+        for marker in 0..200u8 {
+            let msg = ClientToServerMsg::Action {
+                action: Action::Write {
+                    key_with_modifier: None,
+                    bytes: vec![marker; 64 * 1024],
+                    is_kitty_keyboard_protocol: false,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            };
+            let delivered = deliver_from_async_task(Box::new(os_input.clone()), msg, budget).await;
+            if !delivered {
+                saw_failure = true;
+                break;
+            }
+        }
+        assert!(
+            saw_failure,
+            "a full socket buffer still reported every write as delivered"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "async delivery waited on a blocked write"
+        );
+    }
 
     #[test]
     fn terminal_resize_is_clamped_to_sane_bounds() {
