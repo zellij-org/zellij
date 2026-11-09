@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-    KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
+    REG_OPTION_NON_VOLATILE, REG_SZ,
 };
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
+use zellij_utils::desktop_integration::{windows_app_icon_path, windows_app_id_key};
 
 use crate::config::identity::{identity, Identity};
 
@@ -28,34 +29,12 @@ pub fn register() -> Result<()> {
     Ok(())
 }
 
-pub fn unregister() -> Result<Vec<String>> {
-    let identity = identity();
-    let mut removed = Vec::new();
-    let key = registration_key(&identity);
-    let result = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, wide(&key).as_ptr()) };
-    match result {
-        ERROR_SUCCESS => removed.push(format!(r"HKEY_CURRENT_USER\{}", key)),
-        ERROR_FILE_NOT_FOUND => {},
-        error => bail!("failed to remove {} (error {})", key, error),
-    }
-    let icon = icon_path(&ZELLIJ_CACHE_DIR, &identity);
-    match std::fs::remove_file(&icon) {
-        Ok(()) => removed.push(icon.display().to_string()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-        Err(e) => return Err(e).with_context(|| format!("failed to remove {:?}", icon)),
-    }
-    Ok(removed)
-}
-
 fn registration_key(identity: &Identity) -> String {
-    format!(
-        r"Software\Classes\AppUserModelId\{}",
-        identity.windows_app_id()
-    )
+    windows_app_id_key(identity.name)
 }
 
 fn icon_path(cache_dir: &Path, identity: &Identity) -> PathBuf {
-    cache_dir.join(format!("{}.png", identity.name))
+    windows_app_icon_path(cache_dir, identity.name)
 }
 
 /// Windows reads `IconUri` as an image file, so it points at a PNG and not at the executable.
