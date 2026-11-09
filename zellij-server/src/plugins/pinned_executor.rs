@@ -1,3 +1,4 @@
+use crate::diagnostics;
 use crate::plugins::plugin_map::PluginMap;
 use crate::plugins::wasm_bridge::PluginCache;
 use crate::ClientId;
@@ -255,7 +256,8 @@ impl PinnedExecutor {
         };
 
         // Increment busy counter BEFORE sending work
-        thread.jobs_in_flight.fetch_add(1, Ordering::SeqCst);
+        let jobs_in_flight = thread.jobs_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        diagnostics::record_plugin_jobs_in_flight(jobs_in_flight);
 
         // Send work
         let job = Job::Work(Box::new(f));

@@ -15,6 +15,7 @@ pub mod vt_parser;
 pub mod attention;
 pub mod background_jobs;
 mod desktop_app;
+mod diagnostics;
 pub use desktop_app::{set_app_starter, AppStarter};
 mod global_async_runtime;
 mod logging_pipe;

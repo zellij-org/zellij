@@ -4,6 +4,7 @@ use std::time::Duration;
 use zellij_utils::channels;
 use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
+use crate::diagnostics;
 use crate::route::NotificationEnd;
 use crate::thread_bus::Bus;
 
@@ -136,6 +137,7 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
                             offset: 0,
                             _completion: completion,
                         });
+                        diagnostics::record_pty_pending_bytes(queue.remaining_bytes);
                     }
                 },
                 PtyWriteInstruction::ResizePty(

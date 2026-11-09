@@ -87,6 +87,7 @@ use zellij_utils::{
 };
 
 use crate::background_jobs::BackgroundJob;
+use crate::diagnostics;
 use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
@@ -11111,6 +11112,7 @@ pub(crate) fn screen_thread_main(
             .context("failed to receive event on channel")?;
         let screen_context: ScreenContext = (&event).into();
         err_ctx.add_call(ContextType::Screen(screen_context));
+        let _screen_operation = diagnostics::ScreenOperationGuard::new(screen_context);
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
