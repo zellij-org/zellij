@@ -13687,6 +13687,31 @@ fn serialize_resume_ignores_a_row_appended_between_quanta() {
 }
 
 #[test]
+fn serialize_keeps_a_rewrap_tail_with_its_line() {
+    // Narrowing splits a wide line. The continuation is a new row with a
+    // newer stamp than the lines below it. The saved text must stay in
+    // screen order: the tail of B before C.
+    let mut grid =
+        create_grid_with_size_and_raw(6, 20, b"AAAA\r\nBBBBBBBBBBBBBBBBBBBB\r\nCCCC\r\n");
+    grid.change_size(6, 10);
+    let serialized = grid
+        .serialize(Some(usize::MAX))
+        .expect("four wrapped rows finish in one call");
+    let cccc = serialized.find("CCCC").expect("C survives the resize");
+    let bees_before_c = serialized[..cccc].matches('B').count();
+    let bees_after_c = serialized[cccc..].matches('B').count();
+    assert_eq!(
+        bees_before_c, 20,
+        "both halves of B must precede C, snapshot:\n{serialized}"
+    );
+    assert_eq!(
+        bees_after_c, 0,
+        "B's rewrap tail must not follow C, snapshot:\n{serialized}"
+    );
+    assert!(serialized.find("AAAA").is_some_and(|index| index < cccc));
+}
+
+#[test]
 fn serialize_budget_only_scans_the_requested_rows() {
     // Well under the cell budget, so a scan that ignored the request
     // would walk all 3,000 rows before running out of history.
