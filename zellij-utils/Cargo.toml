@@ -54,7 +54,7 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { version = "0.30", default-features = false, features = ["bundled"] }
+rusqlite = { version = "0.41", default-features = false, features = ["bundled", "cache"] }
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
