@@ -1,7 +1,7 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
-use crate::plugins::plugin_map::PluginEnv;
+use crate::plugins::plugin_map::{next_permission_prompt_id, PluginEnv};
 use crate::plugins::wasm_bridge::{handle_plugin_crash, redact_session_info_for_plugin};
 use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
@@ -1713,18 +1713,20 @@ fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Resu
 
     // we do this so that messages that have arrived while the user is seeing the permission screen
     // will be cached and reapplied once the permission is granted
+    let prompt_id = next_permission_prompt_id();
     let _ = env
         .senders
         .send_to_plugin(PluginInstruction::CachePluginEvents {
             plugin_id: env.plugin_id,
             generation: env.generation,
             digest: env.plugin_digest.clone(),
+            prompt_id,
         });
 
     env.senders
         .send_to_screen(ScreenInstruction::RequestPluginPermissions(
             permission_pane_id(env),
-            PluginPermission::new(env.plugin.location.to_string(), permissions),
+            PluginPermission::new(env.plugin.location.to_string(), permissions, prompt_id),
         ))
 }
 

@@ -421,6 +421,18 @@ pub fn next_plugin_generation() -> u64 {
     NEXT_PLUGIN_GENERATION.fetch_add(1, Ordering::Relaxed)
 }
 
+static NEXT_PERMISSION_PROMPT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Opaque id for one permission prompt. Zero is never issued.
+pub fn next_permission_prompt_id() -> u64 {
+    loop {
+        let id = NEXT_PERMISSION_PROMPT_ID.fetch_add(1, Ordering::Relaxed);
+        if id != 0 {
+            return id;
+        }
+    }
+}
+
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub generation: u64,

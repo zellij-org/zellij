@@ -202,6 +202,8 @@ fn respond(
             permissions,
             status,
             Some(cache_path.to_path_buf()),
+            None,
+            None,
         )
         .unwrap();
     let key = permission_cache_key(bridge, plugin_id, client_id);
@@ -398,6 +400,8 @@ fn denial_completes_a_pending_permission_request_exactly_once() {
             vec![PermissionType::ReadApplicationState],
             PermissionStatus::Granted,
             Some(cache_path.clone()),
+            None,
+            None,
         )
         .unwrap();
 
@@ -409,7 +413,7 @@ fn denial_completes_a_pending_permission_request_exactly_once() {
             running.store.data().plugin_digest.clone(),
         )
     };
-    bridge.cache_plugin_events(plugin_id, generation, digest);
+    bridge.cache_plugin_events(plugin_id, generation, digest, 1);
     assert!(bridge
         .plugin_ids_waiting_for_permission_request
         .contains(&plugin_id));
@@ -423,6 +427,8 @@ fn denial_completes_a_pending_permission_request_exactly_once() {
             vec![PermissionType::ChangeApplicationState],
             PermissionStatus::Denied,
             Some(cache_path.clone()),
+            None,
+            None,
         )
         .unwrap();
     let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
@@ -487,7 +493,7 @@ fn denial_flushes_cached_worker_messages_when_the_pending_request_completes() {
             running.store.data().plugin_digest.clone(),
         )
     };
-    bridge.cache_plugin_events(plugin_id, generation, digest);
+    bridge.cache_plugin_events(plugin_id, generation, digest, 1);
     // Force the worker path to cache by temporarily removing workers, then
     // restoring after we have proven the pending cache was populated.
     let workers = {
@@ -533,6 +539,8 @@ fn denial_flushes_cached_worker_messages_when_the_pending_request_completes() {
             vec![PermissionType::RunCommands],
             PermissionStatus::Denied,
             Some(cache_path),
+            None,
+            None,
         )
         .unwrap();
     // Permission answers must not skip the flush when the loader already finished.
@@ -635,5 +643,165 @@ fn grant_known_permissions_with_a_different_digest_or_generation_is_not_applied(
             shared,
         );
         reject_mismatched_known_grant(&mut bridge, plugin_id, client_id);
+    }
+}
+
+fn replace_running_instance(bridge: &WasmBridge, plugin_id: PluginId, client_id: ClientId) {
+    let running = running_plugin(bridge, plugin_id, client_id);
+    let mut running = running.lock().unwrap();
+    let data = running.store.data_mut();
+    data.generation = data.generation.wrapping_add(1);
+    data.plugin_digest = format!("{}-replaced", data.plugin_digest);
+}
+
+#[test]
+fn grant_known_permissions_after_the_instance_is_replaced_is_not_applied() {
+    for shared in [false, true] {
+        let LoadedBridge {
+            mut bridge,
+            plugin_id,
+            client_id,
+            ..
+        } = load_wat(
+            if shared {
+                shared_wat()
+            } else {
+                nonshared_wat()
+            },
+            shared,
+        );
+        let (generation, digest) = {
+            let running = running_plugin(&bridge, plugin_id, client_id);
+            let running = running.lock().unwrap();
+            (
+                running.store.data().generation,
+                running.store.data().plugin_digest.clone(),
+            )
+        };
+        replace_running_instance(&bridge, plugin_id, client_id);
+        bridge
+            .cached_events_for_pending_plugins
+            .insert_empty(plugin_id);
+        let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+
+        // The grant was validated against the previous generation and digest.
+        // Applying it by plugin id alone would write the replacement.
+        bridge
+            .grant_known_permissions(
+                plugin_id,
+                Some(client_id),
+                vec![PermissionType::RunCommands],
+                generation,
+                &digest,
+                shutdown_sender,
+            )
+            .unwrap();
+        assert!(
+            runtime_permissions(&bridge, plugin_id, client_id).is_empty(),
+            "replacing the instance must refuse a grant that was checked against the previous one"
+        );
+        let cache_dir = tempdir().unwrap();
+        let bare_write = bridge.cache_plugin_permissions(
+            plugin_id,
+            Some(client_id),
+            vec![PermissionType::ReadApplicationState],
+            PermissionStatus::Granted,
+            Some(cache_dir.path().join("permissions.kdl")),
+            Some((generation, digest.as_str())),
+            None,
+        );
+        assert_eq!(
+            bare_write.unwrap(),
+            false,
+            "a verified grant must not be written once the instance at this id has been replaced"
+        );
+        assert!(
+            runtime_permissions(&bridge, plugin_id, client_id).is_empty(),
+            "applying by plugin id after replacement must not grant the new instance"
+        );
+        assert!(
+            bridge
+                .cached_events_for_pending_plugins
+                .contains(&plugin_id),
+            "a grant for a replaced instance must not emit PermissionRequestResult or drain cached events"
+        );
+    }
+}
+
+#[test]
+fn a_stale_prompt_answer_is_not_applied_to_the_replacement_prompt() {
+    for shared in [false, true] {
+        let LoadedBridge {
+            mut bridge,
+            plugin_id,
+            client_id,
+            ..
+        } = load_wat(
+            if shared {
+                shared_wat()
+            } else {
+                nonshared_wat()
+            },
+            shared,
+        );
+        // Prompts are stored under the instance id. The answer arrives with the
+        // pane id, which for a shared plugin is the slot.
+        let prompt_key = bridge.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        let (generation_a, digest_a) = {
+            let running = running_plugin(&bridge, plugin_id, client_id);
+            let running = running.lock().unwrap();
+            (
+                running.store.data().generation,
+                running.store.data().plugin_digest.clone(),
+            )
+        };
+        bridge.cache_plugin_events(prompt_key, generation_a, digest_a.clone(), 1);
+        replace_running_instance(&bridge, plugin_id, client_id);
+        let (generation_b, digest_b) = {
+            let running = running_plugin(&bridge, plugin_id, client_id);
+            let running = running.lock().unwrap();
+            (
+                running.store.data().generation,
+                running.store.data().plugin_digest.clone(),
+            )
+        };
+        bridge.cache_plugin_events(prompt_key, generation_b, digest_b, 2);
+        bridge
+            .cached_events_for_pending_plugins
+            .insert_empty(plugin_id);
+        let cache_dir = tempdir().unwrap();
+        let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+
+        // The click still names prompt 1. Applying it against the prompt now
+        // stored for this id would grant instance B.
+        bridge
+            .apply_permission_prompt_result(
+                plugin_id,
+                Some(client_id),
+                vec![PermissionType::RunCommands],
+                PermissionStatus::Granted,
+                Some(cache_dir.path().join("permissions.kdl")),
+                1,
+                shutdown_sender,
+            )
+            .unwrap();
+
+        assert!(
+            runtime_permissions(&bridge, plugin_id, client_id).is_empty(),
+            "an answer for prompt 1 must not grant the instance recorded as prompt 2"
+        );
+        assert!(
+            bridge
+                .cached_events_for_pending_plugins
+                .contains(&plugin_id),
+            "an answer for prompt 1 must not emit PermissionRequestResult"
+        );
+        assert_eq!(
+            bridge
+                .permission_prompt_identity(plugin_id)
+                .map(|(id, _, _)| id),
+            Some(2),
+            "a stale answer must leave the replacement prompt in place"
+        );
     }
 }

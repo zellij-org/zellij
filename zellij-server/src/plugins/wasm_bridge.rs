@@ -844,7 +844,8 @@ pub struct WasmBridge {
     // plugins whose loader job has not yet published the instances of all connected clients
     plugins_with_unfinished_load: HashSet<PluginId>,
     // generation and module digest of each plugin's latest permission prompt
-    permission_prompts: HashMap<PluginId, (u64, String)>,
+    // plugin id -> (prompt id, generation, digest) of the prompt currently shown
+    permission_prompts: HashMap<PluginId, (u64, u64, String)>,
     cached_events_for_pending_plugins: PendingPluginCaches,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
@@ -3403,8 +3404,9 @@ impl WasmBridge {
         }
     }
     /// Apply a cache-hit permission grant only when `generation` and `digest` are
-    /// still the running instance. A mismatch is not written and does not emit
-    /// `PermissionRequestResult`.
+    /// still the running instance. The write rechecks both under the running-plugin
+    /// lock, so a replacement that reuses this id cannot inherit the grant. A
+    /// mismatch is not written and does not emit `PermissionRequestResult`.
     pub(crate) fn grant_known_permissions(
         &mut self,
         plugin_id: PluginId,
@@ -3414,26 +3416,115 @@ impl WasmBridge {
         digest: &str,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        if !self.running_instance_matches(plugin_id, client_id, generation, digest) {
-            log::warn!(
-                "Ignoring a cached permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
-            );
-            return Ok(());
-        }
-        if let Err(e) = self.cache_plugin_permissions(
+        self.apply_verified_permissions(
             plugin_id,
             client_id,
             permissions,
             PermissionStatus::Granted,
             None,
+            generation,
+            digest,
+            None,
+            shutdown_sender,
+        )
+    }
+
+    /// Apply an answer to the interactive prompt `prompt_id`. The stored prompt
+    /// must still be that id, and its generation and digest must still be the
+    /// running instance, under the same lock as the permission write.
+    pub(crate) fn apply_permission_prompt_result(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        status: PermissionStatus,
+        cache_path: Option<PathBuf>,
+        prompt_id: u64,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        let Some((stored_id, generation, digest)) = self.permission_prompt_identity(plugin_id)
+        else {
+            log::warn!(
+                "Ignoring a permission response for plugin {plugin_id}: its prompt belongs to a module that is no longer running"
+            );
+            return Ok(());
+        };
+        // A superseded prompt is unchanged. A different prompt id still reaches
+        // the write so it can be refused there instead of matching the replacement.
+        if stored_id == prompt_id && !self.permission_prompt_is_current(plugin_id, client_id) {
+            log::warn!(
+                "Ignoring a permission response for plugin {plugin_id}: its prompt belongs to a module that is no longer running"
+            );
+            self.clear_permission_prompt(plugin_id);
+            return Ok(());
+        }
+        let result = self.apply_verified_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            status,
+            cache_path,
+            generation,
+            &digest,
+            Some(prompt_id),
+            shutdown_sender,
+        );
+        if stored_id == prompt_id {
+            self.clear_permission_prompt(plugin_id);
+        }
+        result
+    }
+
+    /// Write `permissions` and deliver the result only while `generation` and
+    /// `digest` are the instance resolved for this write. The running-plugin lock
+    /// is held from that comparison through the runtime permission update.
+    /// `prompt_id`, when set, must still be the prompt stored for this plugin.
+    pub(crate) fn apply_verified_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        status: PermissionStatus,
+        cache_path: Option<PathBuf>,
+        generation: u64,
+        digest: &str,
+        prompt_id: Option<u64>,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        match self.cache_plugin_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            status,
+            cache_path,
+            Some((generation, digest)),
+            prompt_id,
         ) {
-            log::error!("{}", e);
+            Ok(false) => {
+                log::warn!(
+                    "Ignoring a permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
+                );
+                return Ok(());
+            },
+            Ok(true) => {},
+            Err(e) => {
+                // Runtime permissions were updated before the durable write failed.
+                log::error!("{}", e);
+            },
+        }
+        // Disk persistence drops the running-plugin lock. Do not deliver the
+        // result, or drain events cached for this id, if that instance is gone.
+        if !self.running_instance_matches(plugin_id, client_id, generation, digest) {
+            log::warn!(
+                "Ignoring a permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
+            );
+            return Ok(());
         }
         self.update_plugins(
             vec![(
                 Some(plugin_id),
                 client_id,
-                Event::PermissionRequestResult(PermissionStatus::Granted),
+                Event::PermissionRequestResult(status),
             )],
             shutdown_sender.clone(),
         )?;
@@ -3441,7 +3532,7 @@ impl WasmBridge {
         Ok(())
     }
 
-    fn running_instance_matches(
+    pub(crate) fn running_instance_matches(
         &self,
         plugin_id: PluginId,
         client_id: Option<ClientId>,
@@ -3487,7 +3578,7 @@ impl WasmBridge {
         // plugin that is reloaded while it is open should instead be closed at reload time
         // (`prepare_plugin_reload`), which needs a screen instruction to drop a pane's pending
         // request.
-        let Some((prompt_generation, prompt_digest)) =
+        let Some((_prompt_id, prompt_generation, prompt_digest)) =
             self.permission_prompts.get(&prompt_key).cloned()
         else {
             return false;
@@ -3520,6 +3611,19 @@ impl WasmBridge {
         let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
         self.permission_prompts.remove(&prompt_key);
     }
+    pub(crate) fn permission_prompt_identity(
+        &self,
+        plugin_id: PluginId,
+    ) -> Option<(u64, u64, String)> {
+        let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        self.permission_prompts.get(&prompt_key).cloned()
+    }
+    /// `expected_instance` is the generation and module digest that were validated
+    /// for this grant. When set, both are compared to the resolved instance under
+    /// the running-plugin lock immediately before the permission set is written.
+    /// `expected_prompt_id`, when set, must still be the prompt stored for this
+    /// plugin, and that prompt's generation and digest must be this instance.
+    /// A mismatch writes nothing and returns `Ok(false)`.
     pub fn cache_plugin_permissions(
         &mut self,
         plugin_id: PluginId,
@@ -3527,8 +3631,12 @@ impl WasmBridge {
         permissions: Vec<PermissionType>,
         status: PermissionStatus,
         cache_path: Option<PathBuf>,
-    ) -> Result<()> {
+        expected_instance: Option<(u64, &str)>,
+        expected_prompt_id: Option<u64>,
+    ) -> Result<bool> {
         let err_context = || format!("Failed to write plugin permission {plugin_id}");
+        let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        let stored_prompt = self.permission_prompts.get(&prompt_key).cloned();
 
         let shared_running_plugin = self.shared_instance_of(plugin_id).and_then(|instance_id| {
             self.plugin_map
@@ -3540,16 +3648,41 @@ impl WasmBridge {
         });
         let running_plugin = match shared_running_plugin {
             Some(running_plugin) => running_plugin,
-            None => self
+            None => match self
                 .plugin_map
                 .lock()
                 // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .get_running_plugin(plugin_id, client_id)
-                .ok_or_else(|| anyhow!("Failed to get running plugin"))?,
+            {
+                Some(running_plugin) => running_plugin,
+                None if expected_instance.is_some() => return Ok(false),
+                None => return Err(anyhow!("Failed to get running plugin")),
+            },
         };
 
         let mut running_plugin = lock_running(&running_plugin);
+        {
+            let data = running_plugin.store.data();
+            // Same lock as the write below: the id may already name a different instance.
+            if let Some(prompt_id) = expected_prompt_id {
+                let prompt_matches = stored_prompt.as_ref().is_some_and(
+                    |(stored_id, stored_generation, stored_digest)| {
+                        *stored_id == prompt_id
+                            && data.generation == *stored_generation
+                            && data.plugin_digest == *stored_digest
+                    },
+                );
+                if !prompt_matches {
+                    return Ok(false);
+                }
+            }
+            if let Some((generation, digest)) = expected_instance {
+                if data.generation != generation || data.plugin_digest != digest {
+                    return Ok(false);
+                }
+            }
+        }
 
         let mut runtime_permissions = running_plugin
             .store
@@ -3569,7 +3702,7 @@ impl WasmBridge {
             .set_permissions(runtime_permissions);
 
         if running_plugin.store.data().plugin.is_builtin() {
-            return Ok(());
+            return Ok(true);
         }
 
         let permission_cache_key = format!(
@@ -3583,13 +3716,19 @@ impl WasmBridge {
             PermissionCache::grant_and_persist(cache_path, permission_cache_key, permissions)
                 .with_context(err_context)?;
         }
-        Ok(())
+        Ok(true)
     }
-    pub fn cache_plugin_events(&mut self, plugin_id: PluginId, generation: u64, digest: String) {
+    pub fn cache_plugin_events(
+        &mut self,
+        plugin_id: PluginId,
+        generation: u64,
+        digest: String,
+        prompt_id: u64,
+    ) {
         // Remember which module instance the prompt that is about to be shown belongs to. Shared
         // instances are keyed by instance id, as that is what their requests carry.
         self.permission_prompts
-            .insert(plugin_id, (generation, digest));
+            .insert(plugin_id, (prompt_id, generation, digest));
         if self.shared_instance_of(plugin_id).is_some() {
             return;
         }

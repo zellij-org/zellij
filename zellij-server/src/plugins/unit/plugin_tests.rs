@@ -117,6 +117,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
                                         plugin_permission.permissions,
                                         PermissionStatus::Granted,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             } else {
@@ -127,6 +128,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
                                         plugin_permission.permissions,
                                         PermissionStatus::Denied,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             }
@@ -171,6 +173,7 @@ macro_rules! grant_permissions_and_log_actions_until {
                                     plugin_permission.permissions,
                                     status,
                                     Some(cache_path.clone()),
+                                    plugin_permission.prompt_id,
                                 ),
                             );
                         },
@@ -217,6 +220,7 @@ macro_rules! deny_permissions_and_log_actions_in_thread {
                                     plugin_permission.permissions,
                                     PermissionStatus::Denied,
                                     Some(cache_path.clone()),
+                                    plugin_permission.prompt_id,
                                 ),
                             );
                             break;
@@ -261,6 +265,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
                                         plugin_permission.permissions,
                                         PermissionStatus::Granted,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             } else {
@@ -271,6 +276,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
                                         plugin_permission.permissions,
                                         PermissionStatus::Denied,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             }
@@ -315,6 +321,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
                                         plugin_permission.permissions,
                                         PermissionStatus::Granted,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             } else {
@@ -325,6 +332,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
                                         plugin_permission.permissions,
                                         PermissionStatus::Denied,
                                         Some(cache_path.clone()),
+                                        plugin_permission.prompt_id,
                                     ),
                                 );
                             }
@@ -6352,6 +6360,7 @@ pub fn granted_permission_request_result() {
                                 plugin_permission.permissions,
                                 PermissionStatus::Granted,
                                 Some(cache_path.clone()),
+                                plugin_permission.prompt_id,
                             ));
                         break;
                     },
@@ -6449,6 +6458,7 @@ pub fn denied_permission_request_result() {
                                 plugin_permission.permissions,
                                 PermissionStatus::Denied,
                                 Some(cache_path.clone()),
+                                plugin_permission.prompt_id,
                             ));
                         break;
                     },
@@ -13208,6 +13218,7 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
                                 plugin_permission.permissions,
                                 PermissionStatus::Granted,
                                 Some(cache_path.clone()),
+                                plugin_permission.prompt_id,
                             ));
                     },
                     ScreenInstruction::Exit => {
@@ -13380,6 +13391,7 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
                                 plugin_permission.permissions,
                                 PermissionStatus::Granted,
                                 Some(cache_path.clone()),
+                                plugin_permission.prompt_id,
                             ));
                     },
                     ScreenInstruction::Exit => {
@@ -13619,6 +13631,7 @@ fn run_nested_keybinds_scenario(
                                     plugin_permission.permissions,
                                     PermissionStatus::Granted,
                                     Some(cache_path.clone()),
+                                    plugin_permission.prompt_id,
                                 ),
                             );
                         },
@@ -13973,6 +13986,7 @@ pub fn plugin_unloaded_while_loading_does_not_run_once_loaded() {
                     permissions.permissions,
                     PermissionStatus::Granted,
                     Some(cache_path.clone()),
+                    permissions.prompt_id,
                 ));
             },
             Ok((ScreenInstruction::PluginBytes(plugin_render_assets), _)) => {
@@ -14487,6 +14501,7 @@ fn run_attention_fixture(
                                 allowed,
                                 status,
                                 Some(cache_path.clone()),
+                                plugin_permission.prompt_id,
                             ));
                         answered.store(true, Ordering::SeqCst);
                     },
@@ -14936,6 +14951,7 @@ impl SettingsEntriesScenario {
                                 permissions.permissions,
                                 PermissionStatus::Granted,
                                 Some(self.cache_path.clone()),
+                                permissions.prompt_id,
                             ));
                     self.granted_plugins += 1;
                 },

@@ -18367,6 +18367,7 @@ fn switching_tabs_moves_a_popup_asking_for_permissions_along_with_its_focus() {
             Some(zellij_utils::data::PluginPermission::new(
                 "my-plugin".to_owned(),
                 vec![zellij_utils::data::PermissionType::ReadApplicationState],
+                1,
             )),
         );
     screen.switch_tab_prev(None, true, client_id).unwrap();
@@ -18722,6 +18723,7 @@ fn a_popup_asking_for_permissions_reports_its_focus_to_the_server() {
             Some(zellij_utils::data::PluginPermission::new(
                 "my-plugin".to_owned(),
                 vec![zellij_utils::data::PermissionType::ReadApplicationState],
+                1,
             )),
         );
     screen.report_popup_state_for_plugin(42);

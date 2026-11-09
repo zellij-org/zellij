@@ -701,7 +701,7 @@ fn a_permission_answer_only_counts_for_the_module_that_was_prompted() {
     // nobody asked: an answer is not an answer to anything
     assert!(!bridge.permission_prompt_is_current(plugin_id, Some(1)));
 
-    bridge.cache_plugin_events(plugin_id, generation, digest.clone());
+    bridge.cache_plugin_events(plugin_id, generation, digest.clone(), 1);
     assert!(bridge.permission_prompt_is_current(plugin_id, Some(1)));
     bridge.clear_permission_prompt(plugin_id);
     assert!(
@@ -710,17 +710,17 @@ fn a_permission_answer_only_counts_for_the_module_that_was_prompted() {
     );
 
     // a prompt that belonged to different bytes
-    bridge.cache_plugin_events(plugin_id, generation, "another-digest".to_owned());
+    bridge.cache_plugin_events(plugin_id, generation, "another-digest".to_owned(), 2);
     assert!(!bridge.permission_prompt_is_current(plugin_id, Some(1)));
 
     // a prompt of an instance that has been reloaded since
-    bridge.cache_plugin_events(plugin_id, generation, digest.clone());
+    bridge.cache_plugin_events(plugin_id, generation, digest.clone(), 3);
     bridge
         .quarantine
         .begin_generation(plugin_id, generation + 1);
     assert!(!bridge.permission_prompt_is_current(plugin_id, Some(1)));
     // the reloaded instance asking itself is fine
-    bridge.cache_plugin_events(plugin_id, generation + 1, digest);
+    bridge.cache_plugin_events(plugin_id, generation + 1, digest, 4);
     assert!(bridge.permission_prompt_is_current(plugin_id, Some(1)));
 
     // nothing is left behind once the plugin is gone

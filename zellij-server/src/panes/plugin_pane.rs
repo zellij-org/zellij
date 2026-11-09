@@ -294,18 +294,21 @@ impl Pane for PluginPane {
             None
         } else if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
+            let prompt_id = requesting_permissions.prompt_id;
             if let Some(key_with_modifier) = key_with_modifier {
                 match key_with_modifier.bare_key {
                     BareKey::Char('y') if key_with_modifier.has_no_modifiers() => {
                         Some(AdjustedInput::PermissionRequestResult(
                             permissions,
                             PermissionStatus::Granted,
+                            prompt_id,
                         ))
                     },
                     BareKey::Char('n') if key_with_modifier.has_no_modifiers() => {
                         Some(AdjustedInput::PermissionRequestResult(
                             permissions,
                             PermissionStatus::Denied,
+                            prompt_id,
                         ))
                     },
                     _ => None,
@@ -316,11 +319,13 @@ impl Pane for PluginPane {
                     &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
                         permissions,
                         PermissionStatus::Granted,
+                        prompt_id,
                     )),
                     // N or n
                     &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
                         permissions,
                         PermissionStatus::Denied,
+                        prompt_id,
                     )),
                     _ => None,
                 }

@@ -1942,11 +1942,17 @@ impl PermissionType {
 pub struct PluginPermission {
     pub name: String,
     pub permissions: Vec<PermissionType>,
+    /// Prompt this request belongs to. The answer must carry the same id.
+    pub prompt_id: u64,
 }
 
 impl PluginPermission {
-    pub fn new(name: String, permissions: Vec<PermissionType>) -> Self {
-        PluginPermission { name, permissions }
+    pub fn new(name: String, permissions: Vec<PermissionType>, prompt_id: u64) -> Self {
+        PluginPermission {
+            name,
+            permissions,
+            prompt_id,
+        }
     }
 }
 

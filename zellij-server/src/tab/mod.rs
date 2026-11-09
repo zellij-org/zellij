@@ -1345,7 +1345,7 @@ pub enum GuestChoiceIndicator {
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
     ReRunCommandInThisPane(RunCommand),
-    PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
+    PermissionRequestResult(Vec<PermissionType>, PermissionStatus, u64),
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
     WriteKeyToPlugin(KeyWithModifier),
@@ -6199,7 +6199,7 @@ impl Tab {
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
                 },
-                Some(AdjustedInput::PermissionRequestResult(permissions, status)) => {
+                Some(AdjustedInput::PermissionRequestResult(permissions, status, prompt_id)) => {
                     if active_pane.query_should_be_suppressed() {
                         active_pane.set_should_be_suppressed(false);
                         self.suppress_pane(PaneId::Plugin(pid), client_id);
@@ -6212,6 +6212,7 @@ impl Tab {
                             permissions,
                             status,
                             None,
+                            prompt_id,
                         ))
                         .with_context(err_context)?;
                     should_update_ui = true;

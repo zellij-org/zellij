@@ -18535,6 +18535,7 @@ fn a_held_back_popup_asking_for_permissions_is_shown() {
         Some(zellij_utils::data::PluginPermission::new(
             "my-plugin".to_owned(),
             vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            1,
         )),
     );
     let snapshot = render_snapshot_for_client(&mut tab, client_id, size);
@@ -18629,10 +18630,16 @@ fn keys_sent_to_plugin(
                     }
                 }
             },
-            PluginInstruction::PermissionRequestResult(pid, Some(1), permissions, status, None)
-                if pid == plugin_id
-                    && permissions
-                        == vec![zellij_utils::data::PermissionType::ReadApplicationState] =>
+            PluginInstruction::PermissionRequestResult(
+                pid,
+                Some(1),
+                permissions,
+                status,
+                None,
+                _,
+            ) if pid == plugin_id
+                && permissions
+                    == vec![zellij_utils::data::PermissionType::ReadApplicationState] =>
             {
                 permission_results.push(status);
             },
@@ -18667,6 +18674,7 @@ fn a_popup_plugin_shows_its_permission_request_and_takes_the_answer() {
         Some(zellij_utils::data::PluginPermission::new(
             "my-plugin".to_owned(),
             vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            1,
         )),
     );
     let snapshot = render_snapshot_for_client(&mut tab, client_id, size);
@@ -18703,6 +18711,7 @@ fn ask_popup_for_read_permission(tab: &mut Tab, plugin_id: u32) {
         Some(zellij_utils::data::PluginPermission::new(
             "my-plugin".to_owned(),
             vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            1,
         )),
     );
 }
