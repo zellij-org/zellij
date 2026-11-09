@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use zellij_utils::errors::prelude::Context;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
 
@@ -986,12 +987,15 @@ pub fn start_remote_client(
             let _ = stdout.flush();
         }
         os_input.discard_pending_input();
-        os_input.unset_raw_mode().unwrap();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let error = terminal_teardown_message(&e, full_screen_ws.rows, false, false);
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(error.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            error.as_bytes(),
+            "failed to write teardown message to stdout",
+        );
         if exit_status == 0 {
             log::info!("{}", e);
         } else {
@@ -1026,8 +1030,11 @@ pub fn start_remote_client(
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(clear_screen.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            clear_screen.as_bytes(),
+            "failed to clear the screen on reconnect",
+        );
     }
 
     Ok(reconnect_to_session)
@@ -1506,7 +1513,7 @@ pub fn start_client(
             !explicitly_disable_kitty_keyboard_protocol,
             EXIT_DRAIN_TIMEOUT,
         );
-        let _ = os_input.unset_raw_mode();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let error = terminal_teardown_message(
             &backtrace,
@@ -1515,8 +1522,11 @@ pub fn start_client(
             include_grapheme_cluster_exit,
         );
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write_all(error.as_bytes());
-        let _ = stdout.flush();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            error.as_bytes(),
+            "failed to write teardown message to stdout",
+        );
         std::process::exit(1);
     };
 
@@ -1780,24 +1790,38 @@ pub fn start_client(
             exit_drain_timeout,
         );
         info!("{}", exit_msg);
-        let _ = os_input.unset_raw_mode();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write_all(goodbye_message.as_bytes());
+        best_effort_write_and_flush(
+            &mut *stdout,
+            goodbye_message.as_bytes(),
+            "failed to write the goodbye message to stdout",
+        );
         if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
             if let Some(line) = exit_line_once(&reminders) {
-                let _ = stdout.write_all(line.as_bytes());
+                best_effort_write_and_flush(
+                    &mut *stdout,
+                    line.as_bytes(),
+                    "failed to write the exit reminder to stdout",
+                );
             }
         }
-        let _ = stdout.flush();
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
         if outer_grapheme_cluster_mode.is_enabled() {
-            let _ = stdout.write_all(DISABLE_GRAPHEME_CLUSTER_MODE.as_bytes());
+            best_effort_write_and_flush(
+                &mut *stdout,
+                DISABLE_GRAPHEME_CLUSTER_MODE.as_bytes(),
+                "failed to disable grapheme cluster mode on reconnect",
+            );
         }
-        let _ = stdout.write_all(clear_screen.as_bytes());
-        let _ = stdout.flush();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            clear_screen.as_bytes(),
+            "failed to clear the screen on reconnect",
+        );
     }
 
     let _ = send_input_instructions.send(InputInstruction::Exit);
@@ -2000,6 +2024,22 @@ fn input_reporting_off_sequence(include_kitty_exit: bool) -> String {
         "{}{}{}{}",
         kitty_exit, DISABLE_BRACKETED_PASTE, DISABLE_HOST_THEME_NOTIFY, DISABLE_FOCUS_REPORTING
     )
+}
+
+pub(crate) fn best_effort_unset_raw_mode(os_input: &dyn ClientOsApi) {
+    os_input
+        .unset_raw_mode()
+        .context("failed to unset raw mode")
+        .non_fatal();
+}
+
+pub(crate) fn best_effort_write_and_flush(
+    stdout: &mut dyn Write,
+    bytes: &[u8],
+    err_context: &'static str,
+) {
+    stdout.write_all(bytes).context(err_context).non_fatal();
+    stdout.flush().context(err_context).non_fatal();
 }
 
 fn quiet_host_input(

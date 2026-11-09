@@ -22,37 +22,41 @@ use crate::shared::set_permissions;
 
 const LOG_MAX_BYTES: u64 = 1024 * 1024 * 16; // 16 MiB per log
 
-pub fn configure_logger() {
-    atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
-    atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
-    atomic_create_file(&*ZELLIJ_TMP_LOG_FILE).unwrap();
+pub fn configure_logger() -> io::Result<()> {
+    configure_logger_into(&ZELLIJ_TMP_DIR, &ZELLIJ_TMP_LOG_DIR, &ZELLIJ_TMP_LOG_FILE)
+}
+
+fn configure_logger_into(tmp_dir: &Path, log_dir: &Path, log_file: &Path) -> io::Result<()> {
+    atomic_create_dir(tmp_dir)?;
+    atomic_create_dir(log_dir)?;
+    atomic_create_file(log_file)?;
 
     let trigger = SizeTrigger::new(LOG_MAX_BYTES);
     let roller = FixedWindowRoller::builder()
         .build(
-            ZELLIJ_TMP_LOG_DIR
+            log_dir
                 .join(format!("{}.log.old.{{}}", crate::distribution::name()))
                 .to_str()
-                .unwrap(),
+                .ok_or_else(|| io::Error::other("log directory path is not valid UTF-8"))?,
             1,
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
     let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{thread:<10.15}] {file}:{line}: {message} {n}";
 
     // default zellij appender, should be used across most of the codebase.
-    let log_file = RollingFileAppender::builder()
+    let log_file_appender = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(file_pattern)))
         .build(
-            &*ZELLIJ_TMP_LOG_FILE,
+            log_file,
             Box::new(CompoundPolicy::new(
                 Box::new(trigger),
                 Box::new(roller.clone()),
             )),
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // plugin appender. To be used in logging_pipe to forward stderr output from plugins. We do some formatting
     // in logging_pipe to print plugin name as 'module' and plugin_id instead of thread.
@@ -61,16 +65,16 @@ pub fn configure_logger() {
             "{highlight({level:<6})} {message} {n}",
         )))
         .build(
-            &*ZELLIJ_TMP_LOG_FILE,
+            log_file,
             Box::new(CompoundPolicy::new(Box::new(trigger), Box::new(roller))),
         )
-        .unwrap();
+        .map_err(io::Error::other)?;
 
     // Set the default logging level to "info" and log it to zellij.log file
     // Decrease verbosity for `wasmtime_wasi` module because it has a lot of useless info logs
     // For `zellij_server::logging_pipe`, we use custom format as we use logging macros to forward stderr output from plugins
     let config = Config::builder()
-        .appender(Appender::builder().build("logFile", Box::new(log_file)))
+        .appender(Appender::builder().build("logFile", Box::new(log_file_appender)))
         .appender(Appender::builder().build("logPlugin", Box::new(log_plugin)))
         // reduce the verbosity of isahc, otherwise it logs on every failed web request
         .logger(
@@ -91,9 +95,11 @@ pub fn configure_logger() {
                 .build("zellij_server::logging_pipe", LevelFilter::Trace),
         )
         .build(Root::builder().appender("logFile").build(LevelFilter::Info))
-        .unwrap();
+        .map_err(io::Error::other)?;
 
-    let _ = log4rs::init_config(config).unwrap();
+    log4rs::init_config(config).map_err(io::Error::other)?;
+
+    Ok(())
 }
 
 pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
@@ -164,7 +170,10 @@ fn encode_path_component(component: &str) -> String {
 
 #[cfg(test)]
 mod debug_log_tests {
-    use super::{debug_to_file_in, encode_path_component};
+    use super::{
+        atomic_create_dir, configure_logger_into, debug_to_file_in, encode_path_component,
+    };
+    use std::fs;
 
     #[test]
     fn terminal_captures_are_written_under_a_fresh_log_directory() {
@@ -206,5 +215,30 @@ mod debug_log_tests {
             encode_path_component("session/one"),
             encode_path_component("session_one")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn logger_setup_returns_error_when_log_paths_are_unwritable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("temp root");
+        let blocked = root.path().join("blocked");
+        fs::create_dir(&blocked).expect("blocked dir");
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o555)).expect("chmod");
+
+        let tmp = blocked.join("tmp");
+        let log_dir = tmp.join("log");
+        let log_file = log_dir.join("zellij.log");
+        let err = configure_logger_into(&tmp, &log_dir, &log_file);
+        assert!(
+            err.is_err(),
+            "unwritable parent must fail logger setup without panic"
+        );
+
+        // also covers the directory helper that used to be unwrapped at startup
+        assert!(atomic_create_dir(&tmp).is_err());
+
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o755)).expect("restore chmod");
     }
 }
