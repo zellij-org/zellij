@@ -1449,6 +1449,9 @@ mod windows_desktop {
     const ZELLIJ_KEY: &str = r"Software\Zellij";
 
     pub fn describe(environment: &mut Environment) {
+        if over_ssh(|key| std::env::var_os(key)) {
+            environment.no_desktop = Some("Not available over SSH".to_owned());
+        }
         let Some(binary) = environment.binary.clone() else {
             return;
         };
@@ -1506,14 +1509,31 @@ mod windows_desktop {
     pub fn items(environment: &Environment, state: &IntegrationState) -> Vec<ItemStatus> {
         vec![
             copy_binary_status(environment, state),
-            start_menu_status(state),
+            without_desktop(environment, Item::StartMenu)
+                .unwrap_or_else(|| start_menu_status(state)),
             ItemStatus::unavailable(
                 Item::DefaultTerminal,
                 "Not offered on Windows; use \"Open Zellij here\" in Explorer instead",
             ),
-            explorer_status(state),
+            without_desktop(environment, Item::ExplorerItem)
+                .unwrap_or_else(|| explorer_status(state)),
             ItemStatus::unavailable(Item::Launcher, "Linux only"),
         ]
+    }
+
+    /// The Start menu and Explorer items are of no use without a desktop, as over SSH, or when
+    /// ZELLIJ_DESKTOP_INTEGRATION turns them off. The copy to a permanent folder still is.
+    fn without_desktop(environment: &Environment, item: Item) -> Option<ItemStatus> {
+        environment
+            .no_desktop
+            .as_ref()
+            .map(|reason| ItemStatus::unavailable(item, reason.clone()))
+    }
+
+    fn over_ssh(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+        ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+            .iter()
+            .any(|key| get(key).is_some_and(|value| !value.is_empty()))
     }
 
     fn copy_binary_status(environment: &Environment, _state: &IntegrationState) -> ItemStatus {
@@ -2134,6 +2154,32 @@ mod windows_desktop {
                 Some(r"C:\tools;%USERPROFILE%\bin")
             );
             assert_eq!(path_without(r"C:\tools", folder), None);
+        }
+
+        #[test]
+        fn the_desktop_items_wait_for_a_desktop_but_the_copy_does_not() {
+            let mut environment = Environment::default();
+            assert!(without_desktop(&environment, Item::StartMenu).is_none());
+            environment.no_desktop = Some("Turned off by ZELLIJ_DESKTOP_INTEGRATION".to_owned());
+            for item in [Item::StartMenu, Item::ExplorerItem] {
+                let status = without_desktop(&environment, item).unwrap();
+                assert!(!status.available);
+                assert_eq!(
+                    status.state_text,
+                    "Turned off by ZELLIJ_DESKTOP_INTEGRATION"
+                );
+            }
+        }
+
+        #[test]
+        fn an_ssh_session_has_no_desktop() {
+            let from_ssh = |key: &str| {
+                (key == "SSH_CONNECTION")
+                    .then(|| std::ffi::OsString::from("10.0.0.2 5 10.0.0.1 22"))
+            };
+            assert!(over_ssh(from_ssh));
+            assert!(!over_ssh(|_| None));
+            assert!(!over_ssh(|_| Some(std::ffi::OsString::new())));
         }
     }
 }
