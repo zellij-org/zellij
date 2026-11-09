@@ -1501,10 +1501,16 @@ mod windows_desktop {
             .any(|root| registry::get_dword(root, ZELLIJ_KEY, name) == Some(1))
     }
 
+    /// The folder the installer uses for a per-user install, where earlier Zellij versions and
+    /// their files already are.
     fn copy_folder() -> Result<PathBuf> {
-        Ok(known_folder(&FOLDERID_LocalAppData)?
-            .join("Programs")
-            .join("Zellij"))
+        Ok(known_folder(&FOLDERID_LocalAppData)?.join("Zellij"))
+    }
+
+    /// The installer put a Zellij in the copy's folder, so it manages that file: a copy would
+    /// overwrite it behind the installer's back.
+    fn installer_owns(destination: &Path) -> bool {
+        installed_by_msi(destination)
     }
 
     fn copy_destination() -> Option<PathBuf> {
@@ -1551,7 +1557,18 @@ mod windows_desktop {
             None => text,
         };
         if let Some(destination) = &target {
-            match super::copy_state(environment, destination) {
+            let copy_state = super::copy_state(environment, destination);
+            if !matches!(copy_state, super::CopyState::Permanent(_)) && installer_owns(destination)
+            {
+                return ItemStatus::already(
+                    Item::CopyBinary,
+                    noted(format!(
+                        "The Zellij installer manages {}, so a newer installer updates it",
+                        destination.display()
+                    )),
+                );
+            }
+            match copy_state {
                 super::CopyState::Permanent(reason) => {
                     return ItemStatus::already(Item::CopyBinary, noted(reason));
                 },
@@ -1763,11 +1780,14 @@ mod windows_desktop {
     }
 
     fn current_binary() -> Result<PathBuf> {
-        super::entry_binary(
-            &super::environment(),
-            copy_destination().as_deref(),
-            &load(),
-        )
+        let destination = copy_destination();
+        if let Some(installed) = destination
+            .as_ref()
+            .filter(|destination| destination.is_file() && installer_owns(destination))
+        {
+            return Ok(installed.clone());
+        }
+        super::entry_binary(&super::environment(), destination.as_deref(), &load())
     }
 
     fn install_copy(overwrite: bool) -> Result<String> {
@@ -1777,6 +1797,12 @@ mod windows_desktop {
             .file_name()
             .context("the running binary has no file name")?;
         let destination = folder.join(name);
+        if installer_owns(&destination) && !location::same_file(&source, &destination) {
+            bail!(
+                "The Zellij installer manages {}; run a newer installer to update it",
+                destination.display()
+            );
+        }
         let overwrite = overwrite
             || matches!(
                 super::copy_state(&super::environment(), &destination),
@@ -2187,21 +2213,18 @@ mod windows_desktop {
 
         #[test]
         fn the_copy_folder_is_added_at_the_end_of_the_path_once() {
-            let folder = r"C:\Users\me\AppData\Local\Programs\Zellij";
+            let folder = r"C:\Users\me\AppData\Local\Zellij";
             assert_eq!(
                 path_with(r"%USERPROFILE%\bin;C:\tools", folder).as_deref(),
-                Some(r"%USERPROFILE%\bin;C:\tools;C:\Users\me\AppData\Local\Programs\Zellij")
+                Some(r"%USERPROFILE%\bin;C:\tools;C:\Users\me\AppData\Local\Zellij")
             );
             assert_eq!(
                 path_with(r"C:\tools;", folder).as_deref(),
-                Some(r"C:\tools;C:\Users\me\AppData\Local\Programs\Zellij")
+                Some(r"C:\tools;C:\Users\me\AppData\Local\Zellij")
             );
             assert_eq!(path_with("", folder).as_deref(), Some(folder));
             assert_eq!(
-                path_with(
-                    r"c:\users\ME\appdata\local\programs\zellij\;C:\tools",
-                    folder
-                ),
+                path_with(r"c:\users\ME\appdata\local\zellij\;C:\tools", folder),
                 None,
                 "already there, spelled differently"
             );
@@ -2209,10 +2232,10 @@ mod windows_desktop {
 
         #[test]
         fn only_the_copy_folder_is_taken_off_the_path() {
-            let folder = r"C:\Users\me\AppData\Local\Programs\Zellij";
+            let folder = r"C:\Users\me\AppData\Local\Zellij";
             assert_eq!(
                 path_without(
-                    r"C:\tools;C:\Users\me\AppData\Local\Programs\Zellij;%USERPROFILE%\bin",
+                    r"C:\tools;C:\Users\me\AppData\Local\Zellij;%USERPROFILE%\bin",
                     folder
                 )
                 .as_deref(),
