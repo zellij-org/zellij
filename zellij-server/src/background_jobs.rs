@@ -830,24 +830,30 @@ pub(crate) fn background_jobs_main(
                         .await;
                         match output {
                             Ok(output) => {
-                                let stdout = output.stdout;
-                                let stderr = output.stderr;
-                                let exit_code = output.exit_code;
+                                let event = run_command_result_event(
+                                    output.exit_code,
+                                    output.stdout,
+                                    output.stderr,
+                                    context,
+                                );
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
-                                    Event::RunCommandResult(exit_code, stdout, stderr, context),
+                                    event,
                                 )]));
                             },
                             Err(e) => {
                                 log::error!("Failed to run command: {}", e);
-                                let stdout = vec![];
-                                let stderr = format!("{}", e).as_bytes().to_vec();
-                                let exit_code = Some(2);
+                                let event = run_command_result_event(
+                                    Some(2),
+                                    Vec::new(),
+                                    format!("{}", e).into_bytes(),
+                                    context,
+                                );
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
-                                    Event::RunCommandResult(exit_code, stdout, stderr, context),
+                                    event,
                                 )]));
                             },
                         }
@@ -3913,6 +3919,52 @@ async fn collect_command_output(
     })
 }
 
+fn command_result_frame_fits(event: &Event) -> bool {
+    crate::plugins::host_stdin_frame_len(event)
+        .is_some_and(|len| len <= crate::plugins::WASI_HOST_PIPE_CAP)
+}
+
+fn command_result_host_pipe_error(context: BTreeMap<String, String>) -> Event {
+    let stderr = format!(
+        "command result exceeds the host pipe cap of {} bytes",
+        crate::plugins::WASI_HOST_PIPE_CAP
+    );
+    Event::RunCommandResult(Some(2), Vec::new(), stderr.into_bytes(), context)
+}
+
+/// `RunCommandResult` delivered to the plugin.
+///
+/// The collector may keep more bytes than the host stdin pipe. A frame that
+/// does not fit is replaced with a short command error so the write cannot
+/// quarantine the plugin. A result that already fits is unchanged.
+fn run_command_result_event(
+    exit_code: Option<i32>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    context: BTreeMap<String, String>,
+) -> Event {
+    let event = Event::RunCommandResult(exit_code, stdout, stderr, context.clone());
+    if command_result_frame_fits(&event) {
+        return event;
+    }
+    log::warn!(
+        "RunCommandResult does not fit in the host pipe cap of {} bytes; sending a short error",
+        crate::plugins::WASI_HOST_PIPE_CAP
+    );
+    let fallback = command_result_host_pipe_error(context);
+    if command_result_frame_fits(&fallback) {
+        return fallback;
+    }
+    // The context alone can miss the cap. Drop it rather than send either
+    // oversized frame. The short error with an empty context fits.
+    let fallback = command_result_host_pipe_error(BTreeMap::new());
+    debug_assert!(
+        command_result_frame_fits(&fallback),
+        "short command-result error must fit the host pipe"
+    );
+    fallback
+}
+
 pub async fn run_background_command(
     command: BackgroundCommand,
 ) -> std::result::Result<BackgroundCommandOutput, BackgroundCommandError> {
@@ -4119,5 +4171,49 @@ mod web_request_host_pipe_tests {
         .expect("a tiny body must be returned");
         assert_eq!(body, payload);
         assert!(web_result_frame_fits(201, &headers, &body, &context));
+    }
+}
+
+#[cfg(test)]
+mod command_result_host_pipe_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_command_stdout_becomes_a_short_host_pipe_error() {
+        let context = BTreeMap::from([("request_id".to_owned(), "oversized".to_owned())]);
+        let stdout = vec![b'A'; crate::plugins::WASI_HOST_PIPE_CAP + 1];
+        let event = run_command_result_event(Some(0), stdout, Vec::new(), context.clone());
+        let frame_len = crate::plugins::host_stdin_frame_len(&event)
+            .expect("the event that would be sent must have a measurable stdin frame");
+        assert!(
+            frame_len <= crate::plugins::WASI_HOST_PIPE_CAP,
+            "sent frame is {frame_len} bytes"
+        );
+        match event {
+            Event::RunCommandResult(exit_code, stdout, stderr, event_context) => {
+                assert_eq!(exit_code, Some(2));
+                assert!(stdout.is_empty());
+                assert_eq!(event_context, context);
+                let message = String::from_utf8(stderr).expect("error text");
+                assert!(
+                    message.contains(&crate::plugins::WASI_HOST_PIPE_CAP.to_string()),
+                    "error must name the cap, got {message}"
+                );
+            },
+            other => panic!("expected the production RunCommandResult error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_tiny_command_result_is_unchanged() {
+        let context = BTreeMap::from([("request_id".to_owned(), "tiny".to_owned())]);
+        let stdout = b"ok".to_vec();
+        let stderr = b"warn".to_vec();
+        let event =
+            run_command_result_event(Some(0), stdout.clone(), stderr.clone(), context.clone());
+        assert_eq!(
+            event,
+            Event::RunCommandResult(Some(0), stdout, stderr, context)
+        );
     }
 }
