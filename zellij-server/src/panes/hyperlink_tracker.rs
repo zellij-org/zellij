@@ -1390,6 +1390,59 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_explicit_osc8_is_not_replaced_by_cut_first_row_detection() {
+        // App-owned OSC 8 often wraps mid-URL (Neovim). Only the first row
+        // starts with a scheme, so automatic detection would invent a cut
+        // target if it were allowed to overwrite the explicit span.
+        let row1 = "https://example.com/very-";
+        let row2 = "long/path";
+        let mut viewport = screen(&[(row1, true), (row2, false), ("", true)], row1.len());
+        let mut handler = LinkHandler::new();
+        let explicit = handler
+            .dispatch_osc8(&[b"8", b"", b"https://example.com/very-long/path"])
+            .expect("an osc 8 anchor");
+        for cell in &mut viewport[0].columns {
+            cell.styles
+                .update(|styles| styles.link_anchor = Some(explicit));
+        }
+        for cell in &mut viewport[1].columns[..row2.len()] {
+            cell.styles
+                .update(|styles| styles.link_anchor = Some(explicit));
+        }
+        viewport[1].columns[row2.len()]
+            .styles
+            .update(|styles| styles.link_anchor = Some(LinkAnchor::End));
+
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+
+        assert!(
+            anchors(&viewport[0])
+                .iter()
+                .all(|anchor| *anchor == Some(explicit)),
+            "{:?}",
+            anchors(&viewport[0])
+        );
+        assert!(
+            anchors(&viewport[1])[..row2.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(explicit)),
+            "{:?}",
+            anchors(&viewport[1])
+        );
+        assert_eq!(
+            handler.uri(Some(explicit)),
+            Some("https://example.com/very-long/path")
+        );
+        assert!(
+            !handler
+                .links()
+                .values()
+                .any(|link| link.detected && link.uri == row1),
+            "detection must not publish a cut first-row URL over OSC 8"
+        );
+    }
+
+    #[test]
     fn helper_rules() {
         assert_eq!(trim_trailing_punctuation("http://a.com..."), "http://a.com");
         assert_eq!(trim_trailing_punctuation("http://a.com"), "http://a.com");

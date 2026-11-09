@@ -2801,3 +2801,62 @@ layout {
     let (tiled, _floating) = layout.new_tab();
     assert_eq!(tiled.children.len(), 2);
 }
+
+#[test]
+fn layout_dir_prefers_an_existing_non_kdl_file_over_missing_kdl_fallback() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let layout_dir = tempdir().unwrap();
+    fs::write(
+        layout_dir.path().join("custom.zellij"),
+        r#"
+layout {
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+    // No custom.kdl: old path lookup only checked with_extension("kdl") and
+    // would miss custom.zellij, falling through to built-in assets.
+    let result = Layout::from_layout_info_with_config(
+        &Some(layout_dir.path().to_path_buf()),
+        &LayoutInfo::File("custom.zellij".to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+    let (layout, _) = result.expect("layout_dir must load the non-kdl file as given");
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 2);
+}
+
+#[test]
+fn layout_dir_still_falls_back_to_kdl_for_bare_names() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let layout_dir = tempdir().unwrap();
+    fs::write(
+        layout_dir.path().join("bare.kdl"),
+        r#"
+layout {
+    pane
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+    let result = Layout::from_layout_info_with_config(
+        &Some(layout_dir.path().to_path_buf()),
+        &LayoutInfo::File("bare".to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+    let (layout, _) = result.expect("bare layout names must still resolve via .kdl");
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 3);
+}
