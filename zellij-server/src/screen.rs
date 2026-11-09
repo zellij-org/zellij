@@ -14859,6 +14859,9 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        if tab.is_pane_requesting_permissions(pane_id) {
+                            break;
+                        }
                         tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
                             .non_fatal();
                         break;
@@ -14912,6 +14915,9 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        if tab.is_pane_requesting_permissions(pane_id) {
+                            break;
+                        }
                         tab.write_to_pane_id(
                             &key_with_modifier,
                             bytes,

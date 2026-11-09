@@ -95,8 +95,6 @@ impl PluginConfig {
     /// "/home/bob/.local/share/zellij/plugins" the lookup chain will be this:
     ///
     /// ```bash
-    ///   tab-bar
-    ///   tab-bar.wasm
     ///   /home/bob/.local/share/zellij/plugins/tab-bar.wasm
     ///   /usr/share/zellij/plugins/tab-bar.wasm
     /// ```
@@ -125,11 +123,15 @@ impl PluginConfig {
 
         // Locations we check for valid plugins
         #[allow(unused_mut)]
-        let mut paths: Vec<PathBuf> = vec![
-            self.path.clone(),
-            self.path.with_extension("wasm"),
-            plugin_dir.join(&self.path).with_extension("wasm"),
-        ];
+        let mut paths: Vec<PathBuf> = if self.is_builtin() {
+            vec![plugin_dir.join(&self.path).with_extension("wasm")]
+        } else {
+            vec![
+                self.path.clone(),
+                self.path.with_extension("wasm"),
+                plugin_dir.join(&self.path).with_extension("wasm"),
+            ]
+        };
         #[cfg(not(target_family = "wasm"))]
         paths.push(
             crate::home::system_data_dir()

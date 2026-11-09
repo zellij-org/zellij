@@ -37,6 +37,9 @@ use zellij_utils::{
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
+pub const MAX_TITLE_BYTES: usize = 4096;
+const MAX_XTGETTCAP_BYTES: usize = 4096;
+const MAX_NESTED_FRAME_BYTES: usize = 1_048_576;
 
 const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     &BASE64_STANDARD_ALPHABET,
@@ -1024,6 +1027,7 @@ pub struct Grid {
     /// later routed back to this pane's pty.
     pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
     pub pending_nested_session_messages: Vec<NestedSessionMessage>,
+    pub ui_components_enabled: bool,
     ui_component_bytes: Option<Vec<u8>>,
     nested_frame_bytes: Option<Vec<u8>>,
     xtgettcap_bytes: Option<Vec<u8>>,
@@ -1415,6 +1419,7 @@ impl Grid {
             notification_tracker: NotificationTracker::default(),
             pending_forwarded_queries: Vec::new(),
             pending_nested_session_messages: Vec::new(),
+            ui_components_enabled: false,
             ui_component_bytes: None,
             nested_frame_bytes: None,
             xtgettcap_bytes: None,
@@ -2960,8 +2965,9 @@ impl Grid {
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn replace_characters_in_line_before_cursor(&mut self, replace_with: TerminalCharacter) {
-        let row = self.viewport.get_mut(self.cursor.y).unwrap();
-        row.replace_and_pad_beginning(self.cursor.x, replace_with);
+        if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+            row.replace_and_pad_beginning(self.cursor.x, replace_with);
+        }
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
@@ -4293,7 +4299,14 @@ impl Grid {
             self.output_buffer.update_line(l as usize);
         }
     }
-    fn set_title(&mut self, title: String) {
+    fn set_title(&mut self, mut title: String) {
+        if title.len() > MAX_TITLE_BYTES {
+            let mut cut = MAX_TITLE_BYTES;
+            while !title.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            title.truncate(cut);
+        }
         self.title = if title.is_empty() { None } else { Some(title) };
     }
     fn push_current_title_to_stack(&mut self) {
@@ -5424,7 +5437,7 @@ impl Handler for Grid {
                     params.iter().collect(),
                 );
             }
-        } else if c == 'z' {
+        } else if c == 'z' && self.ui_components_enabled {
             // UI-component (Zellij internal)
             self.ui_component_bytes = Some(vec![]);
         } else if c == 'n'
@@ -5445,9 +5458,17 @@ impl Handler for Grid {
         } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
             ui_component_bytes.push(byte);
         } else if let Some(nested_frame_bytes) = self.nested_frame_bytes.as_mut() {
-            nested_frame_bytes.push(byte);
+            if nested_frame_bytes.len() < MAX_NESTED_FRAME_BYTES {
+                nested_frame_bytes.push(byte);
+            } else {
+                self.nested_frame_bytes = None;
+            }
         } else if let Some(xtgettcap_bytes) = self.xtgettcap_bytes.as_mut() {
-            xtgettcap_bytes.push(byte);
+            if xtgettcap_bytes.len() < MAX_XTGETTCAP_BYTES {
+                xtgettcap_bytes.push(byte);
+            } else {
+                self.xtgettcap_bytes = None;
+            }
         }
     }
 

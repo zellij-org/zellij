@@ -583,6 +583,9 @@ pub trait Pane {
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn request_permissions_from_user(&mut self, _permissions: Option<PluginPermission>) {}
+    fn is_requesting_permissions(&self) -> bool {
+        false
+    }
     fn render(
         &mut self,
         client_id: Option<ClientId>,
@@ -4954,6 +4957,19 @@ impl Tab {
             pane.set_is_nested_guest(is_nested_guest);
         }
     }
+    pub fn is_pane_requesting_permissions(&self, pane_id: PaneId) -> bool {
+        self.tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+            .map(|pane| pane.is_requesting_permissions())
+            .unwrap_or(false)
+    }
     pub fn is_pane_nested_guest(&self, pane_id: PaneId) -> bool {
         if let Some(pane) = self
             .tiled_panes
@@ -7535,8 +7551,7 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("failed to edit scrollback for client {client_id}");
 
-        let mut file = temp_dir();
-        file.push(format!("{}.dump", Uuid::new_v4()));
+        let file = private_scrollback_dump_path();
         self.dump_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
@@ -7562,8 +7577,7 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("failed to edit scrollback for client {client_id}");
 
-        let mut file = temp_dir();
-        file.push(format!("{}.dump", Uuid::new_v4()));
+        let file = private_scrollback_dump_path();
         self.dump_with_ansi_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
@@ -7589,8 +7603,7 @@ impl Tab {
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
             self.make_hidden_stack_list_member_visible(pane_id);
-            let mut file = temp_dir();
-            file.push(format!("{}.dump", Uuid::new_v4()));
+            let file = private_scrollback_dump_path();
             self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
                 .non_fatal();
             let line_number = self
@@ -7614,8 +7627,7 @@ impl Tab {
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
             self.make_hidden_stack_list_member_visible(pane_id);
-            let mut file = temp_dir();
-            file.push(format!("{}.dump", Uuid::new_v4()));
+            let file = private_scrollback_dump_path();
             self.dump_with_ansi_terminal_screen(
                 Some(String::from(file.to_string_lossy())),
                 pane_id,
@@ -9968,6 +9980,22 @@ impl Tab {
             self.set_force_render();
         }
     }
+}
+
+fn private_scrollback_dump_path() -> PathBuf {
+    let mut file = temp_dir();
+    file.push(format!("{}.dump", Uuid::new_v4()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    if let Err(e) = options.open(&file) {
+        log::warn!("failed to create scrollback dump file {:?}: {}", file, e);
+    }
+    file
 }
 
 fn without_paste_markers(mut bytes: Vec<u8>) -> Vec<u8> {

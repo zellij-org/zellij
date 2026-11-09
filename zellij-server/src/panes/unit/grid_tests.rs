@@ -3901,6 +3901,7 @@ fn table_ui_component() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -3933,6 +3934,7 @@ fn table_ui_component_with_coordinates() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -3965,6 +3967,7 @@ fn ribbon_ui_component() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -3997,6 +4000,7 @@ fn ribbon_ui_component_with_coordinates() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -4029,6 +4033,7 @@ fn nested_list_ui_component() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -4061,6 +4066,7 @@ fn nested_list_ui_component_with_coordinates() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -4093,6 +4099,7 @@ fn text_ui_component() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -4125,6 +4132,7 @@ fn text_ui_component_with_coordinates() {
         osc8_hyperlinks,
         explicitly_disable_kitty_keyboard_protocol,
     );
+    grid.ui_components_enabled = true;
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
@@ -6807,6 +6815,7 @@ fn serialize_text_bytes(text: &str) -> String {
 fn render_ui_component(component_name: &str, serialized_params: &str) -> Grid {
     let mut vte_parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_nested_frames();
+    grid.ui_components_enabled = true;
     let dcs = format!("\u{1b}Pz{};{}\u{1b}\\", component_name, serialized_params);
     vte_parser.feed(&mut grid, dcs.as_bytes());
     grid
@@ -8193,7 +8202,7 @@ fn kitty_reply_icat_detection_sequence() {
     let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("icat-detect.bin");
+    let path = dir.path().join("tty-graphics-protocol-icat-detect.bin");
     std::fs::write(&path, [1u8, 2, 3]).unwrap();
     let path_bytes = path.to_str().unwrap().as_bytes();
     feed_kitty_bytes(
@@ -11317,6 +11326,7 @@ fn screen_after(
     simple: bool,
 ) -> String {
     let mut grid = empty_grid(rows, cols, grapheme_mode);
+    grid.ui_components_enabled = true;
     if simple {
         let mut parser = vt_parser::Parser::without_shortcuts();
         for piece in bytes.chunks(chunk.max(1)) {
@@ -11452,4 +11462,118 @@ fn a_url_with_a_suggestion_after_the_cursor_waits_until_the_line_is_final() {
         linked_uris(&grid),
         vec!["http://www.example.org".to_owned()]
     );
+}
+
+fn hostile_output_grid(sixel_image_store: Rc<RefCell<SixelImageStore>>) -> Grid {
+    Grid::new(
+        24,
+        80,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 8,
+            height: 21,
+        }))),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    )
+}
+
+#[test]
+fn ui_components_are_ignored_in_terminal_panes() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = hostile_output_grid(Rc::new(RefCell::new(SixelImageStore::default())));
+    vte_parser.feed(&mut grid, b"\x1bPztable;0;0;65\x1b\\");
+    vte_parser.feed(&mut grid, b"\x1bPzribbon;0/0/70000/;65\x1b\\");
+    vte_parser.feed(
+        &mut grid,
+        b"\x1bPzscroll_indicator;0/0/1/99999999999;bar\x1b\\",
+    );
+    assert!(grid
+        .as_character_lines()
+        .iter()
+        .flatten()
+        .all(|c| c.character == ' '));
+}
+
+#[test]
+fn table_ui_component_with_zero_columns_is_rejected() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = hostile_output_grid(Rc::new(RefCell::new(SixelImageStore::default())));
+    grid.ui_components_enabled = true;
+    vte_parser.feed(&mut grid, b"\x1bPztable;0;0;65\x1b\\");
+}
+
+#[test]
+fn erase_to_line_start_below_alternate_screen_rows_does_not_panic() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = hostile_output_grid(Rc::new(RefCell::new(SixelImageStore::default())));
+    vte_parser.feed(&mut grid, b"\x1b[10;1H\x1b7\x1b[?1049h\x1b8\x1b[1K");
+    vte_parser.feed(&mut grid, b"\x1b[?1049l\x1b[?1049h\x1b[5B\x1b[1K");
+}
+
+#[test]
+fn oversized_sixel_raster_is_dropped() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut grid = hostile_output_grid(sixel_image_store.clone());
+    vte_parser.feed(&mut grid, b"\x1bPq\"1;1;1;99999#0~\x1b\\");
+    assert_eq!(sixel_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn oversized_sixel_repeats_are_dropped() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut grid = hostile_output_grid(sixel_image_store.clone());
+    let mut sequence = b"\x1bPq#0".to_vec();
+    for _ in 0..100 {
+        sequence.extend_from_slice(b"!99999~-");
+    }
+    sequence.extend_from_slice(b"\x1b\\");
+    vte_parser.feed(&mut grid, &sequence);
+    assert_eq!(sixel_image_store.borrow().image_count(), 0);
+}
+
+#[test]
+fn regular_sixel_image_is_still_displayed() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut grid = hostile_output_grid(sixel_image_store.clone());
+    vte_parser.feed(&mut grid, &read_fixture("sixel-image-500px.six"));
+    assert_eq!(sixel_image_store.borrow().image_count(), 1);
+}
+
+#[test]
+fn oversized_titles_are_truncated_on_a_character_boundary() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = hostile_output_grid(Rc::new(RefCell::new(SixelImageStore::default())));
+    let mut sequence = b"\x1b]2;a".to_vec();
+    for _ in 0..5000 {
+        sequence.extend_from_slice("é".as_bytes());
+    }
+    sequence.push(0x07);
+    vte_parser.feed(&mut grid, &sequence);
+    let title = grid.title.clone().unwrap();
+    assert!(title.len() <= crate::panes::grid::MAX_TITLE_BYTES);
+    assert!(title.len() > crate::panes::grid::MAX_TITLE_BYTES - 2);
+    assert!(title.starts_with('a'));
+}
+
+#[test]
+fn oversized_xtgettcap_request_is_dropped() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = hostile_output_grid(Rc::new(RefCell::new(SixelImageStore::default())));
+    let mut sequence = b"\x1bP+q".to_vec();
+    sequence.extend(std::iter::repeat(b';').take(10_000));
+    sequence.extend_from_slice(b"\x1b\\");
+    vte_parser.feed(&mut grid, &sequence);
+    assert!(grid.pending_messages_to_pty.is_empty());
 }
