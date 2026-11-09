@@ -4080,6 +4080,7 @@ pub fn start_server_impl(
     socket_path: PathBuf,
     install_panic_hook: bool,
 ) {
+    diagnostics::start_screen_operation_reporter();
     envs::set_zellij("0".to_string());
 
     // The socket/pipe filename is the stable session id, decoupled from the
