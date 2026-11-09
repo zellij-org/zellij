@@ -18956,35 +18956,77 @@ fn layout_metadata_copies_one_viewport_quantum_per_turn() {
     );
     screen.serialize_pane_viewport = true;
     screen.scrollback_lines_to_serialize = Some(usize::MAX);
-    let metadata = screen.get_layout_metadata(None, None);
-    let manifest: zellij_utils::session_serialization::GlobalLayoutManifest = metadata.into();
-    let dumped = manifest
-        .tabs
-        .iter()
-        .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
-        .filter_map(|pane| pane.pane_contents.as_deref())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let present: Vec<usize> = (0..rows)
-        .filter(|index| dumped.contains(&format!("MARK{index:05}")))
-        .collect();
+    let markers = |screen: &Screen| {
+        let metadata = screen.get_layout_metadata(None, None);
+        let manifest: zellij_utils::session_serialization::GlobalLayoutManifest = metadata.into();
+        let dumped = manifest
+            .tabs
+            .iter()
+            .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
+            .filter_map(|pane| pane.pane_contents.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n");
+        (0..rows)
+            .filter(|index| dumped.contains(&format!("MARK{index:05}")))
+            .collect::<Vec<_>>()
+    };
+    let first = markers(&screen);
     assert!(
-        !present.is_empty(),
+        !first.is_empty(),
         "the flag-on layout dump must include the newest viewport rows"
     );
     assert!(
-        present.len() <= SCREEN_ROW_QUANTUM,
+        first.len() <= SCREEN_ROW_QUANTUM,
         "one get_layout_metadata turn copied {} viewport rows, past the {} quantum",
-        present.len(),
+        first.len(),
         SCREEN_ROW_QUANTUM
     );
     assert!(
-        !present.contains(&0),
-        "the oldest viewport marker must stay out of this turn's snapshot"
+        !first.contains(&0),
+        "the oldest viewport marker must stay out of the first turn"
     );
     assert!(
-        present.contains(&(rows - 1)),
+        first.contains(&(rows - 1)),
         "the newest marker must be in the quantum that was copied"
+    );
+    assert!(
+        screen.serialize_snapshot_has_more(),
+        "rows past the first quantum must remain for the next turn"
+    );
+
+    let second = markers(&screen);
+    let first_oldest = *first.iter().min().expect("first quantum has a row");
+    let older_than_first: Vec<usize> = second
+        .iter()
+        .copied()
+        .filter(|index| *index < first_oldest)
+        .collect();
+    assert!(
+        !older_than_first.is_empty(),
+        "the second turn must emit the next older quantum, not the same newest rows"
+    );
+    assert!(
+        older_than_first.len() <= SCREEN_ROW_QUANTUM,
+        "the second turn copied {} new rows, past one quantum",
+        older_than_first.len()
+    );
+    let mut guard = 0;
+    let mut latest = second;
+    while screen.serialize_snapshot_has_more() && guard < 8 {
+        latest = markers(&screen);
+        guard += 1;
+    }
+    assert!(
+        !screen.serialize_snapshot_has_more(),
+        "continuation must cover the requested range"
+    );
+    assert!(
+        latest.contains(&0) || latest.contains(&(rows - 1)),
+        "the finished snapshot must keep rows from the resumed quanta"
+    );
+    assert!(
+        latest.contains(&0),
+        "the finished snapshot must include the oldest marker once the quanta are covered"
     );
 }
 

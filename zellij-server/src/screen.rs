@@ -8274,16 +8274,19 @@ impl Screen {
         self.last_mobile_state_sent
             .retain(|client_id, _| connected.contains_key(client_id));
     }
-    fn dump_layout_to_hd(&mut self) -> Result<()> {
+    fn dump_layout_to_hd(&mut self) -> Result<bool> {
         let err_context = || format!("Failed to log and report session state");
         let session_layout_metadata =
             self.get_layout_metadata(Some(self.default_shell.clone()), None);
+        if self.serialize_snapshot_has_more() {
+            return Ok(false);
+        }
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
             .with_context(err_context)?;
 
-        Ok(())
+        Ok(true)
     }
     fn session_infos_changed(
         old_infos: &BTreeMap<String, SessionInfo>,
@@ -11142,6 +11145,21 @@ impl Screen {
         }
         Ok(())
     }
+    fn serialize_snapshot_has_more(&self) -> bool {
+        if !self.serialize_pane_viewport {
+            return false;
+        }
+        self.tabs.values().any(|tab| {
+            tab.get_tiled_panes()
+                .any(|(_, pane)| pane.serialize_snapshot_has_more())
+                || tab
+                    .get_floating_panes()
+                    .any(|(_, pane)| pane.serialize_snapshot_has_more())
+                || tab
+                    .get_suppressed_panes()
+                    .any(|(_, (_, pane))| pane.serialize_snapshot_has_more())
+        })
+    }
     fn get_layout_metadata(
         &self,
         default_shell: Option<PathBuf>,
@@ -13089,29 +13107,55 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_plugin(PluginInstruction::DumpLayout(
-                        session_layout_metadata,
-                        client_id,
-                        completion_tx,
-                    ))
-                    .with_context(err_context)?;
+                let session_layout_metadata =
+                    screen.get_layout_metadata(default_shell.clone(), None);
+                if screen.serialize_snapshot_has_more() {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::DumpLayout(
+                            default_shell,
+                            client_id,
+                            completion_tx,
+                        ))
+                        .with_context(err_context)?;
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::DumpLayout(
+                            session_layout_metadata,
+                            client_id,
+                            completion_tx,
+                        ))
+                        .with_context(err_context)?;
+                }
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_plugin(PluginInstruction::ListClientsMetadata(
-                        session_layout_metadata,
-                        client_id,
-                        completion_tx,
-                    ))
-                    .with_context(err_context)?;
+                let session_layout_metadata =
+                    screen.get_layout_metadata(default_shell.clone(), None);
+                if screen.serialize_snapshot_has_more() {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ListClientsMetadata(
+                            default_shell,
+                            client_id,
+                            completion_tx,
+                        ))
+                        .with_context(err_context)?;
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::ListClientsMetadata(
+                            session_layout_metadata,
+                            client_id,
+                            completion_tx,
+                        ))
+                        .with_context(err_context)?;
+                }
             },
             ScreenInstruction::ListPanes {
                 show_all,
@@ -13151,16 +13195,29 @@ pub(crate) fn screen_thread_main(
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
                     screen.get_layout_metadata(Some(screen.default_shell.clone()), tab_index);
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
-                        session_layout_metadata,
-                        plugin_id,
-                        response_channel,
-                    })
-                    .with_context(err_context)
-                    .non_fatal();
+                if screen.serialize_snapshot_has_more() {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+                            plugin_id,
+                            tab_index,
+                            response_channel,
+                        })
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
+                            session_layout_metadata,
+                            plugin_id,
+                            response_channel,
+                        })
+                        .with_context(err_context)
+                        .non_fatal();
+                }
             },
             ScreenInstruction::GetFocusedPaneInfo {
                 client_id,
@@ -13202,16 +13259,27 @@ pub(crate) fn screen_thread_main(
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata =
                     screen.get_layout_metadata(Some(screen.default_shell.clone()), None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::ListClientsToPlugin(
-                        session_layout_metadata,
-                        plugin_id,
-                        client_id,
-                    ))
-                    .with_context(err_context)
-                    .non_fatal();
+                if screen.serialize_snapshot_has_more() {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ListClientsToPlugin(
+                            plugin_id, client_id,
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::ListClientsToPlugin(
+                            session_layout_metadata,
+                            plugin_id,
+                            client_id,
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                }
             },
             ScreenInstruction::EditScrollback(client_id, ansi, completion_tx) => {
                 active_tab_and_connected_client_id!(
@@ -15745,7 +15813,12 @@ pub(crate) fn screen_thread_main(
                 // than being dropped while we serialize.
                 coalesce.store(false, std::sync::atomic::Ordering::SeqCst);
                 if screen.session_serialization {
-                    screen.dump_layout_to_hd()?;
+                    let finished = screen.dump_layout_to_hd()?;
+                    if !finished {
+                        screen.bus.senders.send_to_screen(
+                            ScreenInstruction::SerializeLayoutForResurrection(coalesce),
+                        )?;
+                    }
                 }
             },
             ScreenInstruction::SaveSession(_client_id, completion_tx) => {

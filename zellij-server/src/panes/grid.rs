@@ -1984,6 +1984,7 @@ pub struct Grid {
     pub osc7_payload: Option<String>,
     pub shell_reports: crate::attention::signals::ShellReportState,
     unseen_output_mark: Option<(usize, usize)>,
+    serialize_resume: std::cell::RefCell<SerializeResume>,
 }
 
 /// Snapshot of the scrolled viewport's place in the buffer.
@@ -1991,6 +1992,18 @@ pub struct Grid {
 pub(crate) struct ViewportAnchor {
     pub(crate) rows_before_viewport: usize,
     evicted_before: u64,
+}
+
+/// Where a pane serialization stopped, so the next screen turn copies the
+/// next older rows instead of starting over at the newest row.
+#[derive(Clone)]
+struct SerializeResume {
+    request: Option<usize>,
+    taken_rows: usize,
+    taken_cells: usize,
+    done: bool,
+    started: bool,
+    accumulated: String,
 }
 
 impl ViewportAnchor {
@@ -2408,6 +2421,14 @@ impl Grid {
             osc7_payload: None,
             shell_reports: Default::default(),
             unseen_output_mark: None,
+            serialize_resume: std::cell::RefCell::new(SerializeResume {
+                request: None,
+                taken_rows: 0,
+                taken_cells: 0,
+                done: true,
+                started: false,
+                accumulated: String::new(),
+            }),
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -3537,6 +3558,10 @@ impl Grid {
             kitty_image_chunks,
         )
     }
+    pub fn serialize_snapshot_has_more(&self) -> bool {
+        let resume = self.serialize_resume.borrow();
+        resume.started && !resume.done
+    }
     pub fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         let history_len = self.lines_above.len();
         // `None` serializes the viewport only. `Some` also includes the
@@ -3555,61 +3580,97 @@ impl Grid {
             },
             None => history_len,
         };
-        // One screen-thread turn copies at most one row quantum. The cell
-        // quantum matches the other screen-thread budgets, and the absolute
-        // ceiling still refuses a single pathological row. Rows are taken
-        // newest-first (viewport, then scrollback). A row that does not fit
-        // is dropped together with everything older, and those rows are not
-        // cloned.
-        let mut rows_left = SCREEN_ROW_QUANTUM;
-        let mut cell_budget = SCREEN_ROW_QUANTUM
-            .saturating_mul(MAX_SCROLLBACK_ROW_CELLS)
-            .min(MAX_SERIALIZE_SNAPSHOT_CELLS);
-        let mut viewport_keep = 0usize;
+        // Newest first: the viewport, then the requested scrollback. One turn
+        // copies the next unread quantum. A later call continues with the
+        // older rows until the request or the absolute cell ceiling is covered.
+        enum Snap<'a> {
+            Viewport(&'a Row),
+            History(&'a Row),
+        }
+        let mut order: Vec<Snap<'_>> = Vec::new();
         for row in self.viewport.iter().rev() {
-            if rows_left == 0 {
+            order.push(Snap::Viewport(row));
+        }
+        for index in (history_first..history_len).rev() {
+            order.push(Snap::History(&self.lines_above[index]));
+        }
+
+        let mut resume = self.serialize_resume.borrow_mut();
+        if !resume.started || resume.done || resume.request != scrollback_lines_to_serialize {
+            *resume = SerializeResume {
+                request: scrollback_lines_to_serialize,
+                taken_rows: 0,
+                taken_cells: 0,
+                done: false,
+                started: true,
+                accumulated: String::new(),
+            };
+        }
+
+        let turn_cell_budget = SCREEN_ROW_QUANTUM.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
+        let mut turn_cells_left = turn_cell_budget;
+        let mut turn_rows_left = SCREEN_ROW_QUANTUM;
+        let mut copied: Vec<Row> = Vec::new();
+        let mut index = resume.taken_rows;
+        let mut finished = index >= order.len();
+        while index < order.len() {
+            if turn_rows_left == 0 {
                 break;
             }
+            let cost = match order[index] {
+                Snap::Viewport(row) | Snap::History(row) => row.snapshot_cost(),
+            };
             #[cfg(test)]
             SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
-            let row_cells = row.snapshot_cost();
-            if row_cells > cell_budget || row_cells > MAX_SERIALIZE_SNAPSHOT_CELLS {
+            if cost > MAX_SERIALIZE_SNAPSHOT_CELLS
+                || resume.taken_cells.saturating_add(cost) > MAX_SERIALIZE_SNAPSHOT_CELLS
+            {
+                finished = true;
                 break;
             }
-            cell_budget -= row_cells;
-            viewport_keep += 1;
-            rows_left -= 1;
-        }
-        let viewport_keep_from = self.viewport.len() - viewport_keep;
-        let mut history_keep_from = history_len;
-        if viewport_keep_from == 0 {
-            for index in (history_first..history_len).rev() {
-                if rows_left == 0 {
-                    break;
-                }
-                #[cfg(test)]
-                SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
-                let row_cells = self.lines_above[index].snapshot_cost();
-                if row_cells > cell_budget || row_cells > MAX_SERIALIZE_SNAPSHOT_CELLS {
-                    break;
-                }
-                cell_budget -= row_cells;
-                history_keep_from = index;
-                rows_left -= 1;
+            if !copied.is_empty() && cost > turn_cells_left {
+                break;
+            }
+            copied.push(match order[index] {
+                Snap::Viewport(row) => row.clone(),
+                Snap::History(row) => row.with_trailing_blanks().into_owned(),
+            });
+            resume.taken_cells = resume.taken_cells.saturating_add(cost);
+            turn_cells_left = turn_cells_left.saturating_sub(cost);
+            turn_rows_left -= 1;
+            index += 1;
+            if index >= order.len() {
+                finished = true;
             }
         }
-        let mut to_serialize = Vec::new();
-        if viewport_keep_from == 0 {
-            for line in self.lines_above.iter().skip(history_keep_from) {
-                to_serialize.push(line.with_trailing_blanks().into_owned());
-            }
+        if index >= order.len() {
+            finished = true;
         }
-        for line in self.viewport.iter().skip(viewport_keep_from) {
-            to_serialize.push(line.clone());
-        }
-        self.output_buffer
-            .serialize(to_serialize.as_slice(), self.osc8_hyperlinks, None)
+        resume.taken_rows = index;
+        resume.done = finished;
+        // This quantum was collected newest-first. Emit it oldest-first, and
+        // keep older quanta in front of the text already saved.
+        copied.reverse();
+        let Some(piece) = self
+            .output_buffer
+            .serialize(copied.as_slice(), self.osc8_hyperlinks, None)
             .ok()
+        else {
+            resume.done = true;
+            return None;
+        };
+        if resume.accumulated.is_empty() {
+            resume.accumulated = piece.clone();
+        } else {
+            let mut joined = piece.clone();
+            joined.push_str(&resume.accumulated);
+            resume.accumulated = joined;
+        }
+        if resume.done {
+            Some(resume.accumulated.clone())
+        } else {
+            Some(piece)
+        }
     }
     pub fn render(
         &mut self,
