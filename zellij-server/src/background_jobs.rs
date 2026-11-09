@@ -1587,8 +1587,15 @@ fn stage_and_commit_session_generation(
         let session_info_folder = session_info_folder_for_session(session_id);
         let layout_path = session_layout_cache_file_name(session_id);
         let previous_layout = fs::read_to_string(&layout_path).ok();
-        let all_persisted =
-            publish_staged_session_state(&layout_path, staged, hashes, published, !stage_failed);
+        let all_persisted = publish_staged_session_state(
+            &layout_path,
+            staged,
+            hashes,
+            published,
+            !stage_failed,
+            &[],
+        )
+        .all_persisted;
         if all_persisted && prune {
             prune_stale_pane_content_files(
                 &session_info_folder,
@@ -1627,7 +1634,9 @@ fn commit_staged_session_generation(
             hashes,
             published,
             dependencies_persisted,
-        );
+            &[],
+        )
+        .all_persisted;
         if all_persisted && prune {
             prune_stale_pane_content_files(
                 session_info_folder,
@@ -1717,7 +1726,6 @@ fn write_admitted_session_state(
 
     let mut content_persisted = true;
     let mut previous_layout = None;
-    let mut staged_layout = None;
     if !layout_text.is_empty() {
         previous_layout = fs::read_to_string(&layout_path).ok();
         for (external_file_name, external_file_contents) in layout_files_to_write {
@@ -1730,7 +1738,7 @@ fn write_admitted_session_state(
         // failed; the next save retries the whole set.
         if content_persisted && file_content_changed(&layout_path, layout_text.as_bytes()) {
             match stage_atomic_write(&layout_path, layout_text.as_bytes()) {
-                Ok(file) => staged_layout = Some(file),
+                Ok(file) => staged.push((layout_path.clone(), file)),
                 Err(error) => {
                     log::error!(
                         "Failed to stage session state file {}: {:?}",
@@ -1748,37 +1756,25 @@ fn write_admitted_session_state(
         zellij_utils::sessions::ensure_session_publication_allowed(session_id, incarnation)
     {
         drop(staged);
-        drop(staged_layout);
         return Err(error);
     }
 
-    for (path, file) in staged {
-        if let Err(error) = persist_atomic_write(file, &path) {
-            log::error!(
-                "Failed to write session state file {}: {:?}",
-                path.display(),
-                error
-            );
-            // Metadata failure must not suppress the layout. Content files do.
-            if path != metadata_path {
-                content_persisted = false;
-            }
-            first_error.get_or_insert(error);
-        }
+    // Metadata is staged with the content, but a metadata miss must not
+    // suppress the layout. Content misses do. The shared publisher applies
+    // that only to the paths named here.
+    let published_state = publish_staged_session_state(
+        &layout_path,
+        staged,
+        &HashMap::new(),
+        &mut HashMap::new(),
+        content_persisted,
+        std::slice::from_ref(&metadata_path),
+    );
+    content_persisted = published_state.content_persisted;
+    if first_error.is_none() {
+        first_error = published_state.first_error;
     }
     if content_persisted && !layout_text.is_empty() {
-        if let Some(layout_file) = staged_layout {
-            // Replacing the file gives it a new creation time; keep the session's own.
-            zellij_utils::sessions::record_session_layout_creation_time(&layout_path);
-            if let Err(error) = persist_atomic_write(layout_file, &layout_path) {
-                log::error!(
-                    "Failed to write session state file {}: {:?}",
-                    layout_path.display(),
-                    error
-                );
-                first_error.get_or_insert(error);
-            }
-        }
         prune_stale_pane_content_files(
             &session_info_folder,
             &session_layout_cache_file_name(session_id),
@@ -1819,17 +1815,31 @@ fn persist_atomic_write(file: tempfile::NamedTempFile, path: &Path) -> std::io::
     sync_parent_directory(path)
 }
 
-/// Publish staged session artifacts. `layout_path` is written last and only
-/// after every artifact before it succeeded, so a layout never names content
-/// that failed to publish. Returns whether every staged file was published.
+struct SessionPublication {
+    /// Every staged file landed, and staging had not already failed.
+    all_persisted: bool,
+    /// Blocking dependencies landed. A layout failure does not clear this,
+    /// so a caller can still drop content the failed layout will never name.
+    content_persisted: bool,
+    first_error: Option<std::io::Error>,
+}
+
+/// Publish staged session artifacts. `layout_path` is written only after
+/// every blocking artifact before it succeeded, so a layout never names
+/// content that failed to publish. Paths in `layout_nonblocking` (session
+/// metadata) are still published, but their failure does not suppress the
+/// layout. A hash is recorded only when `hashes` has that path.
 fn publish_staged_session_state(
     layout_path: &Path,
     staged: Vec<(PathBuf, tempfile::NamedTempFile)>,
     hashes: &HashMap<PathBuf, u64>,
     published: &mut HashMap<PathBuf, u64>,
     mut dependencies_persisted: bool,
-) -> bool {
+    layout_nonblocking: &[PathBuf],
+) -> SessionPublication {
     let mut all_persisted = dependencies_persisted;
+    let mut content_persisted = dependencies_persisted;
+    let mut first_error = None;
     for (path, file) in staged {
         if path == layout_path && !dependencies_persisted {
             all_persisted = false;
@@ -1840,22 +1850,34 @@ fn publish_staged_session_state(
         }
         match persist_atomic_write(file, &path) {
             Ok(()) => {
-                published.insert(path.clone(), hashes[&path]);
+                if let Some(hash) = hashes.get(&path) {
+                    published.insert(path, *hash);
+                }
             },
             Err(error) => {
                 all_persisted = false;
-                if path != layout_path {
+                let blocks_layout = path != layout_path
+                    && !layout_nonblocking.iter().any(|ignored| ignored == &path);
+                if blocks_layout {
                     dependencies_persisted = false;
+                    content_persisted = false;
                 }
                 log::error!(
                     "Failed to publish session state file {}: {:?}",
                     path.display(),
                     error
                 );
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
             },
         }
     }
-    all_persisted
+    SessionPublication {
+        all_persisted,
+        content_persisted,
+        first_error,
+    }
 }
 
 #[cfg(unix)]
@@ -2189,7 +2211,8 @@ mod tests {
         contents: &BTreeMap<String, String>,
     ) -> bool {
         let (staged, hashes) = stage_generation(layout_path, layout, contents, None);
-        publish_staged_session_state(layout_path, staged, &hashes, &mut HashMap::new(), true)
+        publish_staged_session_state(layout_path, staged, &hashes, &mut HashMap::new(), true, &[])
+            .all_persisted
     }
 
     fn pane_contents_from_layout(layout: &zellij_utils::input::layout::Layout) -> Vec<String> {
@@ -2265,7 +2288,9 @@ mod tests {
                 &hashes,
                 &mut HashMap::new(),
                 true,
-            );
+                &[],
+            )
+            .all_persisted;
 
             assert!(!all_persisted, "publication {} must fail", failing_index);
             assert_eq!(
@@ -2581,7 +2606,9 @@ mod tests {
             &hashes,
             &mut published,
             true,
-        );
+            &[],
+        )
+        .all_persisted;
 
         assert!(!all_persisted);
         assert!(!layout_path.exists());
@@ -2701,6 +2728,252 @@ mod tests {
         assert!(writes.iter().any(|(path, _)| path == &layout_path));
         assert!(hashes.contains_key(&layout_path));
         assert!(layout_is_part_of_state(session_id, &hashes));
+    }
+
+    fn unique_publication_session(label: &str) -> String {
+        format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
+    fn publish_explicit(
+        session_id: &str,
+        incarnation: u128,
+        layout: (String, BTreeMap<String, String>),
+    ) -> std::io::Result<()> {
+        write_session_state_to_disk(
+            session_id.to_owned(),
+            incarnation,
+            SessionInfo::new(session_id.to_owned()),
+            layout,
+        )
+    }
+
+    #[test]
+    fn periodic_persist_publishes_through_the_shared_publisher_and_keeps_one_predecessor() {
+        let session_id = unique_publication_session("periodic-shared");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        let info = SessionInfo::new(session_id.clone());
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let generations = vec![
+            serialized_layout_with_contents(&["alpha one", "alpha two"]),
+            serialized_layout_with_contents(&["beta one", "beta two"]),
+            serialized_layout_with_contents(&["gamma one", "gamma two"]),
+        ];
+        let mut published = HashMap::new();
+        for (index, (layout, contents)) in generations.iter().enumerate() {
+            let (writes, hashes) = collect_dirty_session_state_writes(
+                &session_id,
+                &info,
+                &(layout.clone(), contents.clone()),
+                &published,
+            );
+            let all_persisted = stage_and_commit_session_generation(
+                &session_id,
+                incarnation,
+                writes,
+                &hashes,
+                &mut published,
+                layout,
+                true,
+            )
+            .unwrap();
+            assert!(all_persisted, "generation {index} must publish");
+        }
+
+        assert_eq!(
+            loaded_pane_contents(&layout_path),
+            vec!["gamma one".to_owned(), "gamma two".to_owned()]
+        );
+        let folder = session_info_folder_for_session(&session_id);
+        for path in content_paths(&folder, &generations[0].1) {
+            assert!(!path.exists(), "two generations back must be pruned");
+        }
+        for path in content_paths(&folder, &generations[1].1)
+            .into_iter()
+            .chain(content_paths(&folder, &generations[2].1))
+        {
+            assert!(path.exists(), "the predecessor and current generation stay");
+        }
+        assert!(published.contains_key(&layout_path));
+        remove_publication_sidecars(&session_id);
+    }
+
+    #[test]
+    fn a_metadata_publish_failure_still_publishes_the_layout() {
+        let session_id = unique_publication_session("metadata-miss");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        let folder = session_info_folder_for_session(&session_id);
+        let metadata_path = session_info_cache_file_name(&session_id);
+        let layout_path = session_layout_cache_file_name(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        // A directory where the metadata file should land makes that one
+        // rename fail. The layout must still be published.
+        std::fs::create_dir(&metadata_path).unwrap();
+        let (layout, contents) = serialized_layout_with_contents(&["kept pane"]);
+
+        let error = publish_explicit(&session_id, incarnation, (layout.clone(), contents.clone()))
+            .expect_err("metadata rename must fail");
+        assert!(
+            !zellij_utils::sessions::is_session_publication_fenced(&error),
+            "metadata failure is an ordinary publish error, got {error}"
+        );
+        assert_eq!(std::fs::read_to_string(&layout_path).unwrap(), layout);
+        assert_eq!(
+            loaded_pane_contents(&layout_path),
+            vec!["kept pane".to_owned()]
+        );
+        for (name, body) in &contents {
+            assert_eq!(std::fs::read_to_string(folder.join(name)).unwrap(), *body);
+        }
+        assert!(metadata_path.is_dir());
+        remove_publication_sidecars(&session_id);
+    }
+
+    #[test]
+    fn a_failed_explicit_content_publish_keeps_the_predecessor_layout() {
+        let session_id = unique_publication_session("content-miss");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        let folder = session_info_folder_for_session(&session_id);
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let (layout_a, contents_a) = serialized_layout_with_contents(&["alpha pane"]);
+        let (layout_b, contents_b) = serialized_layout_with_contents(&["beta pane"]);
+        publish_explicit(
+            &session_id,
+            incarnation,
+            (layout_a.clone(), contents_a.clone()),
+        )
+        .unwrap();
+
+        let blocked = contents_b.keys().next().unwrap();
+        std::fs::create_dir(folder.join(blocked)).unwrap();
+        let error = publish_explicit(&session_id, incarnation, (layout_b, contents_b))
+            .expect_err("content rename must fail");
+        assert!(!zellij_utils::sessions::is_session_publication_fenced(
+            &error
+        ));
+        assert_eq!(std::fs::read_to_string(&layout_path).unwrap(), layout_a);
+        assert_eq!(
+            loaded_pane_contents(&layout_path),
+            vec!["alpha pane".to_owned()]
+        );
+        for path in content_paths(&folder, &contents_a) {
+            assert!(path.exists(), "the committed generation stays readable");
+        }
+        remove_publication_sidecars(&session_id);
+    }
+
+    #[test]
+    fn an_explicit_layout_publish_failure_still_prunes_unreferenced_content() {
+        let session_id = unique_publication_session("layout-miss");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        let folder = session_info_folder_for_session(&session_id);
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let (layout_a, contents_a) = serialized_layout_with_contents(&["alpha pane"]);
+        let (layout_b, contents_b) = serialized_layout_with_contents(&["beta pane"]);
+        let (layout_c, contents_c) = serialized_layout_with_contents(&["gamma pane"]);
+        publish_explicit(&session_id, incarnation, (layout_a, contents_a.clone())).unwrap();
+        publish_explicit(&session_id, incarnation, (layout_b, contents_b.clone())).unwrap();
+        std::fs::remove_file(&layout_path).unwrap();
+        std::fs::create_dir(&layout_path).unwrap();
+
+        let error = publish_explicit(&session_id, incarnation, (layout_c, contents_c.clone()))
+            .expect_err("layout rename onto a directory must fail");
+        assert!(!zellij_utils::sessions::is_session_publication_fenced(
+            &error
+        ));
+        assert!(layout_path.is_dir(), "the failed layout must not replace the blocker");
+        for path in content_paths(&folder, &contents_a)
+            .into_iter()
+            .chain(content_paths(&folder, &contents_b))
+        {
+            assert!(
+                !path.exists(),
+                "content that the failed layout will never name is pruned"
+            );
+        }
+        for (name, body) in &contents_c {
+            assert_eq!(std::fs::read_to_string(folder.join(name)).unwrap(), *body);
+        }
+        remove_publication_sidecars(&session_id);
+    }
+
+    #[test]
+    fn a_periodic_stage_failure_reports_false_without_publishing_the_layout() {
+        let session_id = unique_publication_session("stage-fail");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        let folder = session_info_folder_for_session(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        let blocker = folder.join("not-a-directory");
+        std::fs::write(&blocker, b"x").unwrap();
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let writes = vec![
+            (
+                session_info_cache_file_name(&session_id),
+                b"metadata".to_vec(),
+            ),
+            (blocker.join("pane.txt"), b"content".to_vec()),
+            (layout_path.clone(), b"layout { }\n".to_vec()),
+        ];
+        let hashes = writes
+            .iter()
+            .map(|(path, bytes)| (path.clone(), content_hash(bytes)))
+            .collect::<HashMap<_, _>>();
+        let mut published = HashMap::new();
+
+        let all_persisted = stage_and_commit_session_generation(
+            &session_id,
+            incarnation,
+            writes,
+            &hashes,
+            &mut published,
+            "layout { }\n",
+            true,
+        )
+        .unwrap();
+
+        assert!(!all_persisted);
+        assert!(!layout_path.exists());
+        assert!(!published.contains_key(&layout_path));
+        remove_publication_sidecars(&session_id);
+    }
+
+    #[test]
+    fn a_fenced_periodic_publish_is_an_error_rather_than_a_skipped_save() {
+        let session_id = unique_publication_session("stage-fence");
+        remove_publication_sidecars(&session_id);
+        let incarnation = admit_test_session(&session_id);
+        zellij_utils::sessions::remove_fenced_session_cache(&session_id).unwrap();
+        let layout_path = session_layout_cache_file_name(&session_id);
+        let writes = vec![(layout_path.clone(), b"layout { }\n".to_vec())];
+        let hashes = HashMap::from([(layout_path.clone(), content_hash(b"layout { }\n"))]);
+
+        let error = stage_and_commit_session_generation(
+            &session_id,
+            incarnation,
+            writes,
+            &hashes,
+            &mut HashMap::new(),
+            "layout { }\n",
+            true,
+        )
+        .expect_err("a deletion fence must refuse publication");
+
+        assert!(zellij_utils::sessions::is_session_publication_fenced(
+            &error
+        ));
+        assert!(!layout_path.exists());
+        remove_publication_sidecars(&session_id);
     }
 
     #[test]
