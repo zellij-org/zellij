@@ -11,6 +11,12 @@ pub(in crate::window) fn skip_taskbar(attributes: WindowAttributes) -> WindowAtt
         .with_undecorated_shadow(true)
 }
 
+/// Windows keeps a window the app opens at another program's request behind the active one.
+/// Focusing it brings it to the front, as the panel already does.
+pub(in crate::window) fn bring_opened_window_forward(window: &Window) {
+    window.focus_window();
+}
+
 pub(in crate::window) fn square_without_system_border(window: &Window) {
     use windows_sys::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,

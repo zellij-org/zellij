@@ -226,6 +226,9 @@ impl Desktop {
             self.drop_window(ticket);
             return false;
         }
+        if let Some(window) = self.windows.get(&ticket).and_then(|app| app.window()) {
+            crate::window::bring_opened_window_forward(window);
+        }
         true
     }
 }
