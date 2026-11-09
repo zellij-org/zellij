@@ -222,6 +222,9 @@ pub struct TerminalPane {
     collapsed_stack_program_size: Option<zellij_utils::pane_size::Size>,
     /// User asked to scroll to an end. One quantum runs per screen turn.
     viewport_goal: Option<crate::tab::ViewportGoal>,
+    /// View held aside while PTY bytes wait to be applied at the live
+    /// bottom. Set when that distance is longer than one row quantum.
+    live_parse_anchor: Option<crate::panes::grid::ViewportAnchor>,
     /// Output is being applied at the live bottom while the user's view
     /// is held and restored in quanta. Renders stay locked until it ends.
     output_catchup: Option<OutputCatchup>,
@@ -834,17 +837,17 @@ impl Pane for TerminalPane {
         }
     }
     fn clear_scroll(&mut self) {
-        self.cancel_output_catchup();
-        self.viewport_goal = None;
         self.grid.pending_search = None;
-        self.grid.reset_viewport();
-        self.set_should_render(true);
+        // One quantum now; `advance_viewport_goal` finishes the rest.
+        self.begin_viewport_goal(crate::tab::ViewportGoal::Bottom);
     }
     fn is_scrolled(&self) -> bool {
         self.grid.is_scrolled
     }
     fn begin_viewport_goal(&mut self, goal: crate::tab::ViewportGoal) {
         self.cancel_output_catchup();
+        // The user is moving the view. Do not restore a parse anchor on top.
+        self.live_parse_anchor = None;
         self.viewport_goal = Some(goal);
         let _ = self.advance_viewport_goal();
     }
@@ -1837,36 +1840,70 @@ impl TerminalPane {
             && !Self::bytes_may_place_image(&joined[..queued_len + new_len])
     }
 
-    fn with_live_terminal<R>(
-        &mut self,
-        input_bytes: &[u8],
-        operation: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    fn with_live_terminal(&mut self, input_bytes: &[u8], operation: impl FnOnce(&mut Self)) {
         let allow_park = self.input_is_parkable(input_bytes);
         if !self.grid.is_scrolled && !self.grid.is_live_bottom_parked() {
-            return operation(self);
+            operation(self);
+            return;
         }
         if allow_park {
             if self.grid.is_live_bottom_parked() || self.grid.park_at_live_bottom() {
-                let result = operation(self);
+                operation(self);
                 if self.grid.is_live_bottom_parked() {
                     self.grid.unpark_live_bottom();
                 }
-                return result;
+                return;
             }
         } else if self.grid.is_live_bottom_parked() {
             // A park created by an earlier text quantum is not permission to
             // parse an image-capable suffix against the historical window.
             self.grid.unpark_live_bottom();
         }
+        if self.grid.scrolled_row_distance() > crate::panes::grid::SCREEN_ROW_QUANTUM {
+            self.defer_live_parse_one_quantum(input_bytes);
+            return;
+        }
         let alternate_before = self.grid.is_alternate_mode_active();
-        let viewport_anchor = self.grid.viewport_anchor();
+        let saved_anchor = self.live_parse_anchor.take();
+        let user_wants_bottom = saved_anchor.is_none()
+            && matches!(self.viewport_goal, Some(crate::tab::ViewportGoal::Bottom));
+        if saved_anchor.is_some()
+            && matches!(self.viewport_goal, Some(crate::tab::ViewportGoal::Bottom))
+        {
+            // That goal only existed to reach the live bottom for this parse.
+            self.viewport_goal = None;
+        }
+        let viewport_anchor = saved_anchor.unwrap_or_else(|| self.grid.viewport_anchor());
         self.grid.reset_viewport();
-        let result = operation(self);
-        if self.grid.is_alternate_mode_active() == alternate_before {
+        if !self.grid.is_scrolled
+            && matches!(self.viewport_goal, Some(crate::tab::ViewportGoal::Bottom))
+        {
+            self.viewport_goal = None;
+        }
+        operation(self);
+        if !user_wants_bottom && self.grid.is_alternate_mode_active() == alternate_before {
             self.grid.restore_viewport_anchor(viewport_anchor);
         }
-        result
+    }
+
+    /// Bytes that would be parsed against a half-moved viewport stay queued.
+    /// The view moves one row quantum toward the live bottom; later deferred
+    /// turns cover the rest, and the original window is restored after the
+    /// parse once the distance fits in one quantum.
+    fn defer_live_parse_one_quantum(&mut self, input_bytes: &[u8]) {
+        if self.live_parse_anchor.is_none() && self.viewport_goal.is_none() {
+            self.live_parse_anchor = Some(self.grid.viewport_anchor());
+        }
+        if !input_bytes.is_empty() {
+            self.append_pending_pty_input(input_bytes);
+        }
+        let _ = self
+            .grid
+            .advance_to_bottom(crate::panes::grid::SCREEN_ROW_QUANTUM);
+        if self.grid.is_scrolled && self.viewport_goal.is_none() {
+            self.viewport_goal = Some(crate::tab::ViewportGoal::Bottom);
+        }
+        self.set_should_render(true);
     }
 
     fn feed_terminal_bytes(&mut self, bytes: &[u8]) {
@@ -1900,6 +1937,7 @@ impl TerminalPane {
     fn reset_grid_state(&mut self) {
         self.cancel_output_catchup();
         self.viewport_goal = None;
+        self.live_parse_anchor = None;
         self.forward_paused = false;
         self.frame.clear();
         self.fake_cursor_locations.clear();
@@ -2300,6 +2338,7 @@ impl TerminalPane {
             mirror_pinned_size: None,
             collapsed_stack_program_size: None,
             viewport_goal: None,
+            live_parse_anchor: None,
             output_catchup: None,
             output_truncated: false,
             program_resized_at: None,

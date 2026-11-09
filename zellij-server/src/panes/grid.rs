@@ -710,7 +710,9 @@ fn take_lines_above_tail(rows: &mut VecDeque<Row>, max_rows: usize) -> Vec<Row> 
 
 /// User viewport held off to the side while PTY bytes are applied to the
 /// live screen. `overlap_skip` is how many live rows still duplicate the
-/// tail of `held` and must not be appended under that view.
+/// tail of `held` and must not be appended under that view. It stays
+/// clamped to `held.len()`: a front row is part of that overlap only
+/// when the overlap already covers the whole held buffer.
 ///
 /// `held` and `gap` are retained history. They share the scrollback row
 /// and cell budget with `lines_above`. A pinned view does not keep rows
@@ -1266,6 +1268,9 @@ thread_local! {
     static SERIALIZE_BUDGET_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static SCROLL_DOWN_ONE_LINE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static PARK_GAP_CELL_ROWS_SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Replaces the process-wide scrollback cap inside parked retention.
+    /// `None` keeps `SCROLL_BUFFER_SIZE`. The recount reserve is untouched.
+    static HISTORY_ROW_CAP_OVERRIDE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
 #[cfg(test)]
@@ -1296,6 +1301,11 @@ pub(crate) fn park_gap_cell_rows_scanned() -> usize {
 #[cfg(test)]
 pub(crate) fn reset_park_gap_cell_rows_scanned() {
     PARK_GAP_CELL_ROWS_SCANNED.with(|c| c.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn set_history_row_cap_override_for_test(cap: Option<usize>) {
+    HISTORY_ROW_CAP_OVERRIDE.with(|cap_cell| cap_cell.set(cap));
 }
 
 #[cfg(test)]
@@ -3838,9 +3848,11 @@ impl Grid {
     }
     /// Put the viewport back on the rows `anchor` named. Rows appended below
     /// that window stay below it, so the user keeps looking at the same text.
+    /// A viewport that is still away from the live bottom moves at most one
+    /// row quantum; the anchor math below assumes the bottom has been reached.
     pub(crate) fn restore_viewport_anchor(&mut self, anchor: ViewportAnchor) {
-        if self.is_scrolled {
-            self.reset_viewport();
+        if self.is_scrolled && !self.advance_to_bottom(SCREEN_ROW_QUANTUM) {
+            return;
         }
         let evicted = self
             .scrollback_rows_evicted
@@ -3861,11 +3873,9 @@ impl Grid {
         }
     }
     pub fn reset_viewport(&mut self) {
-        // One bulk transfer of the rows below the viewport, repeated only
-        // while reflow puts rows back and the pass still moves. There is
-        // no one-line walk. The screen thread does not call this for a
-        // long distance; it uses `advance_to_bottom` with a row quantum.
-        let _ = self.advance_to_bottom(usize::MAX);
+        // One row quantum. A longer return to the bottom continues on a
+        // later turn via `advance_to_bottom` or the pane viewport goal.
+        let _ = self.advance_to_bottom(SCREEN_ROW_QUANTUM);
     }
     /// Move at most `row_budget` rows toward the live bottom, in bulk.
     /// Returns true when the viewport is at the bottom (or cannot move).
@@ -4068,8 +4078,15 @@ impl Grid {
             .unwrap_or(0);
         self.lines_above.len() + parked + self.lines_below.len()
     }
+    fn history_row_cap() -> usize {
+        #[cfg(test)]
+        if let Some(cap) = HISTORY_ROW_CAP_OVERRIDE.with(|cap_cell| cap_cell.get()) {
+            return cap;
+        }
+        *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE)
+    }
     fn history_row_and_cell_budget() -> (usize, usize) {
-        let rows = *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE);
+        let rows = Self::history_row_cap();
         let cells = rows.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
         (rows, cells)
     }
@@ -4116,6 +4133,9 @@ impl Grid {
                 };
                 if let Some(row) = park.held.pop_front() {
                     park.held_cells = park.held_cells.saturating_sub(row.stored_cell_count());
+                    // The overlap is a suffix. Dropping the front shrinks it
+                    // only once that suffix already covered every held row.
+                    park.overlap_skip = park.overlap_skip.min(park.held.len());
                     Some(park.held.is_empty())
                 } else {
                     None
@@ -4194,6 +4214,7 @@ impl Grid {
         let Some(mut park) = self.live_bottom.take() else {
             return;
         };
+        park.overlap_skip = park.overlap_skip.min(park.held.len());
         let skip = park.overlap_skip.min(self.viewport.len());
         for _ in 0..skip {
             let Some(row) = self.viewport.pop_front() else {
@@ -4201,13 +4222,12 @@ impl Grid {
             };
             // The live window and the held view share these rows. The live
             // copy is authoritative: it saw this turn's edits, erases,
-            // inserts, style changes, and markers.
-            let held_index = park.held.len() as isize - park.overlap_skip as isize;
+            // inserts, style changes, and markers. The index stays in range
+            // because the overlap is the suffix of `held`.
+            let held_index = park.held.len() - park.overlap_skip;
             park.overlap_skip = park.overlap_skip.saturating_sub(1);
-            if held_index >= 0 {
-                if let Some(held_row) = park.held.get_mut(held_index as usize) {
-                    *held_row = row;
-                }
+            if let Some(held_row) = park.held.get_mut(held_index) {
+                *held_row = row;
             }
         }
         park.overlap_skip = 0;
@@ -6293,22 +6313,21 @@ impl Grid {
         let Some(park) = self.live_bottom.as_mut() else {
             return Some(row);
         };
+        // Overlap is the suffix of `held`. Clamp before consuming one so a
+        // front eviction cannot point this live row past the buffer and
+        // drop it.
+        park.overlap_skip = park.overlap_skip.min(park.held.len());
         if park.overlap_skip == 0 {
             return Some(row);
         }
-        // Only the last `overlap_skip` rows of `held` still have a live
-        // counterpart. Retention may already have dropped the earliest
-        // ones, in which case this live row has no slot to restore.
-        let held_index = park.held.len() as isize - park.overlap_skip as isize;
+        let held_index = park.held.len() - park.overlap_skip;
         park.overlap_skip -= 1;
-        if held_index >= 0 {
-            if let Some(held_row) = park.held.get_mut(held_index as usize) {
-                park.held_cells = park
-                    .held_cells
-                    .saturating_sub(held_row.stored_cell_count())
-                    .saturating_add(row.stored_cell_count());
-                *held_row = row;
-            }
+        if let Some(held_row) = park.held.get_mut(held_index) {
+            park.held_cells = park
+                .held_cells
+                .saturating_sub(held_row.stored_cell_count())
+                .saturating_add(row.stored_cell_count());
+            *held_row = row;
         }
         None
     }

@@ -273,6 +273,69 @@ fn backlog_overflow_rejects_the_whole_queue_instead_of_splicing_a_suffix() {
 }
 
 #[test]
+fn clear_scroll_moves_at_most_one_row_quantum() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let mut pane = terminal_pane_with_size(4, 20);
+    for index in 0..(SCREEN_ROW_QUANTUM + 30) {
+        pane.handle_pty_bytes_for_test(format!("L{index}\r\n").into_bytes());
+    }
+    pane.scroll_up(SCREEN_ROW_QUANTUM + 10, 1);
+    let before = pane.grid.lines_below.len();
+    assert!(
+        before > SCREEN_ROW_QUANTUM,
+        "the fixture must sit further than one quantum from the bottom, below={before}"
+    );
+    pane.clear_scroll();
+    let moved = before - pane.grid.lines_below.len();
+    assert!(
+        !pane.grid.lines_below.is_empty(),
+        "one clear_scroll finished a {before}-row return"
+    );
+    assert!(
+        moved > 0 && moved <= SCREEN_ROW_QUANTUM,
+        "clear_scroll moved {moved} rows"
+    );
+    assert!(pane.viewport_goal_pending());
+    let mid = pane.grid.lines_below.len();
+    pane.advance_deferred_pane_work();
+    assert!(
+        pane.grid.lines_below.len() < mid,
+        "a later turn should continue the scroll to the bottom"
+    );
+}
+
+#[test]
+fn deep_scroll_defers_image_bytes_and_moves_one_quantum() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let mut pane = terminal_pane_with_size(5, 20);
+    for index in 0..(SCREEN_ROW_QUANTUM + 40) {
+        pane.handle_pty_bytes_for_test(format!("row-{index}\r\n").into_bytes());
+    }
+    pane.scroll_up(SCREEN_ROW_QUANTUM + 20, 1);
+    let before = pane.grid.lines_below.len();
+    assert!(before > SCREEN_ROW_QUANTUM);
+    let bytes = b"\x1b_Ga=t,f=24;AAAA\x1b\\";
+    pane.handle_pty_bytes_for_test(bytes.to_vec());
+    let moved = before - pane.grid.lines_below.len();
+    assert!(
+        !pane.grid.lines_below.is_empty(),
+        "image input snapped the whole scrolled distance"
+    );
+    assert!(
+        moved <= SCREEN_ROW_QUANTUM,
+        "image input moved {moved} rows in one turn"
+    );
+    let queued = pane.pending_pty_input.len() - pane.pending_pty_offset;
+    assert_eq!(
+        queued,
+        bytes.len(),
+        "image bytes were parsed against a half-moved viewport"
+    );
+}
+
+#[test]
 fn scrolled_image_output_does_not_resume_in_history() {
     let mut pane = terminal_pane_with_size(5, 20);
     for _ in 0..30 {

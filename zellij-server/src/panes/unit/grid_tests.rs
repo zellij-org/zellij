@@ -12854,6 +12854,66 @@ fn a_paused_upward_search_tries_downward_when_it_finds_nothing() {
     assert!(grid.dump_screen(false).contains("LOWER-NEEDLE"));
 }
 
+struct HistoryCapGuard;
+
+impl Drop for HistoryCapGuard {
+    fn drop(&mut self) {
+        super::set_history_row_cap_override_for_test(None);
+    }
+}
+
+/// Retention that pops the held overlap must not discard the live copy.
+#[test]
+fn unpark_keeps_live_bytes_after_parked_overlap_retention() {
+    let _guard = HistoryCapGuard;
+    // Below the overlap. The default 10000 never pops a viewport-sized held buffer.
+    super::set_history_row_cap_override_for_test(Some(2));
+
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut content = Vec::new();
+    for index in 0..5 {
+        content.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut grid, &content);
+    grid.scroll_up_rows(1);
+    assert_eq!(
+        grid.lines_below.len(),
+        1,
+        "one row below the viewport makes the live screen overlap the held view"
+    );
+    let overlap = grid.height - grid.lines_below.len();
+    assert!(overlap > 2);
+    assert!(
+        grid.park_at_live_bottom(),
+        "a scrolled pane with no images should park"
+    );
+    {
+        let park = grid.live_bottom.as_ref().expect("park survives retention");
+        assert!(
+            park.held.len() < grid.height,
+            "retention did not pop held rows (held {})",
+            park.held.len()
+        );
+        assert!(
+            park.overlap_skip <= park.held.len(),
+            "overlap_skip {} points past held {}",
+            park.overlap_skip,
+            park.held.len()
+        );
+        assert!(
+            park.overlap_skip < overlap,
+            "popping held did not shrink an overlap that covered the dropped front"
+        );
+    }
+    grid.viewport[0] = row_from_str("LIVEKEEP").canonical();
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        document.contains("LIVEKEEP"),
+        "unpark dropped the live overlap row: {document:?}"
+    );
+}
+
 fn document_text(grid: &Grid) -> String {
     let mut text = String::new();
     for row in grid
@@ -13428,6 +13488,66 @@ fn reset_viewport_moves_in_bulk_and_a_short_budget_stops() {
     assert!(grid.is_scrolled);
     assert!(!grid.lines_below.is_empty());
     assert_eq!(scroll_down_one_line_call_count(), 0);
+}
+
+#[test]
+fn reset_viewport_stops_after_one_row_quantum() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    let distance = super::SCREEN_ROW_QUANTUM + 10;
+    let mut content = Vec::new();
+    for index in 0..distance + grid.height {
+        content.extend_from_slice(format!("row-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut grid, &content);
+    let moved_up = grid.scroll_up_rows(distance);
+    assert!(
+        moved_up > super::SCREEN_ROW_QUANTUM,
+        "the fixture must scroll further than one quantum, moved {moved_up}"
+    );
+    let before = grid.lines_below.len();
+    assert!(before > super::SCREEN_ROW_QUANTUM);
+    grid.reset_viewport();
+    let moved = before - grid.lines_below.len();
+    assert!(
+        !grid.lines_below.is_empty(),
+        "one reset_viewport finished a {}-row return",
+        before
+    );
+    assert!(
+        moved <= super::SCREEN_ROW_QUANTUM,
+        "reset_viewport moved {moved} rows, quantum is {}",
+        super::SCREEN_ROW_QUANTUM
+    );
+    assert!(moved > 0, "reset_viewport did not move toward the bottom");
+    let mid = grid.lines_below.len();
+    grid.reset_viewport();
+    assert!(
+        grid.lines_below.len() < mid,
+        "a second reset_viewport should continue toward the bottom"
+    );
+}
+
+#[test]
+fn add_canonical_line_inserts_a_canonical_viewport_row() {
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_size_and_raw(4, 8, b"");
+    grid.move_cursor_to(
+        0,
+        grid.height - 1,
+        TerminalCharacter::new_styled(' ', Default::default()),
+    );
+    assert_eq!(grid.cursor.y, grid.height - 1);
+    let above = grid.lines_above.len();
+    grid.add_canonical_line();
+    assert!(
+        grid.lines_above.len() > above,
+        "the cursor was on the bottom scroll-region row, so the new row must scroll"
+    );
+    assert!(
+        grid.viewport.back().is_some_and(|row| row.is_canonical),
+        "the row inserted into the viewport must be canonical"
+    );
 }
 
 #[test]
