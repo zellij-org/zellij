@@ -3242,18 +3242,23 @@ pub(crate) fn route_thread_main(
                         } => {
                             let cli_client_id = client_id;
                             let client_id = if is_cli_client {
-                                // for cli clients, we want to default to the last active client
-                                // (i.e. the last client to have issued a keystroke) this is to
-                                // interpret actions that require a client_id (such as move focus,
-                                // detach, etc.) for which using the cli client id will not be
-                                // doing the right thing - using the last_active_client is almost
-                                // certainly correct in almost all cases
-                                session_state
+                                // Explicit ids win over last-active, but only while that
+                                // client is still connected. A missing id still defaults
+                                // to the last client that sent a key, then this connection.
+                                let resolved = session_state
                                     .read()
                                     .unwrap_or_else(|poisoned| poisoned.into_inner())
-                                    .get_last_active_client()
-                                    .or(maybe_client_id)
-                                    .unwrap_or(client_id)
+                                    .resolve_cli_action_client(maybe_client_id, client_id);
+                                match resolved {
+                                    Some(resolved_client_id) => resolved_client_id,
+                                    None => {
+                                        log::error!(
+                                            "rejecting CLI action aimed at client {}, which is not connected",
+                                            maybe_client_id.unwrap_or(client_id)
+                                        );
+                                        return Ok(should_break);
+                                    },
+                                }
                             } else {
                                 maybe_client_id.unwrap_or(client_id)
                             };

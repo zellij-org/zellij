@@ -1705,6 +1705,13 @@ impl SessionState {
     pub fn is_watcher(&self, client_id: &ClientId) -> bool {
         self.watchers.get(client_id).is_some()
     }
+    /// Connected non-watcher client. Watchers are not included: the route
+    /// thread drops their input before the action arm, so they are not
+    /// action targets. Membership in `clients` is the incarnation check;
+    /// removed ids leave the map and are not reused while monotonic ids remain.
+    pub fn connected_client(&self, id: ClientId) -> bool {
+        self.clients.contains_key(&id)
+    }
     pub fn remove_watcher(&mut self, client_id: ClientId) {
         self.watchers.remove(&client_id);
     }
@@ -1713,6 +1720,26 @@ impl SessionState {
     }
     pub fn get_last_active_client(&self) -> Option<ClientId> {
         self.last_active_client
+    }
+    /// Client a CLI action should run as.
+    ///
+    /// An explicit id is used only when [`Self::connected_client`] is true.
+    /// Last-active is read only when no explicit id was given, so a later
+    /// `set_last_active_client` cannot redirect a target already chosen.
+    /// `None` means the explicit id is not connected; the caller must skip
+    /// the action rather than run it as someone else.
+    pub fn resolve_cli_action_client(
+        &self,
+        explicit_client_id: Option<ClientId>,
+        connection_client_id: ClientId,
+    ) -> Option<ClientId> {
+        match explicit_client_id {
+            Some(id) => self.connected_client(id).then_some(id),
+            None => Some(
+                self.get_last_active_client()
+                    .unwrap_or(connection_client_id),
+            ),
+        }
     }
     pub fn clear_last_active_client(&mut self, client_id: ClientId) {
         if self.last_active_client == Some(client_id) {
@@ -1908,6 +1935,85 @@ mod session_state_tests {
         assert!(!s.clients.contains_key(&first));
         assert!(s.clients.contains_key(&second));
         assert!(s.clients.contains_key(&third));
+    }
+
+    fn two_clients_last_active_a() -> (SessionState, ClientId, ClientId) {
+        let mut session_state = SessionState::new();
+        let client_a = session_state.new_client();
+        let client_b = session_state.new_client();
+        session_state.set_last_active_client(client_a);
+        (session_state, client_a, client_b)
+    }
+
+    #[test]
+    fn cli_action_explicit_client_beats_last_active() {
+        let (session_state, client_a, client_b) = two_clients_last_active_a();
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            Some(client_b)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_client_ignores_last_active_updated_before_resolve() {
+        let (mut session_state, client_a, client_b) = two_clients_last_active_a();
+        session_state.set_last_active_client(client_b);
+        // Focus moves back to A before the one resolve call. Last-active is
+        // read only when the explicit id is absent, so B stays the target.
+        session_state.set_last_active_client(client_a);
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            Some(client_b)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_client_removed_is_rejected() {
+        let (mut session_state, client_a, client_b) = two_clients_last_active_a();
+        session_state.remove_client(client_b);
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            None,
+            "a removed id must not fall back to last-active or the CLI connection"
+        );
+    }
+
+    #[test]
+    fn cli_action_without_explicit_client_uses_last_active() {
+        let (session_state, client_a, _client_b) = two_clients_last_active_a();
+        assert_eq!(
+            session_state.resolve_cli_action_client(None, 99),
+            Some(client_a)
+        );
+    }
+
+    #[test]
+    fn cli_action_without_explicit_or_last_active_uses_connection_client() {
+        let mut session_state = SessionState::new();
+        let connection_client_id = session_state.new_client();
+        assert_eq!(session_state.get_last_active_client(), None);
+        assert_eq!(
+            session_state.resolve_cli_action_client(None, connection_client_id),
+            Some(connection_client_id)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_watcher_is_rejected() {
+        // Watchers are not action clients. `route_thread_main` returns before
+        // the Action arm for a watcher connection ("Ignore all input from
+        // watcher clients"), so an explicit watcher id is not "connected".
+        let (mut session_state, client_a, watcher_id) = two_clients_last_active_a();
+        session_state.convert_client_to_watcher(watcher_id, false);
+        assert!(session_state.is_watcher(&watcher_id));
+        assert!(!session_state.connected_client(watcher_id));
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(watcher_id), 99),
+            None
+        );
     }
 
     #[test]
