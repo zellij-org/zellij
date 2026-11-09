@@ -75,6 +75,10 @@ impl KittyReplyData {
     }
 }
 
+/// Placement records kept for one pane. Separate from the image-byte quota:
+/// many displays can share one raster. Rendering walks at most this many.
+const MAX_KITTY_PLACEMENTS: usize = 1024;
+
 #[derive(Debug, Clone)]
 pub struct KittyGrid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -82,6 +86,9 @@ pub struct KittyGrid {
     image_ids: HashMap<u32, InternalImageId>,
     image_numbers: HashMap<u32, Vec<u32>>,
     placements: Vec<KittyPlacement>,
+    /// Set after the first refusal at `MAX_KITTY_PLACEMENTS`. Further
+    /// refusals stay quiet until the count drops below the cap.
+    placement_cap_logged: bool,
     next_synthetic_image_id: u32,
     front_drops: u64,
     merged_rows: u64,
@@ -149,6 +156,7 @@ impl KittyGrid {
             image_ids: HashMap::new(),
             image_numbers: HashMap::new(),
             placements: Vec::new(),
+            placement_cap_logged: false,
             next_synthetic_image_id: u32::MAX,
             front_drops: 0,
             merged_rows: 0,
@@ -454,6 +462,15 @@ impl KittyGrid {
         if is_scaled && !scaled_size_is_allowed(dst_w, dst_h) {
             return Err(too_large());
         }
+        // Placement id 0 means "assign a new id" (Kitty), not "replace the
+        // previous anonymous placement". Each such display is its own record.
+        // Image id 0 cannot carry a client placement id, so it is also new.
+        let placement_id = if pane_image_id != 0 {
+            command.placement_id.unwrap_or(0)
+        } else {
+            0
+        };
+        self.refuse_placement_over_cap(command, pane_image_id, placement_id)?;
         let dest_cells = (cols as u16, rows as u16);
         let source_rect = PixelRect {
             x: source_x,
@@ -511,11 +528,6 @@ impl KittyGrid {
             width: dst_w,
             height: dst_h,
         };
-        let placement_id = if pane_image_id != 0 {
-            command.placement_id.unwrap_or(0)
-        } else {
-            0
-        };
         let mut reused_uid: Option<u64> = None;
         if pane_image_id != 0 && placement_id != 0 {
             let mut store = self.kitty_image_store.borrow_mut();
@@ -556,6 +568,33 @@ impl KittyGrid {
             .borrow_mut()
             .add_placement_ref(internal);
         Ok(dest_cells)
+    }
+    /// A new placement past the cap is not stored. Replacing an existing
+    /// non-zero placement id does not grow the list, so it is still admitted.
+    fn refuse_placement_over_cap(
+        &mut self,
+        command: &KittyCommand,
+        pane_image_id: u32,
+        placement_id: u32,
+    ) -> Result<(), KittyError> {
+        let replaces_existing = pane_image_id != 0
+            && placement_id != 0
+            && self.placements.iter().any(|placement| {
+                placement.image_id == pane_image_id && placement.placement_id == placement_id
+            });
+        if self.placements.len() < MAX_KITTY_PLACEMENTS {
+            self.placement_cap_logged = false;
+        }
+        if replaces_existing || self.placements.len() < MAX_KITTY_PLACEMENTS {
+            return Ok(());
+        }
+        if !self.placement_cap_logged {
+            self.placement_cap_logged = true;
+            log::warn!(
+                "Rejecting a Kitty placement: a pane already holds {MAX_KITTY_PLACEMENTS} placements"
+            );
+        }
+        Err(einval(command, "too many placements"))
     }
     pub fn delete(
         &mut self,
@@ -1110,6 +1149,7 @@ impl KittyGrid {
             Some(character_cell_size) => self
                 .placements
                 .iter()
+                .take(MAX_KITTY_PLACEMENTS)
                 .map(|placement| {
                     let pixel_rect = &placement.display_rect;
                     let scrollback_size_in_pixels = scrollback_height * character_cell_size.height;
@@ -1180,7 +1220,7 @@ impl KittyGrid {
     ) -> Vec<KittyImageChunk> {
         let mut changed_kitty_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
-            for placement in &self.placements {
+            for placement in self.placements.iter().take(MAX_KITTY_PLACEMENTS) {
                 let image_pixel_rect = &placement.display_rect;
                 for (line_index, line_count) in &changed_rects {
                     let changed_rect_pixel_height = line_count * character_cell_size.height;
