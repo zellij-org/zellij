@@ -8244,15 +8244,46 @@ impl Screen {
 
         Ok(())
     }
+    fn session_infos_changed(
+        old_infos: &BTreeMap<String, SessionInfo>,
+        new_infos: &BTreeMap<String, SessionInfo>,
+        old_resurrectable: &BTreeMap<String, Duration>,
+        new_resurrectable: &BTreeMap<String, Duration>,
+    ) -> bool {
+        old_infos.len() != new_infos.len()
+            || old_infos.iter().any(|(name, old)| {
+                new_infos.get(name).map_or(true, |new| {
+                    old.name != new.name
+                        || old.tabs != new.tabs
+                        || old.panes != new.panes
+                        || old.connected_clients != new.connected_clients
+                        || old.is_current_session != new.is_current_session
+                        || old.available_layouts != new.available_layouts
+                        || old.plugins != new.plugins
+                        || old.web_clients_allowed != new.web_clients_allowed
+                        || old.web_client_count != new.web_client_count
+                        || old.tab_history != new.tab_history
+                        || old.pane_history != new.pane_history
+                        || old.attention_muted != new.attention_muted
+                })
+            })
+            || !old_resurrectable.keys().eq(new_resurrectable.keys())
+    }
     pub fn update_session_infos(
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
         requesting_plugin: Option<(u32, ClientId)>,
     ) -> Result<()> {
+        let session_infos_changed = Self::session_infos_changed(
+            &self.peer_sessions_cache,
+            &new_session_infos,
+            &self.resurrectable_sessions_cache,
+            &resurrectable_sessions,
+        );
         self.peer_sessions_cache = new_session_infos;
         self.resurrectable_sessions_cache = resurrectable_sessions;
-        if let Some((plugin_id, client_id)) = requesting_plugin {
+        if let Some((plugin_id, client_id)) = requesting_plugin.filter(|_| session_infos_changed) {
             self.bus
                 .senders
                 .send_to_plugin(PluginInstruction::Update(vec![(

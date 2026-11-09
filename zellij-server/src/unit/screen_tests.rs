@@ -49,7 +49,10 @@ use zellij_utils::ipc::PixelDimensions;
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette},
+    data::{
+        Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette,
+        SessionInfo,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -1034,6 +1037,49 @@ fn a_tab_created_without_attached_clients_reuses_the_last_known_geometry() {
         .add_client(1, false)
         .expect("first client attachment");
     assert_eq!(screen.tabs.len(), 2, "detached tabs survive first attach");
+}
+
+#[test]
+fn unchanged_session_snapshots_do_not_count_as_changes() {
+    let mut infos = BTreeMap::new();
+    infos.insert(
+        "current".to_owned(),
+        SessionInfo {
+            name: "current".to_owned(),
+            ..Default::default()
+        },
+    );
+    let mut resurrectable = BTreeMap::new();
+    resurrectable.insert("dead".to_owned(), Duration::from_secs(1));
+    let mut advanced_duration = resurrectable.clone();
+    advanced_duration.insert("dead".to_owned(), Duration::from_secs(500));
+    let mut aged_infos = infos.clone();
+    aged_infos.get_mut("current").unwrap().creation_time = Duration::from_secs(999);
+
+    assert!(!Screen::session_infos_changed(
+        &infos,
+        &aged_infos,
+        &resurrectable,
+        &advanced_duration
+    ));
+
+    let mut changed = infos.clone();
+    changed.get_mut("current").unwrap().connected_clients = 1;
+    assert!(Screen::session_infos_changed(
+        &infos,
+        &changed,
+        &resurrectable,
+        &advanced_duration
+    ));
+
+    let mut new_resurrectable = advanced_duration.clone();
+    new_resurrectable.insert("new-dead".to_owned(), Duration::from_secs(2));
+    assert!(Screen::session_infos_changed(
+        &infos,
+        &infos,
+        &resurrectable,
+        &new_resurrectable
+    ));
 }
 
 #[test]
