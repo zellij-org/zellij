@@ -1,4 +1,4 @@
-use super::pinned_executor::{JobClass, PluginWork};
+use super::pinned_executor::{on_plugin_executor, JobClass, PluginWork};
 use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
@@ -14,7 +14,8 @@ use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests
 use crate::plugins::settings_entries::{PluginIdentity, SettingsEntries};
 use crate::plugins::shared::{
     add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
-    remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
+    remove_slot_job, resize_job, revoke_client_loads, revoke_plugin_loads, start_instance_job,
+    take_client_data_dirs, try_lock_running, visibility_job, wasm_module_exports_function,
     SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
 };
 use zellij_utils::prompt::PromptResult;
@@ -1154,11 +1155,12 @@ impl WasmBridge {
         let mut cleanups: Vec<PluginWork> = Vec::with_capacity(plugins_to_cleanup.len());
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
-            running_plugin.lock().unwrap().store.data().retire_load();
+            // `load_alive` was cloned out at refuel. Clearing it does not take
+            // the execution mutex a guest callback may be holding.
+            revoke_client_loads(plugin_id, client_id);
             // Release this plugin's key intercept for the client without asking the
-            // RunningPlugin whether it has one: its execution mutex is held for the whole of a
-            // guest callback, and the management thread must not wait on that to unload. The
-            // screen only drops an intercept this plugin owns.
+            // RunningPlugin whether it has one. The screen only drops an intercept
+            // this plugin owns.
             let _ = self
                 .senders
                 .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
@@ -1176,46 +1178,46 @@ impl WasmBridge {
 
             cleanups.push(Box::new(
                 move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let subscriptions_guard = subscriptions.lock().unwrap();
-                    let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
-                    drop(subscriptions_guard); // Release lock before calling plugin
-
-                    if needs_before_close {
-                        let mut rp = running_plugin.lock().unwrap();
-                        if !rp.is_quarantined() {
-                            match apply_before_close_event_to_plugin(
-                                plugin_id,
-                                client_id,
-                                &mut rp,
-                                senders.clone(),
-                            ) {
-                                Ok(()) => {},
-                                Err(e) => {
-                                    log::error!("{:?}", e);
-                                    let stringified_error =
-                                        format!("{:?}", e).replace("\n", "\n\r");
-                                    show_plugin_crash(
-                                        plugin_id,
-                                        stringified_error,
-                                        senders.clone(),
-                                    );
-                                },
+                    let needs_before_close = subscriptions
+                        .lock()
+                        .unwrap()
+                        .contains(&EventType::BeforeClose);
+                    // BeforeClose is a guest callback. Run it only on the plugin
+                    // executor, and only if the execution mutex is free. Inline
+                    // host cleanup (queue rejection on the management thread)
+                    // must not enter the guest or wait for it.
+                    if on_plugin_executor() {
+                        if let Some(mut rp) = try_lock_running(&running_plugin) {
+                            if needs_before_close && !rp.is_quarantined() {
+                                match apply_before_close_event_to_plugin(
+                                    plugin_id,
+                                    client_id,
+                                    &mut rp,
+                                    senders.clone(),
+                                ) {
+                                    Ok(()) => {},
+                                    Err(e) => {
+                                        log::error!("{:?}", e);
+                                        let stringified_error =
+                                            format!("{:?}", e).replace("\n", "\n\r");
+                                        show_plugin_crash(
+                                            plugin_id,
+                                            stringified_error,
+                                            senders.clone(),
+                                        );
+                                    },
+                                }
                             }
+                            rp.store.data().retire_load();
                         }
-                        let cache_dir = rp.store.data().plugin_own_data_dir.clone();
-                        drop(rp); // Release lock before filesystem operation
-                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                            log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                    }
+                    let mut data_dirs = take_client_data_dirs(plugin_id, client_id);
+                    if data_dirs.is_empty() {
+                        if let Some(rp) = try_lock_running(&running_plugin) {
+                            data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
                         }
-                    } else {
-                        let cache_dir = running_plugin
-                            .lock()
-                            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                            .unwrap()
-                            .store
-                            .data()
-                            .plugin_own_data_dir
-                            .clone();
+                    }
+                    for cache_dir in data_dirs {
                         if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
                             log::error!("Failed to remove cache dir for plugin: {:?}", e);
                         }
@@ -2393,8 +2395,8 @@ impl WasmBridge {
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in instances {
             // Retire before async host work (timers) can deliver into a
             // replacement instance that reused (plugin_id, client_id).
-            running_plugin.lock().unwrap().store.data().retire_load();
-            // as in unload_plugin: no lock on the guest's execution mutex here
+            // The handle lives outside the execution mutex.
+            revoke_client_loads(plugin_id, client_id);
             let _ = self
                 .senders
                 .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
@@ -2412,21 +2414,20 @@ impl WasmBridge {
                 let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
 
-            self.plugin_executor.execute_for_plugin_with(
+            // A full lifecycle queue must not drop directory cleanup.
+            self.plugin_executor.submit_lifecycle_or_run(
                 plugin_id,
-                JobClass::Lifecycle,
-                0,
                 move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let cache_dir = running_plugin
-                        .lock()
-                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_own_data_dir
-                        .clone();
-                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                        log::error!("Failed to remove data dir for plugin instance: {:?}", e);
+                    let mut data_dirs = take_client_data_dirs(plugin_id, client_id);
+                    if data_dirs.is_empty() {
+                        if let Some(rp) = try_lock_running(&running_plugin) {
+                            data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
+                        }
+                    }
+                    for cache_dir in data_dirs {
+                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                            log::error!("Failed to remove data dir for plugin instance: {:?}", e);
+                        }
                     }
                     drop(running_plugin);
                     drop(subscriptions);
@@ -4097,6 +4098,20 @@ impl WasmBridge {
         }
     }
     fn unload_shared_slot(&mut self, slot_id: PluginId) {
+        let Some(instance_id) = self.shared_slot_owner.get(&slot_id).copied() else {
+            return;
+        };
+        // Last slot tears the instance down. Revoke that load before removing
+        // ownership records or waiting on a queue, so a blocked guest cannot
+        // stall retirement and a rejected submit cannot leave it alive.
+        let tearing_down = match self.shared_instances.get(&instance_id) {
+            Some(info) => !info.slots.iter().any(|id| *id != slot_id),
+            None => true,
+        };
+        if tearing_down {
+            revoke_plugin_loads(instance_id);
+            self.release_key_intercepts(instance_id);
+        }
         let Some(instance_id) = self.shared_slot_owner.remove(&slot_id) else {
             return;
         };
@@ -4133,7 +4148,17 @@ impl WasmBridge {
             let _ = self.plugin_executor.execute_plugin_unload(
                 instance_id,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    remove_slot_job(senders, plugin_map, instance_id, slot_id, true);
+                    // Guest BeforeClose only on the executor thread. A rejected
+                    // retirement runs this closure inline and must not enter
+                    // the guest or take the execution mutex.
+                    remove_slot_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        slot_id,
+                        true,
+                        on_plugin_executor(),
+                    );
                 },
             );
             let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
@@ -4142,12 +4167,19 @@ impl WasmBridge {
             self.apply_prompt_actions(prompt_actions);
             self.settings_entries_changed(|entries| entries.plugin_unloaded(instance_id));
         } else {
-            self.plugin_executor.execute_for_plugin_with(
+            // Lifecycle admission can fail once the queue is full. The closure
+            // still runs, on the caller, and skips the guest in that case.
+            self.plugin_executor.submit_lifecycle_or_run(
                 instance_id,
-                JobClass::Lifecycle,
-                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    remove_slot_job(senders, plugin_map, instance_id, slot_id, false);
+                    remove_slot_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        slot_id,
+                        false,
+                        on_plugin_executor(),
+                    );
                 },
             );
         }

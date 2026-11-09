@@ -3,10 +3,21 @@ use crate::plugins::plugin_map::PluginMap;
 use crate::plugins::wasm_bridge::PluginCache;
 use crate::ClientId;
 use crate::ThreadSenders;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread;
+
+thread_local! {
+    static PLUGIN_EXECUTOR_THREAD: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether the current thread is a pinned plugin executor. Guest callbacks are
+/// optional off this thread: inline host cleanup must not run them.
+pub fn on_plugin_executor() -> bool {
+    PLUGIN_EXECUTOR_THREAD.with(|flag| flag.get())
+}
 use wasmi::Engine;
 
 const DEFAULT_JOB_BASE_BYTES: usize = 256;
@@ -351,13 +362,13 @@ impl ThreadQueue {
         class: JobClass,
         payload_bytes: usize,
         work: PluginWork,
-    ) -> Result<(), JobRejection> {
+    ) -> Result<(), (JobRejection, PluginWork)> {
         let accounted_bytes = payload_bytes
             .saturating_add(self.limits.job_base_bytes)
             .max(1);
         let mut state = self.state.lock().unwrap();
         if state.shutdown {
-            return Err(JobRejection::QueueClosed);
+            return Err((JobRejection::QueueClosed, work));
         }
 
         let sequence = state.next_sequence.wrapping_add(1);
@@ -377,7 +388,7 @@ impl ThreadQueue {
                         accounted_bytes,
                         Some(slot.accounted_bytes),
                     ) {
-                        return Err(JobRejection::BudgetExceeded);
+                        return Err((JobRejection::BudgetExceeded, work));
                     }
                     state.counts.adjust_bytes(
                         owner,
@@ -396,7 +407,7 @@ impl ThreadQueue {
             }
 
             if !self.can_admit(&state, owner, class, accounted_bytes, None) {
-                return Err(JobRejection::BudgetExceeded);
+                return Err((JobRejection::BudgetExceeded, work));
             }
             let slot = Arc::new(Mutex::new(CoalesceSlot {
                 owner,
@@ -411,7 +422,7 @@ impl ThreadQueue {
             state.jobs.push_back(Job::Coalesced { slot });
         } else {
             if !self.can_admit(&state, owner, class, accounted_bytes, None) {
-                return Err(JobRejection::BudgetExceeded);
+                return Err((JobRejection::BudgetExceeded, work));
             }
             state.counts.admit(owner, 1, accounted_bytes);
             state.next_sequence = sequence;
@@ -600,6 +611,7 @@ impl PinnedExecutor {
         let thread_handle = thread::Builder::new()
             .name(format!("plugin-exec-{}", thread_idx))
             .spawn(move || {
+                PLUGIN_EXECUTOR_THREAD.with(|flag| flag.set(true));
                 while let Some(job) = Self::next_job(&worker_queue) {
                     match job {
                         Job::Work {
@@ -846,25 +858,70 @@ impl PinnedExecutor {
             ) + Send
             + 'static,
     {
+        self.enqueue_work(plugin_id, class, payload_bytes, Box::new(f))
+            .map_err(|(rejection, _work)| rejection)
+    }
+
+    /// Queue lifecycle work, or run it on the caller when the lifecycle queue
+    /// rejects it. Mandatory host cleanup uses this so a full queue cannot drop
+    /// the closure. The closure must not wait on guest execution.
+    pub fn submit_lifecycle_or_run<F>(&self, plugin_id: u32, f: F)
+    where
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    {
+        match self.enqueue_work(plugin_id, JobClass::Lifecycle, 0, Box::new(f)) {
+            Ok(()) => {},
+            Err((rejection, work)) => {
+                log::warn!(
+                    "Plugin {} lifecycle cleanup was rejected ({}); running it inline",
+                    plugin_id,
+                    rejection
+                );
+                self.run_work_inline(work);
+            },
+        }
+    }
+
+    fn enqueue_work(
+        &self,
+        plugin_id: u32,
+        class: JobClass,
+        payload_bytes: usize,
+        work: PluginWork,
+    ) -> Result<(), (JobRejection, PluginWork)> {
         let thread = {
             let assignments = self.plugin_assignments.lock().unwrap();
             let Some(thread_idx) = assignments.get(&plugin_id).copied() else {
                 log::error!("Failed to find thread for plugin with id: {}", plugin_id);
-                return Err(JobRejection::OwnerNotRegistered);
+                return Err((JobRejection::OwnerNotRegistered, work));
             };
             drop(assignments);
 
             let threads = self.execution_threads.lock().unwrap();
             let Some(thread) = threads.get(&thread_idx).cloned() else {
                 log::error!("Failed to find thread for plugin with id: {}", plugin_id);
-                return Err(JobRejection::QueueClosed);
+                return Err((JobRejection::QueueClosed, work));
             };
             thread
         };
+        thread.queue.enqueue(plugin_id, class, payload_bytes, work)
+    }
 
-        thread
-            .queue
-            .enqueue(plugin_id, class, payload_bytes, Box::new(f))
+    fn run_work_inline(&self, work: PluginWork) {
+        work(
+            self.senders.clone(),
+            self.plugin_map.clone(),
+            self.connected_clients.clone(),
+            self.plugin_cache.clone(),
+            self.engine.clone(),
+        );
     }
 
     /// Reserve lifecycle capacity and a queue position without supplying the
@@ -996,10 +1053,7 @@ impl PinnedExecutor {
             return Ok(());
         }
         let executor = self.clone();
-        match self.try_execute_for_plugin(
-            plugin_id,
-            JobClass::Retirement,
-            0,
+        let work: PluginWork = Box::new(
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 // Execute the cleanup work
                 for cleanup in cleanups {
@@ -1015,14 +1069,21 @@ impl PinnedExecutor {
                 // Unregister plugin and potentially shrink the pool
                 executor.unregister_plugin(plugin_id);
             },
-        ) {
+        );
+        match self.enqueue_work(plugin_id, JobClass::Retirement, 0, work) {
             Ok(()) => Ok(()),
-            Err(e) => {
-                // Retirement is containment-critical. If even its dedicated
-                // headroom is exhausted, settle the registry synchronously
-                // rather than leaving a retired plugin assigned forever.
-                self.unregister_plugin(plugin_id);
-                Err(e)
+            Err((rejection, work)) => {
+                // Retirement headroom is exhausted (or the queue is gone).
+                // Dropping `work` would skip host cleanup after ownership
+                // records were already removed. Run it on the caller instead.
+                // That closure must not wait on the guest execution mutex.
+                log::warn!(
+                    "Plugin {} retirement was rejected ({}); running host cleanup inline",
+                    plugin_id,
+                    rejection
+                );
+                self.run_work_inline(work);
+                Ok(())
             },
         }
     }
@@ -2558,12 +2619,69 @@ mod tests {
                 cleanup_tx.send(()).unwrap();
             })],
         );
-        assert!(matches!(result, Err(JobRejection::BudgetExceeded)));
+        assert!(
+            result.is_ok(),
+            "a rejected retirement must still run host cleanup, got {result:?}"
+        );
         assert!(
             !executor.is_registered(1),
             "a rejected retirement must still settle its assignment"
         );
-        assert!(cleanup_rx.try_recv().is_err());
+        cleanup_rx
+            .try_recv()
+            .expect("rejected retirement must invoke the cleanup closure inline");
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+    }
+
+    #[test]
+    fn rejected_lifecycle_submit_still_runs_retirement_cleanup() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+        executor.register_plugin(2);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let mut rejected_lifecycle = false;
+        for _ in 0..64 {
+            if executor
+                .try_execute_for_plugin(2, JobClass::Lifecycle, 0, |_s, _p, _c, _ca, _e| {})
+                .is_err()
+            {
+                rejected_lifecycle = true;
+                break;
+            }
+        }
+        assert!(
+            rejected_lifecycle,
+            "the lifecycle queue must be full before the mandatory cleanup"
+        );
+
+        let ran = Arc::new(AtomicUsize::new(0));
+        let ran_in_cleanup = ran.clone();
+        executor.submit_lifecycle_or_run(2, move |_s, _p, _c, _ca, _e| {
+            ran_in_cleanup.fetch_add(1, Ordering::SeqCst);
+        });
+        assert_eq!(
+            ran.load(Ordering::SeqCst),
+            1,
+            "a rejected lifecycle submit must run the mandatory cleanup on the caller"
+        );
+        assert!(
+            !on_plugin_executor(),
+            "inline cleanup must not pretend to be the guest executor"
+        );
 
         release_tx.send(()).unwrap();
         wait_for(|| executor.queued_jobs() == 0);

@@ -2,7 +2,7 @@ use super::PluginId;
 use crate::background_jobs::BackgroundJob;
 use crate::plugins::pipes::{pipes_to_block_or_unblock, PipeStateChange};
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot, Subscriptions};
+use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, SharedSlot, Subscriptions};
 use crate::plugins::plugin_worker::{try_send_to_worker, MessageToWorker};
 use crate::plugins::wasm_bridge::{
     check_event_permission, clear_failed_plugin_load_side_effects, handle_plugin_crash,
@@ -15,10 +15,14 @@ use crate::screen::ScreenInstruction;
 use crate::ui::loading_indication::LoadingIndication;
 use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 use prost::Message;
+use std::any::TypeId;
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::marker::PhantomData;
+use std::mem;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use wasmi::Engine;
 use zellij_utils::data::KeybindsVec;
@@ -183,9 +187,158 @@ pub fn is_out_of_fuel(error: &anyhow::Error) -> bool {
     })
 }
 
+struct PublishedLoad {
+    alive: Arc<AtomicBool>,
+    data_dir: PathBuf,
+}
+
+impl PublishedLoad {
+    fn retire_outside_execution_lock(&self, execution: Option<&Mutex<()>>) {
+        // `execution` stands in for the guest mutex in tests. Never wait on it:
+        // a callback may already hold the real execution lock.
+        if let Some(execution) = execution {
+            match execution.try_lock() {
+                Ok(guard) => drop(guard),
+                Err(std::sync::TryLockError::WouldBlock) => {},
+                Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                    drop(poisoned.into_inner());
+                },
+            }
+        }
+        self.alive.store(false, Ordering::Release);
+    }
+}
+
+/// `load_alive` handles cloned out of `RunningPlugin` at the first refuel, so
+/// management can retire a load without taking the execution mutex.
+static PUBLISHED_LOADS: LazyLock<Mutex<HashMap<(PluginId, ClientId, u64), PublishedLoad>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn publish_plugin_load(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    generation: u64,
+    alive: Arc<AtomicBool>,
+    data_dir: PathBuf,
+) {
+    let mut loads = PUBLISHED_LOADS.lock().unwrap();
+    loads
+        .entry((plugin_id, client_id, generation))
+        .or_insert(PublishedLoad { alive, data_dir });
+}
+
+/// `TypeId` of `T` without a `'static` bound. Same approach as wasmi's store
+/// typeid: the id is only used to recognize `PluginEnv`, which is `'static`.
+fn type_id_of<T: ?Sized>() -> TypeId {
+    trait NonStaticAny {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static;
+    }
+    impl<T: ?Sized> NonStaticAny for PhantomData<T> {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static,
+        {
+            TypeId::of::<T>()
+        }
+    }
+    let phantom = PhantomData::<T>;
+    NonStaticAny::get_type_id(unsafe {
+        mem::transmute::<&dyn NonStaticAny, &(dyn NonStaticAny + 'static)>(&phantom)
+    })
+}
+
+fn publish_store_data<T: ?Sized>(data: &T) {
+    if type_id_of::<T>() != type_id_of::<PluginEnv>() {
+        return;
+    }
+    // SAFETY: the TypeId check above is true only when `T` is `PluginEnv`.
+    let env = unsafe { &*(data as *const T as *const PluginEnv) };
+    publish_plugin_load(
+        env.plugin_id,
+        env.client_id,
+        env.generation,
+        env.load_alive.clone(),
+        env.plugin_own_data_dir.clone(),
+    );
+}
+
+fn retire_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) {
+    let loads = PUBLISHED_LOADS.lock().unwrap();
+    for (key, load) in loads.iter() {
+        if keep(key) {
+            load.retire_outside_execution_lock(None);
+        }
+    }
+}
+
+fn take_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) -> Vec<PathBuf> {
+    let mut loads = PUBLISHED_LOADS.lock().unwrap();
+    let keys: Vec<_> = loads.keys().copied().filter(|key| keep(key)).collect();
+    let mut dirs = Vec::with_capacity(keys.len());
+    for key in keys {
+        if let Some(load) = loads.remove(&key) {
+            load.retire_outside_execution_lock(None);
+            dirs.push(load.data_dir);
+        }
+    }
+    dirs
+}
+
+/// Flip every published `load_alive` for `plugin_id` without the execution mutex.
+pub fn revoke_plugin_loads(plugin_id: PluginId) {
+    retire_matching(|(id, _, _)| *id == plugin_id);
+}
+
+/// Flip this client instance's `load_alive` handles without the execution mutex.
+pub fn revoke_client_loads(plugin_id: PluginId, client_id: ClientId) {
+    retire_matching(|(id, cid, _)| *id == plugin_id && *cid == client_id);
+}
+
+/// Retire loads of `plugin_id` other than the newest generation. A reload
+/// publishes the replacement before this runs, so the blocked previous guest
+/// does not have to be locked.
+pub fn retire_older_published_loads(plugin_id: PluginId) {
+    let loads = PUBLISHED_LOADS.lock().unwrap();
+    let newest = loads
+        .keys()
+        .filter(|(id, _, _)| *id == plugin_id)
+        .map(|(_, _, generation)| *generation)
+        .max();
+    let Some(newest) = newest else {
+        return;
+    };
+    for ((id, _, generation), load) in loads.iter() {
+        if *id == plugin_id && *generation < newest {
+            load.retire_outside_execution_lock(None);
+        }
+    }
+}
+
+pub fn take_plugin_data_dirs(plugin_id: PluginId) -> Vec<PathBuf> {
+    take_matching(|(id, _, _)| *id == plugin_id)
+}
+
+pub fn take_client_data_dirs(plugin_id: PluginId, client_id: ClientId) -> Vec<PathBuf> {
+    take_matching(|(id, cid, _)| *id == plugin_id && *cid == client_id)
+}
+
+/// Lock the guest only when it is free. Unload must not wait out a host call.
+pub fn try_lock_running(
+    running_plugin: &Mutex<RunningPlugin>,
+) -> Option<std::sync::MutexGuard<'_, RunningPlugin>> {
+    match running_plugin.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+    }
+}
+
 pub fn refuel_for_callback<T>(store: &mut wasmi::Store<T>) {
     let _ = store.set_fuel(PLUGIN_CALLBACK_FUEL_BUDGET);
     begin_callback_host_budget();
+    publish_store_data(store.data());
 }
 
 /// Instantiate a plugin module with a fresh callback budget. A new store
@@ -744,21 +897,35 @@ pub fn remove_slot_job(
     instance_id: PluginId,
     slot_id: PluginId,
     tear_down: bool,
+    allow_guest: bool,
 ) {
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
-        let mut running_plugin = running_plugin.lock().unwrap();
-        if running_plugin.is_active() {
-            if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
-                log::error!(
-                    "Failed to remove slot {} from shared plugin: {:?}",
-                    slot_id,
-                    e
-                );
+        if allow_guest {
+            if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+                if running_plugin.is_active() {
+                    if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
+                        log::error!(
+                            "Failed to remove slot {} from shared plugin: {:?}",
+                            slot_id,
+                            e
+                        );
+                    }
+                }
+            }
+        } else if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+            // The lifecycle queue rejected this job, so it is running on the
+            // management thread. Drop the host slot record only; do not enter
+            // the guest, and do not wait if a callback holds the mutex.
+            if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
+                shared.slots.remove(&slot_id);
+                for visible in shared.visible_slots.values_mut() {
+                    visible.remove(&slot_id);
+                }
             }
         }
     }
     if tear_down {
-        tear_down_instance(&senders, &plugin_map, instance_id);
+        tear_down_instance(&senders, &plugin_map, instance_id, allow_guest);
     }
 }
 
@@ -766,53 +933,76 @@ fn tear_down_instance(
     senders: &ThreadSenders,
     plugin_map: &Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
+    allow_guest: bool,
 ) {
+    // Revoke before taking the execution mutex. A blocked guest callback may
+    // hold that mutex for the rest of the host call.
+    revoke_plugin_loads(instance_id);
     let removed = plugin_map.lock().unwrap().remove_shared(instance_id);
     let Some((running_plugin, subscriptions, workers)) = removed else {
+        delete_data_dirs(&take_plugin_data_dirs(instance_id));
+        let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(instance_id));
         return;
     };
     for (_worker_name, worker_sender) in workers {
         let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
     }
-    let needs_before_close = subscriptions
-        .lock()
-        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-        .unwrap()
-        .contains(&EventType::BeforeClose);
-    let mut running_plugin = running_plugin.lock().unwrap();
-    if needs_before_close && !running_plugin.is_quarantined() {
-        if let Err(e) = call_update(
-            &mut running_plugin,
-            &Event::BeforeClose,
-            None,
-            EventContext::default(),
-        ) {
-            log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);
+    let mut locked_dir = None;
+    if allow_guest {
+        if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+            let needs_before_close = subscriptions
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .contains(&EventType::BeforeClose);
+            if needs_before_close && !running_plugin.is_quarantined() {
+                if let Err(e) = call_update(
+                    &mut running_plugin,
+                    &Event::BeforeClose,
+                    None,
+                    EventContext::default(),
+                ) {
+                    log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);
+                }
+                send_pipe_changes(senders, &mut running_plugin, instance_id, None);
+            }
+            running_plugin.store.data().retire_load();
+            if running_plugin.intercepting_key_presses() {
+                let clients: Vec<ClientId> = running_plugin
+                    .store
+                    .data()
+                    .shared
+                    .as_ref()
+                    .map(|shared| shared.clients.iter().copied().collect())
+                    .unwrap_or_default();
+                for client_id in clients {
+                    let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                        instance_id,
+                        client_id,
+                    ));
+                }
+            }
+            locked_dir = Some(running_plugin.store.data().plugin_own_data_dir.clone());
         }
-        send_pipe_changes(senders, &mut running_plugin, instance_id, None);
     }
-    // Nothing from this instance may run after teardown has started.
-    running_plugin.store.data().retire_load();
-    if running_plugin.intercepting_key_presses() {
-        let clients: Vec<ClientId> = running_plugin
-            .store
-            .data()
-            .shared
-            .as_ref()
-            .map(|shared| shared.clients.iter().copied().collect())
-            .unwrap_or_default();
-        for client_id in clients {
-            let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
-                instance_id,
-                client_id,
-            ));
+    let mut data_dirs = take_plugin_data_dirs(instance_id);
+    if let Some(dir) = locked_dir {
+        if !data_dirs.contains(&dir) {
+            data_dirs.push(dir);
         }
     }
-    let data_dir = running_plugin.store.data().plugin_own_data_dir.clone();
-    if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-        log::error!("Failed to remove data dir for shared plugin: {:?}", e);
-    }
+    delete_data_dirs(&data_dirs);
     let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(instance_id));
+    drop(running_plugin);
+    drop(subscriptions);
+}
+
+fn delete_data_dirs(data_dirs: &[PathBuf]) {
+    for data_dir in data_dirs {
+        if let Err(e) = std::fs::remove_dir_all(data_dir) {
+            log::error!("Failed to remove data dir for shared plugin: {:?}", e);
+        }
+    }
 }
 
 pub fn client_job(
@@ -975,7 +1165,12 @@ pub fn start_instance_job(
         Ok(running_plugin) => {
             // The replacement is published; only now is it safe to retire the old workers.
             if let Some((previous_plugin, _subscriptions, workers)) = previous {
-                previous_plugin.lock().unwrap().store.data().retire_load();
+                retire_older_published_loads(instance_id);
+                // Backup for a load that never refueled. Do not wait if its
+                // guest callback still holds the execution mutex.
+                if let Some(previous_plugin) = try_lock_running(&previous_plugin) {
+                    previous_plugin.store.data().retire_load();
+                }
                 for (_worker_name, worker_sender) in workers {
                     let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
                 }
@@ -1218,5 +1413,39 @@ mod fuel_tests {
         let refreshed = super::callback_host_budget_remaining();
         assert!(refreshed > second);
         assert!(refreshed <= super::PLUGIN_CALLBACK_HOST_BUDGET);
+    }
+}
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::PublishedLoad;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    #[test]
+    fn retire_load_returns_while_execution_lock_is_held() {
+        let execution = Arc::new(Mutex::new(()));
+        let alive = Arc::new(AtomicBool::new(true));
+        let load = PublishedLoad {
+            alive: alive.clone(),
+            data_dir: PathBuf::from("/tmp/retire-load-does-not-lock"),
+        };
+        // The test thread holds the stand-in for the guest execution mutex.
+        let _guard = execution.lock().unwrap();
+        let execution_for_retire = execution.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            load.retire_outside_execution_lock(Some(&execution_for_retire));
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("retire_load waited on the execution mutex");
+        assert!(
+            !alive.load(Ordering::Acquire),
+            "retirement must clear load_alive without the execution mutex"
+        );
     }
 }
