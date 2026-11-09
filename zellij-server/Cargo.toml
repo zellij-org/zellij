@@ -14,12 +14,10 @@ anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.50", default-features = false }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
-byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
-bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
-futures-lite = "1.13.0"
+futures-io = "0.3.31"
 highway = { version = "=1.2.0", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }

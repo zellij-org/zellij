@@ -19,13 +19,15 @@ use zellij_utils::web_server_commands::{
 use isahc::prelude::*;
 use isahc::{config::RedirectPolicy, HttpClient, Request};
 
-use futures_lite::io::AsyncReadExt;
+use futures_io::AsyncRead;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::future::poll_fn;
 use std::hash::Hasher;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
@@ -259,7 +261,7 @@ async fn read_web_body_within_host_pipe<R>(
     context: &BTreeMap<String, String>,
 ) -> Result<Vec<u8>, WebRequestError>
 where
-    R: futures_lite::io::AsyncRead + Unpin,
+    R: AsyncRead + Unpin,
 {
     if !web_result_frame_fits(status, headers, &[], context) {
         return Err(WebRequestError::HostPipe);
@@ -267,7 +269,7 @@ where
     let mut collected = Vec::new();
     let mut chunk = [0u8; 8 * 1024];
     loop {
-        let n = body.read(&mut chunk).await?;
+        let n = poll_fn(|cx| Pin::new(&mut *body).poll_read(cx, &mut chunk)).await?;
         if n == 0 {
             break;
         }
@@ -4092,7 +4094,7 @@ mod web_request_host_pipe_tests {
         consumed: Arc<AtomicUsize>,
     }
 
-    impl futures_lite::io::AsyncRead for CountingReader {
+    impl futures_io::AsyncRead for CountingReader {
         fn poll_read(
             mut self: Pin<&mut Self>,
             _cx: &mut Context<'_>,
