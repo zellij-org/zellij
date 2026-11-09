@@ -100,6 +100,8 @@ const MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN: usize = 1024 * 1024;
 struct PendingPluginMessages {
     entries: Vec<EventOrPipeMessage>,
     bytes: usize,
+    /// A one-shot event could not be stored. The entries are not a complete history.
+    incomplete: bool,
 }
 
 #[derive(Debug, Default)]
@@ -141,21 +143,37 @@ impl PendingPluginCaches {
         entry: EventOrPipeMessage,
         front: bool,
     ) -> Result<(), PendingCacheRejection> {
+        if !self.plugins.contains_key(&plugin_id) {
+            return Ok(());
+        }
         let bytes =
             event_or_pipe_message_bytes(&entry).saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
-        let Some(cache) = self.plugins.get_mut(&plugin_id) else {
-            return Ok(());
+        // A newer full-state snapshot replaces the cached view of that same kind
+        // instead of appending another copy or evicting a one-shot fact.
+        if self.has_snapshot(plugin_id, &entry) {
+            return self.replace_snapshot(plugin_id, entry, bytes);
+        }
+        let over_entries = {
+            let cache = &self.plugins[&plugin_id];
+            cache.entries.len() >= MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN
+                || self.total_entries >= MAX_PENDING_CACHE_ENTRIES_TOTAL
         };
-        if cache.entries.len() >= MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN
-            || self.total_entries >= MAX_PENDING_CACHE_ENTRIES_TOTAL
-        {
-            return Err(PendingCacheRejection::EntryLimit);
+        let over_bytes = {
+            let cache = &self.plugins[&plugin_id];
+            cache.bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_PER_PLUGIN
+                || self.total_bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_TOTAL
+        };
+        if over_entries || over_bytes {
+            if snapshot_key(&entry).is_none() {
+                self.plugins.get_mut(&plugin_id).unwrap().incomplete = true;
+            }
+            return Err(if over_entries {
+                PendingCacheRejection::EntryLimit
+            } else {
+                PendingCacheRejection::ByteLimit
+            });
         }
-        if cache.bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_PER_PLUGIN
-            || self.total_bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_TOTAL
-        {
-            return Err(PendingCacheRejection::ByteLimit);
-        }
+        let cache = self.plugins.get_mut(&plugin_id).unwrap();
         if front {
             cache.entries.insert(0, entry);
         } else {
@@ -167,6 +185,50 @@ impl PendingPluginCaches {
         Ok(())
     }
 
+    fn has_snapshot(&self, plugin_id: PluginId, entry: &EventOrPipeMessage) -> bool {
+        let Some(cache) = self.plugins.get(&plugin_id) else {
+            return false;
+        };
+        snapshot_key(entry).is_some()
+            && cache
+                .entries
+                .iter()
+                .any(|existing| same_snapshot(existing, entry))
+    }
+
+    fn replace_snapshot(
+        &mut self,
+        plugin_id: PluginId,
+        entry: EventOrPipeMessage,
+        bytes: usize,
+    ) -> Result<(), PendingCacheRejection> {
+        let index = self.plugins[&plugin_id]
+            .entries
+            .iter()
+            .position(|existing| same_snapshot(existing, &entry))
+            .expect("cached snapshot");
+        let old_bytes = event_or_pipe_message_bytes(&self.plugins[&plugin_id].entries[index])
+            .saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
+        let next_plugin_bytes = self.plugins[&plugin_id]
+            .bytes
+            .saturating_sub(old_bytes)
+            .saturating_add(bytes);
+        let next_total_bytes = self
+            .total_bytes
+            .saturating_sub(old_bytes)
+            .saturating_add(bytes);
+        if next_plugin_bytes > MAX_PENDING_CACHE_BYTES_PER_PLUGIN
+            || next_total_bytes > MAX_PENDING_CACHE_BYTES_TOTAL
+        {
+            return Err(PendingCacheRejection::ByteLimit);
+        }
+        let cache = self.plugins.get_mut(&plugin_id).unwrap();
+        cache.entries[index] = entry;
+        cache.bytes = next_plugin_bytes;
+        self.total_bytes = next_total_bytes;
+        Ok(())
+    }
+
     #[cfg(test)]
     fn insert_entries_for_test(&mut self, plugin_id: PluginId, entries: Vec<EventOrPipeMessage>) {
         let bytes = entries
@@ -175,8 +237,115 @@ impl PendingPluginCaches {
             .fold(0usize, usize::saturating_add);
         self.total_entries = self.total_entries.saturating_add(entries.len());
         self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.plugins.insert(
+            plugin_id,
+            PendingPluginMessages {
+                entries,
+                bytes,
+                incomplete: false,
+            },
+        );
+    }
+
+    #[cfg(test)]
+    fn entry_count(&self, plugin_id: PluginId) -> usize {
         self.plugins
-            .insert(plugin_id, PendingPluginMessages { entries, bytes });
+            .get(&plugin_id)
+            .map(|cache| cache.entries.len())
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    fn cached_bytes(&self, plugin_id: PluginId) -> usize {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.bytes)
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    fn is_incomplete(&self, plugin_id: PluginId) -> bool {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.incomplete)
+            .unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    fn cached_events(&self, plugin_id: PluginId) -> Vec<EventOrPipeMessage> {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.entries.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Kinds of event that are a full view of one piece of state. A later event of
+/// the same kind, for the same client, replaces the cached one. One-shot facts
+/// (permission results, keys, command results, pipes) are not snapshots.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SnapshotKind {
+    Mode,
+    Tab,
+    Pane,
+    Session,
+    Clients,
+    WebServer,
+    HostTerminalTheme,
+    GlobalAttention,
+    SessionHistory,
+    Layouts,
+    KeybindPresets,
+    PluginSettings,
+    InitialKeybinds,
+    SessionCounts,
+    FolderSessions,
+    SessionSuggestions,
+    HintText,
+    PluginConfiguration,
+    PaneRenderReport,
+    SoftKeyboard,
+    Visible,
+}
+
+fn coalescible_snapshot_kind(event: &Event) -> Option<SnapshotKind> {
+    Some(match event {
+        Event::ModeUpdate(_) => SnapshotKind::Mode,
+        Event::TabUpdate(_) => SnapshotKind::Tab,
+        Event::PaneUpdate(_) => SnapshotKind::Pane,
+        Event::SessionUpdate(..) => SnapshotKind::Session,
+        Event::ListClients(_) => SnapshotKind::Clients,
+        Event::WebServerStatus(_) => SnapshotKind::WebServer,
+        Event::HostTerminalThemeChanged(_) => SnapshotKind::HostTerminalTheme,
+        Event::GlobalAttentionUpdate(_) => SnapshotKind::GlobalAttention,
+        Event::SessionHistoryUpdate(_) => SnapshotKind::SessionHistory,
+        Event::AvailableLayoutInfo(..) => SnapshotKind::Layouts,
+        Event::AvailableKeybindPresets(..) => SnapshotKind::KeybindPresets,
+        Event::PluginSettingsEntries(_) => SnapshotKind::PluginSettings,
+        Event::InitialKeybinds(_) => SnapshotKind::InitialKeybinds,
+        Event::SessionCountsUpdate(_) => SnapshotKind::SessionCounts,
+        Event::FolderSessionsUpdate(_) => SnapshotKind::FolderSessions,
+        Event::SessionSuggestions(_) => SnapshotKind::SessionSuggestions,
+        Event::HintText(_) => SnapshotKind::HintText,
+        Event::PluginConfigurationChanged(_) => SnapshotKind::PluginConfiguration,
+        Event::PaneRenderReport(_) => SnapshotKind::PaneRenderReport,
+        Event::SoftKeyboardVisibilityChanged(_) => SnapshotKind::SoftKeyboard,
+        Event::Visible(_) => SnapshotKind::Visible,
+        _ => return None,
+    })
+}
+
+fn snapshot_key(entry: &EventOrPipeMessage) -> Option<(SnapshotKind, Option<ClientId>)> {
+    let EventOrPipeMessage::Event(event, client_id, _) = entry else {
+        return None;
+    };
+    Some((coalescible_snapshot_kind(event)?, *client_id))
+}
+
+fn same_snapshot(left: &EventOrPipeMessage, right: &EventOrPipeMessage) -> bool {
+    match (snapshot_key(left), snapshot_key(right)) {
+        (Some(left_key), Some(right_key)) => left_key == right_key,
+        _ => false,
     }
 }
 
@@ -2823,9 +2992,18 @@ impl WasmBridge {
             .all_plugin_ids()
             .iter()
             .any(|(instance_plugin_id, _)| *instance_plugin_id == plugin_id);
-        if let Some(events_or_pipe_messages) =
-            self.cached_events_for_pending_plugins.take(&plugin_id)
-        {
+        let events_or_pipe_messages = self.cached_events_for_pending_plugins.take(&plugin_id);
+        let events_or_pipe_messages = match events_or_pipe_messages {
+            Some(events) if events.incomplete => {
+                log::error!(
+                    "Not applying cached events for plugin {plugin_id}: the loading-plugin cache overflowed and is incomplete"
+                );
+                self.release_cached_cli_pipes_with_error(&events.entries);
+                None
+            },
+            other => other,
+        };
+        if let Some(events_or_pipe_messages) = events_or_pipe_messages {
             let cached_bytes = events_or_pipe_messages
                 .entries
                 .iter()
@@ -3237,6 +3415,75 @@ impl WasmBridge {
             },
         }
     }
+    /// Apply a cache-hit permission grant only when `generation` and `digest` are
+    /// still the running instance. A mismatch is not written and does not emit
+    /// `PermissionRequestResult`.
+    pub(crate) fn grant_known_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        generation: u64,
+        digest: &str,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        if !self.running_instance_matches(plugin_id, client_id, generation, digest) {
+            log::warn!(
+                "Ignoring a cached permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
+            );
+            return Ok(());
+        }
+        if let Err(e) = self.cache_plugin_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            PermissionStatus::Granted,
+            None,
+        ) {
+            log::error!("{}", e);
+        }
+        self.update_plugins(
+            vec![(
+                Some(plugin_id),
+                client_id,
+                Event::PermissionRequestResult(PermissionStatus::Granted),
+            )],
+            shutdown_sender.clone(),
+        )?;
+        self.apply_cached_events(vec![plugin_id], true, shutdown_sender)?;
+        Ok(())
+    }
+
+    fn running_instance_matches(
+        &self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        generation: u64,
+        digest: &str,
+    ) -> bool {
+        let running_plugin = match self.shared_instance_of(plugin_id) {
+            Some(instance_id) => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .shared_running_plugin(instance_id)
+                .map(|(running_plugin, _)| running_plugin),
+            None => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .get_running_plugin(plugin_id, client_id),
+        };
+        let Some(running_plugin) = running_plugin else {
+            return false;
+        };
+        let running_plugin = running_plugin.lock().unwrap();
+        let data = running_plugin.store.data();
+        data.generation == generation && data.plugin_digest == digest
+    }
+
     /// Whether an answer to a permission prompt still concerns the module that is running. The
     /// answer carries neither a digest nor a generation, so they are matched against what was
     /// recorded when the prompt was requested: an answer is stale when no prompt was requested,

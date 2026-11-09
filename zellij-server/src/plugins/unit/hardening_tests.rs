@@ -729,6 +729,254 @@ fn a_permission_answer_only_counts_for_the_module_that_was_prompted() {
 }
 
 #[test]
+fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let plugin_id = 3;
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(Event::PastedText("keep".to_owned()), Some(1), None),
+            false,
+        )
+        .unwrap();
+    let mut first_mode = zellij_utils::data::ModeInfo::default();
+    first_mode.session_name = Some("aa".to_owned());
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(Event::ModeUpdate(first_mode), Some(1), None),
+            true,
+        )
+        .unwrap();
+    let bytes_after_one_mode = bridge
+        .cached_events_for_pending_plugins
+        .cached_bytes(plugin_id);
+
+    for index in 0..50 {
+        let mut mode = zellij_utils::data::ModeInfo::default();
+        mode.session_name = Some(format!("{index:02}"));
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), None),
+                true,
+            )
+            .unwrap();
+        let mut tab = zellij_utils::data::TabInfo::default();
+        tab.name = format!("tab-{index:02}");
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(Event::TabUpdate(vec![tab]), Some(1), None),
+                false,
+            )
+            .unwrap();
+        let mut manifest = zellij_utils::data::PaneManifest::default();
+        manifest.panes.insert(index, vec![]);
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(Event::PaneUpdate(manifest), Some(1), None),
+                false,
+            )
+            .unwrap();
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(
+                    Event::SessionUpdate(
+                        vec![zellij_utils::data::SessionInfo {
+                            name: format!("session-{index:02}"),
+                            ..Default::default()
+                        }],
+                        vec![],
+                    ),
+                    Some(1),
+                    None,
+                ),
+                false,
+            )
+            .unwrap();
+    }
+    let mut other_client = zellij_utils::data::ModeInfo::default();
+    other_client.session_name = Some("other-client".to_owned());
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(Event::ModeUpdate(other_client), Some(2), None),
+            false,
+        )
+        .unwrap();
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(
+                Event::PermissionRequestResult(PermissionStatus::Granted),
+                Some(1),
+                None,
+            ),
+            false,
+        )
+        .unwrap();
+
+    let cached = bridge
+        .cached_events_for_pending_plugins
+        .cached_events(plugin_id);
+    assert_eq!(
+        cached.len(),
+        7,
+        "mode, tab, pane and session snapshots must replace, not accumulate"
+    );
+    assert!(
+        matches!(
+            &cached[0],
+            EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), _)
+                if mode.session_name.as_deref() == Some("49")
+        ),
+        "the latest mode snapshot replaces the previous one in place"
+    );
+    assert!(matches!(
+        &cached[1],
+        EventOrPipeMessage::Event(Event::PastedText(text), _, _) if text == "keep"
+    ));
+    assert_eq!(
+        bridge
+            .cached_events_for_pending_plugins
+            .cached_bytes(plugin_id),
+        bytes_after_one_mode
+            + cached
+                .iter()
+                .skip(2)
+                .map(event_or_pipe_message_bytes)
+                .fold(0usize, usize::saturating_add)
+            + 5 * PENDING_CACHE_ENTRY_OVERHEAD,
+        "replacing a snapshot must not keep the previous copy's bytes"
+    );
+    assert!(!bridge
+        .cached_events_for_pending_plugins
+        .is_incomplete(plugin_id));
+}
+
+#[test]
+fn pending_cache_lifecycle_event_that_cannot_fit_is_not_applied() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "pending-cache.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+    wait_until(|| bridge.plugin_executor.queued_jobs() == 0);
+
+    bridge.plugins_with_unfinished_load.remove(&plugin_id);
+    bridge
+        .plugin_ids_waiting_for_permission_request
+        .remove(&plugin_id);
+    bridge.plugins_to_unload_once_loaded.remove(&plugin_id);
+    bridge.cached_resizes_for_pending_plugins.remove(&plugin_id);
+    bridge.cached_worker_messages.remove(&plugin_id);
+    bridge.cached_events_for_pending_plugins.take(&plugin_id);
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+
+    for _ in 0..MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN {
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(Event::PastedText("x".to_owned()), Some(1), None),
+                false,
+            )
+            .unwrap();
+    }
+    assert!(bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(
+                Event::ModeUpdate(zellij_utils::data::ModeInfo::default()),
+                Some(1),
+                None,
+            ),
+            false,
+        )
+        .is_err());
+    assert!(
+        !bridge
+            .cached_events_for_pending_plugins
+            .is_incomplete(plugin_id),
+        "dropping a snapshot must not discard cached one-shot events or mark them incomplete"
+    );
+    assert!(matches!(
+        &bridge
+            .cached_events_for_pending_plugins
+            .cached_events(plugin_id)[0],
+        EventOrPipeMessage::Event(Event::PastedText(_), _, _)
+    ));
+    assert!(bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(
+                Event::PermissionRequestResult(PermissionStatus::Granted),
+                Some(1),
+                None,
+            ),
+            false,
+        )
+        .is_err());
+    assert!(
+        bridge
+            .cached_events_for_pending_plugins
+            .is_incomplete(plugin_id),
+        "a lifecycle event that cannot fit must mark the cache incomplete"
+    );
+    assert_eq!(
+        bridge
+            .cached_events_for_pending_plugins
+            .entry_count(plugin_id),
+        MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN
+    );
+
+    let executor = bridge.plugin_executor.clone();
+    let release = block_executor(&executor, plugin_id);
+    let unblock = Unblock(Some(release));
+    let queued_before = executor.queued_jobs();
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    bridge
+        .apply_cached_events(vec![plugin_id], true, shutdown_sender)
+        .unwrap();
+    assert_eq!(
+        executor.queued_jobs(),
+        queued_before,
+        "an overflowed cache must not be applied as a complete history"
+    );
+    assert!(!bridge
+        .cached_events_for_pending_plugins
+        .contains(&plugin_id));
+    drop(unblock);
+}
+
+struct Unblock(Option<std::sync::mpsc::Sender<()>>);
+
+impl Drop for Unblock {
+    fn drop(&mut self) {
+        if let Some(release) = self.0.take() {
+            let _ = release.send(());
+        }
+    }
+}
+
+#[test]
 fn a_pending_permission_request_does_not_hold_back_the_unload_of_a_plugin_unloaded_while_loading() {
     let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
     let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);

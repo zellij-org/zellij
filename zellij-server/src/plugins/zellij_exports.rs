@@ -17,6 +17,7 @@ use std::{
     path::PathBuf,
     process,
     str::FromStr,
+    sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
@@ -1705,6 +1706,8 @@ fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Resu
                 env.plugin_id,
                 Some(acting_client(env)),
                 permissions.to_vec(),
+                env.generation,
+                env.plugin_digest.clone(),
             ));
     }
 
@@ -3332,6 +3335,101 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
         .non_fatal();
 }
 
+const MAX_DIRECTORY_SCANS_IN_FLIGHT: usize = 4;
+const MAX_DIRECTORY_SCANS_PER_PLUGIN: usize = 1;
+const MAX_DIRECTORY_SCAN_ENTRIES: usize = 4096;
+const MAX_PLUGIN_TIMERS_PER_PLUGIN: usize = 64;
+const MAX_PLUGIN_TIMERS_IN_FLIGHT: usize = 256;
+
+struct InFlightLimits {
+    total: usize,
+    per_plugin: BTreeMap<PluginId, usize>,
+}
+
+impl InFlightLimits {
+    const fn new() -> Self {
+        Self {
+            total: 0,
+            per_plugin: BTreeMap::new(),
+        }
+    }
+
+    fn try_acquire(
+        &mut self,
+        plugin_id: PluginId,
+        per_plugin_cap: usize,
+        total_cap: usize,
+    ) -> bool {
+        let plugin_count = self.per_plugin.get(&plugin_id).copied().unwrap_or(0);
+        if self.total >= total_cap || plugin_count >= per_plugin_cap {
+            return false;
+        }
+        self.total += 1;
+        self.per_plugin.insert(plugin_id, plugin_count + 1);
+        true
+    }
+
+    fn release(&mut self, plugin_id: PluginId) {
+        self.total = self.total.saturating_sub(1);
+        let Some(count) = self.per_plugin.get_mut(&plugin_id) else {
+            return;
+        };
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            self.per_plugin.remove(&plugin_id);
+        }
+    }
+}
+
+static DIRECTORY_SCANS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static PLUGIN_TIMERS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+
+struct DirectoryScanPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for DirectoryScanPermit {
+    fn drop(&mut self) {
+        DIRECTORY_SCANS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+struct PluginTimerPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for PluginTimerPermit {
+    fn drop(&mut self) {
+        PLUGIN_TIMERS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+fn try_acquire_directory_scan(plugin_id: PluginId) -> Option<DirectoryScanPermit> {
+    let mut slots = DIRECTORY_SCANS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_DIRECTORY_SCANS_PER_PLUGIN,
+        MAX_DIRECTORY_SCANS_IN_FLIGHT,
+    ) {
+        Some(DirectoryScanPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+fn try_acquire_plugin_timer(plugin_id: PluginId) -> Option<PluginTimerPermit> {
+    let mut slots = PLUGIN_TIMERS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_PLUGIN_TIMERS_PER_PLUGIN,
+        MAX_PLUGIN_TIMERS_IN_FLIGHT,
+    ) {
+        Some(PluginTimerPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
 /// Upper bound for a plugin timer. Timers are used for short user-visible delays; allowing
 /// years-long or larger values only pins host resources and can overflow duration conversion.
 pub(crate) const MAX_PLUGIN_TIMEOUT_SECONDS: f64 = 24.0 * 60.0 * 60.0;
@@ -3357,8 +3455,15 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
     // (plugin_id, client_id) may name a replacement. Do not duration-dedupe.
     let load_alive = env.load_alive.clone();
     let scheduled_generation = env.generation;
+    let Some(permit) = try_acquire_plugin_timer(plugin_id) else {
+        log::warn!(
+            "plugin {plugin_name} already has too many outstanding timers; not starting another"
+        );
+        return;
+    };
     // Use tokio runtime for async I/O (timer operation)
     get_tokio_runtime().spawn(async move {
+        let _permit = permit;
         let start_time = Instant::now();
         tokio::time::sleep(Duration::from_secs_f64(secs)).await;
         if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
@@ -5268,13 +5373,28 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
             let reading_folder = std::fs::read_dir(&folder_to_scan);
             match reading_folder {
                 Ok(reading_folder) => {
+                    let Some(permit) = try_acquire_directory_scan(env.plugin_id) else {
+                        log::warn!(
+                            "Not scanning {} for plugin {}: directory scan limit reached",
+                            folder_to_scan.display(),
+                            env.plugin_id
+                        );
+                        return;
+                    };
                     let send_plugin_instructions = env.senders.to_plugin.clone();
-                    let update_target = Some(env.plugin_id);
+                    let plugin_id = env.plugin_id;
+                    let update_target = Some(plugin_id);
                     let client_id = acting_client(env);
                     thread::spawn({
                         move || {
-                            let mut paths_in_folder = vec![];
+                            let _permit = permit;
+                            let mut paths_in_folder = Vec::new();
+                            let mut truncated = false;
                             for entry in reading_folder {
+                                if paths_in_folder.len() >= MAX_DIRECTORY_SCAN_ENTRIES {
+                                    truncated = true;
+                                    break;
+                                }
                                 if let Ok(entry) = entry {
                                     let entry_metadata = entry.metadata().ok().map(|m| m.into());
                                     let entry_path = entry.path();
@@ -5288,6 +5408,11 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                                         entry_metadata.into(),
                                     ));
                                 }
+                            }
+                            if truncated {
+                                log::warn!(
+                                    "Directory scan for plugin {plugin_id} stopped after {MAX_DIRECTORY_SCAN_ENTRIES} entries"
+                                );
                             }
                             let _ = send_plugin_instructions
                                 .ok_or(anyhow!("found no sender to send plugin instruction to"))
@@ -7350,5 +7475,299 @@ mod focus_and_dead_session_tests {
         );
         assert!(folder.exists());
         remove_sidecars(&blocked);
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use zellij_utils::channels::{self, Receiver, SenderWithContext};
+    use zellij_utils::data::{Event, InputMode, PermissionType};
+    use zellij_utils::errors::ErrorContext;
+    use zellij_utils::input::layout::PluginUserConfiguration;
+    use zellij_utils::input::plugins::PluginConfig;
+
+    fn plugin_env(
+        plugin_id: PluginId,
+        plugin_cwd: PathBuf,
+        to_plugin: SenderWithContext<PluginInstruction>,
+    ) -> PluginEnv {
+        let stdin_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let wasi_ctx = crate::plugins::plugin_loader::PluginLoader::create_wasi_ctx(
+            &plugin_cwd,
+            &plugin_cwd,
+            &plugin_cwd,
+            &plugin_cwd,
+            &"file:/tmp/scan.wasm".to_owned(),
+            plugin_id,
+            false,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )
+        .unwrap();
+        PluginEnv {
+            plugin_id,
+            generation: 9,
+            load_alive: Arc::new(AtomicBool::new(true)),
+            client_id: 3,
+            plugin: PluginConfig {
+                path: PathBuf::from("/tmp/scan.wasm"),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(PathBuf::from("/tmp/scan.wasm")),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            plugin_digest: "scan-digest".to_owned(),
+            permissions: Arc::new(Mutex::new(Some(
+                [PermissionType::ReadApplicationState].into_iter().collect(),
+            ))),
+            quarantined: Arc::new(AtomicBool::new(false)),
+            senders: crate::thread_bus::ThreadSenders {
+                to_plugin: Some(to_plugin),
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            wasi_ctx,
+            plugin_own_data_dir: plugin_cwd.clone(),
+            plugin_own_cache_dir: plugin_cwd.clone(),
+            path_to_default_shell: plugin_cwd.clone(),
+            default_shell: None,
+            layout_dir: None,
+            plugin_cwd,
+            session_env_vars: BTreeMap::new(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            default_mode: InputMode::Normal,
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            stdin_pipe,
+            stdout_pipe,
+            keybinds: Arc::new(Default::default()),
+            intercepting_key_presses: false,
+            pending_popup_size: None,
+            store_limits: wasmi::StoreLimitsBuilder::new().build(),
+            shared: None,
+        }
+    }
+
+    fn timers_in_flight() -> usize {
+        PLUGIN_TIMERS.lock().unwrap().total
+    }
+
+    fn scans_in_flight() -> usize {
+        DIRECTORY_SCANS.lock().unwrap().total
+    }
+
+    fn recv_until(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+        timeout: Duration,
+        mut matches: impl FnMut(&PluginInstruction) -> bool,
+    ) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match receiver.recv_timeout(remaining.min(Duration::from_millis(50))) {
+                Ok((instruction, _)) if matches(&instruction) => return true,
+                Ok(_) => {},
+                Err(_) => {},
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn plugin_timeout_past_the_cap_does_not_start_another_one() {
+        assert_eq!(MAX_PLUGIN_TIMERS_PER_PLUGIN, 64);
+        assert_eq!(MAX_PLUGIN_TIMERS_IN_FLIGHT, 256);
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let dir = std::env::temp_dir();
+        let env = plugin_env(7, dir.clone(), SenderWithContext::new(to_plugin));
+
+        let holds: Vec<_> = (0..MAX_PLUGIN_TIMERS_PER_PLUGIN)
+            .map(|_| try_acquire_plugin_timer(7).expect("per-plugin timer slot"))
+            .collect();
+        assert!(try_acquire_plugin_timer(7).is_none());
+        let in_flight = timers_in_flight();
+        set_timeout(&env, 0.0);
+        assert_eq!(timers_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::ApplyTimer { .. })
+            }),
+            "a timer past the per-plugin cap must not spawn"
+        );
+        drop(holds);
+        assert_eq!(timers_in_flight(), 0);
+
+        let (to_other, other_receiver) = channels::unbounded();
+        let other = plugin_env(8, dir.clone(), SenderWithContext::new(to_other));
+        let held_again: Vec<_> = (0..MAX_PLUGIN_TIMERS_PER_PLUGIN)
+            .map(|_| try_acquire_plugin_timer(7).unwrap())
+            .collect();
+        set_timeout(&other, 0.0);
+        assert!(
+            recv_until(&other_receiver, Duration::from_secs(2), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 8,
+                        generation: 9,
+                        ..
+                    }
+                )
+            }),
+            "another plugin under the per-plugin cap must still start a timer"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_in_flight() != held_again.len() {
+            assert!(Instant::now() < deadline, "timer permit was not released");
+            thread::sleep(Duration::from_millis(5));
+        }
+        drop(held_again);
+
+        let global: Vec<_> = (1..=MAX_PLUGIN_TIMERS_IN_FLIGHT)
+            .map(|plugin_id| {
+                try_acquire_plugin_timer(plugin_id as PluginId).expect("process-wide timer slot")
+            })
+            .collect();
+        let (to_blocked, blocked_receiver) = channels::unbounded();
+        let blocked = plugin_env(1000, dir, SenderWithContext::new(to_blocked));
+        let in_flight = timers_in_flight();
+        set_timeout(&blocked, 0.0);
+        assert_eq!(timers_in_flight(), in_flight);
+        assert!(
+            !recv_until(
+                &blocked_receiver,
+                Duration::from_secs(1),
+                |instruction| matches!(instruction, PluginInstruction::ApplyTimer { .. })
+            ),
+            "a timer past the process-wide cap must not spawn"
+        );
+        drop(global);
+        assert_eq!(timers_in_flight(), 0);
+
+        set_timeout(&blocked, 0.0);
+        set_timeout(&blocked, 0.0);
+        let mut fired = 0;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while fired < 2 && Instant::now() < deadline {
+            if recv_until(
+                &blocked_receiver,
+                Duration::from_millis(100),
+                |instruction| {
+                    matches!(
+                        instruction,
+                        PluginInstruction::ApplyTimer {
+                            plugin_id: 1000,
+                            ..
+                        }
+                    )
+                },
+            ) {
+                fired += 1;
+            }
+        }
+        assert_eq!(fired, 2, "timers of the same duration must not be deduped");
+    }
+
+    #[test]
+    fn scan_host_folder_past_the_cap_does_not_start_another_one() {
+        assert_eq!(MAX_DIRECTORY_SCANS_IN_FLIGHT, 4);
+        assert_eq!(MAX_DIRECTORY_SCANS_PER_PLUGIN, 1);
+        assert_eq!(MAX_DIRECTORY_SCAN_ENTRIES, 4096);
+
+        let host = tempfile::tempdir().unwrap();
+        std::fs::write(host.path().join("one"), b"1").unwrap();
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            4,
+            host.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+
+        let own_slot = try_acquire_directory_scan(4).unwrap();
+        scan_host_folder(&env, PathBuf::from("/host"));
+        assert_eq!(scans_in_flight(), 1);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::Update(_))
+            }),
+            "a second scan for the same plugin must not spawn"
+        );
+        drop(own_slot);
+
+        let global: Vec<_> = (11..11 + MAX_DIRECTORY_SCANS_IN_FLIGHT as u32)
+            .map(|plugin_id| try_acquire_directory_scan(plugin_id).unwrap())
+            .collect();
+        scan_host_folder(&env, PathBuf::from("/host"));
+        assert_eq!(scans_in_flight(), MAX_DIRECTORY_SCANS_IN_FLIGHT);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::Update(_))
+            }),
+            "a scan past the process-wide cap must not spawn"
+        );
+        drop(global);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while scans_in_flight() != 0 {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let listed = wait_for_scan(&receiver);
+        assert_eq!(
+            listed.len(),
+            1,
+            "an admitted scan must still report its entries"
+        );
+        wait_until_scans_idle();
+
+        for index in 0..MAX_DIRECTORY_SCAN_ENTRIES {
+            std::fs::write(host.path().join(format!("extra-{index}")), b"x").unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(host.path()).unwrap().count(),
+            MAX_DIRECTORY_SCAN_ENTRIES + 1
+        );
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let listed = wait_for_scan(&receiver);
+        assert_eq!(
+            listed.len(),
+            MAX_DIRECTORY_SCAN_ENTRIES,
+            "a scan must stop at the entry cap and still send the partial result"
+        );
+        wait_until_scans_idle();
+    }
+
+    fn wait_until_scans_idle() {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while scans_in_flight() != 0 {
+            assert!(Instant::now() < deadline, "directory scan permit leaked");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_scan(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok((PluginInstruction::Update(updates), _)) => {
+                    for (_, _, event) in updates {
+                        if let Event::FileSystemUpdate(paths) = event {
+                            return paths;
+                        }
+                    }
+                },
+                Ok(_) => {},
+                Err(_) => {},
+            }
+        }
+        panic!("admitted directory scan did not send FileSystemUpdate");
     }
 }

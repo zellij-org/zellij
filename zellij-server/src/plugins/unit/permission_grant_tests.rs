@@ -550,3 +550,90 @@ fn denial_flushes_cached_worker_messages_when_the_pending_request_completes() {
         .plugin_ids_waiting_for_permission_request
         .contains(&plugin_id));
 }
+
+fn reject_mismatched_known_grant(
+    bridge: &mut WasmBridge,
+    plugin_id: PluginId,
+    client_id: ClientId,
+) {
+    let (generation, digest) = {
+        let running = running_plugin(bridge, plugin_id, client_id);
+        let running = running.lock().unwrap();
+        (
+            running.store.data().generation,
+            running.store.data().plugin_digest.clone(),
+        )
+    };
+    assert!(
+        bridge.running_instance_matches(plugin_id, Some(client_id), generation, &digest),
+        "the running instance must match its own generation and digest"
+    );
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+
+    bridge
+        .grant_known_permissions(
+            plugin_id,
+            Some(client_id),
+            vec![PermissionType::ReadApplicationState],
+            generation.wrapping_add(1),
+            &digest,
+            shutdown_sender.clone(),
+        )
+        .unwrap();
+    bridge
+        .grant_known_permissions(
+            plugin_id,
+            Some(client_id),
+            vec![PermissionType::RunCommands],
+            generation,
+            "not-the-running-module",
+            shutdown_sender,
+        )
+        .unwrap();
+
+    assert!(
+        runtime_permissions(bridge, plugin_id, client_id).is_empty(),
+        "a grant whose generation or digest does not match must not be applied"
+    );
+    assert!(
+        bridge
+            .cached_events_for_pending_plugins
+            .contains(&plugin_id),
+        "a mismatched grant must not emit PermissionRequestResult or drain cached events"
+    );
+    assert!(!bridge.running_instance_matches(
+        plugin_id,
+        Some(client_id),
+        generation.wrapping_add(1),
+        &digest
+    ));
+    assert!(!bridge.running_instance_matches(
+        plugin_id,
+        Some(client_id),
+        generation,
+        "not-the-running-module"
+    ));
+}
+
+#[test]
+fn grant_known_permissions_with_a_different_digest_or_generation_is_not_applied() {
+    for shared in [false, true] {
+        let LoadedBridge {
+            mut bridge,
+            plugin_id,
+            client_id,
+            ..
+        } = load_wat(
+            if shared {
+                shared_wat()
+            } else {
+                nonshared_wat()
+            },
+            shared,
+        );
+        reject_mismatched_known_grant(&mut bridge, plugin_id, client_id);
+    }
+}

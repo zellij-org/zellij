@@ -155,8 +155,10 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
-    // permissions the plugin already holds for its current module bytes, no prompt involved
-    GrantKnownPermissions(PluginId, Option<ClientId>, Vec<PermissionType>),
+    // Permissions this module already holds. `generation` and `digest` are the
+    // instance that checked the cache; a later instance with the same id must not
+    // inherit the grant.
+    GrantKnownPermissions(PluginId, Option<ClientId>, Vec<PermissionType>, u64, String),
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin {
@@ -1073,15 +1075,20 @@ pub(crate) fn plugin_thread_main(
                     );
                 }
             },
-            PluginInstruction::GrantKnownPermissions(plugin_id, client_id, permissions) => {
-                apply_permission_result(
-                    &mut wasm_bridge,
+            PluginInstruction::GrantKnownPermissions(
+                plugin_id,
+                client_id,
+                permissions,
+                generation,
+                digest,
+            ) => {
+                wasm_bridge.grant_known_permissions(
                     plugin_id,
                     client_id,
                     permissions,
-                    PermissionStatus::Granted,
-                    None,
-                    &shutdown_send,
+                    generation,
+                    &digest,
+                    shutdown_send.clone(),
                 )?;
             },
             PluginInstruction::DumpLayout(
