@@ -4169,8 +4169,16 @@ fn delete_dead_session(session_name: String) -> Result<()> {
     // when called with an id.
     let display_name = zellij_utils::sessions::display_name_for_session_id(&id);
     delete_session_index_row(&display_name);
-    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id))
-        .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
+    // Same fence as the CLI delete: a failed tombstone leaves the directory in place.
+    match zellij_utils::sessions::remove_fenced_session_cache(&id) {
+        Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => Ok(()),
+        Ok(zellij_utils::sessions::SessionCacheRemoval::NotFound) => Err(anyhow!(
+            "Failed to delete dead session: {:?}",
+            &session_name
+        )),
+        Err(error) => Err(error)
+            .with_context(|| format!("Failed to delete dead session: {:?}", &session_name)),
+    }
 }
 
 fn delete_all_dead_sessions() -> Result<()> {

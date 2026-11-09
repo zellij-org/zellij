@@ -3,7 +3,7 @@ use crate::ipc::IpcReceiverWithContext;
 use crate::{
     consts::{
         is_ipc_socket, session_deletion_tombstone_path, session_incarnation_path,
-        session_info_folder_for_session, session_layout_cache_file_name,
+        session_layout_cache_file_name,
         session_publication_lock_path, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     data::SessionInfo,
@@ -362,7 +362,7 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                     if crate::consts::is_app_socket_name(&session_id) {
                         return None;
                     }
-                    if std::path::Path::new(&layout_file_name).exists() {
+                    if layout_file_is_resurrectable(Path::new(&layout_file_name)) {
                         Some((session_name(&names_by_id, session_id), elapsed_duration))
                     } else {
                         None
@@ -396,7 +396,8 @@ pub fn get_resurrectable_session_names() -> Vec<String> {
                         .file_name()
                         .map(|f| crate::consts::is_app_socket_name(&f.to_string_lossy()))
                         .unwrap_or(false);
-                    if !hidden && std::path::Path::new(&resurrection_layout_file).exists() {
+                    if !hidden && layout_file_is_resurrectable(Path::new(&resurrection_layout_file))
+                    {
                         folder_name
                             .file_name()
                             .map(|f| session_name(&names_by_id, f.to_string_lossy().into_owned()))
@@ -421,15 +422,25 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let names_by_id = session_index::session_names_by_id();
-            let candidates = files
-                .flatten()
-                .filter_map(|file| {
-                    let id = session_socket_id(&file)?;
-                    let modified_at = file.metadata().ok()?.modified().ok()?;
-                    let name = session_name(&names_by_id, id.clone());
-                    Some((id, name, modified_at))
-                })
-                .collect();
+            let mut candidates = Vec::new();
+            for file in files.flatten() {
+                let file_name = match file.file_name().into_string() {
+                    Ok(name) => name,
+                    Err(_) => continue,
+                };
+                if crate::consts::is_app_socket_name(&file_name) {
+                    continue;
+                }
+                // Inspection failure is not "no session": callers create a replacement
+                // when this list is empty.
+                let file_type = file.file_type()?;
+                if !is_ipc_socket(&file_type) {
+                    continue;
+                }
+                let modified_at = session_mtime_result(file.metadata())?;
+                let name = session_name(&names_by_id, file_name.clone());
+                candidates.push((file_name, name, modified_at));
+            }
             let mut sessions_with_mtime =
                 live_sessions(&ZELLIJ_SOCK_DIR, candidates, SESSION_PROBE_TIMEOUT);
             sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
@@ -549,6 +560,44 @@ pub fn probe_result_for_windows_liveness(liveness: WindowsPidLiveness) -> Sessio
     }
 }
 
+/// Liveness of a Windows session marker, for reclaim. Missing or unreadable markers are
+/// [`WindowsPidLiveness::Unknown`] so a claim cannot treat them as dead.
+pub fn liveness_of_session_marker(path: &Path) -> WindowsPidLiveness {
+    #[cfg(windows)]
+    {
+        let pid_str = match fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(_) => return WindowsPidLiveness::Unknown,
+        };
+        return match pid_str.trim().parse() {
+            Ok(pid) => windows_open_process_liveness(pid),
+            Err(_) => WindowsPidLiveness::Unknown,
+        };
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        WindowsPidLiveness::Unknown
+    }
+}
+
+#[cfg(windows)]
+fn windows_open_process_liveness(pid: u32) -> WindowsPidLiveness {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let (handle_is_null, last_error) = unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            (true, GetLastError())
+        } else {
+            CloseHandle(handle);
+            (false, 0)
+        }
+    };
+    classify_windows_open_process(handle_is_null, last_error)
+}
+
 /// On Windows, reads the server PID from the marker file and checks whether
 /// the process is still alive via `OpenProcess`. Observation never deletes markers;
 /// reclamation is reserved for [`SessionSocketClaim::reclaim_stale_socket`].
@@ -604,6 +653,36 @@ fn assert_socket_path(_path: &Path, _timeout: Duration) -> SessionProbeResult {
 /// Error-preserving path presence check. [`Path::exists`] maps inspection failures to `false`.
 fn path_try_exists(path: &Path) -> Result<bool, io::ErrorKind> {
     path.try_exists().map_err(|err| err.kind())
+}
+
+/// Presence of a resurrection layout. An inspection error is [`LayoutPresence::Unknown`],
+/// not [`LayoutPresence::Absent`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutPresence {
+    Present,
+    Absent,
+    Unknown,
+}
+
+pub fn layout_presence(try_exists: Result<bool, io::ErrorKind>) -> LayoutPresence {
+    match try_exists {
+        Ok(true) => LayoutPresence::Present,
+        Ok(false) => LayoutPresence::Absent,
+        Err(_) => LayoutPresence::Unknown,
+    }
+}
+
+fn layout_counts_as_resurrectable(presence: LayoutPresence) -> bool {
+    !matches!(presence, LayoutPresence::Absent)
+}
+
+fn layout_file_is_resurrectable(path: &Path) -> bool {
+    layout_counts_as_resurrectable(layout_presence(path_try_exists(path)))
+}
+
+/// Metadata used to order sessions. `Err` must not be collapsed into "no session".
+fn session_mtime_result(metadata: io::Result<fs::Metadata>) -> anyhow::Result<SystemTime> {
+    Ok(metadata?.modified()?)
 }
 
 pub fn print_sessions(
@@ -681,12 +760,9 @@ pub enum ActiveSession {
 pub fn get_active_session() -> ActiveSession {
     match observe_sessions() {
         Ok(obs) if obs.is_definitely_empty() => ActiveSession::None,
-        Ok(obs) if obs.responsive.is_empty() => ActiveSession::Unresponsive(
-            obs.unknown
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect(),
-        ),
+        Ok(obs) if obs.responsive.is_empty() => {
+            ActiveSession::Unresponsive(obs.unknown.into_iter().map(|(name, _)| name).collect())
+        },
         Ok(mut obs) if obs.responsive.len() == 1 => {
             ActiveSession::One(obs.responsive.pop().unwrap().0)
         },
@@ -846,12 +922,28 @@ pub struct SessionPublicationLock {
     _file: (),
 }
 
+/// Lock file, incarnation file, deletion tombstone, and session folder under `cache_dir`.
+fn cache_publication_paths(
+    cache_dir: &Path,
+    session_id: &str,
+) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    (
+        cache_dir.join(format!("{session_id}.lock")),
+        cache_dir.join(format!("{session_id}.incarnation")),
+        cache_dir.join(format!("{session_id}.deleted")),
+        cache_dir.join(session_id),
+    )
+}
+
 /// Block until this process holds the per-session publication lock.
 ///
 /// Fails closed when the lock cannot be acquired. On Windows the lock is
 /// `LockFileEx`; there is no silent no-op.
 pub fn lock_session_publication(session_id: &str) -> io::Result<SessionPublicationLock> {
-    let path = session_publication_lock_path(session_id);
+    lock_session_publication_at(&session_publication_lock_path(session_id))
+}
+
+fn lock_session_publication_at(path: &Path) -> io::Result<SessionPublicationLock> {
     if let Some(parent) = path.parent() {
         // The cache directory, not the session folder. Creating the session
         // folder is what a fenced writer must not do.
@@ -864,7 +956,7 @@ pub fn lock_session_publication(session_id: &str) -> io::Result<SessionPublicati
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let file = options.open(&path)?;
+    let file = options.open(path)?;
     SessionPublicationLock::from_file(file)
 }
 
@@ -931,8 +1023,17 @@ pub fn read_session_incarnation(session_id: &str) -> io::Result<u128> {
 /// tombstone does not name it. Otherwise a [`SessionPublicationFenced`] error
 /// (`PermissionDenied`). Other IO failures are returned unchanged, never `Ok`.
 pub fn ensure_session_publication_allowed(session_id: &str, incarnation: u128) -> io::Result<()> {
-    let live = read_incarnation_file(&session_incarnation_path(session_id))?;
-    let blocked = tombstone_blocks_incarnation(session_id, incarnation)?;
+    ensure_session_publication_allowed_in(&*ZELLIJ_SESSION_INFO_CACHE_DIR, session_id, incarnation)
+}
+
+pub(crate) fn ensure_session_publication_allowed_in(
+    cache_dir: &Path,
+    session_id: &str,
+    incarnation: u128,
+) -> io::Result<()> {
+    let (_, incarnation_path, tombstone_path, _) = cache_publication_paths(cache_dir, session_id);
+    let live = read_incarnation_file(&incarnation_path)?;
+    let blocked = tombstone_blocks_path(&tombstone_path, incarnation)?;
     if live != Some(incarnation) || blocked {
         Err(publication_fenced_error(session_id, incarnation))
     } else {
@@ -957,18 +1058,53 @@ pub fn fence_session_deletion(session_id: &str) -> io::Result<()> {
 /// On fence failure the folder is left in place and the error is returned.
 /// If removal fails after a successful fence, the tombstone stays.
 pub fn remove_fenced_session_cache(session_id: &str) -> io::Result<SessionCacheRemoval> {
-    let _lock = lock_session_publication(session_id)?;
-    write_deletion_tombstone(session_id)?;
-    match fs::remove_dir_all(session_info_folder_for_session(session_id)) {
+    remove_fenced_session_cache_in(&*ZELLIJ_SESSION_INFO_CACHE_DIR, session_id)
+}
+
+/// Fence `session_id` and remove its folder under `cache_dir` while holding that
+/// directory's publication lock. On fence failure the folder stays.
+pub(crate) fn remove_fenced_session_cache_in(
+    cache_dir: &Path,
+    session_id: &str,
+) -> io::Result<SessionCacheRemoval> {
+    let (lock_path, incarnation_path, tombstone_path, folder) =
+        cache_publication_paths(cache_dir, session_id);
+    let _lock = lock_session_publication_at(&lock_path)?;
+    write_deletion_tombstone_at(&incarnation_path, &tombstone_path)?;
+    match fs::remove_dir_all(folder) {
         Ok(()) => Ok(SessionCacheRemoval::Removed),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(SessionCacheRemoval::NotFound),
         Err(error) => Err(error),
     }
 }
 
-/// True when a deletion tombstone file exists for this session id.
-pub fn session_deletion_is_fenced(session_id: &str) -> bool {
-    session_deletion_tombstone_path(session_id).exists()
+/// Whether a deletion tombstone is present.
+///
+/// [`SessionDeletionFence::Unreadable`] is not "unfenced": a metadata error must not
+/// authorize a new publication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionDeletionFence {
+    Fenced,
+    Unfenced,
+    Unreadable,
+}
+
+pub fn deletion_fence_from_try_exists(
+    try_exists: Result<bool, io::ErrorKind>,
+) -> SessionDeletionFence {
+    match try_exists {
+        Ok(true) => SessionDeletionFence::Fenced,
+        Ok(false) => SessionDeletionFence::Unfenced,
+        Err(_) => SessionDeletionFence::Unreadable,
+    }
+}
+
+/// Inspect the deletion tombstone. An unreadable path is [`SessionDeletionFence::Unreadable`],
+/// not [`SessionDeletionFence::Unfenced`].
+pub fn session_deletion_is_fenced(session_id: &str) -> SessionDeletionFence {
+    deletion_fence_from_try_exists(path_try_exists(&session_deletion_tombstone_path(
+        session_id,
+    )))
 }
 
 /// Admit a new incarnation and drop any deletion tombstone.
@@ -988,15 +1124,18 @@ pub fn clear_session_deletion_fence(session_id: &str) {
 }
 
 fn admit_session_incarnation(session_id: &str) -> io::Result<()> {
-    let _lock = lock_session_publication(session_id)?;
+    admit_session_incarnation_in(&*ZELLIJ_SESSION_INFO_CACHE_DIR, session_id).map(|_| ())
+}
+
+fn admit_session_incarnation_in(cache_dir: &Path, session_id: &str) -> io::Result<u128> {
+    let (lock_path, incarnation_path, tombstone_path, _) =
+        cache_publication_paths(cache_dir, session_id);
+    let _lock = lock_session_publication_at(&lock_path)?;
     let incarnation = mint_session_incarnation();
-    write_sibling_atomically(
-        &session_incarnation_path(session_id),
-        format!("{incarnation}\n").as_bytes(),
-    )?;
-    match fs::remove_file(session_deletion_tombstone_path(session_id)) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+    write_sibling_atomically(&incarnation_path, format!("{incarnation}\n").as_bytes())?;
+    match fs::remove_file(tombstone_path) {
+        Ok(()) => Ok(incarnation),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(incarnation),
         Err(error) => Err(error),
     }
 }
@@ -1042,8 +1181,8 @@ fn read_incarnation_file(path: &Path) -> io::Result<Option<u128>> {
     }
 }
 
-fn tombstone_blocks_incarnation(session_id: &str, incarnation: u128) -> io::Result<bool> {
-    let text = match fs::read_to_string(session_deletion_tombstone_path(session_id)) {
+fn tombstone_blocks_path(path: &Path, incarnation: u128) -> io::Result<bool> {
+    let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
@@ -1067,12 +1206,16 @@ fn named_tombstone_incarnation(text: &str) -> Option<u128> {
 }
 
 fn write_deletion_tombstone(session_id: &str) -> io::Result<()> {
-    let incarnation = read_incarnation_file(&session_incarnation_path(session_id))?.unwrap_or(0);
-    let contents = format!("deleted\nincarnation={incarnation}\n");
-    write_sibling_atomically(
+    write_deletion_tombstone_at(
+        &session_incarnation_path(session_id),
         &session_deletion_tombstone_path(session_id),
-        contents.as_bytes(),
     )
+}
+
+fn write_deletion_tombstone_at(incarnation_path: &Path, tombstone_path: &Path) -> io::Result<()> {
+    let incarnation = read_incarnation_file(incarnation_path)?.unwrap_or(0);
+    let contents = format!("deleted\nincarnation={incarnation}\n");
+    write_sibling_atomically(tombstone_path, contents.as_bytes())
 }
 
 /// Atomic replace of a cache-directory sibling. Does not create the session folder.
@@ -1099,8 +1242,7 @@ fn write_sibling_atomically(path: &Path, contents: &[u8]) -> io::Result<()> {
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
     let exit_code = match observe_sessions() {
         Ok(observation) => {
-            let all_sessions =
-                sessions_for_display(&observation, get_resurrectable_sessions());
+            let all_sessions = sessions_for_display(&observation, get_resurrectable_sessions());
             if all_sessions.is_empty() && observation.unknown.is_empty() {
                 eprintln!("No active zellij sessions found.");
                 1
@@ -1117,9 +1259,7 @@ pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
             } else {
                 print_sessions(all_sessions, no_formatting, short, reverse);
                 if !observation.unknown.is_empty() {
-                    eprintln!(
-                        "Also found session socket(s) that did not respond in time:"
-                    );
+                    eprintln!("Also found session socket(s) that did not respond in time:");
                     for (name, _) in &observation.unknown {
                         eprintln!("  {} (unresponsive)", name);
                     }
@@ -1135,7 +1275,7 @@ pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
     process::exit(exit_code);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionNameMatch {
     AmbiguousPrefix(Vec<String>),
     UniquePrefix(String),
@@ -1143,42 +1283,84 @@ pub enum SessionNameMatch {
     None,
 }
 
-pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
-    let sessions = get_sessions()?;
-
-    let filtered_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.0.starts_with(prefix))
-        .collect();
-
-    if filtered_sessions.iter().any(|s| s.0 == prefix) {
-        return Ok(SessionNameMatch::Exact(prefix.to_string()));
+/// Decide an exact name from the direct probe, then prefix-match the listing.
+///
+/// `Responsive` is [`SessionNameMatch::Exact`] even when `responsive` omitted the name.
+/// `Unknown` is [`io::ErrorKind::TimedOut`], never [`SessionNameMatch::None`].
+/// `Absent` may prefix-match `responsive`, but an unknown candidate that shares the prefix
+/// stays in the ambiguous set (or times out when it is the only candidate).
+pub fn decide_session_name_match(
+    prefix: &str,
+    responsive: &[(String, Duration)],
+    unknown: &[(String, Duration)],
+    direct: SessionProbeResult,
+) -> Result<SessionNameMatch, io::ErrorKind> {
+    match direct {
+        SessionProbeResult::Responsive => {
+            return Ok(SessionNameMatch::Exact(prefix.to_owned()));
+        },
+        SessionProbeResult::Unknown => return Err(io::ErrorKind::TimedOut),
+        SessionProbeResult::Absent => {},
     }
 
-    Ok({
-        match &filtered_sessions[..] {
-            [] => SessionNameMatch::None,
-            [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
-            _ => SessionNameMatch::AmbiguousPrefix(
-                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
-            ),
+    let mut matches = Vec::new();
+    for (name, _) in responsive {
+        // The direct probe already proved this exact session is gone.
+        if name == prefix {
+            continue;
         }
+        if name.starts_with(prefix) {
+            matches.push(name.clone());
+        }
+    }
+    let mut saw_unknown = false;
+    for (name, _) in unknown {
+        if name.starts_with(prefix) && !matches.iter().any(|existing| existing == name) {
+            saw_unknown = true;
+            matches.push(name.clone());
+        }
+    }
+    if saw_unknown && matches.len() == 1 {
+        return Err(io::ErrorKind::TimedOut);
+    }
+    if saw_unknown {
+        return Ok(SessionNameMatch::AmbiguousPrefix(matches));
+    }
+    Ok(match matches.as_slice() {
+        [] => SessionNameMatch::None,
+        [one] => SessionNameMatch::UniquePrefix(one.clone()),
+        _ => SessionNameMatch::AmbiguousPrefix(matches),
     })
 }
 
-pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
+    let observation = observe_sessions()?;
+    let direct = probe_exact_session(prefix)?;
+    decide_session_name_match(
+        prefix,
+        &observation.responsive,
+        &observation.unknown,
+        direct,
+    )
+}
+
+fn probe_exact_session(name: &str) -> Result<SessionProbeResult, io::ErrorKind> {
     // Exact-name/ID lookups probe the known target directly. Waiting on an enumeration of
     // unrelated candidates can exhaust the shared deadline before this socket is examined.
     let socket_path =
         resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
     match path_try_exists(&socket_path)? {
-        false => Ok(false),
-        true => match assert_socket_path(&socket_path, SESSION_PROBE_TIMEOUT) {
-            SessionProbeResult::Responsive => Ok(true),
-            SessionProbeResult::Absent => Ok(false),
-            // A socket that exists but could not be confirmed live is unknown, not absent.
-            SessionProbeResult::Unknown => Err(io::ErrorKind::TimedOut),
-        },
+        false => Ok(SessionProbeResult::Absent),
+        true => Ok(assert_socket_path(&socket_path, SESSION_PROBE_TIMEOUT)),
+    }
+}
+
+pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+    match probe_exact_session(name)? {
+        SessionProbeResult::Responsive => Ok(true),
+        SessionProbeResult::Absent => Ok(false),
+        // A socket that exists but could not be confirmed live is unknown, not absent.
+        SessionProbeResult::Unknown => Err(io::ErrorKind::TimedOut),
     }
 }
 
@@ -1668,10 +1850,10 @@ mod session_folder_name_tests {
     }
 }
 
-
 #[cfg(test)]
 mod deletion_fence_tests {
     use super::*;
+    use crate::consts::session_info_folder_for_session;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
     use std::time::Instant;
@@ -1704,25 +1886,35 @@ mod deletion_fence_tests {
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("session-metadata.kdl"), "session").unwrap();
 
-        assert!(!session_deletion_is_fenced(&session_id));
+        assert_eq!(
+            session_deletion_is_fenced(&session_id),
+            SessionDeletionFence::Unfenced
+        );
         assert_eq!(
             remove_fenced_session_cache(&session_id).unwrap(),
             SessionCacheRemoval::Removed
         );
-        assert!(session_deletion_is_fenced(&session_id));
+        assert_eq!(
+            session_deletion_is_fenced(&session_id),
+            SessionDeletionFence::Fenced
+        );
         let tombstone = fs::read_to_string(session_deletion_tombstone_path(&session_id)).unwrap();
         assert!(
             tombstone.contains(&format!("incarnation={incarnation}")),
             "tombstone must name the live incarnation, got {tombstone}"
         );
-        assert!(
+        assert_eq!(
             session_deletion_is_fenced(&session_id),
+            SessionDeletionFence::Fenced,
             "tombstone must survive remove_dir_all of the session folder"
         );
         assert!(!folder.exists(), "session folder itself must still be gone");
 
         clear_session_deletion_fence(&session_id);
-        assert!(!session_deletion_is_fenced(&session_id));
+        assert_eq!(
+            session_deletion_is_fenced(&session_id),
+            SessionDeletionFence::Unfenced
+        );
         let renewed = read_session_incarnation(&session_id).unwrap();
         assert_ne!(renewed, incarnation);
         remove_sidecars(&session_id);
@@ -1780,6 +1972,105 @@ mod deletion_fence_tests {
         }
         remove_sidecars(&first);
         remove_sidecars(&second);
+    }
+
+    #[test]
+    fn deletion_fence_inspection_error_is_not_unfenced() {
+        assert_eq!(
+            deletion_fence_from_try_exists(Err(io::ErrorKind::PermissionDenied)),
+            SessionDeletionFence::Unreadable
+        );
+        assert_ne!(
+            deletion_fence_from_try_exists(Err(io::ErrorKind::PermissionDenied)),
+            SessionDeletionFence::Unfenced
+        );
+        assert_eq!(
+            deletion_fence_from_try_exists(Ok(false)),
+            SessionDeletionFence::Unfenced
+        );
+        assert_eq!(
+            deletion_fence_from_try_exists(Ok(true)),
+            SessionDeletionFence::Fenced
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_tombstone_does_not_authorize_publication() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let session_id = unique_session_id("unreadable-tomb");
+        remove_sidecars(&session_id);
+        clear_session_deletion_fence(&session_id);
+        let incarnation = read_session_incarnation(&session_id).unwrap();
+        let tombstone = session_deletion_tombstone_path(&session_id);
+        fs::write(&tombstone, format!("deleted\nincarnation={incarnation}\n")).unwrap();
+        let mut perms = fs::metadata(&tombstone).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&tombstone, perms).unwrap();
+        if fs::read_to_string(&tombstone).is_ok() {
+            remove_sidecars(&session_id);
+            return;
+        }
+        assert_ne!(
+            session_deletion_is_fenced(&session_id),
+            SessionDeletionFence::Unfenced
+        );
+        let error = ensure_session_publication_allowed(&session_id, incarnation).unwrap_err();
+        assert_ne!(error.kind(), io::ErrorKind::NotFound);
+        let mut perms = fs::metadata(&tombstone).unwrap().permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(&tombstone, perms).unwrap();
+        remove_sidecars(&session_id);
+    }
+
+    #[test]
+    fn bulk_delete_publication_fence_blocks_layout_recreation() {
+        let session_id = unique_session_id("bulk-fence");
+        let root = tempfile::tempdir().unwrap();
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        fs::create_dir_all(&sock_dir).unwrap();
+        fs::create_dir_all(&cache_dir).unwrap();
+        let incarnation = admit_session_incarnation_in(&cache_dir, &session_id).unwrap();
+        let folder = cache_dir.join(&session_id);
+        fs::create_dir_all(&folder).unwrap();
+        let layout = folder.join("session-layout.kdl");
+        fs::write(&layout, b"layout { }\n").unwrap();
+
+        let deleted =
+            crate::session_index::delete_dead_sessions_in(&sock_dir, &cache_dir, None).unwrap();
+        assert!(deleted >= 1, "bulk delete should remove the dead session");
+        assert!(
+            !layout.exists(),
+            "deleted layout must be gone before republish"
+        );
+        assert!(
+            cache_dir.join(format!("{session_id}.deleted")).is_file(),
+            "bulk delete must write the tombstone publication checks"
+        );
+
+        let publish = ensure_session_publication_allowed_in(&cache_dir, &session_id, incarnation);
+        match &publish {
+            Ok(()) => {
+                fs::create_dir_all(&folder).unwrap();
+                fs::write(&layout, b"layout { }\n").unwrap();
+            },
+            Err(error) => {
+                assert!(
+                    is_session_publication_fenced(error),
+                    "late writer must see the fenced error, got {error}"
+                );
+            },
+        }
+        assert!(
+            publish.is_err(),
+            "publication of a deleted incarnation must fail"
+        );
+        assert!(
+            !layout.exists(),
+            "fenced publication must not recreate the layout"
+        );
     }
 }
 
@@ -1980,10 +2271,7 @@ mod session_probe_tests {
             observed.responsive
         );
         assert!(
-            observed
-                .unknown
-                .iter()
-                .any(|(name, _)| name == "late"),
+            observed.unknown.iter().any(|(name, _)| name == "late"),
             "unprobed late candidate must stay unknown, got {:?}",
             observed.unknown
         );
@@ -2161,6 +2449,92 @@ mod session_probe_tests {
 }
 
 #[cfg(test)]
+mod session_name_match_tests {
+    use super::*;
+
+    #[test]
+    fn match_session_name_exact_probe_is_not_none_when_the_responsive_list_omits_it() {
+        // Direct probe Responsive or Unknown, responsive listing omits the name.
+        let responsive = vec![("other".to_owned(), Duration::from_secs(1))];
+        let unknown = vec![];
+        let exact = decide_session_name_match(
+            "kept",
+            &responsive,
+            &unknown,
+            SessionProbeResult::Responsive,
+        )
+        .unwrap();
+        assert_eq!(exact, SessionNameMatch::Exact("kept".to_owned()));
+        assert_ne!(exact, SessionNameMatch::None);
+
+        let timed_out =
+            decide_session_name_match("kept", &responsive, &unknown, SessionProbeResult::Unknown);
+        assert_eq!(timed_out.unwrap_err(), io::ErrorKind::TimedOut);
+
+        let missing =
+            decide_session_name_match("kept", &responsive, &unknown, SessionProbeResult::Absent)
+                .unwrap();
+        assert_eq!(missing, SessionNameMatch::None);
+    }
+
+    #[test]
+    fn match_session_name_unknown_candidate_is_not_reported_missing() {
+        let timed_out = decide_session_name_match(
+            "kept",
+            &[],
+            &[("kept".to_owned(), Duration::from_secs(2))],
+            SessionProbeResult::Absent,
+        );
+        assert_eq!(timed_out.unwrap_err(), io::ErrorKind::TimedOut);
+
+        let ambiguous = decide_session_name_match(
+            "pre",
+            &[("present".to_owned(), Duration::from_secs(1))],
+            &[("prefix-unknown".to_owned(), Duration::from_secs(2))],
+            SessionProbeResult::Absent,
+        )
+        .unwrap();
+        match ambiguous {
+            SessionNameMatch::AmbiguousPrefix(names) => {
+                assert!(names.iter().any(|name| name == "present"));
+                assert!(names.iter().any(|name| name == "prefix-unknown"));
+            },
+            other => panic!("unknown prefix candidate must stay visible, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn session_name_mtime_error_is_not_absence() {
+        let error = session_mtime_result(Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "metadata",
+        )));
+        assert!(
+            error.is_err(),
+            "metadata failure must not look like no session"
+        );
+    }
+
+    #[test]
+    fn resurrectable_layout_presence_error_is_not_absence() {
+        assert_eq!(
+            layout_presence(Err(io::ErrorKind::PermissionDenied)),
+            LayoutPresence::Unknown
+        );
+        assert_ne!(
+            layout_presence(Err(io::ErrorKind::PermissionDenied)),
+            LayoutPresence::Absent
+        );
+        assert!(layout_counts_as_resurrectable(layout_presence(Err(
+            io::ErrorKind::PermissionDenied
+        ))));
+        assert!(!layout_counts_as_resurrectable(layout_presence(Ok(false))));
+        assert_eq!(layout_presence(Ok(false)), LayoutPresence::Absent);
+        assert_eq!(layout_presence(Ok(true)), LayoutPresence::Present);
+    }
+}
+
+#[cfg(test)]
 mod windows_pid_liveness_tests {
     use super::*;
 
@@ -2189,7 +2563,7 @@ mod windows_pid_liveness_tests {
     }
 
     #[test]
-    fn alive_unverified_is_unknown_not_responsive() {
+    fn windows_liveness_alive_unverified_is_not_responsive() {
         assert_eq!(
             probe_result_for_windows_liveness(WindowsPidLiveness::AliveUnverified),
             SessionProbeResult::Unknown
@@ -2208,6 +2582,10 @@ mod windows_pid_liveness_tests {
                 WINDOWS_ERROR_ACCESS_DENIED,
             )),
             SessionProbeResult::Unknown
+        );
+        assert_ne!(
+            probe_result_for_windows_liveness(WindowsPidLiveness::AliveUnverified),
+            SessionProbeResult::Responsive
         );
     }
 

@@ -2737,9 +2737,10 @@ mod tests {
         // A new owner drops the tombstone and mints a new incarnation. The
         // writer that still holds the old value cannot publish.
         zellij_utils::sessions::clear_session_deletion_fence(&session_id);
-        assert!(!zellij_utils::sessions::session_deletion_is_fenced(
-            &session_id
-        ));
+        assert_eq!(
+            zellij_utils::sessions::session_deletion_is_fenced(&session_id),
+            zellij_utils::sessions::SessionDeletionFence::Unfenced
+        );
         let renewed = write_session_state_to_disk(
             session_id.clone(),
             incarnation,

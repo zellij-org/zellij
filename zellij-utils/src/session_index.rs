@@ -1051,41 +1051,66 @@ fn open_existing_default_index() -> Option<Connection> {
     Some(conn)
 }
 
+/// `Ok(is_live)` keeps the caller's classification. An inspection error is not death
+/// and must not drop the entry (`Err` counts as live).
+pub fn socket_type_error_is_not_death(file_type_is_live: std::io::Result<bool>) -> bool {
+    match file_type_is_live {
+        Ok(is_live) => is_live,
+        Err(_) => true,
+    }
+}
+
+fn live_socket_name(name: String, file_type: std::io::Result<std::fs::FileType>) -> Option<String> {
+    if crate::consts::is_app_socket_name(&name) {
+        return None;
+    }
+    if socket_type_error_is_not_death(file_type.map(|ft| crate::consts::is_ipc_socket(&ft))) {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+fn partition_dead_session_ids(
+    cache_ids: Vec<String>,
+    live_sessions: &HashSet<String>,
+) -> Vec<String> {
+    let mut dead: Vec<String> = cache_ids
+        .into_iter()
+        .filter(|id| {
+            !live_sessions.contains(id)
+                && !crate::consts::is_app_socket_name(id)
+                && crate::sessions::validate_session_folder_name(id).is_ok()
+        })
+        .collect();
+    dead.sort();
+    dead
+}
+
 pub fn dead_session_ids_in(sock_dir: &Path, cache_dir: &Path) -> Vec<String> {
-    use crate::consts::{is_app_socket_name, is_ipc_socket};
     let live_sessions: HashSet<String> = std::fs::read_dir(sock_dir)
         .map(|entries| {
             entries
                 .filter_map(|entry| entry.ok())
-                .filter(|entry| {
-                    entry
-                        .file_type()
-                        .map(|file_type| is_ipc_socket(&file_type))
-                        .unwrap_or(false)
+                .filter_map(|entry| {
+                    let name = entry.file_name().into_string().ok()?;
+                    live_socket_name(name, entry.file_type())
                 })
-                .filter_map(|entry| entry.file_name().into_string().ok())
-                .filter(|name| !is_app_socket_name(name))
                 .collect()
         })
         .unwrap_or_default();
-    let mut dead: Vec<String> = match std::fs::read_dir(cache_dir) {
+    let cache_ids = match std::fs::read_dir(cache_dir) {
         Ok(entries) => entries
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.path().is_dir())
             .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|id| {
-                !live_sessions.contains(id)
-                    && !is_app_socket_name(id)
-                    && crate::sessions::validate_session_folder_name(id).is_ok()
-            })
             .collect(),
         Err(e) => {
             log::error!("Failed to read session info cache dir: {:?}", e);
             vec![]
         },
     };
-    dead.sort();
-    dead
+    partition_dead_session_ids(cache_ids, &live_sessions)
 }
 
 pub fn delete_dead_sessions_in(
@@ -1108,9 +1133,9 @@ pub fn delete_dead_sessions_in(
     let mut first_error = None;
     let mut deleted = 0;
     for session_id in &dead_sessions {
-        match std::fs::remove_dir_all(cache_dir.join(session_id)) {
-            Ok(()) => deleted += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+        match crate::sessions::remove_fenced_session_cache_in(cache_dir, session_id) {
+            Ok(crate::sessions::SessionCacheRemoval::Removed) => deleted += 1,
+            Ok(crate::sessions::SessionCacheRemoval::NotFound) => {},
             Err(e) => {
                 first_error.get_or_insert_with(|| {
                     format!("Failed to delete dead session {:?}: {}", session_id, e)
@@ -1154,10 +1179,11 @@ pub fn running_session_names_in(
     entries
         .flatten()
         .filter(|entry| {
-            entry
-                .file_type()
-                .map(|ft| crate::consts::is_ipc_socket(&ft) || ft.is_file())
-                .unwrap_or(false)
+            socket_type_error_is_not_death(
+                entry
+                    .file_type()
+                    .map(|ft| crate::consts::is_ipc_socket(&ft) || ft.is_file()),
+            )
         })
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| {
@@ -1889,6 +1915,41 @@ mod tests {
         assert_eq!(
             test.index.session_id("bar").unwrap(),
             Some("foo".to_owned())
+        );
+    }
+
+    #[test]
+    fn dead_session_unreadable_socket_is_not_in_the_dead_set() {
+        let error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unreadable socket");
+        assert!(socket_type_error_is_not_death(Err(error)));
+        assert!(!socket_type_error_is_not_death(Ok(false)));
+        let live = live_socket_name(
+            "sess".to_owned(),
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "unreadable socket",
+            )),
+        );
+        assert_eq!(live.as_deref(), Some("sess"));
+        let live_sessions: std::collections::HashSet<String> = live.into_iter().collect();
+        let dead =
+            partition_dead_session_ids(vec!["sess".to_owned(), "gone".to_owned()], &live_sessions);
+        assert!(
+            !dead.iter().any(|id| id == "sess"),
+            "an unreadable socket is not proof of death: {dead:?}"
+        );
+        assert!(dead.iter().any(|id| id == "gone"));
+    }
+
+    #[test]
+    fn running_session_names_keep_an_unreadable_socket() {
+        let kept = socket_type_error_is_not_death(Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "unreadable socket",
+        )));
+        assert!(
+            kept,
+            "inspection error must not drop a live socket from the running set"
         );
     }
 }
