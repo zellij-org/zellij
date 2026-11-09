@@ -2,7 +2,10 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::{next_permission_prompt_id, PluginEnv};
-use crate::plugins::wasm_bridge::{handle_plugin_crash, redact_session_info_for_plugin};
+use crate::plugins::wasm_bridge::{
+    handle_plugin_crash, redact_session_info_for_plugin, release_admitted_worker_posts,
+    try_admit_plugin_worker_post,
+};
 use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
@@ -1472,7 +1475,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         existing_pane_id.into(),
                         suppress_replaced_pane,
                     ),
-                    PluginCommand::RunAction(action, context) => run_action(&env, action, context),
+                    PluginCommand::RunAction(action, context) => {
+                        run_action(&env, action, context)?
+                    }
                     PluginCommand::GetSessionEnvironmentVariables => {
                         get_session_environment_variables(env);
                     },
@@ -2245,7 +2250,11 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         .non_fatal();
 }
 
-fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
+fn run_action(
+    env: &PluginEnv,
+    mut action: Action,
+    context: BTreeMap<String, String>,
+) -> Result<()> {
     // Clone the necessary data to move into the thread
     action.populate_originating_plugin(OriginatingPlugin::new(
         env.plugin_id,
@@ -2259,46 +2268,62 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
     let default_shell = env.default_shell.clone();
     let default_mode = env.default_mode.clone();
     let plugin_name = env.name().to_string();
+    let spawned_for = plugin_name.clone();
+    let Some(permit) = try_acquire_run_action(plugin_id) else {
+        log::warn!(
+            "Not running an action for plugin {}: run-action limit reached",
+            plugin_id
+        );
+        return Err(anyhow!("run-action limit reached for plugin {plugin_name}"));
+    };
 
-    // Spawn a new thread to execute the action
-    thread::spawn(move || {
-        // Execute the action and capture the result
-        let pane_id = match route_action(
-            action,
-            client_id,
-            None,
-            Some(PaneId::Plugin(plugin_id)),
-            senders.clone(),
-            default_shell,
-            None,
-            default_mode,
-            None,
-            false,
-        ) {
-            Ok((_should_break, result)) => {
-                // Extract pane_id from ActionCompletionResult
-                result.and_then(|r| r.affected_pane_id)
-            },
-            Err(e) => {
-                log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
-                None
-            },
-        };
+    // The permit is dropped when this thread finishes, including a panic.
+    // A failed spawn drops the closure, which drops the permit.
+    thread::Builder::new()
+        .name("run_action".to_owned())
+        .spawn(move || {
+            let _permit = permit;
+            // Execute the action and capture the result
+            let pane_id = match route_action(
+                action,
+                client_id,
+                None,
+                Some(PaneId::Plugin(plugin_id)),
+                senders.clone(),
+                default_shell,
+                None,
+                default_mode,
+                None,
+                false,
+            ) {
+                Ok((_should_break, result)) => {
+                    // Extract pane_id from ActionCompletionResult
+                    result.and_then(|r| r.affected_pane_id)
+                },
+                Err(e) => {
+                    log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
+                    None
+                },
+            };
 
-        // After action completes, send ActionComplete event with context
-        // Convert server PaneId to zellij_utils PaneId
-        let pane_id_for_event = pane_id.map(|p| p.into());
-        let updates = vec![(
-            Some(plugin_id),
-            Some(client_id),
-            Event::ActionComplete(action_clone, pane_id_for_event, context),
-        )];
+            // After action completes, send ActionComplete event with context
+            // Convert server PaneId to zellij_utils PaneId
+            let pane_id_for_event = pane_id.map(|p| p.into());
+            let updates = vec![(
+                Some(plugin_id),
+                Some(client_id),
+                Event::ActionComplete(action_clone, pane_id_for_event, context),
+            )];
 
-        // Send the ActionComplete event back to the plugin
-        if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
-            log::error!("Failed to send ActionComplete event: {:?}", e);
-        }
-    });
+            // Send the ActionComplete event back to the plugin
+            if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
+                log::error!("Failed to send ActionComplete event: {:?}", e);
+            }
+        })
+        .map_err(|error| {
+            anyhow!("failed to spawn run_action thread for plugin {spawned_for}: {error}")
+        })?;
+    Ok(())
 }
 
 fn open_file_floating(
@@ -3342,6 +3367,10 @@ const MAX_DIRECTORY_SCANS_PER_PLUGIN: usize = 1;
 const MAX_DIRECTORY_SCAN_ENTRIES: usize = 4096;
 const MAX_PLUGIN_TIMERS_PER_PLUGIN: usize = 64;
 const MAX_PLUGIN_TIMERS_IN_FLIGHT: usize = 256;
+// RunAction starts an OS thread. Stay with the directory-scan thread cap,
+// not the 64/256 timer tasks.
+const MAX_RUN_ACTIONS_PER_PLUGIN: usize = 4;
+const MAX_RUN_ACTIONS_IN_FLIGHT: usize = 16;
 
 struct InFlightLimits {
     total: usize,
@@ -3385,6 +3414,7 @@ impl InFlightLimits {
 
 static DIRECTORY_SCANS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 static PLUGIN_TIMERS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static RUN_ACTIONS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 
 struct DirectoryScanPermit {
     plugin_id: PluginId,
@@ -3414,6 +3444,29 @@ fn try_acquire_directory_scan(plugin_id: PluginId) -> Option<DirectoryScanPermit
         MAX_DIRECTORY_SCANS_IN_FLIGHT,
     ) {
         Some(DirectoryScanPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+struct RunActionPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for RunActionPermit {
+    fn drop(&mut self) {
+        RUN_ACTIONS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+fn try_acquire_run_action(plugin_id: PluginId) -> Option<RunActionPermit> {
+    let mut slots = RUN_ACTIONS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_RUN_ACTIONS_PER_PLUGIN,
+        MAX_RUN_ACTIONS_IN_FLIGHT,
+    ) {
+        Some(RunActionPermit { plugin_id })
     } else {
         None
     }
@@ -3594,13 +3647,28 @@ fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()>
     let worker_name = plugin_message
         .worker_name
         .ok_or(anyhow!("Worker name not specified in message to worker"))?;
-    env.senders
-        .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
-            env.plugin_id,
+    if !try_admit_plugin_worker_post(
+        env.plugin_id,
+        &worker_name,
+        &plugin_message.name,
+        &plugin_message.payload,
+    ) {
+        return Ok(());
+    }
+    let plugin_id = env.plugin_id;
+    let messages = vec![(plugin_message.name, plugin_message.payload)];
+    let sent = env.senders.send_to_plugin(
+        PluginInstruction::PostMessagesToPluginWorker(
+            plugin_id,
             acting_client(env),
-            worker_name,
-            vec![(plugin_message.name, plugin_message.payload)],
-        ))
+            worker_name.clone(),
+            messages.clone(),
+        ),
+    );
+    if sent.is_err() {
+        release_admitted_worker_posts(plugin_id, &worker_name, &messages);
+    }
+    sent
 }
 
 fn post_message_to_plugin(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -6895,7 +6963,7 @@ fn override_layout(
         retain_existing_plugin_panes,
         apply_only_to_active_tab,
     };
-    run_action(env, action, context);
+    run_action(env, action, context)?;
     Ok(())
 }
 
@@ -8157,5 +8225,243 @@ mod admission_tests {
             !marker.exists(),
             "exec_cmd without _allow_exec_host_cmd must not spawn"
         );
+    }
+
+    fn lock_run_action_tests() -> std::sync::MutexGuard<'static, ()> {
+        static RUN_ACTION_TESTS: Mutex<()> = Mutex::new(());
+        RUN_ACTION_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn run_actions_in_flight() -> usize {
+        RUN_ACTIONS.lock().unwrap().total
+    }
+
+    fn run_actions_for(plugin_id: PluginId) -> usize {
+        RUN_ACTIONS
+            .lock()
+            .unwrap()
+            .per_plugin
+            .get(&plugin_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn switch_mode() -> Action {
+        Action::SwitchToMode {
+            input_mode: InputMode::Locked,
+        }
+    }
+
+    fn saw_action_complete(instruction: &PluginInstruction) -> bool {
+        match instruction {
+            PluginInstruction::Update(updates) => updates
+                .iter()
+                .any(|(_, _, event)| matches!(event, Event::ActionComplete(..))),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn run_action_past_the_cap_does_not_spawn_and_is_rejected() {
+        let _lock = lock_run_action_tests();
+        assert_eq!(MAX_RUN_ACTIONS_PER_PLUGIN, 4);
+        assert_eq!(MAX_RUN_ACTIONS_IN_FLIGHT, 16);
+        assert_eq!(run_actions_in_flight(), 0);
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            7701,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        let holds: Vec<_> = (0..MAX_RUN_ACTIONS_PER_PLUGIN)
+            .map(|_| try_acquire_run_action(7701).expect("per-plugin run-action slot"))
+            .collect();
+        let in_flight = run_actions_in_flight();
+        let rejected = run_action(&env, switch_mode(), BTreeMap::new());
+        assert!(
+            rejected.is_err(),
+            "a run action past the per-plugin cap must fail"
+        );
+        assert_eq!(run_actions_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_millis(400), saw_action_complete),
+            "a rejected run action must not spawn or report success"
+        );
+        drop(holds);
+        assert_eq!(run_actions_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_RUN_ACTIONS_IN_FLIGHT)
+            .map(|plugin_id| {
+                try_acquire_run_action(plugin_id as PluginId).expect("process-wide run-action slot")
+            })
+            .collect();
+        let in_flight = run_actions_in_flight();
+        let rejected = run_action(&env, switch_mode(), BTreeMap::new());
+        assert!(
+            rejected.is_err(),
+            "a run action past the process-wide cap must fail"
+        );
+        assert_eq!(run_actions_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_millis(400), saw_action_complete),
+            "a rejected run action must not spawn or report success"
+        );
+        drop(global);
+        assert_eq!(run_actions_in_flight(), 0);
+    }
+
+    #[test]
+    fn admitted_run_action_releases_its_permit_when_it_finishes() {
+        let _lock = lock_run_action_tests();
+        assert_eq!(run_actions_in_flight(), 0);
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            7702,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        run_action(&env, switch_mode(), BTreeMap::new()).expect("first run action is admitted");
+        assert!(
+            recv_until(&receiver, Duration::from_secs(2), saw_action_complete),
+            "an admitted run action must finish and report completion"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while run_actions_for(7702) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "run-action permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let holds: Vec<_> = (0..MAX_RUN_ACTIONS_PER_PLUGIN - 1)
+            .map(|_| try_acquire_run_action(7702).expect("slot after release"))
+            .collect();
+        run_action(&env, switch_mode(), BTreeMap::new()).expect("released permit admits another");
+        assert!(
+            recv_until(&receiver, Duration::from_secs(2), saw_action_complete),
+            "a later run action must run after the permit is released"
+        );
+        drop(holds);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while run_actions_for(7702) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the later run-action permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn plugin_worker_post_past_the_admission_bound_is_not_enqueued() {
+        use crate::plugins::wasm_bridge::{
+            release_admitted_worker_posts, MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN,
+            MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN,
+        };
+        assert_eq!(MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN, 256);
+        assert_eq!(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN, 1024 * 1024);
+
+        let plugin_id = 900_001;
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            plugin_id,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        let worker = "worker";
+        let huge = "x".repeat(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN + 1);
+        post_message_to(
+            &env,
+            PluginMessage::new_to_worker(worker, "huge", &huge),
+        )
+        .expect("a rejected post is not a send failure");
+        env.senders
+            .send_to_plugin(PluginInstruction::Quarantine(plugin_id, 9))
+            .unwrap();
+
+        let mut admitted = Vec::new();
+        for index in 0..MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN {
+            let name = format!("m{index}");
+            post_message_to(
+                &env,
+                PluginMessage::new_to_worker(worker, &name, "p"),
+            )
+            .unwrap();
+            admitted.push((name, "p".to_owned()));
+        }
+        struct ReleaseAdmitted {
+            plugin_id: PluginId,
+            worker: String,
+            messages: Vec<(String, String)>,
+        }
+        impl Drop for ReleaseAdmitted {
+            fn drop(&mut self) {
+                release_admitted_worker_posts(self.plugin_id, &self.worker, &self.messages);
+            }
+        }
+        let _release = ReleaseAdmitted {
+            plugin_id,
+            worker: worker.to_owned(),
+            messages: admitted,
+        };
+        post_message_to(
+            &env,
+            PluginMessage::new_to_worker(worker, "overflow", "p"),
+        )
+        .expect("a post past the count cap is rejected without failing the send");
+        env.senders
+            .send_to_plugin(PluginInstruction::Unload(plugin_id))
+            .unwrap();
+
+        let mut worker_posts = 0usize;
+        let mut saw_huge = false;
+        let mut saw_overflow = false;
+        let mut saw_quarantine = false;
+        let mut saw_unload = false;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(20)) {
+                Ok((PluginInstruction::PostMessagesToPluginWorker(_, _, _, messages), _)) => {
+                    worker_posts += 1;
+                    for (name, _) in &messages {
+                        if name == "huge" {
+                            saw_huge = true;
+                        }
+                        if name == "overflow" {
+                            saw_overflow = true;
+                        }
+                    }
+                },
+                Ok((PluginInstruction::Quarantine(id, generation), _))
+                    if id == plugin_id && generation == 9 =>
+                {
+                    saw_quarantine = true;
+                },
+                Ok((PluginInstruction::Unload(id), _)) if id == plugin_id => {
+                    saw_unload = true;
+                },
+                Ok(_) => {},
+                Err(_) if saw_quarantine && saw_unload => break,
+                Err(_) => {},
+            }
+        }
+        assert!(
+            !saw_huge,
+            "a worker post over the byte cap must not be enqueued"
+        );
+        assert!(
+            !saw_overflow,
+            "a worker post past the count cap must not be enqueued"
+        );
+        assert_eq!(worker_posts, MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN);
+        assert!(
+            saw_quarantine,
+            "a retirement instruction must still be accepted"
+        );
+        assert!(saw_unload, "a control instruction must still be accepted");
     }
 }

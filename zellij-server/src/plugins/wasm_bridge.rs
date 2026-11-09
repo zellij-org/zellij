@@ -93,8 +93,95 @@ const MAX_PENDING_CACHE_BYTES_PER_PLUGIN: usize = 4 * 1024 * 1024;
 const MAX_PENDING_CACHE_ENTRIES_TOTAL: usize = 4096;
 const MAX_PENDING_CACHE_BYTES_TOTAL: usize = 16 * 1024 * 1024;
 const PENDING_CACHE_ENTRY_OVERHEAD: usize = 64;
-const MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN: usize = 256;
-const MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN: usize = 1024 * 1024;
+pub(crate) const MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN: usize = 256;
+pub(crate) const MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN: usize = 1024 * 1024;
+
+/// Worker posts a plugin has already reserved but the management thread has
+/// not taken off the mailbox. The cache caps apply only after that dequeue.
+struct AdmittedWorkerPosts {
+    per_plugin: BTreeMap<PluginId, (usize, usize)>,
+}
+
+impl AdmittedWorkerPosts {
+    const fn new() -> Self {
+        Self {
+            per_plugin: BTreeMap::new(),
+        }
+    }
+
+    fn try_admit(&mut self, plugin_id: PluginId, bytes: usize) -> bool {
+        let (count, used) = self.per_plugin.get(&plugin_id).copied().unwrap_or((0, 0));
+        if count >= MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN
+            || used.saturating_add(bytes) > MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN
+        {
+            return false;
+        }
+        self.per_plugin
+            .insert(plugin_id, (count + 1, used.saturating_add(bytes)));
+        true
+    }
+
+    fn release(&mut self, plugin_id: PluginId, count: usize, bytes: usize) {
+        let Some((have_count, have_bytes)) = self.per_plugin.get_mut(&plugin_id) else {
+            return;
+        };
+        *have_count = have_count.saturating_sub(count);
+        *have_bytes = have_bytes.saturating_sub(bytes);
+        if *have_count == 0 && *have_bytes == 0 {
+            self.per_plugin.remove(&plugin_id);
+        }
+    }
+}
+
+static ADMITTED_WORKER_POSTS: Mutex<AdmittedWorkerPosts> = Mutex::new(AdmittedWorkerPosts::new());
+
+fn worker_message_bytes(worker_name: &str, message: &str, payload: &str) -> usize {
+    worker_name
+        .len()
+        .saturating_add(message.len())
+        .saturating_add(payload.len())
+}
+
+pub(crate) fn reject_full_worker_message_cache(plugin_id: PluginId) {
+    log::warn!(
+        "Dropping worker message cached for plugin {}: pending cache is full",
+        plugin_id
+    );
+}
+
+/// Reserve one plugin-originated worker post before it is enqueued. Control
+/// and retirement instructions are not sent through here, so a full budget
+/// does not stop them.
+pub(crate) fn try_admit_plugin_worker_post(
+    plugin_id: PluginId,
+    worker_name: &str,
+    message: &str,
+    payload: &str,
+) -> bool {
+    let bytes = worker_message_bytes(worker_name, message, payload);
+    let admitted = ADMITTED_WORKER_POSTS
+        .lock()
+        .unwrap()
+        .try_admit(plugin_id, bytes);
+    if !admitted {
+        reject_full_worker_message_cache(plugin_id);
+    }
+    admitted
+}
+
+pub(crate) fn release_admitted_worker_posts(
+    plugin_id: PluginId,
+    worker_name: &str,
+    messages: &[(String, String)],
+) {
+    let bytes = messages.iter().fold(0usize, |total, (message, payload)| {
+        total.saturating_add(worker_message_bytes(worker_name, message, payload))
+    });
+    ADMITTED_WORKER_POSTS
+        .lock()
+        .unwrap()
+        .release(plugin_id, messages.len(), bytes);
+}
 
 #[derive(Debug, Default)]
 struct PendingPluginMessages {
@@ -3233,7 +3320,9 @@ impl WasmBridge {
                     .push((message, payload));
             }
             for ((client_id, worker_name), messages) in worker_messages.drain() {
-                self.post_messages_to_plugin_worker(plugin_id, client_id, worker_name, messages)?;
+                // Already counted when the mailbox instruction was dequeued.
+                // Releasing again would free a slot still held by a newer post.
+                self.deliver_plugin_worker_messages(plugin_id, client_id, worker_name, messages)?;
             }
         }
         Ok(())
@@ -3368,6 +3457,19 @@ impl WasmBridge {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: String,
+        messages: Vec<(String, String)>,
+    ) -> Result<()> {
+        // The reservation was the mailbox slot. Drop it before this returns,
+        // including the quarantine and inactive-instance paths below.
+        release_admitted_worker_posts(plugin_id, &worker_name, &messages);
+        self.deliver_plugin_worker_messages(plugin_id, client_id, worker_name, messages)
+    }
+
+    fn deliver_plugin_worker_messages(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        worker_name: String,
         mut messages: Vec<(String, String)>,
     ) -> Result<()> {
         if self.quarantine.contains(&plugin_id) {
@@ -3406,26 +3508,18 @@ impl WasmBridge {
                 log::warn!("Worker {worker_name} not found, caching messages");
                 for (message, payload) in messages.drain(..) {
                     let cached = self.cached_worker_messages.entry(plugin_id).or_default();
-                    let cached_bytes = cached
-                        .iter()
-                        .map(|(_, name, message, payload)| {
-                            name.len()
-                                .saturating_add(message.len())
-                                .saturating_add(payload.len())
-                        })
-                        .fold(0usize, usize::saturating_add);
-                    let new_bytes = worker_name
-                        .len()
-                        .saturating_add(message.len())
-                        .saturating_add(payload.len());
+                    let cached_bytes =
+                        cached
+                            .iter()
+                            .fold(0usize, |total, (_, name, message, payload)| {
+                                total.saturating_add(worker_message_bytes(name, message, payload))
+                            });
+                    let new_bytes = worker_message_bytes(&worker_name, &message, &payload);
                     if cached.len() >= MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN
                         || cached_bytes.saturating_add(new_bytes)
                             > MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN
                     {
-                        log::warn!(
-                            "Dropping worker message cached for plugin {}: pending cache is full",
-                            plugin_id
-                        );
+                        reject_full_worker_message_cache(plugin_id);
                         continue;
                     }
                     cached.push((client_id, worker_name.clone(), message, payload));
