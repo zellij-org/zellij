@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    io::Write,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fs, io::Write, path::PathBuf};
 
 use crate::{consts::ZELLIJ_PLUGIN_PERMISSIONS_CACHE, data::PermissionType};
 

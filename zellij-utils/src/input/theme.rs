@@ -188,9 +188,7 @@ impl<'de> Visitor<'de> for HexColorVisitor {
     {
         parse_hex_rgb(s)
             .map(|(r, g, b)| HexColor(r, g, b))
-            .ok_or_else(|| {
-                Error::custom("Hex color must be of form \"#RGB\" or \"#RRGGBB\"")
-            })
+            .ok_or_else(|| Error::custom("Hex color must be of form \"#RGB\" or \"#RRGGBB\""))
     }
 }
 

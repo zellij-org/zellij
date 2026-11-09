@@ -912,7 +912,10 @@ mod setup_test {
         // Old (buggy) call order: user.merge(built_in) silently dropped the user theme.
         let buggy = user.clone().merge(built_in.clone());
         assert_eq!(
-            buggy.get_theme("dracula").unwrap().sourced_from_external_file,
+            buggy
+                .get_theme("dracula")
+                .unwrap()
+                .sourced_from_external_file,
             false,
             "merging built-ins over user themes must not be the documented order"
         );

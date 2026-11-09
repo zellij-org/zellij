@@ -1902,7 +1902,7 @@ pub struct Grid {
     render_lock_opened_at: Option<std::time::Instant>,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
-    pub origin_mode: bool, // DECOM — origin mode: CUP/CPR relative to scroll region
+    pub origin_mode: bool,          // DECOM — origin mode: CUP/CPR relative to scroll region
     pub sixel_scrolling: bool,      // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
@@ -8995,8 +8995,7 @@ impl Handler for Grid {
                         } else {
                             (self.cursor.y + 1).max(1)
                         };
-                        let position_report =
-                            format!("\u{1b}[{};{}R", row, self.cursor.x + 1);
+                        let position_report = format!("\u{1b}[{};{}R", row, self.cursor.x + 1);
                         self.pending_messages_to_pty
                             .push(position_report.as_bytes().to_vec());
                     },
