@@ -36,6 +36,12 @@ fn is_word_boundary(x: &Option<char>) -> bool {
     x.map_or(true, |c| !c.is_alphanumeric() && c != '_')
 }
 
+/// Last code point of a physical row. Soft-wrapped rows do not store the
+/// previous row's text, so a whole-word check at the row start uses this.
+fn row_last_char(row: &Row) -> Option<char> {
+    row.columns.last().map(|cell| cell.last_char())
+}
+
 struct HaystackCell {
     byte_start: usize,
     row: usize,
@@ -319,8 +325,10 @@ impl SearchResult {
     /// Find the matches that start in one row of a haystack.
     ///
     /// The row is matched as if it were the first row of its own haystack: a
-    /// match must start before the row ends, non-overlapping matching restarts
-    /// at the row start, and that start counts as a grapheme/word boundary.
+    /// match must start before the row ends, and non-overlapping matching
+    /// restarts at the row start. That start is a grapheme boundary. It is a
+    /// word boundary only for a hard line break. `predecessor` is the last
+    /// character of the previous physical row when this row continues it.
     /// Matches may extend past the row into the rows below it.
     fn find_matches_in_row(
         &self,
@@ -329,6 +337,7 @@ impl SearchResult {
         search_text: &str,
         folded: Option<&FoldedText>,
         needle: &str,
+        predecessor: Option<char>,
     ) -> Vec<(usize, usize)> {
         let mut found = Vec::new();
         if needle.is_empty() {
@@ -370,7 +379,13 @@ impl SearchResult {
                 Some((start, end))
             };
             let accepted = original_range.filter(|(original_start, original_end)| {
-                self.accepts_match(original, *original_start, *original_end, row.byte_start)
+                self.accepts_match(
+                    original,
+                    *original_start,
+                    *original_end,
+                    row.byte_start,
+                    predecessor,
+                )
             });
             match accepted {
                 Some(range) => {
@@ -390,7 +405,14 @@ impl SearchResult {
         found
     }
 
-    fn accepts_match(&self, text: &str, start: usize, end: usize, row_start: usize) -> bool {
+    fn accepts_match(
+        &self,
+        text: &str,
+        start: usize,
+        end: usize,
+        row_start: usize,
+        predecessor: Option<char>,
+    ) -> bool {
         if start >= end {
             return false;
         }
@@ -401,8 +423,10 @@ impl SearchResult {
             return false;
         }
         if self.whole_word_only {
+            // `predecessor` is set only for a soft wrap. A hard break passes
+            // none, which stays a word boundary.
             let before = if start == row_start {
-                None
+                predecessor
             } else {
                 text[..start].chars().next_back()
             };
@@ -417,6 +441,17 @@ impl SearchResult {
     /// Search the rows of one logical line, materializing one bounded window
     /// per starting row instead of the whole continuation tail.
     pub(crate) fn search_rows(&self, ridx: usize, rows: &[&Row]) -> Vec<Selection> {
+        self.search_line(ridx, rows, None)
+    }
+
+    /// Search one logical line. `leading_predecessor` is the last character
+    /// before `rows[0]` when that row is a soft wrap from outside the slice.
+    fn search_line(
+        &self,
+        ridx: usize,
+        rows: &[&Row],
+        leading_predecessor: Option<char>,
+    ) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || rows.is_empty() {
             return res;
@@ -444,7 +479,14 @@ impl SearchResult {
                 .copied()
                 .map(move |index| (index - offset, rows[index]))
                 .take_while(|(_, row)| !row.is_canonical);
-            res.extend(self.search_starting_row(ridx + offset, row, below));
+            let predecessor = if row.is_canonical {
+                None
+            } else if offset == 0 {
+                leading_predecessor
+            } else {
+                rows.get(offset - 1).copied().and_then(row_last_char)
+            };
+            res.extend(self.search_starting_row(ridx + offset, row, below, predecessor));
         }
         res
     }
@@ -454,6 +496,7 @@ impl SearchResult {
         ridx: usize,
         row: &Row,
         below: impl Iterator<Item = (usize, &'a Row)>,
+        predecessor: Option<char>,
     ) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
@@ -477,6 +520,7 @@ impl SearchResult {
             search_text,
             haystack.folded.as_ref(),
             needle,
+            predecessor,
         ) {
             let (Some(first), Some(last)) = (
                 haystack.cell_containing(start),
@@ -506,6 +550,7 @@ impl SearchResult {
                 .enumerate()
                 .map(|(offset, row)| (offset + 1, row))
                 .take_while(|(_, row)| !row.is_canonical),
+            None,
         )
     }
 
@@ -596,7 +641,16 @@ impl SearchResult {
                     .take_while(|row| !row.is_canonical)
                     .enumerate()
                     .map(|(offset, row)| (offset + 1, row));
-                let selections = self.search_starting_row(viewport.len() - 1, row, below);
+                let row_index = viewport.len() - 1;
+                let predecessor = if row.is_canonical {
+                    None
+                } else {
+                    row_index
+                        .checked_sub(1)
+                        .and_then(|index| viewport.get(index))
+                        .and_then(row_last_char)
+                };
+                let selections = self.search_starting_row(row_index, row, below, predecessor);
                 found_something = !selections.is_empty();
                 self.selections.extend(selections);
             }
@@ -636,9 +690,7 @@ impl SearchResult {
             );
             index += rows.len();
         }
-        for selection in new_selections.into_iter().rev() {
-            self.selections.insert(0, selection);
-        }
+        self.selections.splice(0..0, new_selections);
     }
 
     /// `move_up` for a viewport that jumped `amount` rows in one transfer.
@@ -670,8 +722,20 @@ impl SearchResult {
                 .chain(lines_below.iter().take_while(|row| !row.is_canonical))
                 .enumerate()
                 .map(|(offset, row)| (offset + 1, row));
-            self.selections
-                .extend(self.search_starting_row(index, &viewport[index], below));
+            let predecessor = if viewport[index].is_canonical {
+                None
+            } else {
+                index
+                    .checked_sub(1)
+                    .and_then(|previous| viewport.get(previous))
+                    .and_then(row_last_char)
+            };
+            self.selections.extend(self.search_starting_row(
+                index,
+                &viewport[index],
+                below,
+                predecessor,
+            ));
             index += 1;
         }
     }
@@ -747,7 +811,19 @@ impl Grid {
         while index < self.viewport.len() {
             let rows = viewport_line(&self.viewport, index);
             let line_len = rows.len();
-            let selections = self.search_results.search_rows(index, &rows);
+            let leading_predecessor = if rows.first().is_some_and(|row| !row.is_canonical) {
+                let previous = if index == 0 {
+                    self.lines_above.back()
+                } else {
+                    self.viewport.get(index - 1)
+                };
+                previous.and_then(row_last_char)
+            } else {
+                None
+            };
+            let selections = self
+                .search_results
+                .search_line(index, &rows, leading_predecessor);
             for sel in &selections {
                 // Cast works because we can' be negative here
                 self.output_buffer

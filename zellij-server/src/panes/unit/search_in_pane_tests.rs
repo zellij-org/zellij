@@ -789,3 +789,59 @@ pub fn whole_word_search_respects_non_ascii_neighbours() {
         vec![((0, 8), (0, 11)), ((0, 17), (0, 20))]
     );
 }
+
+fn row_plain(row: &super::super::Row) -> String {
+    row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+pub fn whole_word_search_does_not_treat_a_soft_wrap_as_a_boundary() {
+    let mut wrapped = create_pane_with_content("foobar", 3);
+    assert!(wrapped.grid.viewport.len() >= 2);
+    assert_eq!(row_plain(&wrapped.grid.viewport[0]), "foo");
+    assert_eq!(row_plain(&wrapped.grid.viewport[1]), "bar");
+    assert!(wrapped.grid.viewport[0].is_canonical);
+    assert!(!wrapped.grid.viewport[1].is_canonical);
+    wrapped.update_search_term("bar");
+    wrapped.toggle_search_whole_words();
+    assert!(
+        found_ranges(&wrapped).is_empty(),
+        "soft-wrapped foobar matched whole-word bar"
+    );
+
+    let mut broken = create_pane_with_content("foo\r\nbar", 3);
+    assert!(broken.grid.viewport.len() >= 2);
+    assert_eq!(row_plain(&broken.grid.viewport[0]), "foo");
+    assert_eq!(row_plain(&broken.grid.viewport[1]), "bar");
+    assert!(broken.grid.viewport[1].is_canonical);
+    broken.update_search_term("bar");
+    broken.toggle_search_whole_words();
+    assert_eq!(found_ranges(&broken), vec![((1, 0), (1, 3))]);
+}
+
+#[test]
+fn move_down_rows_prepends_new_matches_in_search_order() {
+    use std::collections::VecDeque;
+    use zellij_utils::position::Position;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("na").canonical());
+    viewport.push_back(wrapped_row("nb").canonical());
+    viewport.push_back(wrapped_row("nc").canonical());
+
+    let mut kept = super::super::Selection::default();
+    kept.start(Position::new(0, 0));
+    kept.end(Position::new(0, 1));
+    terminal_pane.grid.search_results.selections = vec![kept];
+    terminal_pane.grid.search_results.needle = "n".to_owned();
+    terminal_pane
+        .grid
+        .search_results
+        .move_down_rows(2, &viewport, 3);
+
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (0, 1)), ((1, 0), (1, 1)), ((2, 0), (2, 1))]
+    );
+}
