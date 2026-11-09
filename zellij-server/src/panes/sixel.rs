@@ -240,17 +240,16 @@ impl SixelGrid {
         }
     }
     pub fn handle_byte(&mut self, byte: u8) {
-        let currently_parsing = &mut self.currently_parsing;
-        self.sixel_parser
-            .as_mut()
-            .unwrap()
-            .advance(&byte, |sixel_event| {
-                Self::feed_event(
-                    &mut self.currently_parsing,
-                    &mut self.size_guard,
-                    sixel_event,
-                )
-            });
+        let Some(parser) = self.sixel_parser.as_mut() else {
+            return;
+        };
+        parser.advance(&byte, |sixel_event| {
+            Self::feed_event(
+                &mut self.currently_parsing,
+                &mut self.size_guard,
+                sixel_event,
+            )
+        });
     }
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
         Self::feed_event(

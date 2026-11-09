@@ -496,12 +496,12 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
-    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
+    pub fn get_receiver<F>(&self) -> io::Result<IpcReceiverWithContext<F>>
     where
         F: for<'de> Deserialize<'de> + Serialize,
     {
-        let socket = self.sender.get_ref().try_clone_stream().unwrap();
-        IpcReceiverWithContext::from_boxed(socket)
+        let socket = self.sender.get_ref().try_clone_stream()?;
+        Ok(IpcReceiverWithContext::from_boxed(socket))
     }
 }
 
@@ -580,9 +580,9 @@ where
     }
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
-        let socket = self.receiver.get_ref().try_clone_stream().unwrap();
-        IpcSenderWithContext::from_boxed(socket)
+    pub fn get_sender<F: Serialize>(&self) -> io::Result<IpcSenderWithContext<F>> {
+        let socket = self.receiver.get_ref().try_clone_stream()?;
+        Ok(IpcSenderWithContext::from_boxed(socket))
     }
 
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {

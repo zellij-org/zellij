@@ -112,6 +112,7 @@ impl HostReply {
             // OSC 10 (foreground) / OSC 11 (background) answer form:
             //   OSC 10 ; <color> ST        e.g. "10;rgb:ffff/ffff/ffff"
             //   OSC 11 ; <color> ST
+            // SAFETY: hardcoded regex literals; Regex::new only fails on authoring bugs.
             static ref FG_RE: Regex = Regex::new(r"^10;(.*)$").unwrap();
             static ref BG_RE: Regex = Regex::new(r"^11;(.*)$").unwrap();
         }
@@ -140,6 +141,7 @@ impl HostReply {
     pub fn from_csi_report(raw: &[u8]) -> Option<HostReply> {
         let s = std::str::from_utf8(raw).ok()?;
         lazy_static! {
+            // SAFETY: hardcoded regex literals; Regex::new only fails on authoring bugs.
             // <ESC>[4;H;Wt or <ESC>[6;H;Wt
             static ref PIX_RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
             // <ESC>[?2026;Ny — DECRPM reply for sync-output (VT mode 2026)
@@ -202,6 +204,7 @@ impl HostReply {
     /// yield `None` so they do not clobber the host capability state.
     pub fn sixel_support_from_primary_da(raw: &[u8]) -> Option<HostReply> {
         lazy_static! {
+            // SAFETY: hardcoded regex literal; Regex::new only fails on authoring bugs.
             static ref PRIMARY_DA_RE: Regex = Regex::new(r"^\u{1b}\[\?([0-9;]*)c$").unwrap();
         }
         let s = std::str::from_utf8(raw).ok()?;
@@ -724,12 +727,15 @@ impl StdinAnsiParser {
     }
 
     pub fn close_clipboard_forward_on_timeout(&mut self, token: u32) -> Option<(u32, Vec<u8>)> {
-        match &self.active_clipboard_forward {
-            Some(slot) if slot.token == token => {
-                let slot = self.active_clipboard_forward.take().unwrap();
-                Some((slot.token, Vec::new()))
-            },
-            _ => None,
+        if self
+            .active_clipboard_forward
+            .as_ref()
+            .is_some_and(|slot| slot.token == token)
+        {
+            let slot = self.active_clipboard_forward.take()?;
+            Some((slot.token, Vec::new()))
+        } else {
+            None
         }
     }
 
@@ -1425,7 +1431,7 @@ pub fn schedule_clipboard_forward_timeout<F>(
         tokio::time::sleep(deadline).await;
         let payload = parser
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .close_clipboard_forward_on_timeout(token);
         if let Some((t, bytes)) = payload {
             on_timeout(t, bytes);

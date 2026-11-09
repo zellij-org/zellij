@@ -598,7 +598,10 @@ impl Setup {
 
         let mut message = String::new();
 
-        writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
+        // SAFETY: fmt::Write for String only fails on allocation failure, which aborts separately;
+        // these expect()s document that writeln!/write! into `message` are infallible in practice.
+        writeln!(&mut message, "[Version]: {:?}", VERSION)
+            .expect("formatting setup dump into String");
         let distribution = crate::distribution::distribution();
         if !distribution.is_stock_zellij() {
             writeln!(
@@ -606,7 +609,7 @@ impl Setup {
                 "[DISTRIBUTION]: {} {} (paths and command name: '{}')",
                 distribution.display_name, distribution.version, distribution.name
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
             let bundled_plugins = crate::distribution::own_plugin_names();
             if !bundled_plugins.is_empty() {
                 writeln!(
@@ -614,7 +617,7 @@ impl Setup {
                     "[DISTRIBUTION PLUGINS]: {}",
                     bundled_plugins.join(", ")
                 )
-                .unwrap();
+                .expect("formatting setup dump into String");
             }
             let removed_plugins = crate::distribution::removed_builtin_plugin_names();
             if !removed_plugins.is_empty() {
@@ -623,7 +626,7 @@ impl Setup {
                     "[REMOVED BUILTIN PLUGINS]: {}",
                     removed_plugins.join(", ")
                 )
-                .unwrap();
+                .expect("formatting setup dump into String");
             }
             let bundled_layouts: Vec<&str> = distribution
                 .layouts
@@ -636,11 +639,11 @@ impl Setup {
                     "[DISTRIBUTION LAYOUTS]: {}",
                     bundled_layouts.join(", ")
                 )
-                .unwrap();
+                .expect("formatting setup dump into String");
             }
         }
         if let Some(config_dir) = config_dir.clone() {
-            writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
+            writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).expect("formatting setup dump into String");
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
             let mut default_config_dirs = default_config_dirs()
@@ -652,7 +655,7 @@ impl Setup {
                 " On your system zellij looks in the following config directories by default:\n",
             );
             for dir in default_config_dirs {
-                writeln!(&mut message, " \"{}\"", dir.display()).unwrap();
+                writeln!(&mut message, " \"{}\"", dir.display()).expect("formatting setup dump into String");
             }
         }
         if let Some(config_file) = config_file {
@@ -661,7 +664,7 @@ impl Setup {
                 "[LOOKING FOR CONFIG FILE FROM]: \"{}\"",
                 config_file.display()
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
             match Config::from_path(&config_file, None) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
                 Err(e) => writeln!(
@@ -669,7 +672,7 @@ impl Setup {
                     "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
                     e
                 )
-                .unwrap(),
+                .expect("formatting setup dump into String"),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");
@@ -678,34 +681,34 @@ impl Setup {
                 " By default zellij looks for a file called [{}] in the configuration directory",
                 CONFIG_NAME
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
         }
-        writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
-        writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).unwrap();
-        writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).unwrap();
+        writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).expect("formatting setup dump into String");
+        writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).expect("formatting setup dump into String");
+        writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).expect("formatting setup dump into String");
         if !crate::distribution::embedded_plugins().is_empty() {
             writeln!(
                 &mut message,
                 " Builtin, default plugins will not be loaded from disk."
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
             writeln!(
                 &mut message,
                 " Create a custom layout if you require this behavior."
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
         } else {
             writeln!(
                 &mut message,
                 " This zellij was built without bundled plugins."
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
             writeln!(
                 &mut message,
                 " Builtin plugins are loaded from the 'PLUGIN DIR' above, or from '{}'.",
                 system_data_dir.join("plugins").display()
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
         }
         let keybinds_dir = config_options
             .keybinds_dir
@@ -717,12 +720,12 @@ impl Setup {
                 "[KEYBINDS DIR]: \"{}\"",
                 keybinds_dir.display()
             )
-            .unwrap();
+            .expect("formatting setup dump into String");
         } else {
             message.push_str("[KEYBINDS DIR]: Not Found\n");
         }
         if let Some(layout_dir) = layout_dir {
-            writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).unwrap();
+            writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).expect("formatting setup dump into String");
         } else {
             message.push_str("[LAYOUT DIR]: Not Found\n");
         }
@@ -731,9 +734,9 @@ impl Setup {
             "[SYSTEM DATA DIR]: \"{}\"",
             system_data_dir.display()
         )
-        .unwrap();
+        .expect("formatting setup dump into String");
 
-        writeln!(&mut message, "[ARROW SEPARATOR]: {}", ARROW_SEPARATOR).unwrap();
+        writeln!(&mut message, "[ARROW SEPARATOR]: {}", ARROW_SEPARATOR).expect("formatting setup dump into String");
         message.push_str(" Is the [ARROW_SEPARATOR] displayed correctly?\n");
         message.push_str(" If not you may want to either start zellij with a compatible mode: 'zellij options --simplified-ui true'\n");
         let mut hyperlink_compat = String::new();
@@ -747,7 +750,7 @@ impl Setup {
             " Or check the font that is in use:\n {}\n",
             hyperlink_compat
         )
-        .unwrap();
+        .expect("formatting setup dump into String");
         message.push_str("[MOUSE INTERACTION]: \n");
         message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
         message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
@@ -755,15 +758,15 @@ impl Setup {
         let default_editor = std::env::var("EDITOR")
             .or_else(|_| std::env::var("VISUAL"))
             .unwrap_or_else(|_| String::from("Not set, checked $EDITOR and $VISUAL"));
-        writeln!(&mut message, "[DEFAULT EDITOR]: {}", default_editor).unwrap();
-        writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).unwrap();
+        writeln!(&mut message, "[DEFAULT EDITOR]: {}", default_editor).expect("formatting setup dump into String");
+        writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).expect("formatting setup dump into String");
         let mut hyperlink = String::new();
         hyperlink.push_str(hyperlink_start);
         hyperlink.push_str("https://www.zellij.dev/documentation/");
         hyperlink.push_str(hyperlink_mid);
         hyperlink.push_str("zellij.dev/documentation");
         hyperlink.push_str(hyperlink_end);
-        writeln!(&mut message, "[DOCUMENTATION]: {}", hyperlink).unwrap();
+        writeln!(&mut message, "[DOCUMENTATION]: {}", hyperlink).expect("formatting setup dump into String");
         //printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
 
         std::io::stdout().write_all(message.as_bytes())?;

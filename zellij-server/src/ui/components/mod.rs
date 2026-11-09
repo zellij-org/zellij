@@ -212,6 +212,7 @@ impl<'a> UiComponentParser<'a> {
     }
     fn parse_coordinates(&self, coordinates: &str) -> Result<Option<Coordinates>> {
         lazy_static! {
+            // SAFETY: fixed, compile-time-valid regex literal
             static ref RE: Regex = Regex::new(r"(\d*)/(\d*)/(\d*)/(\d*)").unwrap();
         }
         if let Some(captures) = RE.captures_iter(&coordinates).next() {

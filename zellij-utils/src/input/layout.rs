@@ -687,25 +687,20 @@ impl RunPluginLocation {
 impl From<&RunPluginLocation> for Url {
     fn from(location: &RunPluginLocation) -> Self {
         let url = match location {
-            RunPluginLocation::File(path) => format!(
-                "file:{}",
-                path.clone().into_os_string().into_string().unwrap()
-            ),
+            RunPluginLocation::File(path) => format!("file:{}", path.to_string_lossy()),
             RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
             RunPluginLocation::Remote(url) => String::from(url),
         };
-        Self::parse(&url).unwrap()
+        // SAFETY: url is built from the three RunPluginLocation variants above;
+        // parse only fails if that formatting ever produces an invalid URL.
+        Self::parse(&url).expect("RunPluginLocation formats as a valid URL")
     }
 }
 
 impl fmt::Display for RunPluginLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Self::File(path) => write!(
-                f,
-                "{}",
-                path.clone().into_os_string().into_string().unwrap()
-            ),
+            Self::File(path) => write!(f, "{}", path.display()),
             Self::Zellij(tag) => write!(f, "{}", tag),
             Self::Remote(url) => write!(f, "{}", url),
         }

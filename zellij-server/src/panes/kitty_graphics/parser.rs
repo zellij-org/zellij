@@ -206,7 +206,8 @@ impl KittyCommandParser {
             let pairs = match tokenize(control) {
                 Ok(pairs) => pairs,
                 Err(()) => {
-                    let pending = self.pending.take().unwrap();
+                    // SAFETY: pending.is_some() just checked
+                    let pending = self.pending.take().expect("pending set above");
                     let echo = EchoFields::from_command(&pending.command);
                     return Some(Err(
                         echo.error(KittyErrorCode::Einval, "malformed control data")
@@ -226,7 +227,10 @@ impl KittyCommandParser {
                             Some(0) => more_chunks = false,
                             Some(1) => more_chunks = true,
                             _ => {
-                                let pending = self.pending.take().unwrap();
+                                // SAFETY: inside pending.is_some() arm; still Some
+                                let Some(pending) = self.pending.take() else {
+                                    return None;
+                                };
                                 let echo = EchoFields::from_command(&pending.command);
                                 return Some(Err(
                                     echo.error(KittyErrorCode::Einval, "malformed control data")
@@ -238,16 +242,22 @@ impl KittyCommandParser {
                 for (key, value) in &pairs {
                     if *key == b"q" {
                         if let Some(q @ 0..=2) = parse_u32(value) {
-                            self.pending.as_mut().unwrap().command.quiet = q as u8;
+                            if let Some(pending) = self.pending.as_mut() {
+                                pending.command.quiet = q as u8;
+                            }
                         }
                     }
                 }
-                let pending = self.pending.as_mut().unwrap();
+                let Some(pending) = self.pending.as_mut() else {
+                    return None;
+                };
                 pending.append(payload);
                 if more_chunks {
                     return None;
                 }
-                let mut pending = self.pending.take().unwrap();
+                let Some(mut pending) = self.pending.take() else {
+                    return None;
+                };
                 pending.command.more_chunks = false;
                 if pending.overflowed {
                     let echo = EchoFields::from_command(&pending.command);

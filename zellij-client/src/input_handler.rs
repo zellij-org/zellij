@@ -352,9 +352,9 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::ColorRegisters { color_registers });
             },
             AnsiStdinInstruction::SynchronizedOutput(enabled) => {
-                self.send_client_instructions
-                    .send(ClientInstruction::SetSynchronizedOutput(enabled))
-                    .unwrap();
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::SetSynchronizedOutput(enabled));
             },
             AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
                 self.os_input
@@ -395,11 +395,11 @@ impl InputHandler {
         }
         match decoded {
             Some(NestedSessionMessage::Ping) => {
-                self.send_client_instructions
-                    .send(ClientInstruction::EmitNestedSessionFrame(
+                let _ = self.send_client_instructions.send(
+                    ClientInstruction::EmitNestedSessionFrame(
                         nested_session::encode_payload(&NestedSessionMessage::Pong),
-                    ))
-                    .unwrap();
+                    ),
+                );
             },
             Some(_) => {
                 self.os_input
@@ -517,9 +517,9 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting Zellij).
     fn exit(&mut self, reason: ExitReason) {
-        self.send_client_instructions
-            .send(ClientInstruction::Exit(reason))
-            .unwrap();
+        let _ = self
+            .send_client_instructions
+            .send(ClientInstruction::Exit(reason));
     }
 }
 

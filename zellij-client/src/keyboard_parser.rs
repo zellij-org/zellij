@@ -165,6 +165,7 @@ impl KittyKeyboardParser {
                 // — `\x1b[1;2A` etc. (Complete).
                 match self.modifier_bytes.last().copied() {
                     Some(last) if is_csi_final_letter(last) => {
+                        // SAFETY: last() above proved modifier_bytes is non-empty.
                         let last_modifier = self.modifier_bytes.pop().unwrap();
                         let result = KeyWithModifier::from_bytes_with_no_ending_byte(
                             &[last_modifier],

@@ -415,6 +415,7 @@ pub fn pipes_to_block_or_unblock(
         .data()
         .input_pipes_to_unblock
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .drain()
         .collect();
@@ -423,6 +424,7 @@ pub fn pipes_to_block_or_unblock(
         .data()
         .input_pipes_to_block
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .drain()
         .collect();

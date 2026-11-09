@@ -305,7 +305,9 @@ impl ClientOsApi for FakeClientOsApi {
             }
         }
         let ipc_sender = IpcSenderWithContext::new(socket);
-        let ipc_receiver = ipc_sender.get_receiver();
+        let ipc_receiver = ipc_sender
+            .get_receiver()
+            .expect("test harness IPC receiver clone");
         *self.send_instructions_to_server.lock().unwrap() = Some(ipc_sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(ipc_receiver);
     }

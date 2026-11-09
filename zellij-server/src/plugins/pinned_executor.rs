@@ -1030,6 +1030,7 @@ impl PinnedExecutor {
     pub fn is_registered(&self, plugin_id: u32) -> bool {
         self.plugin_assignments
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .contains_key(&plugin_id)
     }

@@ -250,7 +250,9 @@ fn connect_with_retry(
     let sender = retry_until(deadline, || zellij_utils::consts::ipc_connect(path))
         .map(IpcSenderWithContext::new)
         .map_err(|e| anyhow!("failed to connect to {:?}: {}", path, e))?;
-    let receiver = sender.get_receiver();
+    let receiver = sender
+        .get_receiver()
+        .map_err(|e| anyhow!("failed to clone IPC reply channel: {}", e))?;
     Ok((sender, receiver))
 }
 

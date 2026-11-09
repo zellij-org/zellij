@@ -796,6 +796,7 @@ impl WasmBridge {
                 // if no client id was provided, try to use the first connected client
                 self.connected_clients
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .iter()
                     .next()
@@ -1167,6 +1168,7 @@ impl WasmBridge {
                     } else {
                         let cache_dir = running_plugin
                             .lock()
+                            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                             .unwrap()
                             .store
                             .data()
@@ -1456,6 +1458,7 @@ impl WasmBridge {
             if self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .contains(plugin_id, client_id)
             {
@@ -1581,6 +1584,7 @@ impl WasmBridge {
 
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .set_size(pid, new_rows, new_columns);
         if self.quarantine.contains(&pid) {
@@ -1608,6 +1612,7 @@ impl WasmBridge {
         let plugins_to_resize: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
@@ -1622,6 +1627,7 @@ impl WasmBridge {
             if plugin_id == pid {
                 let event_id = running_plugin
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .next_event_id(AtomicEvent::Resize);
                 // Execute directly on pinned thread (no async I/O needed for resize/render)
@@ -1681,11 +1687,13 @@ impl WasmBridge {
                                                 rendered_bytes.as_bytes().to_vec(),
                                             )
                                             .rendered_at(new_rows, new_columns);
-                                            senders
-                                                .send_to_screen(ScreenInstruction::PluginBytes(
-                                                    vec![plugin_render_asset],
-                                                ))
-                                                .unwrap();
+                                            // Best-effort: screen disconnect during teardown must
+                                            // not panic the plugin worker.
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::PluginBytes(vec![
+                                                    plugin_render_asset,
+                                                ]),
+                                            );
                                         },
                                         Err(e) => {
                                             log::error!("{}", e);
@@ -1742,6 +1750,7 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
@@ -1769,6 +1778,7 @@ impl WasmBridge {
                             Some(
                                 self.latest_hovers
                                     .lock()
+                                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                                     .unwrap()
                                     .queue(*plugin_id, *client_id),
                             )
@@ -1797,6 +1807,7 @@ impl WasmBridge {
                                     if let Some(generation) = hover_generation {
                                         let superseded = latest_hovers
                                             .lock()
+                                            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                                             .unwrap()
                                             .is_superseded(plugin_id, client_id, generation);
                                         if superseded {
@@ -1896,6 +1907,7 @@ impl WasmBridge {
         }
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
@@ -1903,6 +1915,7 @@ impl WasmBridge {
                 if p_id == &plugin_id && c_id == &client_id {
                     let plugin_cwd = running_plugin
                         .lock()
+                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                         .unwrap()
                         .store
                         .data()
@@ -1934,6 +1947,7 @@ impl WasmBridge {
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let running_plugin = plugin_map
                         .lock()
+                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                         .unwrap()
                         .shared_running_plugin(instance_id)
                         .map(|(running_plugin, _)| running_plugin);
@@ -1970,6 +1984,7 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
@@ -2042,6 +2057,7 @@ impl WasmBridge {
                                     drop(running_plugin);
                                     plugin_map
                                         .lock()
+                                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                                         .unwrap()
                                         .set_cwd(*plugin_id, new_host_dir.clone());
 
@@ -2085,6 +2101,7 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
@@ -2174,6 +2191,7 @@ impl WasmBridge {
             let all_connected_clients: Vec<ClientId> = self
                 .connected_clients
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .iter()
                 .copied()
@@ -2272,6 +2290,7 @@ impl WasmBridge {
         self.latest_hovers.lock().unwrap().evict_client(client_id);
         self.connected_clients
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .retain(|c| c != &client_id);
         self.keybinds.remove(&client_id);
@@ -2337,6 +2356,7 @@ impl WasmBridge {
                 move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let cache_dir = running_plugin
                         .lock()
+                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                         .unwrap()
                         .store
                         .data()
@@ -2595,6 +2615,7 @@ impl WasmBridge {
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .run_plugin_of_plugin_id(plugin_id)
     }
@@ -2610,6 +2631,7 @@ impl WasmBridge {
         let plugins_to_reconfigure: Vec<(PluginId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
@@ -2732,6 +2754,7 @@ impl WasmBridge {
         let has_instance = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .all_plugin_ids()
             .iter()
@@ -2964,6 +2987,7 @@ impl WasmBridge {
     ) -> Result<Vec<PluginId>> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .all_plugin_ids_for_plugin_location(plugin_location, plugin_configuration)
     }
@@ -2994,6 +3018,7 @@ impl WasmBridge {
         // (rows/columns)
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| (metadata.rows, metadata.columns))
@@ -3001,6 +3026,7 @@ impl WasmBridge {
     fn cwd_of_plugin_id(&self, plugin_id: PluginId) -> Option<PathBuf> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| metadata.cwd.clone())
@@ -3008,6 +3034,7 @@ impl WasmBridge {
     fn plugin_config_of_plugin_id(&self, plugin_id: PluginId) -> Option<PluginConfig> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| metadata.plugin_config.clone())
@@ -3015,6 +3042,7 @@ impl WasmBridge {
     fn tab_index_of_plugin_id(&self, plugin_id: PluginId) -> Option<usize> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .and_then(|metadata| metadata.tab_index)
@@ -3067,6 +3095,7 @@ impl WasmBridge {
         let worker =
             self.plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .worker_sender(plugin_id, client_id, &worker_name);
         match worker {
@@ -3148,12 +3177,14 @@ impl WasmBridge {
             Some(instance_id) => self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .shared_running_plugin(instance_id)
                 .map(|(running_plugin, _)| running_plugin),
             None => self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .get_running_plugin(plugin_id, client_id),
         };
@@ -3180,6 +3211,7 @@ impl WasmBridge {
         let shared_running_plugin = self.shared_instance_of(plugin_id).and_then(|instance_id| {
             self.plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .shared_running_plugin(instance_id)
                 .map(|(running_plugin, _)| running_plugin)
@@ -3189,6 +3221,7 @@ impl WasmBridge {
             None => self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .get_running_plugin(plugin_id, client_id)
                 .ok_or_else(|| anyhow!("Failed to get running plugin"))?,
@@ -3201,6 +3234,7 @@ impl WasmBridge {
             .data()
             .permissions
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .clone()
             .unwrap_or_default();
@@ -3567,6 +3601,7 @@ impl WasmBridge {
         let running_plugins: Vec<Arc<Mutex<RunningPlugin>>> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .into_iter()
@@ -3576,6 +3611,7 @@ impl WasmBridge {
         for running_plugin in running_plugins {
             running_plugin
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .store
                 .data_mut()
@@ -3608,6 +3644,7 @@ impl WasmBridge {
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.connected_clients
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .iter()
             .next()
@@ -3722,6 +3759,7 @@ impl WasmBridge {
     fn shared_instance_subscribes_to(&self, instance_id: PluginId, event_type: EventType) -> bool {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .shared_running_plugin(instance_id)
             .map(|(_, subscriptions)| subscriptions.lock().unwrap().contains(&event_type))
@@ -3794,12 +3832,14 @@ impl WasmBridge {
                 let instance_is_running = self
                     .plugin_map
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .shared_running_plugin(instance_id)
                     .is_some();
                 let instance_is_in_blocking_call = self
                     .plugin_map
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
@@ -4684,6 +4724,7 @@ fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
     plugin_env
         .permissions
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .as_ref()
         .map(|permissions| permissions.contains(&PermissionType::ReadPaneContents))

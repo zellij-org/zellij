@@ -290,7 +290,13 @@ fn receive_push(
     };
     let mut sender = match reply {
         Some(reply) => zellij_utils::ipc::IpcSenderWithContext::<ServerToClientMsg>::new(reply),
-        None => receiver.get_sender::<ServerToClientMsg>(),
+        None => match receiver.get_sender::<ServerToClientMsg>() {
+            Ok(sender) => sender,
+            Err(e) => {
+                log::error!("failed to clone IPC sender for watcher push: {}", e);
+                return;
+            },
+        },
     };
     match message {
         ClientToServerMsg::PeerAttentionChanged {

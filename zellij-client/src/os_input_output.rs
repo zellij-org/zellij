@@ -258,7 +258,10 @@ impl ClientOsApi for ClientOsInputOutput {
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                let buffer = stdin.fill_buf().unwrap();
+                let buffer = match stdin.fill_buf() {
+                    Ok(buffer) => buffer,
+                    Err(_) => return Err("Failed to read from STDIN"),
+                };
                 let length = buffer.len();
                 let read_bytes = Vec::from(buffer);
                 stdin.consume(length);
@@ -312,12 +315,17 @@ impl ClientOsApi for ClientOsInputOutput {
     fn try_recv_from_server(
         &self,
     ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
-        self.receive_instructions_from_server
+        match self
+            .receive_instructions_from_server
             .lock()
-            .unwrap()
+            // SAFETY: Mutex poison only occurs after another thread already panicked
+            // while holding this lock; recovering the guard keeps IPC readable.
+            .unwrap_or_else(|p| p.into_inner())
             .as_mut()
-            .unwrap()
-            .try_recv_server_msg()
+        {
+            Some(receiver) => receiver.try_recv_server_msg(),
+            None => Err(IpcReceiveError::Disconnected),
+        }
     }
     fn handle_signals(
         &self,
@@ -326,7 +334,13 @@ impl ClientOsApi for ClientOsInputOutput {
         resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     ) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
-        let signals = BlockingSignalIterator::new(resize_receiver).unwrap();
+        let signals = match BlockingSignalIterator::new(resize_receiver) {
+            Ok(signals) => signals,
+            Err(e) => {
+                log::error!("Failed to register signal handlers: {}", e);
+                return;
+            },
+        };
         for event in signals {
             match event {
                 SignalEvent::Resize => {
@@ -345,9 +359,21 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let (sender, receiver) = connect_ipc(path);
-        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
-        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        // Retry until both directions are up. On Windows that is one paired
+        // connect, not a request pipe followed by a later reply.
+        loop {
+            match connect_ipc(path) {
+                Ok((sender, receiver)) => {
+                    *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+                    *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+                    return;
+                },
+                Err(e) => {
+                    log::warn!("failed to set up client IPC channels: {}", e);
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                },
+            }
+        }
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of

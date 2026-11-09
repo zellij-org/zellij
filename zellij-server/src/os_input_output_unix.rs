@@ -88,6 +88,7 @@ impl RawFdAsyncReader {
                 .expect("RawFdAsyncReader used after init");
             self.async_fd = Some(AsyncFd::new(file)?);
         }
+        // SAFETY: initialized above when None; otherwise already Some
         Ok(self.async_fd.as_mut().unwrap())
     }
 }
@@ -785,14 +786,14 @@ impl UnixPtyBackend {
     pub fn reserve_terminal_id(&self, terminal_id: u32) {
         self.terminal_id_to_raw_fd
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(terminal_id, None);
     }
 
     pub fn clear_terminal_id(&self, terminal_id: u32) {
         self.terminal_id_to_raw_fd
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&terminal_id);
         if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
             sizes.remove(&terminal_id);

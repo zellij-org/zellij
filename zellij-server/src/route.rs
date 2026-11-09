@@ -3081,7 +3081,7 @@ pub(crate) fn route_thread_main(
                             // Track this as the last active client
                             session_state
                                 .write()
-                                .unwrap()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .set_last_active_client(client_id);
 
                             // The read guard ends as a temporary in this expression so
@@ -3250,7 +3250,7 @@ pub(crate) fn route_thread_main(
                                 // certainly correct in almost all cases
                                 session_state
                                     .read()
-                                    .unwrap()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
                                     .get_last_active_client()
                                     .or(maybe_client_id)
                                     .unwrap_or(client_id)
@@ -3275,7 +3275,7 @@ pub(crate) fn route_thread_main(
                             let popup_has_focus = !is_cli_client
                                 && session_data
                                     .read()
-                                    .unwrap()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
                                     .as_ref()
                                     .map(|s| s.popup_clients.contains(&client_id))
                                     .unwrap_or(false);
@@ -3639,7 +3639,7 @@ pub(crate) fn route_thread_main(
                             // empty reply for the same token.
                             session_state
                                 .write()
-                                .unwrap()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .clear_forward_in_flight(token);
                             let _ = send_to_screen_or_retry_queue!(
                                 senders,
@@ -3790,7 +3790,7 @@ pub(crate) fn route_thread_main(
                                         let plugins = scan_state
                                             .current_session_plugin_list
                                             .lock()
-                                            .unwrap()
+                                            .unwrap_or_else(|poisoned| poisoned.into_inner())
                                             .clone();
                                         (name, info, plugins)
                                     };

@@ -58,6 +58,7 @@ pub async fn auth_middleware(request: Request, next: Next) -> Result<Response, S
 }
 
 fn unauthorized_and_clear_session_cookies() -> Response {
+    // SAFETY: Response::builder with only UNAUTHORIZED + empty body cannot fail.
     let mut response = Response::builder()
         .status(StatusCode::UNAUTHORIZED)
         .body(Body::empty())
@@ -84,9 +85,9 @@ fn unauthorized_and_clear_session_cookies() -> Response {
     ];
 
     for cookie in clear_cookies {
-        response
-            .headers_mut()
-            .append(SET_COOKIE, cookie.to_string().parse().unwrap());
+        if let Ok(value) = cookie.to_string().parse() {
+            response.headers_mut().append(SET_COOKIE, value);
+        }
     }
     response
 }

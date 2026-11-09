@@ -202,7 +202,7 @@ pub async fn ws_handler_control(
     if !state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .verify_client_ownership(&params.web_client_id, &session_token_hash.0)
     {
         log::error!(
@@ -260,7 +260,7 @@ async fn handle_ws_control(
     let registered = state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .add_client_control_tx(
             &web_client_id,
             control_channel_tx,
@@ -284,7 +284,7 @@ async fn handle_ws_control(
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let (client_os_api, is_structured) = {
-            let connection_table = state.connection_table.lock().unwrap();
+            let connection_table = state.connection_table.lock().unwrap_or_else(|p| p.into_inner());
             (
                 connection_table
                     .get_client_os_api(&deserialized_msg.web_client_id)
@@ -371,7 +371,7 @@ async fn handle_ws_control(
                     state
                         .connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .remove_client(&web_client_id);
                     break;
                 }
@@ -433,7 +433,7 @@ async fn handle_ws_terminal(
     if !state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .verify_client_ownership(&web_client_id, &session_token_hash.0)
     {
         log::error!(
@@ -449,7 +449,7 @@ async fn handle_ws_terminal(
         client_channel(KEEPALIVE_CHANNEL_MAX_MESSAGES, KEEPALIVE_CHANNEL_MAX_BYTES);
     // One terminal websocket (and one session connection with the thread
     // listening to it) per client id: claim the id before starting anything.
-    let attached = state.connection_table.lock().unwrap().attach_terminal(
+    let attached = state.connection_table.lock().unwrap_or_else(|p| p.into_inner()).attach_terminal(
         &web_client_id,
         is_structured_client,
         stdout_channel_tx,
@@ -473,7 +473,7 @@ async fn handle_ws_terminal(
             state
                 .connection_table
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|p| p.into_inner())
                 .remove_client(&web_client_id);
             let _ = socket
                 .send(Message::Close(Some(CloseFrame {
@@ -492,7 +492,7 @@ async fn handle_ws_terminal(
         os_input.clone(),
         state.connection_table.clone(),
         session_name.map(|p| p.0),
-        state.config.lock().unwrap().clone(),
+        state.config.lock().unwrap_or_else(|p| p.into_inner()).clone(),
         state.config_options.clone(),
         state.config_file_path.clone(),
         web_client_id.clone(),
@@ -508,7 +508,7 @@ async fn handle_ws_terminal(
     let should_not_reconnect = state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .get_should_not_reconnect_flag(&web_client_id)
         .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
@@ -521,7 +521,7 @@ async fn handle_ws_terminal(
     state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .add_client_terminal_channel_cancellation_token(
             &web_client_id,
             terminal_channel_cancellation_token.clone(),
@@ -530,7 +530,7 @@ async fn handle_ws_terminal(
     let explicitly_disable_kitty_keyboard_protocol = state
         .config
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .options
         .support_kitty_keyboard_protocol
         .map(|e| !e)
@@ -584,7 +584,7 @@ async fn handle_ws_terminal(
                 state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .remove_client(&web_client_id);
                 break;
             },
@@ -608,7 +608,7 @@ async fn handle_ws_terminal(
                     state
                         .connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .remove_client(&web_client_id);
                     break;
                 }
@@ -621,7 +621,7 @@ async fn handle_ws_terminal(
                 if let Some(client_connection) = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
                     .cloned()
                 {
@@ -639,7 +639,7 @@ async fn handle_ws_terminal(
                 let Some(client_connection) = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
                     .cloned()
                 else {
@@ -657,7 +657,7 @@ async fn handle_ws_terminal(
                 let Some(client_connection) = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
                     .cloned()
                 else {
@@ -678,7 +678,7 @@ async fn handle_ws_terminal(
                 state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .remove_client(&web_client_id);
                 break;
             },
@@ -691,7 +691,7 @@ async fn handle_ws_terminal(
     state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .remove_client(&web_client_id);
     os_input.send_to_server(ClientToServerMsg::ClientExited);
 }

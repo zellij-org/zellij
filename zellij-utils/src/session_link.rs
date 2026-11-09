@@ -37,7 +37,9 @@ impl SessionLink {
         let receiver: IpcReceiverWithContext<ServerToClientMsg> =
             IpcReceiverWithContext::new(reply_stream);
         #[cfg(not(windows))]
-        let receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+        let receiver: IpcReceiverWithContext<ServerToClientMsg> = sender
+            .get_receiver()
+            .map_err(|e| e.to_string())?;
         Ok(SessionLink { sender, receiver })
     }
     pub fn send(&mut self, msg: ClientToServerMsg) -> Result<(), String> {

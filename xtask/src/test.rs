@@ -159,7 +159,8 @@ pub fn host_target_triple(sh: &Shell) -> anyhow::Result<String> {
         .collect::<Vec<String>>();
     match maybe_triple.len() {
         0 => Err(anyhow!("rustc didn't output the 'host' triple")),
-        1 => Ok(maybe_triple.into_iter().next().unwrap()),
+        // SAFETY: Length matched as 1; next() cannot be None.
+        1 => Ok(maybe_triple.into_iter().next().expect("len checked as 1")),
         _ => Err(anyhow!(
             "rustc provided multiple host triples: {:?}",
             maybe_triple

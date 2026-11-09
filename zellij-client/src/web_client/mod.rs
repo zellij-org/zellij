@@ -136,7 +136,13 @@ pub fn start_web_client(
             startup_timeout,
         )
     } else {
-        let runtime = Runtime::new().unwrap();
+        let runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                eprintln!("Failed to create web server runtime: {}", e);
+                std::process::exit(2);
+            },
+        };
         let listener = runtime.block_on(async move {
             std::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
         });
@@ -262,7 +268,7 @@ pub async fn serve_web_client(
                 interval.tick().await;
                 let expired = connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .remove_expired_unattached_clients(std::time::Instant::now());
                 if expired > 0 {
                     log::debug!("Forgot {} web client ids that never connected", expired);
@@ -292,6 +298,7 @@ pub async fn serve_web_client(
             async move {
                 let mut response = next.run(request).await;
                 let headers = response.headers_mut();
+                // SAFETY: these HeaderValue string literals use only valid header bytes.
                 headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
                 headers.insert("X-Frame-Options", "DENY".parse().unwrap());
                 headers.insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
@@ -353,14 +360,27 @@ fn daemonize_web_server(
     _config_file_path: Option<PathBuf>,
     _startup_timeout: Option<u64>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
-    let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
-    let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
+    let (mut exit_message_tx, exit_message_rx) = match pipe() {
+        Ok(pipe) => pipe,
+        Err(e) => {
+            eprintln!("Failed to create daemonize exit message pipe: {}", e);
+            std::process::exit(2);
+        },
+    };
+    let (mut exit_status_tx, mut exit_status_rx) = match pipe() {
+        Ok(pipe) => pipe,
+        Err(e) => {
+            eprintln!("Failed to create daemonize exit status pipe: {}", e);
+            std::process::exit(2);
+        },
+    };
     let current_umask = umask(Mode::all());
     umask(current_umask);
     let web_server_key = web_server_key.clone();
     let web_server_cert = web_server_cert.clone();
+    let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let daemonization_outcome = daemonize::Daemonize::new()
-        .working_directory(std::env::current_dir().unwrap())
+        .working_directory(working_directory)
         .umask(current_umask.bits() as u32)
         .privileged_action(
             move || -> Result<(Runtime, std::net::TcpListener, Option<RustlsConfig>), String> {
@@ -493,11 +513,9 @@ fn daemonize_web_server(
         Ok(_child) => {
             let timeout_secs = startup_timeout.unwrap_or(DEFAULT_SERVER_STARTUP_TIMEOUT_SECS);
             let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-            let addr = format!("{}:{}", web_server_ip, web_server_port);
+            let addr = SocketAddr::new(web_server_ip, web_server_port);
             loop {
-                if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(200))
-                    .is_ok()
-                {
+                if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
                     println!(
                         "Web Server started on {} port {}",
                         web_server_ip, web_server_port

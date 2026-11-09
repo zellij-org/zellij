@@ -537,6 +537,7 @@ fn lookup(
 ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
     plugin_map
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .shared_running_plugin(instance_id)
 }
@@ -775,6 +776,7 @@ fn tear_down_instance(
     }
     let needs_before_close = subscriptions
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .contains(&EventType::BeforeClose);
     let mut running_plugin = running_plugin.lock().unwrap();

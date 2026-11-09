@@ -688,7 +688,9 @@ fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
-        .unwrap();
+        // SAFETY: plugin export setup is controlled; func_wrap only fails on
+        // duplicate/invalid registration during linker construction.
+        .expect("register host_run_plugin_command");
 }
 
 fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
@@ -5185,7 +5187,16 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
         .plugin_cwd
         .canonicalize()
         .unwrap_or_else(|_| env.plugin_cwd.clone());
-    let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
+    let Some(relative) = folder_to_scan.strip_prefix("/host").ok() else {
+        // starts_with("/host") above, but strip_prefix can still fail for
+        // non-canonical prefix edge cases (e.g. "/host" vs "/host/").
+        log::error!(
+            "Failed to strip /host prefix from path: {}",
+            folder_to_scan.display()
+        );
+        return;
+    };
+    let folder_to_scan = plugin_host_folder.join(relative);
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
             if !folder_to_scan.starts_with(&plugin_host_folder) {
@@ -5208,10 +5219,15 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                             for entry in reading_folder {
                                 if let Ok(entry) = entry {
                                     let entry_metadata = entry.metadata().ok().map(|m| m.into());
+                                    let entry_path = entry.path();
+                                    let Ok(relative) =
+                                        entry_path.strip_prefix(&plugin_host_folder)
+                                    else {
+                                        // Symlink / FS race can put an entry outside the host root.
+                                        continue;
+                                    };
                                     paths_in_folder.push((
-                                        PathBuf::from("/host").join(
-                                            entry.path().strip_prefix(&plugin_host_folder).unwrap(),
-                                        ),
+                                        PathBuf::from("/host").join(relative),
                                         entry_metadata.into(),
                                     ));
                                 }
@@ -5765,15 +5781,10 @@ fn try_save_layout(
         .map_err(|e| format!("Failed to create layout directory: {}", e))?;
 
     // Step 7: Write to disk
-    let mut parsed_layout: KdlDocument = layout_kdl.parse().unwrap(); // unwrap
-                                                                      // should
-                                                                      // be
-                                                                      // safe,
-                                                                      // but
-                                                                      // let's
-                                                                      // do
-                                                                      // it
-                                                                      // nicer
+    // Layout::from_kdl already validated this string; re-parse for formatting.
+    let mut parsed_layout: KdlDocument = layout_kdl
+        .parse()
+        .map_err(|e| format!("Failed to re-parse validated layout KDL: {}", e))?;
     parsed_layout.fmt();
     std::fs::write(&file_path, &parsed_layout.to_string())
         .map_err(|io_error| format!("Failed to write layout file: {}", io_error))?;
@@ -6662,6 +6673,7 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
     plugin_env
         .stdout_pipe
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .read_to_end(&mut buf)
         .map_err(anyError::new)

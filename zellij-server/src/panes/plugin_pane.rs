@@ -605,40 +605,40 @@ impl Pane for PluginPane {
             .unwrap_or_default()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollUp(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_down(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollDown(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_left(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollLeft(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_right(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollRight(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn clear_screen(&mut self) {
         // do nothing
@@ -668,26 +668,26 @@ impl Pane for PluginPane {
             } else {
                 Event::MouseWithModifiers(click, modifiers)
             };
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     event,
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
             return;
         }
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
@@ -696,13 +696,13 @@ impl Pane for PluginPane {
                 self.set_should_render(true); // TODO: no??
             }
         } else {
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn end_selection(&mut self, end: &Position, client_id: ClientId) {
@@ -711,13 +711,13 @@ impl Pane for PluginPane {
                 grid.end_selection(end);
             }
         } else {
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     Event::Mouse(Mouse::Release(end.line(), end.column())),
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn reset_selection(&mut self, client_id: Option<ClientId>) {
@@ -797,13 +797,13 @@ impl Pane for PluginPane {
         self.exclude_from_sync
     }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) -> bool {
         let new_override = Some((self.style.colors.exit_code_error.base, error_text));

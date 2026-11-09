@@ -6,9 +6,11 @@ use crate::{
     data::SessionInfo,
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, IpcSenderWithContext, ServerToClientMsg},
     session_index::{self, SessionIndex},
 };
+#[cfg(windows)]
+use crate::ipc::IpcReceiverWithContext;
 use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
@@ -474,7 +476,9 @@ fn assert_socket_path(path: &Path, timeout: Duration) -> SessionProbeResult {
             let mut sender: IpcSenderWithContext<ClientToServerMsg> =
                 IpcSenderWithContext::new(stream);
             let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+            let Ok(mut receiver) = sender.get_receiver::<ServerToClientMsg>() else {
+                return SessionProbeResult::Unknown;
+            };
             match receiver.recv_server_msg() {
                 Some((ServerToClientMsg::Connected, _)) => SessionProbeResult::Responsive,
                 // Timeout, hang-up or unexpected reply: unknown, not proven dead.
@@ -1762,7 +1766,8 @@ mod session_probe_tests {
                 IpcReceiverWithContext::new(stream);
             let (msg, _) = receiver.recv_client_msg().expect("ConnStatus");
             assert!(matches!(msg, ClientToServerMsg::ConnStatus));
-            let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+            let mut sender: IpcSenderWithContext<ServerToClientMsg> =
+                receiver.get_sender().expect("clone probe reply sender");
             sender
                 .send_server_msg(ServerToClientMsg::Connected)
                 .expect("Connected reply");

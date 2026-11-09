@@ -63,7 +63,10 @@ pub fn running_session_preview(
     let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
         IpcReceiverWithContext::new(reply_stream);
     #[cfg(not(windows))]
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = match sender.get_receiver() {
+        Ok(receiver) => receiver,
+        Err(e) => return preview_error(session_name, tab_index, e.to_string()),
+    };
     let _ = receiver.set_read_timeout(Some(REMOTE_PREVIEW_TIMEOUT));
     let reply = receiver.try_recv_server_msg();
     match reply {

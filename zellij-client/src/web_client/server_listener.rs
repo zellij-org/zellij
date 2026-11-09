@@ -113,7 +113,7 @@ pub fn zellij_server_listener(
                     // Look up read-only status from connection table
                     let is_read_only = connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .is_client_read_only(&web_client_id);
 
 
@@ -137,7 +137,18 @@ pub fn zellij_server_listener(
                         return;
                     }
 
-                    let zellij_ipc_pipe = create_ipc_pipe(&session_name, session_exists);
+                    let zellij_ipc_pipe = match create_ipc_pipe(&session_name, session_exists) {
+                        Ok(pipe) => pipe,
+                        Err(e) => {
+                            log::error!(
+                                "Failed to prepare IPC pipe for session {:?}: {}",
+                                session_name,
+                                e
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
                     let create_message = create_first_message(
                         is_read_only,
                         config_file_path.clone(),

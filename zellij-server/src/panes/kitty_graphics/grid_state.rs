@@ -696,14 +696,16 @@ impl KittyGrid {
         if uppercase {
             match lower {
                 'i' | 'n' => {
-                    let target = target_image_id.unwrap();
-                    let no_surviving = !self
-                        .placements
-                        .iter()
-                        .any(|placement| placement.image_id == target);
-                    if no_surviving {
-                        if let Some(internal) = self.image_ids.get(&target).copied() {
-                            self.kitty_image_store.borrow_mut().free(internal);
+                    // SAFETY: 'i'|'n' arms set target_image_id to Some (or early-return)
+                    if let Some(target) = target_image_id {
+                        let no_surviving = !self
+                            .placements
+                            .iter()
+                            .any(|placement| placement.image_id == target);
+                        if no_surviving {
+                            if let Some(internal) = self.image_ids.get(&target).copied() {
+                                self.kitty_image_store.borrow_mut().free(internal);
+                            }
                         }
                     }
                 },

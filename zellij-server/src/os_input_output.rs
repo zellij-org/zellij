@@ -923,7 +923,12 @@ impl ServerOsApi for ServerOsInputOutput {
         client_id: ClientId,
         receiver: &IpcReceiverWithContext<ClientToServerMsg>,
     ) -> Result<()> {
-        let sender = ClientSender::new(client_id, receiver.get_sender());
+        let sender = ClientSender::new(
+            client_id,
+            receiver
+                .get_sender()
+                .with_context(|| format!("failed to clone IPC sender for client {client_id}"))?,
+        );
         self.replace_client_sender(client_id, sender)
     }
 

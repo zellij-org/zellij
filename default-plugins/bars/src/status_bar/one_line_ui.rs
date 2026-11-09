@@ -1538,7 +1538,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         to_basemode_keys.into_iter().take(1).collect()
     };
 
-    old_keymap.sort_unstable_by(|(keya, _), (keyb, _)| keya.partial_cmp(keyb).unwrap());
+    // KeyWithModifier: Ord ⇒ total order; use cmp instead of infallible partial_cmp.
+    old_keymap.sort_unstable_by(|(keya, _), (keyb, _)| keya.cmp(keyb));
 
     let mut known_actions: Vec<Vec<Action>> = vec![];
     let mut km = vec![];
@@ -2005,10 +2006,11 @@ fn style_key_with_modifier(
 }
 
 fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
-    if keyvec.is_empty() {
+    // Empty check folded into pop: None ⇒ no modifiers in common.
+    let Some(first) = keyvec.pop() else {
         return vec![];
-    }
-    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
+    };
+    let mut common_modifiers = first.key_modifiers.clone();
     for key in keyvec {
         common_modifiers = common_modifiers
             .intersection(&key.key_modifiers)

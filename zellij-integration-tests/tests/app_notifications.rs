@@ -105,7 +105,7 @@ impl WindowClient {
         let stream = zellij_utils::consts::ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);
-        let mut receiver = sender.get_receiver::<ServerToClientMsg>();
+        let mut receiver = sender.get_receiver::<ServerToClientMsg>().expect("test IPC receiver clone");
         let handshake = zellij_client::first_message(
             &zellij_client::ClientInfo::Attach(
                 session_name.to_owned(),

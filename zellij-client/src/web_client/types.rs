@@ -247,7 +247,7 @@ impl ClientConnectionBus {
         let web_client_id = web_client_id.to_owned();
         let stdout_channel_tx = connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .get_client_terminal_tx(&web_client_id);
         ClientConnectionBus {
             connection_table,

@@ -1117,7 +1117,12 @@ fn transfer_rows_from_lines_above_to_viewport(
                     .merge_rows_into_line_start(lines_above.len(), row_count_delta.unsigned_abs());
             }
         }
-        viewport.push_front(next_lines.pop().unwrap());
+        let Some(row) = next_lines.pop() else {
+            // SAFETY path: only reached when next_lines was just filled and
+            // verified non-empty, or still has remainder from prior pops.
+            break;
+        };
+        viewport.push_front(row);
         lines_added_to_viewport += 1;
     }
     for excess_row in next_lines {
@@ -1423,7 +1428,7 @@ fn bounded_push(
         exact.append(&mut value.columns);
         recycle_columns(std::mem::replace(&mut value.columns, exact));
     }
-    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE);
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
     // While the oldest line is being measured, evicting it would move the
     // measurement origin and restart the job. Admit a bounded reserve of new
@@ -1605,6 +1610,7 @@ macro_rules! dump_screen_with_ansi {
             for tc in line.columns.iter().take(last_non_space) {
                 // Only output style codes if style changed
                 if last_styles.as_ref() != Some(&tc.styles) {
+                    // SAFETY: fmt::Write for String never fails
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
@@ -2178,6 +2184,7 @@ impl Debug for Grid {
         // display sixel placeholder
         let sixel_indication_character = |x| {
             let sixel_indication_word = "Sixel";
+            // SAFETY: non-empty literal; nth(x % len) always in range
             sixel_indication_word
                 .chars()
                 .nth(x % sixel_indication_word.len())
@@ -2190,17 +2197,19 @@ impl Debug for Grid {
             let (image_top_edge, image_bottom_edge, image_left_edge, image_right_edge) =
                 image_coordinates;
             for y in image_top_edge..image_bottom_edge {
-                let row = buffer.get_mut(y).unwrap();
-                for x in image_left_edge..image_right_edge {
-                    let fake_sixel_terminal_character =
-                        TerminalCharacter::new_singlewidth(sixel_indication_character(x));
-                    row.add_character_at(fake_sixel_terminal_character, x);
+                if let Some(row) = buffer.get_mut(y) {
+                    for x in image_left_edge..image_right_edge {
+                        let fake_sixel_terminal_character =
+                            TerminalCharacter::new_singlewidth(sixel_indication_character(x));
+                        row.add_character_at(fake_sixel_terminal_character, x);
+                    }
                 }
             }
         }
 
         let kitty_indication_character = |x| {
             let kitty_indication_word = "KittyImage";
+            // SAFETY: non-empty literal; nth(x % len) always in range
             kitty_indication_word
                 .chars()
                 .nth(x % kitty_indication_word.len())
@@ -2820,9 +2829,15 @@ impl Grid {
             return result;
         }
         let mut found_something = false;
-        if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+        // Mirror scroll_down: when height==0, len==height holds with an empty
+        // viewport, so require non-empty before pop_back.
+        if !self.lines_above.is_empty()
+            && self.viewport.len() == self.height
+            && !self.viewport.is_empty()
+        {
             self.is_scrolled = true;
             result.moved = true;
+            // SAFETY: guarded by !viewport.is_empty() above
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
             self.lines_below_cells = None;
@@ -3007,7 +3022,7 @@ impl Grid {
         !self.scrollback_over_budget()
     }
     fn scrollback_over_budget(&self) -> bool {
-        let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+        let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE);
         let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
         // A single newest row may exceed the cell budget; `bounded_push`
         // admits it rather than losing the only retained row.
@@ -4065,7 +4080,7 @@ impl Grid {
         self.lines_above.len() + parked + self.lines_below.len()
     }
     fn history_row_and_cell_budget() -> (usize, usize) {
-        let rows = *SCROLL_BUFFER_SIZE.get().unwrap();
+        let rows = *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE);
         let cells = rows.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
         (rows, cells)
     }
@@ -4537,8 +4552,7 @@ impl Grid {
         if scroll_region_bottom == self.height.saturating_sub(1) && scroll_region_top == 0 {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
-            } else if !self.viewport.is_empty() {
-                let removed = self.viewport.pop_front().unwrap();
+            } else if let Some(removed) = self.viewport.pop_front() {
                 self.kitty_grid.note_front_row_removed(removed.is_canonical);
             }
             self.viewport.push_back(new_row);
@@ -7286,6 +7300,7 @@ impl Grid {
 
             for tc in row.columns.iter().take(last_non_space) {
                 if last_styles.as_ref() != Some(&tc.styles) {
+                    // SAFETY: fmt::Write for String never fails
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
@@ -7980,10 +7995,7 @@ impl Handler for Grid {
                     let index = chunk.get(0).and_then(|index| parse_number(index));
                     let color = chunk.get(1).and_then(|color| xparse_color(color));
                     if let (Some(i), Some(c)) = (index, color) {
-                        if self.changed_colors.is_none() {
-                            self.changed_colors = Some([None; 256]);
-                        }
-                        self.changed_colors.as_mut().unwrap()[i as usize] = Some(c);
+                        self.changed_colors.get_or_insert([None; 256])[i as usize] = Some(c);
                         return;
                     } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
                         if let Some(index) = index {
@@ -8164,8 +8176,8 @@ impl Handler for Grid {
                 // Reset color indexes given as parameters.
                 for param in &params[1..] {
                     if let Some(index) = parse_number(param) {
-                        if self.changed_colors.is_some() {
-                            self.changed_colors.as_mut().unwrap()[index as usize] = None
+                        if let Some(colors) = self.changed_colors.as_mut() {
+                            colors[index as usize] = None;
                         }
                     }
                 }

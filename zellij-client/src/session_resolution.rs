@@ -184,8 +184,8 @@ pub fn attach_by_name(
 ) -> Result<ClientInfo, ResolutionFailure> {
     match &session_name {
         Some(session) if create => match session_exists(session) {
-            Ok(true) => Ok(ClientInfo::Attach(session_name.unwrap(), config_options)),
-            Ok(false) => Ok(ClientInfo::New(session_name.unwrap(), None, None, None)),
+            Ok(true) => Ok(ClientInfo::Attach(session.clone(), config_options)),
+            Ok(false) => Ok(ClientInfo::New(session.clone(), None, None, None)),
             Err(kind) => Err(ResolutionFailure::to_stderr(
                 session_listing_error_message(kind),
                 1,

@@ -24,8 +24,18 @@ pub fn start_cli_client(
 ) -> i32 {
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            return 1;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
         zellij_utils::sessions::resolve_session_socket_path(session_name)
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
@@ -423,8 +433,18 @@ pub fn start_prompt_client(
     };
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            return prompt::EXIT_ERROR;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return prompt::EXIT_ERROR;
+        }
         zellij_utils::sessions::resolve_session_socket_path(session_name)
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
@@ -797,8 +817,18 @@ pub fn start_subscribe_client(
 ) -> i32 {
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            return 1;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
         zellij_utils::sessions::resolve_session_socket_path(session_name)
             .unwrap_or_else(|| sock_dir.join(session_name))
     };

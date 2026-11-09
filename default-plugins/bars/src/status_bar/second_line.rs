@@ -103,7 +103,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         to_normal_keys.into_iter().take(1).collect()
     };
 
-    old_keymap.sort_unstable_by(|(keya, _), (keyb, _)| keya.partial_cmp(keyb).unwrap());
+    // KeyWithModifier: Ord ⇒ total order; use cmp instead of infallible partial_cmp.
+    old_keymap.sort_unstable_by(|(keya, _), (keyb, _)| keya.cmp(keyb));
 
     let mut known_actions: Vec<Vec<Action>> = vec![];
     let mut km = vec![];
@@ -333,9 +334,10 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
 }
 
 pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
+    // SAFETY: "quicknav" is always registered in the TIPS lazy_static map.
     let tip_body = TIPS
         .get(tip_name)
-        .unwrap_or_else(|| TIPS.get("quicknav").unwrap());
+        .unwrap_or_else(|| TIPS.get("quicknav").expect("quicknav tip always registered"));
 
     let full_shortcut_list = full_shortcut_list(help, tip_body.full);
     if full_shortcut_list.len <= max_width {

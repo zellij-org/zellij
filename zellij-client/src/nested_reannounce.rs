@@ -72,7 +72,7 @@ impl NestedReannounce {
         let first_contact = self
             .scheduler
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .note_host_contact(Instant::now());
         if first_contact {
             self.wakeup.notify_all();

@@ -234,7 +234,8 @@ fn bidirectional_communication_via_fd_duplication() {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut sender: IpcSenderWithContext<ServerToClientMsg> = IpcSenderWithContext::new(stream);
 
-        let mut receiver: IpcReceiverWithContext<ClientToServerMsg> = sender.get_receiver();
+        let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+            sender.get_receiver().expect("clone receiver");
         sender
             .send_server_msg(ServerToClientMsg::Connected)
             .expect("send failed");
@@ -251,7 +252,8 @@ fn bidirectional_communication_via_fd_duplication() {
     let stream = connect_stream(&name);
     let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
 
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        sender.get_receiver().expect("clone receiver");
 
     let msg = receiver.recv_server_msg();
     assert!(msg.is_some(), "client should receive server message");
@@ -477,7 +479,8 @@ fn session_probe_accepts_responding_socket() {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
             IpcReceiverWithContext::new(stream);
-        let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+        let mut sender: IpcSenderWithContext<ServerToClientMsg> =
+            receiver.get_sender().expect("clone sender");
 
         let msg = receiver.recv_client_msg();
         assert!(matches!(msg, Some((ClientToServerMsg::ConnStatus, _))));
@@ -492,7 +495,8 @@ fn session_probe_accepts_responding_socket() {
     sender
         .send_client_msg(ClientToServerMsg::ConnStatus)
         .expect("send failed");
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        sender.get_receiver().expect("clone receiver");
 
     let result = receiver.recv_server_msg();
     assert!(

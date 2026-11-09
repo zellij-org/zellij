@@ -843,9 +843,12 @@ impl Grid {
         search_viewport_for_the_first_time: bool,
         dir: SearchDirection,
     ) {
-        let new_active = match dir {
-            SearchDirection::Up => self.search_results.selections.last().cloned().unwrap(),
-            SearchDirection::Down => self.search_results.selections.first().cloned().unwrap(),
+        // Caller only invokes when selections is non-empty.
+        let Some(new_active) = (match dir {
+            SearchDirection::Up => self.search_results.selections.last().cloned(),
+            SearchDirection::Down => self.search_results.selections.first().cloned(),
+        }) else {
+            return;
         };
         // We can stay in the viewport and just move the active selection
         let active_idx = self.search_results.active.get_or_insert(new_active);

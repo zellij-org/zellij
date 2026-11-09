@@ -241,11 +241,16 @@ impl ClientConnectionBus {
     }
 
     pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
-        let message = Message::Text(serde_json::to_string(&message).unwrap().into());
+        let Ok(serialized) = serde_json::to_string(&message) else {
+            log::error!("Failed to serialize control message for web client {}", self.web_client_id);
+            self.close_connection();
+            return;
+        };
+        let message = Message::Text(serialized.into());
         let control_channel_tx = self
             .connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .get_client_control_tx(&self.web_client_id);
         match control_channel_tx {
             Some(control_channel_tx) => match control_channel_tx.try_send(message.clone()) {
@@ -256,14 +261,14 @@ impl ClientConnectionBus {
                 Err(SendFailure::Closed) => {
                     self.connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .queue_client_control_message(&self.web_client_id, message);
                 },
             },
             None => {
                 self.connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .queue_client_control_message(&self.web_client_id, message);
             },
         }
@@ -272,7 +277,7 @@ impl ClientConnectionBus {
         let should_not_reconnect = self
             .connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .get_should_not_reconnect_flag(&self.web_client_id)
             .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
             .unwrap_or(false);
@@ -289,7 +294,7 @@ impl ClientConnectionBus {
         let control_channel_tx = self
             .connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .get_client_control_tx(&self.web_client_id);
         match control_channel_tx {
             // if the queue is full the client is being dropped anyway
@@ -300,7 +305,7 @@ impl ClientConnectionBus {
         }
         self.connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .remove_client(&self.web_client_id);
     }
 

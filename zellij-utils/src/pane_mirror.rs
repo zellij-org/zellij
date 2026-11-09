@@ -872,7 +872,13 @@ fn run_local_connection(
     let receiver: IpcReceiverWithContext<ServerToClientMsg> =
         IpcReceiverWithContext::new(reply_stream);
     #[cfg(not(windows))]
-    let receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let receiver: IpcReceiverWithContext<ServerToClientMsg> = match sender.get_receiver() {
+        Ok(receiver) => receiver,
+        Err(e) => {
+            sink(MirrorTransportEvent::ConnectFailed(e.to_string()));
+            return;
+        },
+    };
     if let Err(e) = sender.send_client_msg(wrap_viewer_message(&ViewerMessage::Attach(attach))) {
         sink(MirrorTransportEvent::ConnectFailed(e.to_string()));
         return;

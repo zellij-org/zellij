@@ -217,7 +217,12 @@ pub(crate) fn pack_shared_round_trip(queries: Vec<HostQuery>) -> Vec<HostQuery> 
 fn flush_round_trip(batch: &mut Vec<HostQuery>, packed: &mut Vec<HostQuery>) {
     match batch.len() {
         0 => {},
-        1 => packed.push(batch.pop().unwrap()),
+        1 => {
+            // SAFETY: match arm requires batch.len() == 1
+            if let Some(query) = batch.pop() {
+                packed.push(query);
+            }
+        },
         _ => packed.push(HostQuery::RoundTrip(std::mem::take(batch))),
     }
 }

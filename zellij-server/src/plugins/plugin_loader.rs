@@ -294,6 +294,7 @@ impl PluginLoader {
         let cached = self
             .plugin_cache
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .get(&self.plugin_config.path)
             .cloned();
@@ -576,6 +577,7 @@ impl PluginLoader {
 
         self.plugin_cache
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .insert(plugin_path.clone(), (self.plugin_digest.clone(), module));
         Ok((store, instance))
@@ -596,6 +598,7 @@ impl PluginLoader {
                 if self
                     .plugin_map
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .unloaded_during_load(self.plugin_id)
                 {
@@ -793,14 +796,17 @@ enum GuestPollBound {
 }
 
 fn le_u16(bytes: &[u8], offset: usize) -> u16 {
+    // SAFETY: slice length is exactly 2 by construction of offset..offset+2.
     u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
 }
 
 fn le_u32(bytes: &[u8], offset: usize) -> u32 {
+    // SAFETY: slice length is exactly 4 by construction of offset..offset+4.
     u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
 }
 
 fn le_u64(bytes: &[u8], offset: usize) -> u64 {
+    // SAFETY: slice length is exactly 8 by construction of offset..offset+8.
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
 }
 

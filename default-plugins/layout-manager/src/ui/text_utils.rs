@@ -140,7 +140,7 @@ fn format_elapsed(unix_epoch_str: &str) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs() as i64;
 
     let diff = now - timestamp;

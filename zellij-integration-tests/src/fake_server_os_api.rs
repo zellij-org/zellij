@@ -175,7 +175,11 @@ impl ServerOsApi for FakeServerOsApi {
         client_id: ClientId,
         receiver: &IpcReceiverWithContext<ClientToServerMsg>,
     ) -> Result<()> {
-        let non_blocking_client_sender = NonBlockingClientSender::new(receiver.get_sender());
+        let non_blocking_client_sender = NonBlockingClientSender::new(
+            receiver
+                .get_sender()
+                .expect("test harness IPC sender clone"),
+        );
         self.non_blocking_client_senders
             .lock()
             .unwrap()
