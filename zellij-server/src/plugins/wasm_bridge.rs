@@ -2425,6 +2425,22 @@ impl WasmBridge {
         Ok(())
     }
 
+    pub fn plugin_is_background(&self, plugin_id: PluginId, client_id: ClientId) -> bool {
+        if self.shared_instances.contains_key(&plugin_id) {
+            return self
+                .shared_instances
+                .get(&plugin_id)
+                .map(|info| !info.background_slots.is_empty())
+                .unwrap_or(false);
+        }
+        let plugin_map = self.plugin_map.lock().unwrap();
+        plugin_map.contains(plugin_id, client_id)
+            && plugin_map
+                .metadata(plugin_id)
+                .map(|metadata| metadata.is_background)
+                .unwrap_or(false)
+    }
+
     pub fn notify_screen_of_background_plugin_subscriptions(
         &self,
         plugin_id: PluginId,
@@ -2435,15 +2451,7 @@ impl WasmBridge {
             self.notify_shared_background_subscriptions(plugin_id);
             return;
         }
-        let is_background = {
-            let plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map.contains(plugin_id, client_id)
-                && plugin_map
-                    .metadata(plugin_id)
-                    .map(|metadata| metadata.is_background)
-                    .unwrap_or(false)
-        };
-        if is_background {
+        if self.plugin_is_background(plugin_id, client_id) {
             let _ = self.senders.send_to_screen(
                 ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                     plugin_id, client_id, events,

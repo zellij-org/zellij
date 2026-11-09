@@ -217,6 +217,9 @@ pub struct TerminalPane {
     held_escape: bool,
     kitty_interceptor: KittyApcInterceptor,
     mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
+    /// When this pane is a fixed one-liner in a classic stack, keep giving its
+    /// program the expanded stack content size so startup ioctl is never 0×0.
+    collapsed_stack_program_size: Option<zellij_utils::pane_size::Size>,
     /// User asked to scroll to an end. One quantum runs per screen turn.
     viewport_goal: Option<crate::tab::ViewportGoal>,
     /// Output is being applied at the live bottom while the user's view
@@ -1770,11 +1773,13 @@ impl Pane for TerminalPane {
     fn program_columns(&self) -> usize {
         self.mirror_pinned_size
             .map(|size| size.cols)
+            .or_else(|| self.collapsed_stack_program_size.map(|size| size.cols))
             .unwrap_or_else(|| self.get_content_columns())
     }
     fn program_rows(&self) -> usize {
         self.mirror_pinned_size
             .map(|size| size.rows)
+            .or_else(|| self.collapsed_stack_program_size.map(|size| size.rows))
             .unwrap_or_else(|| self.get_content_rows())
     }
     fn mirror_pinned_size(&self) -> Option<zellij_utils::pane_size::Size> {
@@ -1788,6 +1793,9 @@ impl Pane for TerminalPane {
         self.reflow_lines();
         self.render_full_viewport();
         true
+    }
+    fn set_collapsed_stack_program_size(&mut self, size: Option<zellij_utils::pane_size::Size>) {
+        self.collapsed_stack_program_size = size;
     }
     fn mirror_change_counter(&self) -> u64 {
         self.grid.change_counter
@@ -2290,6 +2298,7 @@ impl TerminalPane {
             held_escape: false,
             kitty_interceptor: KittyApcInterceptor::new(),
             mirror_pinned_size: None,
+            collapsed_stack_program_size: None,
             viewport_goal: None,
             output_catchup: None,
             output_truncated: false,

@@ -727,6 +727,17 @@ impl TiledPanes {
                 .unwrap_or_else(|| Default::default())
         };
         let multi_member_stack_ids = self.multi_member_stack_ids();
+        let stack_member_counts = {
+            let mut counts = HashMap::new();
+            for (id, pane) in &self.panes {
+                if !self.panes_to_hide.contains(id) {
+                    if let Some(stack_id) = pane.current_geom().stacked {
+                        *counts.entry(stack_id).or_insert(0usize) += 1;
+                    }
+                }
+            }
+            counts
+        };
         let reserved_top_rows = if self.fullscreen_is_active.is_some() {
             HashMap::new()
         } else {
@@ -736,6 +747,7 @@ impl TiledPanes {
             if no_ui_fullscreen_pane_id == Some(pane.pid()) {
                 pane.set_frame(false);
                 pane.set_content_offset(Offset::default());
+                pane.set_collapsed_stack_program_size(None);
                 resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
                 continue;
             }
@@ -745,6 +757,12 @@ impl TiledPanes {
 
             let pane_viewport = &viewport;
             let reserved_rows = reserved_top_rows.get(&pane.pid()).copied().unwrap_or(0);
+            let current_geom = pane.current_geom();
+            let is_one_liner_in_stack = current_geom.is_stacked()
+                && current_geom.rows.is_fixed()
+                && current_geom
+                    .stacked
+                    .is_some_and(|id| multi_member_stack_ids.contains(&id));
 
             #[allow(clippy::if_same_then_else)]
             if reserved_rows > 0 {
@@ -777,7 +795,6 @@ impl TiledPanes {
                 let mut position_and_size = pane.current_geom();
                 let is_stacked = position_and_size.is_stacked();
                 let is_flexible = !position_and_size.rows.is_fixed();
-                let is_one_liner_in_stack = is_stacked && !is_flexible;
                 let pane_is_borderless = pane.borderless();
                 if let Some(position_and_size_of_stack) = position_and_size
                     .stacked
@@ -806,6 +823,37 @@ impl TiledPanes {
                 } else {
                     pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
                 }
+            }
+
+            // Collapsed stack members are laid out as fixed(1) title rows, which
+            // with frames yields a 0×0 content geom. Pin the PTY to the expanded
+            // stack content size so children still get a usable winsize.
+            if is_one_liner_in_stack {
+                if let Some(stack_id) = current_geom.stacked {
+                    if let Some(stack_geom) = position_and_sizes_of_stacks.get(&stack_id) {
+                        let member_count = stack_member_counts.get(&stack_id).copied().unwrap_or(1);
+                        let offset = pane.get_content_offset();
+                        let flexible_rows = stack_geom
+                            .rows
+                            .as_usize()
+                            .saturating_sub(member_count.saturating_sub(1));
+                        let cols = stack_geom
+                            .cols
+                            .as_usize()
+                            .saturating_sub(offset.left + offset.right)
+                            .max(1);
+                        let rows = flexible_rows
+                            .saturating_sub(offset.top + offset.bottom)
+                            .max(1);
+                        pane.set_collapsed_stack_program_size(Some(Size { cols, rows }));
+                    } else {
+                        pane.set_collapsed_stack_program_size(None);
+                    }
+                } else {
+                    pane.set_collapsed_stack_program_size(None);
+                }
+            } else {
+                pane.set_collapsed_stack_program_size(None);
             }
 
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();

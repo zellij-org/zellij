@@ -1083,6 +1083,111 @@ fn unchanged_session_snapshots_do_not_count_as_changes() {
 }
 
 #[test]
+fn unchanged_session_list_query_does_not_emit_session_update() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+
+    let mut infos = BTreeMap::new();
+    infos.insert(
+        "current".to_owned(),
+        SessionInfo {
+            name: "current".to_owned(),
+            is_current_session: true,
+            ..Default::default()
+        },
+    );
+    let resurrectable = BTreeMap::new();
+    screen
+        .update_session_infos(infos.clone(), resurrectable.clone(), Some((7, 1)))
+        .expect("first snapshot should publish");
+    let first = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(first, 1, "first structural snapshot emits SessionUpdate");
+
+    let mut aged = infos.clone();
+    aged.get_mut("current").unwrap().creation_time = Duration::from_secs(42);
+    screen
+        .update_session_infos(aged.clone(), resurrectable.clone(), Some((7, 1)))
+        .expect("age-only refresh");
+    let second = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(
+        second, 0,
+        "unchanged structural snapshot must not feedback to the querying plugin"
+    );
+
+    aged.get_mut("current").unwrap().connected_clients = 2;
+    screen
+        .update_session_infos(aged, resurrectable, Some((7, 1)))
+        .expect("structural change");
+    let third = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(third, 1, "real structural change still emits SessionUpdate");
+}
+
+#[test]
+fn report_mode_info_to_plugin_delivers_an_initial_mode_update() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .report_mode_info_to_plugin(11, 1)
+        .expect("initial ModeUpdate");
+    let mode_updates = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Update(updates) => Some(updates),
+            _ => None,
+        })
+        .flatten()
+        .filter(|(_, _, event)| matches!(event, Event::ModeUpdate(_)))
+        .count();
+    assert_eq!(mode_updates, 1, "subscribe-time ModeUpdate must be delivered");
+}
+
+#[test]
+fn a_tab_created_before_any_client_geometry_falls_back_to_eighty_by_twenty_four() {
+    let size = Size {
+        rows: 32,
+        cols: 100,
+    };
+    let mut screen = create_new_screen(size, false, false);
+    screen.client_sizes.clear();
+    screen.last_client_size = None;
+    screen
+        .new_tab(3, (vec![], vec![]), None, None)
+        .expect("detached tab with no prior geometry");
+    assert_eq!(
+        screen.tabs.get(&3).map(|tab| tab.size),
+        Some(Size {
+            rows: 24,
+            cols: 80
+        })
+    );
+}
+
+#[test]
 fn open_new_tab() {
     let size = Size {
         cols: 121,

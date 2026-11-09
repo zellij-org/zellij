@@ -3782,7 +3782,7 @@ pub(crate) fn route_thread_main(
                                 if let Some(scan_state) =
                                     crate::background_jobs::session_scan_state()
                                 {
-                                    let (session_name, available_layouts, plugin_list) = {
+                                    let (session_name, current_info, plugin_list) = {
                                         let name =
                                             scan_state.current_session_name.lock().unwrap().clone();
                                         let info =
@@ -3792,13 +3792,15 @@ pub(crate) fn route_thread_main(
                                             .lock()
                                             .unwrap()
                                             .clone();
-                                        (name, info.available_layouts, plugins)
+                                        (name, info, plugins)
                                     };
+                                    let available_layouts = current_info.available_layouts.clone();
                                     let (live_sessions_map, resurrectable_sessions_map) =
-                                        crate::background_jobs::scan_session_list_default_dirs(
+                                        crate::background_jobs::scan_session_list_default_dirs_with_current(
                                             &session_name,
                                             &available_layouts,
                                             &plugin_list,
+                                            &current_info,
                                         );
                                     let _ = senders.send_to_screen(
                                         ScreenInstruction::UpdateSessionInfos(

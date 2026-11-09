@@ -1534,6 +1534,24 @@ fn pinned(cols: usize, rows: usize) -> Option<zellij_utils::pane_size::Size> {
 }
 
 #[test]
+pub fn a_collapsed_stack_program_size_keeps_pty_nonzero() {
+    let mut pane = mirror_source_pane(20, 1);
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 1));
+    pane.set_collapsed_stack_program_size(Some(zellij_utils::pane_size::Size {
+        cols: 18,
+        rows: 12,
+    }));
+    assert_eq!((pane.program_columns(), pane.program_rows()), (18, 12));
+    assert_eq!(
+        (pane.get_content_columns(), pane.get_content_rows()),
+        (20, 1),
+        "visual content stays the one-liner title row"
+    );
+    pane.set_collapsed_stack_program_size(None);
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 1));
+}
+
+#[test]
 pub fn a_pinned_pane_gives_its_program_the_pinned_size_until_released() {
     let mut pane = mirror_source_pane(20, 4);
     assert_eq!((pane.program_columns(), pane.program_rows()), (20, 4));

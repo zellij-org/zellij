@@ -1323,6 +1323,8 @@ pub trait Pane {
     fn set_mirror_pinned_size(&mut self, _size: Option<Size>) -> bool {
         false
     }
+    /// Size a collapsed stack member's PTY as if it were the expanded member.
+    fn set_collapsed_stack_program_size(&mut self, _size: Option<Size>) {}
     fn mirror_change_counter(&self) -> u64 {
         0
     }

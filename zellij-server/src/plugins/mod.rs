@@ -962,6 +962,20 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                     events.clone(),
                 );
+                if events.contains(&EventType::ModeUpdate) {
+                    // Background plugins already get this from
+                    // UpdateBackgroundPluginSubscriptions; tab plugins need an
+                    // explicit first snapshot so they are not stuck until a
+                    // later mode change.
+                    let is_background = wasm_bridge.plugin_is_background(plugin_id, client_id);
+                    if !is_background {
+                        let _ = bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::ReportModeInfoToPlugin(
+                                plugin_id, client_id,
+                            ));
+                    }
+                }
                 if events.contains(&EventType::InitialKeybinds) {
                     wasm_bridge.send_initial_keybinds_to_plugin(plugin_id, client_id);
                 }

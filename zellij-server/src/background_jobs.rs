@@ -1688,16 +1688,44 @@ pub fn scan_session_list(
     sock_dir: &Path,
     session_info_cache_dir: &Path,
 ) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
+    scan_session_list_with_current(
+        current_session_name,
+        available_layouts,
+        current_session_plugin_list,
+        None,
+        sock_dir,
+        session_info_cache_dir,
+    )
+}
+
+pub fn scan_session_list_with_current(
+    current_session_name: &str,
+    available_layouts: &[LayoutInfo],
+    current_session_plugin_list: &BTreeMap<PluginId, RunPlugin>,
+    current_session_info: Option<&SessionInfo>,
+    sock_dir: &Path,
+    session_info_cache_dir: &Path,
+) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
     let mut session_infos_on_machine = zellij_utils::sessions::read_live_session_states(
         current_session_name,
         sock_dir,
         session_info_cache_dir,
     );
-    for (name, info) in session_infos_on_machine.iter_mut() {
-        if name == current_session_name {
-            info.populate_plugin_list(current_session_plugin_list.clone());
-            info.available_layouts = available_layouts.to_vec();
-        }
+    if let Some(info) = session_infos_on_machine.get_mut(current_session_name) {
+        info.populate_plugin_list(current_session_plugin_list.clone());
+        info.available_layouts = available_layouts.to_vec();
+        info.is_current_session = true;
+    } else if !current_session_name.is_empty() {
+        // The on-disk session-info scan can lag briefly after startup. Prefer
+        // the in-memory current session over omitting it from get_session_list.
+        let mut info = current_session_info.cloned().unwrap_or_else(|| {
+            SessionInfo::new(current_session_name.to_owned())
+        });
+        info.name = current_session_name.to_owned();
+        info.is_current_session = true;
+        info.populate_plugin_list(current_session_plugin_list.clone());
+        info.available_layouts = available_layouts.to_vec();
+        session_infos_on_machine.insert(current_session_name.to_owned(), info);
     }
     let resurrectable_sessions =
         find_resurrectable_sessions(&session_infos_on_machine, session_info_cache_dir);
@@ -1713,6 +1741,22 @@ pub fn scan_session_list_default_dirs(
         current_session_name,
         available_layouts,
         current_session_plugin_list,
+        &*ZELLIJ_SOCK_DIR,
+        &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+    )
+}
+
+pub fn scan_session_list_default_dirs_with_current(
+    current_session_name: &str,
+    available_layouts: &[LayoutInfo],
+    current_session_plugin_list: &BTreeMap<PluginId, RunPlugin>,
+    current_session_info: &SessionInfo,
+) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
+    scan_session_list_with_current(
+        current_session_name,
+        available_layouts,
+        current_session_plugin_list,
+        Some(current_session_info),
         &*ZELLIJ_SOCK_DIR,
         &*ZELLIJ_SESSION_INFO_CACHE_DIR,
     )
@@ -2413,8 +2457,30 @@ mod tests {
             sock_dir.path(),
             info_dir.path(),
         );
-        assert!(live.is_empty());
+        // With no disk metadata yet, the current session is still injected from memory.
+        assert_eq!(live.len(), 1);
+        assert!(live["me"].is_current_session);
         assert!(resurrectable.is_empty());
+    }
+
+    #[test]
+    fn scan_session_list_injects_in_memory_current_session_when_scan_lags() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        let mut current = SessionInfo::new("fresh".to_owned());
+        current.connected_clients = 3;
+        let (live, _) = scan_session_list_with_current(
+            "fresh",
+            &[],
+            &BTreeMap::new(),
+            Some(&current),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert_eq!(live.len(), 1);
+        let injected = live.get("fresh").expect("current session present");
+        assert!(injected.is_current_session);
+        assert_eq!(injected.connected_clients, 3);
     }
 
     #[test]

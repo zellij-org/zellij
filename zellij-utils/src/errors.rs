@@ -546,6 +546,7 @@ pub enum ScreenContext {
     MoveTabWithTabId,
     MoveTabToPosition,
     UpdateBackgroundPluginSubscriptions,
+    ReportModeInfoToPlugin,
     ClearHintTextCache,
     BroadcastModeUpdate,
     SetSoftKeyboard,

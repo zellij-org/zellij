@@ -1227,6 +1227,8 @@ pub enum ScreenInstruction {
     SetLiveViewReleaseKey(Option<String>),
     DesktopNotificationResponse(Vec<u8>, ClientId),
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    /// Deliver the current ModeInfo snapshot to one plugin after it subscribes.
+    ReportModeInfoToPlugin(PluginId, ClientId),
     ClearHintTextCache,
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
@@ -1895,6 +1897,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
+            ScreenInstruction::ReportModeInfoToPlugin(..) => ScreenContext::ReportModeInfoToPlugin,
             ScreenInstruction::ClearHintTextCache => ScreenContext::ClearHintTextCache,
             ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
@@ -7799,6 +7802,27 @@ impl Screen {
         Ok(())
     }
 
+    pub(crate) fn report_mode_info_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        mode_info.remote_client = self.client_location(client_id);
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(plugin_id),
+                Some(client_id),
+                Event::ModeUpdate(mode_info),
+            )]))
+            .context("failed to report mode info to plugin")
+    }
+
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
         fn should_include_pane(pane_info: &PaneInfo, show_all: bool) -> bool {
             pane_info.is_selectable || show_all
@@ -12475,6 +12499,7 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
@@ -16846,13 +16871,20 @@ pub(crate) fn screen_thread_main(
                         .background_plugin_subscriptions
                         .remove(&(plugin_id, client_id));
                 } else {
+                    let wants_mode_update = subscriptions.contains(&EventType::ModeUpdate);
                     screen
                         .background_plugin_subscriptions
                         .entry((plugin_id, client_id))
                         .or_default()
                         .extend(subscriptions);
                     screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
+                    if wants_mode_update {
+                        screen.report_mode_info_to_plugin(plugin_id, client_id)?;
+                    }
                 }
+            },
+            ScreenInstruction::ReportModeInfoToPlugin(plugin_id, client_id) => {
+                screen.report_mode_info_to_plugin(plugin_id, client_id)?;
             },
             ScreenInstruction::ClearHintTextCache => {
                 for tab in screen.tabs.values_mut() {
