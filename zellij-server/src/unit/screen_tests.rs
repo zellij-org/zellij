@@ -18972,46 +18972,15 @@ fn layout_metadata_copies_one_viewport_quantum_per_turn() {
     };
     let first = markers(&screen);
     assert!(
-        !first.is_empty(),
-        "the flag-on layout dump must include the newest viewport rows"
-    );
-    assert!(
-        first.len() <= SCREEN_ROW_QUANTUM,
-        "one get_layout_metadata turn copied {} viewport rows, past the {} quantum",
-        first.len(),
-        SCREEN_ROW_QUANTUM
-    );
-    assert!(
-        !first.contains(&0),
-        "the oldest viewport marker must stay out of the first turn"
-    );
-    assert!(
-        first.contains(&(rows - 1)),
-        "the newest marker must be in the quantum that was copied"
+        first.is_empty(),
+        "an unfinished snapshot must not publish a partial viewport"
     );
     assert!(
         screen.serialize_snapshot_has_more(),
         "rows past the first quantum must remain for the next turn"
     );
-
-    let second = markers(&screen);
-    let first_oldest = *first.iter().min().expect("first quantum has a row");
-    let older_than_first: Vec<usize> = second
-        .iter()
-        .copied()
-        .filter(|index| *index < first_oldest)
-        .collect();
-    assert!(
-        !older_than_first.is_empty(),
-        "the second turn must emit the next older quantum, not the same newest rows"
-    );
-    assert!(
-        older_than_first.len() <= SCREEN_ROW_QUANTUM,
-        "the second turn copied {} new rows, past one quantum",
-        older_than_first.len()
-    );
     let mut guard = 0;
-    let mut latest = second;
+    let mut latest = first;
     while screen.serialize_snapshot_has_more() && guard < 8 {
         latest = markers(&screen);
         guard += 1;
@@ -19021,12 +18990,108 @@ fn layout_metadata_copies_one_viewport_quantum_per_turn() {
         "continuation must cover the requested range"
     );
     assert!(
-        latest.contains(&0) || latest.contains(&(rows - 1)),
-        "the finished snapshot must keep rows from the resumed quanta"
-    );
-    assert!(
         latest.contains(&0),
         "the finished snapshot must include the oldest marker once the quanta are covered"
+    );
+    assert!(
+        latest.contains(&(rows - 1)),
+        "the finished snapshot must include the newest marker"
+    );
+}
+
+#[test]
+fn save_session_holds_the_disk_write_until_the_snapshot_pass_finishes() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let rows = SCREEN_ROW_QUANTUM + 40;
+    let cols = 20;
+    let mut screen = create_new_screen(Size { cols, rows }, false, false);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen.bus.senders.to_screen = Some(SenderWithContext::new(to_screen));
+    screen.bus.senders.should_silently_fail = true;
+    screen.serialize_pane_viewport = true;
+    screen.scrollback_lines_to_serialize = Some(usize::MAX);
+    screen.session_serialization = true;
+    new_tab(&mut screen, 1, 0);
+    let mut bytes = Vec::new();
+    for index in 0..rows {
+        bytes.extend(format!("MARK{index:05}XXXXXXXX\r\n").into_bytes());
+    }
+    let leftover = screen
+        .apply_pty_bytes(1, bytes)
+        .expect("the tall viewport is parsed on the screen");
+    assert!(leftover.is_none());
+
+    // The screen thread's SaveSession arm calls this. One turn must not publish.
+    screen
+        .handle_save_session(1, None)
+        .expect("the first save turn requeues");
+    assert!(
+        screen.serialize_snapshot_has_more(),
+        "a two-quantum pane is unfinished after one SaveSession turn"
+    );
+    assert!(
+        pty_receiver.try_recv().is_err(),
+        "SaveSessionToDisk must wait until serialize_snapshot_has_more is false"
+    );
+
+    let mut saved = None;
+    for _ in 0..8 {
+        let unfinished = screen.serialize_snapshot_has_more();
+        screen
+            .handle_save_session(1, None)
+            .expect("a later save turn runs");
+        match pty_receiver.try_recv() {
+            Ok((instruction, _)) => {
+                assert!(
+                    !unfinished || !screen.serialize_snapshot_has_more(),
+                    "the disk write must be the turn that finishes the pass"
+                );
+                assert!(
+                    !screen.serialize_snapshot_has_more(),
+                    "SaveSessionToDisk arrived while the snapshot still had more rows"
+                );
+                saved = Some(instruction);
+                break;
+            },
+            Err(_) => {
+                assert!(
+                    screen.serialize_snapshot_has_more(),
+                    "a turn that does not publish must leave the pass open"
+                );
+            },
+        }
+    }
+    let PtyInstruction::SaveSessionToDisk {
+        session_layout_metadata,
+        ..
+    } = saved.expect("SaveSession publishes once the pass is done")
+    else {
+        panic!("SaveSession must send SaveSessionToDisk");
+    };
+    assert!(
+        pty_receiver.try_recv().is_err(),
+        "one finished pass publishes one SaveSessionToDisk"
+    );
+    let manifest: zellij_utils::session_serialization::GlobalLayoutManifest =
+        session_layout_metadata.into();
+    let dumped = manifest
+        .tabs
+        .iter()
+        .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
+        .filter_map(|pane| pane.pane_contents.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        dumped.contains("MARK00000"),
+        "the saved metadata must include the oldest marker"
+    );
+    assert!(
+        dumped.contains(&format!("MARK{:05}", rows - 1)),
+        "the saved metadata must include the newest marker"
     );
 }
 

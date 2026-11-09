@@ -19,6 +19,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::{
     cmp::Ordering,
     collections::{BTreeSet, VecDeque},
@@ -1994,12 +1995,16 @@ pub(crate) struct ViewportAnchor {
     evicted_before: u64,
 }
 
-/// Where a pane serialization stopped, so the next screen turn copies the
-/// next older rows instead of starting over at the newest row.
+/// A snapshot pass frozen on the first call for a request. `min_stamp` and
+/// `max_stamp` name the rows in that window. Later turns copy stamps below
+/// `next_below` and at or above `min_stamp`. A row created after the freeze
+/// has a higher stamp and is not part of this pass.
 #[derive(Clone)]
 struct SerializeResume {
     request: Option<usize>,
-    taken_rows: usize,
+    min_stamp: u64,
+    max_stamp: u64,
+    next_below: u64,
     taken_cells: usize,
     done: bool,
     started: bool,
@@ -2423,7 +2428,9 @@ impl Grid {
             unseen_output_mark: None,
             serialize_resume: std::cell::RefCell::new(SerializeResume {
                 request: None,
-                taken_rows: 0,
+                min_stamp: 0,
+                max_stamp: 0,
+                next_below: 0,
                 taken_cells: 0,
                 done: true,
                 started: false,
@@ -3580,26 +3587,44 @@ impl Grid {
             },
             None => history_len,
         };
-        // Newest first: the viewport, then the requested scrollback. One turn
-        // copies the next unread quantum. A later call continues with the
-        // older rows until the request or the absolute cell ceiling is covered.
+        // One turn copies the next older quantum of the frozen stamp window.
+        // History rows expand their trailing blanks; viewport rows do not.
         enum Snap<'a> {
             Viewport(&'a Row),
             History(&'a Row),
         }
-        let mut order: Vec<Snap<'_>> = Vec::new();
-        for row in self.viewport.iter().rev() {
-            order.push(Snap::Viewport(row));
-        }
-        for index in (history_first..history_len).rev() {
-            order.push(Snap::History(&self.lines_above[index]));
-        }
-
         let mut resume = self.serialize_resume.borrow_mut();
         if !resume.started || resume.done || resume.request != scrollback_lines_to_serialize {
+            let mut min_stamp = u64::MAX;
+            let mut max_stamp = 0u64;
+            let mut any = false;
+            for row in self
+                .viewport
+                .iter()
+                .chain(self.lines_above.iter().skip(history_first))
+            {
+                any = true;
+                min_stamp = min_stamp.min(row.row_stamp);
+                max_stamp = max_stamp.max(row.row_stamp);
+            }
+            if !any {
+                *resume = SerializeResume {
+                    request: scrollback_lines_to_serialize,
+                    min_stamp: 0,
+                    max_stamp: 0,
+                    next_below: 0,
+                    taken_cells: 0,
+                    done: true,
+                    started: true,
+                    accumulated: String::new(),
+                };
+                return Some(String::new());
+            }
             *resume = SerializeResume {
                 request: scrollback_lines_to_serialize,
-                taken_rows: 0,
+                min_stamp,
+                max_stamp,
+                next_below: max_stamp.saturating_add(1),
                 taken_cells: 0,
                 done: false,
                 started: true,
@@ -3607,49 +3632,87 @@ impl Grid {
             };
         }
 
+        let min_stamp = resume.min_stamp;
+        let max_stamp = resume.max_stamp;
+        let next_below = resume.next_below;
+        let mut taken_cells = resume.taken_cells;
+        let in_pass = |row: &Row| {
+            row.row_stamp >= min_stamp && row.row_stamp <= max_stamp && row.row_stamp < next_below
+        };
+        let mut eligible: Vec<Snap<'_>> = Vec::new();
+        // The stamp window was frozen above. A later turn must find those rows
+        // even after they leave the viewport, so this walk is not the request's
+        // index range (that range shifts when a row arrives).
+        for row in self.viewport.iter().filter(|row| in_pass(row)) {
+            eligible.push(Snap::Viewport(row));
+        }
+        for row in self
+            .lines_above
+            .iter()
+            .chain(self.lines_below.iter())
+            .filter(|row| in_pass(row))
+        {
+            eligible.push(Snap::History(row));
+        }
+        eligible.sort_by(|left, right| {
+            let left_stamp = match left {
+                Snap::Viewport(row) | Snap::History(row) => row.row_stamp,
+            };
+            let right_stamp = match right {
+                Snap::Viewport(row) | Snap::History(row) => row.row_stamp,
+            };
+            right_stamp.cmp(&left_stamp)
+        });
+
         let turn_cell_budget = SCREEN_ROW_QUANTUM.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
         let mut turn_cells_left = turn_cell_budget;
         let mut turn_rows_left = SCREEN_ROW_QUANTUM;
         let mut copied: Vec<Row> = Vec::new();
-        let mut index = resume.taken_rows;
-        let mut finished = index >= order.len();
-        while index < order.len() {
+        let mut lowest_copied: Option<u64> = None;
+        let mut finished = false;
+        let mut exhausted = true;
+        for snap in &eligible {
             if turn_rows_left == 0 {
+                exhausted = false;
                 break;
             }
-            let cost = match order[index] {
-                Snap::Viewport(row) | Snap::History(row) => row.snapshot_cost(),
+            let (stamp, cost) = match snap {
+                Snap::Viewport(row) | Snap::History(row) => (row.row_stamp, row.snapshot_cost()),
             };
             #[cfg(test)]
             SERIALIZE_BUDGET_ROWS_SCANNED.with(|c| c.set(c.get() + 1));
             if cost > MAX_SERIALIZE_SNAPSHOT_CELLS
-                || resume.taken_cells.saturating_add(cost) > MAX_SERIALIZE_SNAPSHOT_CELLS
+                || taken_cells.saturating_add(cost) > MAX_SERIALIZE_SNAPSHOT_CELLS
             {
                 finished = true;
                 break;
             }
             if !copied.is_empty() && cost > turn_cells_left {
+                exhausted = false;
                 break;
             }
-            copied.push(match order[index] {
-                Snap::Viewport(row) => row.clone(),
+            copied.push(match snap {
+                Snap::Viewport(row) => (*row).clone(),
                 Snap::History(row) => row.with_trailing_blanks().into_owned(),
             });
-            resume.taken_cells = resume.taken_cells.saturating_add(cost);
+            taken_cells = taken_cells.saturating_add(cost);
             turn_cells_left = turn_cells_left.saturating_sub(cost);
             turn_rows_left -= 1;
-            index += 1;
-            if index >= order.len() {
-                finished = true;
-            }
+            lowest_copied = Some(stamp.min(lowest_copied.unwrap_or(stamp)));
         }
-        if index >= order.len() {
-            finished = true;
+        if let Some(lowest_copied) = lowest_copied {
+            resume.next_below = lowest_copied;
         }
-        resume.taken_rows = index;
-        resume.done = finished;
-        // This quantum was collected newest-first. Emit it oldest-first, and
-        // keep older quanta in front of the text already saved.
+        resume.taken_cells = taken_cells;
+        resume.done = finished || exhausted;
+        // This quantum was collected newest-stamp first. Emit it oldest-stamp
+        // first, and keep older quanta in front of the text already saved.
+        // Unfinished turns return nothing, so a one-shot caller cannot persist
+        // a partial quantum.
+        if copied.is_empty() {
+            resume.done = true;
+            return Some(resume.accumulated.clone());
+        }
         copied.reverse();
         let Some(piece) = self
             .output_buffer
@@ -3660,16 +3723,16 @@ impl Grid {
             return None;
         };
         if resume.accumulated.is_empty() {
-            resume.accumulated = piece.clone();
+            resume.accumulated = piece;
         } else {
-            let mut joined = piece.clone();
+            let mut joined = piece;
             joined.push_str(&resume.accumulated);
             resume.accumulated = joined;
         }
         if resume.done {
             Some(resume.accumulated.clone())
         } else {
-            Some(piece)
+            None
         }
     }
     pub fn render(
@@ -9325,9 +9388,18 @@ impl AlternateScreenState {
     }
 }
 
+fn mint_row_stamp() -> u64 {
+    static NEXT_ROW_STAMP: AtomicU64 = AtomicU64::new(1);
+    NEXT_ROW_STAMP.fetch_add(1, AtomicOrdering::Relaxed)
+}
+
 #[derive(Clone)]
 pub struct Row {
     pub columns: Vec<TerminalCharacter>,
+    /// Identity of this logical line. It stays put when the row moves between
+    /// scrollback and the viewport. A new line, including one left behind when
+    /// this row is split or replaced, gets a new stamp.
+    row_stamp: u64,
     osc133_markers: Osc133Markers,
     width: Option<NonZeroU32>,
     trailing_blanks: u32,
@@ -9347,7 +9419,7 @@ pub struct Row {
 }
 
 #[cfg(target_arch = "x86_64")]
-const _: [(); 56] = [(); std::mem::size_of::<Row>()];
+const _: [(); 64] = [(); std::mem::size_of::<Row>()];
 
 fn encode_width(width: usize) -> Option<NonZeroU32> {
     u32::try_from(width)
@@ -9462,6 +9534,7 @@ impl Row {
     pub fn new() -> Self {
         Row {
             columns: Vec::new(),
+            row_stamp: mint_row_stamp(),
             osc133_markers: Osc133Markers::default(),
             width: None,
             trailing_blanks: 0,
@@ -9478,6 +9551,7 @@ impl Row {
     pub fn with_capacity(capacity: usize) -> Self {
         Row {
             columns: columns_with_capacity(capacity),
+            row_stamp: mint_row_stamp(),
             osc133_markers: Osc133Markers::default(),
             width: None,
             trailing_blanks: 0,
@@ -9494,6 +9568,7 @@ impl Row {
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
         Row {
             columns,
+            row_stamp: mint_row_stamp(),
             osc133_markers: Osc133Markers::default(),
             width: None,
             trailing_blanks: 0,
@@ -10292,6 +10367,7 @@ impl Row {
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let drained = Row {
             columns: Vec::new(),
+            row_stamp: mint_row_stamp(),
             osc133_markers: Osc133Markers::default(),
             width: None,
             trailing_blanks: 0,
@@ -10358,6 +10434,10 @@ impl Row {
         if rows.is_empty() {
             return vec![];
         }
+        // The first physical row keeps the logical line's stamp. Extra wraps
+        // are new lines. The emptied shell left in the caller already has its
+        // own stamp.
+        let carried_stamp = rows[0].row_stamp;
         let is_canonical = rows[0].is_canonical;
         let bg_color = rows[0].bg_color;
         let may_have_groups = rows.iter().any(|row| row.may_have_groups);
@@ -10399,7 +10479,11 @@ impl Row {
             parts.push(part);
         }
         if parts.is_empty() {
-            parts.push(Row::new().with_bg_color(bg_color));
+            let mut empty = Row::new().with_bg_color(bg_color);
+            empty.row_stamp = carried_stamp;
+            parts.push(empty);
+        } else if let Some(part) = parts.first_mut() {
+            part.row_stamp = carried_stamp;
         }
         if is_canonical {
             if let Some(part) = parts.get_mut(0) {

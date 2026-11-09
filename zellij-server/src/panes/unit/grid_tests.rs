@@ -13603,19 +13603,34 @@ fn serialize_snapshot_is_bounded_by_cells_not_just_rows() {
     assert!(grid.lines_above.len() + grid.viewport.len() > quantum);
 
     super::reset_serialize_budget_rows_scanned();
-    let serialized = grid
-        .serialize(Some(usize::MAX))
-        .expect("viewport+scrollback serializes");
+    let first = grid.serialize(Some(usize::MAX));
     let scanned = super::serialize_budget_rows_scanned();
+    assert!(
+        first.is_none(),
+        "an unfinished snapshot must not return a partial viewport"
+    );
+    assert!(
+        grid.serialize_snapshot_has_more(),
+        "rows past the first quantum remain"
+    );
     assert!(
         scanned <= quantum,
         "one serialize call scanned {scanned} rows, past the {quantum} quantum"
     );
+    let mut serialized = None;
+    for _ in 0..line_count {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the snapshot pass finishes");
+    assert!(!grid.serialize_snapshot_has_more());
     let serialized_filler = serialized.matches('x').count();
     let quantum_cells = quantum * 1_000;
     assert!(
-        serialized_filler <= quantum_cells.min(budget),
-        "{serialized_filler} serialized cells exceed one quantum ({quantum_cells}) and the {budget} ceiling"
+        serialized_filler <= budget,
+        "{serialized_filler} serialized cells exceed the {budget} ceiling"
     );
     assert!(
         serialized_filler > quantum_cells / 2,
@@ -13627,12 +13642,48 @@ fn serialize_snapshot_is_bounded_by_cells_not_just_rows() {
     );
     assert!(
         serialized.contains(&format!("{:05}x", line_count - 1)),
-        "the newest row must survive the quantum"
+        "the newest row must survive the ceiling"
+    );
+}
+
+#[test]
+fn serialize_resume_ignores_a_row_appended_between_quanta() {
+    // A row that arrives after the freeze used to shift `taken_rows`, so the
+    // next quantum repeated a copied marker and never reached the older ones.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let line_count = quantum + 30;
+    let mut grid = wide_marked_scrollback(20, line_count);
+    let newest = format!("{:05}x", line_count - 1);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    assert!(grid.serialize_snapshot_has_more());
+    feed_bytes(&mut grid, b"APPENDED_ROW_MARKER\r\n");
+
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the frozen pass finishes");
+    assert!(!grid.serialize_snapshot_has_more());
+    assert_eq!(
+        serialized.matches(newest.as_str()).count(),
+        1,
+        "the first quantum's newest marker must appear once"
     );
     assert!(
-        !serialized.contains(&format!("{:05}x", line_count - quantum - 20)),
-        "a row older than one quantum must not be cloned in this call"
+        !serialized.contains("APPENDED_ROW_MARKER"),
+        "a row appended after the freeze is not part of this pass"
     );
+    for index in 0..line_count {
+        let marker = format!("{:05}x", index);
+        assert_eq!(
+            serialized.matches(marker.as_str()).count(),
+            1,
+            "pre-freeze marker {marker} must appear once"
+        );
+    }
 }
 
 #[test]

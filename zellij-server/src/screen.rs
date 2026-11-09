@@ -8276,17 +8276,92 @@ impl Screen {
     }
     fn dump_layout_to_hd(&mut self) -> Result<bool> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata =
-            self.get_layout_metadata(Some(self.default_shell.clone()), None);
-        if self.serialize_snapshot_has_more() {
+        let Some(session_layout_metadata) =
+            self.publication_layout_metadata(Some(self.default_shell.clone()), None)
+        else {
             return Ok(false);
-        }
+        };
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
             .with_context(err_context)?;
 
         Ok(true)
+    }
+    fn handle_save_session(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let err_context = || "Failed to save session";
+        let session_layout_metadata = if self.session_serialization {
+            self.publication_layout_metadata(Some(self.default_shell.clone()), None)
+        } else {
+            Some(SessionLayoutMetadata::new(self.default_layout.clone()))
+        };
+        let Some(session_layout_metadata) = session_layout_metadata else {
+            self.bus
+                .senders
+                .send_to_screen(ScreenInstruction::SaveSession(client_id, completion_tx))
+                .with_context(err_context)?;
+            return Ok(());
+        };
+
+        self.update_active_pane_ids();
+        let pane_manifest = self.generate_and_report_pane_state()?;
+        let tab_infos = self.generate_and_report_tab_state()?;
+
+        #[cfg(not(test))]
+        let (available_layouts, _layout_errors) =
+            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+        #[cfg(test)]
+        let available_layouts = vec![];
+
+        let creation_time = {
+            // The socket is named by the stable session id, not the display name.
+            let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
+            std::fs::metadata(&sock_path)
+                .ok()
+                .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                .and_then(|d| d.elapsed().ok())
+                .map(|d| Duration::from_secs(d.as_secs()))
+                .unwrap_or_default()
+        };
+        let session_info = SessionInfo {
+            name: self.session_name.clone(),
+            tabs: tab_infos,
+            panes: pane_manifest,
+            connected_clients: self.active_tab_ids.keys().len(),
+            is_current_session: true,
+            available_layouts,
+            web_clients_allowed: self.web_sharing.web_clients_allowed(),
+            web_client_count: self
+                .connected_clients
+                .borrow()
+                .iter()
+                .filter(|(_client_id, is_web_client)| **is_web_client)
+                .count(),
+            plugins: Default::default(),
+            tab_history: self.tab_history.clone(),
+            pane_history: self
+                .pane_history
+                .iter()
+                .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
+                .collect(),
+            creation_time,
+            attention_muted: self.attention.session_is_muted(),
+        };
+
+        self.bus
+            .senders
+            .send_to_pty(PtyInstruction::SaveSessionToDisk {
+                session_name: self.session_name.clone(),
+                session_info,
+                session_layout_metadata,
+                completion_tx,
+            })
+            .with_context(err_context)?;
+        Ok(())
     }
     fn session_infos_changed(
         old_infos: &BTreeMap<String, SessionInfo>,
@@ -11160,6 +11235,20 @@ impl Screen {
                     .any(|(_, (_, pane))| pane.serialize_snapshot_has_more())
         })
     }
+    /// One snapshot quantum. `None` means the pass is unfinished: the caller
+    /// requeues the same instruction and does not publish this metadata.
+    fn publication_layout_metadata(
+        &self,
+        default_shell: Option<PathBuf>,
+        tab_index: Option<usize>,
+    ) -> Option<SessionLayoutMetadata> {
+        let metadata = self.get_layout_metadata(default_shell, tab_index);
+        if self.serialize_snapshot_has_more() {
+            None
+        } else {
+            Some(metadata)
+        }
+    }
     fn get_layout_metadata(
         &self,
         default_shell: Option<PathBuf>,
@@ -13107,19 +13196,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(default_shell.clone(), None);
-                if screen.serialize_snapshot_has_more() {
-                    screen
-                        .bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::DumpLayout(
-                            default_shell,
-                            client_id,
-                            completion_tx,
-                        ))
-                        .with_context(err_context)?;
-                } else {
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(default_shell.clone(), None)
+                {
                     screen
                         .bus
                         .senders
@@ -13129,18 +13208,28 @@ pub(crate) fn screen_thread_main(
                             completion_tx,
                         ))
                         .with_context(err_context)?;
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::DumpLayout(
+                            default_shell,
+                            client_id,
+                            completion_tx,
+                        ))
+                        .with_context(err_context)?;
                 }
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(default_shell.clone(), None);
-                if screen.serialize_snapshot_has_more() {
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(default_shell.clone(), None)
+                {
                     screen
                         .bus
                         .senders
-                        .send_to_screen(ScreenInstruction::ListClientsMetadata(
-                            default_shell,
+                        .send_to_plugin(PluginInstruction::ListClientsMetadata(
+                            session_layout_metadata,
                             client_id,
                             completion_tx,
                         ))
@@ -13149,8 +13238,8 @@ pub(crate) fn screen_thread_main(
                     screen
                         .bus
                         .senders
-                        .send_to_plugin(PluginInstruction::ListClientsMetadata(
-                            session_layout_metadata,
+                        .send_to_screen(ScreenInstruction::ListClientsMetadata(
+                            default_shell,
                             client_id,
                             completion_tx,
                         ))
@@ -13193,15 +13282,15 @@ pub(crate) fn screen_thread_main(
                 response_channel,
             } => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), tab_index);
-                if screen.serialize_snapshot_has_more() {
+                if let Some(session_layout_metadata) = screen
+                    .publication_layout_metadata(Some(screen.default_shell.clone()), tab_index)
+                {
                     screen
                         .bus
                         .senders
-                        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+                        .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
+                            session_layout_metadata,
                             plugin_id,
-                            tab_index,
                             response_channel,
                         })
                         .with_context(err_context)
@@ -13210,9 +13299,9 @@ pub(crate) fn screen_thread_main(
                     screen
                         .bus
                         .senders
-                        .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
-                            session_layout_metadata,
+                        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
                             plugin_id,
+                            tab_index,
                             response_channel,
                         })
                         .with_context(err_context)
@@ -13257,18 +13346,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None);
-                if screen.serialize_snapshot_has_more() {
-                    screen
-                        .bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::ListClientsToPlugin(
-                            plugin_id, client_id,
-                        ))
-                        .with_context(err_context)
-                        .non_fatal();
-                } else {
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(Some(screen.default_shell.clone()), None)
+                {
                     screen
                         .bus
                         .senders
@@ -13276,6 +13356,15 @@ pub(crate) fn screen_thread_main(
                             session_layout_metadata,
                             plugin_id,
                             client_id,
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ListClientsToPlugin(
+                            plugin_id, client_id,
                         ))
                         .with_context(err_context)
                         .non_fatal();
@@ -15821,74 +15910,8 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::SaveSession(_client_id, completion_tx) => {
-                let err_context = || "Failed to save session";
-
-                screen.update_active_pane_ids();
-                let pane_manifest = screen.generate_and_report_pane_state()?;
-                let tab_infos = screen.generate_and_report_tab_state()?;
-
-                #[cfg(not(test))]
-                let (available_layouts, _layout_errors) = Layout::list_available_layouts(
-                    screen.layout_dir.clone(),
-                    &screen.default_layout_name,
-                );
-                #[cfg(test)]
-                let available_layouts = vec![];
-
-                let creation_time = {
-                    // The socket is named by the stable session id, not the display name.
-                    let sock_path =
-                        zellij_utils::consts::session_id_socket_path(&screen.session_id);
-                    std::fs::metadata(&sock_path)
-                        .ok()
-                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                        .and_then(|d| d.elapsed().ok())
-                        .map(|d| Duration::from_secs(d.as_secs()))
-                        .unwrap_or_default()
-                };
-                let session_info = SessionInfo {
-                    name: screen.session_name.clone(),
-                    tabs: tab_infos,
-                    panes: pane_manifest,
-                    connected_clients: screen.active_tab_ids.keys().len(),
-                    is_current_session: true,
-                    available_layouts,
-                    web_clients_allowed: screen.web_sharing.web_clients_allowed(),
-                    web_client_count: screen
-                        .connected_clients
-                        .borrow()
-                        .iter()
-                        .filter(|(_client_id, is_web_client)| **is_web_client)
-                        .count(),
-                    plugins: Default::default(),
-                    tab_history: screen.tab_history.clone(),
-                    pane_history: screen
-                        .pane_history
-                        .iter()
-                        .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
-                        .collect(),
-                    creation_time,
-                    attention_muted: screen.attention.session_is_muted(),
-                };
-
-                let session_layout_metadata = if screen.session_serialization {
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None)
-                } else {
-                    // Create empty metadata if serialization is disabled
-                    SessionLayoutMetadata::new(screen.default_layout.clone())
-                };
-
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::SaveSessionToDisk {
-                        session_name: screen.session_name.clone(),
-                        session_info,
-                        session_layout_metadata,
-                        completion_tx,
-                    })
-                    .with_context(err_context)?;
+            ScreenInstruction::SaveSession(client_id, completion_tx) => {
+                screen.handle_save_session(client_id, completion_tx)?;
             },
             ScreenInstruction::RenameSession(name, client_id, _completion_tx) => {
                 if let Err(error_text) = screen.rename_session(name)? {
