@@ -2974,6 +2974,26 @@ fn grouped_chunk(cells: Vec<TerminalCharacter>, x: usize, y: usize) -> Character
 }
 
 #[test]
+fn clipped_wide_cjk_is_emitted_as_a_single_column_placeholder() {
+    let mut flagged = TerminalCharacter::new('你');
+    flagged.set_width(1);
+    flagged.set_width_was_clipped(true);
+    let flagged_output = ansi_for(CharacterChunk::new(vec![flagged], 0, 0), None);
+    assert_eq!(flagged_output, "\u{1b}[1;1H\u{1b}[m ");
+    assert!(!flagged_output.contains('你'));
+
+    // Stored narrower than the glyph even when the clip flag was cleared.
+    let mut narrow = TerminalCharacter::new('你');
+    narrow.set_width(1);
+    assert!(!narrow.width_was_clipped());
+    let mut grouped = CharacterChunk::new(vec![narrow, TerminalCharacter::new('X')], 0, 0);
+    grouped.may_have_groups = true;
+    let grouped_output = ansi_for(grouped, None);
+    assert_eq!(grouped_output, "\u{1b}[1;1H\u{1b}[m X");
+    assert!(!grouped_output.contains('你'));
+}
+
+#[test]
 fn a_plain_ascii_chunk_serializes_exactly_as_before() {
     let output = ansi_for(create_character_chunk_from_str("abc", 2, 1), None);
     assert_eq!(output, "\u{1b}[2;3H\u{1b}[mabc");

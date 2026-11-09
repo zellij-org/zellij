@@ -5696,6 +5696,49 @@ fn pane_contents_scrollback_no_truncation_when_max_zero() {
 }
 
 #[test]
+fn pane_contents_limit_matches_the_newest_history_rows() {
+    let grid = create_grid_with_scrollback();
+    let limit = 4;
+    assert!(
+        grid.lines_above.len() > limit,
+        "the fixture has to be longer than the requested window"
+    );
+    let start = grid.lines_above.len() - limit;
+    let oldest = row_to_string(&grid.lines_above[start]);
+    let newest = row_to_string(&grid.lines_above[grid.lines_above.len() - 1]);
+
+    let result = grid.pane_contents(true, Some(limit));
+    assert_eq!(result.lines_above_viewport.len(), limit);
+    assert_eq!(
+        result.lines_above_viewport.first().map(String::as_str),
+        Some(oldest.as_str())
+    );
+    assert_eq!(
+        result.lines_above_viewport.last().map(String::as_str),
+        Some(newest.as_str())
+    );
+
+    let ansi_full = grid.pane_contents_with_ansi(true, None);
+    let ansi = grid.pane_contents_with_ansi(true, Some(limit));
+    assert_eq!(ansi.lines_above_viewport.len(), limit);
+    assert_eq!(
+        ansi.lines_above_viewport.as_slice(),
+        &ansi_full.lines_above_viewport[start..]
+    );
+
+    let full = grid.pane_contents(true, Some(grid.lines_above.len()));
+    assert_eq!(full.lines_above_viewport.len(), grid.lines_above.len());
+    assert_eq!(
+        full.lines_above_viewport.first().map(String::as_str),
+        Some(row_to_string(&grid.lines_above[0]).as_str())
+    );
+    assert_eq!(
+        full.lines_above_viewport.last().map(String::as_str),
+        Some(newest.as_str())
+    );
+}
+
+#[test]
 fn pane_contents_scrollback_truncates_to_last_n() {
     let grid = create_grid_with_scrollback();
     let result = grid.pane_contents(true, Some(5));
@@ -10391,6 +10434,36 @@ fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) ->
 fn feed(grid: &mut Grid, content: &str) {
     let mut vte_parser = vt_parser::Parser::new();
     vte_parser.feed(grid, content.as_bytes());
+}
+
+#[test]
+fn cursor_reflow_of_clipped_wide_text_does_not_overwrite_the_next_character() {
+    let mut grid = create_sized_grid_with_content(1, 3, "你X");
+    assert_eq!(grid.cursor.x, 3, "the cursor is pending-wrap after 你X");
+
+    grid.change_size(2, 1);
+    feed(&mut grid, "Y");
+
+    let mut stored = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        stored.push_str(&row_to_string(row));
+    }
+    assert_eq!(
+        stored, "你XY",
+        "reflow must keep 你 and X, and Y must land on the next free cell"
+    );
+    assert!(
+        grid.viewport
+            .iter()
+            .any(|row| row_to_string(row).contains('X')),
+        "X must still be on screen, not replaced by Y: viewport={:?}",
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>()
+    );
 }
 
 #[test]

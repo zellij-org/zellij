@@ -964,6 +964,24 @@ fn push_decimal(out: &mut String, value: usize) {
 //                 the host's cursor actually moved
 // Plain text, where every width agrees, is written as is so ordinary output costs nothing
 // extra.
+/// A clipped plain wide glyph is stored in one column, but the host draws the
+/// original character at its Unicode width. Emit one space per stored column
+/// instead of that character.
+fn plain_host_cell_is_narrower_than_glyph(cell: &TerminalCharacter) -> bool {
+    cell.width_was_clipped() || cell.width() < cell.natural_width()
+}
+
+fn push_plain_host_cell(out: &mut String, cell: &TerminalCharacter) {
+    if plain_host_cell_is_narrower_than_glyph(cell) {
+        let columns = cell.width().max(1);
+        for _ in 0..columns {
+            out.push(' ');
+        }
+    } else {
+        out.push(cell.character);
+    }
+}
+
 fn write_unit_text(
     vte_output: &mut String,
     unit: &[TerminalCharacter],
@@ -1071,7 +1089,7 @@ fn serialize_chunks(
                     )
                     .with_context(err_context)?;
                 } else {
-                    vte_output.push(t_character.character);
+                    push_plain_host_cell(&mut vte_output, t_character);
                 }
                 chunk_width += t_character.width();
             }
@@ -1123,7 +1141,7 @@ fn serialize_chunks(
             )
             .with_context(err_context)?;
             if unit_end == index + 1 && !t_character.has_attached() {
-                vte_output.push(t_character.character);
+                push_plain_host_cell(&mut vte_output, t_character);
             } else {
                 write_unit_text(&mut vte_output, unit, unit_columns, chunk_width)
                     .with_context(err_context)?;

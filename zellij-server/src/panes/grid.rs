@@ -2130,6 +2130,15 @@ impl ViewportAnchor {
     }
 }
 
+/// `Some(0)` and `None` keep every scrollback row. A positive limit keeps
+/// the newest rows; callers must slice before turning those rows into strings.
+fn retained_scrollback_start(len: usize, max_scrollback_lines: Option<usize>) -> usize {
+    match max_scrollback_lines {
+        Some(max) if max > 0 && len > max => len - max,
+        _ => 0,
+    }
+}
+
 /// Rows one screen-thread turn may move while shifting the viewport,
 /// scanning for a search hit, or recounting scrollback after a resize.
 /// A longer distance continues on a later turn.
@@ -2722,41 +2731,51 @@ impl Grid {
         }
         canonical_line_index
     }
-    // TODO: merge these two functions
-    fn cursor_index_in_canonical_line(&self) -> usize {
-        let mut cursor_canonical_line_index = 0;
-        let mut cursor_index_in_canonical_line = 0;
+    fn column_index_in_canonical_line(&self, x: usize, y: usize) -> usize {
+        let mut line_start = 0;
         for (i, line) in self.viewport.iter().enumerate() {
             if line.is_canonical {
-                cursor_canonical_line_index = i;
+                line_start = i;
             }
-            if i == self.cursor.y {
-                let line_wraps = self.cursor.y.saturating_sub(cursor_canonical_line_index);
-                cursor_index_in_canonical_line = (line_wraps * self.width) + self.cursor.x;
+            if i == y {
+                return y.saturating_sub(line_start) * self.width + x;
+            }
+        }
+        0
+    }
+    /// Physical column index, shifted by how much cells before the cursor
+    /// change width in this reflow. Dividing the unadjusted index by the new
+    /// width lands on a character that used to sit before the cursor once a
+    /// wide glyph is clipped.
+    fn reflowed_column_index(&self, x: usize, y: usize, new_columns: usize) -> usize {
+        let index = self.column_index_in_canonical_line(x, y);
+        let mut delta = 0isize;
+        for (i, row) in self.viewport.iter().enumerate() {
+            if row.is_canonical {
+                delta = 0;
+            }
+            if i > y {
                 break;
             }
-        }
-        cursor_index_in_canonical_line
-    }
-    fn saved_cursor_index_in_canonical_line(&self) -> Option<usize> {
-        if let Some(saved_cursor_position) = self.saved_cursor_position.as_ref() {
-            let mut cursor_canonical_line_index = 0;
-            let mut cursor_index_in_canonical_line = 0;
-            for (i, line) in self.viewport.iter().enumerate() {
-                if line.is_canonical {
-                    cursor_canonical_line_index = i;
-                }
-                if i == saved_cursor_position.y {
-                    let line_wraps = saved_cursor_position.y - cursor_canonical_line_index;
-                    cursor_index_in_canonical_line =
-                        (line_wraps * self.width) + saved_cursor_position.x;
+            let mut column = 0usize;
+            for cell in &row.columns {
+                let old = cell.width();
+                let end = column + old;
+                let before_cursor = i < y || end <= x;
+                if !before_cursor {
                     break;
                 }
+                // Only a clip moves the cursor. A glyph that regains width on a
+                // wider pane keeps the previous column mapping; shifting it
+                // here also shifts every later write in that reflow.
+                let fitted = fitted_character_width(cell, new_columns);
+                if fitted < old {
+                    delta -= (old - fitted) as isize;
+                }
+                column = end;
             }
-            Some(cursor_index_in_canonical_line)
-        } else {
-            None
         }
+        (index as isize + delta).max(0) as usize
     }
     fn canonical_line_y_coordinates(&self, canonical_line_index: usize) -> usize {
         let mut canonical_lines_traversed =
@@ -3262,8 +3281,12 @@ impl Grid {
         let cursors = if columns_changed {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
-            let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
-            let saved_cursor_index_in_canonical_line = self.saved_cursor_index_in_canonical_line();
+            let cursor_index_in_canonical_line =
+                self.reflowed_column_index(self.cursor.x, self.cursor.y, new_columns);
+            let saved_cursor_index_in_canonical_line = self
+                .saved_cursor_position
+                .as_ref()
+                .map(|saved| self.reflowed_column_index(saved.x, saved.y, new_columns));
             let mut saved_cursor_canonical_line_index = self
                 .saved_cursor_position
                 .as_ref()
@@ -7522,16 +7545,11 @@ impl Grid {
             viewport.push(row_text(row));
         }
         let mut contents = if get_full_scrollback {
-            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
-            for row in &self.lines_above {
+            let above_start =
+                retained_scrollback_start(self.lines_above.len(), max_scrollback_lines);
+            let mut lines_above_viewport = Vec::with_capacity(self.lines_above.len() - above_start);
+            for row in self.lines_above.range(above_start..) {
                 lines_above_viewport.push(row_text(&row.with_trailing_blanks()));
-            }
-            // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
-            if let Some(max) = max_scrollback_lines {
-                if max > 0 && lines_above_viewport.len() > max {
-                    let start = lines_above_viewport.len() - max;
-                    lines_above_viewport = lines_above_viewport.split_off(start);
-                }
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
@@ -7592,15 +7610,11 @@ impl Grid {
         }
 
         let mut contents = if get_full_scrollback {
-            let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
-            for row in &self.lines_above {
+            let above_start =
+                retained_scrollback_start(self.lines_above.len(), max_scrollback_lines);
+            let mut lines_above_viewport = Vec::with_capacity(self.lines_above.len() - above_start);
+            for row in self.lines_above.range(above_start..) {
                 lines_above_viewport.push(extract_row_with_ansi(&row.with_trailing_blanks()));
-            }
-            if let Some(max) = max_scrollback_lines {
-                if max > 0 && lines_above_viewport.len() > max {
-                    let start = lines_above_viewport.len() - max;
-                    lines_above_viewport = lines_above_viewport.split_off(start);
-                }
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
