@@ -10436,6 +10436,101 @@ fn feed(grid: &mut Grid, content: &str) {
     vte_parser.feed(grid, content.as_bytes());
 }
 
+fn stored_text(grid: &Grid) -> String {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .map(row_to_string)
+        .collect()
+}
+
+#[test]
+fn resize_around_a_wide_glyph_keeps_the_cursor_after_the_following_character() {
+    // 4 columns: `a` `你` `X`, cursor pending-wrap at (4, 0). At 2 columns the
+    // wide glyph does not fit after `a`, so the line is `a` / `你` / `X`.
+    // Dividing the linear index by the new width lands on `你` and the next
+    // write replaces `X`.
+    let mut grid = create_sized_grid_with_content(1, 4, "a你X\u{1b}7");
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    grid.change_size(3, 2);
+
+    assert_eq!(
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>(),
+        vec!["a".to_owned(), "你".to_owned(), "X".to_owned()]
+    );
+    assert_eq!(
+        (grid.cursor.x, grid.cursor.y),
+        (1, 2),
+        "cursor was {:?}, saved {:?}",
+        (grid.cursor.x, grid.cursor.y),
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y))
+    );
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((1, 2))
+    );
+
+    feed(&mut grid, "Y");
+    assert_eq!(stored_text(&grid), "a你XY");
+}
+
+#[test]
+fn widening_a_clipped_glyph_keeps_the_cursor_past_its_restored_width() {
+    let mut grid = create_sized_grid_with_content(4, 4, "a你X");
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    grid.change_size(4, 1);
+    assert_eq!(grid.viewport[1].columns[0].width(), 1);
+    assert_eq!((grid.cursor.x, grid.cursor.y), (1, 2));
+
+    grid.change_size(3, 4);
+    assert_eq!(grid.viewport[0].columns[1].character, '你');
+    assert_eq!(grid.viewport[0].columns[1].width(), 2);
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    feed(&mut grid, "Y");
+    assert_eq!(stored_text(&grid), "a你XY");
+}
+
+#[test]
+fn a_following_canonical_row_does_not_drop_the_wide_glyph_cursor_correction() {
+    let mut grid = create_sized_grid_with_content(6, 4, "a你X\u{1b}7\n\rZ");
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((4, 0))
+    );
+
+    grid.change_size(6, 1);
+
+    assert_eq!(
+        grid.viewport
+            .iter()
+            .take(4)
+            .map(row_to_string)
+            .collect::<Vec<_>>(),
+        vec![
+            "a".to_owned(),
+            "你".to_owned(),
+            "X".to_owned(),
+            "Z".to_owned()
+        ]
+    );
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((1, 2))
+    );
+}
+
 #[test]
 fn cursor_reflow_of_clipped_wide_text_does_not_overwrite_the_next_character() {
     let mut grid = create_sized_grid_with_content(1, 3, "你X");

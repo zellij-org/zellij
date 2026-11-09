@@ -2743,39 +2743,102 @@ impl Grid {
         }
         0
     }
-    /// Physical column index, shifted by how much cells before the cursor
-    /// change width in this reflow. Dividing the unadjusted index by the new
-    /// width lands on a character that used to sit before the cursor once a
-    /// wide glyph is clipped.
+    /// Linear column index, shifted by every fitted-width change of a glyph
+    /// wholly before the cursor. A clip narrows that index; a clipped glyph
+    /// regaining its natural width lengthens it. The canonical row after the
+    /// cursor must not wipe the shift; the cursor row has already been
+    /// counted. The on-screen position comes from `project_cursor_through_wrap`;
+    /// this index is only the past-the-end clamp for a trimmed line.
     fn reflowed_column_index(&self, x: usize, y: usize, new_columns: usize) -> usize {
         let index = self.column_index_in_canonical_line(x, y);
         let mut delta = 0isize;
         for (i, row) in self.viewport.iter().enumerate() {
-            if row.is_canonical {
-                delta = 0;
-            }
             if i > y {
                 break;
+            }
+            if row.is_canonical {
+                delta = 0;
             }
             let mut column = 0usize;
             for cell in &row.columns {
                 let old = cell.width();
                 let end = column + old;
-                let before_cursor = i < y || end <= x;
-                if !before_cursor {
+                if !(i < y || end <= x) {
                     break;
                 }
-                // Only a clip moves the cursor. A glyph that regains width on a
-                // wider pane keeps the previous column mapping; shifting it
-                // here also shifts every later write in that reflow.
                 let fitted = fitted_character_width(cell, new_columns);
-                if fitted < old {
-                    delta -= (old - fitted) as isize;
-                }
+                delta += fitted as isize - old as isize;
                 column = end;
             }
         }
         (index as isize + delta).max(0) as usize
+    }
+    /// Where `(x, y)` sits inside its canonical line after the same greedy
+    /// wrap as `Row::rewrap_rows`. Soft-wrap gaps are not cells: a wide glyph
+    /// that does not fit the remaining columns moves to the next row, and the
+    /// cursor follows the glyphs rather than `index / new_columns`. A cursor
+    /// that was not in column 0 and lands on a full row stays pending-wrap
+    /// (`x == new_columns`) so the next character does not open a new line.
+    fn project_cursor_through_wrap(
+        &self,
+        x: usize,
+        y: usize,
+        new_columns: usize,
+    ) -> (usize, usize) {
+        if new_columns == 0 {
+            return (0, 0);
+        }
+        // Already wrapped at this width: rewrap reproduces the same row
+        // breaks, including the gap a wide glyph left at the end of a row.
+        // Walking glyphs alone would drop that gap and slide the cursor.
+        if new_columns == self.width {
+            let index = self.column_index_in_canonical_line(x, y);
+            let mut row = index / new_columns;
+            let mut column = index % new_columns;
+            if x != 0 && column == 0 {
+                row = row.saturating_sub(1);
+                column = new_columns;
+            }
+            return (column, row);
+        }
+        let mut line_start = 0usize;
+        for (i, row) in self.viewport.iter().enumerate() {
+            if i > y {
+                break;
+            }
+            if row.is_canonical {
+                line_start = i;
+            }
+        }
+        let mut state = WrapState::default();
+        for (i, row) in self.viewport.iter().enumerate().skip(line_start) {
+            if i > y {
+                break;
+            }
+            let mut column = 0usize;
+            let limit = if i == y { x } else { usize::MAX };
+            for cell in &row.columns {
+                let old = cell.width();
+                let end = column.saturating_add(old);
+                if end > limit {
+                    break;
+                }
+                state.push_character(fitted_character_width(cell, new_columns), new_columns);
+                column = end;
+            }
+            if i < y {
+                // Continuation rows expand compressed blanks into the joined
+                // line. The unstored gap a wide glyph left behind is not one.
+                state.push_single_width_cells(row.trailing_blanks as usize, new_columns);
+            } else if x > column {
+                state.push_single_width_cells(x - column, new_columns);
+            }
+        }
+        if x == 0 && state.current == new_columns {
+            (0, state.completed_rows.saturating_add(1))
+        } else {
+            (state.current, state.completed_rows)
+        }
     }
     fn canonical_line_y_coordinates(&self, canonical_line_index: usize) -> usize {
         let mut canonical_lines_traversed =
@@ -3288,12 +3351,16 @@ impl Grid {
         let cursors = if columns_changed {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
-            let cursor_index_in_canonical_line =
-                self.reflowed_column_index(self.cursor.x, self.cursor.y, new_columns);
-            let saved_cursor_index_in_canonical_line = self
+            let (mut new_cursor_x, cursor_y_offset) =
+                self.project_cursor_through_wrap(self.cursor.x, self.cursor.y, new_columns);
+            let saved_cursor_projection = self
                 .saved_cursor_position
                 .as_ref()
-                .map(|saved| self.reflowed_column_index(saved.x, saved.y, new_columns));
+                .map(|saved| self.project_cursor_through_wrap(saved.x, saved.y, new_columns));
+            // Trimmed trailing blanks can leave the wrapped anchor past the
+            // last row. The clamp still uses this linear index.
+            let cursor_index_in_canonical_line =
+                self.reflowed_column_index(self.cursor.x, self.cursor.y, new_columns);
             let mut saved_cursor_canonical_line_index = self
                 .saved_cursor_position
                 .as_ref()
@@ -3405,53 +3472,23 @@ impl Grid {
             let cursor_line_first_y =
                 self.canonical_line_y_coordinates(cursor_canonical_line_index);
             let cursor_line_last_y = self.last_row_of_line_starting_at(cursor_line_first_y);
-            let mut new_cursor_y =
-                cursor_line_first_y + (cursor_index_in_canonical_line / new_columns);
-            let mut saved_cursor_y_coordinates = match (
-                saved_cursor_canonical_line_index,
-                saved_cursor_index_in_canonical_line,
-            ) {
-                (Some(line_index), Some(index_in_line)) => Some(
-                    self.canonical_line_y_coordinates(line_index) + index_in_line / new_columns,
-                ),
-                _ => None,
-            };
-
-            // A cursor at EOL has two equivalent positions - end of this line or beginning of
-            // next. If not already at the beginning of line, bias to EOL so add character logic
-            // doesn't create spurious canonical lines
-            let mut new_cursor_x = cursor_index_in_canonical_line % new_columns;
-            if self.cursor.x != 0 && new_cursor_x == 0 {
-                new_cursor_y = new_cursor_y.saturating_sub(1);
-                new_cursor_x = new_columns
-            }
+            let mut new_cursor_y = cursor_line_first_y + cursor_y_offset;
+            let (saved_cursor_x_coordinates, saved_cursor_y_coordinates) =
+                match (saved_cursor_projection, saved_cursor_canonical_line_index) {
+                    (Some((saved_x, saved_y_offset)), Some(line_index)) => (
+                        Some(saved_x),
+                        Some(self.canonical_line_y_coordinates(line_index) + saved_y_offset),
+                    ),
+                    _ => (None, None),
+                };
+            // Trailing blanks trimmed above can leave the anchor past the
+            // reflowed line. Pin it to the last row, as the linear index did.
             if new_cursor_y > cursor_line_last_y {
                 let offset_in_last_row = cursor_index_in_canonical_line
                     .saturating_sub((cursor_line_last_y - cursor_line_first_y) * new_columns);
                 new_cursor_y = cursor_line_last_y;
                 new_cursor_x = offset_in_last_row.min(new_columns.saturating_sub(1));
             }
-            let saved_cursor_x_coordinates = match (
-                saved_cursor_index_in_canonical_line.as_ref(),
-                self.saved_cursor_position.as_mut(),
-                saved_cursor_y_coordinates.as_mut(),
-            ) {
-                (
-                    Some(saved_cursor_index_in_canonical_line),
-                    Some(saved_cursor_position),
-                    Some(saved_cursor_y_coordinates),
-                ) => {
-                    let x = saved_cursor_position.x;
-                    let mut new_x = *saved_cursor_index_in_canonical_line % new_columns;
-                    let new_y = saved_cursor_y_coordinates;
-                    if x != 0 && new_x == 0 {
-                        *new_y = new_y.saturating_sub(1);
-                        new_x = new_columns
-                    }
-                    Some(new_x)
-                },
-                _ => None,
-            };
             Some((
                 new_cursor_y,
                 saved_cursor_y_coordinates,
