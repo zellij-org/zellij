@@ -8,7 +8,7 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
 );
 
 use std::io::{Read, Seek};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
 pub const MAX_DIMENSION: u32 = 10_000;
@@ -540,35 +540,194 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
 
 const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
 
-fn resolve_parent(path: &Path) -> Option<std::path::PathBuf> {
-    let file_name = path.file_name()?;
-    let parent = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => return None,
-    };
-    let canonical_parent = std::fs::canonicalize(parent).ok()?;
-    Some(canonical_parent.join(file_name))
+struct OpenedGraphicsFile {
+    file: std::fs::File,
+    len: u64,
+    canonical_path: PathBuf,
+    // the directory the file was opened from and its name in it, both from
+    // the walk that opened it: deletion goes through these, not the path
+    #[cfg(unix)]
+    parent_dir: std::os::fd::OwnedFd,
+    #[cfg(unix)]
+    file_name: std::ffi::CString,
 }
 
-fn is_deletable_temp_file(resolved: &Path) -> bool {
-    let roots = [
+fn known_temp_dirs() -> Vec<PathBuf> {
+    [
         std::env::temp_dir(),
-        std::path::PathBuf::from("/tmp"),
-        std::path::PathBuf::from("/dev/shm"),
-    ];
-    roots
-        .iter()
-        .filter_map(|root| std::fs::canonicalize(root).ok())
-        .any(|root| {
-            resolved
-                .strip_prefix(&root)
-                .map(|relative| relative.to_string_lossy().contains(TEMP_FILE_MARKER))
-                .unwrap_or(false)
-        })
+        PathBuf::from("/tmp"),
+        PathBuf::from("/dev/shm"),
+    ]
+    .into_iter()
+    .filter_map(|dir| std::fs::canonicalize(dir).ok())
+    .collect()
+}
+
+// kitty refuses to read from these. /dev/shm is a regular tmpfs and one of the
+// temp directories the protocol knows about, so it stays usable.
+fn is_forbidden_path(canonical_path: &Path) -> bool {
+    canonical_path.starts_with("/proc")
+        || canonical_path.starts_with("/sys")
+        || (canonical_path.starts_with("/dev") && !canonical_path.starts_with("/dev/shm"))
+}
+
+#[cfg(unix)]
+fn openat_nofollow(
+    directory: std::os::fd::RawFd,
+    name: &std::ffi::CStr,
+    flags: libc::c_int,
+) -> std::io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd;
+    let fd = unsafe {
+        libc::openat(
+            directory,
+            name.as_ptr(),
+            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) })
+    }
+}
+
+// Opens an absolute path one component at a time, each with openat(2) and
+// O_NOFOLLOW relative to the directory opened before it. The canonical path
+// has no symlinks in it, so any that shows up here was swapped in after it was
+// resolved and is refused, instead of being followed to somewhere else.
+// O_NONBLOCK keeps a FIFO swapped in at the last moment from blocking the open.
+// Returns the file, the directory it was found in and its name there.
+#[cfg(unix)]
+fn open_without_following_symlinks(
+    path: &Path,
+) -> std::io::Result<(std::fs::File, std::os::fd::OwnedFd, std::ffi::CString)> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Component;
+    let invalid = || std::io::Error::from(std::io::ErrorKind::InvalidInput);
+    if !path.is_absolute() {
+        return Err(invalid());
+    }
+    let mut names = vec![];
+    for component in path.components() {
+        match component {
+            Component::RootDir => {},
+            Component::Normal(name) => {
+                names.push(std::ffi::CString::new(name.as_bytes()).map_err(|_| invalid())?)
+            },
+            _ => return Err(invalid()),
+        }
+    }
+    let file_name = names.pop().ok_or_else(invalid)?;
+    let root = std::ffi::CString::new("/").map_err(|_| invalid())?;
+    let mut directory = openat_nofollow(libc::AT_FDCWD, &root, libc::O_RDONLY | libc::O_DIRECTORY)?;
+    for name in &names {
+        directory = openat_nofollow(
+            directory.as_raw_fd(),
+            name,
+            libc::O_RDONLY | libc::O_DIRECTORY,
+        )?;
+    }
+    let file = openat_nofollow(
+        directory.as_raw_fd(),
+        &file_name,
+        libc::O_RDONLY | libc::O_NONBLOCK,
+    )?;
+    Ok((std::fs::File::from(file), directory, file_name))
+}
+
+// Resolves `..` and symlinks first, then opens the resolved path once; the
+// regular-file check is done on the open handle (fstat), not on the path, so
+// the file that is checked is the file that is read.
+fn open_graphics_file(path: &Path) -> std::io::Result<OpenedGraphicsFile> {
+    let canonical_path = std::fs::canonicalize(path)?;
+    if is_forbidden_path(&canonical_path) {
+        return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+    }
+    #[cfg(unix)]
+    let (file, parent_dir, file_name) = open_without_following_symlinks(&canonical_path)?;
+    #[cfg(not(unix))]
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(&canonical_path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+    }
+    Ok(OpenedGraphicsFile {
+        len: metadata.len(),
+        file,
+        canonical_path,
+        #[cfg(unix)]
+        parent_dir,
+        #[cfg(unix)]
+        file_name,
+    })
+}
+
+// Per the kitty protocol a `t=t` file may only be deleted if it lives directly
+// in a temp directory and its name contains the marker string.
+fn should_delete_temp_file(opened: &OpenedGraphicsFile) -> bool {
+    let path = &opened.canonical_path;
+    let name_has_marker = path
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().contains(TEMP_FILE_MARKER));
+    let in_temp_dir = path
+        .parent()
+        .is_some_and(|parent| known_temp_dirs().iter().any(|dir| dir == parent));
+    name_has_marker && in_temp_dir
+}
+
+// Deletes the file that was read, but only if its name still refers to it.
+//
+// On unix the deletion is relative to the directory handle from the walk that
+// opened the file (unlinkat), after checking with fstatat that the name there
+// still has the device and inode of the handle we read from. A symlink or a
+// different file swapped in under that name is left alone, and the name cannot
+// be redirected through a swapped parent directory.
+//
+// A window remains between the fstatat and the unlinkat: POSIX has no way to
+// unlink "this inode" atomically. Using it requires renaming entries inside
+// the directory the file lives in; in a sticky temp directory such as /tmp
+// that is only the file's owner (or root), i.e. someone who could delete the
+// file anyway.
+fn delete_opened_file(opened: &OpenedGraphicsFile) {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let mut read_stat: libc::stat = unsafe { std::mem::zeroed() };
+        let mut named_stat: libc::stat = unsafe { std::mem::zeroed() };
+        let (read_ok, named_ok) = unsafe {
+            (
+                libc::fstat(opened.file.as_raw_fd(), &mut read_stat) == 0,
+                libc::fstatat(
+                    opened.parent_dir.as_raw_fd(),
+                    opened.file_name.as_ptr(),
+                    &mut named_stat,
+                    libc::AT_SYMLINK_NOFOLLOW,
+                ) == 0,
+            )
+        };
+        let same_file = read_ok
+            && named_ok
+            && (named_stat.st_mode & libc::S_IFMT) == libc::S_IFREG
+            && named_stat.st_dev == read_stat.st_dev
+            && named_stat.st_ino == read_stat.st_ino;
+        if same_file {
+            unsafe {
+                libc::unlinkat(opened.parent_dir.as_raw_fd(), opened.file_name.as_ptr(), 0);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::fs::remove_file(&opened.canonical_path);
+    }
 }
 
 fn read_file_range(
-    path: &Path,
+    file: &mut std::fs::File,
     file_len: u64,
     command: &KittyCommand,
     echo: &EchoFields,
@@ -585,8 +744,7 @@ fn read_file_range(
     if length > MAX_DECODED_BYTES as u64 {
         return Err(echo.error(KittyErrorCode::Einval, "image too large"));
     }
-    let read = |path: &Path| -> std::io::Result<Vec<u8>> {
-        let mut file = std::fs::File::open(path)?;
+    let mut read = || -> std::io::Result<Vec<u8>> {
         if start > 0 {
             file.seek(std::io::SeekFrom::Start(start))?;
         }
@@ -594,7 +752,7 @@ fn read_file_range(
         file.take(length).read_to_end(&mut bytes)?;
         Ok(bytes)
     };
-    read(path).map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))
+    read().map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))
 }
 
 fn run_payload_pipeline(
@@ -618,26 +776,13 @@ fn run_payload_pipeline(
         KittyMedium::File | KittyMedium::TempFile => {
             let path_string = String::from_utf8(decoded)
                 .map_err(|_| echo.error(KittyErrorCode::Ebadf, "invalid file path"))?;
-            let requested_path = std::path::PathBuf::from(path_string);
-            let (path, deletable) = if command.medium == KittyMedium::TempFile {
-                match resolve_parent(&requested_path) {
-                    Some(resolved) => {
-                        let deletable = is_deletable_temp_file(&resolved);
-                        (resolved, deletable)
-                    },
-                    None => (requested_path, false),
-                }
-            } else {
-                (requested_path, false)
-            };
-            let metadata = std::fs::metadata(&path)
+            let path = std::path::PathBuf::from(path_string);
+            let mut opened = open_graphics_file(&path)
                 .map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))?;
-            if !metadata.is_file() {
-                return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
-            }
-            let read_result = read_file_range(&path, metadata.len(), &command, &echo);
-            if deletable {
-                let _ = std::fs::remove_file(&path);
+            let delete_after = command.medium == KittyMedium::TempFile;
+            let read_result = read_file_range(&mut opened.file, opened.len, &command, &echo);
+            if delete_after && read_result.is_ok() && should_delete_temp_file(&opened) {
+                delete_opened_file(&opened);
             }
             read_result?
         },

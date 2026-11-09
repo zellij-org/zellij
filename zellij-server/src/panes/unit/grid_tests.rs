@@ -8253,9 +8253,13 @@ fn kitty_reply_icat_detection_sequence() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("tty-graphics-protocol-icat-detect.bin");
-    std::fs::write(&path, [1u8, 2, 3]).unwrap();
+    // like icat, a marker-named file directly in the temp directory
+    let mut file = tempfile::Builder::new()
+        .prefix("tty-graphics-protocol-")
+        .tempfile_in(std::env::temp_dir())
+        .unwrap();
+    std::io::Write::write_all(&mut file, &[1u8, 2, 3]).unwrap();
+    let (_file, path) = file.keep().unwrap();
     let path_bytes = path.to_str().unwrap().as_bytes();
     feed_kitty_bytes(
         &mut grid,
