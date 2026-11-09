@@ -406,7 +406,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "Show long-running commands",
             "List commands as working once they run longer than the done threshold (interactive programs are skipped)",
             Toggle,
-            "true",
+            "false",
             Everyone,
         ),
         SettingKey::AttentionIdleActivitySecs => info(

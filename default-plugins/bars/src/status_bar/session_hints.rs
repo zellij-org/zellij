@@ -3,6 +3,7 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 pub const SWITCH_HINT_MS: u64 = 5000;
+pub const DONE_HINT_MS: u64 = 5000;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionHints {
@@ -92,11 +93,44 @@ pub fn back_keys_text(mode_info: &ModeInfo) -> Option<String> {
     )
 }
 
+fn arrived_too_recently(history: &SessionHistoryInfo, now_ms: u64) -> bool {
+    now_ms.saturating_sub(history.arrived_at_ms) < SWITCH_HINT_MS
+}
+
+pub fn done_is_due(
+    history: Option<&SessionHistoryInfo>,
+    global: Option<&GlobalAttention>,
+    focused_pane: Option<&PaneInfo>,
+    now_ms: u64,
+) -> bool {
+    let Some(history) = history else {
+        return false;
+    };
+    if history.arrived_from.is_none() || arrived_too_recently(history, now_ms) {
+        return false;
+    }
+    let Some(SessionArrival::Attention { pane_id }) = history.arrival.as_ref() else {
+        return false;
+    };
+    let cleared = global
+        .map(|g| {
+            g.find(&g.current_session, pane_id)
+                .map(|item| !item.is_counted())
+                .unwrap_or(true)
+        })
+        .unwrap_or(false);
+    let still_there = focused_pane
+        .map(|pane| !pane.is_plugin && PaneId::Terminal(pane.id) == *pane_id)
+        .unwrap_or(false);
+    cleared && still_there
+}
+
 pub fn compute_session_hints(
     history: Option<&SessionHistoryInfo>,
     global: Option<&GlobalAttention>,
     focused_pane: Option<&PaneInfo>,
     back_keys: Option<&str>,
+    done_since_ms: Option<u64>,
     now_ms: u64,
 ) -> SessionHints {
     let previous = history.and_then(|h| h.previous.clone());
@@ -110,32 +144,22 @@ pub fn compute_session_hints(
         }
     });
     let keys = back_keys.filter(|keys| !keys.is_empty());
+    let done_showing = done_since_ms
+        .map(|since| now_ms.saturating_sub(since) < DONE_HINT_MS)
+        .unwrap_or(false);
     let transient = history.and_then(|history| {
         let from = history.arrived_from.as_ref()?;
-        let recent = now_ms.saturating_sub(history.arrived_at_ms) < SWITCH_HINT_MS;
-        if let Some(SessionArrival::Attention { pane_id }) = history.arrival.as_ref() {
-            let cleared = global
-                .map(|g| {
-                    g.find(&g.current_session, pane_id)
-                        .map(|item| !item.is_counted())
-                        .unwrap_or(true)
-                })
-                .unwrap_or(false);
-            let still_there = focused_pane
-                .map(|pane| !pane.is_plugin && PaneId::Terminal(pane.id) == *pane_id)
-                .unwrap_or(false);
-            if cleared && still_there && !recent {
-                return previous.as_ref().map(|previous| match keys {
-                    Some(keys) => format!(
-                        "Done · {} back to {}",
-                        keys,
-                        sanitize_display_text(previous)
-                    ),
-                    None => "Done".to_owned(),
-                });
-            }
+        if done_showing && done_is_due(Some(history), global, focused_pane, now_ms) {
+            return previous.as_ref().map(|previous| match keys {
+                Some(keys) => format!(
+                    "Done · {} back to {}",
+                    keys,
+                    sanitize_display_text(previous)
+                ),
+                None => "Done".to_owned(),
+            });
         }
-        if recent {
+        if arrived_too_recently(history, now_ms) {
             let from = sanitize_display_text(from);
             Some(match keys {
                 Some(keys) => format!("Switched from {} · {} back", from, keys),
@@ -182,18 +206,20 @@ mod tests {
     #[test]
     fn a_switch_is_announced_briefly() {
         let history = history(SessionArrival::Switch, 1_000);
-        let hints = compute_session_hints(Some(&history), None, None, Some("Ctrl o, Tab"), 2_000);
+        let hints =
+            compute_session_hints(Some(&history), None, None, Some("Ctrl o, Tab"), None, 2_000);
         assert_eq!(
             hints.transient.as_deref(),
             Some("Switched from api · Ctrl o, Tab back")
         );
         assert_eq!(hints.previous.as_deref(), Some("api"));
-        let later = compute_session_hints(Some(&history), None, None, Some("Ctrl o, Tab"), 9_000);
+        let later =
+            compute_session_hints(Some(&history), None, None, Some("Ctrl o, Tab"), None, 9_000);
         assert_eq!(later.transient, None);
     }
 
     #[test]
-    fn done_is_shown_once_the_item_jumped_to_clears() {
+    fn done_is_shown_for_a_few_seconds_once_the_item_jumped_to_clears() {
         let history = history(
             SessionArrival::Attention {
                 pane_id: PaneId::Terminal(3),
@@ -206,14 +232,51 @@ mod tests {
             is_focused: true,
             ..Default::default()
         };
-        let hints = compute_session_hints(
+        assert!(done_is_due(
             Some(&history),
             Some(&global),
             Some(&pane),
-            Some("Tab"),
-            20_000,
+            20_000
+        ));
+        let hints_at = |done_since_ms: Option<u64>, now_ms: u64| {
+            compute_session_hints(
+                Some(&history),
+                Some(&global),
+                Some(&pane),
+                Some("Tab"),
+                done_since_ms,
+                now_ms,
+            )
+            .transient
+        };
+        assert_eq!(
+            hints_at(Some(20_000), 21_000).as_deref(),
+            Some("Done · Tab back to api")
         );
-        assert_eq!(hints.transient.as_deref(), Some("Done · Tab back to api"));
+        assert_eq!(hints_at(Some(20_000), 20_000 + DONE_HINT_MS), None);
+        assert_eq!(hints_at(None, 21_000), None);
+    }
+
+    #[test]
+    fn done_is_not_due_right_after_arriving() {
+        let history = history(
+            SessionArrival::Attention {
+                pane_id: PaneId::Terminal(3),
+            },
+            1_000,
+        );
+        let global = GlobalAttention::build("here", vec![("here".to_owned(), Default::default())]);
+        let pane = PaneInfo {
+            id: 3,
+            is_focused: true,
+            ..Default::default()
+        };
+        assert!(!done_is_due(
+            Some(&history),
+            Some(&global),
+            Some(&pane),
+            2_000
+        ));
     }
 
     fn key(text: &str) -> KeyWithModifier {
@@ -353,7 +416,7 @@ mod tests {
         let info = mode_info(InputMode::Normal, vec![(InputMode::Normal, vec![])]);
         assert_eq!(back_keys_text(&info), None);
         let history = history(SessionArrival::Switch, 1_000);
-        let hints = compute_session_hints(Some(&history), None, None, None, 2_000);
+        let hints = compute_session_hints(Some(&history), None, None, None, None, 2_000);
         assert_eq!(hints.transient.as_deref(), Some("Switched from api"));
     }
 
@@ -361,11 +424,11 @@ mod tests {
     fn muted_and_watched_panes_are_mentioned() {
         let mut pane = PaneInfo::default();
         pane.attention.muted = Some(MuteScope::Pane);
-        let hints = compute_session_hints(None, None, Some(&pane), None, 0);
+        let hints = compute_session_hints(None, None, Some(&pane), None, None, 0);
         assert_eq!(hints.pane_note.as_deref(), Some("pane muted"));
         let mut pane = PaneInfo::default();
         pane.attention.watched = true;
-        let hints = compute_session_hints(None, None, Some(&pane), None, 0);
+        let hints = compute_session_hints(None, None, Some(&pane), None, None, 0);
         assert_eq!(hints.pane_note.as_deref(), Some("watching this pane"));
     }
 }
