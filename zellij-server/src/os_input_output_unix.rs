@@ -199,6 +199,11 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
     }
 }
 
+/// Whether a child process can be started with `path` as its working directory.
+fn cwd_is_usable(path: &std::path::Path) -> bool {
+    path.is_dir() && unistd::access(path, unistd::AccessFlags::X_OK).is_ok()
+}
+
 fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
@@ -229,11 +234,11 @@ fn handle_openpty(
         let cmd = cmd.clone();
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
-            if current_dir.exists() && current_dir.is_dir() {
+            if cwd_is_usable(&current_dir) {
                 command.current_dir(current_dir);
             } else {
                 log::error!(
-                    "Failed to set CWD for new pane. '{}' does not exist or is not a folder",
+                    "Failed to set CWD for new pane. '{}' does not exist, is not a folder or is not accessible",
                     current_dir.display()
                 );
             }
@@ -501,6 +506,22 @@ mod tests {
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
     use std::io::{Read, Write};
+
+    #[test]
+    fn cwd_is_usable_rejects_inaccessible_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        if unistd::geteuid().is_root() {
+            return; // root ignores directory permission bits
+        }
+        let dir = std::env::temp_dir().join(format!("zellij-cwd-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(cwd_is_usable(&dir));
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let usable = cwd_is_usable(&dir);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+        assert!(!usable);
+    }
 
     #[test]
     fn raw_fd_reader_returns_exact_bytes_in_order() {
