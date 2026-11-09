@@ -326,8 +326,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                             None
                         };
 
+                        pty.bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::NewPane(
+                                PaneId::Terminal(pid),
+                                pane_title,
+                                hold_for_command,
+                                invoked_with,
+                                new_pane_placement,
+                                start_suppressed,
+                                client_or_tab_index,
+                                completion_tx,
+                                set_blocking,
+                            ))
+                            .with_context(err_context)?;
+
                         // if this command originated in a plugin, we send the plugin back an event
-                        // to let it know the command started and which pane_id it has
+                        // to let it know the command started and which pane_id it has. This
+                        // is sent after the pane is queued for the screen: the plugin may
+                        // immediately close the pane id it learns about, and that close must
+                        // reach the screen after the pane has been created
                         if let Some(originating_plugin) =
                             run_command.and_then(|r| r.originating_plugin)
                         {
@@ -358,21 +376,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                                 )]))
                                 .with_context(err_context)?;
                         }
-
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::NewPane(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                invoked_with,
-                                new_pane_placement,
-                                start_suppressed,
-                                client_or_tab_index,
-                                completion_tx,
-                                set_blocking,
-                            ))
-                            .with_context(err_context)?;
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -2068,7 +2071,16 @@ impl Pty {
         let err_context = || format!("failed to close for pane {id:?}");
         match id {
             PaneId::Terminal(id) => {
+                // Sent before the reader is stopped and the child killed, so
+                // the screen hears of the close before any output or exit
+                // event that follows it. Only terminals that were actually
+                // started are announced: a close for an id that was never
+                // spawned must not suppress events of a later pane.
                 if let Some(handle) = self.task_handles.remove(&id) {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalClosed(id));
                     handle.abort();
                 }
                 if let Some(child_pid) = self.forget_child_pid(id) {

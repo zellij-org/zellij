@@ -44,6 +44,7 @@ mod attention;
 mod hidden_bars;
 mod live_view;
 mod mirror;
+mod pending_pane_events;
 mod popups;
 
 use log::{debug, warn};
@@ -514,6 +515,9 @@ pub enum ScreenInstruction {
     ), // i32 -> optional exit
     // status
     HoldPane(PaneId, Option<i32>, RunCommand),
+    /// The PTY thread has closed this terminal: no pane will be created for
+    /// it, and events that still arrive for it are dropped.
+    TerminalClosed(u32),
     UpdatePaneName(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenamePane(ClientId, Option<NotificationEnd>),
     NewTab(
@@ -1379,6 +1383,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
             ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
+            ScreenInstruction::TerminalClosed(..) => ScreenContext::TerminalClosed,
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
@@ -2222,6 +2227,11 @@ pub(crate) struct Screen {
     last_mobile_state_sent: HashMap<ClientId, MobileStatePayload>,
     pane_output_activity: HashMap<PaneId, Instant>,
     pane_ids_never_created: BTreeSet<PaneId>,
+    /// Recently closed terminals without a pane, whose late output and
+    /// exit events must not be buffered for a pane that will never exist.
+    closed_terminal_ids: HashSet<u32>,
+    /// `closed_terminal_ids` in the order they were closed, oldest first.
+    closed_terminal_order: VecDeque<u32>,
     pane_not_created_reasons: HashMap<PaneId, PaneNotCreatedReason>,
     mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
     client_host_focused: HashMap<ClientId, bool>,
@@ -2615,6 +2625,8 @@ impl Screen {
             last_mobile_state_sent: HashMap::new(),
             pane_output_activity: HashMap::new(),
             pane_ids_never_created: BTreeSet::new(),
+            closed_terminal_ids: HashSet::new(),
+            closed_terminal_order: VecDeque::new(),
             pane_not_created_reasons: HashMap::new(),
             mobile_web_prefs: HashMap::new(),
             client_host_focused: HashMap::new(),
@@ -9401,27 +9413,16 @@ impl Screen {
         &mut self,
         pid: PaneId,
         completion: &mut Option<NotificationEnd>,
-        pending_events_waiting_for_pane: &mut HashMap<PaneId, Vec<ScreenInstruction>>,
+        pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
     ) {
         if self.has_pane_with_pid(&pid) {
             self.pane_not_created_reasons.remove(&pid);
             for tab in self.tabs.values_mut() {
                 tab.take_pane_not_created_reason(&pid);
             }
-            if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
-                for event in pending_events {
-                    match event {
-                        ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
-                            self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
-                        },
-                        event => {
-                            self.bus.senders.send_to_screen(event).non_fatal();
-                        },
-                    }
-                }
-            }
+            self.replay_pending_pane_events(pid, pending_events_waiting_for_pane);
         } else {
-            pending_events_waiting_for_pane.remove(&pid);
+            pending_events_waiting_for_pane.discard(pid);
             let reason = self.take_pane_not_created_reason(&pid);
             reason.mark_completion(completion);
             if reason == PaneNotCreatedReason::Unknown {
@@ -9437,6 +9438,24 @@ impl Screen {
             tab.clear_pane_not_created_reasons();
         }
     }
+    /// Replay what arrived for a pane (output, exit, hold) before it existed.
+    /// Every path that creates panes must do this for the panes it created.
+    fn replay_pending_pane_events(
+        &mut self,
+        pid: PaneId,
+        pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
+    ) {
+        for event in pending_events_waiting_for_pane.take(pid) {
+            match event {
+                ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
+                    self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
+                },
+                event => {
+                    self.bus.senders.send_to_screen(event).non_fatal();
+                },
+            }
+        }
+    }
     fn remember_pane_never_created(&mut self, pid: PaneId) {
         if let PaneId::Terminal(_) = pid {
             self.pane_ids_never_created.insert(pid);
@@ -9446,7 +9465,24 @@ impl Screen {
         }
     }
     fn pane_will_never_be_created(&self, pid: &PaneId) -> bool {
-        self.pane_ids_never_created.contains(pid)
+        self.pane_ids_never_created.contains(pid) || self.terminal_was_closed(pid)
+    }
+    fn remember_terminal_closed(&mut self, terminal_id: u32) {
+        if !self.closed_terminal_ids.insert(terminal_id) {
+            return;
+        }
+        self.closed_terminal_order.push_back(terminal_id);
+        while self.closed_terminal_order.len() > MAX_REMEMBERED_CLOSED_TERMINALS {
+            if let Some(oldest) = self.closed_terminal_order.pop_front() {
+                self.closed_terminal_ids.remove(&oldest);
+            }
+        }
+    }
+    fn terminal_was_closed(&self, pid: &PaneId) -> bool {
+        match pid {
+            PaneId::Terminal(terminal_id) => self.closed_terminal_ids.contains(terminal_id),
+            PaneId::Plugin(_) => false,
+        }
     }
     pub fn replace_pane_with_existing_pane(
         &mut self,
@@ -10871,6 +10907,10 @@ fn find_already_running_panes(
 }
 
 const MAX_REMEMBERED_PANES_NEVER_CREATED: usize = 1024;
+/// Late events for a closed terminal arrive within moments of the close
+/// (output already queued, the child's exit), so only recent closes need
+/// to be remembered; terminal ids are never reused.
+const MAX_REMEMBERED_CLOSED_TERMINALS: usize = 1024;
 
 fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message: &str) {
     if let Some(completion) = completion.as_mut() {
@@ -11107,8 +11147,7 @@ pub(crate) fn screen_thread_main(
                                                                                // tab_index
     let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
-    let mut pending_events_waiting_for_pane: HashMap<PaneId, Vec<ScreenInstruction>> =
-        HashMap::new();
+    let mut pending_events_waiting_for_pane = pending_pane_events::PendingPaneEvents::default();
     let mut plugin_loading_message_cache = HashMap::new();
     let mut keybind_intercepts = HashMap::new();
     loop {
@@ -11134,9 +11173,7 @@ pub(crate) fn screen_thread_main(
                 if let Some(vte_bytes) = screen.apply_pty_bytes(pid, vte_bytes)? {
                     if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
                         pending_events_waiting_for_pane
-                            .entry(PaneId::Terminal(pid))
-                            .or_default()
-                            .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
+                            .push_output(PaneId::Terminal(pid), vte_bytes);
                     }
                 }
             },
@@ -12661,14 +12698,20 @@ pub(crate) fn screen_thread_main(
                         }
                         if !found {
                             if screen.pane_ids_never_created.remove(&id) {
-                                pending_events_waiting_for_pane.remove(&id);
+                                pending_events_waiting_for_pane.discard(id);
                                 closed_pane_was_never_created = true;
+                            } else if screen.terminal_was_closed(&id) {
+                                // The exit of a child whose terminal was
+                                // already closed (e.g. the user closed the
+                                // pane): it is fully cleaned up.
+                                continue;
                             } else if close_pane_source == ClosePaneSource::ChildExit {
                                 // Replayed once the pane exists, which also
                                 // cleans up its PTY. Cleaning up now would stop
                                 // reading output the command printed before it
                                 // exited.
-                                pending_events_waiting_for_pane.entry(id).or_default().push(
+                                pending_events_waiting_for_pane.push_lifecycle(
+                                    id,
                                     ScreenInstruction::ClosePane(
                                         id,
                                         None,
@@ -12729,14 +12772,23 @@ pub(crate) fn screen_thread_main(
                     screen.attention_pane_exited(id, exit_status);
                 }
                 if !found && screen.pane_ids_never_created.remove(&id) {
-                    pending_events_waiting_for_pane.remove(&id);
+                    pending_events_waiting_for_pane.discard(id);
+                } else if !found && screen.terminal_was_closed(&id) {
+                    // Held after its terminal was closed: nothing to hold.
                 } else if !found {
-                    pending_events_waiting_for_pane
-                        .entry(id)
-                        .or_default()
-                        .push(ScreenInstruction::HoldPane(id, exit_status, run_command));
+                    pending_events_waiting_for_pane.push_lifecycle(
+                        id,
+                        ScreenInstruction::HoldPane(id, exit_status, run_command),
+                    );
                 }
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::TerminalClosed(terminal_id) => {
+                let pid = PaneId::Terminal(terminal_id);
+                if !screen.has_pane_with_pid(&pid) {
+                    screen.remember_terminal_closed(terminal_id);
+                    pending_events_waiting_for_pane.discard(pid);
+                }
             },
             ScreenInstruction::UpdatePaneName(
                 c,
@@ -12955,6 +13007,11 @@ pub(crate) fn screen_thread_main(
                 } else {
                     mark_action_as_failed(&mut completion_tx, "Tab not found");
                 }
+                let new_terminal_ids: Vec<u32> = new_pane_pids
+                    .iter()
+                    .chain(new_floating_pane_pids.iter())
+                    .map(|(terminal_id, _)| *terminal_id)
+                    .collect();
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -12967,6 +13024,15 @@ pub(crate) fn screen_thread_main(
                     blocking_terminal,
                 )?;
                 screen.apply_hidden_bars_to_tab(tab_id);
+                // Commands started by the layout may have printed output or
+                // exited before their panes existed.
+                for terminal_id in new_terminal_ids {
+                    let pid = PaneId::Terminal(terminal_id);
+                    if screen.has_pane_with_pid(&pid) {
+                        screen
+                            .replay_pending_pane_events(pid, &mut pending_events_waiting_for_pane);
+                    }
+                }
                 let tab_of_layout = screen.tabs.get(&tab_id);
                 let pane_exists_in_tab = |pane_id: &PaneId| {
                     tab_of_layout

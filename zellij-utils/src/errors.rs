@@ -301,6 +301,7 @@ pub enum ScreenContext {
     SetFixedWidth,
     ClosePane,
     HoldPane,
+    TerminalClosed,
     UpdatePaneName,
     UndoRenamePane,
     NewTab,

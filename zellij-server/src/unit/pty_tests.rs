@@ -803,3 +803,84 @@ fn closing_a_pane_whose_child_is_running_still_hangs_it_up() {
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert_eq!(mock.signals(), vec![("SIGHUP", 4242)]);
 }
+
+#[test]
+fn the_plugin_that_started_a_command_hears_of_it_only_after_its_pane_was_queued() {
+    // The plugin may close the terminal id it is told about right away. That
+    // close can only find the pane if the pane was already queued for the
+    // screen when the plugin learned of the id.
+    let mock = MockOsApi::new();
+    *mock.spawn_pid.lock().unwrap() = Some(4242);
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let (screen_tx, screen_rx) = channels::unbounded();
+    let (plugin_tx, plugin_rx) = channels::unbounded();
+    let pty_sender = SenderWithContext::new(pty_tx);
+    let screen_sender = SenderWithContext::new(screen_tx);
+    let plugin_sender = SenderWithContext::new(plugin_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_rx],
+        Some(&screen_sender),
+        Some(&pty_sender),
+        Some(&plugin_sender),
+        None,
+        None,
+        None,
+        Some(Box::new(mock)),
+    )
+    .should_silently_fail();
+    let pty = Pty::new(bus, false, None, None, Default::default());
+    let pty_thread = std::thread::spawn(move || {
+        pty_thread_main(pty, Box::new(Layout::default()), "test-session".to_owned()).unwrap()
+    });
+    let run_command = RunCommand {
+        command: PathBuf::from("true"),
+        args: vec![],
+        cwd: None,
+        hold_on_close: false,
+        hold_on_start: false,
+        originating_plugin: Some(zellij_utils::data::OriginatingPlugin::new(
+            3,
+            1,
+            Default::default(),
+        )),
+        use_terminal_title: false,
+        notify: false,
+    };
+    pty_sender
+        .send(PtyInstruction::SpawnTerminal(
+            Some(TerminalAction::RunCommand(run_command)),
+            None,
+            Default::default(),
+            false,
+            ClientTabIndexOrPaneId::TabIndex(0),
+            None,
+            false,
+            None,
+        ))
+        .unwrap();
+    loop {
+        let (instruction, _) = plugin_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the plugin must be told the command started");
+        if let PluginInstruction::Update(updates) = instruction {
+            if updates
+                .iter()
+                .any(|(_, _, event)| matches!(event, Event::CommandPaneOpened(..)))
+            {
+                break;
+            }
+        }
+    }
+    let mut pane_was_queued = false;
+    while let Ok((instruction, _)) = screen_rx.try_recv() {
+        if let crate::screen::ScreenInstruction::NewPane(PaneId::Terminal(7), ..) = instruction {
+            pane_was_queued = true;
+        }
+    }
+    let _ = pty_sender.send(PtyInstruction::Exit);
+    let _ = pty_thread.join();
+    assert!(
+        pane_was_queued,
+        "the plugin was told of the command before its pane was queued for the screen"
+    );
+}

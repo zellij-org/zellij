@@ -16703,7 +16703,11 @@ pub fn a_pane_that_was_not_created_for_an_unknown_reason_is_closed() {
     new_tab(&mut screen, 1, 0);
     let (completion, mut completion_receiver) = completion_and_receiver();
     let mut completion = Some(completion);
-    screen.finish_pane_creation(PaneId::Terminal(5), &mut completion, &mut HashMap::new());
+    screen.finish_pane_creation(
+        PaneId::Terminal(5),
+        &mut completion,
+        &mut Default::default(),
+    );
     drop(completion);
     assert_eq!(
         closed_pane_ids_from(&pty_receiver),
@@ -16731,7 +16735,7 @@ pub fn bookkeeping_for_panes_that_were_not_created_stays_bounded() {
             .pane_not_created_reasons_count(),
         1
     );
-    screen.finish_pane_creation(PaneId::Terminal(1), &mut None, &mut HashMap::new());
+    screen.finish_pane_creation(PaneId::Terminal(1), &mut None, &mut Default::default());
     assert_eq!(
         screen
             .tabs
@@ -20512,6 +20516,12 @@ fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint(
 /// Send `close` for a pane that does not exist yet, then create the pane, and
 /// count the PTY cleanups the screen requested for it.
 fn close_then_create_pane_cleanups(close: ScreenInstruction, pid: u32) -> usize {
+    events_then_create_pane_cleanups(vec![close], pid)
+}
+
+/// Send `events` for a pane that does not exist yet, then create the pane,
+/// and count the PTY cleanups the screen requested for it.
+fn events_then_create_pane_cleanups(events: Vec<ScreenInstruction>, pid: u32) -> usize {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -20525,7 +20535,9 @@ fn close_then_create_pane_cleanups(close: ScreenInstruction, pid: u32) -> usize 
         pty_receiver
     );
     let screen_thread = mock_screen.run(None, vec![]);
-    let _ = mock_screen.to_screen.send(close);
+    for event in events {
+        let _ = mock_screen.to_screen.send(event);
+    }
     let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
         PaneId::Terminal(pid),
         None,
@@ -20616,4 +20628,112 @@ pub fn an_external_close_for_a_headless_plugin_still_unloads_it() {
         .unwrap()
         .iter()
         .any(|instruction| matches!(instruction, PtyInstruction::ClosePane(PaneId::Plugin(9), _))));
+}
+
+#[test]
+pub fn a_child_exit_before_its_layout_is_applied_closes_the_pane_once_created() {
+    // A layout command can exit before ApplyLayout creates its pane. The
+    // exit must be replayed when the layout creates the pane, so the pane
+    // is closed and its PID is forgotten instead of lingering in the PTY
+    // thread (where a later close could signal a reused PID).
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ClosePane(
+        PaneId::Terminal(9),
+        None,
+        None,
+        Some(0),
+        ClosePaneSource::ChildExit,
+    ));
+    let layout = TiledPaneLayout::default();
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
+        None,
+        None,
+        Some(layout.clone()),
+        vec![],
+        None,
+        (Some(vec![]), Some(vec![])),
+        None,
+        false,
+        true,
+        (mock_screen.main_client_id, false),
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        layout,
+        vec![],
+        vec![(9, None)],
+        vec![],
+        HashMap::new(),
+        1,
+        true,
+        (mock_screen.main_client_id, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let cleanups = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| {
+            matches!(
+                instruction,
+                PtyInstruction::ClosePane(PaneId::Terminal(9), _)
+            )
+        })
+        .count();
+    assert_eq!(cleanups, 1);
+}
+
+#[test]
+pub fn a_child_exit_after_its_terminal_was_closed_is_dropped() {
+    // Closing a pane kills its child, whose exit then arrives for a pane
+    // that no longer exists. It must be dropped, not buffered for a pane
+    // that will never be created.
+    let cleanups = events_then_create_pane_cleanups(
+        vec![
+            ScreenInstruction::TerminalClosed(7),
+            ScreenInstruction::ClosePane(
+                PaneId::Terminal(7),
+                None,
+                None,
+                Some(0),
+                ClosePaneSource::ChildExit,
+            ),
+        ],
+        7,
+    );
+    assert_eq!(cleanups, 0);
+}
+
+#[test]
+fn closed_terminals_are_forgotten_in_close_order() {
+    // A long-lived first pane closed after many newer ones must still be
+    // remembered: eviction follows close order, not terminal id order.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    for terminal_id in 1..=super::MAX_REMEMBERED_CLOSED_TERMINALS as u32 {
+        screen.remember_terminal_closed(terminal_id);
+    }
+    screen.remember_terminal_closed(0);
+    assert!(screen.terminal_was_closed(&PaneId::Terminal(0)));
+    assert!(!screen.terminal_was_closed(&PaneId::Terminal(1)));
+    assert!(screen.terminal_was_closed(&PaneId::Terminal(2)));
+    assert_eq!(
+        screen.closed_terminal_ids.len(),
+        super::MAX_REMEMBERED_CLOSED_TERMINALS
+    );
 }
