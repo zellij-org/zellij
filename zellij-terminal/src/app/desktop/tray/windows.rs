@@ -17,9 +17,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
     DestroyMenu, DestroyWindow, GetCursorPos, GetWindowLongPtrW, PostMessageW, RegisterClassExW,
     RegisterWindowMessageW, SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA,
-    HICON, HMENU, HWND_MESSAGE, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
-    SM_CXSMICON, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU, WM_NULL,
-    WNDCLASSEXW,
+    HICON, HMENU, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, SM_CXSMICON,
+    TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_NULL,
+    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 use super::{find_action, menu, Anchor, MenuEntry, Tray, TrayEvent, TrayEvents};
@@ -157,6 +157,11 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if message == WM_CLOSE {
+        // The icon lives as long as the app. A close sent to every window of the process, as
+        // taskkill without /f does, is meant for the terminal windows.
+        return 0;
+    }
     let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const WinState;
     if pointer.is_null() {
         return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
@@ -262,24 +267,26 @@ impl NotifyIcon {
         window_class.hInstance = instance;
         window_class.lpszClassName = class.as_ptr();
         unsafe { RegisterClassExW(&window_class) };
+        // A hidden top-level window, not a message-only one: only top-level windows hear the
+        // TaskbarCreated broadcast that asks for the icon again after Explorer restarts.
         let hwnd = unsafe {
             CreateWindowExW(
-                0,
+                WS_EX_TOOLWINDOW,
                 class.as_ptr(),
                 class.as_ptr(),
+                WS_POPUP,
                 0,
                 0,
                 0,
                 0,
-                0,
-                HWND_MESSAGE,
+                std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 instance,
                 std::ptr::null(),
             )
         };
         if hwnd.is_null() {
-            return Err(anyhow!("the tray message window could not be created"));
+            return Err(anyhow!("the tray window could not be created"));
         }
         let taskbar_created = unsafe { RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()) };
         let mut data: NOTIFYICONDATAW = unsafe { std::mem::zeroed() };
