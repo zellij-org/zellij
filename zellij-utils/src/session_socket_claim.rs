@@ -35,7 +35,7 @@ pub struct SessionSocketClaim {
 pub struct ExclusiveMarkerClaim {
     lock_path: PathBuf,
     nonce: [u8; 16],
-    _file: std::fs::File,
+    file: std::fs::File,
 }
 
 impl ExclusiveMarkerClaim {
@@ -127,6 +127,62 @@ fn publish_nonce(file: &mut std::fs::File, nonce: &[u8]) -> std::io::Result<()> 
     Ok(())
 }
 
+/// Read marker bytes from `file`, the handle that already holds the exclusive lock.
+///
+/// Windows `LockFileEx` is per handle. A second open of the path, including
+/// `std::fs::read` in this process, fails while that lock is held. Callers must
+/// not drop the lock before comparing these bytes to the nonce just written.
+fn read_locked_marker(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0))?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)?;
+    Ok(contents)
+}
+
+#[cfg(test)]
+thread_local! {
+    static VERIFY_MARKER_READ: std::cell::Cell<
+        Option<fn(&mut std::fs::File) -> std::io::Result<Vec<u8>>>,
+    > = const { std::cell::Cell::new(None) };
+}
+
+fn read_marker_for_verify(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
+    #[cfg(test)]
+    if let Some(read) = VERIFY_MARKER_READ.with(|slot| slot.get()) {
+        return read(file);
+    }
+    read_locked_marker(file)
+}
+
+/// Bytes that decide whether this claim may unlink `path`.
+///
+/// A path read sees a replaced inode. When that read is impossible because this
+/// handle still holds the lock, the owned handle is the only copy of the bytes.
+/// `NotFound` is not treated as an empty marker.
+fn read_marker_for_unlink(file: &mut std::fs::File, path: &Path) -> std::io::Result<Vec<u8>> {
+    match std::fs::read(path) {
+        Ok(contents) => Ok(contents),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Err(err),
+        Err(_) => read_locked_marker(file),
+    }
+}
+
+fn unlink_if_nonce_matches(
+    path: &Path,
+    contents: &[u8],
+    claim_nonce: &[u8],
+) -> std::io::Result<bool> {
+    if !marker_contents_belong_to_claim(contents, claim_nonce) {
+        return Ok(false);
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err),
+    }
+}
+
 /// Unlink `path` only when it still contains `claim_nonce`.
 ///
 /// Returns `Ok(false)` when the path is missing or names a replacement. The
@@ -137,24 +193,31 @@ fn unlink_marker_if_owned(path: &Path, claim_nonce: &[u8]) -> std::io::Result<bo
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(err) => return Err(err),
     };
-    if !marker_contents_belong_to_claim(&contents, claim_nonce) {
-        return Ok(false);
-    }
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(true),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(err) => Err(err),
-    }
+    unlink_if_nonce_matches(path, &contents, claim_nonce)
 }
 
-fn release_failed_publish(path: &Path, nonce: &[u8]) {
-    match std::fs::read(path) {
-        Ok(contents)
-            if contents.is_empty() || marker_contents_belong_to_claim(&contents, nonce) =>
-        {
-            let _ = std::fs::remove_file(path);
-        },
-        _ => {},
+/// Same ownership rule as [`unlink_marker_if_owned`], while `file` still holds the lock.
+fn unlink_locked_marker_if_owned(
+    file: &mut std::fs::File,
+    path: &Path,
+    claim_nonce: &[u8],
+) -> std::io::Result<bool> {
+    let contents = match read_marker_for_unlink(file, path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err),
+    };
+    unlink_if_nonce_matches(path, &contents, claim_nonce)
+}
+
+fn release_failed_publish(file: &mut std::fs::File, path: &Path, nonce: &[u8]) {
+    // Truncate already cleared this handle. Unlink only that empty file or a
+    // nonce this claim published — never a replacement's bytes.
+    let Ok(contents) = read_marker_for_unlink(file, path) else {
+        return;
+    };
+    if contents.is_empty() || marker_contents_belong_to_claim(&contents, nonce) {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -166,18 +229,17 @@ fn finish_exclusive_claim(
     try_lock_claim(&file, socket_path)?;
     let nonce = fresh_claim_nonce();
     if let Err(err) = publish_nonce(&mut file, &nonce) {
-        // Truncate our inode, then unlink only if the path is still that inode
-        // (empty or our nonce). A replacement's nonce stays on its own path.
         let _ = file.set_len(0);
-        release_failed_publish(&lock_path, &nonce);
+        release_failed_publish(&mut file, &lock_path, &nonce);
         return Err(err);
     }
-    match std::fs::read(&lock_path) {
+    // Still holding the lock. Identity is the locked handle's bytes, not a second open.
+    match read_marker_for_verify(&mut file) {
         Ok(contents) if marker_contents_belong_to_claim(&contents, &nonce) => {
             Ok(ExclusiveMarkerClaim {
                 lock_path,
                 nonce,
-                _file: file,
+                file,
             })
         },
         Ok(_) => Err(marker_addr_in_use(socket_path)),
@@ -197,8 +259,8 @@ fn marker_addr_in_use(socket_path: &Path) -> std::io::Error {
 
 impl Drop for ExclusiveMarkerClaim {
     fn drop(&mut self) {
-        // Unlink by identity, not by pathname. A newer claim's marker must survive.
-        let _ = unlink_marker_if_owned(&self.lock_path, &self.nonce);
+        // The lock is still held here. Unlink only when the bytes are this nonce.
+        let _ = unlink_locked_marker_if_owned(&mut self.file, &self.lock_path, &self.nonce);
     }
 }
 
@@ -550,5 +612,46 @@ mod tests {
             !lock_path.exists(),
             "the holder still owned the nonce, so drop may unlink it"
         );
+    }
+
+    fn locked_read_with_a_flipped_byte(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
+        let mut contents = read_locked_marker(file)?;
+        if let Some(byte) = contents.first_mut() {
+            *byte ^= 0xff;
+        }
+        Ok(contents)
+    }
+
+    struct ClearVerifyMarkerRead;
+
+    impl Drop for ClearVerifyMarkerRead {
+        fn drop(&mut self) {
+            VERIFY_MARKER_READ.with(|slot| slot.set(None));
+        }
+    }
+
+    #[test]
+    fn verification_reads_the_locked_handle_not_a_second_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let lock_path = SessionSocketClaim::lock_path(&path).unwrap();
+        // On Linux a second open still sees the published nonce, so it would
+        // accept the claim. Verification must use the locked handle instead.
+        VERIFY_MARKER_READ.with(|slot| slot.set(Some(locked_read_with_a_flipped_byte)));
+        let _clear = ClearVerifyMarkerRead;
+        let error = ExclusiveMarkerClaim::try_acquire(&path).expect_err(
+            "a second open of the path sees the nonce on Linux; verification must read the locked handle",
+        );
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        let published =
+            std::fs::read(&lock_path).expect("a mismatched locked read must not unlink");
+        assert_eq!(published.len(), 16);
+        assert!(marker_contents_belong_to_claim(&published, &published));
+        drop(_clear);
+        // The rejected observation left this claim's nonce behind and did not
+        // take ownership. Remove that file, then check the real locked read.
+        std::fs::remove_file(&lock_path).unwrap();
+        let mut claim = ExclusiveMarkerClaim::try_acquire(&path).unwrap();
+        assert_eq!(read_locked_marker(&mut claim.file).unwrap(), claim.nonce);
     }
 }
