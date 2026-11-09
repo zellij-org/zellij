@@ -1441,9 +1441,10 @@ mod windows_desktop {
     use crate::desktop_integration::desktop_entry::start_menu;
     use crate::desktop_integration::terminal_command::terminal_command;
 
-    const EXPLORER_KEYS: [&str; 2] = [
+    const EXPLORER_KEYS: [&str; 3] = [
         r"Software\Classes\Directory\shell\Zellij",
         r"Software\Classes\Directory\Background\shell\Zellij",
+        r"Software\Classes\Drive\shell\Zellij",
     ];
     const ZELLIJ_KEY: &str = r"Software\Zellij";
 
@@ -1636,7 +1637,7 @@ mod windows_desktop {
             return owned_status(
                 Item::ExplorerItem,
                 owner,
-                "Right-click a folder to open Zellij there",
+                "Right-click a folder or a drive to open Zellij there",
             )
             .with_removes(
                 EXPLORER_KEYS
@@ -1648,7 +1649,7 @@ mod windows_desktop {
         owned_status(
             Item::ExplorerItem,
             Owner::Nobody,
-            "Adds \"Open Zellij here\" when right-clicking a folder",
+            "Adds \"Open Zellij here\" when right-clicking a folder or a drive",
         )
     }
 
