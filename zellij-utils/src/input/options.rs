@@ -147,8 +147,8 @@ impl PaneFrameStyle {
             return PaneFrameStyle::None;
         }
         match options.pane_frame_style {
-            Some(PaneFrameStyle::Full) => PaneFrameStyle::Full,
-            _ => PaneFrameStyle::Titles,
+            Some(style) => style,
+            None => PaneFrameStyle::Titles,
         }
     }
 }
@@ -1203,6 +1203,34 @@ mod tests {
             PaneFrameStyle::None
         );
         assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
+
+    #[test]
+    fn explicit_pane_frame_style_none_wins_when_pane_frames_are_enabled() {
+        let options = Options {
+            pane_frames: Some(true),
+            pane_frame_style: Some(PaneFrameStyle::None),
+            ..Default::default()
+        };
+        assert_eq!(
+            PaneFrameStyle::from_options(&options),
+            PaneFrameStyle::None,
+            "pane_frame_style \"none\" must disable frames even when pane_frames is true"
+        );
+    }
+
+    #[test]
+    fn absent_pane_frame_style_defaults_to_titles_when_frames_are_enabled() {
+        let options = Options {
+            pane_frames: Some(true),
+            pane_frame_style: None,
+            ..Default::default()
+        };
+        assert_eq!(
+            PaneFrameStyle::from_options(&options),
+            PaneFrameStyle::Titles,
+            "absent pane_frame_style must stay distinct from an explicit none"
+        );
     }
 
     #[test]
