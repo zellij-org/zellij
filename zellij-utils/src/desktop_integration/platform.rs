@@ -425,10 +425,57 @@ pub fn copy_binary(
         std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o755))
             .with_context(|| format!("failed to make {:?} runnable", temporary))?;
     }
-    std::fs::rename(&temporary, destination).inspect_err(|_| {
+    put_in_place(&temporary, destination).inspect_err(|_| {
         let _ = std::fs::remove_file(&temporary);
     })?;
     Ok(Some(crate::desktop_integration::fingerprint_bytes(&bytes)))
+}
+
+#[cfg(not(windows))]
+fn put_in_place(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(temporary, destination)
+}
+
+/// Windows will not replace a program while it runs, but lets it be renamed. So the old file is
+/// moved aside first and deleted as soon as nothing runs it, at the latest by the next copy.
+#[cfg(windows)]
+fn put_in_place(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    clear_set_aside(destination);
+    let aside = destination
+        .exists()
+        .then(|| destination.with_extension(format!("old-{}", std::process::id())));
+    if let Some(aside) = &aside {
+        std::fs::rename(destination, aside)?;
+    }
+    if let Err(e) = std::fs::rename(temporary, destination) {
+        if let Some(aside) = &aside {
+            let _ = std::fs::rename(aside, destination);
+        }
+        return Err(e);
+    }
+    if let Some(aside) = &aside {
+        let _ = std::fs::remove_file(aside);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn clear_set_aside(destination: &Path) {
+    let (Some(folder), Some(stem)) = (
+        destination.parent(),
+        destination.file_stem().and_then(|stem| stem.to_str()),
+    ) else {
+        return;
+    };
+    let prefix = format!("{}.old-", stem);
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 pub fn remove_recorded_copy(state: &IntegrationState) -> anyhow::Result<String> {
@@ -2898,5 +2945,46 @@ mod tests {
         assert!(copy_binary(&source, &destination, true).unwrap().is_some());
         assert_eq!(std::fs::read(&destination).unwrap(), b"new");
         assert!(copy_binary(&source, &destination, false).unwrap().is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_copy_that_is_running_is_replaced() {
+        struct Running(std::process::Child);
+        impl Drop for Running {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let dir = tempfile::TempDir::new().unwrap();
+        let destination = dir.path().join("zellij.exe");
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+        std::fs::copy(system.join("PING.EXE"), &destination).unwrap();
+        let running = Running(
+            std::process::Command::new(&destination)
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let source = dir.path().join("newer.exe");
+        std::fs::write(&source, b"a newer zellij").unwrap();
+        let replaced = copy_binary(&source, &destination, true);
+        assert!(replaced.is_ok(), "{:?}", replaced);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"a newer zellij");
+        drop(running);
+        std::fs::write(&source, b"the newest zellij").unwrap();
+        assert!(copy_binary(&source, &destination, true).is_ok());
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            !left.iter().any(|name| name.starts_with("zellij.old-")),
+            "the old file is cleared once it no longer runs: {:?}",
+            left
+        );
     }
 }
