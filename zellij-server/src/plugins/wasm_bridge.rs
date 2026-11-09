@@ -3391,7 +3391,13 @@ impl WasmBridge {
                     plugin_map.get_running_plugin(plugin_id, Some(client_id))
                 };
                 if let Some(running_plugin) = running_plugin {
-                    if !lock_running(&running_plugin).is_active() {
+                    // The guest holds this mutex for the whole host call, and that call
+                    // may be what posted this message. Waiting would stall the plugin thread.
+                    let inactive = match try_lock_running(&running_plugin) {
+                        Some(running) => !running.is_active(),
+                        None => false,
+                    };
+                    if inactive {
                         // The instance was retired or quarantined after this message was
                         // queued. Do not cache it for a replacement that reused the same key.
                         return Ok(());

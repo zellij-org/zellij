@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::plugins::plugin_map::PluginMetadata;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 use tempfile::{tempdir, TempDir};
 use zellij_utils::channels::{self, Receiver, SenderWithContext};
@@ -566,6 +568,124 @@ fn shared_pipes_are_not_dispatched_to_a_quarantined_instance() {
     );
     assert!(!bridge.pending_pipes.is_pending("after-reload"));
     assert!(bridge.pending_pipes.is_finished("after-reload"));
+}
+
+#[test]
+fn missing_worker_message_is_cached_without_waiting_on_the_guest() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "plugin.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+    let client_id = 1;
+    let running = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .get_running_plugin(plugin_id, Some(client_id))
+        .expect("loaded plugin");
+    assert!(
+        running.lock().unwrap().is_active(),
+        "the held guest must still be the live instance"
+    );
+
+    let (held_tx, held_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let held_plugin = running.clone();
+    let _holder = thread::spawn(move || {
+        let _guard = held_plugin.lock().unwrap();
+        held_tx.send(()).unwrap();
+        // Dropping release_tx on a test failure unblocks this guard.
+        let _ = release_rx.recv();
+    });
+    held_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("holder did not take the running-plugin mutex");
+
+    let (done_tx, done_rx) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        let started = Instant::now();
+        bridge
+            .post_messages_to_plugin_worker(
+                plugin_id,
+                client_id,
+                "worker".to_owned(),
+                vec![("message".to_owned(), "payload".to_owned())],
+            )
+            .unwrap();
+        let elapsed = started.elapsed();
+        let cached = bridge
+            .cached_worker_messages
+            .get(&plugin_id)
+            .cloned()
+            .unwrap_or_default();
+        done_tx.send((elapsed, cached)).unwrap();
+
+        // The caller releases the guest mutex before this lock, so the inactive
+        // check observes a free lock and must not cache.
+        {
+            let running = bridge
+                .plugin_map
+                .lock()
+                .unwrap()
+                .get_running_plugin(plugin_id, Some(client_id))
+                .expect("plugin still loaded");
+            let running = running.lock().unwrap();
+            running.store.data().retire_load();
+            assert!(
+                !running.is_active(),
+                "retirement must make the instance inactive before the next post"
+            );
+        }
+        bridge
+            .post_messages_to_plugin_worker(
+                plugin_id,
+                client_id,
+                "worker".to_owned(),
+                vec![("retired".to_owned(), "dropped".to_owned())],
+            )
+            .unwrap();
+        bridge
+            .cached_worker_messages
+            .get(&plugin_id)
+            .cloned()
+            .unwrap_or_default()
+    });
+
+    let (elapsed, cached) = done_rx
+        .recv_timeout(Duration::from_millis(400))
+        .unwrap_or_else(|_| {
+            panic!("post_messages_to_plugin_worker blocked while the guest mutex was held");
+        });
+    assert!(
+        elapsed < Duration::from_millis(400),
+        "caching a missing worker message waited {elapsed:?} on the guest"
+    );
+    let message_bytes = "worker".len() + "message".len() + "payload".len();
+    assert!(cached.len() < MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN);
+    assert!(message_bytes <= MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN);
+    assert_eq!(
+        cached,
+        vec![(
+            client_id,
+            "worker".to_owned(),
+            "message".to_owned(),
+            "payload".to_owned()
+        )]
+    );
+
+    drop(release_tx);
+    let after_retire = worker
+        .join()
+        .expect("worker thread panicked before the inactive case finished");
+    assert_eq!(
+        after_retire,
+        vec![(
+            client_id,
+            "worker".to_owned(),
+            "message".to_owned(),
+            "payload".to_owned()
+        )],
+        "a free lock on an inactive instance must not cache the message"
+    );
 }
 
 #[test]
