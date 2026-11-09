@@ -3505,6 +3505,14 @@ fn exec_cmd(env: &PluginEnv, mut command_line: Vec<String>) {
             env.name()
         )
     };
+    // `remove(0)` panics on an empty vector and the process panic hook exits the session.
+    if command_line.is_empty() {
+        log::error!(
+            "failed to execute command on host for plugin '{}': command cannot be empty",
+            env.name()
+        );
+        return;
+    }
     let command = command_line.remove(0);
 
     // Bail out if we're forbidden to run command
@@ -7811,5 +7819,47 @@ mod admission_tests {
             }
         }
         panic!("admitted directory scan did not send FileSystemUpdate");
+    }
+
+    #[test]
+    fn exec_cmd_empty_command_line_does_not_panic_and_denied_host_command_does_not_spawn() {
+        let (to_plugin, _receiver) = channels::unbounded();
+        let dir = tempfile::tempdir().unwrap();
+        let mut env = plugin_env(
+            21,
+            dir.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+
+        // RunCommands is what lets a plugin reach this host function. The
+        // separate `_allow_exec_host_cmd` flag is what must still refuse a spawn.
+        env.permissions.lock().unwrap().replace(
+            [PermissionType::RunCommands]
+                .into_iter()
+                .collect(),
+        );
+        env.plugin._allow_exec_host_cmd = true;
+        exec_cmd(&env, Vec::new());
+
+        env.plugin._allow_exec_host_cmd = false;
+        exec_cmd(&env, Vec::new());
+
+        let touch = ["/usr/bin/touch", "/bin/touch"]
+            .into_iter()
+            .find(|path| std::path::Path::new(path).is_file())
+            .expect("touch is required to prove a denied exec_cmd does not spawn");
+        let marker = dir.path().join("should-not-exist");
+        exec_cmd(
+            &env,
+            vec![touch.to_owned(), marker.to_string_lossy().into_owned()],
+        );
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while Instant::now() < deadline && !marker.exists() {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            !marker.exists(),
+            "exec_cmd without _allow_exec_host_cmd must not spawn"
+        );
     }
 }
