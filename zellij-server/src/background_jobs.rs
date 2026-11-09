@@ -59,7 +59,8 @@ pub enum BackgroundJob {
         BTreeMap<String, String>,
         PathBuf,
         BTreeMap<String, String>,
-    ), // command, args, env_variables, cwd, context
+        u64, // generation of the load that scheduled the command
+    ), // command, args, env_variables, cwd, context, generation
     RunInBackground {
         command: PathBuf,
         args: Vec<String>,
@@ -74,6 +75,7 @@ pub enum BackgroundJob {
         BTreeMap<String, String>, // headers
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
+        u64,                      // generation of the load that scheduled the request
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
@@ -234,6 +236,26 @@ fn web_request_failure_event(
     context: BTreeMap<String, String>,
 ) -> Event {
     Event::WebRequestResult(400, BTreeMap::new(), error.to_string().into_bytes(), context)
+}
+
+/// Cap rejection uses the same `RunCommandResult` shape as a failed command.
+pub(crate) fn run_command_limit_event(context: BTreeMap<String, String>) -> Event {
+    run_command_result_event(
+        Some(2),
+        Vec::new(),
+        b"run-command limit reached".to_vec(),
+        context,
+    )
+}
+
+/// Cap rejection uses the same `WebRequestResult` shape as a failed request.
+pub(crate) fn web_request_limit_event(context: BTreeMap<String, String>) -> Event {
+    Event::WebRequestResult(
+        400,
+        BTreeMap::new(),
+        b"web-request limit reached".to_vec(),
+        context,
+    )
 }
 
 fn web_result_frame_fits(
@@ -817,50 +839,20 @@ pub(crate) fn background_jobs_main(
                 env_variables,
                 cwd,
                 context,
+                generation,
             ) => {
-                runtime.spawn({
-                    let senders = bus.senders.clone();
-                    async move {
-                        let output = run_background_command(BackgroundCommand {
-                            program: command,
-                            args,
-                            env: env_variables,
-                            cwd: Some(cwd),
-                            input: None,
-                            timeout: None,
-                        })
-                        .await;
-                        match output {
-                            Ok(output) => {
-                                let event = run_command_result_event(
-                                    output.exit_code,
-                                    output.stdout,
-                                    output.stderr,
-                                    context,
-                                );
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    event,
-                                )]));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to run command: {}", e);
-                                let event = run_command_result_event(
-                                    Some(2),
-                                    Vec::new(),
-                                    format!("{}", e).into_bytes(),
-                                    context,
-                                );
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    event,
-                                )]));
-                            },
-                        }
-                    }
-                });
+                let senders = bus.senders.clone();
+                runtime.spawn(perform_run_command(
+                    plugin_id,
+                    client_id,
+                    command,
+                    args,
+                    env_variables,
+                    cwd,
+                    context,
+                    generation,
+                    senders,
+                ));
             },
             BackgroundJob::RunInBackground {
                 command,
@@ -870,88 +862,30 @@ pub(crate) fn background_jobs_main(
             } => {
                 runtime.spawn(run_in_background(command, args, cwd, env));
             },
-            BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
-                runtime.spawn({
-                    let senders = bus.senders.clone();
-                    let http_client = http_client.clone();
-                    async move {
-                        async fn web_request(
-                            url: String,
-                            verb: HttpVerb,
-                            headers: BTreeMap<String, String>,
-                            body: Vec<u8>,
-                            context: &BTreeMap<String, String>,
-                            http_client: HttpClient,
-                        ) -> Result<
-                            (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            WebRequestError,
-                        > {
-                            let mut request = match verb {
-                                HttpVerb::Get => Request::get(url),
-                                HttpVerb::Post => Request::post(url),
-                                HttpVerb::Put => Request::put(url),
-                                HttpVerb::Delete => Request::delete(url),
-                            };
-                            for (header, value) in headers {
-                                request = request.header(header.as_str(), value);
-                            }
-                            let mut res = if !body.is_empty() {
-                                let req = request.body(body)?;
-                                http_client.send_async(req).await?
-                            } else {
-                                let req = request.body(())?;
-                                http_client.send_async(req).await?
-                            };
-
-                            let status_code = res.status();
-                            let headers: BTreeMap<String, String> = res
-                                .headers()
-                                .iter()
-                                .filter_map(|(name, value)| match value.to_str() {
-                                    Ok(value) => Some((name.to_string(), value.to_string())),
-                                    Err(e) => {
-                                        log::error!(
-                                            "Failed to convert header {:?} to string: {:?}",
-                                            name,
-                                            e
-                                        );
-                                        None
-                                    },
-                                })
-                                .collect();
-                            let body = read_web_body_within_host_pipe(
-                                res.body_mut(),
-                                status_code.as_u16(),
-                                &headers,
-                                context,
-                            )
-                            .await?;
-                            Ok((status_code.as_u16(), headers, body))
-                        }
-                        let Some(http_client) = http_client else {
-                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
-                            return;
-                        };
-
-                        match web_request(url, verb, headers, body, &context, http_client).await {
-                            Ok((status, headers, body)) => {
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    Event::WebRequestResult(status, headers, body, context),
-                                )]));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to send web request: {}", e);
-                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
-                                    Some(plugin_id),
-                                    Some(client_id),
-                                    web_request_failure_event(&e, context),
-                                )]));
-                            },
-                        }
-                    }
-                });
+            BackgroundJob::WebRequest(
+                plugin_id,
+                client_id,
+                url,
+                verb,
+                headers,
+                body,
+                context,
+                generation,
+            ) => {
+                let senders = bus.senders.clone();
+                let http_client = http_client.clone();
+                runtime.spawn(perform_web_request(
+                    plugin_id,
+                    client_id,
+                    url,
+                    verb,
+                    headers,
+                    body,
+                    context,
+                    generation,
+                    http_client,
+                    senders,
+                ));
             },
             BackgroundJob::QueryZellijWebServerStatus => {
                 #[cfg(feature = "web_server_capability")]
@@ -3965,6 +3899,170 @@ fn run_command_result_event(
         "short command-result error must fit the host pipe"
     );
     fallback
+}
+
+struct ReleaseRunCommand {
+    plugin_id: PluginId,
+}
+
+impl Drop for ReleaseRunCommand {
+    fn drop(&mut self) {
+        crate::plugins::release_run_command(self.plugin_id);
+    }
+}
+
+struct ReleaseWebRequest {
+    plugin_id: PluginId,
+}
+
+impl Drop for ReleaseWebRequest {
+    fn drop(&mut self) {
+        crate::plugins::release_web_request(self.plugin_id);
+    }
+}
+
+fn send_load_result(
+    senders: &crate::thread_bus::ThreadSenders,
+    plugin_id: PluginId,
+    client_id: ClientId,
+    event: Event,
+    generation: u64,
+) {
+    let _ = senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
+        plugin_id,
+        client_id,
+        event,
+        generation,
+    });
+}
+
+/// Runs one admitted `RunCommand` and releases its slot when this task ends.
+pub(crate) async fn perform_run_command(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    command: String,
+    args: Vec<String>,
+    env_variables: BTreeMap<String, String>,
+    cwd: PathBuf,
+    context: BTreeMap<String, String>,
+    generation: u64,
+    senders: crate::thread_bus::ThreadSenders,
+) {
+    let _release = ReleaseRunCommand { plugin_id };
+    let output = run_background_command(BackgroundCommand {
+        program: command,
+        args,
+        env: env_variables,
+        cwd: Some(cwd),
+        input: None,
+        timeout: None,
+    })
+    .await;
+    let event = match output {
+        Ok(output) => run_command_result_event(
+            output.exit_code,
+            output.stdout,
+            output.stderr,
+            context,
+        ),
+        Err(e) => {
+            log::error!("Failed to run command: {}", e);
+            run_command_result_event(Some(2), Vec::new(), format!("{}", e).into_bytes(), context)
+        },
+    };
+    send_load_result(&senders, plugin_id, client_id, event, generation);
+}
+
+/// Runs one admitted `WebRequest` and releases its slot when this task ends.
+pub(crate) async fn perform_web_request(
+    plugin_id: PluginId,
+    client_id: ClientId,
+    url: String,
+    verb: HttpVerb,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+    context: BTreeMap<String, String>,
+    generation: u64,
+    http_client: Option<HttpClient>,
+    senders: crate::thread_bus::ThreadSenders,
+) {
+    let _release = ReleaseWebRequest { plugin_id };
+    async fn web_request(
+        url: String,
+        verb: HttpVerb,
+        headers: BTreeMap<String, String>,
+        body: Vec<u8>,
+        context: &BTreeMap<String, String>,
+        http_client: HttpClient,
+    ) -> Result<(u16, BTreeMap<String, String>, Vec<u8>), WebRequestError> {
+        let mut request = match verb {
+            HttpVerb::Get => Request::get(url),
+            HttpVerb::Post => Request::post(url),
+            HttpVerb::Put => Request::put(url),
+            HttpVerb::Delete => Request::delete(url),
+        };
+        for (header, value) in headers {
+            request = request.header(header.as_str(), value);
+        }
+        let mut res = if !body.is_empty() {
+            let req = request.body(body)?;
+            http_client.send_async(req).await?
+        } else {
+            let req = request.body(())?;
+            http_client.send_async(req).await?
+        };
+
+        let status_code = res.status();
+        let headers: BTreeMap<String, String> = res
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| match value.to_str() {
+                Ok(value) => Some((name.to_string(), value.to_string())),
+                Err(e) => {
+                    log::error!(
+                        "Failed to convert header {:?} to string: {:?}",
+                        name,
+                        e
+                    );
+                    None
+                },
+            })
+            .collect();
+        let body = read_web_body_within_host_pipe(
+            res.body_mut(),
+            status_code.as_u16(),
+            &headers,
+            context,
+        )
+        .await?;
+        Ok((status_code.as_u16(), headers, body))
+    }
+    let Some(http_client) = http_client else {
+        log::error!("Cannot perform http request, likely due to a misconfigured http client");
+        return;
+    };
+
+    match web_request(url, verb, headers, body, &context, http_client).await {
+        Ok((status, headers, body)) => {
+            send_load_result(
+                &senders,
+                plugin_id,
+                client_id,
+                Event::WebRequestResult(status, headers, body, context),
+                generation,
+            );
+        },
+        Err(e) => {
+            log::error!("Failed to send web request: {}", e);
+            send_load_result(
+                &senders,
+                plugin_id,
+                client_id,
+                web_request_failure_event(&e, context),
+                generation,
+            );
+        },
+    }
 }
 
 pub async fn run_background_command(

@@ -2264,6 +2264,7 @@ fn run_action(
     let action_clone = action.clone();
     let client_id = acting_client(env);
     let plugin_id = env.plugin_id;
+    let scheduled_generation = env.generation;
     let senders = env.senders.clone();
     let default_shell = env.default_shell.clone();
     let default_mode = env.default_mode.clone();
@@ -2306,17 +2307,16 @@ fn run_action(
                 },
             };
 
-            // After action completes, send ActionComplete event with context
-            // Convert server PaneId to zellij_utils PaneId
+            // After action completes, send ActionComplete event with context.
+            // Convert server PaneId to zellij_utils PaneId. The generation stays
+            // on the instruction; it is not part of the guest context.
             let pane_id_for_event = pane_id.map(|p| p.into());
-            let updates = vec![(
-                Some(plugin_id),
-                Some(client_id),
-                Event::ActionComplete(action_clone, pane_id_for_event, context),
-            )];
-
-            // Send the ActionComplete event back to the plugin
-            if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
+            if let Err(e) = senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
+                plugin_id,
+                client_id,
+                event: Event::ActionComplete(action_clone, pane_id_for_event, context),
+                generation: scheduled_generation,
+            }) {
                 log::error!("Failed to send ActionComplete event: {:?}", e);
             }
         })
@@ -3371,6 +3371,11 @@ const MAX_PLUGIN_TIMERS_IN_FLIGHT: usize = 256;
 // not the 64/256 timer tasks.
 const MAX_RUN_ACTIONS_PER_PLUGIN: usize = 4;
 const MAX_RUN_ACTIONS_IN_FLIGHT: usize = 16;
+// Separate counters from run actions. Same caps, not higher.
+const MAX_RUN_COMMANDS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+const MAX_RUN_COMMANDS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
+const MAX_WEB_REQUESTS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+const MAX_WEB_REQUESTS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
 
 struct InFlightLimits {
     total: usize,
@@ -3415,6 +3420,8 @@ impl InFlightLimits {
 static DIRECTORY_SCANS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 static PLUGIN_TIMERS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 static RUN_ACTIONS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static RUN_COMMANDS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static WEB_REQUESTS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 
 struct DirectoryScanPermit {
     plugin_id: PluginId,
@@ -3470,6 +3477,62 @@ fn try_acquire_run_action(plugin_id: PluginId) -> Option<RunActionPermit> {
     } else {
         None
     }
+}
+
+struct RunCommandPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for RunCommandPermit {
+    fn drop(&mut self) {
+        release_run_command(self.plugin_id);
+    }
+}
+
+struct WebRequestPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for WebRequestPermit {
+    fn drop(&mut self) {
+        release_web_request(self.plugin_id);
+    }
+}
+
+fn try_acquire_run_command(plugin_id: PluginId) -> Option<RunCommandPermit> {
+    let mut slots = RUN_COMMANDS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_RUN_COMMANDS_PER_PLUGIN,
+        MAX_RUN_COMMANDS_IN_FLIGHT,
+    ) {
+        Some(RunCommandPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+fn try_acquire_web_request(plugin_id: PluginId) -> Option<WebRequestPermit> {
+    let mut slots = WEB_REQUESTS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_WEB_REQUESTS_PER_PLUGIN,
+        MAX_WEB_REQUESTS_IN_FLIGHT,
+    ) {
+        Some(WebRequestPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+/// The background task owns the matching release. This one only runs if the
+/// job never left this thread.
+pub(crate) fn release_run_command(plugin_id: PluginId) {
+    RUN_COMMANDS.lock().unwrap().release(plugin_id);
+}
+
+pub(crate) fn release_web_request(plugin_id: PluginId) {
+    WEB_REQUESTS.lock().unwrap().release(plugin_id);
 }
 
 fn try_acquire_plugin_timer(plugin_id: PluginId) -> Option<PluginTimerPermit> {
@@ -3596,6 +3659,22 @@ fn exec_cmd(env: &PluginEnv, mut command_line: Vec<String>) {
         .non_fatal();
 }
 
+fn enqueue_background_job(env: &PluginEnv, job: BackgroundJob) -> bool {
+    match env.senders.to_background_jobs.as_ref() {
+        Some(sender) => sender.send(job).is_ok(),
+        None => false,
+    }
+}
+
+fn send_load_result(env: &PluginEnv, event: Event) {
+    let _ = env.senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
+        plugin_id: env.plugin_id,
+        client_id: acting_client(env),
+        event,
+        generation: env.generation,
+    });
+}
+
 fn run_command(
     env: &PluginEnv,
     mut command_line: Vec<String>,
@@ -3605,20 +3684,38 @@ fn run_command(
 ) {
     if command_line.is_empty() {
         log::error!("Command cannot be empty");
-    } else {
-        let command = command_line.remove(0);
-        let cwd = translate_plugin_path(env, cwd);
-        let _ = env
-            .senders
-            .send_to_background_jobs(BackgroundJob::RunCommand(
-                env.plugin_id,
-                acting_client(env),
-                command,
-                command_line,
-                env_variables,
-                cwd,
-                context,
-            ));
+        return;
+    }
+    let command = command_line.remove(0);
+    let cwd = translate_plugin_path(env, cwd);
+    let plugin_id = env.plugin_id;
+    let Some(permit) = try_acquire_run_command(plugin_id) else {
+        log::warn!(
+            "Not running a command for plugin {}: run-command limit reached",
+            plugin_id
+        );
+        send_load_result(
+            env,
+            crate::background_jobs::run_command_limit_event(context),
+        );
+        return;
+    };
+    let queued = enqueue_background_job(
+        env,
+        BackgroundJob::RunCommand(
+            plugin_id,
+            acting_client(env),
+            command,
+            command_line,
+            env_variables,
+            cwd,
+            context,
+            env.generation,
+        ),
+    );
+    if queued {
+        // The job task releases the slot, including on error and panic.
+        std::mem::forget(permit);
     }
 }
 
@@ -3630,17 +3727,31 @@ fn web_request(
     body: Vec<u8>,
     context: BTreeMap<String, String>,
 ) {
-    let _ = env
-        .senders
-        .send_to_background_jobs(BackgroundJob::WebRequest(
-            env.plugin_id,
+    let plugin_id = env.plugin_id;
+    let Some(permit) = try_acquire_web_request(plugin_id) else {
+        log::warn!(
+            "Not sending a web request for plugin {}: web-request limit reached",
+            plugin_id
+        );
+        send_load_result(env, crate::background_jobs::web_request_limit_event(context));
+        return;
+    };
+    let queued = enqueue_background_job(
+        env,
+        BackgroundJob::WebRequest(
+            plugin_id,
             acting_client(env),
             url,
             verb,
             headers,
             body,
             context,
-        ));
+            env.generation,
+        ),
+    );
+    if queued {
+        std::mem::forget(permit);
+    }
 }
 
 fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -8259,6 +8370,11 @@ mod admission_tests {
             PluginInstruction::Update(updates) => updates
                 .iter()
                 .any(|(_, _, event)| matches!(event, Event::ActionComplete(..))),
+            PluginInstruction::ApplyLoadResult {
+                generation: 9,
+                event: Event::ActionComplete(_, _, context),
+                ..
+            } => !context.keys().any(|key| key == "generation"),
             _ => false,
         }
     }
@@ -8463,5 +8579,430 @@ mod admission_tests {
             "a retirement instruction must still be accepted"
         );
         assert!(saw_unload, "a control instruction must still be accepted");
+    }
+
+    fn lock_run_command_tests() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_web_request_tests() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn run_commands_in_flight() -> usize {
+        RUN_COMMANDS.lock().unwrap().total
+    }
+
+    fn web_requests_in_flight() -> usize {
+        WEB_REQUESTS.lock().unwrap().total
+    }
+
+    fn command_context() -> BTreeMap<String, String> {
+        let mut context = BTreeMap::new();
+        context.insert("token".to_owned(), "kept".to_owned());
+        context
+    }
+
+    struct JobChannels {
+        env: PluginEnv,
+        plugin_rx: Receiver<(PluginInstruction, ErrorContext)>,
+        jobs_rx: Receiver<(BackgroundJob, ErrorContext)>,
+    }
+
+    fn job_channels(plugin_id: PluginId, generation: u64) -> JobChannels {
+        let (to_plugin, plugin_rx) = channels::unbounded();
+        let (to_jobs, jobs_rx) = channels::unbounded();
+        let mut env = plugin_env(
+            plugin_id,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        env.generation = generation;
+        env.senders.to_background_jobs = Some(SenderWithContext::new(to_jobs));
+        JobChannels {
+            env,
+            plugin_rx,
+            jobs_rx,
+        }
+    }
+
+    fn recv_load_result(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> PluginInstruction {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok((instruction, _)) if matches!(instruction, PluginInstruction::ApplyLoadResult { .. }) => {
+                    return instruction;
+                },
+                Ok(_) => {},
+                Err(channels::RecvTimeoutError::Timeout) => {},
+                Err(channels::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        panic!("load result was not delivered");
+    }
+
+    #[test]
+    fn run_command_past_the_cap_does_not_start_and_reports_the_failure() {
+        let _lock = lock_run_command_tests();
+        assert_eq!(MAX_RUN_COMMANDS_PER_PLUGIN, 4);
+        assert_eq!(MAX_RUN_COMMANDS_IN_FLIGHT, 16);
+        assert_eq!(run_commands_in_flight(), 0);
+
+        let plugin_id = 8801;
+        let jobs = job_channels(plugin_id, 3);
+        let context = command_context();
+        let holds: Vec<_> = (0..MAX_RUN_COMMANDS_PER_PLUGIN)
+            .map(|_| try_acquire_run_command(plugin_id).expect("per-plugin command slot"))
+            .collect();
+        let in_flight = run_commands_in_flight();
+        run_command(
+            &jobs.env,
+            vec!["echo".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a command past the per-plugin cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                plugin_id: id,
+                generation,
+                event,
+                ..
+            } => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 3);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::run_command_limit_event(context.clone())
+                );
+                assert!(!matches!(event, Event::ActionComplete(..)));
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        drop(holds);
+        assert_eq!(run_commands_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_RUN_COMMANDS_IN_FLIGHT)
+            .map(|id| try_acquire_run_command(id as PluginId).expect("process-wide command slot"))
+            .collect();
+        let in_flight = run_commands_in_flight();
+        run_command(
+            &jobs.env,
+            vec!["echo".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a command past the process-wide cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult { generation, event, .. } => {
+                assert_eq!(generation, 3);
+                assert_eq!(event, crate::background_jobs::run_command_limit_event(context));
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        drop(global);
+        assert_eq!(run_commands_in_flight(), 0);
+    }
+
+    #[test]
+    fn a_finished_run_command_lets_another_one_start() {
+        let _lock = lock_run_command_tests();
+        assert_eq!(run_commands_in_flight(), 0);
+        let plugin_id = 8802;
+        let jobs = job_channels(plugin_id, 4);
+        let context = command_context();
+        run_command(
+            &jobs.env,
+            vec!["zellij-no-such-run-command".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), 1);
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("admitted command is enqueued");
+        match job {
+            BackgroundJob::RunCommand(
+                id,
+                client_id,
+                command,
+                args,
+                env_variables,
+                cwd,
+                job_context,
+                generation,
+            ) => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 4);
+                assert_eq!(job_context, context);
+                crate::global_async_runtime::get_tokio_runtime().block_on(
+                    crate::background_jobs::perform_run_command(
+                        id,
+                        client_id,
+                        command,
+                        args,
+                        env_variables,
+                        cwd,
+                        job_context,
+                        generation,
+                        jobs.env.senders.clone(),
+                    ),
+                );
+            },
+            other => panic!("expected RunCommand, got {other:?}"),
+        }
+        assert_eq!(run_commands_in_flight(), 0, "a finished command must release its slot");
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                generation,
+                event: Event::RunCommandResult(exit, _, _, event_context),
+                ..
+            } => {
+                assert_eq!(generation, 4);
+                assert_eq!(exit, Some(2));
+                assert_eq!(event_context, context);
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+
+        run_command(
+            &jobs.env,
+            vec!["zellij-no-such-run-command".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context,
+        );
+        assert_eq!(
+            run_commands_in_flight(),
+            1,
+            "a finished command must let another one start"
+        );
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the next command is enqueued");
+        let BackgroundJob::RunCommand(
+            id,
+            client_id,
+            command,
+            args,
+            env_variables,
+            cwd,
+            job_context,
+            generation,
+        ) = job
+        else {
+            panic!("expected RunCommand");
+        };
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_run_command(
+                id,
+                client_id,
+                command,
+                args,
+                env_variables,
+                cwd,
+                job_context,
+                generation,
+                jobs.env.senders.clone(),
+            ),
+        );
+        assert_eq!(run_commands_in_flight(), 0);
+    }
+
+    #[test]
+    fn web_request_past_the_cap_does_not_start_and_reports_the_failure() {
+        let _lock = lock_web_request_tests();
+        assert_eq!(MAX_WEB_REQUESTS_PER_PLUGIN, 4);
+        assert_eq!(MAX_WEB_REQUESTS_IN_FLIGHT, 16);
+        assert_eq!(web_requests_in_flight(), 0);
+
+        let plugin_id = 8811;
+        let jobs = job_channels(plugin_id, 5);
+        let context = command_context();
+        let holds: Vec<_> = (0..MAX_WEB_REQUESTS_PER_PLUGIN)
+            .map(|_| try_acquire_web_request(plugin_id).expect("per-plugin web slot"))
+            .collect();
+        let in_flight = web_requests_in_flight();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Get,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a web request past the per-plugin cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                plugin_id: id,
+                generation,
+                event,
+                ..
+            } => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 5);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::web_request_limit_event(context.clone())
+                );
+                assert!(!matches!(event, Event::ActionComplete(..)));
+            },
+            other => panic!("expected WebRequestResult, got {other:?}"),
+        }
+        drop(holds);
+        assert_eq!(web_requests_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_WEB_REQUESTS_IN_FLIGHT)
+            .map(|id| try_acquire_web_request(id as PluginId).expect("process-wide web slot"))
+            .collect();
+        let in_flight = web_requests_in_flight();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Get,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a web request past the process-wide cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult { generation, event, .. } => {
+                assert_eq!(generation, 5);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::web_request_limit_event(context)
+                );
+            },
+            other => panic!("expected WebRequestResult, got {other:?}"),
+        }
+        drop(global);
+        assert_eq!(web_requests_in_flight(), 0);
+    }
+
+    #[test]
+    fn a_finished_web_request_lets_another_one_start() {
+        let _lock = lock_web_request_tests();
+        assert_eq!(web_requests_in_flight(), 0);
+        let plugin_id = 8812;
+        let jobs = job_channels(plugin_id, 6);
+        let context = command_context();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Post,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), 1);
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("admitted web request is enqueued");
+        let BackgroundJob::WebRequest(
+            id,
+            client_id,
+            url,
+            verb,
+            headers,
+            body,
+            job_context,
+            generation,
+        ) = job
+        else {
+            panic!("expected WebRequest");
+        };
+        assert_eq!(generation, 6);
+        assert_eq!(job_context, context);
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_web_request(
+                id,
+                client_id,
+                url,
+                verb,
+                headers,
+                body,
+                job_context,
+                generation,
+                None,
+                jobs.env.senders.clone(),
+            ),
+        );
+        assert_eq!(
+            web_requests_in_flight(),
+            0,
+            "a finished web request must release its slot"
+        );
+
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Post,
+            BTreeMap::new(),
+            Vec::new(),
+            context,
+        );
+        assert_eq!(
+            web_requests_in_flight(),
+            1,
+            "a finished web request must let another one start"
+        );
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the next web request is enqueued");
+        let BackgroundJob::WebRequest(
+            id,
+            client_id,
+            url,
+            verb,
+            headers,
+            body,
+            job_context,
+            generation,
+        ) = job
+        else {
+            panic!("expected WebRequest");
+        };
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_web_request(
+                id,
+                client_id,
+                url,
+                verb,
+                headers,
+                body,
+                job_context,
+                generation,
+                None,
+                jobs.env.senders.clone(),
+            ),
+        );
+        assert_eq!(web_requests_in_flight(), 0);
     }
 }

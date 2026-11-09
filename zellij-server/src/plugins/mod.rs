@@ -9,6 +9,7 @@ mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
+pub(crate) use zellij_exports::{release_run_command, release_web_request};
 use log::info;
 
 pub use pinned_executor::PinnedExecutor;
@@ -101,6 +102,14 @@ pub enum PluginInstruction {
         plugin_id: PluginId,
         client_id: ClientId,
         elapsed_seconds: f64,
+        generation: u64,
+    },
+    // Result of a RunCommand, WebRequest, or RunAction, tagged with the load
+    // generation that scheduled it. Not a guest-visible field.
+    ApplyLoadResult {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        event: Event,
         generation: u64,
     },
     ReloadPluginWithId(u32),
@@ -323,6 +332,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LoadPopup { .. } => PluginContext::LoadPopup,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::ApplyTimer { .. } => PluginContext::Update,
+            PluginInstruction::ApplyLoadResult { .. } => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Quarantine(..) => PluginContext::Unload,
             PluginInstruction::SharedInstanceLoadFailed(..) => PluginContext::Unload,
@@ -653,6 +663,18 @@ pub(crate) fn plugin_thread_main(
                         Some(client_id),
                         Event::Timer(elapsed_seconds),
                     )],
+                    shutdown_send.clone(),
+                )?;
+            },
+            PluginInstruction::ApplyLoadResult {
+                plugin_id,
+                client_id,
+                event,
+                generation,
+            } => {
+                wasm_bridge.set_scheduled_timer_generation(generation);
+                wasm_bridge.update_plugins(
+                    vec![(Some(plugin_id), Some(client_id), event)],
                     shutdown_send.clone(),
                 )?;
             },

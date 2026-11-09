@@ -1019,7 +1019,8 @@ pub struct WasmBridge {
     shared_slot_owner: HashMap<PluginId, PluginId>,
 
     settings_entries: SettingsEntries,
-    /// Generation captured by `set_timeout`, consumed by the next `update_plugins`.
+    /// Generation captured by `set_timeout` or a load-scoped result, consumed by
+    /// the next `update_plugins`. One instruction is applied at a time.
     scheduled_timer_generation: Option<u64>,
 }
 
@@ -2098,7 +2099,11 @@ impl WasmBridge {
                 }
             }
         }
-        updates = self.dispatch_shared_updates(updates, shutdown_sender.clone());
+        updates = self.dispatch_shared_updates(
+            updates,
+            shutdown_sender.clone(),
+            scheduled_timer_generation,
+        );
         let plugins_to_update: Vec<(
             PluginId,
             ClientId,
@@ -2222,7 +2227,7 @@ impl WasmBridge {
         // being loaded, we'll send them these events when they load)
         let quarantined_plugins = self.quarantine.ids().clone();
         for (pid, cid, event) in updates.drain(..) {
-            let timer_generation = if matches!(event, Event::Timer(_)) {
+            let timer_generation = if event_is_scoped_to_load(&event) {
                 scheduled_timer_generation
             } else {
                 None
@@ -5004,6 +5009,7 @@ impl WasmBridge {
         &mut self,
         updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
+        scheduled_generation: Option<u64>,
     ) -> Vec<(Option<PluginId>, Option<ClientId>, Event)> {
         if self.shared_instances.is_empty() {
             return updates;
@@ -5064,7 +5070,13 @@ impl WasmBridge {
                 events_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
-                    apply_events_job(senders, plugin_map, instance_id, events);
+                    apply_events_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        events,
+                        scheduled_generation,
+                    );
                 },
             );
         }
@@ -5445,17 +5457,25 @@ pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bo
     changed
 }
 
+/// Timer and the asynchronous plugin results that name a plugin id without a
+/// generation of their own. A later load of that id must not observe them.
+pub(crate) fn event_is_scoped_to_load(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Timer(_)
+            | Event::RunCommandResult(..)
+            | Event::WebRequestResult(..)
+            | Event::ActionComplete(..)
+    )
+}
+
 pub(crate) fn stale_timer_for_load(
     event: &Event,
     scheduled_generation: Option<u64>,
     running_generation: u64,
 ) -> bool {
-    match event {
-        Event::Timer(_) => {
-            scheduled_generation.is_some_and(|scheduled| scheduled < running_generation)
-        },
-        _ => false,
-    }
+    event_is_scoped_to_load(event)
+        && scheduled_generation.is_some_and(|scheduled| scheduled < running_generation)
 }
 
 pub fn apply_event_to_plugin(
@@ -5699,6 +5719,158 @@ mod timer_generation_tests {
             Some(generation_g),
             generation_g2
         ));
+    }
+}
+
+#[cfg(test)]
+mod load_result_generation_tests {
+    use super::apply_event_to_plugin;
+    use crate::plugins::plugin_loader::PluginLoader;
+    use crate::plugins::plugin_map::{PluginEnv, RunningPlugin};
+    use std::collections::{BTreeMap, HashSet, VecDeque};
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+    use wasmi::{Engine, Linker, Module, Store};
+    use zellij_utils::data::{Event, InputMode, PermissionType};
+    use zellij_utils::input::actions::Action;
+    use zellij_utils::input::layout::{PluginUserConfiguration, RunPluginLocation};
+    use zellij_utils::input::plugins::PluginConfig;
+
+    fn running_plugin(generation: u64) -> RunningPlugin {
+        let dir = tempfile::tempdir().expect("tempdir").into_path();
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let wasi_ctx = PluginLoader::create_wasi_ctx(
+            &dir,
+            &dir,
+            &dir,
+            &dir,
+            &"file:/tmp/load-result.wasm".to_owned(),
+            1,
+            false,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )
+        .expect("wasi");
+        let env = PluginEnv {
+            plugin_id: 1,
+            generation,
+            load_alive: Arc::new(AtomicBool::new(true)),
+            client_id: 1,
+            plugin: PluginConfig {
+                path: PathBuf::from("/tmp/load-result.wasm"),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(PathBuf::from("/tmp/load-result.wasm")),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            plugin_digest: "load-result".to_owned(),
+            permissions: Arc::new(Mutex::new(Some(
+                [PermissionType::ReadApplicationState]
+                    .into_iter()
+                    .collect(),
+            ))),
+            quarantined: Arc::new(AtomicBool::new(false)),
+            senders: crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            wasi_ctx,
+            plugin_own_data_dir: dir.clone(),
+            plugin_own_cache_dir: dir.clone(),
+            path_to_default_shell: dir.clone(),
+            default_shell: None,
+            layout_dir: None,
+            plugin_cwd: dir,
+            session_env_vars: BTreeMap::new(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            default_mode: InputMode::Normal,
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            stdin_pipe,
+            stdout_pipe,
+            keybinds: Arc::new(Default::default()),
+            intercepting_key_presses: false,
+            pending_popup_size: None,
+            store_limits: wasmi::StoreLimitsBuilder::new().build(),
+            shared: None,
+        };
+        let wat = r#"(module (func (export "update") (result i32) unreachable))"#;
+        let engine = Engine::default();
+        let module = Module::new(&engine, wat::parse_str(wat).expect("wat")).expect("module");
+        let mut store = Store::new(&engine, env);
+        let instance = Linker::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .expect("instance");
+        RunningPlugin::new(store, instance, 0, 0)
+    }
+
+    fn stdin_len(running: &RunningPlugin) -> usize {
+        running.store.data().stdin_pipe.lock().unwrap().len()
+    }
+
+    fn apply(
+        running: &mut RunningPlugin,
+        event: &Event,
+        scheduled: Option<u64>,
+    ) -> anyhow::Result<()> {
+        let mut assets = Vec::new();
+        let subs = HashSet::new();
+        apply_event_to_plugin(
+            1,
+            1,
+            running,
+            event,
+            &mut assets,
+            crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            &subs,
+            scheduled,
+        )
+    }
+
+    #[test]
+    fn a_result_for_generation_1_is_not_delivered_to_generation_2() {
+        let mut running = running_plugin(2);
+        assert_eq!(running.store.data().generation, 2);
+        let mut context = BTreeMap::new();
+        context.insert("from".to_owned(), "generation-1".to_owned());
+        let action = Action::SwitchToMode {
+            input_mode: InputMode::Locked,
+        };
+        let stale = [
+            Event::RunCommandResult(Some(0), b"out".to_vec(), vec![], context.clone()),
+            Event::WebRequestResult(200, BTreeMap::new(), b"body".to_vec(), context.clone()),
+            Event::ActionComplete(action, None, context),
+        ];
+        for event in &stale {
+            apply(&mut running, event, Some(1))
+                .expect("a stale result is dropped before the guest runs");
+            assert_eq!(
+                stdin_len(&running),
+                0,
+                "generation 2 must not receive {event:?}"
+            );
+            assert!(
+                !running.is_quarantined(),
+                "dropping a stale result must not crash the replacement"
+            );
+        }
+
+        running.store.data_mut().generation = 1;
+        let live = Event::RunCommandResult(Some(0), b"out".to_vec(), vec![], BTreeMap::new());
+        let delivered = apply(&mut running, &live, Some(1));
+        assert!(
+            delivered.is_err(),
+            "generation 1 must run the guest for its own result, got {delivered:?}"
+        );
+        assert!(
+            stdin_len(&running) > 0,
+            "a current result must be written to the guest before update"
+        );
     }
 }
 
