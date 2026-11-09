@@ -139,7 +139,11 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
     }
     if wants_entry {
         if entry_installable.is_empty() {
-            plan.explain(status, &DESKTOP_ENTRY_ITEMS, "Install the desktop entry");
+            let here: Vec<Item> = DESKTOP_ENTRY_ITEMS
+                .into_iter()
+                .filter(|item| item.exists_on(status.environment.platform))
+                .collect();
+            plan.explain(status, &here, "Install the desktop entry");
         } else {
             plan.install.extend(entry_installable);
         }
@@ -272,6 +276,15 @@ impl Item {
             Item::CopyBinary => "Copy of Zellij in a permanent folder",
             Item::StartMenu => "Start menu shortcut",
             Item::ExplorerItem => "\"Open Zellij here\" in Explorer",
+        }
+    }
+    /// Whether the item exists on the platform at all, rather than being one another platform
+    /// has: the Start menu items on Windows, the launcher everywhere else.
+    pub fn exists_on(&self, platform: Platform) -> bool {
+        match self {
+            Item::StartMenu | Item::ExplorerItem => platform == Platform::Windows,
+            Item::Launcher => platform != Platform::Windows,
+            Item::CopyBinary | Item::DefaultTerminal => true,
         }
     }
     pub fn opens_a_window(&self) -> bool {
@@ -1554,6 +1567,28 @@ mod tests {
             },
         );
         assert_eq!(plan.install, vec![Item::CopyBinary, Item::Launcher]);
+    }
+
+    #[test]
+    fn on_windows_the_refusal_names_the_reason_of_the_start_menu_items() {
+        let off = "Turned off by ZELLIJ_DESKTOP_INTEGRATION";
+        let mut status = status_with(vec![
+            ItemStatus::unavailable(Item::Launcher, "Linux only"),
+            ItemStatus::unavailable(Item::StartMenu, off),
+            ItemStatus::unavailable(Item::ExplorerItem, off),
+        ]);
+        status.environment.platform = Platform::Windows;
+        let plan = plan_setup(
+            &status,
+            SetupActions {
+                install_desktop_entry: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            plan.refused,
+            vec![format!("Install the desktop entry: {}", off)]
+        );
     }
 
     #[test]
