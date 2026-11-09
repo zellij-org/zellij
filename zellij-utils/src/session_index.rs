@@ -356,6 +356,43 @@ fn fact_can_use_extract_index(name: &str) -> bool {
     !name.contains('"')
 }
 
+/// `Ok(false)` is absence. `Err` is not: [`Path::exists`] would hide a metadata
+/// failure and let an unreadable socket or cache path look free or dead.
+fn presence_from_try_exists(try_exists: std::io::Result<bool>) -> Result<bool> {
+    Ok(try_exists?)
+}
+
+/// Whether a socket or cache directory occupies this id. A probe error is
+/// returned; it does not make the id free.
+fn occupies_session_id(
+    socket: std::io::Result<bool>,
+    cache: std::io::Result<bool>,
+) -> Result<bool> {
+    let socket = presence_from_try_exists(socket);
+    let cache = presence_from_try_exists(cache);
+    if matches!(socket, Ok(true)) || matches!(cache, Ok(true)) {
+        Ok(true)
+    } else {
+        socket?;
+        cache
+    }
+}
+
+/// Socket means running, layout means resumable, both absent means no session.
+/// A probe error is not [`None`].
+fn session_state_from_probes(
+    socket: std::io::Result<bool>,
+    layout: std::io::Result<bool>,
+) -> Result<Option<SessionState>> {
+    if presence_from_try_exists(socket)? {
+        Ok(Some(SessionState::Running))
+    } else if presence_from_try_exists(layout)? {
+        Ok(Some(SessionState::Resumable))
+    } else {
+        Ok(None)
+    }
+}
+
 impl SessionIndex {
     pub fn open_default() -> Result<Self> {
         Self::open(
@@ -605,7 +642,7 @@ impl SessionIndex {
         let id = match registered_id {
             Some(Some(id)) => id,
             _ => {
-                let id = if self.files_named(name) && !id_taken_by_another(&transaction, name)? {
+                let id = if self.files_named(name)? && !id_taken_by_another(&transaction, name)? {
                     name.to_owned()
                 } else {
                     self.unused_id(&transaction)?
@@ -666,15 +703,18 @@ impl SessionIndex {
         query_names_by_id(&self.conn)
     }
 
-    fn files_named(&self, name: &str) -> bool {
-        self.sock_dir.join(name).exists() || self.cache_dir.join(name).exists()
+    fn files_named(&self, name: &str) -> Result<bool> {
+        occupies_session_id(
+            self.sock_dir.join(name).try_exists(),
+            self.cache_dir.join(name).try_exists(),
+        )
     }
 
     fn unused_id(&self, transaction: &Transaction) -> Result<String> {
         loop {
             let candidate = crate::sessions::generate_session_id();
             if query_session_name(transaction, &candidate)?.is_none()
-                && !self.files_named(&candidate)
+                && !self.files_named(&candidate)?
             {
                 return Ok(candidate);
             }
@@ -703,25 +743,20 @@ impl SessionIndex {
         Ok(changed > 0)
     }
 
-    pub fn session_state(&self, name: &str) -> Option<SessionState> {
+    pub fn session_state(&self, name: &str) -> Result<Option<SessionState>> {
         // The socket and the cache folder are named by the session's id.
         let id = self
             .session_id(name)
             .ok()
             .flatten()
             .unwrap_or_else(|| name.to_owned());
-        if self.sock_dir.join(&id).exists() {
-            Some(SessionState::Running)
-        } else if self
-            .cache_dir
-            .join(&id)
-            .join(SESSION_LAYOUT_FILE_NAME)
-            .exists()
-        {
-            Some(SessionState::Resumable)
-        } else {
-            None
-        }
+        session_state_from_probes(
+            self.sock_dir.join(&id).try_exists(),
+            self.cache_dir
+                .join(&id)
+                .join(SESSION_LAYOUT_FILE_NAME)
+                .try_exists(),
+        )
     }
 
     fn query_rows(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<SessionRow>> {
@@ -885,12 +920,14 @@ impl SessionIndex {
                 continue;
             }
             match self.session_state(&row.name) {
-                Some(state) => candidates.push(Candidate { row, state }),
-                None => {
+                Ok(Some(state)) => candidates.push(Candidate { row, state }),
+                Ok(None) => {
                     if now.saturating_sub(row.created_at) > RECENTLY_CREATED_GRACE_SECS {
                         let _ = self.delete(&row.name);
                     }
                 },
+                // A metadata error is not absence. Deleting the row would drop a live session.
+                Err(_) => {},
             }
         }
         candidates
@@ -1847,16 +1884,47 @@ mod tests {
     fn session_state_finds_the_socket_and_layout_by_id() {
         let test = TestIndex::new();
         let id = test.index.register("work", 10).unwrap();
-        assert_eq!(test.index.session_state("work"), None);
+        assert_eq!(test.index.session_state("work").unwrap(), None);
         test.mark_resumable(&id);
         assert_eq!(
-            test.index.session_state("work"),
+            test.index.session_state("work").unwrap(),
             Some(SessionState::Resumable)
         );
         test.mark_running(&id);
         assert_eq!(
-            test.index.session_state("work"),
+            test.index.session_state("work").unwrap(),
             Some(SessionState::Running)
+        );
+    }
+
+    #[test]
+    fn try_exists_error_is_not_a_free_id_or_session_state_absence() {
+        let denied = || std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unreadable");
+        assert!(presence_from_try_exists(Err(denied())).is_err());
+        assert!(occupies_session_id(Err(denied()), Ok(false)).is_err());
+        assert!(occupies_session_id(Ok(false), Err(denied())).is_err());
+        assert!(occupies_session_id(Err(denied()), Err(denied())).is_err());
+        assert_eq!(occupies_session_id(Ok(false), Ok(false)).unwrap(), false);
+        assert_eq!(occupies_session_id(Ok(true), Err(denied())).unwrap(), true);
+        assert_eq!(occupies_session_id(Err(denied()), Ok(true)).unwrap(), true);
+
+        let socket_unknown = session_state_from_probes(Err(denied()), Ok(false));
+        assert!(socket_unknown.is_err());
+        assert!(!matches!(socket_unknown, Ok(None)));
+        let layout_unknown = session_state_from_probes(Ok(false), Err(denied()));
+        assert!(layout_unknown.is_err());
+        assert!(!matches!(layout_unknown, Ok(None)));
+        assert_eq!(
+            session_state_from_probes(Ok(false), Ok(false)).unwrap(),
+            None
+        );
+        assert_eq!(
+            session_state_from_probes(Ok(true), Err(denied())).unwrap(),
+            Some(SessionState::Running)
+        );
+        assert_eq!(
+            session_state_from_probes(Ok(false), Ok(true)).unwrap(),
+            Some(SessionState::Resumable)
         );
     }
 
