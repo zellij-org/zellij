@@ -28,6 +28,21 @@ mod protobuf_conversion;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod handshake_frame_tests {
+    use super::{decode_client_to_server_frame, ClientToServerMsg, ProtoClientToServerMsg};
+    use prost::Message;
+
+    #[test]
+    fn decode_client_to_server_frame_accepts_a_small_body_and_rejects_garbage() {
+        let proto: ProtoClientToServerMsg = ClientToServerMsg::ConnStatus.into();
+        let bytes = proto.encode_to_vec();
+        let decoded = decode_client_to_server_frame(&bytes).unwrap();
+        assert!(matches!(decoded, ClientToServerMsg::ConnStatus));
+        assert!(decode_client_to_server_frame(&[0xff, 0xff, 0x00]).is_err());
+    }
+}
+
 type SessionId = u64;
 const MAX_FRAME_BYTES: usize = 256 * 1024 * 1024;
 
@@ -662,6 +677,26 @@ pub fn recv_protobuf_client_to_server(
     receiver: &mut IpcReceiverWithContext<ClientToServerMsg>,
 ) -> Option<(ClientToServerMsg, ErrorContext)> {
     receiver.try_recv_client_msg().ok()
+}
+
+/// Decode a client message from an already-buffered frame body.
+///
+/// The handshake path reads the length prefix itself and refuses oversized
+/// claims before allocating the body. This function does not look at a length
+/// prefix and does not change the 256 MiB cap used by [`read_protobuf_message`]
+/// for later frames on an established connection.
+pub fn decode_client_to_server_frame(
+    buf: &[u8],
+) -> std::result::Result<ClientToServerMsg, IpcReceiveError> {
+    let proto_msg =
+        ProtoClientToServerMsg::decode(buf).map_err(|_| IpcReceiveError::Undecodable)?;
+    proto_msg.try_into().map_err(|error| {
+        warn!(
+            "Error converting protobuf to ClientToServerMsg: {:?}",
+            error
+        );
+        IpcReceiveError::Undecodable
+    })
 }
 
 pub fn recv_protobuf_server_to_client(
