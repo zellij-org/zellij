@@ -13,7 +13,7 @@ use log::warn;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
-    io::{Read, Write},
+    io::Read,
     path::PathBuf,
     process,
     str::FromStr,
@@ -6744,10 +6744,17 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
 }
 
 pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
+    // `writeln!("{buf}\r")` is the bytes plugins already read. Refuse the whole
+    // line when it does not fit; a short write would be replayed as success.
     let mut stdin = plugin_env.stdin_pipe.lock().unwrap();
-    writeln!(stdin, "{}\r", buf)
-        .map_err(anyError::new)
-        .with_context(|| format!("failed to write string to WASI env"))
+    crate::plugins::plugin_loader::append_capped_host_pipe(
+        &mut stdin,
+        &[buf.as_bytes(), b"\r\n"],
+        "stdin",
+    )
+    .map_err(anyError::new)
+    .with_context(|| format!("failed to write string to WASI env"))?;
+    Ok(())
 }
 
 pub fn wasi_write_object(plugin_env: &PluginEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {

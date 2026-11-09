@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
+    io::{self, Write},
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -323,25 +324,31 @@ impl PluginLoader {
         // Workers belong to this load instance: they must stop as soon as the instance is
         // retired, even if the worker never sees the message that retired it.
         let load_alive = store.data().load_alive.clone();
-        for function_name in instance
-            .exports(&mut store)
-            .filter_map(|export| export.clone().into_func().map(|_| export.name()))
-        {
-            if function_name.ends_with("_worker") {
-                let (mut store, instance) =
-                    self.create_plugin_instance_and_wasi_env_for_worker(load_alive.clone())?;
-                let start_function_for_worker = instance
-                    .get_typed_func::<(), ()>(&mut store, "_start")
-                    .with_context(err_context)?;
-                crate::plugins::shared::refuel_for_callback(&mut store);
-                start_function_for_worker
-                    .call(&mut store, ())
-                    .with_context(err_context)?;
-
-                let worker = RunningWorker::new(store, instance, &function_name);
-                let worker_sender = plugin_worker(worker);
-                workers.insert(function_name.into(), worker_sender);
+        // Each `_worker` export builds another store and instance, and `.instances(1)`
+        // applies only inside that store. Count the exports before any of those stores
+        // exist so a long export list cannot multiply plugin memory.
+        let mut worker_names = Vec::new();
+        for export in instance.exports(&mut store) {
+            let name = export.name().to_owned();
+            if name.ends_with("_worker") && export.into_func().is_some() {
+                worker_names.push(name);
             }
+        }
+        enforce_worker_cap(self.plugin_id, worker_names.len())?;
+        for function_name in worker_names {
+            let (mut store, instance) =
+                self.create_plugin_instance_and_wasi_env_for_worker(load_alive.clone())?;
+            let start_function_for_worker = instance
+                .get_typed_func::<(), ()>(&mut store, "_start")
+                .with_context(err_context)?;
+            crate::plugins::shared::refuel_for_callback(&mut store);
+            start_function_for_worker
+                .call(&mut store, ())
+                .with_context(err_context)?;
+
+            let worker = RunningWorker::new(store, instance, &function_name);
+            let worker_sender = plugin_worker(worker);
+            workers.insert(function_name, worker_sender);
         }
 
         let subscriptions = store.data().subscriptions.clone();
@@ -754,12 +761,16 @@ impl PluginLoader {
 
         let ctx = builder.build();
 
-        // Set up custom stdin/stdout/stderr
+        // Set up custom stdin/stdout/stderr.
+        // Stdout is drained only when the host renders, so guest writes have to stop at
+        // the cap even if several callbacks return without rendering. A write that does
+        // not fit is refused whole: the pipe is not grown and the host call fails.
         ctx.set_stdin(Box::new(ReadPipe::new(VecDequeInputStream(
             stdin_pipe.clone(),
         ))));
-        ctx.set_stdout(Box::new(WritePipe::new(WriteOutputStream(
+        ctx.set_stdout(Box::new(WritePipe::new(CappedHostPipe::new(
             stdout_pipe.clone(),
+            "stdout",
         ))));
         ctx.set_stderr(Box::new(WritePipe::new(WriteOutputStream(Arc::new(
             Mutex::new(LoggingPipe::new(plugin_url, plugin_id)),
@@ -1009,13 +1020,117 @@ pub(crate) fn plugin_digest_from_bytes(wasm_bytes: &[u8]) -> String {
     hex
 }
 
+/// How many tables one plugin store may create. This is a count, not an element budget.
+const MAX_TABLES_PER_STORE: usize = 16;
+/// Element budget for one store.
+///
+/// Wasmi 1.1 `StoreLimitsBuilder::table_elements` applies to each table and defaults to
+/// unlimited, so a one-page module can still ask for a huge initial table under the 16 MiB
+/// linear-memory cap. The per-table cap is this total divided by [`MAX_TABLES_PER_STORE`]:
+/// sixteen full tables are at most 1_048_576 elements (8 bytes each without simd). The check
+/// runs for the initial minimum, before those elements are allocated, and for later growth.
+const MAX_TABLE_ELEMENTS_TOTAL: usize = 1_048_576;
+const MAX_TABLE_ELEMENTS: usize = MAX_TABLE_ELEMENTS_TOTAL / MAX_TABLES_PER_STORE;
+
+/// `_worker` exports that one load may instantiate. Each one is another store.
+const MAX_PLUGIN_WORKERS: usize = 8;
+
+/// Bytes one WASI host pipe may retain.
+///
+/// Stdout is drained only when the host renders, so a later callback must still
+/// fail once this many bytes are sitting in the pipe. Stdin appends from the host
+/// use the same check.
+const WASI_HOST_PIPE_CAP: usize = 256 * 1024;
+
+fn enforce_worker_cap(plugin_id: PluginId, worker_count: usize) -> Result<()> {
+    if worker_count > MAX_PLUGIN_WORKERS {
+        return Err(anyhow!(
+            "plugin {plugin_id} exports {worker_count} `_worker` functions, which exceeds the cap of {MAX_PLUGIN_WORKERS}"
+        ));
+    }
+    Ok(())
+}
+
+/// Append `bytes` to a host pipe, or refuse the whole write once it would pass the cap.
+/// Nothing is stored when the call fails, so a short write cannot be reported as success.
+pub(crate) fn append_capped_host_pipe(
+    buffer: &mut VecDeque<u8>,
+    bytes: &[&[u8]],
+    direction: &str,
+) -> io::Result<usize> {
+    let mut total = 0usize;
+    for chunk in bytes {
+        total = match total.checked_add(chunk.len()) {
+            Some(total) => total,
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::QuotaExceeded,
+                    format!("{direction} host buffer cap of {WASI_HOST_PIPE_CAP} bytes exceeded"),
+                ));
+            },
+        };
+    }
+    if total == 0 {
+        return Ok(0);
+    }
+    let len = buffer.len();
+    if len.saturating_add(total) > WASI_HOST_PIPE_CAP {
+        return Err(io::Error::new(
+            io::ErrorKind::QuotaExceeded,
+            format!(
+                "{direction} host buffer cap of {WASI_HOST_PIPE_CAP} bytes exceeded (holding {len}, refusing {total})"
+            ),
+        ));
+    }
+    if buffer.try_reserve(total).is_err() {
+        return Err(io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            format!("{direction} host buffer could not reserve {total} bytes"),
+        ));
+    }
+    for chunk in bytes {
+        buffer.extend(*chunk);
+    }
+    Ok(total)
+}
+
+/// Guest stdout (and any other host pipe passed in) shares the `VecDeque` the renderer drains.
+struct CappedHostPipe {
+    buffer: Arc<Mutex<VecDeque<u8>>>,
+    direction: &'static str,
+}
+
+impl CappedHostPipe {
+    fn new(buffer: Arc<Mutex<VecDeque<u8>>>, direction: &'static str) -> Self {
+        Self { buffer, direction }
+    }
+}
+
+impl Write for CappedHostPipe {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self.buffer.lock().unwrap();
+        append_capped_host_pipe(&mut guard, &[buf], self.direction)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        let mut guard = self.buffer.lock().unwrap();
+        let chunks: Vec<&[u8]> = bufs.iter().map(|buf| &buf[..]).collect();
+        append_capped_host_pipe(&mut guard, &chunks, self.direction)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 fn create_optimized_store_limits() -> StoreLimits {
     use wasmi::StoreLimitsBuilder;
     StoreLimitsBuilder::new()
         .instances(1) // One instance per plugin
         .memories(4) // Max 4 linear memories per plugin
         .memory_size(16 * 1024 * 1024) // 16MB per memory maximum
-        .tables(16) // Small table element limit
+        .tables(MAX_TABLES_PER_STORE)
+        .table_elements(MAX_TABLE_ELEMENTS)
         .trap_on_grow_failure(true) // Fail fast on resource exhaustion
         .build()
 }
@@ -1027,7 +1142,7 @@ mod tests {
         run_initialize_hook, GuestPollBound, PollOneoffDecision, WASI_ERRNO_INTR,
     };
     use std::sync::Arc;
-    use wasmi::{Engine, Linker, Module, Store};
+    use wasmi::{Engine, Linker, Module, ResourceLimiter, Store};
 
     fn instantiate(wat: &str) -> (Store<()>, wasmi::Instance) {
         let engine = Engine::default();
@@ -1631,5 +1746,128 @@ mod tests {
             plugin_digest_from_bytes(b"module-one"),
             plugin_digest_from_bytes(b"module-two")
         );
+    }
+
+    #[test]
+    fn table_element_limit_rejects_an_initial_table_past_the_store_budget() {
+        let mut limits = super::create_optimized_store_limits();
+        assert_eq!(limits.tables(), super::MAX_TABLES_PER_STORE);
+        assert_eq!(
+            super::MAX_TABLES_PER_STORE * super::MAX_TABLE_ELEMENTS,
+            super::MAX_TABLE_ELEMENTS_TOTAL
+        );
+        assert!(limits
+            .table_growing(0, super::MAX_TABLE_ELEMENTS, None)
+            .is_ok());
+        // Grown size, not only the initial minimum.
+        assert!(limits
+            .table_growing(
+                super::MAX_TABLE_ELEMENTS,
+                super::MAX_TABLE_ELEMENTS + 1,
+                None
+            )
+            .is_err());
+
+        let engine = Engine::default();
+        let within = format!("(module (table {} funcref))", super::MAX_TABLE_ELEMENTS);
+        let mut store = Store::new(&engine, super::create_optimized_store_limits());
+        store.limiter(|limits| limits);
+        let module = Module::new(&engine, wat::parse_str(&within).unwrap()).unwrap();
+        Linker::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .expect("a table at the per-table element cap still instantiates");
+
+        let over = format!("(module (table {} funcref))", super::MAX_TABLE_ELEMENTS + 1);
+        let module = Module::new(&engine, wat::parse_str(&over).unwrap()).unwrap();
+        let mut store = Store::new(&engine, super::create_optimized_store_limits());
+        store.limiter(|limits| limits);
+        assert!(
+            Linker::new(&engine)
+                .instantiate_and_start(&mut store, &module)
+                .is_err(),
+            "an initial table past the element cap must fail before it is allocated"
+        );
+    }
+
+    #[test]
+    fn worker_cap_rejects_the_ninth_worker_export() {
+        let mut wat = String::from("(module (func (export \"_start\")) (func (export \"load\"))");
+        for index in 0..(super::MAX_PLUGIN_WORKERS + 1) {
+            wat.push_str(&format!(" (func (export \"w{index}_worker\"))"));
+        }
+        wat.push(')');
+        let fixture = LoaderFixture::new(&wat, 5, 1, &[]);
+        let error = fixture
+            .loader()
+            .start_plugin()
+            .expect_err("the ninth _worker export has to fail the load");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("cap of 8"),
+            "the load error must name the worker cap, got {message}"
+        );
+        assert!(
+            message.contains("_worker"),
+            "the load error must name the worker exports, got {message}"
+        );
+        assert!(!fixture.plugin_map.lock().unwrap().has_instance_of(5));
+    }
+
+    #[test]
+    fn wasi_buffer_stdout_write_past_the_cap_keeps_the_cap() {
+        use std::io::Write;
+
+        let pipe = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
+        let mut stdout = super::CappedHostPipe::new(pipe.clone(), "stdout");
+        let filled = vec![7u8; super::WASI_HOST_PIPE_CAP];
+        // WASI `fd_write` calls `write_vectored`, not `write`.
+        assert_eq!(
+            stdout
+                .write_vectored(&[std::io::IoSlice::new(&filled)])
+                .unwrap(),
+            super::WASI_HOST_PIPE_CAP
+        );
+
+        let error = stdout
+            .write_vectored(&[std::io::IoSlice::new(&[9])])
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::QuotaExceeded);
+        assert!(
+            error.to_string().contains("stdout"),
+            "the overrun error must name the direction, got {error}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(&super::WASI_HOST_PIPE_CAP.to_string()),
+            "the overrun error must name the cap, got {error}"
+        );
+        assert_eq!(pipe.lock().unwrap().len(), super::WASI_HOST_PIPE_CAP);
+        assert!(pipe.lock().unwrap().iter().all(|byte| *byte == 7));
+
+        // A write that would cross the cap stores nothing and does not report success.
+        let pipe = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
+        let mut stdout = super::CappedHostPipe::new(pipe.clone(), "stdout");
+        stdout
+            .write(&vec![1u8; super::WASI_HOST_PIPE_CAP - 1])
+            .unwrap();
+        let error = stdout.write(&[2, 3]).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::QuotaExceeded);
+        assert_eq!(pipe.lock().unwrap().len(), super::WASI_HOST_PIPE_CAP - 1);
+        assert!(pipe.lock().unwrap().iter().all(|byte| *byte == 1));
+
+        // Host stdin is the same cap: the whole line is refused, including the `\r\n`
+        // `wasi_write_string` appends.
+        let mut stdin = std::collections::VecDeque::new();
+        let body = vec![4u8; super::WASI_HOST_PIPE_CAP - 2];
+        assert_eq!(
+            super::append_capped_host_pipe(&mut stdin, &[&body, b"\r\n"], "stdin").unwrap(),
+            super::WASI_HOST_PIPE_CAP
+        );
+        let error =
+            super::append_capped_host_pipe(&mut stdin, &[b"x", b"\r\n"], "stdin").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::QuotaExceeded);
+        assert!(error.to_string().contains("stdin"), "{error}");
+        assert_eq!(stdin.len(), super::WASI_HOST_PIPE_CAP);
     }
 }
