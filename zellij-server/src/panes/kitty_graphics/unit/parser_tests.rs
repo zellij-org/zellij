@@ -403,6 +403,7 @@ fn temp_file_inside_temp_dir_without_magic_name_is_not_deleted() {
     assert!(path.exists());
 }
 
+#[cfg(unix)]
 #[test]
 fn temp_file_path_escaping_temp_dir_is_not_deleted() {
     let raster = raster_12_bytes();
@@ -412,11 +413,13 @@ fn temp_file_path_escaping_temp_dir_is_not_deleted() {
         .unwrap();
     let path = dir.path().join("tty-graphics-protocol-victim.bin");
     std::fs::write(&path, &raster).unwrap();
-    let mut escaping = std::env::temp_dir();
-    for _ in std::env::temp_dir().components().skip(1) {
+    let temp_root = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+    let victim = std::fs::canonicalize(&path).unwrap();
+    let mut escaping = temp_root.clone();
+    for _ in temp_root.components().skip(1) {
         escaping.push("..");
     }
-    escaping.push(path.strip_prefix("/").unwrap());
+    escaping.push(victim.strip_prefix("/").unwrap());
     let mut parser = KittyCommandParser::new();
     let command = parse_one(
         &mut parser,
