@@ -883,20 +883,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 ) {
                     Ok(kdl_and_files) => {
                         // Cache is keyed by the stable session id, not the name.
-                        write_session_state_to_disk(
+                        match write_session_state_to_disk(
                             session_id.clone(),
                             session_info,
                             kdl_and_files.clone(),
-                        );
-
-                        // Update session save time for plugin query
-                        let timestamp_millis = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis() as u64;
-                        let _ = pty.bus.senders.send_to_plugin(
-                            PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
-                        );
+                        ) {
+                            Ok(()) => {
+                                // Update session save time for plugin query
+                                let timestamp_millis = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis()
+                                    as u64;
+                                let _ = pty.bus.senders.send_to_plugin(
+                                    PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
+                                );
+                            },
+                            Err(e) => {
+                                log::error!("Failed to persist session state to disk: {}", e);
+                            },
+                        }
 
                         let _ = pty.bus.senders.send_to_background_jobs(
                             BackgroundJob::ReportLayoutInfo(kdl_and_files),

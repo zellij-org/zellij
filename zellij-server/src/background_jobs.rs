@@ -22,6 +22,7 @@ use isahc::{config::RedirectPolicy, HttpClient, Request};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
+use std::hash::Hasher;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -509,23 +510,85 @@ pub(crate) fn background_jobs_main(
         let current_session_layout = current_session_layout.clone();
         let session_id = session_id.clone();
         let stopped = session_metadata_writer_stopped.clone();
+        let senders = bus.senders.clone();
         runtime.spawn(async move {
             let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
                 SESSION_METADATA_WRITE_INTERVAL_MS,
             ));
             ticker.tick().await;
+            // path -> hash of the bytes we last published there
+            let mut published: HashMap<PathBuf, u64> = HashMap::new();
             loop {
                 ticker.tick().await;
+                if *stopped.lock().unwrap() {
+                    return;
+                }
+                let name = current_session_name.lock().unwrap().clone();
+                if name.is_empty() || session_id.is_empty() {
+                    continue;
+                }
+                let (writes, hashes) = {
+                    let info = current_session_info.lock().unwrap();
+                    let layout = current_session_layout.lock().unwrap();
+                    collect_dirty_session_state_writes(&session_id, &info, &layout, &published)
+                };
+                // Files that are no longer part of the session state are not
+                // tracked any further.
+                published.retain(|path, _| hashes.contains_key(path));
+                // A session whose layout has not been serialized yet (the first
+                // one arrives after a delay) has only its metadata on disk,
+                // which is not a resurrectable save.
+                let layout_present = layout_is_part_of_state(&session_id, &hashes);
+                if writes.is_empty() {
+                    // Every file was last published with the current contents
+                    // and still has that size on disk, so the state counts as
+                    // saved now.
+                    if layout_present {
+                        report_session_saved(&senders);
+                    }
+                    continue;
+                }
+                // Stage the writes outside the stop mutex so a slow filesystem
+                // cannot block Exit, then publish under it so a shutdown that
+                // lands mid-write still fences the on-disk files.
+                let mut stage_failed = false;
+                let mut staged = Vec::with_capacity(writes.len());
+                for (path, contents) in writes {
+                    match stage_atomic_write(&path, &contents) {
+                        Ok(file) => staged.push((path, file)),
+                        Err(error) => {
+                            stage_failed = true;
+                            log::error!(
+                                "Failed to stage session state file {}: {:?}",
+                                path.display(),
+                                error
+                            );
+                        },
+                    }
+                }
                 let keep_running = {
                     let stopped_guard = stopped.lock().unwrap();
                     if *stopped_guard {
                         false
                     } else {
-                        let name = current_session_name.lock().unwrap().clone();
-                        if !name.is_empty() && !session_id.is_empty() {
-                            let info = current_session_info.lock().unwrap().clone();
-                            let layout = current_session_layout.lock().unwrap().clone();
-                            write_session_state_to_disk(session_id.clone(), info, layout);
+                        let mut all_persisted = !stage_failed;
+                        for (path, file) in staged {
+                            match file.persist(&path) {
+                                Ok(_) => {
+                                    published.insert(path.clone(), hashes[&path]);
+                                },
+                                Err(error) => {
+                                    all_persisted = false;
+                                    log::error!(
+                                        "Failed to publish session state file {}: {:?}",
+                                        path.display(),
+                                        error
+                                    );
+                                },
+                            }
+                        }
+                        if all_persisted && layout_present {
+                            report_session_saved(&senders);
                         }
                         true
                     }
@@ -618,15 +681,8 @@ pub(crate) fn background_jobs_main(
             },
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
-
-                // Update session save time for plugin query
-                let timestamp_millis = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                let _ = bus
-                    .senders
-                    .send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
+                // The save timestamp is reported by the metadata writer once
+                // the layout has actually been persisted to disk.
             },
             BackgroundJob::RunCommand(
                 plugin_id,
@@ -1302,21 +1358,95 @@ fn file_content_changed(path: &std::path::Path, new_content: &[u8]) -> bool {
     }
 }
 
+fn content_hash(contents: &[u8]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    hasher.write(contents);
+    hasher.finish()
+}
+
+/// Whether a resurrection layout is among the artifacts of the current
+/// session state (an empty layout is not written, so it is not).
+fn layout_is_part_of_state(session_id: &str, hashes: &HashMap<PathBuf, u64>) -> bool {
+    hashes.contains_key(&session_layout_cache_file_name(session_id))
+}
+
+fn report_session_saved(senders: &crate::thread_bus::ThreadSenders) {
+    let timestamp_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let _ = senders.send_to_plugin(PluginInstruction::UpdateSessionSaveTime(timestamp_millis));
+}
+
+/// Session state files to (re)write, and the content hash of every current
+/// artifact by path.
+type DirtySessionStateWrites = (Vec<(PathBuf, Vec<u8>)>, HashMap<PathBuf, u64>);
+
+// Returns the files whose current contents differ from what was last published
+// (or that are missing/truncated on disk), plus a hash of every current
+// artifact for bookkeeping.
+fn collect_dirty_session_state_writes(
+    session_id: &str,
+    current_session_info: &SessionInfo,
+    current_session_layout: &(String, BTreeMap<String, String>),
+    published: &HashMap<PathBuf, u64>,
+) -> DirtySessionStateWrites {
+    let (current_session_layout, layout_files_to_write) = current_session_layout;
+    let session_info_folder = session_info_folder_for_session(session_id);
+    let mut writes = Vec::new();
+    let mut hashes = HashMap::new();
+    let mut consider = |path: PathBuf, contents: &[u8]| {
+        let hash = content_hash(contents);
+        hashes.insert(path.clone(), hash);
+        let already_published = published.get(&path) == Some(&hash)
+            && fs::metadata(&path)
+                .map(|meta| meta.len() == contents.len() as u64)
+                .unwrap_or(false);
+        if !already_published {
+            writes.push((path, contents.to_vec()));
+        }
+    };
+    consider(
+        session_info_cache_file_name(session_id),
+        current_session_info.to_string().as_bytes(),
+    );
+    if !current_session_layout.is_empty() {
+        consider(
+            session_layout_cache_file_name(session_id),
+            current_session_layout.as_bytes(),
+        );
+        for (external_file_name, external_file_contents) in layout_files_to_write {
+            consider(
+                session_info_folder.join(external_file_name),
+                external_file_contents.as_bytes(),
+            );
+        }
+    }
+    (writes, hashes)
+}
+
 pub fn write_session_state_to_disk(
     session_id: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
-) {
+) -> std::io::Result<()> {
     let metadata_cache_file_name = session_info_cache_file_name(&session_id);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
-    if file_content_changed(&metadata_cache_file_name, new_metadata.as_bytes()) {
-        if let Err(error) =
-            write_file_atomically(&metadata_cache_file_name, new_metadata.as_bytes())
-        {
-            log::error!("Failed to write session metadata file: {:?}", error);
+    let mut first_error = None;
+    let mut write_if_changed = |path: PathBuf, contents: &[u8]| {
+        if file_content_changed(&path, contents) {
+            if let Err(error) = write_file_atomically(&path, contents) {
+                log::error!(
+                    "Failed to write session state file {}: {:?}",
+                    path.display(),
+                    error
+                );
+                first_error.get_or_insert(error);
+            }
         }
-    }
+    };
+    write_if_changed(metadata_cache_file_name, new_metadata.as_bytes());
 
     if !current_session_layout.is_empty() {
         let layout_cache_file_name = session_layout_cache_file_name(&session_id);
@@ -1324,27 +1454,23 @@ pub fn write_session_state_to_disk(
             // replacing the file gives it a new creation time; keep the
             // session's own
             zellij_utils::sessions::record_session_layout_creation_time(&layout_cache_file_name);
-            if let Err(error) =
-                write_file_atomically(&layout_cache_file_name, current_session_layout.as_bytes())
-            {
-                log::error!("Failed to write session layout file: {:?}", error);
-            }
         }
+        write_if_changed(layout_cache_file_name, current_session_layout.as_bytes());
         let session_info_folder = session_info_folder_for_session(&session_id);
         for (external_file_name, external_file_contents) in layout_files_to_write {
-            let external_file_path = session_info_folder.join(&external_file_name);
-            if file_content_changed(&external_file_path, external_file_contents.as_bytes()) {
-                if let Err(error) =
-                    write_file_atomically(&external_file_path, external_file_contents.as_bytes())
-                {
-                    log::error!("Failed to write layout metadata file: {:?}", error);
-                }
-            }
+            write_if_changed(
+                session_info_folder.join(&external_file_name),
+                external_file_contents.as_bytes(),
+            );
         }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(()),
     }
 }
 
-fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+fn stage_atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<tempfile::NamedTempFile> {
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -1357,7 +1483,11 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
         .tempfile_in(parent)?;
     temporary_file.write_all(contents)?;
     temporary_file.as_file().sync_all()?;
-    temporary_file
+    Ok(temporary_file)
+}
+
+fn write_file_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    stage_atomic_write(path, contents)?
         .persist(path)
         .map(|_| ())
         .map_err(|error| error.error)
@@ -1612,6 +1742,86 @@ mod tests {
         assert_eq!(contents.len(), 4096);
         assert!(contents.windows(2).all(|window| window[0] == window[1]));
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn dirty_check_restages_only_changed_or_missing_artifacts() {
+        // Unique per run: this writes to the real session cache folder.
+        let session_id = &format!("dirty-check-test-session-{}", std::process::id());
+        let _ = std::fs::remove_dir_all(session_info_folder_for_session(session_id));
+        let info = SessionInfo::new(session_id.to_string());
+        let layout = (
+            "layout { }".to_string(),
+            BTreeMap::from([("pane-1.txt".to_string(), "contents".to_string())]),
+        );
+
+        let (writes, published) =
+            collect_dirty_session_state_writes(session_id, &info, &layout, &HashMap::new());
+        assert_eq!(writes.len(), 3);
+        for (path, contents) in &writes {
+            write_file_atomically(path, contents).unwrap();
+        }
+
+        let (writes, _) =
+            collect_dirty_session_state_writes(session_id, &info, &layout, &published);
+        assert!(writes.is_empty());
+
+        let changed_layout = (
+            "layout { }".to_string(),
+            BTreeMap::from([("pane-1.txt".to_string(), "new contents".to_string())]),
+        );
+        let (writes, _) =
+            collect_dirty_session_state_writes(session_id, &info, &changed_layout, &published);
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0.file_name().unwrap(), "pane-1.txt");
+
+        std::fs::remove_file(session_info_cache_file_name(session_id)).unwrap();
+        let (writes, _) =
+            collect_dirty_session_state_writes(session_id, &info, &layout, &published);
+        assert_eq!(
+            writes
+                .iter()
+                .map(|(path, _)| path.clone())
+                .collect::<Vec<_>>(),
+            vec![session_info_cache_file_name(session_id)],
+        );
+
+        std::fs::remove_dir_all(session_info_folder_for_session(session_id)).unwrap();
+        let _ = std::fs::remove_file(session_layout_cache_file_name(session_id));
+        let _ = std::fs::remove_file(session_info_cache_file_name(session_id));
+    }
+
+    #[test]
+    fn an_empty_layout_is_neither_written_nor_part_of_the_published_state() {
+        // The save time is only reported when the layout is among the
+        // published artifacts (`layout_is_part_of_state`); with an empty
+        // layout it is not.
+        let session_id = &format!("empty-layout-test-session-{}", std::process::id());
+        let info = SessionInfo::new(session_id.to_string());
+        let layout_path = session_layout_cache_file_name(session_id);
+
+        let (writes, hashes) = collect_dirty_session_state_writes(
+            session_id,
+            &info,
+            &(String::new(), BTreeMap::new()),
+            &HashMap::new(),
+        );
+        assert_eq!(
+            writes.iter().map(|(path, _)| path).collect::<Vec<_>>(),
+            vec![&session_info_cache_file_name(session_id)],
+        );
+        assert!(!hashes.contains_key(&layout_path));
+        assert!(!layout_is_part_of_state(session_id, &hashes));
+
+        let (writes, hashes) = collect_dirty_session_state_writes(
+            session_id,
+            &info,
+            &("layout { }".to_string(), BTreeMap::new()),
+            &HashMap::new(),
+        );
+        assert!(writes.iter().any(|(path, _)| path == &layout_path));
+        assert!(hashes.contains_key(&layout_path));
+        assert!(layout_is_part_of_state(session_id, &hashes));
     }
 
     #[test]
