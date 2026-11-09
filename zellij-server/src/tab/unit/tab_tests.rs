@@ -17404,6 +17404,15 @@ pub fn half_page_scroll_down_by_pane_id() {
 }
 
 #[test]
+pub fn page_scroll_rows_use_content_height_and_always_move() {
+    assert_eq!(super::terminal_page_scroll_rows(0), 1);
+    assert_eq!(super::terminal_page_scroll_rows(8), 8);
+    assert_eq!(super::terminal_half_page_scroll_rows(0), 1);
+    assert_eq!(super::terminal_half_page_scroll_rows(1), 1);
+    assert_eq!(super::terminal_half_page_scroll_rows(8), 4);
+}
+
+#[test]
 pub fn rename_pane_by_pane_id() {
     let size = Size {
         cols: 121,

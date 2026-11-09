@@ -612,6 +612,7 @@ impl MouseHandler {
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
         Self::forget_unfinished_pane_drawing(tab, event, client_id);
+        Self::forget_selection_without_release(tab, event);
         let click_count = Self::count_click(tab, event, client_id);
         let mut context =
             Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
@@ -637,6 +638,16 @@ impl MouseHandler {
             && (event.left || event.right || event.middle);
         if is_button_press && tab.pane_drawings.remove(&client_id).is_some() {
             tab.set_force_render();
+        }
+    }
+
+    fn forget_selection_without_release(tab: &mut Tab, event: &MouseEvent) {
+        if event.event_type == MouseEventType::Press && event.left {
+            if let Some(pane_id) = tab.selecting_with_mouse_in_pane.take() {
+                if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                    pane.reset_selection(None);
+                }
+            }
         }
     }
 

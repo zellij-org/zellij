@@ -56,18 +56,55 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
     // from its content to leave room for the boundary between it and the next pane (if it doesn't
     // draw its own frame)
-    let columns_offset = if position_and_size.x + position_and_size.cols.as_usize() < viewport.cols
-    {
-        1
-    } else {
-        0
-    };
-    let rows_offset = if position_and_size.y + position_and_size.rows.as_usize() < viewport.rows {
-        1
-    } else {
-        0
-    };
+    let pane_right = position_and_size.x + position_and_size.cols.as_usize();
+    let pane_bottom = position_and_size.y + position_and_size.rows.as_usize();
+    let viewport_right = viewport.x + viewport.cols;
+    let viewport_bottom = viewport.y + viewport.rows;
+    let columns_offset = usize::from(pane_right > viewport.x && pane_right < viewport_right);
+    let rows_offset = usize::from(pane_bottom > viewport.y && pane_bottom < viewport_bottom);
     (columns_offset, rows_offset)
+}
+
+#[cfg(test)]
+mod pane_content_offset_tests {
+    use super::*;
+    use zellij_utils::pane_size::Dimension;
+
+    #[test]
+    fn a_sidebar_ending_at_the_viewport_origin_reserves_no_boundary_cell() {
+        let viewport = Viewport {
+            x: 20,
+            y: 0,
+            cols: 100,
+            rows: 40,
+        };
+        let sidebar = PaneGeom {
+            x: 0,
+            y: 0,
+            rows: Dimension::fixed(40),
+            cols: Dimension::fixed(20),
+            ..Default::default()
+        };
+        assert_eq!(pane_content_offset(&sidebar, &viewport), (0, 0));
+    }
+
+    #[test]
+    fn an_interior_pane_still_reserves_boundary_cells() {
+        let viewport = Viewport {
+            x: 20,
+            y: 5,
+            cols: 100,
+            rows: 40,
+        };
+        let pane = PaneGeom {
+            x: 20,
+            y: 5,
+            rows: Dimension::fixed(10),
+            cols: Dimension::fixed(20),
+            ..Default::default()
+        };
+        assert_eq!(pane_content_offset(&pane, &viewport), (1, 1));
+    }
 }
 
 pub struct TiledPanes {

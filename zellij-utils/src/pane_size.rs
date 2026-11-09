@@ -276,23 +276,26 @@ impl PaneGeom {
         y: Option<PercentOrFixed>,
         width: Option<PercentOrFixed>,
         height: Option<PercentOrFixed>,
-        viewport_cols: usize,
-        viewport_rows: usize,
+        viewport: Viewport,
     ) {
         if let Some(width) = &width {
-            self.cols = Dimension::fixed(width.to_fixed(viewport_cols));
+            self.cols = Dimension::fixed(width.to_fixed(viewport.cols));
         }
         if let Some(height) = &height {
-            self.rows = Dimension::fixed(height.to_fixed(viewport_rows));
+            self.rows = Dimension::fixed(height.to_fixed(viewport.rows));
         }
         self.x = match &x {
-            Some(x) => x.to_fixed(viewport_cols),
-            None if width.is_some() => viewport_cols.saturating_sub(self.cols.as_usize()) / 2,
+            Some(x) => viewport.x + x.to_fixed(viewport.cols),
+            None if width.is_some() => {
+                viewport.x + viewport.cols.saturating_sub(self.cols.as_usize()) / 2
+            },
             None => self.x,
         };
         self.y = match &y {
-            Some(y) => y.to_fixed(viewport_rows),
-            None if height.is_some() => viewport_rows.saturating_sub(self.rows.as_usize()) / 2,
+            Some(y) => viewport.y + y.to_fixed(viewport.rows),
+            None if height.is_some() => {
+                viewport.y + viewport.rows.saturating_sub(self.rows.as_usize()) / 2
+            },
             None => self.y,
         };
     }
@@ -306,8 +309,7 @@ impl PaneGeom {
             floating_pane_coordinates.y,
             floating_pane_coordinates.width,
             floating_pane_coordinates.height,
-            viewport.cols,
-            viewport.rows,
+            viewport,
         );
         if self.x < viewport.x {
             self.x = viewport.x;
@@ -510,5 +512,39 @@ impl From<&Size> for PaneGeom {
             cols,
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn floating_positions_are_relative_to_a_nonzero_viewport_origin() {
+        let viewport = Viewport {
+            x: 20,
+            y: 5,
+            cols: 100,
+            rows: 40,
+        };
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            Some(PercentOrFixed::Percent(50)),
+            Some(PercentOrFixed::Percent(50)),
+            Some(PercentOrFixed::Fixed(10)),
+            Some(PercentOrFixed::Fixed(4)),
+            viewport,
+        );
+        assert_eq!((geom.x, geom.y), (70, 25));
+
+        let mut centered = PaneGeom::default();
+        centered.apply_floating_pane_position(
+            None,
+            None,
+            Some(PercentOrFixed::Fixed(10)),
+            Some(PercentOrFixed::Fixed(4)),
+            viewport,
+        );
+        assert_eq!((centered.x, centered.y), (65, 23));
     }
 }

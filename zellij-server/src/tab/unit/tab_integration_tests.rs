@@ -18863,6 +18863,43 @@ fn mouse_events_work_again_when_the_selecting_pane_is_gone() {
 }
 
 #[test]
+fn a_new_left_press_replaces_a_selection_whose_release_was_lost() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.new_pane(
+        PaneId::Plugin(7),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.selecting_with_mouse_in_pane = Some(PaneId::Plugin(7));
+
+    let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
+        .unwrap();
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane,
+        Some(PaneId::Terminal(1)),
+        "a fresh left press proves the previous release was lost"
+    );
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(terminal_point),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+}
+
+#[test]
 fn a_shift_click_selection_in_a_pane_with_mouse_reporting_ends_on_release() {
     let size = Size {
         cols: 121,

@@ -643,6 +643,14 @@ pub enum ViewportGoal {
     Top,
 }
 
+fn terminal_page_scroll_rows(content_rows: usize) -> usize {
+    content_rows.max(1)
+}
+
+fn terminal_half_page_scroll_rows(content_rows: usize) -> usize {
+    (content_rows / 2).max(1)
+}
+
 pub trait Pane {
     fn x(&self) -> usize;
     fn y(&self) -> usize;
@@ -8172,8 +8180,7 @@ impl Tab {
 
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = active_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
@@ -8183,15 +8190,14 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-                                          // prevent overflow when row == 0
-            let scroll_rows = terminal_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.get_content_rows());
             terminal_pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
 
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = active_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
@@ -8202,22 +8208,21 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-            let scroll_rows = terminal_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.get_content_rows());
             terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
         }
     }
 
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = (active_pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
 
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
