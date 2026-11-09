@@ -36,9 +36,15 @@ fn is_word_boundary(x: &Option<char>) -> bool {
     x.map_or(true, |c| !c.is_alphanumeric() && c != '_')
 }
 
-/// Last code point of a physical row. Soft-wrapped rows do not store the
-/// previous row's text, so a whole-word check at the row start uses this.
+/// Last displayed character of a physical row. Soft-wrapped rows do not store
+/// the previous row's text, so a whole-word check at the row start uses this.
+/// Trailing blanks are compressed out of `columns` but still occupy cells;
+/// the character a following row continues from is that space. A hard line
+/// break is not a character: callers pass `None` for a canonical row.
 fn row_last_char(row: &Row) -> Option<char> {
+    if row.stored_cell_count() > row.columns.len() {
+        return Some(' ');
+    }
     row.columns.last().map(|cell| cell.last_char())
 }
 
@@ -610,10 +616,15 @@ impl SearchResult {
         }
     }
 
+    /// Shift existing hits down and search the row newly revealed at the top.
+    /// `row_above` is the physical row just above the viewport. It is consulted
+    /// only when that revealed row is a soft wrap; a canonical row is a hard
+    /// break and has no predecessor character.
     pub(crate) fn move_down(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -626,24 +637,38 @@ impl SearchResult {
         self.adjust_selections_to_moved_viewport(grid_height);
 
         // Search the new line for our needle
-        if !self.needle.is_empty() {
-            if viewport.front().is_some() {
-                let rows = viewport_line(viewport, 0);
-                let selections = self.search_row(0, rows[0], &rows[1..]);
-                for selection in selections.iter().rev() {
-                    self.selections.insert(0, *selection);
-                    found_something = true;
-                }
-            }
+        if self.needle.is_empty() || viewport.is_empty() {
+            return found_something;
         }
+        let rows = viewport_line(viewport, 0);
+        let predecessor = leading_predecessor(&rows, 0, viewport, row_above);
+        let selections = self.search_starting_row(
+            0,
+            rows[0],
+            rows.iter()
+                .copied()
+                .enumerate()
+                .skip(1)
+                .map(|(offset, row)| (offset, row)),
+            predecessor,
+        );
+        found_something = !selections.is_empty();
+        // One splice keeps search order. Inserting each hit at 0 is the same
+        // order only when walked backwards, and shifts the retained hits once
+        // per new match.
+        self.selections.splice(0..0, selections);
         found_something
     }
 
+    /// Shift existing hits up and search the row newly revealed at the bottom.
+    /// `row_above` is the predecessor when that row is viewport index 0 and a
+    /// soft wrap (the only on-screen row continued from scrollback).
     pub(crate) fn move_up(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
         lines_below: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -655,27 +680,25 @@ impl SearchResult {
         self.adjust_selections_to_moved_viewport(grid_height);
 
         // Search the new line for our needle
-        if !self.needle.is_empty() {
-            if let Some(row) = viewport.back() {
-                let below = lines_below
-                    .iter()
-                    .take_while(|row| !row.is_canonical)
-                    .enumerate()
-                    .map(|(offset, row)| (offset + 1, row));
-                let row_index = viewport.len() - 1;
-                let predecessor = if row.is_canonical {
-                    None
-                } else {
-                    row_index
-                        .checked_sub(1)
-                        .and_then(|index| viewport.get(index))
-                        .and_then(row_last_char)
-                };
-                let selections = self.search_starting_row(row_index, row, below, predecessor);
-                found_something = !selections.is_empty();
-                self.selections.extend(selections);
-            }
+        if self.needle.is_empty() {
+            return found_something;
         }
+        let Some(row) = viewport.back() else {
+            return found_something;
+        };
+        let below = lines_below
+            .iter()
+            .take_while(|row| !row.is_canonical)
+            .enumerate()
+            .map(|(offset, row)| (offset + 1, row));
+        let row_index = viewport.len() - 1;
+        let predecessor = {
+            let rows = [row];
+            leading_predecessor(&rows, row_index, viewport, row_above)
+        };
+        let selections = self.search_starting_row(row_index, row, below, predecessor);
+        found_something = !selections.is_empty();
+        self.selections.extend(selections);
         found_something
     }
 
@@ -722,11 +745,13 @@ impl SearchResult {
     }
 
     /// `move_up` for a viewport that jumped `amount` rows in one transfer.
+    /// `row_above` is the soft-wrap predecessor of viewport index 0.
     pub(crate) fn move_up_rows(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
         lines_below: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) {
         if amount == 0 {
@@ -743,6 +768,11 @@ impl SearchResult {
         let start = viewport.len().saturating_sub(amount);
         let mut index = start;
         while index < viewport.len() {
+            let row = &viewport[index];
+            let predecessor = {
+                let rows = [row];
+                leading_predecessor(&rows, index, viewport, row_above)
+            };
             let below = viewport
                 .iter()
                 .skip(index + 1)
@@ -750,20 +780,8 @@ impl SearchResult {
                 .chain(lines_below.iter().take_while(|row| !row.is_canonical))
                 .enumerate()
                 .map(|(offset, row)| (offset + 1, row));
-            let predecessor = if viewport[index].is_canonical {
-                None
-            } else {
-                index
-                    .checked_sub(1)
-                    .and_then(|previous| viewport.get(previous))
-                    .and_then(row_last_char)
-            };
-            self.selections.extend(self.search_starting_row(
-                index,
-                &viewport[index],
-                below,
-                predecessor,
-            ));
+            self.selections
+                .extend(self.search_starting_row(index, row, below, predecessor));
             index += 1;
         }
     }

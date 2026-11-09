@@ -3018,9 +3018,12 @@ impl Grid {
                 command_output_flash.move_down(1);
             }
             // Move all search-selections down one line as well
-            found_something = self
-                .search_results
-                .move_down(1, &self.viewport, self.height);
+            found_something = self.search_results.move_down(
+                1,
+                &self.viewport,
+                self.lines_above.back(),
+                self.height,
+            );
         }
         self.output_buffer.update_all_lines();
         result.found_something = found_something;
@@ -3081,9 +3084,13 @@ impl Grid {
                 command_output_flash.move_up(1);
             }
             // Move all search-selections up one line as well
-            found_something =
-                self.search_results
-                    .move_up(1, &self.viewport, &self.lines_below, self.height);
+            found_something = self.search_results.move_up(
+                1,
+                &self.viewport,
+                &self.lines_below,
+                self.lines_above.back(),
+                self.height,
+            );
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
@@ -4645,8 +4652,13 @@ impl Grid {
         if let Some(command_output_flash) = self.command_output_flash.as_mut() {
             command_output_flash.move_up(grown);
         }
-        self.search_results
-            .move_up_rows(grown, &self.viewport, &self.lines_below, self.height);
+        self.search_results.move_up_rows(
+            grown,
+            &self.viewport,
+            &self.lines_below,
+            self.lines_above.back(),
+            self.height,
+        );
         self.kitty_refresh_after_scroll_step(reflowed);
         if self.lines_below.is_empty() {
             self.is_scrolled = false;
