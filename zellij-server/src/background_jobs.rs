@@ -2948,7 +2948,9 @@ mod tests {
             sock_dir.path(),
             info_dir.path(),
         );
-        assert_eq!(live.len(), 1);
+        // The current session is injected even when its metadata has not landed.
+        assert_eq!(live.len(), 2);
+        assert!(live["me"].is_current_session);
         assert!(live.contains_key(peer));
         assert!(resurrectable.is_empty());
     }
@@ -2966,7 +2968,8 @@ mod tests {
             sock_dir.path(),
             info_dir.path(),
         );
-        assert!(live.is_empty());
+        assert_eq!(live.keys().collect::<Vec<_>>(), vec!["me"]);
+        assert!(live["me"].is_current_session);
         assert_eq!(resurrectable.len(), 1);
         assert!(resurrectable.contains_key("dead-beta"));
     }
@@ -3023,7 +3026,8 @@ mod tests {
             sock_dir.path(),
             info_dir.path(),
         );
-        assert_eq!(live.len(), 3);
+        assert_eq!(live.len(), 4);
+        assert!(live["me"].is_current_session);
         assert_eq!(resurrectable.len(), 2);
         for name in ["live-a", "live-b", "live-c"] {
             assert!(!resurrectable.contains_key(name));
@@ -3054,7 +3058,8 @@ mod tests {
             sock_dir.path(),
             info_dir.path(),
         );
-        assert_eq!(live.keys().collect::<Vec<_>>(), vec!["visible"]);
+        assert_eq!(live.keys().collect::<Vec<_>>(), vec!["me", "visible"]);
+        assert!(live["me"].is_current_session);
         assert_eq!(resurrectable.keys().collect::<Vec<_>>(), vec!["exited"]);
         let read = zellij_utils::sessions::read_live_session_states(
             "me",
