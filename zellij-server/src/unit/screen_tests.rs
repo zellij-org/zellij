@@ -7,7 +7,7 @@ use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext,
     os_input_output::ServerOsApi,
-    route::{route_action, NotificationEnd},
+    route::{route_action, ActionCompletionKind, ActionCompletionResult, NotificationEnd},
     thread_bus::Bus,
     ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
 };
@@ -18655,6 +18655,225 @@ fn a_targeted_write_reaches_its_pane_while_a_popup_is_open() {
     );
     assert!(harness.keys_sent_to_plugin(42).is_empty());
     harness.teardown_and_assert_popup_was_open();
+}
+
+/// `route_thread_main` always follows `route_action` with this message.
+/// `individual_messages_client` returns 0 on it, 2 on `LogError`, and the
+/// status on `Exit`.
+fn cli_exit_after_route(messages: &[ServerToClientMsg]) -> i32 {
+    let mut messages = messages.to_vec();
+    messages.push(ServerToClientMsg::UnblockInputThread);
+    for message in messages {
+        match message {
+            ServerToClientMsg::LogError { .. } => return 2,
+            ServerToClientMsg::Log { .. } => return 0,
+            ServerToClientMsg::Exit { exit_reason } => match exit_reason {
+                ExitReason::Error(_) => return 2,
+                ExitReason::CustomExitStatus(status) => return status,
+                _ => return 0,
+            },
+            ServerToClientMsg::UnblockInputThread => return 0,
+            _ => {},
+        }
+    }
+    0
+}
+
+fn route_cli_action(
+    session: &SessionMetaData,
+    os_input: &FakeInputOutput,
+    cli_client_id: ClientId,
+    action: Action,
+) -> (ActionCompletionResult, i32) {
+    os_input
+        .server_to_client_messages
+        .lock()
+        .unwrap()
+        .remove(&cli_client_id);
+    let (_, result) = route_action(
+        action,
+        1,
+        Some(cli_client_id),
+        None,
+        session.senders.clone(),
+        None,
+        None,
+        InputMode::Normal,
+        Some(Box::new(os_input.clone())),
+        true,
+    )
+    .expect("route_action");
+    let result = result.expect("action completion");
+    let messages = os_input
+        .server_to_client_messages
+        .lock()
+        .unwrap()
+        .get(&cli_client_id)
+        .cloned()
+        .unwrap_or_default();
+    let exit = cli_exit_after_route(&messages);
+    (result, exit)
+}
+
+fn assert_cli_failure(result: &ActionCompletionResult, exit: i32) {
+    assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("rejected") || message.contains("not admitted")),
+        "admission failure was not recorded: {result:?}"
+    );
+    assert!(
+        result.exit_status.is_some_and(|status| status != 0),
+        "admission failure needs a non-zero exit, got {result:?}"
+    );
+    assert_ne!(exit, 0, "CLI treated the rejection as success: {result:?}");
+}
+
+fn assert_cli_success(result: &ActionCompletionResult, exit: i32) {
+    assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+    assert!(result.error_message.is_none(), "{result:?}");
+    assert!(
+        result.exit_status.is_none() || result.exit_status == Some(0),
+        "{result:?}"
+    );
+    assert_eq!(exit, 0, "{result:?}");
+}
+
+fn drain_pty_writes(
+    receiver: &Receiver<(PtyWriteInstruction, ErrorContext)>,
+) -> Vec<(Vec<u8>, bool)> {
+    let mut writes = Vec::new();
+    for (instruction, _) in receiver.try_iter() {
+        let PtyWriteInstruction::Write(write) = instruction else {
+            continue;
+        };
+        let (bytes, terminal_id, _completion, budget) = write.into_parts();
+        let metered = budget.is_some();
+        if let Some(budget) = budget {
+            budget.release(terminal_id, bytes.len());
+        }
+        writes.push((bytes, metered));
+    }
+    writes
+}
+
+#[test]
+fn cli_write_to_pane_reports_admission_rejection_and_admits_a_small_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session = mock_screen.clone_session_metadata();
+    let os_input = mock_screen.os_input.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    std::thread::sleep(Duration::from_millis(150));
+    let _startup = drain_pty_writes(&pty_receiver);
+
+    let budget = session
+        .senders
+        .to_pty_writer
+        .as_ref()
+        .and_then(|sender| sender.budget())
+        .expect("the screen pty sender shares the session budget");
+    let terminal_id = 0u32;
+    let already = budget.terminal_reserved(terminal_id);
+    let room = crate::pty_ingress::PER_TERMINAL_LIMIT - already;
+    assert!(room > 64, "startup saturated terminal {terminal_id}");
+    budget
+        .try_reserve(terminal_id, room)
+        .expect("fill the terminal budget");
+    let saturated = budget.terminal_reserved(terminal_id);
+    let cli_client_id = 77;
+    let pane_id = zellij_utils::data::PaneId::Terminal(terminal_id);
+
+    let rejected = b"admission-rejected".to_vec();
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteToPaneId {
+            bytes: rejected.clone(),
+            pane_id,
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected write was sitting in the writer inbox: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteChars {
+            chars: "chars-rejected".into(),
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected keystrokes were queued: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::Paste {
+            chars: "paste-rejected".into(),
+            pane_id: Some(pane_id),
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    // Panes that are not in bracketed-paste mode turn the markers into an
+    // empty metered write. The rejected body must not ride along.
+    assert!(
+        queued.iter().all(|(bytes, metered)| {
+            *metered
+                && bytes
+                    .windows(b"paste-rejected".len())
+                    .all(|window| window != b"paste-rejected")
+        }),
+        "rejected paste was queued: {queued:?}"
+    );
+
+    budget.release(terminal_id, room);
+    let admitted = b"admitted-ok".to_vec();
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteToPaneId {
+            bytes: admitted.clone(),
+            pane_id,
+        },
+    );
+    assert_cli_success(&result, exit);
+    assert_eq!(
+        budget.terminal_reserved(terminal_id),
+        admitted.len(),
+        "the admitted write was not reserved"
+    );
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued
+            .iter()
+            .any(|(bytes, metered)| bytes == &admitted && *metered),
+        "admitted write was missing from the metered inbox: {queued:?}"
+    );
+
+    mock_screen.teardown(vec![screen_thread]);
 }
 
 fn screen_capturing_plugin_instructions() -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {

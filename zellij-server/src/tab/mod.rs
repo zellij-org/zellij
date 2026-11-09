@@ -1374,6 +1374,15 @@ pub fn get_next_terminal_position(
     tiled_panes_count + floating_panes_count + 1
 }
 
+fn fail_cli_write(completion: &mut Option<NotificationEnd>, message: &str) {
+    // Publish here. A later raw drop is abandonment and would clear this error.
+    if let Some(mut completion) = completion.take() {
+        completion.set_exit_status(1);
+        completion.set_error_message(message.to_owned());
+        completion.complete_recorded();
+    }
+}
+
 impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
@@ -5949,14 +5958,25 @@ impl Tab {
         &mut self,
         bytes: Vec<u8>,
         pane_id: PaneId,
-        completion: Option<NotificationEnd>,
+        mut completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
         let bytes = without_paste_markers(bytes);
 
-        self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
-        self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
+        // Begin and body are separate writes. A rejection of either returns
+        // before `completion` is attached to the end marker; record it or the
+        // owner drops as success.
+        if let Err(error) =
+            self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)
+        {
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        if let Err(error) = self.write_to_pane_id(&None, bytes, false, pane_id, None, None) {
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
         self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
         Ok(())
     }

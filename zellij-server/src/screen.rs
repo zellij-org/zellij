@@ -12766,10 +12766,9 @@ pub(crate) fn screen_thread_main(
                 raw_bytes,
                 is_kitty_keyboard_protocol,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion,
             ) => {
-                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 screen.record_client_input(client_id);
                 if let Some(plugin_id) = keybind_intercepts.owner(client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
@@ -12864,8 +12863,19 @@ pub(crate) fn screen_thread_main(
                                                 client_id,
                                             ),
                                         };
-                                        if let Ok(true) = write_result {
-                                            state_changed = true;
+                                        match write_result {
+                                            Ok(true) => state_changed = true,
+                                            Ok(false) => {},
+                                            Err(error) => {
+                                                // The pty write's completion is empty, so a
+                                                // rejected admission is only visible on this
+                                                // CLI owner. The guard publishes that record.
+                                                mark_action_as_failed(
+                                                    &mut *completion,
+                                                    &format!("{error:#}"),
+                                                );
+                                                Err::<(), _>(error).non_fatal();
+                                            },
                                         }
                                     },
                                 }
@@ -16270,16 +16280,23 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::WriteToPaneId(bytes, pane_id, _completion) => {
-                let mut _completion = crate::route::RecordedCompletion::new(_completion);
+            ScreenInstruction::WriteToPaneId(bytes, pane_id, completion) => {
+                // The pty write carries no CLI token. Admission failure comes
+                // back as `Err`. Record it on this owner; the guard publishes
+                // that failure. An empty owner is a finished success.
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if tab.is_pane_requesting_permissions(pane_id) {
                             break;
                         }
-                        tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
-                            .non_fatal();
+                        if let Err(error) =
+                            tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
+                        {
+                            mark_action_as_failed(&mut *completion, &format!("{error:#}"));
+                            Err::<(), _>(error).non_fatal();
+                        }
                         break;
                     }
                 }

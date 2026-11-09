@@ -468,10 +468,7 @@ fn reserve_pty_write(
     // another one: nothing was reserved, so nothing may be released.
     let (bytes, terminal_id, mut completion, _caller_budget) = admitted.into_parts();
     if let Err(message) = budget.try_reserve(terminal_id, bytes.len()) {
-        if let Some(mut completion) = completion {
-            completion.set_error_message(message.clone());
-            completion.complete_recorded();
-        }
+        fail_write_completion(&mut completion, message.clone());
         return Err(anyhow::anyhow!(message)).context("failed to send message to pty writer");
     }
     Ok(PtyWriteInstruction::Write(AdmittedWrite::new(
@@ -486,12 +483,20 @@ fn reject_unadmitted(instruction: PtyWriteInstruction, message: &str) -> Result<
     if let PtyWriteInstruction::Write(admitted) = instruction {
         let (_bytes, _terminal_id, mut completion, caller_budget) = admitted.into_parts();
         drop(caller_budget);
-        if let Some(mut completion) = completion {
-            completion.set_error_message(message.to_string());
-            completion.complete_recorded();
-        }
+        fail_write_completion(&mut completion, message.to_string());
     }
     Err(anyhow::anyhow!(message.to_string())).context("failed to send message to pty writer")
+}
+
+/// Admission rejected the bytes. The waiter must see a finished failure, not
+/// an empty drop (which is success).
+fn fail_write_completion(completion: &mut Option<crate::route::NotificationEnd>, message: String) {
+    // Publish here. A later raw drop is abandonment and would clear this error.
+    if let Some(mut completion) = completion.take() {
+        completion.set_exit_status(1);
+        completion.set_error_message(message);
+        completion.complete_recorded();
+    }
 }
 
 /// The send failed after admission. Dropping a `Write` releases its reservation
