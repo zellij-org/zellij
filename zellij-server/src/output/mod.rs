@@ -19,6 +19,7 @@ use crate::{
     },
     ClientId,
 };
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt::Write;
 use std::fs;
@@ -304,6 +305,65 @@ fn residency_record(
     }
 }
 
+/// Cap on the raster bytes materialized (copied into records, written to
+/// shared media or encoded) for one frame. Distinct scaled variants of one
+/// image are each regenerated, so without a cap a single pane could make a
+/// frame retain many times the store quota. A placement over the cap is
+/// skipped and sent when its pane is next rendered.
+const MAX_FRAME_RASTER_BYTES: usize = 128 * 1024 * 1024;
+
+/// Transmitted host images that are no longer usable. A scaled variant that
+/// was evicted from the store stays valid on the host (it regenerates
+/// byte-identical bytes) as long as this frame or a live host placement,
+/// including one of a pane that is not rendered in this frame, still uses it.
+fn stale_transmitted_images(
+    chunks_by_pane: &HashMap<PaneId, Vec<KittyImageChunk>>,
+    rendered_panes: &HashSet<PaneId>,
+    kitty_image_store: &KittyImageStore,
+    host_state: &HostKittyState,
+) -> Vec<((InternalImageId, Option<ScaledImageKey>), u32)> {
+    let in_use: HashSet<(InternalImageId, Option<ScaledImageKey>)> = chunks_by_pane
+        .values()
+        .flat_map(|chunks| {
+            chunks
+                .iter()
+                .map(|chunk| (chunk.internal_image_id, chunk.scaled_image))
+        })
+        .chain(
+            host_state
+                .live_placements
+                .iter()
+                .filter(|(key, _)| !rendered_panes.contains(&key.pane_id))
+                .map(|(_, record)| record.image_key),
+        )
+        .collect();
+    host_state
+        .transmitted
+        .iter()
+        .filter(|(image_key, _)| match image_key.1 {
+            Some(key) => {
+                !kitty_image_store.has_scaled_variant(image_key.0, key)
+                    && (kitty_image_store.get(image_key.0).is_none() || !in_use.contains(image_key))
+            },
+            None => kitty_image_store.get(image_key.0).is_none(),
+        })
+        .map(|(image_key, host_id)| (*image_key, *host_id))
+        .collect()
+}
+
+/// Account the RGBA bytes a transmission is about to materialize; refuses
+/// it when the frame would exceed `MAX_FRAME_RASTER_BYTES`.
+fn reserve_frame_raster_bytes(used: &mut usize, width: usize, height: usize) -> bool {
+    let bytes = width.saturating_mul(height).saturating_mul(4);
+    match used.checked_add(bytes) {
+        Some(total) if total <= MAX_FRAME_RASTER_BYTES => {
+            *used = total;
+            true
+        },
+        _ => false,
+    }
+}
+
 fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecord>) {
     let KittyFrameInput {
         mut chunks_by_pane,
@@ -325,15 +385,12 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
         out.push(GraphicsRecord::Clear);
     }
 
-    let mut freed: Vec<((InternalImageId, Option<ScaledImageKey>), u32)> = host_state
-        .transmitted
-        .iter()
-        .filter(|(image_key, _)| match image_key.1 {
-            Some(key) => kitty_image_store.scaled_variant(image_key.0, key).is_none(),
-            None => kitty_image_store.get(image_key.0).is_none(),
-        })
-        .map(|(image_key, host_id)| (*image_key, *host_id))
-        .collect();
+    let mut freed = stale_transmitted_images(
+        &chunks_by_pane,
+        &rendered_panes,
+        kitty_image_store,
+        host_state,
+    );
     freed.sort_by_key(|(_, host_id)| *host_id);
     for (image_key, host_id) in freed {
         out.push(GraphicsRecord::DeleteImage { id: host_id as u64 });
@@ -363,6 +420,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
         }
     }
 
+    let mut frame_raster_bytes = 0usize;
     let mut rendered: Vec<PaneId> = rendered_panes.into_iter().collect();
     rendered.sort_by_key(|pane_id| pane_sort_key(*pane_id));
     for pane_id in rendered {
@@ -408,7 +466,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                 None => {
                     let raster_dims = match variant {
                         Some(key) => kitty_image_store
-                            .scaled_variant(chunk.internal_image_id, key)
+                            .get(chunk.internal_image_id)
                             .map(|_| key.size),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
@@ -417,13 +475,15 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                     let Some((width, height)) = raster_dims else {
                         continue;
                     };
+                    if !reserve_frame_raster_bytes(&mut frame_raster_bytes, width, height) {
+                        continue;
+                    }
                     let rgba = match variant {
-                        Some(cells) => {
-                            kitty_image_store.scaled_variant(chunk.internal_image_id, cells)
-                        },
+                        Some(cells) => kitty_image_store
+                            .scaled_variant_or_regenerate(chunk.internal_image_id, cells),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
-                            .map(|image| image.rgba.as_slice()),
+                            .map(|image| Cow::Borrowed(image.rgba.as_slice())),
                     };
                     let Some(rgba) = rgba else {
                         continue;
@@ -433,7 +493,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                         host_image_id,
                         width,
                         height,
-                        rgba,
+                        rgba.as_ref(),
                         image_key,
                         local_media,
                         host_state,
@@ -845,7 +905,7 @@ fn flatten_chunks(
                         pixel_y: sixel_chunk.sixel_image_pixel_y as u32,
                         pixel_width: sixel_chunk.sixel_image_pixel_width as u32,
                         pixel_height: sixel_chunk.sixel_image_pixel_height as u32,
-                        payload: serialized_sixel_image.into_bytes(),
+                        payload: serialized_sixel_image.as_bytes().to_vec(),
                     });
                 }
             }
@@ -1307,15 +1367,12 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
         }
         host_state.transmitted.clear();
     }
-    let mut freed: Vec<((InternalImageId, Option<ScaledImageKey>), u32)> = host_state
-        .transmitted
-        .iter()
-        .filter(|(image_key, _)| match image_key.1 {
-            Some(key) => kitty_image_store.scaled_variant(image_key.0, key).is_none(),
-            None => kitty_image_store.get(image_key.0).is_none(),
-        })
-        .map(|(image_key, host_id)| (*image_key, *host_id))
-        .collect();
+    let mut freed = stale_transmitted_images(
+        &chunks_by_pane,
+        &rendered_panes,
+        kitty_image_store,
+        host_state,
+    );
     freed.sort_by_key(|(_, host_id)| *host_id);
     for (image_key, host_id) in freed {
         write!(out, "\u{1b}_Ga=d,q=2,d=I,i={}\u{1b}\\", host_id).context(err_context)?;
@@ -1345,6 +1402,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
             host_state.live_placements.remove(&key);
         }
     }
+    let mut frame_raster_bytes = 0usize;
     let mut rendered: Vec<PaneId> = rendered_panes.into_iter().collect();
     rendered.sort_by_key(|pane_id| pane_sort_key(*pane_id));
     for pane_id in rendered {
@@ -1390,12 +1448,9 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                 Some(host_image_id) => *host_image_id,
                 None => {
                     let raster_dims = match variant {
-                        Some(key) => {
-                            match kitty_image_store.scaled_variant(chunk.internal_image_id, key) {
-                                Some(_) => Some(key.size),
-                                None => None,
-                            }
-                        },
+                        Some(key) => kitty_image_store
+                            .get(chunk.internal_image_id)
+                            .map(|_| key.size),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
                             .map(|image| (image.width as usize, image.height as usize)),
@@ -1404,16 +1459,18 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                         Some(dims) => dims,
                         None => continue,
                     };
+                    if !reserve_frame_raster_bytes(&mut frame_raster_bytes, width, height) {
+                        continue;
+                    }
                     let host_image_id = host_state.next_host_image_id;
                     let mut emitted = false;
                     if local_media {
                         let rgba = match variant {
-                            Some(cells) => {
-                                kitty_image_store.scaled_variant(chunk.internal_image_id, cells)
-                            },
+                            Some(cells) => kitty_image_store
+                                .scaled_variant_or_regenerate(chunk.internal_image_id, cells),
                             None => kitty_image_store
                                 .get(chunk.internal_image_id)
-                                .map(|image| image.rgba.as_slice()),
+                                .map(|image| Cow::Borrowed(image.rgba.as_slice())),
                         };
                         if let Some(rgba) = rgba {
                             emitted = emit_kitty_local_media(
@@ -1421,7 +1478,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                                 host_image_id,
                                 width,
                                 height,
-                                rgba,
+                                rgba.as_ref(),
                                 image_key,
                                 host_state,
                             )?;
@@ -1441,7 +1498,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                             host_image_id,
                             width,
                             height,
-                            &b64,
+                            b64.as_ref(),
                             compressed,
                         )?;
                     }

@@ -152,6 +152,111 @@ fn scaled_variant_reservation_respects_quota_when_images_are_pinned() {
 }
 
 #[test]
+fn store_image_rejects_when_referenced_images_fill_the_quota() {
+    // Pin enough images to fill the quota: nothing is evictable, so the
+    // next admission must fail and the retained bytes must stay within
+    // the declared hard limit rather than silently exceeding it.
+    let mut store = KittyImageStore::with_quota(1000);
+    let id_a = store.store_image(rgba_image(10, 10)).unwrap();
+    let id_b = store.store_image(rgba_image(10, 10)).unwrap();
+    store.add_placement_ref(id_a);
+    store.add_placement_ref(id_b);
+    assert_eq!(store.total_bytes(), 800);
+
+    let result = store.store_image(rgba_image(10, 10));
+    match result {
+        Err(err) => assert_eq!(err.code, KittyErrorCode::Einval),
+        Ok(_) => panic!("admission must fail when the quota is pinned"),
+    }
+
+    // The store stays within quota and existing placements remain valid.
+    assert_eq!(store.total_bytes(), 800);
+    assert!(store.get(id_a).is_some());
+    assert!(store.get(id_b).is_some());
+
+    // A smaller image still fits within the quota without evicting
+    // anything; a full-size one cannot be admitted while nothing is
+    // evictable. Once a placement is released, its image becomes
+    // evictable and admission succeeds again.
+    assert!(store.store_image(rgba_image(5, 5)).is_ok());
+    assert_eq!(store.total_bytes(), 900);
+    assert!(store.store_image(rgba_image(10, 10)).is_err());
+    assert_eq!(store.total_bytes(), 900);
+    store.remove_placement_ref(id_a);
+    let id_c = store.store_image(rgba_image(10, 10)).unwrap();
+    assert!(store.get(id_a).is_none());
+    assert!(store.get(id_b).is_some());
+    assert!(store.get(id_c).is_some());
+    assert_eq!(store.total_bytes(), 900);
+}
+
+#[test]
+fn variant_growth_on_referenced_image_is_bounded_and_regenerable() {
+    // Variants of a referenced image used to grow without bound because
+    // only whole unreferenced images were evictable. Now the oldest
+    // derived entries are evicted to stay inside the quota, and an
+    // evicted variant is regenerated from the base raster on demand.
+    let mut store = KittyImageStore::with_quota(1000);
+    let id = store.store_image(rgba_image(10, 10)).unwrap();
+    store.add_placement_ref(id);
+    assert_eq!(store.total_bytes(), 400);
+
+    let key = |n: usize| super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 10, 10),
+        size: (n, n),
+    };
+    for n in 1..=20usize {
+        store.add_scaled_variant(id, key(n), vec![0; n * n * 4]);
+    }
+    assert!(
+        store.total_bytes() <= 1000,
+        "derived data must stay within the quota, got {}",
+        store.total_bytes()
+    );
+
+    // Older variants were evicted but remain correct: a miss regenerates
+    // the exact same raster that was cached.
+    let evicted_key = key(1);
+    assert!(!store.has_scaled_variant(id, evicted_key));
+    let regenerated = store
+        .scaled_variant_or_regenerate(id, evicted_key)
+        .expect("evicted variants regenerate");
+    assert_eq!(regenerated.len(), 4);
+
+    // A regeneration that cannot be retained still returns the bytes so
+    // the render stays correct while the quota holds.
+    assert!(store.total_bytes() <= 1000);
+}
+
+#[test]
+fn base64_encodings_are_accounted_and_shared() {
+    let mut store = KittyImageStore::with_quota(100000);
+    let id = store.store_image(rgba_image(10, 10)).unwrap();
+    let before = store.total_bytes();
+
+    let first = store.base64_for(id, None, false).unwrap();
+    let accounted = store.total_bytes() - before;
+    assert_eq!(
+        accounted,
+        first.len(),
+        "cached encodings count toward the quota"
+    );
+
+    // Cache hits return the same shared payload rather than a clone.
+    let second = store.base64_for(id, None, false).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+    assert_eq!(store.total_bytes(), before + first.len());
+
+    // Encoding payloads are evicted ahead of image bytes under pressure.
+    let tight = store.total_bytes() - 1;
+    let mut store2 = KittyImageStore::with_quota(tight);
+    let id2 = store2.store_image(rgba_image(10, 10)).unwrap();
+    store2.base64_for(id2, None, false).unwrap();
+    assert!(store2.total_bytes() <= tight);
+    assert!(store2.get(id2).is_some());
+}
+
+#[test]
 fn rgb24_images_are_normalized_to_rgba_at_store_time() {
     let mut store = KittyImageStore::default();
     let id = store
@@ -168,4 +273,88 @@ fn rgb24_images_are_normalized_to_rgba_at_store_time() {
         vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
     );
     assert_eq!(store.total_bytes(), 16);
+}
+
+#[test]
+fn a_large_insert_over_many_small_variants_evicts_in_a_single_pass() {
+    // 40k distinct tiny variants; admitting one image that needs most of
+    // the quota back evicts all of them. Rescanning every entry for each
+    // eviction would take 40k * 40k entry visits.
+    let quota = 4_000_000;
+    let mut store = KittyImageStore::with_quota(quota);
+    let id = store.store_image(rgba_image(2, 2)).unwrap();
+    store.add_placement_ref(id);
+    let key = |n: usize| super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 2, 2),
+        size: (n, 1),
+    };
+    for n in 1..=40_000usize {
+        store.add_scaled_variant(id, key(n), vec![0; 16]);
+    }
+    assert!(store.total_bytes() <= quota);
+    let started = std::time::Instant::now();
+    let big = store
+        .store_image(rgba_image(1000, 900))
+        .expect("derived entries make room");
+    assert!(store.get(big).is_some());
+    assert!(store.total_bytes() <= quota);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "eviction took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn eviction_of_derived_entries_removes_the_least_recently_used_first() {
+    let mut store = KittyImageStore::with_quota(3200);
+    let id = store.store_image(rgba_image(10, 10)).unwrap();
+    store.add_placement_ref(id);
+    let key = |n: usize| super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 10, 10),
+        size: (n, n),
+    };
+    store.add_scaled_variant(id, key(10), vec![0; 400]);
+    store.add_scaled_variant(id, key(11), vec![0; 400]);
+    // a hit makes key(10) newer than key(11)
+    store.scaled_variant_or_regenerate(id, key(10)).unwrap();
+    store.add_scaled_variant(id, key(12), vec![0; 2100]);
+    assert!(store.total_bytes() <= 3200);
+    assert!(store.has_scaled_variant(id, key(10)));
+    assert!(store.has_scaled_variant(id, key(12)));
+    assert!(!store.has_scaled_variant(id, key(11)));
+}
+
+#[test]
+fn base64_of_an_evicted_variant_is_regenerated() {
+    let mut store = KittyImageStore::with_quota(100_000);
+    let id = store.store_image(rgba_image(4, 4)).unwrap();
+    let key = super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 4, 4),
+        size: (8, 8),
+    };
+    assert!(!store.has_scaled_variant(id, key));
+    let encoded = store
+        .base64_for(id, Some(key), false)
+        .expect("an evicted variant is regenerated for its encoding");
+    assert_eq!(encoded.len(), 8 * 8 * 4 / 3 * 4 + 4);
+    // an unknown image or an invalid variant still yields nothing
+    assert!(store.base64_for(id + 1000, Some(key), false).is_none());
+    let outside = super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(100, 0, 4, 4),
+        size: (8, 8),
+    };
+    assert!(store.base64_for(id, Some(outside), false).is_none());
+}
+
+#[test]
+fn an_oversized_variant_is_never_regenerated_as_an_empty_raster() {
+    let mut store = KittyImageStore::with_quota(100_000);
+    let id = store.store_image(rgba_image(4, 4)).unwrap();
+    let key = super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 4, 4),
+        size: (20_000, 20_000),
+    };
+    assert!(store.scaled_variant_or_regenerate(id, key).is_none());
+    assert!(store.base64_for(id, Some(key), false).is_none());
 }

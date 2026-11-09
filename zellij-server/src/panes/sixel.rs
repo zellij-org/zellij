@@ -90,84 +90,140 @@ fn sixel_image_chunk_from_rects(
     })
 }
 
+// Limits on the image a program can make us build while it is being parsed.
+// sixel-image allocates for whatever the stream declares or draws (a raster
+// attributes header, a repeat count, a run of newlines) with no limit of its
+// own, so the events are checked here before they are handed to it.
+const MAX_SIXEL_DIMENSION: usize = 10_000;
+// sixel-image stores 4 bytes per pixel, this is 100 MiB of them
+const MAX_SIXEL_PIXELS: usize = 26_214_400;
+
+/// Tracks the size the deserializer's pixel buffer would reach for the events
+/// seen so far, and refuses the event that would take it over the limits.
+/// It follows the buffer the deserializer actually builds: raster padding is
+/// only modeled for an opaque background, and nothing is counted once the
+/// deserializer has stopped at its configured maximum height.
+#[derive(Debug, Clone, Copy, Default)]
+struct SixelSizeGuard {
+    cursor_x: usize,
+    cursor_y: usize,
+    // lines in the buffer
+    height: usize,
+    // the widest line in the buffer
+    width: usize,
+    transparent_background: bool,
+    max_height: Option<usize>,
+    // the deserializer ignores every event once it has stopped
+    stopped: bool,
+}
+
+impl SixelSizeGuard {
+    fn new(max_height: Option<usize>) -> Self {
+        SixelSizeGuard {
+            max_height,
+            ..Default::default()
+        }
+    }
+    fn admit(&mut self, event: &SixelEvent) -> bool {
+        if self.stopped {
+            return true;
+        }
+        match event {
+            SixelEvent::Dcs {
+                transparent_background,
+                ..
+            } => {
+                if *transparent_background == Some(1) {
+                    self.transparent_background = true;
+                }
+                true
+            },
+            SixelEvent::RasterAttribute { ph, pv, .. } => {
+                // with a transparent background sixel-image only records the
+                // attributes; otherwise it pads the buffer out to `pv` lines
+                // of `pv` pixels (when it has fewer lines) and then every
+                // line to `ph` pixels
+                if self.transparent_background {
+                    return true;
+                }
+                let mut width = self.width;
+                let mut height = self.height;
+                if let Some(pv) = pv {
+                    if *pv > height {
+                        width = std::cmp::max(width, *pv);
+                        height = *pv;
+                    }
+                }
+                if let Some(ph) = ph {
+                    width = std::cmp::max(width, *ph);
+                }
+                self.grow_to(width, height)
+            },
+            SixelEvent::Data { .. } => self.draw(1),
+            SixelEvent::Repeat { repeat_count, .. } => self.draw(*repeat_count),
+            SixelEvent::GotoBeginningOfLine => {
+                self.cursor_x = 0;
+                true
+            },
+            SixelEvent::GotoNextLine => {
+                if let Some(max_height) = self.max_height {
+                    if self.cursor_y.saturating_add(12) > max_height {
+                        self.stopped = true;
+                        return true;
+                    }
+                }
+                self.cursor_x = 0;
+                match self.cursor_y.checked_add(6) {
+                    Some(cursor_y) if cursor_y <= MAX_SIXEL_DIMENSION => {
+                        self.cursor_y = cursor_y;
+                        true
+                    },
+                    _ => false,
+                }
+            },
+            _ => true,
+        }
+    }
+    fn draw(&mut self, pixels_wide: usize) -> bool {
+        let right_edge = match self.cursor_x.checked_add(pixels_wide) {
+            Some(right_edge) => right_edge,
+            None => return false,
+        };
+        // a sixel is six pixels tall
+        let bottom_edge = self.cursor_y.saturating_add(6);
+        if !self.grow_to(right_edge, bottom_edge) {
+            return false;
+        }
+        self.cursor_x = right_edge;
+        true
+    }
+    fn grow_to(&mut self, width: usize, height: usize) -> bool {
+        let width = std::cmp::max(self.width, width);
+        let height = std::cmp::max(self.height, height);
+        let within_limits = width <= MAX_SIXEL_DIMENSION
+            && height <= MAX_SIXEL_DIMENSION
+            && width
+                .checked_mul(height)
+                .is_some_and(|pixels| pixels <= MAX_SIXEL_PIXELS);
+        if within_limits {
+            self.width = width;
+            self.height = height;
+        }
+        within_limits
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SixelGrid {
     sixel_image_locations: HashMap<usize, PixelRect>,
     previous_cell_size: Option<SizeInPixels>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     currently_parsing: Option<SixelDeserializer>,
+    size_guard: SixelSizeGuard,
     image_ids_to_reap: Vec<usize>,
     images_to_check_for_emptiness: HashSet<usize>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
-    size_budget: SixelSizeBudget,
     pub sixel_image_store: Rc<RefCell<SixelImageStore>>,
-}
-
-pub const MAX_SIXEL_IMAGE_BYTES: usize = 104_857_600;
-const SIXEL_PIXEL_BYTES: usize = std::mem::size_of::<sixel_image::Pixel>();
-
-#[derive(Debug, Clone, Copy, Default)]
-struct SixelSizeBudget {
-    cursor_x: usize,
-    cursor_y: usize,
-    width: usize,
-    height: usize,
-    max_height: Option<usize>,
-}
-
-impl SixelSizeBudget {
-    fn new(max_height: Option<usize>) -> Self {
-        SixelSizeBudget {
-            max_height,
-            ..Default::default()
-        }
-    }
-    fn admit(&mut self, sixel_event: &SixelEvent) -> bool {
-        let mut next = *self;
-        match sixel_event {
-            SixelEvent::RasterAttribute { ph, pv, .. } => {
-                if let Some(pv) = pv {
-                    next.height = next.height.max(*pv);
-                    next.width = next.width.max(*pv);
-                }
-                if let Some(ph) = ph {
-                    next.width = next.width.max(*ph);
-                }
-            },
-            SixelEvent::Data { .. } => {
-                next.cursor_x = next.cursor_x.saturating_add(1);
-                next.width = next.width.max(next.cursor_x);
-                next.height = next.height.max(next.cursor_y.saturating_add(6));
-            },
-            SixelEvent::Repeat { repeat_count, .. } => {
-                next.cursor_x = next.cursor_x.saturating_add(*repeat_count);
-                next.width = next.width.max(next.cursor_x);
-                next.height = next.height.max(next.cursor_y.saturating_add(6));
-            },
-            SixelEvent::GotoBeginningOfLine => {
-                next.cursor_x = 0;
-            },
-            SixelEvent::GotoNextLine => {
-                next.cursor_x = 0;
-                let advanced = next.cursor_y.saturating_add(6);
-                next.cursor_y = match next.max_height {
-                    Some(max_height) => advanced.min(max_height),
-                    None => advanced,
-                };
-            },
-            _ => {},
-        }
-        let within_budget = next
-            .width
-            .checked_mul(next.height)
-            .and_then(|pixels| pixels.checked_mul(SIXEL_PIXEL_BYTES))
-            .map(|bytes| bytes <= MAX_SIXEL_IMAGE_BYTES)
-            .unwrap_or(false);
-        if within_budget {
-            *self = next;
-        }
-        within_budget
-    }
 }
 
 impl SixelGrid {
@@ -185,36 +241,38 @@ impl SixelGrid {
     }
     pub fn handle_byte(&mut self, byte: u8) {
         let currently_parsing = &mut self.currently_parsing;
-        let size_budget = &mut self.size_budget;
         self.sixel_parser
             .as_mut()
             .unwrap()
             .advance(&byte, |sixel_event| {
-                Self::forward_event(currently_parsing, size_budget, sixel_event);
+                Self::feed_event(
+                    &mut self.currently_parsing,
+                    &mut self.size_guard,
+                    sixel_event,
+                )
             });
     }
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        Self::forward_event(
+        Self::feed_event(
             &mut self.currently_parsing,
-            &mut self.size_budget,
+            &mut self.size_guard,
             sixel_event,
         );
     }
-    fn forward_event(
+    // an event that would take the image over the size limits abandons the
+    // whole image; the rest of its bytes are then read and ignored
+    fn feed_event(
         currently_parsing: &mut Option<SixelDeserializer>,
-        size_budget: &mut SixelSizeBudget,
+        size_guard: &mut SixelSizeGuard,
         sixel_event: SixelEvent,
     ) {
-        if currently_parsing.is_none() {
-            return;
-        }
-        if !size_budget.admit(&sixel_event) {
-            log::warn!("dropping sixel image that exceeds the size limit");
-            *currently_parsing = None;
-            return;
-        }
-        if let Some(currently_parsing) = currently_parsing.as_mut() {
-            let _ = currently_parsing.handle_event(sixel_event);
+        if let Some(deserializer) = currently_parsing.as_mut() {
+            if size_guard.admit(&sixel_event) {
+                let _ = deserializer.handle_event(sixel_event);
+            } else {
+                log::warn!("Dropping a sixel image that exceeds the size limits");
+                *currently_parsing = None;
+            }
         }
     }
     pub fn is_parsing(&self) -> bool {
@@ -227,7 +285,7 @@ impl SixelGrid {
         dcs_params: Vec<&[u16]>,
     ) {
         self.sixel_parser = Some(sixel_tokenizer::Parser::new());
-        self.size_budget = SixelSizeBudget::new(max_height_in_pixels);
+        self.size_guard = SixelSizeGuard::new(max_height_in_pixels);
         match max_height_in_pixels {
             Some(max_height_in_pixels) => {
                 self.currently_parsing =
@@ -410,7 +468,7 @@ impl SixelGrid {
         self.sixel_image_store
             .borrow_mut()
             .sixel_images
-            .insert(sixel_image_id, (sixel_image, HashMap::new()));
+            .insert(sixel_image_id, (sixel_image, SixelImageCache::default()));
         self.images_to_check_for_emptiness.insert(sixel_image_id);
     }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
@@ -526,11 +584,73 @@ impl SixelGrid {
     }
 }
 
-type SixelImageCache = HashMap<PixelRect, String>;
+/// Aggregate bound for serialized crop encodings cached per sixel image.
+/// Scrolling and resizing can generate many distinct crop rectangles;
+/// the cache is a pure regeneration cache, so entries are evicted
+/// least-recently-used first to stay inside this budget.
+const MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE: usize = 4 * 1024 * 1024;
+
+#[derive(Debug, Clone)]
+struct SixelCropEntry {
+    stamp: u64,
+    text: std::sync::Arc<str>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SixelImageCache {
+    entries: HashMap<PixelRect, SixelCropEntry>,
+    bytes: usize,
+}
+
+impl SixelImageCache {
+    fn get(&mut self, rect: &PixelRect, stamp: u64) -> Option<std::sync::Arc<str>> {
+        let entry = self.entries.get_mut(rect)?;
+        entry.stamp = stamp;
+        Some(entry.text.clone())
+    }
+    fn insert(&mut self, rect: PixelRect, text: std::sync::Arc<str>, stamp: u64) {
+        if text.len() > MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE {
+            return;
+        }
+        if let Some(old) = self.entries.insert(rect, SixelCropEntry { stamp, text }) {
+            self.bytes -= old.text.len();
+        }
+        self.bytes += self
+            .entries
+            .get(&rect)
+            .map(|entry| entry.text.len())
+            .unwrap_or(0);
+        while self.bytes > MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE {
+            let oldest = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.stamp)
+                .map(|(rect, _)| *rect);
+            match oldest {
+                Some(rect) => {
+                    if let Some(entry) = self.entries.remove(&rect) {
+                        self.bytes -= entry.text.len();
+                    }
+                },
+                None => break,
+            }
+        }
+    }
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.bytes = 0;
+    }
+    #[cfg(test)]
+    fn cached_bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SixelImageStore {
     sixel_images: HashMap<usize, (SixelImage, SixelImageCache)>,
     next_image_id: usize,
+    next_lru_stamp: u64,
 }
 
 impl SixelImageStore {
@@ -541,24 +661,20 @@ impl SixelImageStore {
         pixel_y: usize,
         pixel_width: usize,
         pixel_height: usize,
-    ) -> Option<String> {
+    ) -> Option<std::sync::Arc<str>> {
+        self.next_lru_stamp += 1;
+        let stamp = self.next_lru_stamp;
         self.sixel_images
             .get_mut(&image_id)
             .map(|(sixel_image, sixel_image_cache)| {
-                if let Some(cached_image) = sixel_image_cache.get(&PixelRect::new(
-                    pixel_x,
-                    pixel_y,
-                    pixel_height,
-                    pixel_width,
-                )) {
-                    cached_image.clone()
+                let rect = PixelRect::new(pixel_x, pixel_y, pixel_height, pixel_width);
+                if let Some(cached_image) = sixel_image_cache.get(&rect, stamp) {
+                    cached_image
                 } else {
-                    let serialized_image =
-                        sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height);
-                    sixel_image_cache.insert(
-                        PixelRect::new(pixel_x, pixel_y, pixel_height, pixel_width),
-                        serialized_image.clone(),
-                    );
+                    let serialized_image: std::sync::Arc<str> = sixel_image
+                        .serialize_range(pixel_x, pixel_y, pixel_width, pixel_height)
+                        .into();
+                    sixel_image_cache.insert(rect, serialized_image.clone(), stamp);
                     serialized_image
                 }
             })
@@ -577,6 +693,44 @@ mod tests {
             width: 10,
             height: 10,
         }
+    }
+
+    #[test]
+    fn crop_cache_is_bounded_and_evicts_oldest_first() {
+        let mut cache = SixelImageCache::default();
+        let cap = MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE;
+        // Each entry uses 1/8 of the budget; inserting more than 8 crops
+        // must evict the oldest instead of growing past the cap.
+        let entry_len = cap / 8;
+        let mut inserted_rects = Vec::new();
+        for i in 0..12usize {
+            let rect = PixelRect::new(i, 0, 1, 1);
+            let text: std::sync::Arc<str> = "x".repeat(entry_len).into();
+            cache.insert(rect, text, i as u64);
+            inserted_rects.push(rect);
+            assert!(cache.cached_bytes() <= cap);
+        }
+        for evicted in &inserted_rects[..4] {
+            assert!(!cache.entries.contains_key(evicted));
+        }
+        for kept in &inserted_rects[4..] {
+            assert!(cache.entries.contains_key(kept));
+        }
+
+        // A hit refreshes the stamp so the hot crop survives the next
+        // eviction round.
+        let hot = inserted_rects[11];
+        let hit = cache.get(&hot, 100).unwrap();
+        let another = PixelRect::new(100, 0, 1, 1);
+        cache.insert(another, "x".repeat(entry_len).into(), 101);
+        assert!(cache.entries.contains_key(&hot));
+        assert!(std::sync::Arc::ptr_eq(&hit, &cache.get(&hot, 102).unwrap()));
+
+        // An oversized crop is never retained.
+        let huge = PixelRect::new(200, 0, 1, 1);
+        cache.insert(huge, "x".repeat(cap + 1).into(), 103);
+        assert!(!cache.entries.contains_key(&huge));
+        assert!(cache.cached_bytes() <= cap);
     }
 
     #[test]
@@ -628,5 +782,113 @@ mod tests {
         assert_eq!(chunk.cell_y, 4);
         assert_eq!(chunk.sixel_image_pixel_y, 0);
         assert_eq!(chunk.sixel_image_pixel_height, 10);
+    }
+
+    fn parse_sixel(body: &str) -> Option<SixelImage> {
+        let mut grid = SixelGrid::default();
+        grid.start_image(None, vec![], vec![]);
+        for byte in body.bytes() {
+            grid.handle_byte(byte);
+        }
+        grid.end_image(1, 0, 0)
+    }
+
+    #[test]
+    fn an_image_within_the_limits_is_parsed() {
+        let image = parse_sixel("\"1;1;8;12#0;2;100;0;0!8~-!8~\u{1b}\\").expect("an image");
+        assert_eq!(image.pixel_size(), (12, 8));
+        // a wide, single line image right at the width limit
+        let wide = parse_sixel("#0;2;100;0;0!10000~\u{1b}\\").expect("an image");
+        assert_eq!(wide.pixel_size().1, 10_000);
+    }
+
+    #[test]
+    fn a_declared_raster_beyond_the_pixel_budget_drops_the_image() {
+        for header in ["\"1;1;8000;8000", "\"1;1;10;11000", "\"1;1;11000;10"] {
+            let body = format!("{}#0;2;100;0;0~\u{1b}\\", header);
+            assert!(parse_sixel(&body).is_none(), "{}", header);
+        }
+    }
+
+    #[test]
+    fn an_absurdly_large_declared_raster_drops_the_image() {
+        assert!(parse_sixel("\"1;1;99999;99999#0;2;100;0;0~\u{1b}\\").is_none());
+    }
+
+    #[test]
+    fn repeats_beyond_the_width_limit_drop_the_image() {
+        assert!(parse_sixel("#0;2;100;0;0!99999~\u{1b}\\").is_none());
+        // the width accumulates over several runs on the same line
+        assert!(parse_sixel("#0;2;100;0;0!6000~!6000~\u{1b}\\").is_none());
+        // a carriage return starts the width count over
+        assert!(parse_sixel("#0;2;100;0;0!6000~$!6000~\u{1b}\\").is_some());
+    }
+
+    #[test]
+    fn newlines_beyond_the_height_limit_drop_the_image() {
+        let body = format!("#0;2;100;0;0~{}~\u{1b}\\", "-".repeat(1700));
+        assert!(parse_sixel(&body).is_none());
+    }
+
+    #[test]
+    fn an_image_beyond_the_total_pixel_budget_drops_the_image() {
+        // each dimension is within bounds, 10000 x 2700 pixels are not
+        let body = format!("#0;2;100;0;0{}\u{1b}\\", "!10000~-".repeat(450));
+        assert!(parse_sixel(&body).is_none());
+    }
+
+    fn parse_sixel_with(
+        max_height: Option<usize>,
+        dcs: Vec<&[u16]>,
+        body: &str,
+    ) -> Option<SixelImage> {
+        let mut grid = SixelGrid::default();
+        grid.start_image(max_height, vec![], dcs);
+        for byte in body.bytes() {
+            grid.handle_byte(byte);
+        }
+        grid.end_image(1, 0, 0)
+    }
+
+    #[test]
+    fn a_transparent_raster_is_not_charged_for_padding_the_buffer_never_gets() {
+        // P0;1;q: transparent background. sixel-image does not pad for the
+        // declared raster, so only the 800 x 6 pixels drawn exist.
+        let body = "\"1;1;800;6000#0;2;100;0;0!800~\u{1b}\\";
+        let transparent = parse_sixel_with(None, vec![&[0], &[1]], body)
+            .expect("a transparent image with a large declared raster");
+        assert_eq!(transparent.pixel_size().1, 800);
+        // the same image with an opaque background is padded to 6000 x 6000
+        assert!(parse_sixel_with(None, vec![], body).is_none());
+    }
+
+    #[test]
+    fn a_tall_image_is_clipped_at_the_maximum_height_not_discarded() {
+        // 2000 sixel lines, 12000 pixels, but only the first lines are kept
+        let body = format!("#0;2;100;0;0{}\u{1b}\\", "~-".repeat(2000));
+        assert!(parse_sixel_with(Some(100), vec![], &body).is_some());
+        // without a maximum height the same image exceeds the limits
+        assert!(parse_sixel_with(None, vec![], &body).is_none());
+    }
+
+    #[test]
+    fn a_raster_header_after_the_maximum_height_is_ignored() {
+        let body = format!("#0;2;100;0;0{}\"1;1;11000;11000~\u{1b}\\", "~-".repeat(5));
+        assert!(parse_sixel_with(Some(30), vec![], &body).is_some());
+    }
+
+    #[test]
+    fn a_dropped_image_does_not_affect_the_next_one() {
+        let mut grid = SixelGrid::default();
+        grid.start_image(None, vec![], vec![]);
+        for byte in "#0;2;100;0;0!99999~".bytes() {
+            grid.handle_byte(byte);
+        }
+        assert!(grid.end_image(1, 0, 0).is_none());
+        grid.start_image(None, vec![], vec![]);
+        for byte in "#0;2;100;0;0!8~".bytes() {
+            grid.handle_byte(byte);
+        }
+        assert!(grid.end_image(2, 0, 0).is_some());
     }
 }

@@ -1,5 +1,7 @@
 use super::{crop_rgba, scale_rgba, KittyGrid, KittyPlacement, KittyVerticalAnchor};
-use crate::panes::kitty_graphics::parser::{DecodedImage, KittyCommand, KittyFormat};
+use crate::panes::kitty_graphics::parser::{
+    DecodedImage, KittyCommand, KittyError, KittyErrorCode, KittyFormat,
+};
 use crate::panes::kitty_graphics::store::KittyImageStore;
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
@@ -381,4 +383,133 @@ fn a_scaled_placement_emits_from_the_origin_of_its_cropped_variant() {
     assert_eq!(placement.emit_y, 0);
     assert_eq!(placement.source_rect.x, 8);
     assert_eq!(placement.source_rect.y, 10);
+}
+
+fn place_with(
+    grid: &mut KittyGrid,
+    pane_image_id: u32,
+    internal: super::super::store::InternalImageId,
+    columns: u32,
+    rows: u32,
+) -> Result<(u16, u16), KittyError> {
+    let command = KittyCommand {
+        image_id: Some(1),
+        columns,
+        rows,
+        ..Default::default()
+    };
+    let cell = SizeInPixels {
+        width: 10,
+        height: 20,
+    };
+    grid.place(
+        pane_image_id,
+        internal,
+        &command,
+        (0, 0),
+        cell,
+        KittyVerticalAnchor {
+            canonical_line: 0,
+            offset_px_from_line_start: 0,
+        },
+    )
+}
+
+#[test]
+fn a_placement_with_columns_and_rows_overflowing_the_target_size_is_rejected() {
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 4, 4);
+    for (columns, rows) in [(u32::MAX, u32::MAX), (100_000, 100_000), (2000, 1000)] {
+        let error = place_with(&mut grid, pane_image_id, internal, columns, rows)
+            .expect_err("a placement beyond the size limit");
+        assert_eq!(error.code, KittyErrorCode::Einval);
+    }
+    assert!(grid.placements().is_empty());
+}
+
+#[test]
+fn a_placement_with_columns_only_is_bounded_on_the_derived_height() {
+    // 1x10000 image: the height derived from the aspect ratio is 10000 times
+    // the target width
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 1, 10_000);
+    for columns in [u32::MAX, 1000, 100] {
+        let error = place_with(&mut grid, pane_image_id, internal, columns, 0)
+            .expect_err("a placement beyond the size limit");
+        assert_eq!(error.code, KittyErrorCode::Einval);
+    }
+    assert!(grid.placements().is_empty());
+}
+
+#[test]
+fn a_placement_with_rows_only_is_bounded_on_the_derived_width() {
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 10_000, 1);
+    for rows in [u32::MAX, 1000, 100] {
+        let error = place_with(&mut grid, pane_image_id, internal, 0, rows)
+            .expect_err("a placement beyond the size limit");
+        assert_eq!(error.code, KittyErrorCode::Einval);
+    }
+    assert!(grid.placements().is_empty());
+}
+
+#[test]
+fn a_placement_within_the_target_size_limit_is_scaled() {
+    let mut grid = test_grid();
+    let (pane_image_id, internal) = transmitted(&mut grid, 4, 4);
+    place_with(&mut grid, pane_image_id, internal, 100, 50).expect("a placement");
+    let placement = &grid.placements()[0];
+    assert_eq!(placement.scaled_px, Some((1000, 1000)));
+}
+
+#[test]
+fn scale_rgba_refuses_targets_beyond_the_limits_without_allocating() {
+    let src = raster(&[1]);
+    assert!(scale_rgba(&src, 1, 1, usize::MAX, usize::MAX).is_empty());
+    assert!(scale_rgba(&src, 1, 1, 20_000, 20_000).is_empty());
+    assert!(scale_rgba(&src, 1, 1, 10_000, 10_000).is_empty());
+}
+
+#[test]
+fn a_cell_size_change_drops_a_placement_whose_new_target_is_oversized() {
+    let cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 10,
+        height: 20,
+    })));
+    let store = Rc::new(RefCell::new(KittyImageStore::default()));
+    let mut grid = KittyGrid::new(cell_size.clone(), store.clone());
+    let (pane_image_id, internal) = transmitted(&mut grid, 4, 4);
+    // 9000 x 2000 pixels: within the limits at 10x20 pixel cells
+    place_with(&mut grid, pane_image_id, internal, 900, 100).expect("a placement");
+    assert_eq!(grid.placements().len(), 1);
+
+    // 18000 pixels wide at 20 pixel wide cells
+    *cell_size.borrow_mut() = Some(SizeInPixels {
+        width: 20,
+        height: 20,
+    });
+    grid.character_cell_size_possibly_changed();
+
+    assert!(grid.placements().is_empty());
+    // the dropped placement released its image; no empty raster is cached
+    assert_eq!(store.borrow().total_bytes(), 0);
+}
+
+#[test]
+fn a_cell_size_change_keeps_a_placement_that_still_fits() {
+    let cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 10,
+        height: 20,
+    })));
+    let store = Rc::new(RefCell::new(KittyImageStore::default()));
+    let mut grid = KittyGrid::new(cell_size.clone(), store);
+    let (pane_image_id, internal) = transmitted(&mut grid, 4, 4);
+    place_with(&mut grid, pane_image_id, internal, 10, 10).expect("a placement");
+    *cell_size.borrow_mut() = Some(SizeInPixels {
+        width: 20,
+        height: 40,
+    });
+    grid.character_cell_size_possibly_changed();
+    assert_eq!(grid.placements().len(), 1);
+    assert_eq!(grid.placements()[0].scaled_px, Some((200, 400)));
 }

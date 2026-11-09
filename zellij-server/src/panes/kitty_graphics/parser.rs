@@ -12,7 +12,8 @@ use std::path::Path;
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
 pub const MAX_DIMENSION: u32 = 10_000;
-const MAX_ENCODED_PAYLOAD_BYTES: usize = MAX_DECODED_BYTES / 3 * 4 + 4;
+// the most base64 text that can decode to at most MAX_DECODED_BYTES
+pub const MAX_PAYLOAD_B64_BYTES: usize = MAX_DECODED_BYTES.div_ceil(3) * 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KittyAction {
@@ -175,6 +176,24 @@ pub struct KittyCommandParser {
 struct PendingUpload {
     command: KittyCommand,
     payload_b64: Vec<u8>,
+    // set once the assembled payload outgrew MAX_PAYLOAD_B64_BYTES: the data
+    // is dropped, the remaining chunks are consumed unread until the final
+    // one and the transmission then fails
+    overflowed: bool,
+}
+
+impl PendingUpload {
+    fn append(&mut self, chunk: &[u8]) {
+        if self.overflowed {
+            return;
+        }
+        if self.payload_b64.len().saturating_add(chunk.len()) > MAX_PAYLOAD_B64_BYTES {
+            self.overflowed = true;
+            self.payload_b64 = Vec::new();
+        } else {
+            self.payload_b64.extend_from_slice(chunk);
+        }
+    }
 }
 
 impl KittyCommandParser {
@@ -224,17 +243,16 @@ impl KittyCommandParser {
                     }
                 }
                 let pending = self.pending.as_mut().unwrap();
-                if pending.payload_b64.len() + payload.len() > MAX_ENCODED_PAYLOAD_BYTES {
-                    let pending = self.pending.take().unwrap();
-                    let echo = EchoFields::from_command(&pending.command);
-                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
-                }
-                pending.payload_b64.extend_from_slice(payload);
+                pending.append(payload);
                 if more_chunks {
                     return None;
                 }
                 let mut pending = self.pending.take().unwrap();
                 pending.command.more_chunks = false;
+                if pending.overflowed {
+                    let echo = EchoFields::from_command(&pending.command);
+                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
+                }
                 return Some(run_payload_pipeline(pending.command, &pending.payload_b64));
             }
         }
@@ -246,10 +264,13 @@ impl KittyCommandParser {
             KittyAction::Delete | KittyAction::Display => Some(Ok(command)),
             KittyAction::Transmit | KittyAction::TransmitAndDisplay | KittyAction::Query => {
                 if command.more_chunks {
-                    self.pending = Some(PendingUpload {
+                    let mut pending = PendingUpload {
                         command,
-                        payload_b64: payload.to_vec(),
-                    });
+                        payload_b64: Vec::new(),
+                        overflowed: false,
+                    };
+                    pending.append(payload);
+                    self.pending = Some(pending);
                     None
                 } else {
                     Some(run_payload_pipeline(command, payload))
@@ -581,6 +602,9 @@ fn run_payload_pipeline(
     payload_b64: &[u8],
 ) -> Result<KittyCommand, KittyError> {
     let echo = EchoFields::from_command(&command);
+    if payload_b64.len() > MAX_PAYLOAD_B64_BYTES {
+        return Err(echo.error(KittyErrorCode::Einval, "image too large"));
+    }
     let trimmed_len = payload_b64
         .iter()
         .rposition(|b| *b != b'=')

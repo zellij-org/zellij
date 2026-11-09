@@ -2336,7 +2336,13 @@ fn kitty_cropped_placements_preserve_pixels_after_cell_resize() {
                 }
             }
             let scaled_bytes = if scaled { 4 * size.0 * size.1 * 4 } else { 0 };
-            assert_eq!(parts.0.borrow().total_bytes(), 20 * 40 * 4 + scaled_bytes);
+            let store = parts.0.borrow();
+            // Cached transmit encodings are accounted as derived bytes on
+            // top of the base raster and retained scaled variants.
+            assert_eq!(
+                store.total_bytes() - store.encoded_cache_bytes(),
+                20 * 40 * 4 + scaled_bytes
+            );
         }
     }
 }
@@ -3183,4 +3189,187 @@ fn graphics_media_files_are_private_and_never_reuse_an_existing_file() {
     }
     assert!(super::super::write_private_media(&path, b"other").is_err());
     assert_eq!(std::fs::read(&path).unwrap(), b"pixels");
+}
+
+mod kitty_variant_eviction {
+    use super::super::super::{
+        flatten_kitty_frame, serialize_kitty_frame, GraphicsRecord, HostKittyState,
+        KittyFrameInput, KittyImageChunk, MAX_FRAME_RASTER_BYTES,
+    };
+    use super::kitty_chunk;
+    use crate::panes::kitty_graphics::parser::{DecodedImage, KittyFormat};
+    use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey};
+    use crate::panes::sixel::PixelRect;
+    use crate::panes::PaneId;
+    use std::collections::{HashMap, HashSet};
+
+    fn tiny_image(store: &mut KittyImageStore) -> InternalImageId {
+        store
+            .store_image(DecodedImage {
+                bytes: vec![255u8; 4 * 4 * 4],
+                width: 4,
+                height: 4,
+                format: KittyFormat::Rgba32,
+            })
+            .unwrap()
+    }
+
+    fn variant_key(width: usize, height: usize) -> ScaledImageKey {
+        ScaledImageKey {
+            source: PixelRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+            size: (width, height),
+        }
+    }
+
+    fn variant_chunk(
+        internal: InternalImageId,
+        key: ScaledImageKey,
+        placement_uid: u64,
+    ) -> KittyImageChunk {
+        let mut chunk = kitty_chunk(internal, placement_uid, 0, 0);
+        chunk.scaled_image = Some(key);
+        chunk
+    }
+
+    fn frame<'a>(
+        pane_chunks: Vec<(PaneId, Vec<KittyImageChunk>)>,
+        store: &'a mut KittyImageStore,
+        host_state: &'a mut HostKittyState,
+        local_media: bool,
+    ) -> KittyFrameInput<'a> {
+        let rendered_panes: HashSet<PaneId> = pane_chunks.iter().map(|(id, _)| *id).collect();
+        KittyFrameInput {
+            chunks_by_pane: pane_chunks.into_iter().collect::<HashMap<_, _>>(),
+            rendered_panes,
+            visible_panes: None,
+            kitty_image_store: store,
+            host_state,
+            host_display_cleared: false,
+            compressed: false,
+            local_media,
+        }
+    }
+
+    #[test]
+    fn a_frame_of_many_distinct_scaled_variants_is_bounded_in_raster_bytes() {
+        // 100 placements of one tiny image, each with a distinct target size
+        // of about 10 MiB: unbounded, the frame would carry about 1 GiB
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let chunks: Vec<KittyImageChunk> = (0..100usize)
+            .map(|n| variant_chunk(internal, variant_key(1300 + n, 2000), n as u64 + 1))
+            .collect();
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), chunks)],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        let raster_bytes: usize = records
+            .iter()
+            .map(|record| match record {
+                GraphicsRecord::Residency { data, .. } => data.len(),
+                _ => 0,
+            })
+            .sum();
+        assert!(raster_bytes > 0, "some placements must still be sent");
+        assert!(
+            raster_bytes <= MAX_FRAME_RASTER_BYTES,
+            "the frame carried {} raster bytes",
+            raster_bytes
+        );
+        assert!(host_state.transmitted.len() < 100);
+    }
+
+    #[test]
+    fn an_evicted_variant_is_sent_inline_when_local_media_is_off() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        // never cached, as if evicted
+        let key = variant_key(8, 8);
+        assert!(!store.has_scaled_variant(internal, key));
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![variant_chunk(internal, key, 1)])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        let out = serialize_kitty_frame(input).unwrap();
+        assert!(out.contains("a=t"), "no transmission in {:?}", out);
+        assert!(out.contains("a=p"), "no placement in {:?}", out);
+        assert_eq!(host_state.transmitted.len(), 1);
+    }
+
+    #[test]
+    fn the_image_of_an_unchanged_pane_survives_the_eviction_of_its_variant() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let key = variant_key(8, 8);
+        store.add_scaled_variant(internal, key, vec![9u8; 8 * 8 * 4]);
+
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![variant_chunk(internal, key, 1)])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert_eq!(host_state.transmitted.len(), 1);
+        assert_eq!(host_state.live_placements.len(), 1);
+
+        // pane 2's activity evicts the variant of pane 1
+        store.clear_scaled_variants(internal);
+        assert!(!store.has_scaled_variant(internal, key));
+
+        // only pane 2 renders; pane 1 is unchanged and contributes nothing
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(2), vec![])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert!(
+            !records
+                .iter()
+                .any(|record| matches!(record, GraphicsRecord::DeleteImage { .. })),
+            "the image of the unchanged pane was deleted: {:?}",
+            records
+        );
+        assert_eq!(host_state.transmitted.len(), 1);
+        assert_eq!(host_state.live_placements.len(), 1);
+    }
+
+    #[test]
+    fn an_unused_evicted_variant_is_still_deleted_from_the_host() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let key = variant_key(8, 8);
+        host_state.transmitted.insert((internal, Some(key)), 7);
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert!(records
+            .iter()
+            .any(|record| matches!(record, GraphicsRecord::DeleteImage { id: 7 })));
+        assert!(host_state.transmitted.is_empty());
+    }
 }

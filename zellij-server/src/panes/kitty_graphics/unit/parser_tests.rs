@@ -451,3 +451,62 @@ fn chunked_upload_exceeding_payload_cap_is_rejected() {
     assert_eq!(err.code, KittyErrorCode::Einval);
     assert!(!parser.has_pending());
 }
+
+fn chunk_raw(control: &str, payload_len: usize) -> Vec<u8> {
+    let mut raw = format!("{};", control).into_bytes();
+    raw.resize(raw.len() + payload_len, b'A');
+    raw
+}
+
+#[test]
+fn chunked_upload_beyond_the_decoded_limit_is_dropped_and_fails_on_the_last_chunk() {
+    let mut parser = KittyCommandParser::new();
+    let chunk_len = MAX_PAYLOAD_B64_BYTES / 3 * 2;
+    assert!(parser
+        .parse(&chunk_raw("a=T,f=24,s=1,v=1,i=9,m=1", chunk_len))
+        .is_none());
+    assert_eq!(
+        parser.pending.as_ref().unwrap().payload_b64.len(),
+        chunk_len
+    );
+    // the second chunk crosses the limit: what was assembled is dropped
+    assert!(parser.parse(&chunk_raw("m=1", chunk_len)).is_none());
+    assert!(parser.pending.as_ref().unwrap().payload_b64.is_empty());
+    // further chunks are consumed without being buffered
+    assert!(parser.parse(&chunk_raw("m=1", 1024)).is_none());
+    assert!(parser.pending.as_ref().unwrap().payload_b64.is_empty());
+    let err = parser.parse(&chunk_raw("m=0", 4)).unwrap().unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.image_id, Some(9));
+    assert!(!parser.has_pending());
+    // the parser is usable again afterwards
+    let command = parse_one(&mut parser, b"a=T,i=5,f=24,s=1,v=1;AAAA").unwrap();
+    assert!(command.image.is_some());
+}
+
+#[test]
+fn chunked_upload_at_the_limit_is_still_assembled() {
+    let mut parser = KittyCommandParser::new();
+    let chunk_len = MAX_PAYLOAD_B64_BYTES / 2;
+    assert!(parser
+        .parse(&chunk_raw("a=T,f=24,s=1,v=1,m=1", chunk_len))
+        .is_none());
+    let command = parser
+        .parse(&chunk_raw("m=0", MAX_PAYLOAD_B64_BYTES - chunk_len))
+        .unwrap()
+        .unwrap();
+    assert_eq!(command.image.unwrap().bytes, vec![0, 0, 0]);
+}
+
+#[test]
+fn direct_payload_beyond_the_decoded_limit_is_einval() {
+    let command = KittyCommand {
+        format: KittyFormat::Rgb24,
+        pixel_width: Some(1),
+        pixel_height: Some(1),
+        ..Default::default()
+    };
+    let payload = vec![b'A'; MAX_PAYLOAD_B64_BYTES + 4];
+    let err = run_payload_pipeline(command, &payload).unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+}

@@ -1,4 +1,6 @@
-use super::parser::{DecodedImage, KittyCommand, KittyError, KittyErrorCode};
+use super::parser::{
+    DecodedImage, KittyCommand, KittyError, KittyErrorCode, MAX_DECODED_BYTES, MAX_DIMENSION,
+};
 use super::store::{InternalImageId, KittyImageStore, ScaledImageKey};
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
@@ -304,6 +306,7 @@ impl KittyGrid {
         let off_x = std::cmp::min(command.cell_offset_x as usize, cell.width - 1);
         let off_y = std::cmp::min(command.cell_offset_y as usize, cell.height - 1);
         let ceil_div = |a: usize, b: usize| (a + b - 1) / b;
+        let too_large = || einval(command, "scaled image too large");
         let (dst_w, dst_h, cols, rows, is_scaled) =
             match (command.columns as usize, command.rows as usize) {
                 (0, 0) => (
@@ -314,7 +317,7 @@ impl KittyGrid {
                     false,
                 ),
                 (c, 0) => {
-                    let dst_w = c * cell.width;
+                    let dst_w = c.checked_mul(cell.width).ok_or_else(too_large)?;
                     let dst_h = std::cmp::max(
                         ((dst_w as f64) * (source_h as f64) / (source_w as f64)).round() as usize,
                         1,
@@ -325,7 +328,7 @@ impl KittyGrid {
                     (dst_w, dst_h, c, rows, true)
                 },
                 (0, r) => {
-                    let dst_h = r * cell.height;
+                    let dst_h = r.checked_mul(cell.height).ok_or_else(too_large)?;
                     let dst_w = std::cmp::max(
                         ((dst_h as f64) * (source_w as f64) / (source_h as f64)).round() as usize,
                         1,
@@ -334,8 +337,17 @@ impl KittyGrid {
                     let cols = std::cmp::max((width_px / cell.width as f64).ceil() as usize, 1);
                     (dst_w, dst_h, cols, r, true)
                 },
-                (c, r) => (c * cell.width, r * cell.height, c, r, true),
+                (c, r) => (
+                    c.checked_mul(cell.width).ok_or_else(too_large)?,
+                    r.checked_mul(cell.height).ok_or_else(too_large)?,
+                    c,
+                    r,
+                    true,
+                ),
             };
+        if is_scaled && !scaled_size_is_allowed(dst_w, dst_h) {
+            return Err(too_large());
+        }
         let dest_cells = (cols as u16, rows as u16);
         let source_rect = PixelRect {
             x: source_x,
@@ -888,6 +900,21 @@ impl KittyGrid {
                             .push((placement.internal_id, placement.scaled_image().unwrap()));
                     }
                 }
+                // A new cell size can push a scaled placement past the target
+                // size limits; the oversized raster cannot be built, so the
+                // placement is dropped rather than cached as an empty image.
+                let mut store = self.kitty_image_store.borrow_mut();
+                self.placements.retain(|placement| {
+                    let oversized = placement
+                        .scaled_px
+                        .is_some_and(|(width, height)| !scaled_size_is_allowed(width, height));
+                    if oversized {
+                        store.free(placement.internal_id);
+                    }
+                    !oversized
+                });
+                drop(store);
+                regenerations.retain(|(_, key)| scaled_size_is_allowed(key.size.0, key.size.1));
                 for (internal, key) in regenerations {
                     let source_rect = key.source;
                     let scaled_bytes = {
@@ -914,7 +941,7 @@ impl KittyGrid {
                             None => None,
                         }
                     };
-                    if let Some(scaled_bytes) = scaled_bytes {
+                    if let Some(scaled_bytes) = scaled_bytes.filter(|bytes| !bytes.is_empty()) {
                         self.kitty_image_store.borrow_mut().add_scaled_variant(
                             internal,
                             key,
@@ -1136,9 +1163,23 @@ pub fn crop_rgba(
     out
 }
 
+// the same limits that apply to a decoded image: MAX_DIMENSION per side and
+// MAX_DECODED_BYTES of RGBA in total
+fn scaled_size_is_allowed(dst_w: usize, dst_h: usize) -> bool {
+    dst_w <= MAX_DIMENSION as usize
+        && dst_h <= MAX_DIMENSION as usize
+        && dst_w
+            .checked_mul(dst_h)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .is_some_and(|bytes| bytes <= MAX_DECODED_BYTES)
+}
+
 pub fn scale_rgba(src: &[u8], src_w: usize, src_h: usize, dst_w: usize, dst_h: usize) -> Vec<u8> {
+    if !scaled_size_is_allowed(dst_w, dst_h) || src_w == 0 || src_h == 0 {
+        return Vec::new();
+    }
     let mut out = Vec::with_capacity(dst_w * dst_h * 4);
-    if src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0 {
+    if dst_w == 0 || dst_h == 0 {
         return out;
     }
     for dy in 0..dst_h {
