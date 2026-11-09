@@ -22442,6 +22442,103 @@ mod session_rename {
             "commit did not recheck the peer cache: {lines:?}"
         );
     }
+
+    struct ForgetSessionName(String);
+
+    impl Drop for ForgetSessionName {
+        fn drop(&mut self) {
+            if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+                let _ = index.delete(&self.0);
+            }
+        }
+    }
+
+    struct ForgetSocketFile(std::path::PathBuf);
+
+    impl Drop for ForgetSocketFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn refuse_discovered_rename(screen: &mut Screen, name: &str) -> ActionCompletionResult {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        screen
+            .commit_session_rename(super::super::SessionRenameCommit {
+                name: name.to_owned(),
+                client_id: 1,
+                discovery: super::super::SessionRenameDiscovery {
+                    resurrectable_sessions: BTreeMap::new(),
+                    running_session_exists: Ok(false),
+                },
+                popup_on_error: false,
+                completion: Some(NotificationEnd::new(sender)),
+            })
+            .expect("TEST");
+        receiver.blocking_recv().expect("rename completion")
+    }
+
+    #[test]
+    fn a_name_taken_after_discovery_is_refused_at_commit() {
+        let mut h = harness();
+        let indexed_name = format!("rename-offscreen-id-{}", std::process::id());
+        let _forget_indexed = ForgetSessionName(indexed_name.clone());
+        let indexed_id = zellij_utils::sessions::register_session(&indexed_name);
+        let resolved = zellij_utils::sessions::resolve_session_id(&indexed_name)
+            .expect("index read")
+            .expect("registered name is in the index");
+        assert_eq!(resolved, indexed_id);
+        assert_ne!(indexed_id, h.screen.session_id);
+
+        let result = refuse_discovered_rename(&mut h.screen, &indexed_name);
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+        assert_eq!(result.exit_status, Some(1), "{result:?}");
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already exists")),
+            "{result:?}"
+        );
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&indexed_name)
+                .expect("index read")
+                .as_deref(),
+            Some(indexed_id.as_str()),
+            "commit deleted the other session's index row"
+        );
+
+        let socket_name = format!("rename-offscreen-sock-{}", std::process::id());
+        let _forget_socket_row = ForgetSessionName(socket_name.clone());
+        let socket_path =
+            zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&socket_name);
+        if let Some(parent) = socket_path.parent() {
+            std::fs::create_dir_all(parent).expect("socket dir");
+        }
+        std::fs::write(&socket_path, b"").expect("socket marker");
+        let _forget_socket = ForgetSocketFile(socket_path);
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&socket_name).expect("index read"),
+            None
+        );
+
+        let result = refuse_discovered_rename(&mut h.screen, &socket_name);
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(result.exit_status, Some(1), "{result:?}");
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already exists")),
+            "{result:?}"
+        );
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&socket_name).expect("index read"),
+            None,
+            "commit claimed a name whose socket already exists"
+        );
+    }
 }
 
 struct ClientCells {

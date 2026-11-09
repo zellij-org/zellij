@@ -9021,8 +9021,9 @@ impl Screen {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
-            self.report_session_rename_failure(client_id, popup_on_error, error_text);
-            drop(crate::route::RecordedCompletion::new(completion));
+            self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
+            let mut completion = crate::route::RecordedCompletion::new(completion);
+            Self::record_session_rename_failure(&mut completion, &error_text);
             return Ok(());
         }
         let hook = self.session_rename_discovery.clone();
@@ -9050,22 +9051,23 @@ impl Screen {
             Ok(_worker) => {
                 if let Err(std::sync::mpsc::SendError(completion)) = completion_tx.send(completion)
                 {
+                    let error_text =
+                        "Could not check whether a session by this name exists: discovery thread stopped";
                     self.report_session_rename_failure(
                         client_id,
                         popup_on_error,
-                        "Could not check whether a session by this name exists: discovery thread stopped"
-                            .to_owned(),
+                        error_text.to_owned(),
                     );
-                    drop(crate::route::RecordedCompletion::new(completion));
+                    let mut completion = crate::route::RecordedCompletion::new(completion);
+                    Self::record_session_rename_failure(&mut completion, error_text);
                 }
             },
             Err(error) => {
-                self.report_session_rename_failure(
-                    client_id,
-                    popup_on_error,
-                    format!("Could not check whether a session by this name exists: {error}"),
-                );
-                drop(crate::route::RecordedCompletion::new(completion));
+                let error_text =
+                    format!("Could not check whether a session by this name exists: {error}");
+                self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                Self::record_session_rename_failure(&mut completion, &error_text);
             },
         }
         Ok(())
@@ -9079,15 +9081,30 @@ impl Screen {
             popup_on_error,
             completion,
         } = commit;
-        let _completion = crate::route::RecordedCompletion::new(completion);
-        match self.apply_discovered_session_rename(name, discovery)? {
-            Ok(()) => {},
-            Err(error_text) => {
+        let mut completion = crate::route::RecordedCompletion::new(completion);
+        match self.apply_discovered_session_rename(name, discovery) {
+            Ok(Ok(())) => {},
+            Ok(Err(error_text)) => {
+                Self::record_session_rename_failure(&mut completion, &error_text);
                 self.report_session_rename_failure(client_id, popup_on_error, error_text);
+            },
+            Err(error) => {
+                Self::record_session_rename_failure(&mut completion, &error.to_string());
+                return Err(error);
             },
         }
         self.render(None)?;
         Ok(())
+    }
+
+    fn record_session_rename_failure(
+        completion: &mut crate::route::RecordedCompletion,
+        error_text: &str,
+    ) {
+        if let Some(completion) = completion.as_mut() {
+            completion.set_exit_status(1);
+            completion.set_error_message(error_text.to_owned());
+        }
     }
 
     fn report_session_rename_failure(
@@ -9111,10 +9128,36 @@ impl Screen {
         }
     }
 
+    /// `rename_by_id` deletes any other row with this name. The off-screen
+    /// probe can be stale, so read the index and the socket path here, before
+    /// that write. A read error is a failure. This does not call `session_exists`.
+    fn rename_target_is_taken(&self, name: &str) -> std::result::Result<bool, String> {
+        let indexed_id = zellij_utils::sessions::resolve_session_id(name)?;
+        if indexed_id.as_deref() == Some(self.session_id.as_str()) {
+            return Ok(false);
+        }
+        if indexed_id.is_some() {
+            return Ok(true);
+        }
+        let socket_path = zellij_utils::consts::session_socket_path_in(
+            &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+            name,
+        );
+        if socket_path == zellij_utils::consts::session_id_socket_path(&self.session_id) {
+            return Ok(false);
+        }
+        match socket_path.try_exists() {
+            Ok(exists) => Ok(exists),
+            Err(error) => Err(format!(
+                "Could not check whether a session by this name exists: {error}"
+            )),
+        }
+    }
+
     /// Conflict checks and the index write. Discovery already ran off this
-    /// thread; caches are read again here so a session that appeared while
-    /// the probe was in flight is still rejected. This function does not
-    /// probe sockets.
+    /// thread; caches and the index are read again here so a session that
+    /// appeared while the probe was in flight is still rejected. This
+    /// function does not probe sockets.
     fn apply_discovered_session_rename(
         &mut self,
         name: String,
@@ -9133,6 +9176,11 @@ impl Screen {
             return Ok(Err(
                 "A resurrectable session by this name exists, cannot use this name.".to_owned(),
             ));
+        }
+        match self.rename_target_is_taken(&name) {
+            Ok(true) => return Ok(Err("A session by this name already exists.".to_owned())),
+            Ok(false) => {},
+            Err(message) => return Ok(Err(message)),
         }
         let err_context = || format!("Failed to rename session");
         let old_session_name = self.session_name.clone();
