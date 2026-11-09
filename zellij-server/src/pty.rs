@@ -254,6 +254,14 @@ pub(crate) struct Pty {
     pub id_to_child_pid: HashMap<u32, u32>, // terminal_id => child pid
     // terminal_id => run generation of the child in id_to_child_pid
     child_run_generations: HashMap<u32, u64>,
+    /// terminal_id => generation whose exit this thread has applied.
+    /// A numeric kill is forbidden once this matches the slot's generation.
+    /// The pidfd, when present, is dropped in the same step.
+    reaped_child_runs: HashMap<u32, u64>,
+    /// pidfd opened when the pid was stored. It keeps naming that process
+    /// after the pid number is reused. Empty when `pidfd_open` failed.
+    #[cfg(target_os = "linux")]
+    child_pidfds: HashMap<u32, std::os::fd::OwnedFd>,
     next_run_generation: u64,
     session_id: String,
     // Read once in `pty_thread_main`, after the session has claimed an
@@ -1088,6 +1096,9 @@ impl Pty {
             bus,
             id_to_child_pid: HashMap::new(),
             child_run_generations: HashMap::new(),
+            reaped_child_runs: HashMap::new(),
+            #[cfg(target_os = "linux")]
+            child_pidfds: HashMap::new(),
             next_run_generation: 0,
             session_id: String::new(),
             session_incarnation: None,
@@ -1254,8 +1265,12 @@ impl Pty {
     fn remember_run(&mut self, terminal_id: u32, child_pid: Option<u32>, run_generation: u64) {
         self.child_run_generations
             .insert(terminal_id, run_generation);
+        // A new generation is a different process. An exit mark for the
+        // previous one must not suppress a later close of this one.
+        self.reaped_child_runs.remove(&terminal_id);
         if let Some(child_pid) = child_pid {
             self.id_to_child_pid.insert(terminal_id, child_pid);
+            self.store_child_pidfd(terminal_id, child_pid);
         }
         // The endpoint was inserted by spawn, still unbound. Binding it
         // here is what lets a stamped write for this run through, and what
@@ -1316,6 +1331,7 @@ impl Pty {
     }
     fn forget_child_pid(&mut self, terminal_id: u32) -> Option<u32> {
         self.child_run_generations.remove(&terminal_id);
+        self.drop_child_pidfd(terminal_id);
         self.id_to_child_pid.remove(&terminal_id)
     }
     /// A pane's command exited and was reaped, so its PID may now belong to an
@@ -1323,7 +1339,94 @@ impl Pty {
     /// run whose process must stay addressable.
     fn clear_exited_process_identity(&mut self, terminal_id: u32, run_generation: u64) {
         if self.child_run_generations.get(&terminal_id) == Some(&run_generation) {
+            // Mark reaped before dropping the slot. Close may already be
+            // queued behind this instruction; once it runs, the pid is gone
+            // and a numeric kill is refused.
+            self.reaped_child_runs.insert(terminal_id, run_generation);
             self.forget_child_pid(terminal_id);
+        }
+    }
+    /// `true` when this thread has applied the exit of the slot's generation.
+    /// `(reaped, no current generation)` means the exit handler already
+    /// dropped the slot.
+    fn child_exit_observed(&self, terminal_id: u32) -> bool {
+        match self.reaped_child_runs.get(&terminal_id).copied() {
+            Some(reaped) => self
+                .child_run_generations
+                .get(&terminal_id)
+                .copied()
+                .map(|current| current == reaped)
+                .unwrap_or(true),
+            None => false,
+        }
+    }
+    fn store_child_pidfd(&mut self, terminal_id: u32, pid: u32) {
+        #[cfg(target_os = "linux")]
+        {
+            // Replace any fd for the previous process of this pane. A failed
+            // open must not leave that previous fd associated with the new pid.
+            match open_child_pidfd(pid) {
+                Some(pidfd) => {
+                    self.child_pidfds.insert(terminal_id, pidfd);
+                },
+                None => {
+                    self.child_pidfds.remove(&terminal_id);
+                },
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (terminal_id, pid);
+        }
+    }
+    fn drop_child_pidfd(&mut self, terminal_id: u32) {
+        #[cfg(target_os = "linux")]
+        {
+            self.child_pidfds.remove(&terminal_id);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = terminal_id;
+        }
+    }
+    /// Take the pidfd, if any, without dropping the pid. `OwnedFd`'s drop
+    /// closes it, which is what releases the kernel handle.
+    #[cfg(target_os = "linux")]
+    fn take_child_pidfd(&mut self, terminal_id: u32) -> Option<std::os::fd::OwnedFd> {
+        self.child_pidfds.remove(&terminal_id)
+    }
+    fn hangup_child_on_close(&mut self, terminal_id: u32) {
+        // Read the exit mark before `forget_child_pid` drops the generation.
+        let exit_observed = self.child_exit_observed(terminal_id);
+        #[cfg(target_os = "linux")]
+        let pidfd = self.take_child_pidfd(terminal_id);
+        let child_pid = self.forget_child_pid(terminal_id);
+        self.reaped_child_runs.remove(&terminal_id);
+        #[cfg(target_os = "linux")]
+        if let Some(pidfd) = pidfd {
+            // The fd names the process that was stored, not whatever now
+            // owns its pid. No numeric fallback: a failed signal must not
+            // hit a reused pid.
+            signal_pidfd_sighup(pidfd);
+            return;
+        }
+        if exit_observed {
+            return;
+        }
+        // Numeric kill only while this thread still believes the child is
+        // unreaped and has not observed its exit. That is the non-Linux
+        // path, and Linux when `pidfd_open` failed. It does not close the
+        // reuse race; a pidfd is what closes it.
+        if let Some(child_pid) = child_pid {
+            let err_context = || format!("failed to kill child processes for pane {terminal_id}");
+            self.bus
+                .os_input
+                .as_mut()
+                .with_context(err_context)
+                .fatal()
+                .kill(child_pid)
+                .with_context(err_context)
+                .non_fatal();
         }
     }
     pub fn spawn_terminal(
@@ -2245,17 +2348,7 @@ impl Pty {
                         .send_to_screen(ScreenInstruction::TerminalClosed(id));
                     handle.abort();
                 }
-                if let Some(child_pid) = self.forget_child_pid(id) {
-                    let err_context = || format!("failed to kill child processes for pane {id}");
-                    self.bus
-                        .os_input
-                        .as_mut()
-                        .with_context(err_context)
-                        .fatal()
-                        .kill(child_pid)
-                        .with_context(err_context)
-                        .non_fatal();
-                }
+                self.hangup_child_on_close(id);
                 self.pane_activity_flags.remove(&id);
                 self.terminal_cwds.remove(&id);
                 self.terminal_cmds.remove(&id);
@@ -2292,12 +2385,14 @@ impl Pty {
         Ok(())
     }
     pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
-        if let Some(pane_id) = pane_id {
-            let previous = self.active_panes.insert(client_id, pane_id);
-            if previous != Some(pane_id) && matches!(pane_id, PaneId::Terminal(_)) {
-                self.session_context_pane = Some(pane_id);
-                self.report_session_context(ContextTrigger::FocusChanged);
-            }
+        let Some(pane_id) = pane_id else {
+            self.active_panes.remove(&client_id);
+            return;
+        };
+        let previous = self.active_panes.insert(client_id, pane_id);
+        if previous != Some(pane_id) && matches!(pane_id, PaneId::Terminal(_)) {
+            self.session_context_pane = Some(pane_id);
+            self.report_session_context(ContextTrigger::FocusChanged);
         }
     }
     fn report_session_context(&self, trigger: ContextTrigger) {
@@ -2926,6 +3021,62 @@ impl Drop for Pty {
             self.close_pane(PaneId::Terminal(id))
                 .with_context(|| format!("failed to close pane for pid {id}"))
                 .fatal();
+        }
+    }
+}
+
+/// Open a pidfd for `pid` at the moment it is stored.
+///
+/// Failure leaves the caller with no fd. A later close may then numeric-kill
+/// only until this thread observes the exit. Unit tests store synthetic pids,
+/// so they never attach a live process that happens to use the same number.
+#[cfg(target_os = "linux")]
+fn open_child_pidfd(pid: u32) -> Option<std::os::fd::OwnedFd> {
+    #[cfg(test)]
+    {
+        let _ = pid;
+        return None;
+    }
+    #[cfg(not(test))]
+    {
+        use std::os::fd::{FromRawFd, OwnedFd};
+        // SAFETY: pidfd_open returns a new fd owned by this process, or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
+        if fd < 0 {
+            log::warn!(
+                "pidfd_open failed for pid {pid}: {}",
+                std::io::Error::last_os_error()
+            );
+            None
+        } else {
+            // SAFETY: the syscall just created this fd and no one else owns it.
+            Some(unsafe { OwnedFd::from_raw_fd(fd as std::os::fd::RawFd) })
+        }
+    }
+}
+
+/// SIGHUP, the same signal as `ServerOsApi::kill` / `signal_pid(..., SIGHUP)`.
+/// ESRCH means the process is already gone, which is the outcome close wants.
+/// The fd is closed when `pidfd` is dropped.
+#[cfg(target_os = "linux")]
+fn signal_pidfd_sighup(pidfd: std::os::fd::OwnedFd) {
+    use std::os::fd::AsRawFd;
+    // SAFETY: `pidfd` is an open pidfd. A null siginfo and zero flags send
+    // the signal to that process the way kill(2) would, without following a
+    // reused pid number.
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            pidfd.as_raw_fd(),
+            libc::SIGHUP,
+            std::ptr::null_mut::<libc::siginfo_t>(),
+            0u32,
+        )
+    };
+    if rc < 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::ESRCH) {
+            log::warn!("failed to send SIGHUP through pidfd: {err}");
         }
     }
 }

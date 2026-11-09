@@ -5845,7 +5845,10 @@ fn init_session(
             let mut pty_bus = Bus::new(
                 vec![pty_receiver],
                 Some(&to_screen_bounded),
-                None,
+                // Child-exit callbacks send ClearPaneProcessIdentity back onto
+                // this bus. The channel is unbounded, so the self-send queues
+                // instead of deadlocking the pty thread.
+                Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
                 Some(&to_pty_writer),

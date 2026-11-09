@@ -864,23 +864,35 @@ fn forgetting_a_child_drops_its_run_generation() {
 }
 
 /// Spawns a plain (not held) command through the mock, which hands out the
-/// terminal id 7 and the given child PID. Returns the pty, the mock, the
-/// receiver of the instructions the pty sends itself, and the exit
-/// notification the OS layer would deliver once the child was reaped.
+/// terminal id 7 and the given child PID.
+///
+/// The bus is built the way `init_session` builds it: `pty_receiver` is the
+/// receiver the pty thread reads, and `Bus::new`'s third sender argument is
+/// `Some(&to_pty)`, the sender paired with that receiver. The channel is
+/// unbounded. Returns the pty, the mock, and the exit callback the OS layer
+/// would run once the child was reaped.
 fn spawn_plain_command(
     child_pid: u32,
 ) -> (
     Pty,
     MockOsApi,
-    channels::Receiver<(PtyInstruction, ErrorContext)>,
     Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
 ) {
     let mock = MockOsApi::new();
     *mock.spawn_pid.lock().unwrap() = Some(child_pid);
-    let (pty_tx, pty_rx) = channels::unbounded();
-    let mut bus: Bus<PtyInstruction> = Bus::empty().should_silently_fail();
-    bus.os_input = Some(Box::new(mock.clone()));
-    bus.senders.to_pty = Some(SenderWithContext::new(pty_tx));
+    let (to_pty_tx, pty_receiver) = channels::unbounded();
+    let to_pty = SenderWithContext::new(to_pty_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_receiver],
+        None,
+        Some(&to_pty),
+        None,
+        None,
+        None,
+        None,
+        Some(Box::new(mock.clone())),
+    )
+    .should_silently_fail();
     let mut pty = Pty::new(bus, false, None, None, Default::default());
     let run_command = RunCommand {
         command: PathBuf::from("true"),
@@ -904,15 +916,12 @@ fn spawn_plain_command(
     assert_eq!(terminal_id, 7);
     assert_eq!(pty.id_to_child_pid.get(&7), Some(&child_pid));
     let quit_cb = mock.quit_cb.lock().unwrap().take().unwrap();
-    (pty, mock, pty_rx, quit_cb)
+    (pty, mock, quit_cb)
 }
 
 /// What the PTY thread does with the instructions it was sent.
-fn handle_forget_requests(
-    pty: &mut Pty,
-    pty_rx: &channels::Receiver<(PtyInstruction, ErrorContext)>,
-) {
-    while let Ok((instruction, _)) = pty_rx.try_recv() {
+fn handle_forget_requests(pty: &mut Pty) {
+    for instruction in pty.bus.drain_available() {
         if let PtyInstruction::ClearPaneProcessIdentity(PaneId::Terminal(id), run_generation) =
             instruction
         {
@@ -922,13 +931,34 @@ fn handle_forget_requests(
 }
 
 #[test]
-fn closing_a_pane_whose_child_exited_signals_nothing() {
+fn clear_pane_process_identity_is_received_on_the_session_pty_bus() {
+    // The exit callback must reach the receiver `init_session` gives the pty
+    // thread. Installing a sender on an empty bus does not prove that.
+    let (pty, _mock, quit_cb) = spawn_plain_command(4242);
+    let run_generation = pty.child_run_generations.get(&7).copied().unwrap();
+    quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
+
+    let received = pty.bus.drain_available();
+    assert!(
+        received.iter().any(|instruction| {
+            matches!(
+                instruction,
+                PtyInstruction::ClearPaneProcessIdentity(PaneId::Terminal(7), generation)
+                    if *generation == run_generation
+            )
+        }),
+        "ClearPaneProcessIdentity must arrive on the session pty receiver, got {received:?}"
+    );
+}
+
+#[test]
+fn close_pane_after_clear_pane_process_identity_does_not_kill() {
     // A command that is not held exits and is reaped; the pane is closed
     // afterwards. The PID may already belong to an unrelated process, so it
     // must not be signalled.
-    let (mut pty, mock, pty_rx, quit_cb) = spawn_plain_command(4242);
+    let (mut pty, mock, quit_cb) = spawn_plain_command(4242);
     quit_cb(PaneId::Terminal(7), Some(0), RunCommand::default());
-    handle_forget_requests(&mut pty, &pty_rx);
+    handle_forget_requests(&mut pty);
     assert_eq!(pty.id_to_child_pid.get(&7), None);
 
     pty.send_sigint_to_pane(PaneId::Terminal(7));
@@ -939,10 +969,24 @@ fn closing_a_pane_whose_child_exited_signals_nothing() {
 
 #[test]
 fn closing_a_pane_whose_child_is_running_still_hangs_it_up() {
-    let (mut pty, mock, pty_rx, _quit_cb) = spawn_plain_command(4242);
-    handle_forget_requests(&mut pty, &pty_rx);
+    let (mut pty, mock, _quit_cb) = spawn_plain_command(4242);
+    handle_forget_requests(&mut pty);
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert_eq!(mock.signals(), vec![("SIGHUP", 4242)]);
+}
+
+#[test]
+fn set_active_pane_none_removes_the_client() {
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(MockOsApi::new());
+    let client = 3;
+    let other = 4;
+    pty.set_active_pane(Some(PaneId::Terminal(1)), client);
+    pty.set_active_pane(Some(PaneId::Terminal(2)), other);
+
+    pty.set_active_pane(None, client);
+
+    assert!(!pty.active_panes.contains_key(&client));
+    assert_eq!(pty.active_panes.get(&other), Some(&PaneId::Terminal(2)));
 }
 
 #[test]
