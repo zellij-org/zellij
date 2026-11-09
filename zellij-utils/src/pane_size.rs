@@ -294,15 +294,21 @@ impl PaneGeom {
         if let Some(height) = &height {
             self.rows = Dimension::fixed(height.to_fixed(viewport.rows));
         }
-        self.x = match &x {
-            Some(x) => viewport.x + x.to_fixed(viewport.cols),
+        // Fixed x/y are terminal cells. Layouts and session resurrection persist
+        // those cells; adding the viewport origin on reload would drop the pane
+        // by the tab-bar (and any other edge chrome) rows. Percents are fractions
+        // of the viewport and stay relative to its origin.
+        self.x = match x.as_ref() {
+            Some(PercentOrFixed::Fixed(fixed)) => *fixed,
+            Some(percent) => viewport.x + percent.to_fixed(viewport.cols),
             None if width.is_some() => {
                 viewport.x + viewport.cols.saturating_sub(self.cols.as_usize()) / 2
             },
             None => self.x,
         };
-        self.y = match &y {
-            Some(y) => viewport.y + y.to_fixed(viewport.rows),
+        self.y = match y.as_ref() {
+            Some(PercentOrFixed::Fixed(fixed)) => *fixed,
+            Some(percent) => viewport.y + percent.to_fixed(viewport.rows),
             None if height.is_some() => {
                 viewport.y + viewport.rows.saturating_sub(self.rows.as_usize()) / 2
             },
@@ -601,6 +607,22 @@ mod tests {
             viewport,
         );
         assert_eq!((centered.x, centered.y), (65, 23));
+    }
+
+    #[test]
+    fn fixed_floating_coordinates_stay_on_their_terminal_cell() {
+        let viewport = viewport();
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            Some(PercentOrFixed::Fixed(29)),
+            Some(PercentOrFixed::Fixed(6)),
+            Some(PercentOrFixed::Fixed(58)),
+            Some(PercentOrFixed::Fixed(10)),
+            viewport,
+        );
+        // viewport origin is (20, 5); a fixed layout cell must not move with it
+        assert_eq!((geom.x, geom.y), (29, 6));
+        assert_eq!((geom.cols.as_usize(), geom.rows.as_usize()), (58, 10));
     }
 
     #[test]
