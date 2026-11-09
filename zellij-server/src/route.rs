@@ -51,6 +51,7 @@ fn abandoned_action_result(action_name: &str, why: &str) -> ActionCompletionResu
             "Action {action_name} {why}, its outcome is unknown"
         )),
         stdout_message: None,
+        kind: ActionCompletionKind::Abandoned,
     }
 }
 
@@ -64,16 +65,57 @@ fn timed_out_action_result(action_name: &str) -> ActionCompletionResult {
             action_name, ACTION_COMPLETION_TIMEOUT
         )),
         stdout_message: None,
+        kind: ActionCompletionKind::TimedOut,
     }
 }
 
-#[derive(Debug, Clone)]
+fn cancelled_action_result(action_name: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {action_name} was cancelled, its outcome is unknown"
+        )),
+        stdout_message: None,
+        kind: ActionCompletionKind::Cancelled,
+    }
+}
+
+/// A timeout is not a cancellation, and neither is an abandoned drop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionCompletionKind {
+    Finished,
+    Abandoned,
+    TimedOut,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
     pub affected_pane_id: Option<PaneId>,
     pub affected_tab_id: Option<usize>,
     pub error_message: Option<String>,
     pub stdout_message: Option<String>,
+    pub kind: ActionCompletionKind,
+}
+
+impl ActionCompletionResult {
+    pub fn success() -> Self {
+        ActionCompletionResult {
+            exit_status: None,
+            affected_pane_id: None,
+            affected_tab_id: None,
+            error_message: None,
+            stdout_message: None,
+            kind: ActionCompletionKind::Finished,
+        }
+    }
+
+    fn looks_like_success(&self) -> bool {
+        self.error_message.is_none() && self.exit_status.is_none() && self.stdout_message.is_none()
+    }
 }
 
 pub fn wait_for_action_completion(
@@ -137,36 +179,26 @@ fn wait_for_cli_action_completion(
     }
 }
 
-// This is used to wait for actions that span multiple threads until they logically end
-// dropping this struct sends a notification through the oneshot channel to the receiver, letting
-// it know the action is ended and thus releasing it
-//
-// Note: Cloning this struct DOES NOT clone that internal receiver, it only implements Clone so
-// that it can be included in various other larger structs - DO NOT RELY ON CLONING IT!
+const ABANDONED_ON_DROP: &str =
+    "the action was abandoned before it finished, its outcome is unknown";
+
+/// One non-cloneable owner of an action's completion oneshot.
+///
+/// `complete` sends a typed outcome and consumes the owner. `transfer` moves
+/// that oneshot to the next stage and sends nothing. `abandon` reports that
+/// the outcome is unknown. Drop sends the fields the handler stored, as a
+/// finished outcome: screen, pty, and plugin handlers finish by dropping
+/// this owner, and an owner with no stored fields is success.
 #[derive(Debug)]
+#[must_use = "complete the owner, transfer it, or abandon it"]
 pub struct NotificationEnd {
     channel: Option<oneshot::Sender<ActionCompletionResult>>,
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
-    affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
-    affected_tab_id: Option<usize>,   // optional payload of the tab id affected by this action
+    affected_pane_id: Option<PaneId>,
+    affected_tab_id: Option<usize>,
     error_message: Option<String>,
     stdout_message: Option<String>,
-}
-
-impl Clone for NotificationEnd {
-    fn clone(&self) -> Self {
-        // Always clone as None - only the original holder should signal completion
-        NotificationEnd {
-            channel: None,
-            exit_status: self.exit_status,
-            unblock_condition: self.unblock_condition,
-            affected_pane_id: self.affected_pane_id,
-            affected_tab_id: self.affected_tab_id,
-            error_message: self.error_message.clone(),
-            stdout_message: self.stdout_message.clone(),
-        }
-    }
 }
 
 impl NotificationEnd {
@@ -224,20 +256,80 @@ impl NotificationEnd {
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
         self.unblock_condition
     }
+
+    /// Send `outcome` exactly once. The owner is consumed, so it cannot
+    /// complete again.
+    pub fn complete(mut self, outcome: ActionCompletionResult) {
+        if let Some(sender) = self.channel.take() {
+            let _ = sender.send(outcome);
+        }
+    }
+
+    /// Send the fields recorded on this owner as a finished outcome.
+    pub fn complete_recorded(mut self) {
+        let outcome = self.recorded(ActionCompletionKind::Finished);
+        self.complete(outcome);
+    }
+
+    /// Send the recorded finished outcome and leave this value unable to send
+    /// again. Drop then does nothing. The test logger uses this so a stored
+    /// instruction does not keep the only reply.
+    pub fn publish_recorded(&mut self) {
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        let outcome = self.recorded(ActionCompletionKind::Finished);
+        let _ = sender.send(outcome);
+    }
+
+    /// The outcome is unknown. This is not success, a timeout, or a cancellation.
+    pub fn abandon(mut self) {
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        let mut outcome = self.recorded(ActionCompletionKind::Abandoned);
+        outcome.kind = ActionCompletionKind::Abandoned;
+        outcome.exit_status = None;
+        outcome.error_message = Some(ABANDONED_ON_DROP.to_string());
+        debug_assert!(!outcome.looks_like_success());
+        let _ = sender.send(outcome);
+    }
+
+    /// Move the oneshot to the next stage. This value sends nothing.
+    pub fn transfer(mut self) -> Self {
+        NotificationEnd {
+            channel: self.channel.take(),
+            exit_status: self.exit_status.take(),
+            unblock_condition: self.unblock_condition.take(),
+            affected_pane_id: self.affected_pane_id.take(),
+            affected_tab_id: self.affected_tab_id.take(),
+            error_message: self.error_message.take(),
+            stdout_message: self.stdout_message.take(),
+        }
+    }
+
+    fn recorded(&mut self, kind: ActionCompletionKind) -> ActionCompletionResult {
+        ActionCompletionResult {
+            exit_status: self.exit_status.take(),
+            affected_pane_id: self.affected_pane_id.take(),
+            affected_tab_id: self.affected_tab_id.take(),
+            error_message: self.error_message.take(),
+            stdout_message: self.stdout_message.take(),
+            kind,
+        }
+    }
 }
 
 impl Drop for NotificationEnd {
     fn drop(&mut self) {
-        if let Some(tx) = self.channel.take() {
-            let result = ActionCompletionResult {
-                exit_status: self.exit_status,
-                affected_pane_id: self.affected_pane_id,
-                affected_tab_id: self.affected_tab_id,
-                error_message: self.error_message.take(),
-                stdout_message: self.stdout_message.take(),
-            };
-            let _ = tx.send(result);
-        }
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        // The handler applied the action and returned this owner. Stored
+        // fields are the outcome. No stored fields is success, which is how
+        // focus, scroll, and the other screen arms report completion.
+        let outcome = self.recorded(ActionCompletionKind::Finished);
+        let _ = sender.send(outcome);
     }
 }
 
@@ -1514,7 +1606,7 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::Quit if !is_cli_client => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             senders
                 .send_to_screen(ScreenInstruction::ConfirmQuit(client_id))
                 .with_context(err_context)?;
@@ -1669,13 +1761,13 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::PasteFromClipboardByPaneId { pane_id } => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             senders
                 .send_to_screen(ScreenInstruction::PasteFromClipboard { client_id, pane_id })
                 .with_context(err_context)?;
         },
         Action::OpenSessionInTerminal => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             let session_name = zellij_utils::envs::get_session_name().ok();
             let _ = std::thread::Builder::new()
                 .name("open_session_in_terminal".to_owned())
@@ -1702,7 +1794,7 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::ToggleTrayIcon => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             let _ = std::thread::Builder::new()
                 .name("toggle_tray_icon".to_owned())
                 .spawn(|| {
@@ -2395,7 +2487,7 @@ fn route_action_with_origin(
             } else {
                 send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing panes");
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::ListTabs {
             show_state,
@@ -2425,7 +2517,7 @@ fn route_action_with_origin(
             } else {
                 send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing tabs");
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::CurrentTabInfo { output_json } => {
             let maybe_tab_info = request_current_tab_info_from_screen(&senders, client_id)
@@ -2448,7 +2540,7 @@ fn route_action_with_origin(
                     );
                 },
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::TogglePanePinned => {
             senders
@@ -4627,11 +4719,12 @@ mod tests {
         let mut notification_end = NotificationEnd::new(tx);
 
         notification_end.set_affected_tab_id(42);
-
-        drop(notification_end);
+        notification_end.complete_recorded();
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_tab_id, Some(42));
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert!(result.looks_like_success());
     }
 
     #[test]
@@ -4643,6 +4736,8 @@ mod tests {
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_tab_id, None);
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert!(result.looks_like_success());
     }
 
     #[test]
@@ -4653,6 +4748,7 @@ mod tests {
             affected_tab_id: Some(123),
             error_message: None,
             stdout_message: None,
+            kind: ActionCompletionKind::Finished,
         };
 
         assert_eq!(result.affected_tab_id, Some(123));
@@ -4665,26 +4761,85 @@ mod tests {
 
         notification_end.set_affected_pane_id(PaneId::Terminal(10));
         notification_end.set_affected_tab_id(5);
-
-        drop(notification_end);
+        notification_end.complete_recorded();
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
         assert_eq!(result.affected_tab_id, Some(5));
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
     }
 
     #[test]
-    fn test_notification_end_clone_does_not_copy_channel() {
-        let (tx, _rx) = oneshot::channel();
-        let mut notification_end = NotificationEnd::new(tx);
-        notification_end.set_affected_tab_id(99);
+    fn explicit_complete_delivers_the_typed_outcome_once() {
+        let (tx, rx) = oneshot::channel();
+        let owner = NotificationEnd::new(tx);
+        let outcome = sample_result("finished");
+        // `complete` takes `self`, so a second complete cannot be written.
+        owner.complete(outcome.clone());
+        assert_eq!(rx.blocking_recv().unwrap(), outcome);
+    }
 
-        let cloned = notification_end.clone();
+    #[test]
+    fn dropping_a_handler_owner_publishes_the_recorded_outcome() {
+        let (tx, rx) = oneshot::channel();
+        let mut owner = NotificationEnd::new(tx);
+        owner.set_affected_pane_id(PaneId::Terminal(10));
+        drop(owner);
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
+        assert!(result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::Abandoned);
+    }
 
-        // Verify the clone has the same data
-        assert_eq!(cloned.affected_tab_id, Some(99));
-        // But channel should be None (as per the Clone implementation comment)
-        assert!(cloned.channel.is_none());
+    #[test]
+    fn abandoning_the_owner_is_not_success_timeout_or_cancellation() {
+        let (tx, rx) = oneshot::channel();
+        NotificationEnd::new(tx).abandon();
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::TimedOut);
+        assert_ne!(result.kind, ActionCompletionKind::Cancelled);
+        let message = result.error_message.unwrap();
+        assert!(message.contains("abandoned"), "{message}");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(
+            !message.contains("did not complete within"),
+            "abandonment must not be reported as a timeout: {message}"
+        );
+        assert!(
+            !message.contains("cancelled"),
+            "abandonment must not be reported as a cancellation: {message}"
+        );
+    }
+
+    #[test]
+    fn transferring_the_owner_does_not_send() {
+        let (tx, mut rx) = oneshot::channel();
+        let owner = NotificationEnd::new(tx);
+        let transferred = owner.transfer();
+        assert!(
+            rx.try_recv().is_err(),
+            "transfer must not complete the action"
+        );
+        let outcome = sample_result("after transfer");
+        transferred.complete(outcome.clone());
+        assert_eq!(rx.blocking_recv().unwrap(), outcome);
+    }
+
+    #[test]
+    fn timeout_result_is_not_a_cancellation() {
+        let timed_out = timed_out_action_result("Write");
+        let cancelled = cancelled_action_result("Write");
+        assert_ne!(timed_out, cancelled);
+        assert_eq!(timed_out.kind, ActionCompletionKind::TimedOut);
+        assert_eq!(cancelled.kind, ActionCompletionKind::Cancelled);
+        assert!(timed_out
+            .error_message
+            .unwrap()
+            .contains("did not complete within"));
+        assert!(cancelled.error_message.unwrap().contains("cancelled"));
     }
 
     fn sample_result(message: &str) -> ActionCompletionResult {
@@ -4694,6 +4849,7 @@ mod tests {
             affected_tab_id: Some(4),
             error_message: Some(message.to_owned()),
             stdout_message: Some("out".to_owned()),
+            kind: ActionCompletionKind::Finished,
         }
     }
 

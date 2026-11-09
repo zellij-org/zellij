@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 3075
-expression: "format!(\"{:#?}\", received_write_instructions)"
+expression: received_write_instructions
 ---
 [
     Write(
@@ -11,8 +10,8 @@ expression: "format!(\"{:#?}\", received_write_instructions)"
             ],
             terminal_id: 0,
             completion: None,
-            budget: false,
-            handed_off: true,
+            budget: true,
+            handed_off: false,
         },
     ),
 ]

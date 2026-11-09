@@ -812,24 +812,21 @@ pub fn load_new_plugin_from_hd() {
     )])); // will be cached and sent to the plugin once it's loaded
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("InputReceived") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("InputReceived") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -898,24 +895,21 @@ pub fn load_new_plugin_with_plugin_alias() {
     )])); // will be cached and sent to the plugin once it's loaded
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("InputReceived") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("InputReceived") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -984,24 +978,21 @@ pub fn plugin_workers() {
     )])); // will be cached and sent to the plugin once it's loaded
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Payload from worker") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Payload from worker") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -1079,24 +1070,21 @@ pub fn plugin_workers_persist_state() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("received 2 messages") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("received 2 messages") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -1163,24 +1151,21 @@ pub fn can_subscribe_to_hd_events() {
         .unwrap();
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("FileSystemCreate") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("FileSystemCreate") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert!(plugin_bytes_event.is_some());
 }
 
@@ -1254,13 +1239,12 @@ pub fn switch_to_mode_plugin_command() {
     )]));
     server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let switch_to_mode_event = received_server_instructions
-        .lock()
-        .unwrap()
+    let received_server_instructions_guard = received_server_instructions.lock().unwrap();
+    let switch_to_mode_event = received_server_instructions_guard
         .iter()
         .find_map(|i| {
             if let ServerInstruction::ChangeMode(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1332,13 +1316,12 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let switch_to_mode_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let switch_to_mode_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ChangeMode(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1410,26 +1393,23 @@ pub fn new_tabs_with_layout_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let first_new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let first_new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::NewTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
         })
         .clone();
-    let second_new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let second_new_tab_event = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ScreenInstruction::NewTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1502,13 +1482,12 @@ pub fn new_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::NewTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1579,13 +1558,12 @@ pub fn go_to_next_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::SwitchTabNext(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1656,13 +1634,12 @@ pub fn go_to_previous_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::SwitchTabPrev(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1733,13 +1710,12 @@ pub fn resize_focused_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::Resize(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1810,13 +1786,12 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::Resize(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1887,13 +1862,12 @@ pub fn focus_next_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusNextPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -1964,13 +1938,12 @@ pub fn focus_previous_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusPreviousPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2045,13 +2018,12 @@ pub fn focus_last_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusLastPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2122,13 +2094,12 @@ pub fn move_focus_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MoveFocusLeft(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2199,13 +2170,12 @@ pub fn move_focus_or_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MoveFocusLeftOrPreviousTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2276,13 +2246,12 @@ pub fn edit_scrollback_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::EditScrollback(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2353,13 +2322,12 @@ pub fn write_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::WriteCharacter(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2430,13 +2398,12 @@ pub fn write_chars_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::WriteCharacter(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2507,13 +2474,12 @@ pub fn toggle_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ToggleTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2584,13 +2550,12 @@ pub fn move_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MovePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2661,13 +2626,12 @@ pub fn move_pane_with_direction_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MovePaneLeft(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2739,13 +2703,12 @@ pub fn clear_screen_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ClearScreen(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2817,13 +2780,12 @@ pub fn scroll_up_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollUp(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2894,13 +2856,12 @@ pub fn scroll_down_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollDown(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -2971,13 +2932,12 @@ pub fn scroll_to_top_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollToTop(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3048,13 +3008,12 @@ pub fn scroll_to_bottom_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollToBottom(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3125,13 +3084,12 @@ pub fn page_scroll_up_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::PageScrollUp(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3202,13 +3160,12 @@ pub fn page_scroll_down_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::PageScrollDown(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3279,13 +3236,12 @@ pub fn toggle_focus_fullscreen_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ToggleActiveTerminalFullscreen(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3356,13 +3312,12 @@ pub fn toggle_pane_frames_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::TogglePaneFrames(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3433,13 +3388,12 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::TogglePaneEmbedOrFloating(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3516,13 +3470,12 @@ pub fn new_pane_plugin_command() {
     )]));
     pty_thread.join().unwrap();
     teardown();
-    let new_pane_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_pane_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3592,13 +3545,12 @@ pub fn toggle_floating_panes_plugin_command() {
     )]));
     screen_thread.join().unwrap();
     teardown();
-    let toggle_floating_panes_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let toggle_floating_panes_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ToggleFloatingPanes(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3668,13 +3620,12 @@ pub fn toggle_floating_panes_with_tab_id_plugin_command() {
     )]));
     screen_thread.join().unwrap();
     teardown();
-    let toggle_floating_panes_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let toggle_floating_panes_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ToggleFloatingPanesWithTabId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3745,13 +3696,12 @@ pub fn undo_rename_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::UndoRenamePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3822,13 +3772,12 @@ pub fn close_focus_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::CloseFocusedPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3899,13 +3848,12 @@ pub fn toggle_active_tab_sync_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ToggleActiveSyncTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -3976,13 +3924,12 @@ pub fn close_focused_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::CloseTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4053,13 +4000,12 @@ pub fn undo_rename_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::UndoRenameTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4130,13 +4076,12 @@ pub fn previous_swap_layout_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::PreviousSwapLayout(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4207,13 +4152,12 @@ pub fn next_swap_layout_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::NextSwapLayout(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4284,13 +4228,12 @@ pub fn go_to_tab_name_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::GoToTabName(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4361,13 +4304,12 @@ pub fn focus_or_create_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::GoToTabName(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4438,13 +4380,12 @@ pub fn go_to_tab() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::GoToTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4515,13 +4456,12 @@ pub fn start_or_reload_plugin() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::StartOrReloadPluginPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4599,13 +4539,12 @@ pub fn quit_zellij_plugin_command() {
     )]));
     server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let new_tab_event = received_server_instruction_guard
         .iter()
         .find_map(|i| {
             if let ServerInstruction::ClientExit(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4683,13 +4622,12 @@ pub fn detach_plugin_command() {
     )]));
     server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let new_tab_event = received_server_instruction_guard
         .iter()
         .find_map(|i| {
             if let ServerInstruction::DetachSession(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4767,13 +4705,12 @@ pub fn open_file_floating_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4855,13 +4792,12 @@ pub fn open_file_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -4944,13 +4880,12 @@ pub fn open_file_with_line_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5032,13 +4967,12 @@ pub fn open_file_with_line_floating_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5120,13 +5054,12 @@ pub fn open_terminal_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5204,13 +5137,12 @@ pub fn open_terminal_floating_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5288,13 +5220,12 @@ pub fn open_command_pane_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5372,13 +5303,12 @@ pub fn open_command_pane_floating_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5449,13 +5379,12 @@ pub fn switch_to_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::GoToTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5526,13 +5455,12 @@ pub fn hide_self_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::SuppressPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5602,13 +5530,12 @@ pub fn show_self_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusPaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5679,13 +5606,12 @@ pub fn close_terminal_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ClosePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5756,13 +5682,12 @@ pub fn close_plugin_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ClosePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5833,13 +5758,12 @@ pub fn focus_terminal_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusPaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5910,13 +5834,12 @@ pub fn focus_plugin_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusPaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -5987,13 +5910,12 @@ pub fn rename_terminal_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::RenamePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6064,13 +5986,12 @@ pub fn rename_plugin_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::RenamePane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6141,13 +6062,12 @@ pub fn rename_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::RenameTab(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6230,13 +6150,12 @@ pub fn send_configuration_to_plugins() {
     // here we make sure we received a rename_tab event with the title being the stringified
     // (Debug) configuration we sent to the fixture plugin to make sure it got there properly
 
-    let go_to_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let go_to_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::GoToTabName(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6301,9 +6220,8 @@ pub fn request_plugin_permissions() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let new_tab_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::RequestPluginPermissions(_, plugin_permission) = i {
@@ -6576,13 +6494,13 @@ pub fn run_command_plugin_command() {
     )]));
     background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_background_job = received_background_jobs_instructions
-        .lock()
-        .unwrap()
+    let received_background_jobs_instructions_guard =
+        received_background_jobs_instructions.lock().unwrap();
+    let new_background_job = received_background_jobs_instructions_guard
         .iter()
         .find_map(|i| {
             if let BackgroundJob::RunCommand(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6660,13 +6578,13 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
     )]));
     background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_background_jobs_instructions
-        .lock()
-        .unwrap()
+    let received_background_jobs_instructions_guard =
+        received_background_jobs_instructions.lock().unwrap();
+    let new_tab_event = received_background_jobs_instructions_guard
         .iter()
         .find_map(|i| {
             if let BackgroundJob::RunCommand(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6744,13 +6662,13 @@ pub fn web_request_plugin_command() {
     )]));
     background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_background_jobs_instructions
-        .lock()
-        .unwrap()
+    let received_background_jobs_instructions_guard =
+        received_background_jobs_instructions.lock().unwrap();
+    let new_tab_event = received_background_jobs_instructions_guard
         .iter()
         .find_map(|i| {
             if let BackgroundJob::WebRequest(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6836,14 +6754,13 @@ pub fn unblock_input_plugin_command() {
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_events = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_events = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ScreenInstruction::PluginBytes(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -6930,14 +6847,13 @@ pub fn block_input_plugin_command() {
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let plugin_bytes_events = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_events = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ScreenInstruction::PluginBytes(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7031,14 +6947,13 @@ pub fn pipe_output_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let plugin_bytes_events = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let plugin_bytes_events = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::CliPipeOutput(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7145,24 +7060,21 @@ pub fn pipe_message_to_plugin_plugin_command() {
     });
     screen_thread.join().unwrap(); // the screen thread returns once the payload was rendered
     teardown();
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_id = plugin_render_asset.plugin_id;
-                    let client_id = plugin_render_asset.client_id;
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Payload from self:") {
-                        return Some((plugin_id, client_id, plugin_bytes));
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_id = plugin_render_asset.plugin_id;
+                let client_id = plugin_render_asset.client_id;
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Payload from self:") {
+                    return Some((plugin_id, client_id, plugin_bytes));
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -7237,14 +7149,13 @@ pub fn switch_session_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let switch_session_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::SwitchSession(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7327,14 +7238,13 @@ pub fn switch_session_with_layout_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let switch_session_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::SwitchSession(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7417,14 +7327,13 @@ pub fn switch_session_with_layout_and_cwd_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let switch_session_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::SwitchSession(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7504,14 +7413,13 @@ pub fn disconnect_other_clients_plugins_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let switch_session_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::DisconnectAllClientsExcept(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7591,14 +7499,13 @@ pub fn reconfigure_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let reconfigure_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let reconfigure_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::Reconfigure { .. } = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7760,13 +7667,12 @@ pub fn hide_pane_with_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let suppress_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let suppress_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::SuppressPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7837,13 +7743,12 @@ pub fn show_pane_with_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let focus_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let focus_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::FocusPaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -7921,13 +7826,12 @@ pub fn open_command_pane_background_plugin_command() {
     )]));
     pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_pty_instructions
-        .lock()
-        .unwrap()
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let new_tab_event = received_pty_instructions_guard
         .iter()
         .find_map(|i| {
             if let PtyInstruction::SpawnTerminal(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8002,13 +7906,12 @@ pub fn rerun_command_pane_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let rerun_command_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let rerun_command_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::RerunCommandPane(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8079,13 +7982,12 @@ pub fn resize_pane_with_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let rerun_command_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let rerun_command_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ResizePaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8156,13 +8058,12 @@ pub fn edit_scrollback_for_pane_with_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let rerun_command_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let rerun_command_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::EditScrollbackForPaneWithId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8233,13 +8134,12 @@ pub fn write_to_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let rerun_command_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let rerun_command_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::WriteToPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8310,13 +8210,12 @@ pub fn write_chars_to_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let rerun_command_pane_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let rerun_command_pane_event = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::WriteToPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8387,13 +8286,12 @@ pub fn move_pane_with_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MovePaneWithPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8464,13 +8362,12 @@ pub fn move_pane_with_pane_id_in_direction_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::MovePaneWithPaneIdInDirection(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8541,13 +8438,12 @@ pub fn clear_screen_for_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ClearScreenForPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8618,13 +8514,12 @@ pub fn scroll_up_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollUpInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8695,13 +8590,12 @@ pub fn scroll_down_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollDownInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8772,13 +8666,12 @@ pub fn scroll_to_top_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollToTopInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8849,13 +8742,12 @@ pub fn scroll_to_bottom_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ScrollToBottomInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -8926,13 +8818,12 @@ pub fn page_scroll_up_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::PageScrollUpInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9003,13 +8894,12 @@ pub fn page_scroll_down_in_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::PageScrollDownInPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9080,13 +8970,12 @@ pub fn toggle_pane_id_fullscreen_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::TogglePaneIdFullscreen(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9157,13 +9046,12 @@ pub fn toggle_pane_embed_or_eject_for_pane_id_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9234,13 +9122,12 @@ pub fn close_tab_with_index_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::CloseTabWithIndex(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9311,13 +9198,12 @@ pub fn break_panes_to_new_tab_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::BreakPanesToNewTab { .. } = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9388,13 +9274,12 @@ pub fn break_panes_to_tab_with_index_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let screen_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let screen_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::BreakPanesToTabWithIndex { .. } = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9465,9 +9350,8 @@ pub fn reload_plugin_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let request_state_update_requests = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let request_state_update_requests = received_screen_instructions_guard
         .iter()
         .filter(|i| {
             if let ScreenInstruction::RequestStateUpdateForPlugins = i {
@@ -9542,9 +9426,8 @@ pub fn load_new_plugin_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let request_state_update_requests = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let request_state_update_requests = received_screen_instructions_guard
         .iter()
         .filter(|i| {
             if let ScreenInstruction::RequestStateUpdateForPlugins = i {
@@ -9628,14 +9511,13 @@ pub fn rebind_keys_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let rebind_event = received_server_instruction
-        .lock()
-        .unwrap()
+    let received_server_instruction_guard = received_server_instruction.lock().unwrap();
+    let rebind_event = received_server_instruction_guard
         .iter()
         .rev()
         .find_map(|i| {
             if let ServerInstruction::RebindKeys { .. } = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9706,13 +9588,12 @@ pub fn list_clients_plugin_command() {
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let list_clients_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let list_clients_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::ListClientsToPlugin(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9783,13 +9664,12 @@ pub fn before_close_plugin_event() {
     let _ = plugin_thread_sender.send(PluginInstruction::Unload(0));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let sent_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let sent_instruction = received_screen_instructions_guard
         .iter()
         .find_map(|i| {
             if let ScreenInstruction::HighlightAndUnhighlightPanes(..) = i {
-                Some(i.clone())
+                Some(i)
             } else {
                 None
             }
@@ -9864,17 +9744,14 @@ pub fn show_cursor_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let show_cursor_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
-                Some((*plugin_id, *client_id, *cursor_position))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let show_cursor_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
+            Some((*plugin_id, *client_id, *cursor_position))
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", show_cursor_instruction));
 }
@@ -9946,17 +9823,14 @@ pub fn hide_cursor_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let hide_cursor_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
-                Some((*plugin_id, *client_id, *cursor_position))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let hide_cursor_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::ShowPluginCursor(plugin_id, client_id, cursor_position) = i {
+            Some((*plugin_id, *client_id, *cursor_position))
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", hide_cursor_instruction));
 }
@@ -10027,17 +9901,14 @@ pub fn copy_to_clipboard_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let copy_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
-                Some((text.clone(), *plugin_id))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let copy_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
+            Some((text.clone(), *plugin_id))
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", copy_instruction));
 }
@@ -10108,17 +9979,14 @@ pub fn run_action_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let move_focus_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
-                Some((*client_id, notification_end.clone()))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let move_focus_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
+            Some((*client_id, notification_end.clone()))
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", move_focus_instruction));
 }
@@ -10199,17 +10067,14 @@ pub fn send_sigint_to_pane_id_plugin_command() {
     pty_thread.join().unwrap();
     teardown();
 
-    let sigint_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let PtyInstruction::SendSigintToPaneId(pane_id) = i {
-                Some(*pane_id)
-            } else {
-                None
-            }
-        });
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let sigint_instruction = received_pty_instructions_guard.iter().find_map(|i| {
+        if let PtyInstruction::SendSigintToPaneId(pane_id) = i {
+            Some(*pane_id)
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", sigint_instruction));
 }
@@ -10290,17 +10155,14 @@ pub fn send_sigkill_to_pane_id_plugin_command() {
     pty_thread.join().unwrap();
     teardown();
 
-    let sigkill_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let PtyInstruction::SendSigkillToPaneId(pane_id) = i {
-                Some(*pane_id)
-            } else {
-                None
-            }
-        });
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let sigkill_instruction = received_pty_instructions_guard.iter().find_map(|i| {
+        if let PtyInstruction::SendSigkillToPaneId(pane_id) = i {
+            Some(*pane_id)
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", sigkill_instruction));
 }
@@ -10378,17 +10240,14 @@ pub fn copy_to_clipboard_without_permission() {
     screen_thread.join().unwrap();
     teardown();
 
-    let copy_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
-                Some((text.clone(), *plugin_id))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let copy_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::CopyTextToClipboard(text, plugin_id) = i {
+            Some((text.clone(), *plugin_id))
+        } else {
+            None
+        }
+    });
 
     // Should be None because permission was denied
     assert_snapshot!(format!("{:#?}", copy_instruction));
@@ -10465,17 +10324,14 @@ pub fn run_action_without_permission() {
     screen_thread.join().unwrap();
     teardown();
 
-    let move_focus_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
-                Some((*client_id, notification_end.clone()))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let move_focus_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
+            Some((*client_id, notification_end.clone()))
+        } else {
+            None
+        }
+    });
 
     // Should be None because permission was denied
     assert_snapshot!(format!("{:#?}", move_focus_instruction));
@@ -10553,22 +10409,19 @@ pub fn generate_random_name_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Generated name") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Generated name") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -10644,22 +10497,19 @@ pub fn dump_layout_success_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Layout dump") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Layout dump") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -10735,22 +10585,19 @@ pub fn dump_layout_not_found_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Layout dump error") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Layout dump error") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -10826,22 +10673,19 @@ pub fn get_layout_dir_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Got layout folder") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Got layout folder") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -10917,17 +10761,14 @@ pub fn get_focused_pane_info_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let focused_pane_info_query = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::GetFocusedPaneInfo { .. } = i {
-                return Some(i.clone());
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let focused_pane_info_query = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::GetFocusedPaneInfo { .. } = i {
+            return Some(i);
+        } else {
+            None
+        }
+    });
     assert_snapshot!(format!("{:#?}", focused_pane_info_query));
 }
 
@@ -11003,16 +10844,13 @@ pub fn dump_session_layout_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let dump_layout_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
-                return Some(i.clone());
-            }
-            None
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let dump_layout_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
+            return Some(i);
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", dump_layout_instruction));
 }
 
@@ -11088,16 +10926,13 @@ pub fn dump_session_layout_for_tab_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let dump_layout_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
-                return Some(i.clone());
-            }
-            None
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let dump_layout_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::DumpLayoutToPlugin { .. } = i {
+            return Some(i);
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", dump_layout_instruction));
 }
 
@@ -11173,22 +11008,19 @@ pub fn parse_layout_success_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Parse success") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Parse success") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11264,22 +11096,19 @@ pub fn parse_layout_error_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Parse error:") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Parse error:") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11355,22 +11184,19 @@ pub fn save_layout_success_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Save layout") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Save layout") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11459,9 +11285,8 @@ pub fn save_layout_already_exists_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
@@ -11551,22 +11376,19 @@ pub fn save_layout_with_overwrite_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Save layout") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Save layout") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11642,22 +11464,19 @@ pub fn save_layout_invalid_kdl_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("invalid layout error") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("invalid layout error") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11746,9 +11565,8 @@ pub fn rename_layout_success_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
@@ -11844,22 +11662,19 @@ pub fn rename_layout_not_found_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Rename") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Rename") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -11961,9 +11776,8 @@ pub fn delete_layout_success_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard
         .iter()
         .rev()
         .find_map(|i| {
@@ -12053,22 +11867,19 @@ pub fn delete_layout_not_found_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Delete") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Delete") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -12144,22 +11955,19 @@ pub fn save_layout_path_traversal_blocked_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Path traversal") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Path traversal") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -12249,18 +12057,14 @@ pub fn edit_layout_plugin_command() {
     teardown();
 
     // this is the editor pane for the layout being spawned
-    let spawn_terminal_instruction =
-        received_pty_instructions
-            .lock()
-            .unwrap()
-            .iter()
-            .find_map(|i| {
-                if let PtyInstruction::SpawnInPlaceTerminal(..) = i {
-                    Some(i.clone())
-                } else {
-                    None
-                }
-            });
+    let received_pty_instructions_guard = received_pty_instructions.lock().unwrap();
+    let spawn_terminal_instruction = received_pty_instructions_guard.iter().find_map(|i| {
+        if let PtyInstruction::SpawnInPlaceTerminal(..) = i {
+            Some(i)
+        } else {
+            None
+        }
+    });
 
     assert_snapshot!(format!("{:#?}", spawn_terminal_instruction).replace(
         &format!("{}", temp_layout_folder.path().display().to_string()),
@@ -12340,17 +12144,14 @@ pub fn override_layout_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let override_layout_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::OverrideLayout(..) = i {
-                Some(i.clone())
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let override_layout_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::OverrideLayout(..) = i {
+            Some(i)
+        } else {
+            None
+        }
+    });
     assert_snapshot!(format!("{:#?}", override_layout_instruction));
 }
 
@@ -12431,22 +12232,19 @@ pub fn generate_random_name_permission_denied() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_with_name = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Generated name:") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_with_name = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Generated name:") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
 
     // Should be None because permission was denied
     assert_snapshot!(format!("{:#?}", plugin_bytes_with_name));
@@ -12529,22 +12327,19 @@ pub fn save_layout_permission_denied() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_with_save = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Save layout") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_with_save = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Save layout") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
 
     // Should be None because permission was denied
     assert_snapshot!(format!("{:#?}", plugin_bytes_with_save));
@@ -12632,9 +12427,8 @@ pub fn plugin_receives_config_change_event() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_renders = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_renders = received_screen_instructions_guard
         .iter()
         .filter_map(|i| {
             if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
@@ -12760,9 +12554,8 @@ pub fn plugin_does_not_receive_event_when_config_unchanged() {
     teardown();
 
     // Verify plugin did NOT receive PluginConfigurationChanged event
-    let plugin_renders = received_screen_instructions
-        .lock()
-        .unwrap()
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_renders = received_screen_instructions_guard
         .iter()
         .filter_map(|i| {
             if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
@@ -12865,24 +12658,19 @@ pub fn get_session_environment_variables_plugin_command() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("Got")
-                        && plugin_bytes.contains("environment variables")
-                    {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("Got") && plugin_bytes.contains("environment variables") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
 
@@ -12956,22 +12744,19 @@ pub fn set_pane_regex_highlights_via_plugin() {
     screen_thread.join().unwrap();
     teardown();
 
-    let highlight_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::SetPluginRegexHighlights {
-                pane_id,
-                plugin_id,
-                highlights,
-            } = i
-            {
-                Some((*pane_id, *plugin_id, highlights.clone()))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let highlight_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::SetPluginRegexHighlights {
+            pane_id,
+            plugin_id,
+            highlights,
+        } = i
+        {
+            Some((*pane_id, *plugin_id, highlights.clone()))
+        } else {
+            None
+        }
+    });
 
     assert!(
         highlight_instruction.is_some(),
@@ -13049,17 +12834,14 @@ pub fn clear_pane_highlights_via_plugin() {
     screen_thread.join().unwrap();
     teardown();
 
-    let clear_instruction = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::ClearPluginHighlights { pane_id, plugin_id } = i {
-                Some((*pane_id, *plugin_id))
-            } else {
-                None
-            }
-        });
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let clear_instruction = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::ClearPluginHighlights { pane_id, plugin_id } = i {
+            Some((*pane_id, *plugin_id))
+        } else {
+            None
+        }
+    });
 
     assert!(
         clear_instruction.is_some(),
@@ -13136,22 +12918,19 @@ pub fn highlight_clicked_event_delivered_to_plugin() {
     screen_thread.join().unwrap();
     teardown();
 
-    let plugin_bytes_event = received_screen_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
-                for plugin_render_asset in plugin_render_assets {
-                    let plugin_bytes = plugin_render_asset.bytes.clone();
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
-                    if plugin_bytes.contains("HighlightClicked") {
-                        return Some(plugin_bytes);
-                    }
+    let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
+    let plugin_bytes_event = received_screen_instructions_guard.iter().find_map(|i| {
+        if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+            for plugin_render_asset in plugin_render_assets {
+                let plugin_bytes = plugin_render_asset.bytes.clone();
+                let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                if plugin_bytes.contains("HighlightClicked") {
+                    return Some(plugin_bytes);
                 }
             }
-            None
-        });
+        }
+        None
+    });
     assert!(
         plugin_bytes_event.is_some(),
         "Expected PluginBytes containing 'HighlightClicked'"

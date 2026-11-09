@@ -74,20 +74,6 @@ impl AdmittedWrite {
     }
 }
 
-impl Clone for AdmittedWrite {
-    fn clone(&self) -> Self {
-        // The clone must not release the original reservation or signal its
-        // completion. `NotificationEnd`'s clone already drops the oneshot.
-        Self {
-            bytes: self.bytes.clone(),
-            terminal_id: self.terminal_id,
-            completion: self.completion.clone(),
-            budget: None,
-            handed_off: true,
-        }
-    }
-}
-
 impl Drop for AdmittedWrite {
     fn drop(&mut self) {
         if self.handed_off {
@@ -118,7 +104,7 @@ impl std::fmt::Debug for AdmittedWrite {
 // you write into their STDIN while reading from their STDOUT (I'm looking at you, vim)
 // while the same has not been observed to happen with resizes, it could conceivably happen and we have this
 // here anyway, so
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum PtyWriteInstruction {
     Write(AdmittedWrite),
     ResizePty(u32, u16, u16, Option<u16>, Option<u16>),
@@ -223,7 +209,10 @@ impl PendingQueue {
             write.offset = write.offset.saturating_add(written);
             self.remaining_bytes = self.remaining_bytes.saturating_sub(written);
             if write.offset >= write.bytes.len() {
-                self.writes.pop_front();
+                let mut finished = self.writes.pop_front().expect("front write");
+                if let Some(completion) = finished.completion.take() {
+                    completion.complete_recorded();
+                }
             }
         }
     }

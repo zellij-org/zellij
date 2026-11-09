@@ -160,9 +160,7 @@ impl TiledPanes {
         senders: ThreadSenders,
     ) -> Self {
         let active_panes = match senders.to_pty_writer.clone() {
-            Some(pty_writer) => {
-                ActivePanes::with_pty_writer(&os_api, pty_writer, senders.pty_ingress.clone())
-            },
+            Some(pty_writer) => ActivePanes::with_pty_writer(&os_api, pty_writer),
             None => ActivePanes::new(&os_api),
         };
         TiledPanes {

@@ -124,7 +124,7 @@ const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::fro
 pub(crate) const SERVER_INSTRUCTION_CHANNEL_CAPACITY: usize = 50;
 
 /// Instructions related to server-side application
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ServerInstruction {
     FirstClientConnected(
         CliAssets,
@@ -5861,7 +5861,9 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
-            pty_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
+            pty_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let pty = Pty::new(
                 pty_bus,
                 cli_assets.is_debug,
@@ -5891,7 +5893,9 @@ fn init_session(
                 Some(os_input.clone()),
             )
             .with_priority(screen_priority_receiver, &to_screen_priority);
-            screen_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
+            screen_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
@@ -5937,7 +5941,9 @@ fn init_session(
                 Some(&to_background_jobs),
                 None,
             );
-            plugin_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
+            plugin_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let engine = get_engine();
 
             let layout = layout.clone();
@@ -5986,7 +5992,9 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
-            pty_writer_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
+            pty_writer_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             || pty_writer_main(pty_writer_bus).fatal()
         })
         // infallible: thread spawn only fails under OS resource exhaustion
@@ -6007,7 +6015,9 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
-            background_jobs_bus.senders.pty_ingress = Some(Arc::clone(&pty_ingress));
+            background_jobs_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let web_server_base_url = web_server_base_url(
                 web_server_ip,
                 web_server_port,
@@ -6076,10 +6086,12 @@ fn init_session(
             to_screen_priority: Some(to_screen_priority),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
-            to_pty_writer: Some(to_pty_writer),
+            to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+                to_pty_writer,
+                Some(pty_ingress),
+            )),
             to_background_jobs: Some(to_background_jobs),
             to_server: Some(to_server),
-            pty_ingress: Some(pty_ingress),
             should_silently_fail: false,
         },
         default_shell,

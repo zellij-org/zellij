@@ -467,17 +467,7 @@ impl MockScreen {
         let mut config = self.config.clone();
         config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
@@ -553,17 +543,7 @@ impl MockScreen {
     pub fn run_without_tabs(&mut self) -> std::thread::JoinHandle<()> {
         let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
         std::thread::Builder::new()
@@ -593,17 +573,7 @@ impl MockScreen {
     ) -> std::thread::JoinHandle<()> {
         let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
@@ -768,6 +738,32 @@ impl MockScreen {
         ));
         self.last_opened_tab_index = Some(tab_index);
     }
+    fn screen_bus_with_session_budget(&mut self) -> Bus<ScreenInstruction> {
+        let mut screen_bus = Bus::new(
+            vec![self.screen_receiver.take().unwrap()],
+            Some(&self.to_screen.clone()),
+            Some(&self.to_pty.clone()),
+            Some(&self.to_plugin.clone()),
+            Some(&self.to_server.clone()),
+            Some(&self.to_pty_writer.clone()),
+            Some(&self.to_background_jobs.clone()),
+            Some(Box::new(self.os_input.clone())),
+        )
+        .should_silently_fail();
+        // Bus::new wraps the raw transport with no budget. The session sender
+        // already holds the budget these tests installed. Share that budget so
+        // the screen thread admits writes the same way production does.
+        if let Some(budget) = self
+            .session_metadata
+            .senders
+            .to_pty_writer
+            .as_ref()
+            .and_then(|sender| sender.budget())
+        {
+            screen_bus.senders.set_pty_write_budget(budget);
+        }
+        screen_bus
+    }
     pub fn teardown(&mut self, threads: Vec<std::thread::JoinHandle<()>>) {
         let _ = self.to_pty.send(PtyInstruction::Exit);
         let _ = self.to_pty_writer.send(PtyWriteInstruction::Exit);
@@ -842,10 +838,12 @@ impl MockScreen {
                 to_screen: Some(to_screen.clone()),
                 to_pty: Some(to_pty.clone()),
                 to_plugin: Some(to_plugin.clone()),
-                to_pty_writer: Some(to_pty_writer.clone()),
+                to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+                    to_pty_writer.clone(),
+                    Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+                )),
                 to_background_jobs: Some(to_background_jobs.clone()),
                 to_server: Some(to_server.clone()),
-                pty_ingress: None,
                 should_silently_fail: true,
             },
             default_shell: None,
@@ -967,16 +965,17 @@ macro_rules! log_actions_in_thread {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
+                    let (mut event, _err_ctx) = $receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    event.publish_logged_completion();
                     match event {
                         $exit_event => {
-                            log.lock().unwrap().push(event.clone());
+                            log.lock().unwrap().push(event);
                             break;
                         },
                         _ => {
-                            log.lock().unwrap().push(event.clone());
+                            log.lock().unwrap().push(event);
                         },
                     }
                 }
@@ -3041,16 +3040,18 @@ pub fn send_cli_send_keys_action_to_screen() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
     // here we assert only the write instructions to make sure they arrived properly and in
     // sequence to the pane
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -3077,14 +3078,16 @@ pub fn send_cli_ctrl_c_reaches_pty_writer() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -3111,14 +3114,16 @@ pub fn send_cli_ctrl_w_reaches_pty_writer() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -3940,15 +3945,17 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
     // here we should have 2 Write instructions, one for each pane
-    assert_snapshot!(format!("{:?}", received_write_instructions));
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -4178,15 +4185,14 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let new_pane_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let new_pane_instruction_guard = received_pty_instructions.lock().unwrap();
+    let new_pane_instruction =
+        new_pane_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::SpawnTerminal(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:?}", new_pane_instruction));
 }
@@ -4410,15 +4416,14 @@ pub fn send_cli_switch_mode_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
 
-    let switch_mode_action = received_server_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            ServerInstruction::ChangeMode(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let switch_mode_action_guard = received_server_instructions.lock().unwrap();
+    let switch_mode_action =
+        switch_mode_action_guard
+            .iter()
+            .find(|instruction| match instruction {
+                ServerInstruction::ChangeMode(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:?}", switch_mode_action));
 }
@@ -4631,21 +4636,15 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -4825,21 +4824,20 @@ pub fn send_cli_rename_tab() {
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let plugin_rename_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates
-                .iter()
-                .find(|u| match u {
-                    (_, _, Event::TabUpdate(..)) => true,
-                    _ => false,
-                })
-                .is_some(),
-            _ => false,
-        })
-        .cloned();
+    let plugin_rename_tab_instruction_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_rename_tab_instruction =
+        plugin_rename_tab_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PluginInstruction::Update(updates) => updates
+                    .iter()
+                    .find(|u| match u {
+                        (_, _, Event::TabUpdate(..)) => true,
+                        _ => false,
+                    })
+                    .is_some(),
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", plugin_rename_tab_instruction))
 }
 
@@ -4876,21 +4874,20 @@ pub fn send_cli_undo_rename_tab() {
     send_cli_action_to_server(&session_metadata, undo_rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let plugin_undo_rename_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates
-                .iter()
-                .find(|u| match u {
-                    (_, _, Event::TabUpdate(..)) => true,
-                    _ => false,
-                })
-                .is_some(),
-            _ => false,
-        })
-        .cloned();
+    let plugin_undo_rename_tab_instruction_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_undo_rename_tab_instruction =
+        plugin_undo_rename_tab_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PluginInstruction::Update(updates) => updates
+                    .iter()
+                    .find(|u| match u {
+                        (_, _, Event::TabUpdate(..)) => true,
+                        _ => false,
+                    })
+                    .is_some(),
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", plugin_undo_rename_tab_instruction))
 }
 
@@ -4913,15 +4910,14 @@ pub fn send_cli_query_tab_names_action() {
     send_cli_action_to_server(&session_metadata, query_tab_names, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
-    let log_tab_names_instruction = received_server_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            ServerInstruction::Log(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let log_tab_names_instruction_guard = received_server_instructions.lock().unwrap();
+    let log_tab_names_instruction =
+        log_tab_names_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                ServerInstruction::Log(..) => true,
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", log_tab_names_instruction));
 }
 
@@ -4956,15 +4952,14 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let pty_fill_plugin_cwd_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::FillPluginCwd(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let pty_fill_plugin_cwd_instruction_guard = received_pty_instructions.lock().unwrap();
+    let pty_fill_plugin_cwd_instruction =
+        pty_fill_plugin_cwd_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::FillPluginCwd(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", pty_fill_plugin_cwd_instruction));
 }
@@ -5019,9 +5014,8 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
 
-    let plugin_load_instruction_sent = received_plugin_instructions
-        .lock()
-        .unwrap()
+    let plugin_load_instruction_sent_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_load_instruction_sent = plugin_load_instruction_sent_guard
         .iter()
         .find(|instruction| match instruction {
             PluginInstruction::Load(..) => true,
@@ -6545,17 +6539,17 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let spawn_in_place_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnInPlaceTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let spawn_in_place_instruction = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter().find(|instruction| {
+                matches!(instruction, PtyInstruction::SpawnInPlaceTerminal(..))
+            })
+        )
+    };
 
-    assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
+    assert_snapshot!(spawn_in_place_instruction);
 }
 
 #[test]
@@ -6598,15 +6592,14 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let spawn_in_place_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnInPlaceTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let spawn_in_place_instruction_guard = received_pty_instructions.lock().unwrap();
+    let spawn_in_place_instruction =
+        spawn_in_place_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::SpawnInPlaceTerminal(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
 }
@@ -6644,15 +6637,14 @@ pub fn send_cli_launch_or_focus_plugin_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let fill_plugin_cwd_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::FillPluginCwd(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let fill_plugin_cwd_instruction_guard = received_pty_instructions.lock().unwrap();
+    let fill_plugin_cwd_instruction =
+        fill_plugin_cwd_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::FillPluginCwd(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", fill_plugin_cwd_instruction));
 }
@@ -9379,21 +9371,15 @@ pub fn send_cli_new_tab_action_with_layout_string() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -9434,21 +9420,15 @@ pub fn send_cli_new_tab_action_with_layout_string_and_name() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -10010,7 +9990,10 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
 
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     bus.senders.to_server = Some(SenderWithContext::new(server_tx));
-    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+        SenderWithContext::new(pty_writer_tx),
+        Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+    ));
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
 
@@ -10317,6 +10300,8 @@ fn a_resume_failure_still_releases_the_slot_and_dispatches_the_next_forward() {
     tab.senders.should_silently_fail = false;
     tab.senders
         .replace_to_pty_writer(SenderWithContext::new(to_pty_writer));
+    tab.senders
+        .set_pty_write_budget(Arc::new(crate::pty_ingress::PtyIngressBudget::new()));
 
     let result = screen.handle_forwarded_reply_from_host(first_token, b"reply".to_vec());
     assert!(result.is_err(), "the failed PTY write must surface");
@@ -11186,7 +11171,10 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
 
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     bus.senders.to_plugin = Some(SenderWithContext::new(plugin_tx));
-    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+        SenderWithContext::new(pty_writer_tx),
+        Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+    ));
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
 
@@ -16068,7 +16056,10 @@ mod nested_hint_reporting {
                 create_new_screen_with_capture(size, true, true, true, true);
             let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
                 channels::unbounded();
-            screen.bus.senders.to_pty_writer = Some(SenderWithContext::new(to_pty_writer));
+            screen.bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+                SenderWithContext::new(to_pty_writer),
+                Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+            ));
             let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
                 channels::unbounded();
             screen.bus.senders.to_plugin = Some(SenderWithContext::new(to_plugin));
@@ -17361,6 +17352,90 @@ struct ScreenRunResult {
     plugin_instructions: Vec<PluginInstruction>,
 }
 
+trait PublishLoggedCompletion {
+    fn publish_logged_completion(&mut self) {}
+}
+
+impl PublishLoggedCompletion for PtyWriteInstruction {}
+
+impl PublishLoggedCompletion for PtyInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_pty_completion(self);
+    }
+}
+
+impl PublishLoggedCompletion for PluginInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_plugin_completion(self);
+    }
+}
+
+impl PublishLoggedCompletion for ServerInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_server_completion(self);
+    }
+}
+
+fn publish_owner(owner: &mut Option<crate::route::NotificationEnd>) {
+    if let Some(owner) = owner.as_mut() {
+        owner.publish_recorded();
+    }
+}
+
+fn publish_server_completion(instruction: &mut ServerInstruction) {
+    use ServerInstruction::*;
+    let owner = match instruction {
+        ClientExit(_, owner)
+        | DetachSession(_, owner)
+        | Log(_, _, owner)
+        | LogError(_, _, owner)
+        | SwitchSession(_, _, owner)
+        | SwitchSessionAndCloseCurrent(_, _, owner)
+        | HistoryMove(_, _, owner)
+        | ChangeMode(_, _, owner) => owner,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
+fn publish_pty_completion(instruction: &mut PtyInstruction) {
+    use PtyInstruction::*;
+    let owner = match instruction {
+        SpawnTerminal(_, _, _, _, _, owner, _, _) => owner,
+        OpenInPlaceEditor(_, _, _, owner) => owner,
+        NewTab(_, _, _, _, _, _, _, _, _, _, owner) => owner,
+        OverrideLayout(_, _, _, _, _, _, owner) => owner,
+        ClosePane(_, owner) | ClosePaneThatWasNotCreated(_, owner) => owner,
+        ReRunCommandInPane(_, _, owner) => owner,
+        DropToShellInPane { completion_tx, .. } => completion_tx,
+        SpawnInPlaceTerminal(_, _, _, _, owner, _) => owner,
+        DumpLayout(_, _, owner) => owner,
+        SaveSessionToDisk { completion_tx, .. } => completion_tx,
+        FillPluginCwd(_, _, _, _, _, _, _, _, _, _, _, _, _, owner, _) => owner,
+        ListClientsMetadata(_, _, owner) => owner,
+        RunInBackground { completion_tx, .. } => completion_tx,
+        SetResurrectCommand { completion_tx, .. } => completion_tx,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
+fn publish_plugin_completion(instruction: &mut PluginInstruction) {
+    use PluginInstruction::*;
+    let owner = match instruction {
+        Load(_, _, _, _, _, _, _, _, _, _, _, _, _, _, owner, _) => owner,
+        Reload(_, _, _, _, _, owner, _) => owner,
+        NewTab(_, _, _, _, _, _, _, _, _, owner) => owner,
+        OverrideLayout(_, _, _, _, _, _, owner) => owner,
+        DumpLayout(_, _, owner) | ListClientsMetadata(_, _, owner) => owner,
+        KeybindPipe {
+            notification_end, ..
+        } => notification_end,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
 fn send_instructions_and_collect(
     size: Size,
     with_tab: bool,
@@ -17393,6 +17468,19 @@ fn send_instructions_and_collect(
     let _ = mock_screen.to_screen.send(make_instruction(completion));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, plugin_thread, screen_thread]);
+    // The logger keeps the instruction. NotificationEnd is not Clone, so the
+    // oneshot stays in that log until we publish it. The real pty and plugin
+    // threads drop the owner when they finish the instruction.
+    {
+        let mut pty_log = received_pty_instructions.lock().unwrap();
+        for instruction in pty_log.iter_mut() {
+            publish_pty_completion(instruction);
+        }
+        let mut plugin_log = received_plugin_instructions.lock().unwrap();
+        for instruction in plugin_log.iter_mut() {
+            publish_plugin_completion(instruction);
+        }
+    }
     let completion = completion_receiver
         .try_recv()
         .expect("the caller is notified that the action ended");

@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-expression: "format!(\"{:#?}\", spawn_in_place_instruction)"
+expression: spawn_in_place_instruction
 ---
 Some(
     SpawnInPlaceTerminal(

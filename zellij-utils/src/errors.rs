@@ -949,7 +949,7 @@ mod not_wasm {
     /// Custom panic handler/hook. Prints the [`ErrorContext`].
     pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: Option<&SenderWithContext<T>>)
     where
-        T: ErrorInstruction + Clone,
+        T: ErrorInstruction,
     {
         use std::{process, thread};
         let thread = thread::current();

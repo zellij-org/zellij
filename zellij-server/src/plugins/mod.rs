@@ -60,7 +60,7 @@ pub struct DumpSessionLayoutResponse {
     pub metadata: Option<zellij_utils::data::LayoutMetadata>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float

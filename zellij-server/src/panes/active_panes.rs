@@ -3,23 +3,18 @@ use crate::tab::Pane;
 use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
-    pty_ingress::PtyIngressBudget,
     pty_writer::{AdmittedWrite, PtyWriteInstruction},
+    thread_bus::PtyWriteSender,
     ClientId,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
-use zellij_utils::channels::SenderWithContext;
 
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
-    pty_writer: Option<SenderWithContext<PtyWriteInstruction>>,
-    /// Same admission budget as `ThreadSenders::send_to_pty_writer`. `None`
-    /// keeps the direct send used when no budget was installed.
-    pty_ingress: Option<Arc<PtyIngressBudget>>,
+    pty_writer: Option<PtyWriteSender>,
 }
 
 impl std::fmt::Debug for ActivePanes {
@@ -36,17 +31,11 @@ impl ActivePanes {
             last_panes: HashMap::new(),
             os_api,
             pty_writer: None,
-            pty_ingress: None,
         }
     }
-    pub fn with_pty_writer(
-        os_api: &Box<dyn ServerOsApi>,
-        pty_writer: SenderWithContext<PtyWriteInstruction>,
-        pty_ingress: Option<Arc<PtyIngressBudget>>,
-    ) -> Self {
+    pub fn with_pty_writer(os_api: &Box<dyn ServerOsApi>, pty_writer: PtyWriteSender) -> Self {
         let mut active_panes = Self::new(os_api);
         active_panes.pty_writer = Some(pty_writer);
-        active_panes.pty_ingress = pty_ingress;
         active_panes
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
@@ -157,21 +146,12 @@ impl ActivePanes {
     fn send_focus_event(&self, terminal_id: u32, focus_event: String) {
         if let Some(pty_writer) = &self.pty_writer {
             let bytes = focus_event.into_bytes();
-            // Build the guard only after try_reserve. A failed send drops it,
-            // and that drop releases. Do not release again here.
-            let budget = if let Some(budget) = &self.pty_ingress {
-                if budget.try_reserve(terminal_id, bytes.len()).is_err() {
-                    return;
-                }
-                Some(Arc::clone(budget))
-            } else {
-                None
-            };
+            // Admission reserves before send and releases on a failed send.
             let _ = pty_writer.send(PtyWriteInstruction::Write(AdmittedWrite::new(
                 bytes,
                 terminal_id,
                 None,
-                budget,
+                None,
             )));
         } else {
             let _ = self
@@ -209,13 +189,14 @@ mod tests {
     use crate::panes::kitty_graphics::KittyImageStore;
     use crate::panes::sixel::SixelImageStore;
     use crate::panes::terminal_pane::TerminalPane;
+    use crate::pty_ingress::PtyIngressBudget;
     use crate::tab::test_panes::FocusReportingPane;
     use interprocess::local_socket::Stream as LocalSocketStream;
     use std::cell::RefCell;
     use std::path::PathBuf;
     use std::rc::Rc;
     use std::sync::{Arc, Mutex};
-    use zellij_utils::channels::{unbounded, ChannelWithContext};
+    use zellij_utils::channels::{unbounded, ChannelWithContext, SenderWithContext};
     use zellij_utils::data::{Palette, Style};
     use zellij_utils::errors::prelude::*;
     use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -357,10 +338,13 @@ mod tests {
         let mut panes = BTreeMap::from([(PaneId::Terminal(2), focus_reporting_pane(2))]);
         let (to_pty_writer, pty_writer_instructions): ChannelWithContext<PtyWriteInstruction> =
             unbounded();
+        let budget = Arc::new(crate::pty_ingress::PtyIngressBudget::new());
         let mut active_panes = ActivePanes::with_pty_writer(
             &boxed_os_api,
-            SenderWithContext::new(to_pty_writer),
-            None,
+            crate::thread_bus::PtyWriteSender::new(
+                SenderWithContext::new(to_pty_writer),
+                Some(budget),
+            ),
         );
 
         active_panes.insert(1, PaneId::Terminal(2), &mut panes);
@@ -427,8 +411,10 @@ mod tests {
             unbounded();
         let mut saturated_panes = ActivePanes::with_pty_writer(
             &boxed_os_api,
-            SenderWithContext::new(saturated_sender),
-            Some(Arc::clone(&saturated)),
+            crate::thread_bus::PtyWriteSender::new(
+                SenderWithContext::new(saturated_sender),
+                Some(Arc::clone(&saturated)),
+            ),
         );
         saturated_panes.insert(1, PaneId::Terminal(terminal_id), &mut panes);
         assert!(
@@ -444,8 +430,10 @@ mod tests {
         let (room_sender, room_instructions): ChannelWithContext<PtyWriteInstruction> = unbounded();
         let mut room_panes = ActivePanes::with_pty_writer(
             &boxed_os_api,
-            SenderWithContext::new(room_sender),
-            Some(Arc::clone(&room)),
+            crate::thread_bus::PtyWriteSender::new(
+                SenderWithContext::new(room_sender),
+                Some(Arc::clone(&room)),
+            ),
         );
         room_panes.insert(1, PaneId::Terminal(terminal_id), &mut panes);
         let (instruction, _) = room_instructions.try_recv().unwrap();

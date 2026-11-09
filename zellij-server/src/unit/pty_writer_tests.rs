@@ -2,7 +2,7 @@ use super::*;
 use crate::os_input_output::{AsyncReader, ServerOsApi, TerminalRunChangedBeforeWrite};
 use crate::panes::PaneId;
 use crate::pty_ingress::{PtyIngressBudget, AGGREGATE_LIMIT, PER_TERMINAL_LIMIT};
-use crate::thread_bus::{Bus, ThreadSenders};
+use crate::thread_bus::{Bus, PtyWriteSender, ThreadSenders};
 use interprocess::local_socket::Stream as LocalSocketStream;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -754,8 +754,7 @@ fn budgeted_senders(
     budget: Arc<PtyIngressBudget>,
 ) -> ThreadSenders {
     ThreadSenders {
-        to_pty_writer: Some(sender),
-        pty_ingress: Some(budget),
+        to_pty_writer: Some(PtyWriteSender::new(sender, Some(budget))),
         ..Default::default()
     }
 }
@@ -893,7 +892,7 @@ fn pty_ingress_exit_ahead_of_write_fails_the_inbox_write_without_sending_it() {
     let mock_clone = mock.clone();
     let (mut bus, sender) = make_test_bus(mock);
     let budget = Arc::new(PtyIngressBudget::new());
-    bus.senders.pty_ingress = Some(Arc::clone(&budget));
+    bus.senders.set_pty_write_budget(Arc::clone(&budget));
     let senders = budgeted_senders(sender, Arc::clone(&budget));
 
     senders
@@ -995,7 +994,7 @@ fn local_pending_limit_releases_the_ingress_reservation() {
     mock.set_behavior(1, WriteBehavior::AcceptNone);
     let (mut bus, sender) = make_test_bus(mock);
     let budget = Arc::new(PtyIngressBudget::new());
-    bus.senders.pty_ingress = Some(Arc::clone(&budget));
+    bus.senders.set_pty_write_budget(Arc::clone(&budget));
     // Held outside the writer so its reservation must survive queue settlement.
     budget.try_reserve(9, 100).unwrap();
 

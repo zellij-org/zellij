@@ -377,7 +377,7 @@ pub enum ClosePaneSource {
 }
 
 /// Instructions that can be sent to the [`Screen`].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     /// PTY output that belongs to one run of the pane's process.

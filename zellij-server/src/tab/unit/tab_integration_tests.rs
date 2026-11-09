@@ -848,6 +848,9 @@ fn create_new_tab_with_mock_pty_writer(
     let os_api = Box::new(FakeInputOutput::default());
     let mut senders = ThreadSenders::default().silently_fail_on_send();
     senders.replace_to_pty_writer(mock_pty_writer);
+    senders.set_pty_write_budget(std::sync::Arc::new(
+        crate::pty_ingress::PtyIngressBudget::new(),
+    ));
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();

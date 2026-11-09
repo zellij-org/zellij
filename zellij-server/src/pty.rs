@@ -71,7 +71,7 @@ pub enum ClientTabIndexOrPaneId {
 }
 
 /// Instructions related to PTYs (pseudoterminals).
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(
         Option<TerminalAction>,

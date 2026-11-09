@@ -1,9 +1,9 @@
 //! Byte budget for pty writes admitted onto the writer inbox.
 //!
 //! The inbox itself stays unbounded so control instructions are never blocked
-//! behind a full terminal. `ThreadSenders::send_to_pty_writer` reserves the
-//! backing length of a `Write` before that send, and the writer releases the
-//! same length when the write leaves the queue.
+//! behind a full terminal. `PtyWriteSender::send` reserves the backing length
+//! of a `Write` before that send, and the writer releases the same length
+//! when the write leaves the queue.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

@@ -1229,9 +1229,8 @@ mod tests {
             to_screen: Some(to_screen),
             to_plugin: Some(to_plugin),
             to_server: Some(to_server),
-            to_pty_writer: Some(to_pty_writer),
+            to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(to_pty_writer, None)),
             to_background_jobs: Some(to_background_jobs),
-            pty_ingress: None,
             should_silently_fail: false,
         };
 

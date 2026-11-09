@@ -18083,6 +18083,9 @@ fn install_pty_writer_capture(
     let (tx, rx) = unbounded();
     tab.senders
         .replace_to_pty_writer(SenderWithContext::new(tx));
+    tab.senders.set_pty_write_budget(std::sync::Arc::new(
+        crate::pty_ingress::PtyIngressBudget::new(),
+    ));
     rx
 }
 
@@ -18532,9 +18535,13 @@ fn create_tab_with_receivers_without_layout(
         to_pty: Some(SenderWithContext::new(to_pty)),
         to_plugin: Some(SenderWithContext::new(to_plugin)),
         to_server: Some(SenderWithContext::new(to_server)),
-        to_pty_writer: Some(SenderWithContext::new(to_pty_writer)),
+        to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+            SenderWithContext::new(to_pty_writer),
+            Some(std::sync::Arc::new(
+                crate::pty_ingress::PtyIngressBudget::new(),
+            )),
+        )),
         to_background_jobs: Some(SenderWithContext::new(to_background_jobs)),
-        pty_ingress: None,
         should_silently_fail,
     };
     let client_id = 1;
