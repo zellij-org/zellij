@@ -617,7 +617,10 @@ mod tests {
 
         assert_eq!((on_edge.x, on_edge.cols.as_usize()), (90, 30));
         assert_eq!((beyond.x, beyond.cols.as_usize()), (90, 30));
-        assert_eq!(on_edge.x + on_edge.cols.as_usize(), viewport.x + viewport.cols);
+        assert_eq!(
+            on_edge.x + on_edge.cols.as_usize(),
+            viewport.x + viewport.cols
+        );
     }
 
     #[test]

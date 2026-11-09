@@ -572,10 +572,7 @@ fn session_with_terminal_pane(terminal_id: u32) -> SessionLayoutMetadata {
     session_with_terminal_pane_run(terminal_id, None)
 }
 
-fn session_with_terminal_pane_run(
-    terminal_id: u32,
-    run: Option<Run>,
-) -> SessionLayoutMetadata {
+fn session_with_terminal_pane_run(terminal_id: u32, run: Option<Run>) -> SessionLayoutMetadata {
     let mut meta = SessionLayoutMetadata::default();
     let pane = crate::session_layout_metadata::PaneLayoutMetadata::new(
         PaneId::Terminal(terminal_id),
@@ -631,7 +628,6 @@ fn resurrect_command(command: &str, args: Vec<&str>, cwd: Option<&str>) -> Resur
     }
 }
 
-
 #[test]
 fn deliberate_launch_intent_is_not_replaced_by_observed_foreground() {
     // Layout/command panes carry Run::Command in invoked_with. A foreground
@@ -646,10 +642,8 @@ fn deliberate_launch_intent_is_not_replaced_by_observed_foreground() {
     let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
     set_active_terminal(&mut pty, 1, child_pid);
 
-    let mut meta = session_with_terminal_pane_run(
-        1,
-        run_command("opencode", vec!["-s", "ses_abc"]),
-    );
+    let mut meta =
+        session_with_terminal_pane_run(1, run_command("opencode", vec!["-s", "ses_abc"]));
     pty.populate_session_layout_metadata(&mut meta);
     let manifest: session_serialization::GlobalLayoutManifest = meta.into();
     let pane = manifest

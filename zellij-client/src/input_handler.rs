@@ -305,7 +305,10 @@ impl InputHandler {
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },
-                Err(err) => panic!("Encountered read error: {:?}", err),
+                Err(err) => {
+                    log::debug!("input instruction channel closed: {:?}", err);
+                    break;
+                },
             }
         }
     }
@@ -395,11 +398,11 @@ impl InputHandler {
         }
         match decoded {
             Some(NestedSessionMessage::Ping) => {
-                let _ = self.send_client_instructions.send(
-                    ClientInstruction::EmitNestedSessionFrame(
-                        nested_session::encode_payload(&NestedSessionMessage::Pong),
-                    ),
-                );
+                let _ =
+                    self.send_client_instructions
+                        .send(ClientInstruction::EmitNestedSessionFrame(
+                            nested_session::encode_payload(&NestedSessionMessage::Pong),
+                        ));
             },
             Some(_) => {
                 self.os_input

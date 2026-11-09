@@ -17,12 +17,12 @@ fn anonymous_images_receive_distinct_monotonically_increasing_internal_ids() {
     assert!(id_b > id_a);
     assert_eq!(id_b, id_a + 1);
     assert_eq!(store.image_count(), 2);
-    assert_eq!(store.total_bytes(), 32);
+    assert_eq!(store.total_bytes(), 2 * (16 + KITTY_IMAGE_METADATA_BYTES));
 }
 
 #[test]
 fn lru_zero_refcount_image_is_evicted_first_on_quota_overflow() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2000);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     let id_b = store.store_image(rgba_image(10, 10)).unwrap();
     let id_c = store.store_image(rgba_image(10, 10)).unwrap();
@@ -30,12 +30,12 @@ fn lru_zero_refcount_image_is_evicted_first_on_quota_overflow() {
     assert!(store.get(id_b).is_some());
     assert!(store.get(id_c).is_some());
     assert_eq!(store.image_count(), 2);
-    assert_eq!(store.total_bytes(), 800);
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
 }
 
 #[test]
 fn touch_updates_lru_order_for_eviction() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2000);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     let id_b = store.store_image(rgba_image(10, 10)).unwrap();
     store.touch(id_a);
@@ -44,12 +44,12 @@ fn touch_updates_lru_order_for_eviction() {
     assert!(store.get(id_b).is_none());
     assert!(store.get(id_c).is_some());
     assert_eq!(store.image_count(), 2);
-    assert_eq!(store.total_bytes(), 800);
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
 }
 
 #[test]
 fn refcounted_image_is_never_evicted_even_when_oldest() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2000);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id_a);
     let id_b = store.store_image(rgba_image(10, 10)).unwrap();
@@ -57,12 +57,12 @@ fn refcounted_image_is_never_evicted_even_when_oldest() {
     assert!(store.get(id_a).is_some());
     assert!(store.get(id_b).is_none());
     assert!(store.get(id_c).is_some());
-    assert_eq!(store.total_bytes(), 800);
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
 }
 
 #[test]
 fn single_image_exceeding_quota_is_refused_with_einval_and_store_unchanged() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(1500);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     let result = store.store_image(rgba_image(20, 20));
     match result {
@@ -70,10 +70,27 @@ fn single_image_exceeding_quota_is_refused_with_einval_and_store_unchanged() {
         Ok(_) => panic!("expected error"),
     }
     assert_eq!(store.image_count(), 1);
-    assert_eq!(store.total_bytes(), 400);
+    assert_eq!(store.total_bytes(), 400 + KITTY_IMAGE_METADATA_BYTES);
     assert!(store.get(id_a).is_some());
     let id_small = store.store_image(rgba_image(2, 2)).unwrap();
     assert_eq!(id_small, id_a + 1);
+}
+
+#[test]
+fn per_image_metadata_counts_toward_the_quota() {
+    let mut store = KittyImageStore::with_quota(1000);
+    // 122 RGBA pixels are 488 bytes; with the 512 byte metadata charge this
+    // image exactly fills the quota.
+    let id = store.store_image(rgba_image(122, 1)).unwrap();
+    assert_eq!(store.total_bytes(), 1000);
+
+    // One more pixel would fit by payload alone but not with its metadata.
+    match store.store_image(rgba_image(123, 1)) {
+        Err(err) => assert_eq!(err.code, KittyErrorCode::Einval),
+        Ok(_) => panic!("metadata must count toward the quota"),
+    }
+    assert_eq!(store.image_count(), 1);
+    assert!(store.get(id).is_some());
 }
 
 #[test]
@@ -86,7 +103,7 @@ fn free_with_positive_refcount_retains_data_and_removes_at_zero() {
     store.free(id_a);
     assert_eq!(store.refcount(id_a), Some(1));
     assert!(store.get(id_a).is_some());
-    assert_eq!(store.total_bytes(), 400);
+    assert_eq!(store.total_bytes(), 400 + KITTY_IMAGE_METADATA_BYTES);
     store.free(id_a);
     assert!(store.get(id_a).is_none());
     assert_eq!(store.image_count(), 0);
@@ -109,17 +126,20 @@ fn byte_accounting_matches_hand_computed_total_with_scaled_variants() {
     store.add_scaled_variant(id_a, first, vec![0; 120]);
     store.add_scaled_variant(id_a, second, vec![0; 60]);
     store.add_scaled_variant(id_a, first, vec![0; 100]);
-    assert_eq!(store.total_bytes(), 640);
+    assert_eq!(
+        store.total_bytes(),
+        2 * KITTY_IMAGE_METADATA_BYTES + 400 + 80 + 100 + 60
+    );
     assert_eq!(store.scaled_variant(id_a, first).unwrap().len(), 100);
     store.free(id_a);
-    assert_eq!(store.total_bytes(), 80);
+    assert_eq!(store.total_bytes(), KITTY_IMAGE_METADATA_BYTES + 80);
     store.free(id_b);
     assert_eq!(store.total_bytes(), 0);
 }
 
 #[test]
 fn remove_placement_ref_keeps_data_but_makes_image_evictable() {
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2000);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id_a);
     store.remove_placement_ref(id_a);
@@ -132,9 +152,12 @@ fn remove_placement_ref_keeps_data_but_makes_image_evictable() {
     assert!(store.get(id_b).is_some());
     assert!(store.get(id_c).is_some());
     store.add_placement_ref(id_c);
-    let refused = store.store_image(rgba_image(10, 10));
-    assert!(matches!(refused, Err(err) if err.code == KittyErrorCode::Einval));
-    assert_eq!(store.total_bytes(), 800);
+    let result = store.store_image(rgba_image(10, 10));
+    match result {
+        Err(err) => assert_eq!(err.code, KittyErrorCode::Einval),
+        Ok(_) => panic!("admission must fail when only referenced images remain"),
+    }
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
 }
 
 #[test]
@@ -156,12 +179,12 @@ fn store_image_rejects_when_referenced_images_fill_the_quota() {
     // Pin enough images to fill the quota: nothing is evictable, so the
     // next admission must fail and the retained bytes must stay within
     // the declared hard limit rather than silently exceeding it.
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(2500);
     let id_a = store.store_image(rgba_image(10, 10)).unwrap();
     let id_b = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id_a);
     store.add_placement_ref(id_b);
-    assert_eq!(store.total_bytes(), 800);
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
 
     let result = store.store_image(rgba_image(10, 10));
     match result {
@@ -170,7 +193,7 @@ fn store_image_rejects_when_referenced_images_fill_the_quota() {
     }
 
     // The store stays within quota and existing placements remain valid.
-    assert_eq!(store.total_bytes(), 800);
+    assert_eq!(store.total_bytes(), 2 * (400 + KITTY_IMAGE_METADATA_BYTES));
     assert!(store.get(id_a).is_some());
     assert!(store.get(id_b).is_some());
 
@@ -179,15 +202,19 @@ fn store_image_rejects_when_referenced_images_fill_the_quota() {
     // evictable. Once a placement is released, its image becomes
     // evictable and admission succeeds again.
     assert!(store.store_image(rgba_image(5, 5)).is_ok());
-    assert_eq!(store.total_bytes(), 900);
+    let with_small = 2 * (400 + KITTY_IMAGE_METADATA_BYTES) + (100 + KITTY_IMAGE_METADATA_BYTES);
+    assert_eq!(store.total_bytes(), with_small);
     assert!(store.store_image(rgba_image(10, 10)).is_err());
-    assert_eq!(store.total_bytes(), 900);
+    assert_eq!(store.total_bytes(), with_small);
     store.remove_placement_ref(id_a);
     let id_c = store.store_image(rgba_image(10, 10)).unwrap();
     assert!(store.get(id_a).is_none());
     assert!(store.get(id_b).is_some());
     assert!(store.get(id_c).is_some());
-    assert_eq!(store.total_bytes(), 900);
+    assert_eq!(
+        store.total_bytes(),
+        2 * (400 + KITTY_IMAGE_METADATA_BYTES) + (100 + KITTY_IMAGE_METADATA_BYTES)
+    );
 }
 
 #[test]
@@ -196,10 +223,10 @@ fn variant_growth_on_referenced_image_is_bounded_and_regenerable() {
     // only whole unreferenced images were evictable. Now the oldest
     // derived entries are evicted to stay inside the quota, and an
     // evicted variant is regenerated from the base raster on demand.
-    let mut store = KittyImageStore::with_quota(1000);
+    let mut store = KittyImageStore::with_quota(3000);
     let id = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id);
-    assert_eq!(store.total_bytes(), 400);
+    assert_eq!(store.total_bytes(), 400 + KITTY_IMAGE_METADATA_BYTES);
 
     let key = |n: usize| super::ScaledImageKey {
         source: crate::panes::sixel::PixelRect::new(0, 0, 10, 10),
@@ -209,7 +236,7 @@ fn variant_growth_on_referenced_image_is_bounded_and_regenerable() {
         store.add_scaled_variant(id, key(n), vec![0; n * n * 4]);
     }
     assert!(
-        store.total_bytes() <= 1000,
+        store.total_bytes() <= 3000,
         "derived data must stay within the quota, got {}",
         store.total_bytes()
     );
@@ -225,7 +252,7 @@ fn variant_growth_on_referenced_image_is_bounded_and_regenerable() {
 
     // A regeneration that cannot be retained still returns the bytes so
     // the render stays correct while the quota holds.
-    assert!(store.total_bytes() <= 1000);
+    assert!(store.total_bytes() <= 3000);
 }
 
 #[test]
@@ -272,7 +299,7 @@ fn rgb24_images_are_normalized_to_rgba_at_store_time() {
         image.rgba,
         vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
     );
-    assert_eq!(store.total_bytes(), 16);
+    assert_eq!(store.total_bytes(), 16 + KITTY_IMAGE_METADATA_BYTES);
 }
 
 #[test]
@@ -307,7 +334,7 @@ fn a_large_insert_over_many_small_variants_evicts_in_a_single_pass() {
 
 #[test]
 fn eviction_of_derived_entries_removes_the_least_recently_used_first() {
-    let mut store = KittyImageStore::with_quota(3200);
+    let mut store = KittyImageStore::with_quota(3700);
     let id = store.store_image(rgba_image(10, 10)).unwrap();
     store.add_placement_ref(id);
     let key = |n: usize| super::ScaledImageKey {
@@ -319,7 +346,7 @@ fn eviction_of_derived_entries_removes_the_least_recently_used_first() {
     // a hit makes key(10) newer than key(11)
     store.scaled_variant_or_regenerate(id, key(10)).unwrap();
     store.add_scaled_variant(id, key(12), vec![0; 2100]);
-    assert!(store.total_bytes() <= 3200);
+    assert!(store.total_bytes() <= 3700);
     assert!(store.has_scaled_variant(id, key(10)));
     assert!(store.has_scaled_variant(id, key(12)));
     assert!(!store.has_scaled_variant(id, key(11)));

@@ -8921,9 +8921,15 @@ impl Screen {
             &[],
             &BTreeMap::new(),
         );
-        let running_session_exists = zellij_utils::sessions::get_sessions()
-            .map(|sessions| sessions.iter().any(|(session, _)| session == &name))
-            .unwrap_or(false);
+        let running_session_exists = match zellij_utils::sessions::session_exists(&name) {
+            Ok(exists) => exists,
+            Err(error) => {
+                return Ok(Err(format!(
+                    "A session using this name exists but could not be confirmed responsive: {}",
+                    std::io::Error::from(error)
+                )));
+            },
+        };
         if self.peer_sessions_cache.contains_key(&name) || running_session_exists {
             return Ok(Err("A session by this name already exists.".to_owned()));
         }
@@ -8937,22 +8943,45 @@ impl Screen {
         let err_context = || format!("Failed to rename session");
         let old_session_name = self.session_name.clone();
 
-        self.session_name = name.clone();
-        self.default_mode_info.session_name = Some(name.clone());
-        for (_client_id, mode_info) in self.mode_info.iter_mut() {
-            mode_info.session_name = Some(name.clone());
+        if let Err(error) = zellij_utils::sessions::rename_session(&self.session_id, &name) {
+            return Ok(Err(error));
         }
-        for (_, tab) in self.tabs.iter_mut() {
-            tab.rename_session(name.clone()).with_context(err_context)?;
+        let apply_rename = (|| -> Result<()> {
+            self.session_name = name.clone();
+            self.default_mode_info.session_name = Some(name.clone());
+            for (_client_id, mode_info) in self.mode_info.iter_mut() {
+                mode_info.session_name = Some(name.clone());
+            }
+            for (_, tab) in self.tabs.iter_mut() {
+                tab.rename_session(name.clone()).with_context(err_context)?;
+            }
+            let clients_with_drafts: Vec<ClientId> =
+                self.session_rename_drafts.keys().copied().collect();
+            for client_id in clients_with_drafts {
+                self.refresh_displayed_session_name(client_id)
+                    .with_context(err_context)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = apply_rename {
+            self.session_name = old_session_name.clone();
+            self.default_mode_info.session_name = Some(old_session_name.clone());
+            for (_client_id, mode_info) in self.mode_info.iter_mut() {
+                mode_info.session_name = Some(old_session_name.clone());
+            }
+            for (_, tab) in self.tabs.iter_mut() {
+                let _ = tab.rename_session(old_session_name.clone());
+            }
+            if let Err(rollback_error) =
+                zellij_utils::sessions::rename_session(&self.session_id, &old_session_name)
+            {
+                log::error!(
+                    "Failed to roll back session index after a failed rename: {}",
+                    rollback_error
+                );
+            }
+            return Err(error);
         }
-        let clients_with_drafts: Vec<ClientId> =
-            self.session_rename_drafts.keys().copied().collect();
-        for client_id in clients_with_drafts {
-            self.refresh_displayed_session_name(client_id)
-                .with_context(err_context)?;
-        }
-
-        zellij_utils::sessions::rename_session(&self.session_id, &name);
 
         self.peer_sessions_cache.remove(&old_session_name);
         self.log_and_report_session_state()

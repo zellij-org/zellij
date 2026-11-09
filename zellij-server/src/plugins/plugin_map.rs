@@ -14,7 +14,7 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use zellij_utils::{
     data::InputMode,
     data::{Event, EventType, RenderResponse, SlotKind},
@@ -33,7 +33,7 @@ pub type PluginKey = (PluginId, ClientId);
 pub type PluginAssets = (
     Arc<Mutex<RunningPlugin>>,
     Arc<Mutex<Subscriptions>>,
-    HashMap<String, UnboundedSender<MessageToWorker>>,
+    HashMap<String, Sender<MessageToWorker>>,
 );
 pub type RemovedPluginAssets = HashMap<PluginKey, PluginAssets>;
 
@@ -267,7 +267,7 @@ impl PluginMap {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: &str,
-    ) -> Option<UnboundedSender<MessageToWorker>> {
+    ) -> Option<Sender<MessageToWorker>> {
         if let Some((_, _, workers)) = self.shared_assets.get(&plugin_id) {
             return workers.get(&format!("{}_worker", worker_name)).cloned();
         }
@@ -363,16 +363,25 @@ impl PluginMap {
         client_id: ClientId,
         running_plugin: Arc<Mutex<RunningPlugin>>,
         subscriptions: Arc<Mutex<Subscriptions>>,
-        running_workers: HashMap<String, UnboundedSender<MessageToWorker>>,
+        running_workers: HashMap<String, Sender<MessageToWorker>>,
     ) {
         self.plugin_quarantine_flags.insert(
             (plugin_id, client_id),
             running_plugin.lock().unwrap().quarantine_flag(),
         );
-        self.plugin_assets.insert(
+        let replaced = self.plugin_assets.insert(
             (plugin_id, client_id),
             (running_plugin, subscriptions, running_workers),
         );
+        if let Some((replaced_plugin, _subscriptions, workers)) = replaced {
+            // A new instance for this (plugin, client) replaces the old one. Retire the old load
+            // before any queued callback can reach it, and stop its workers so they do not keep
+            // running against a PluginEnv that no longer owns this key.
+            replaced_plugin.lock().unwrap().store.data().retire_load();
+            for (_worker_name, worker_sender) in workers {
+                let _ = worker_sender.try_send(MessageToWorker::Exit);
+            }
+        }
     }
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
         self.plugin_metadata
@@ -566,6 +575,11 @@ impl PluginEnv {
         self.load_alive.store(false, Ordering::Release);
     }
 
+    /// Whether this load may still execute guest callbacks and host commands.
+    pub fn is_alive(&self) -> bool {
+        self.load_alive.load(Ordering::Acquire) && !self.quarantined.load(Ordering::SeqCst)
+    }
+
     pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
         self.permissions.lock().unwrap().replace(permissions);
     }
@@ -662,6 +676,9 @@ impl RunningPlugin {
     }
     pub fn is_quarantined(&self) -> bool {
         self.quarantined.load(Ordering::SeqCst)
+    }
+    pub fn is_active(&self) -> bool {
+        self.store.data().is_alive()
     }
 }
 

@@ -67,16 +67,15 @@ pub fn register_session(name: &str) -> String {
 }
 
 /// Record a session's new name. Its socket and cache folder keep their id-based names.
-pub fn rename_session(session_id: &str, new_name: &str) {
-    if let Err(e) = SessionIndex::open_default()
+pub fn rename_session(session_id: &str, new_name: &str) -> Result<(), String> {
+    SessionIndex::open_default()
         .and_then(|index| index.rename_by_id(session_id, new_name, now_secs()))
-    {
-        log::error!(
-            "Failed to record the new name of session {:?} in the session index: {}",
-            session_id,
-            e
-        );
-    }
+        .map_err(|e| {
+            format!(
+                "Failed to record the new name of session {:?} in the session index: {}",
+                session_id, e
+            )
+        })
 }
 
 /// The id of the session with this name, if the session index knows it. Callers fall back to the
@@ -774,33 +773,77 @@ pub fn get_active_session() -> ActiveSession {
     }
 }
 
-pub fn kill_session(name: &str) {
-    let path = &*resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-    if let Err(e) = send_kill_session(path) {
-        eprintln!("Error occurred: {:?}", e);
-        process::exit(1);
+/// Filter saved sessions down to those that delete-all-sessions may remove.
+///
+/// Unresponsive sockets are active for this purpose unless `force` explicitly
+/// authorizes killing and deleting them.
+pub fn resurrectable_sessions_to_delete(
+    force: bool,
+    observation: &SessionObservation,
+    resurrectable_sessions: Vec<(String, Duration)>,
+) -> Vec<(String, Duration)> {
+    if force {
+        return resurrectable_sessions;
+    }
+    let active_sessions: std::collections::BTreeSet<&str> = observation
+        .responsive
+        .iter()
+        .chain(observation.unknown.iter())
+        .map(|(name, _)| name.as_str())
+        .collect();
+    resurrectable_sessions
+        .into_iter()
+        .filter(|(name, _)| !active_sessions.contains(name.as_str()))
+        .collect()
+}
+
+pub fn send_kill_session(path: &Path, timeout: Duration) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use interprocess::local_socket::prelude::*;
+        // Both pipes connect together so the server pairs them by process.
+        // The timeout bounds the reply read. connect_pair itself has no deadline yet.
+        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
+        IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+            .send_client_msg(ClientToServerMsg::KillSession)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let _ = reply_stream.set_recv_timeout(Some(timeout));
+        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+            IpcReceiverWithContext::new(reply_stream);
+        let _ = receiver.recv_server_msg();
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let stream = crate::consts::ipc_connect_with_timeout(path, timeout)?;
+        IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+            .send_client_msg(ClientToServerMsg::KillSession)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(())
     }
 }
 
-/// On Windows the server answers on the connection's reply pipe, and waiting for that answer
-/// keeps the request from being dropped before the server has read it.
-#[cfg(windows)]
-pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
-    let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
-    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-        .send_client_msg(ClientToServerMsg::KillSession);
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-        IpcReceiverWithContext::new(reply_stream);
-    let _ = receiver.recv_server_msg();
-    Ok(())
+fn report_kill_session_error(action: &str, name: &str, error: &io::Error) {
+    if matches!(
+        error.kind(),
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+    ) {
+        eprintln!(
+            "Timed out while trying to {} session {:?}; the session socket did not respond \
+             and its state was left intact.",
+            action, name
+        );
+    } else {
+        eprintln!("Failed to {} session {:?}: {}", action, name, error);
+    }
 }
 
-#[cfg(not(windows))]
-pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
-    let stream = crate::consts::ipc_connect(path)?;
-    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-        .send_client_msg(ClientToServerMsg::KillSession);
-    Ok(())
+pub fn kill_session(name: &str) {
+    let path = resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
+    if let Err(e) = send_kill_session(&path, SESSION_PROBE_TIMEOUT) {
+        report_kill_session_error("kill", name, &e);
+        process::exit(1);
+    }
 }
 
 pub fn delete_session(name: &str, force: bool) {
@@ -811,7 +854,19 @@ pub fn delete_session(name: &str, force: bool) {
         process::exit(1);
     }
     if force {
-        let _ = send_kill_session(&ZELLIJ_SOCK_DIR.join(&session_id));
+        let path = ZELLIJ_SOCK_DIR.join(&session_id);
+        if let Err(e) = send_kill_session(&path, SESSION_PROBE_TIMEOUT) {
+            if !matches!(
+                e.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) {
+                report_kill_session_error("force-delete", name, &e);
+                eprintln!(
+                    "Continuing because --force explicitly permits deleting session {:?}.",
+                    name
+                );
+            }
+        }
     }
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
@@ -1549,44 +1604,53 @@ pub fn read_live_session_states(
     sock_dir: &Path,
     session_info_cache_dir: &Path,
 ) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names: Vec<(String, Duration)> = vec![];
-    let mut session_infos_on_machine = BTreeMap::new();
-    if let Ok(files) = fs::read_dir(sock_dir) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if !crate::consts::is_app_socket_name(&file_name)
-                        && file
-                            .file_type()
-                            .map(|file_type| is_ipc_socket(&file_type))
-                            .unwrap_or(false)
-                    {
-                        let creation_time = std::fs::metadata(&file.path())
-                            .ok()
-                            .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                            .and_then(|d| d.elapsed().ok())
-                            .unwrap_or_default();
-                        other_session_names.push((file_name, creation_time));
-                    }
-                }
-            }
-        });
-    }
+    read_live_session_states_with_timeout(
+        current_session_name,
+        sock_dir,
+        session_info_cache_dir,
+        SESSION_PROBE_TIMEOUT,
+    )
+}
 
+#[doc(hidden)]
+pub fn read_live_session_states_with_timeout(
+    current_session_name: &str,
+    sock_dir: &Path,
+    session_info_cache_dir: &Path,
+    timeout: Duration,
+) -> BTreeMap<String, SessionInfo> {
     let names_by_id = session_index::session_names_by_id();
-    for (session_id, creation_time) in other_session_names {
-        let session_cache_file_name = session_info_cache_dir
-            .join(&session_id)
-            .join("session-metadata.kdl");
-        if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
-            if let Ok(mut session_info) =
-                SessionInfo::from_string(&raw_session_info, current_session_name)
-            {
-                session_info.creation_time = creation_time;
-                session_infos_on_machine
-                    .insert(session_name(&names_by_id, session_id), session_info);
-            }
+    let candidates = fs::read_dir(sock_dir)
+        .map(|files| {
+            files
+                .flatten()
+                .filter_map(|file| {
+                    let id = session_socket_id(&file)?;
+                    let name = session_name(&names_by_id, id.clone());
+                    let age = session_age(&file);
+                    Some((id.clone(), name, (id, age)))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let observed = observe_sessions_with(candidates, timeout, |id, remaining| {
+        assert_socket_in(sock_dir, id, remaining)
+    });
+
+    let mut session_infos_on_machine = BTreeMap::new();
+    for (name, (id, creation_time)) in observed.responsive.into_iter().chain(observed.unknown) {
+        if session_infos_on_machine.contains_key(&name) {
+            continue;
         }
+        let session_cache_file_name = session_info_cache_dir.join(id).join("session-metadata.kdl");
+        let mut session_info = fs::read_to_string(&session_cache_file_name)
+            .ok()
+            .and_then(|raw| SessionInfo::from_string(&raw, current_session_name).ok())
+            .unwrap_or_else(|| SessionInfo::new(name.clone()));
+        session_info.name = name.clone();
+        session_info.is_current_session = name == current_session_name;
+        session_info.creation_time = creation_time;
+        session_infos_on_machine.insert(name, session_info);
     }
     session_infos_on_machine
 }
@@ -2445,6 +2509,131 @@ mod session_probe_tests {
             "live probe overran its deadline"
         );
         server.join().unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod live_session_state_tests {
+    use super::*;
+    use interprocess::local_socket::traits::Listener as _;
+    use std::os::unix::net::UnixListener as StdUnixListener;
+    use std::thread;
+
+    fn answer_one_probe(path: PathBuf) -> thread::JoinHandle<()> {
+        let listener = crate::consts::ipc_bind(&path).unwrap();
+        thread::spawn(move || {
+            let stream = listener.accept().expect("accept session probe");
+            let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+                IpcReceiverWithContext::new(stream);
+            let (msg, _) = receiver.recv_client_msg().expect("session probe");
+            assert!(matches!(msg, ClientToServerMsg::ConnStatus));
+            let mut sender: IpcSenderWithContext<ServerToClientMsg> =
+                receiver.get_sender().expect("probe reply sender");
+            sender
+                .send_server_msg(ServerToClientMsg::Connected)
+                .expect("probe reply");
+        })
+    }
+
+    fn write_metadata(cache_dir: &Path, id: &str, info: &SessionInfo) {
+        let folder = cache_dir.join(id);
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("session-metadata.kdl"), info.to_string()).unwrap();
+    }
+
+    #[test]
+    fn a_stale_socket_path_is_not_reported_live() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        let cache_dir = tempfile::tempdir().unwrap();
+        let socket = sock_dir.path().join("crashed-session");
+        {
+            let _listener = StdUnixListener::bind(&socket).unwrap();
+        }
+        assert!(socket.exists(), "std listener leaves its pathname behind");
+        write_metadata(
+            cache_dir.path(),
+            "crashed-session",
+            &SessionInfo::new("crashed-session".to_owned()),
+        );
+
+        let states = read_live_session_states_with_timeout(
+            "",
+            sock_dir.path(),
+            cache_dir.path(),
+            Duration::from_millis(200),
+        );
+        assert!(states.is_empty());
+    }
+
+    #[test]
+    fn an_unresponsive_socket_stays_unknown_and_is_synthesized_without_metadata() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        let cache_dir = tempfile::tempdir().unwrap();
+        let _listener = StdUnixListener::bind(sock_dir.path().join("wedged")).unwrap();
+
+        let states = read_live_session_states_with_timeout(
+            "current",
+            sock_dir.path(),
+            cache_dir.path(),
+            Duration::from_millis(50),
+        );
+        let info = states
+            .get("wedged")
+            .expect("unknown sessions must not be treated as absent");
+        assert_eq!(info.name, "wedged");
+        assert!(!info.is_current_session);
+    }
+
+    #[test]
+    fn a_responsive_session_without_metadata_is_still_listed() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        let cache_dir = tempfile::tempdir().unwrap();
+        let socket = sock_dir.path().join("fresh");
+        let server = answer_one_probe(socket);
+
+        let states = read_live_session_states_with_timeout(
+            "fresh",
+            sock_dir.path(),
+            cache_dir.path(),
+            Duration::from_secs(2),
+        );
+        let info = states.get("fresh").expect("responsive session listed");
+        assert_eq!(info.name, "fresh");
+        assert!(info.is_current_session);
+        assert!(info.tabs.is_empty());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn non_force_delete_treats_unresponsive_sessions_as_active() {
+        let observation = SessionObservation {
+            responsive: vec![("live".to_owned(), Duration::from_secs(1))],
+            unknown: vec![("wedged".to_owned(), Duration::from_secs(2))],
+        };
+        let resurrectable = vec![
+            ("live".to_owned(), Duration::from_secs(1)),
+            ("wedged".to_owned(), Duration::from_secs(2)),
+            ("dead".to_owned(), Duration::from_secs(3)),
+        ];
+
+        assert_eq!(
+            resurrectable_sessions_to_delete(false, &observation, resurrectable),
+            vec![("dead".to_owned(), Duration::from_secs(3))]
+        );
+    }
+
+    #[test]
+    fn force_delete_includes_unresponsive_sessions() {
+        let observation = SessionObservation {
+            responsive: vec![],
+            unknown: vec![("wedged".to_owned(), Duration::from_secs(2))],
+        };
+        let resurrectable = vec![("wedged".to_owned(), Duration::from_secs(2))];
+
+        assert_eq!(
+            resurrectable_sessions_to_delete(true, &observation, resurrectable.clone()),
+            resurrectable
+        );
     }
 }
 

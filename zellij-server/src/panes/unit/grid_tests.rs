@@ -1,5 +1,6 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
+use crate::panes::kitty_graphics::store::KITTY_IMAGE_METADATA_BYTES;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use crate::vt_parser;
@@ -7588,6 +7589,10 @@ fn rgba_raster(width: usize, height: usize) -> Vec<u8> {
     (0..width * height * 4).map(|i| (i % 251) as u8).collect()
 }
 
+fn kitty_payload_bytes(store: &KittyImageStore) -> usize {
+    store.total_bytes() - store.image_count() * KITTY_IMAGE_METADATA_BYTES
+}
+
 fn kitty_placement_id_set(grid: &Grid) -> Vec<(u32, u32)> {
     let mut ids: Vec<(u32, u32)> = grid
         .kitty_placements()
@@ -7769,7 +7774,7 @@ fn kitty_delete_all_visible() {
     let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7777,7 +7782,7 @@ fn kitty_delete_all_visible() {
         &kitty_apc("a=d", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7791,7 +7796,7 @@ fn kitty_delete_all_visible() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![]);
     assert_eq!(kitty_image_store.borrow().image_count(), 0);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 0);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 0);
 }
 
 #[test]
@@ -7807,7 +7812,7 @@ fn kitty_delete_by_image_id() {
         &kitty_apc("a=d,d=i,i=2", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7831,7 +7836,7 @@ fn kitty_delete_by_image_id() {
         &kitty_apc("a=d,d=i,i=2,p=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 2)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 3200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 3200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7845,7 +7850,7 @@ fn kitty_delete_by_image_id() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 2);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7862,7 +7867,7 @@ fn kitty_delete_by_image_number() {
         &kitty_apc("a=T,f=24,s=10,v=20,I=7,C=1", &rgb_raster(10, 20)),
     );
     assert_eq!(grid.kitty_placement_count(), 4);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 8000);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7870,14 +7875,14 @@ fn kitty_delete_by_image_number() {
         &kitty_apc("a=d,d=n,I=7", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 8000);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
         &mut interceptor,
         &kitty_apc("a=d,d=N,I=7", b""),
     );
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
     assert_eq!(kitty_image_store.borrow().image_count(), 3);
 }
 
@@ -7894,7 +7899,7 @@ fn kitty_delete_cursor_intersecting() {
         &kitty_apc("a=d,d=c", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7908,7 +7913,7 @@ fn kitty_delete_cursor_intersecting() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 2);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 6400);
 }
 
 #[test]
@@ -7924,7 +7929,7 @@ fn kitty_delete_cell_intersecting() {
         &kitty_apc("a=d,d=p,x=11,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7937,7 +7942,7 @@ fn kitty_delete_cell_intersecting() {
         &kitty_apc("a=d,d=P,x=11,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7960,7 +7965,7 @@ fn kitty_delete_cell_with_z() {
         &kitty_apc("a=d,d=q,x=11,y=6,z=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7973,7 +7978,7 @@ fn kitty_delete_cell_with_z() {
         &kitty_apc("a=d,d=Q,x=11,y=6,z=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7989,7 +7994,7 @@ fn kitty_delete_column() {
         &kitty_apc("a=d,d=x,x=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -8002,7 +8007,7 @@ fn kitty_delete_column() {
         &kitty_apc("a=d,d=X,x=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -8018,7 +8023,7 @@ fn kitty_delete_row() {
         &kitty_apc("a=d,d=y,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -8031,7 +8036,7 @@ fn kitty_delete_row() {
         &kitty_apc("a=d,d=Y,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -8047,7 +8052,7 @@ fn kitty_delete_by_z_index() {
         &kitty_apc("a=d,d=z,z=-1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -8060,7 +8065,7 @@ fn kitty_delete_by_z_index() {
         &kitty_apc("a=d,d=Z,z=-1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 6400);
 }
 
 #[test]
@@ -8076,7 +8081,7 @@ fn kitty_delete_image_id_range() {
         &kitty_apc("a=d,d=r,x=1,y=2", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -8090,7 +8095,7 @@ fn kitty_delete_image_id_range() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 800);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 800);
 }
 
 #[test]
@@ -8130,7 +8135,7 @@ fn kitty_retransmit_to_existing_id_replaces_image() {
         &kitty_apc("a=T,f=32,s=4,v=4,i=1,C=1", &rgba_raster(4, 4)),
     );
     assert_eq!(grid.kitty_placement_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 64);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 64);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -8139,7 +8144,7 @@ fn kitty_retransmit_to_existing_id_replaces_image() {
     );
     assert_eq!(grid.kitty_placement_count(), 0);
     assert_eq!(kitty_image_store.borrow().image_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 16);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 16);
 }
 
 #[test]

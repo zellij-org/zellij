@@ -284,7 +284,10 @@ async fn handle_ws_control(
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let (client_os_api, is_structured) = {
-            let connection_table = state.connection_table.lock().unwrap_or_else(|p| p.into_inner());
+            let connection_table = state
+                .connection_table
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
             (
                 connection_table
                     .get_client_os_api(&deserialized_msg.web_client_id)
@@ -449,11 +452,11 @@ async fn handle_ws_terminal(
         client_channel(KEEPALIVE_CHANNEL_MAX_MESSAGES, KEEPALIVE_CHANNEL_MAX_BYTES);
     // One terminal websocket (and one session connection with the thread
     // listening to it) per client id: claim the id before starting anything.
-    let attached = state.connection_table.lock().unwrap_or_else(|p| p.into_inner()).attach_terminal(
-        &web_client_id,
-        is_structured_client,
-        stdout_channel_tx,
-    );
+    let attached = state
+        .connection_table
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .attach_terminal(&web_client_id, is_structured_client, stdout_channel_tx);
     let os_input = match attached {
         TerminalAttachOutcome::Attached(os_input) => os_input,
         TerminalAttachOutcome::UnknownClient => {
@@ -492,7 +495,11 @@ async fn handle_ws_terminal(
         os_input.clone(),
         state.connection_table.clone(),
         session_name.map(|p| p.0),
-        state.config.lock().unwrap_or_else(|p| p.into_inner()).clone(),
+        state
+            .config
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
         state.config_options.clone(),
         state.config_file_path.clone(),
         web_client_id.clone(),

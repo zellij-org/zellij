@@ -242,7 +242,10 @@ impl ClientConnectionBus {
 
     pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
         let Ok(serialized) = serde_json::to_string(&message) else {
-            log::error!("Failed to serialize control message for web client {}", self.web_client_id);
+            log::error!(
+                "Failed to serialize control message for web client {}",
+                self.web_client_id
+            );
             self.close_connection();
             return;
         };

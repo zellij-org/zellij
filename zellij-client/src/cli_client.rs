@@ -25,7 +25,11 @@ pub fn start_cli_client(
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         if let Err(e) = fs::create_dir_all(&sock_dir) {
-            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
             return 1;
         }
         if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
@@ -434,7 +438,11 @@ pub fn start_prompt_client(
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         if let Err(e) = fs::create_dir_all(&sock_dir) {
-            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
             return prompt::EXIT_ERROR;
         }
         if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
@@ -818,7 +826,11 @@ pub fn start_subscribe_client(
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         if let Err(e) = fs::create_dir_all(&sock_dir) {
-            eprintln!("Failed to create socket directory {}: {}", sock_dir.display(), e);
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
             return 1;
         }
         if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {

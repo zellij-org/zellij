@@ -3,7 +3,7 @@ use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
 use lazy_static::lazy_static;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmi::Engine;
@@ -14367,6 +14367,36 @@ pub fn global_attention_update_hides_the_command_text_without_pane_read_permissi
     let event = Event::GlobalAttentionUpdate(global_attention_with_command_text());
     assert!(!redacted(&WITHOUT_PANE_READ, event.clone()).contains("hunter2"));
     assert!(redacted(&WITH_PANE_READ, event).contains("hunter2"));
+}
+
+#[test]
+pub fn pane_and_session_updates_hide_terminal_commands_without_pane_read_permission() {
+    let mut pane = zellij_utils::data::PaneInfo {
+        title: "visible-title".to_owned(),
+        terminal_command: Some("deploy --token hunter2".to_owned()),
+        ..Default::default()
+    };
+    let pane_update = Event::PaneUpdate(zellij_utils::data::PaneManifest {
+        panes: HashMap::from([(0, vec![pane.clone()])]),
+    });
+    assert!(!redacted(&WITHOUT_PANE_READ, pane_update.clone()).contains("hunter2"));
+    assert!(redacted(&WITH_PANE_READ, pane_update).contains("hunter2"));
+
+    pane.title = "session-visible-title".to_owned();
+    let session_update = Event::SessionUpdate(
+        vec![zellij_utils::data::SessionInfo {
+            name: "current".to_owned(),
+            panes: zellij_utils::data::PaneManifest {
+                panes: HashMap::from([(0, vec![pane])]),
+            },
+            ..Default::default()
+        }],
+        vec![],
+    );
+    let hidden = redacted(&WITHOUT_PANE_READ, session_update.clone());
+    assert!(!hidden.contains("hunter2"));
+    assert!(hidden.contains("session-visible-title"));
+    assert!(redacted(&WITH_PANE_READ, session_update).contains("hunter2"));
 }
 
 struct FixtureRun {

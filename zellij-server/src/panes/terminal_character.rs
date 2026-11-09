@@ -633,6 +633,11 @@ impl CharacterStyles {
                     diff.background = Some(changed_color);
                 }
             }
+            if let Some(AnsiCode::ColorIndex(color_index)) = diff.underline_color {
+                if let Some(changed_color) = changed_colors[color_index as usize] {
+                    diff.underline_color = Some(changed_color);
+                }
+            }
         }
         Some(diff)
     }

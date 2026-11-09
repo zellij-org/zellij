@@ -2,7 +2,7 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
-use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::plugins::wasm_bridge::{handle_plugin_crash, redact_session_info_for_plugin};
 use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
@@ -695,6 +695,11 @@ pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
 
 fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
     let mut env = caller.data_mut();
+    if !env.is_alive() {
+        // A callback queued before unload/quarantine must not reach the host. There is nobody
+        // left to consume a response, so do not execute or answer the command.
+        return;
+    }
     let plugin_command = env.name();
     let err_context = || format!("failed to run plugin command {}", plugin_command);
     wasi_read_bytes(env)
@@ -3327,7 +3332,23 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
         .non_fatal();
 }
 
+/// Upper bound for a plugin timer. Timers are used for short user-visible delays; allowing
+/// years-long or larger values only pins host resources and can overflow duration conversion.
+pub(crate) const MAX_PLUGIN_TIMEOUT_SECONDS: f64 = 24.0 * 60.0 * 60.0;
+
+pub(crate) fn plugin_timeout_is_valid(secs: f64) -> bool {
+    secs.is_finite() && secs >= 0.0 && secs <= MAX_PLUGIN_TIMEOUT_SECONDS
+}
+
 fn set_timeout(env: &PluginEnv, secs: f64) {
+    if !plugin_timeout_is_valid(secs) {
+        log::error!(
+            "plugin {} requested an invalid timeout: {}",
+            env.name(),
+            secs
+        );
+        return;
+    }
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let plugin_id = env.plugin_id;
     let client_id = acting_client(env);
@@ -4620,7 +4641,10 @@ fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
             .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
-        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved) {
+        if let Err(e) = zellij_utils::sessions::send_kill_session(
+            &resolved,
+            std::time::Duration::from_secs(5),
+        ) {
             log::error!("Failed to kill session {}: {:?}", session_name, e);
         }
     }
@@ -4744,11 +4768,12 @@ fn delete_all_dead_sessions_and_reply(env: &PluginEnv) {
 }
 
 fn watch_filesystem(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .to_plugin
-        .as_ref()
-        .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
+    let _ = env.senders.to_plugin.as_ref().map(|sender| {
+        sender.send(PluginInstruction::WatchFilesystem {
+            plugin_id: env.plugin_id,
+            host_root: env.plugin_cwd.clone(),
+        })
+    });
 }
 
 // note this removes the requesting plugin
@@ -5239,8 +5264,7 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                                 if let Ok(entry) = entry {
                                     let entry_metadata = entry.metadata().ok().map(|m| m.into());
                                     let entry_path = entry.path();
-                                    let Ok(relative) =
-                                        entry_path.strip_prefix(&plugin_host_folder)
+                                    let Ok(relative) = entry_path.strip_prefix(&plugin_host_folder)
                                     else {
                                         // Symlink / FS race can put an entry outside the host root.
                                         continue;
@@ -5577,9 +5601,7 @@ fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
 }
 
 fn get_session_list(env: &PluginEnv) {
-    use crate::background_jobs::{
-        scan_session_list_default_dirs_with_current, session_scan_state,
-    };
+    use crate::background_jobs::{scan_session_list_default_dirs_with_current, session_scan_state};
     use zellij_utils::data::{GetSessionListResponse, SessionListSnapshot};
 
     let response = match session_scan_state() {
@@ -5608,10 +5630,13 @@ fn get_session_list(env: &PluginEnv) {
                     Some((env.plugin_id, env.client_id)),
                 ));
 
-            let snapshot = SessionListSnapshot {
+            let mut snapshot = SessionListSnapshot {
                 live_sessions: live_sessions_map.into_values().collect(),
                 resurrectable_sessions: resurrectable_sessions_map.into_iter().collect(),
             };
+            for session_info in &mut snapshot.live_sessions {
+                redact_session_info_for_plugin(env, session_info);
+            }
             GetSessionListResponse::Ok(snapshot)
         },
         None => GetSessionListResponse::Err("Session-scan state not initialized".to_string()),
@@ -6763,7 +6788,7 @@ fn additional_required_permissions(command: &PluginCommand) -> &'static [Permiss
     }
 }
 
-fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
+pub(crate) fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
     let permission = match command {
         PluginCommand::OpenFile(..)
         | PluginCommand::OpenFileFloating(..)
@@ -6942,6 +6967,7 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
             PermissionType::OpenTerminalsOrPlugins
         },
         PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
+        PluginCommand::WatchFilesystem => PermissionType::FullHdAccess,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..)
@@ -6950,7 +6976,6 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout { .. }
         | PluginCommand::GetPanePid { .. }
-        | PluginCommand::GetPaneRunningCommand { .. }
         | PluginCommand::GetPaneCwd { .. }
         | PluginCommand::GenerateRandomName
         | PluginCommand::GetLayoutDir
@@ -6963,9 +6988,10 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::GetTabInfo(..)
         | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList
-        | PluginCommand::GetSessionSuggestions { .. }
+        | PluginCommand::GetSessionSuggestions { .. } => PermissionType::ReadApplicationState,
+        PluginCommand::GetPaneRunningCommand { .. }
         | PluginCommand::GetSessionPreview { .. }
-        | PluginCommand::GetSavedSessionPreview(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::GetSavedSessionPreview(..) => PermissionType::ReadPaneContents,
         PluginCommand::RebindKeys { .. }
         | PluginCommand::Reconfigure(..)
         | PluginCommand::ReadConfig

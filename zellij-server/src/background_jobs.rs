@@ -1919,12 +1919,14 @@ pub fn scan_session_list_with_current(
         info.populate_plugin_list(current_session_plugin_list.clone());
         info.available_layouts = available_layouts.to_vec();
         info.is_current_session = true;
-    } else if !current_session_name.is_empty() {
+    } else if !current_session_name.is_empty()
+        && !zellij_utils::consts::is_app_socket_name(current_session_name)
+    {
         // The on-disk session-info scan can lag briefly after startup. Prefer
         // the in-memory current session over omitting it from get_session_list.
-        let mut info = current_session_info.cloned().unwrap_or_else(|| {
-            SessionInfo::new(current_session_name.to_owned())
-        });
+        let mut info = current_session_info
+            .cloned()
+            .unwrap_or_else(|| SessionInfo::new(current_session_name.to_owned()));
         info.name = current_session_name.to_owned();
         info.is_current_session = true;
         info.populate_plugin_list(current_session_plugin_list.clone());
@@ -2061,12 +2063,13 @@ fn query_webserver_via_ipc(web_server_base_url: &str) -> Result<WebServerStatus>
 #[cfg(unix)]
 mod tests {
     use super::*;
-    use std::os::unix::net::UnixListener;
+    use interprocess::local_socket::traits::Listener as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc;
     use std::sync::Barrier;
     use tempfile::tempdir;
     use zellij_utils::data::SessionInfo;
+    use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
 
     fn admit_test_session(session_id: &str) -> u128 {
         zellij_utils::sessions::clear_session_deletion_fence(session_id);
@@ -2085,8 +2088,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(session_info_folder_for_session(session_id));
     }
 
-    fn make_socket(dir: &std::path::Path, name: &str) -> UnixListener {
-        UnixListener::bind(dir.join(name)).expect("bind unix socket")
+    fn make_socket(dir: &std::path::Path, name: &str) -> thread::JoinHandle<()> {
+        let listener = zellij_utils::consts::ipc_bind(&dir.join(name)).expect("bind unix socket");
+        thread::spawn(move || loop {
+            let Ok(stream) = listener.accept() else {
+                return;
+            };
+            let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+                IpcReceiverWithContext::new(stream);
+            let Some((ClientToServerMsg::ConnStatus, _)) = receiver.recv_client_msg() else {
+                continue;
+            };
+            let Ok(mut sender) = receiver.get_sender::<ServerToClientMsg>() else {
+                continue;
+            };
+            let _ = sender.send_server_msg(ServerToClientMsg::Connected);
+        })
     }
 
     fn write_metadata(info_dir: &std::path::Path, session: &str, info: &SessionInfo) {
@@ -2932,6 +2949,22 @@ mod tests {
         let injected = live.get("fresh").expect("current session present");
         assert!(injected.is_current_session);
         assert_eq!(injected.connected_clients, 3);
+    }
+
+    #[test]
+    fn scan_session_list_does_not_inject_hidden_app_sessions() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        let hidden_name = zellij_utils::consts::APP_PANEL_SESSION;
+        let (live, resurrectable) = scan_session_list(
+            hidden_name,
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert!(live.is_empty());
+        assert!(resurrectable.is_empty());
     }
 
     #[test]

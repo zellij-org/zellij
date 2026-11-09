@@ -2,7 +2,9 @@ use crate::plugins::plugin_map::{
     PluginEnv, PluginMap, PluginMetadata, RunningPlugin, SharedEnv, VecDequeInputStream,
     WriteOutputStream,
 };
-use crate::plugins::plugin_worker::{plugin_worker, MessageToWorker, RunningWorker};
+use crate::plugins::plugin_worker::{
+    plugin_worker, try_send_to_worker, MessageToWorker, RunningWorker,
+};
 use crate::plugins::wasm_bridge::{
     clear_failed_plugin_load_side_effects, LoadingContext, PluginCache,
 };
@@ -318,13 +320,16 @@ impl PluginLoader {
             .get_typed_func::<(), ()>(&mut store, "load")
             .with_context(err_context)?;
         let mut workers = HashMap::new();
+        // Workers belong to this load instance: they must stop as soon as the instance is
+        // retired, even if the worker never sees the message that retired it.
+        let load_alive = store.data().load_alive.clone();
         for function_name in instance
             .exports(&mut store)
             .filter_map(|export| export.clone().into_func().map(|_| export.name()))
         {
             if function_name.ends_with("_worker") {
                 let (mut store, instance) =
-                    self.create_plugin_instance_and_wasi_env_for_worker()?;
+                    self.create_plugin_instance_and_wasi_env_for_worker(load_alive.clone())?;
                 let start_function_for_worker = instance
                     .get_typed_func::<(), ()>(&mut store, "_start")
                     .with_context(err_context)?;
@@ -359,7 +364,7 @@ impl PluginLoader {
                 self.unloaded_during_load = true;
                 drop(plugin_map);
                 for (_worker_name, worker_sender) in workers {
-                    drop(worker_sender.send(MessageToWorker::Exit));
+                    let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
                 }
                 return Err(anyhow!(
                     "plugin {} was unloaded while it was loading",
@@ -465,7 +470,7 @@ impl PluginLoader {
         };
         for (_running_plugin, _subscriptions, workers) in removed {
             for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+                let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
         }
         // Nothing will unload a plugin that never finished loading, so its data directory
@@ -615,6 +620,7 @@ impl PluginLoader {
     }
     pub fn create_plugin_instance_and_wasi_env_for_worker(
         &self,
+        load_alive: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(Store<PluginEnv>, Instance)> {
         let plugin_id = self.plugin_id;
         let err_context = || {
@@ -624,10 +630,14 @@ impl PluginLoader {
             )
         };
         let module = self.module.clone().with_context(err_context)?;
-        let (store, instance) = self.create_plugin_instance_env(&module)?;
+        let (store, instance) = self.create_plugin_instance_env(&module, load_alive)?;
         Ok((store, instance))
     }
-    fn create_plugin_instance_env(&self, module: &Module) -> Result<(Store<PluginEnv>, Instance)> {
+    fn create_plugin_instance_env(
+        &self,
+        module: &Module,
+        load_alive: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(Store<PluginEnv>, Instance)> {
         let err_context = || {
             format!(
                 "Failed to create instance, plugin env and subscriptions for plugin {}",
@@ -652,7 +662,7 @@ impl PluginLoader {
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             generation: self.generation,
-            load_alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            load_alive,
             client_id: self.client_id,
             plugin: plugin_config,
             plugin_digest: self.plugin_digest.clone(),
@@ -1016,6 +1026,7 @@ mod tests {
         add_wasi_to_linker, guest_poll_bound, plugin_digest_from_bytes, poll_oneoff_decision,
         run_initialize_hook, GuestPollBound, PollOneoffDecision, WASI_ERRNO_INTR,
     };
+    use std::sync::Arc;
     use wasmi::{Engine, Linker, Module, Store};
 
     fn instantiate(wat: &str) -> (Store<()>, wasmi::Instance) {
@@ -1543,7 +1554,9 @@ mod tests {
         fixture.plugin_cache.lock().unwrap().clear();
 
         assert!(loader
-            .create_plugin_instance_and_wasi_env_for_worker()
+            .create_plugin_instance_and_wasi_env_for_worker(Arc::new(
+                std::sync::atomic::AtomicBool::new(true)
+            ))
             .is_ok());
     }
 

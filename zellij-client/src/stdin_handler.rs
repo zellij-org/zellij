@@ -311,8 +311,7 @@ fn drain_partial_to_keyboard(
     for (input_event, consumed) in events {
         let take = consumed.min(current_buffer.len());
         let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
-        let _ = send_input_instructions
-            .send(InputInstruction::KeyEvent(input_event, raw_bytes));
+        let _ = send_input_instructions.send(InputInstruction::KeyEvent(input_event, raw_bytes));
     }
     realign_current_buffer(current_buffer, input_parser);
 }

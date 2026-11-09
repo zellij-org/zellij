@@ -1,6 +1,6 @@
 use crate::output::SixelImageChunk;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 use sixel_image::{SixelDeserializer, SixelImage};
@@ -10,7 +10,7 @@ use std::fmt::Debug;
 
 use zellij_utils::pane_size::SizeInPixels;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PixelRect {
     pub x: usize,
     pub y: isize, // this can potentially be negative (eg. when the image top has scrolled past the edge of the scrollbuffer)
@@ -413,12 +413,9 @@ impl SixelGrid {
         if !self.images_to_check_for_emptiness.is_empty() {
             let store = self.sixel_image_store.borrow();
             for image_id in self.images_to_check_for_emptiness.drain() {
-                let has_lit_pixels = store
-                    .sixel_images
-                    .get(&image_id)
-                    .map_or(false, |(sixel_image, _)| {
-                        sixel_image.pixels.iter().flatten().any(|pixel| pixel.on)
-                    });
+                let has_lit_pixels = store.sixel_images.get(&image_id).map_or(false, |stored| {
+                    stored.image.pixels.iter().flatten().any(|pixel| pixel.on)
+                });
                 if !has_lit_pixels {
                     self.sixel_image_locations.remove(&image_id);
                     self.image_ids_to_reap.push(image_id);
@@ -468,33 +465,45 @@ impl SixelGrid {
         store.next_image_id += 1;
         id
     }
-    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
-        self.sixel_image_store
-            .borrow_mut()
-            .sixel_images
-            .insert(sixel_image_id, (sixel_image, SixelImageCache::default()));
-        self.images_to_check_for_emptiness.insert(sixel_image_id);
+    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) -> bool {
+        let referenced_image_ids: HashSet<usize> =
+            self.sixel_image_locations.keys().copied().collect();
+        let admitted = self.sixel_image_store.borrow_mut().insert_image(
+            sixel_image_id,
+            sixel_image,
+            &referenced_image_ids,
+        );
+        if admitted {
+            self.images_to_check_for_emptiness.insert(sixel_image_id);
+        } else {
+            log::warn!("Refusing a sixel image that exceeds the image store budget");
+            self.sixel_image_locations.remove(&sixel_image_id);
+        }
+        admitted
     }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        if let Some((sixel_image, sixel_image_cache)) = self
-            .sixel_image_store
-            .borrow_mut()
-            .sixel_images
-            .get_mut(&image_id)
-        {
-            sixel_image.cut_out(
+        let mut store = self.sixel_image_store.borrow_mut();
+        let freed_cache_bytes = if let Some(stored) = store.sixel_images.get_mut(&image_id) {
+            stored.image.cut_out(
                 pixel_rect.x,
                 pixel_rect.y as usize,
                 pixel_rect.width,
                 pixel_rect.height,
             );
-            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
-        }
+            let freed_cache_bytes = stored.cache.bytes;
+            stored.cache.clear(); // TODO: more intelligent cache clearing
+            freed_cache_bytes
+        } else {
+            0
+        };
+        store.total_bytes = store.total_bytes.saturating_sub(freed_cache_bytes);
+        drop(store);
         self.images_to_check_for_emptiness.insert(image_id);
     }
     pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
+        let mut store = self.sixel_image_store.borrow_mut();
         for id in ids_to_reap {
-            drop(self.sixel_image_store.borrow_mut().sixel_images.remove(&id));
+            store.remove_image(id);
         }
     }
     pub fn image_cell_coordinates_in_viewport(
@@ -593,6 +602,12 @@ impl SixelGrid {
 /// the cache is a pure regeneration cache, so entries are evicted
 /// least-recently-used first to stay inside this budget.
 const MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE: usize = 4 * 1024 * 1024;
+/// Total budget for live sixel rasters and their crop caches. A per-image
+/// crop cap alone still lets many images add up without bound.
+const MAX_SIXEL_STORE_BYTES: usize = 256 * 1024 * 1024;
+/// Bound on store entries so tiny rasters and per-image bookkeeping cannot
+/// grow without bound while staying under the byte budget.
+const MAX_SIXEL_STORE_IMAGES: usize = 512;
 
 #[derive(Debug, Clone)]
 struct SixelCropEntry {
@@ -603,13 +618,20 @@ struct SixelCropEntry {
 #[derive(Debug, Clone, Default)]
 struct SixelImageCache {
     entries: HashMap<PixelRect, SixelCropEntry>,
+    by_stamp: BTreeMap<(u64, PixelRect), usize>,
     bytes: usize,
 }
 
 impl SixelImageCache {
     fn get(&mut self, rect: &PixelRect, stamp: u64) -> Option<std::sync::Arc<str>> {
+        let old_stamp = {
+            let entry = self.entries.get(rect)?;
+            entry.stamp
+        };
+        self.by_stamp.remove(&(old_stamp, *rect));
         let entry = self.entries.get_mut(rect)?;
         entry.stamp = stamp;
+        self.by_stamp.insert((stamp, *rect), entry.text.len());
         Some(entry.text.clone())
     }
     fn insert(&mut self, rect: PixelRect, text: std::sync::Arc<str>, stamp: u64) {
@@ -617,31 +639,30 @@ impl SixelImageCache {
             return;
         }
         if let Some(old) = self.entries.insert(rect, SixelCropEntry { stamp, text }) {
-            self.bytes -= old.text.len();
+            self.by_stamp.remove(&(old.stamp, rect));
+            self.bytes = self.bytes.saturating_sub(old.text.len());
         }
-        self.bytes += self
+        let text_len = self
             .entries
             .get(&rect)
             .map(|entry| entry.text.len())
             .unwrap_or(0);
+        self.by_stamp.insert((stamp, rect), text_len);
+        self.bytes += text_len;
         while self.bytes > MAX_SIXEL_CROP_CACHE_BYTES_PER_IMAGE {
-            let oldest = self
-                .entries
-                .iter()
-                .min_by_key(|(_, entry)| entry.stamp)
-                .map(|(rect, _)| *rect);
-            match oldest {
-                Some(rect) => {
-                    if let Some(entry) = self.entries.remove(&rect) {
-                        self.bytes -= entry.text.len();
-                    }
-                },
-                None => break,
+            let Some(((old_stamp, old_rect), old_len)) = self.by_stamp.pop_first() else {
+                break;
+            };
+            if let Some(entry) = self.entries.remove(&old_rect) {
+                if entry.stamp == old_stamp {
+                    self.bytes = self.bytes.saturating_sub(old_len);
+                }
             }
         }
     }
     fn clear(&mut self) {
         self.entries.clear();
+        self.by_stamp.clear();
         self.bytes = 0;
     }
     #[cfg(test)]
@@ -650,14 +671,149 @@ impl SixelImageCache {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
+struct StoredSixelImage {
+    image: SixelImage,
+    cache: SixelImageCache,
+}
+
+impl StoredSixelImage {
+    fn base_bytes(image: &SixelImage) -> usize {
+        let pixel_bytes = std::mem::size_of::<sixel_image::Pixel>();
+        let row_overhead = std::mem::size_of::<Vec<sixel_image::Pixel>>();
+        image
+            .pixels
+            .capacity()
+            .saturating_mul(row_overhead)
+            .saturating_add(
+                image
+                    .pixels
+                    .iter()
+                    .map(|row| row.capacity().saturating_mul(pixel_bytes))
+                    .sum::<usize>(),
+            )
+            .saturating_add(image.color_registers.len().saturating_mul(64))
+    }
+    fn memory_bytes(&self) -> usize {
+        Self::base_bytes(&self.image).saturating_add(self.cache.bytes)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SixelImageStore {
-    sixel_images: HashMap<usize, (SixelImage, SixelImageCache)>,
+    sixel_images: HashMap<usize, StoredSixelImage>,
     next_image_id: usize,
     next_lru_stamp: u64,
+    total_bytes: usize,
+    max_bytes: usize,
+    max_images: usize,
+}
+
+impl Default for SixelImageStore {
+    fn default() -> Self {
+        Self::with_limits(MAX_SIXEL_STORE_BYTES, MAX_SIXEL_STORE_IMAGES)
+    }
 }
 
 impl SixelImageStore {
+    fn with_limits(max_bytes: usize, max_images: usize) -> Self {
+        SixelImageStore {
+            sixel_images: HashMap::new(),
+            next_image_id: 0,
+            next_lru_stamp: 0,
+            total_bytes: 0,
+            max_bytes,
+            max_images,
+        }
+    }
+    /// Admit `image` only if the store can hold it without evicting an image
+    /// that is still referenced. Unreferenced images are pruned first because
+    /// their store entries are no longer displayed.
+    fn insert_image(
+        &mut self,
+        image_id: usize,
+        image: SixelImage,
+        referenced_image_ids: &HashSet<usize>,
+    ) -> bool {
+        let image_bytes = StoredSixelImage::base_bytes(&image);
+        if image_bytes > self.max_bytes {
+            return false;
+        }
+        if self.sixel_images.contains_key(&image_id) {
+            self.remove_image(image_id);
+        }
+        if self.would_exceed_budget(image_bytes) {
+            self.prune_unreferenced_images(referenced_image_ids);
+        }
+        let needed_after_derived_eviction = self.max_bytes.saturating_sub(image_bytes);
+        if self.would_exceed_budget(image_bytes) {
+            self.trim_crops_to(needed_after_derived_eviction);
+        }
+        if self.would_exceed_budget(image_bytes) {
+            return false;
+        }
+        self.total_bytes = self.total_bytes.saturating_add(image_bytes);
+        self.sixel_images.insert(
+            image_id,
+            StoredSixelImage {
+                image,
+                cache: SixelImageCache::default(),
+            },
+        );
+        true
+    }
+    fn would_exceed_budget(&self, incoming_bytes: usize) -> bool {
+        self.total_bytes.saturating_add(incoming_bytes) > self.max_bytes
+            || self.sixel_images.len() >= self.max_images
+    }
+    fn prune_unreferenced_images(&mut self, referenced_image_ids: &HashSet<usize>) {
+        let unreferenced: Vec<usize> = self
+            .sixel_images
+            .keys()
+            .filter(|image_id| !referenced_image_ids.contains(image_id))
+            .copied()
+            .collect();
+        for image_id in unreferenced {
+            self.remove_image(image_id);
+        }
+    }
+    fn remove_image(&mut self, image_id: usize) {
+        if let Some(stored) = self.sixel_images.remove(&image_id) {
+            self.total_bytes = self.total_bytes.saturating_sub(stored.memory_bytes());
+        }
+    }
+    /// Drop the oldest regenerable crop encodings until the store fits in
+    /// `target_bytes`. Base rasters are never dropped here.
+    fn trim_crops_to(&mut self, target_bytes: usize) {
+        if self.total_bytes <= target_bytes {
+            return;
+        }
+        let mut entries: Vec<(u64, usize, PixelRect, usize)> = Vec::new();
+        for (image_id, stored) in &self.sixel_images {
+            for (rect, entry) in &stored.cache.entries {
+                entries.push((entry.stamp, *image_id, *rect, entry.text.len()));
+            }
+        }
+        entries.sort_unstable_by_key(|(stamp, _, _, _)| *stamp);
+        for (stamp, image_id, rect, len) in entries {
+            if self.total_bytes <= target_bytes {
+                break;
+            }
+            if let Some(stored) = self.sixel_images.get_mut(&image_id) {
+                if stored
+                    .cache
+                    .entries
+                    .get(&rect)
+                    .is_some_and(|entry| entry.stamp == stamp)
+                {
+                    stored.cache.entries.remove(&rect);
+                    stored.cache.by_stamp.remove(&(stamp, rect));
+                    stored.cache.bytes = stored.cache.bytes.saturating_sub(len);
+                    self.total_bytes = self.total_bytes.saturating_sub(len);
+                }
+            }
+        }
+    }
     pub fn serialize_image(
         &mut self,
         image_id: usize,
@@ -668,20 +824,33 @@ impl SixelImageStore {
     ) -> Option<std::sync::Arc<str>> {
         self.next_lru_stamp += 1;
         let stamp = self.next_lru_stamp;
-        self.sixel_images
-            .get_mut(&image_id)
-            .map(|(sixel_image, sixel_image_cache)| {
-                let rect = PixelRect::new(pixel_x, pixel_y, pixel_height, pixel_width);
-                if let Some(cached_image) = sixel_image_cache.get(&rect, stamp) {
-                    cached_image
-                } else {
-                    let serialized_image: std::sync::Arc<str> = sixel_image
-                        .serialize_range(pixel_x, pixel_y, pixel_width, pixel_height)
-                        .into();
-                    sixel_image_cache.insert(rect, serialized_image.clone(), stamp);
-                    serialized_image
-                }
-            })
+        let (serialized_image, cache_bytes_before, cache_bytes_after) = {
+            let stored = self.sixel_images.get_mut(&image_id)?;
+            let cache_bytes_before = stored.cache.bytes;
+            let rect = PixelRect::new(pixel_x, pixel_y, pixel_height, pixel_width);
+            let serialized_image = if let Some(cached_image) = stored.cache.get(&rect, stamp) {
+                cached_image
+            } else {
+                let serialized_image: std::sync::Arc<str> = stored
+                    .image
+                    .serialize_range(pixel_x, pixel_y, pixel_width, pixel_height)
+                    .into();
+                stored.cache.insert(rect, serialized_image.clone(), stamp);
+                serialized_image
+            };
+            (serialized_image, cache_bytes_before, stored.cache.bytes)
+        };
+        if cache_bytes_after >= cache_bytes_before {
+            self.total_bytes = self
+                .total_bytes
+                .saturating_add(cache_bytes_after - cache_bytes_before);
+        } else {
+            self.total_bytes = self
+                .total_bytes
+                .saturating_sub(cache_bytes_before - cache_bytes_after);
+        }
+        self.trim_crops_to(self.max_bytes);
+        Some(serialized_image)
     }
     pub fn image_count(&self) -> usize {
         self.sixel_images.len()
@@ -735,6 +904,105 @@ mod tests {
         cache.insert(huge, "x".repeat(cap + 1).into(), 103);
         assert!(!cache.entries.contains_key(&huge));
         assert!(cache.cached_bytes() <= cap);
+        assert_eq!(cache.by_stamp.len(), cache.entries.len());
+    }
+
+    #[test]
+    fn crop_cache_keeps_its_ordered_index_in_sync() {
+        let mut cache = SixelImageCache::default();
+        for i in 0..100usize {
+            let rect = PixelRect::new(i, 0, 1, 1);
+            cache.insert(rect, "x".repeat(8).into(), i as u64);
+        }
+        assert_eq!(cache.by_stamp.len(), cache.entries.len());
+        assert_eq!(cache.by_stamp.len(), 100);
+
+        // Refresh a hit; the old ordered entry must not linger.
+        let hot = PixelRect::new(50, 0, 1, 1);
+        cache.get(&hot, 1_000).unwrap();
+        assert_eq!(cache.by_stamp.len(), cache.entries.len());
+        assert_eq!(cache.by_stamp.get(&(1_000, hot)), Some(&8));
+
+        // Replacing an entry also replaces its ordered key.
+        cache.insert(hot, "x".repeat(16).into(), 1_001);
+        assert_eq!(cache.by_stamp.len(), cache.entries.len());
+        assert_eq!(cache.by_stamp.get(&(1_001, hot)), Some(&16));
+        assert!(!cache.by_stamp.contains_key(&(1_000, hot)));
+    }
+
+    fn store_test_image() -> SixelImage {
+        parse_sixel("\"1;1;8;12#0;2;100;0;0!8~-!8~\u{1b}\\").expect("an image")
+    }
+
+    #[test]
+    fn the_store_refuses_admission_over_its_memory_budget() {
+        let image = store_test_image();
+        let image_bytes = StoredSixelImage::base_bytes(&image);
+        let mut store = SixelImageStore::with_limits(image_bytes * 2, 16);
+        let mut referenced = HashSet::new();
+        assert!(store.insert_image(1, image.clone(), &referenced));
+        referenced.insert(1);
+        assert!(store.insert_image(2, image.clone(), &referenced));
+        referenced.insert(2);
+
+        assert_eq!(store.total_bytes, image_bytes * 2);
+        assert!(!store.insert_image(3, image.clone(), &referenced));
+        assert_eq!(store.image_count(), 2);
+        assert_eq!(store.total_bytes, image_bytes * 2);
+
+        // Releasing the oldest reference makes room without touching a
+        // still-referenced image.
+        referenced.remove(&1);
+        assert!(store.insert_image(3, image, &referenced));
+        assert!(!store.sixel_images.contains_key(&1));
+        assert!(store.sixel_images.contains_key(&2));
+        assert!(store.sixel_images.contains_key(&3));
+        assert_eq!(store.total_bytes, image_bytes * 2);
+    }
+
+    #[test]
+    fn the_store_refuses_admission_over_its_image_count_budget() {
+        let image = store_test_image();
+        let mut store = SixelImageStore::with_limits(usize::MAX, 2);
+        let mut referenced = HashSet::new();
+        assert!(store.insert_image(1, image.clone(), &referenced));
+        referenced.insert(1);
+        assert!(store.insert_image(2, image.clone(), &referenced));
+        referenced.insert(2);
+        referenced.insert(3);
+
+        assert!(!store.insert_image(3, image.clone(), &referenced));
+        assert_eq!(store.image_count(), 2);
+
+        referenced.remove(&1);
+        assert!(store.insert_image(3, image, &referenced));
+        assert!(!store.sixel_images.contains_key(&1));
+        assert_eq!(store.image_count(), 2);
+    }
+
+    #[test]
+    fn the_store_bounds_all_crop_caches_together() {
+        let image = store_test_image();
+        let image_bytes = StoredSixelImage::base_bytes(&image);
+        let mut store = SixelImageStore::with_limits(image_bytes + 64, 4);
+        let mut referenced = HashSet::new();
+        assert!(store.insert_image(1, image, &referenced));
+        referenced.insert(1);
+        for i in 0..40usize {
+            store.serialize_image(1, i % 12, i % 8, 1, 1);
+            assert!(
+                store.total_bytes <= store.max_bytes,
+                "store grew to {} bytes over a {} byte budget",
+                store.total_bytes,
+                store.max_bytes
+            );
+        }
+        let cache_bytes: usize = store
+            .sixel_images
+            .values()
+            .map(|stored| stored.cache.bytes)
+            .sum();
+        assert!(cache_bytes <= 64);
     }
 
     #[test]

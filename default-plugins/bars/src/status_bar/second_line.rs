@@ -335,9 +335,10 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
 
 pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     // SAFETY: "quicknav" is always registered in the TIPS lazy_static map.
-    let tip_body = TIPS
-        .get(tip_name)
-        .unwrap_or_else(|| TIPS.get("quicknav").expect("quicknav tip always registered"));
+    let tip_body = TIPS.get(tip_name).unwrap_or_else(|| {
+        TIPS.get("quicknav")
+            .expect("quicknav tip always registered")
+    });
 
     let full_shortcut_list = full_shortcut_list(help, tip_body.full);
     if full_shortcut_list.len <= max_width {

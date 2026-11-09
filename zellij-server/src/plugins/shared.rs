@@ -3,7 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::plugins::pipes::{pipes_to_block_or_unblock, PipeStateChange};
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot, Subscriptions};
-use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::plugin_worker::{try_send_to_worker, MessageToWorker};
 use crate::plugins::wasm_bridge::{
     check_event_permission, clear_failed_plugin_load_side_effects, handle_plugin_crash,
     handle_plugin_loading_failure, handle_plugin_successful_loading, subscription_event_type,
@@ -560,7 +560,7 @@ pub fn apply_events_job(
     };
     let subscriptions = subscriptions.lock().unwrap().clone();
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     let mut render = RenderResponse::Nothing;
@@ -645,7 +645,7 @@ pub fn apply_pipes_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     let mut render = RenderResponse::Nothing;
@@ -696,7 +696,7 @@ pub fn add_slot_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         let mut loading_indication = LoadingIndication::new(String::new());
         handle_plugin_loading_failure(
             &senders,
@@ -747,7 +747,7 @@ pub fn remove_slot_job(
 ) {
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
         let mut running_plugin = running_plugin.lock().unwrap();
-        if !running_plugin.is_quarantined() {
+        if running_plugin.is_active() {
             if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
                 log::error!(
                     "Failed to remove slot {} from shared plugin: {:?}",
@@ -772,7 +772,7 @@ fn tear_down_instance(
         return;
     };
     for (_worker_name, worker_sender) in workers {
-        drop(worker_sender.send(MessageToWorker::Exit));
+        let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
     }
     let needs_before_close = subscriptions
         .lock()
@@ -791,6 +791,8 @@ fn tear_down_instance(
         }
         send_pipe_changes(senders, &mut running_plugin, instance_id, None);
     }
+    // Nothing from this instance may run after teardown has started.
+    running_plugin.store.data().retire_load();
     if running_plugin.intercepting_key_presses() {
         let clients: Vec<ClientId> = running_plugin
             .store
@@ -824,7 +826,7 @@ pub fn client_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     let result = if connected {
@@ -855,7 +857,7 @@ pub fn resize_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     let changed = match running_plugin.store.data_mut().shared.as_mut() {
@@ -891,7 +893,7 @@ pub fn visibility_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     let before: HashSet<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
@@ -920,7 +922,7 @@ pub fn host_settings_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    if running_plugin.is_quarantined() {
+    if !running_plugin.is_active() {
         return;
     }
     running_plugin.update_default_shell(default_shell);
@@ -972,9 +974,10 @@ pub fn start_instance_job(
     let running_plugin = match started {
         Ok(running_plugin) => {
             // The replacement is published; only now is it safe to retire the old workers.
-            if let Some((_running_plugin, _subscriptions, workers)) = previous {
+            if let Some((previous_plugin, _subscriptions, workers)) = previous {
+                previous_plugin.lock().unwrap().store.data().retire_load();
                 for (_worker_name, worker_sender) in workers {
-                    drop(worker_sender.send(MessageToWorker::Exit));
+                    let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
                 }
             }
             running_plugin

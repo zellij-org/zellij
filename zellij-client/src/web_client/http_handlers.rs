@@ -45,7 +45,11 @@ pub async fn login_handler(
 ) -> impl IntoResponse {
     // this endpoint is unauthenticated and every attempt costs a database
     // lookup, so cap how fast any one address can hammer it
-    let rate_limit_verdict = state.login_rate_limiter.lock().unwrap_or_else(|p| p.into_inner()).check(peer.ip());
+    let rate_limit_verdict = state
+        .login_rate_limiter
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .check(peer.ip());
     if let Err(retry_after) = rate_limit_verdict {
         let retry_after_secs = retry_after.as_secs_f64().ceil().max(1.0) as u64;
         return (
@@ -173,12 +177,16 @@ pub async fn create_new_client(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())))?;
 
     // an id is only handed out if it fits under the client limits
-    let added = state.connection_table.lock().unwrap_or_else(|p| p.into_inner()).try_add_new_client(
-        web_client_id.to_owned(),
-        os_input,
-        is_read_only,
-        session_token_hash.0,
-    );
+    let added = state
+        .connection_table
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .try_add_new_client(
+            web_client_id.to_owned(),
+            os_input,
+            is_read_only,
+            session_token_hash.0,
+        );
     match added {
         Ok(()) => {},
         Err(ClientLimitExceeded::TooManyClients) => {

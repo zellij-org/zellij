@@ -746,10 +746,7 @@ impl TryFrom<ProtobufEvent> for Event {
                 Some(ProtobufEventPayload::PluginActivatedPayload(payload)) => {
                     Ok(Event::PluginActivated(PluginActivationContext {
                         source_client_id: payload.source_client_id as ClientId,
-                        source_pane_id: payload
-                            .source_pane_id
-                            .map(PaneId::try_from)
-                            .transpose()?,
+                        source_pane_id: payload.source_pane_id.map(PaneId::try_from).transpose()?,
                         source_tab_id: payload.source_tab_id.map(|id| id as usize),
                     }))
                 },

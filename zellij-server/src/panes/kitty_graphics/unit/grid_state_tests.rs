@@ -308,6 +308,114 @@ fn transmitted(
     (pane_image_id, internal)
 }
 
+fn transmitted_with_number(
+    grid: &mut KittyGrid,
+    image_number: u32,
+) -> (u32, super::super::store::InternalImageId) {
+    let command = KittyCommand {
+        image_number: Some(image_number),
+        ..Default::default()
+    };
+    let image = DecodedImage {
+        bytes: vec![0u8; 16],
+        width: 2,
+        height: 2,
+        format: KittyFormat::Rgba32,
+    };
+    let pane_image_id = grid.transmit(&command, image).expect("a transmission");
+    let internal = grid.pane_image_id_map()[&pane_image_id];
+    (pane_image_id, internal)
+}
+
+#[test]
+fn inserting_a_canonical_line_at_the_front_invalidates_the_start_index() {
+    let mut grid = test_grid();
+    grid.set_canonical_starts(vec![0, 2, 5]);
+    assert!(grid.canonical_starts_valid());
+    grid.placements.push(test_placement(0, 20));
+
+    grid.insert_canonical_anchor_line_at_front();
+
+    assert!(!grid.canonical_starts_valid());
+    assert_eq!(grid.canonical_start_count(), 0);
+    assert_eq!(grid.placements()[0].vertical_anchor.canonical_line, 1);
+}
+
+#[test]
+fn a_placement_touching_but_not_overlapping_a_changed_rect_emits_no_chunk() {
+    let mut grid = test_grid();
+    grid.placements.push(test_placement(20, 20));
+    let mut changed_rects = HashMap::new();
+    changed_rects.insert(0, 1);
+
+    let chunks = grid.changed_kitty_chunks_in_viewport(changed_rects, 0, 40, 0, 0);
+
+    assert!(
+        chunks.is_empty(),
+        "a zero-height intersection must not create a chunk"
+    );
+}
+
+#[test]
+fn freeing_placements_prunes_stale_image_ids_and_numbers() {
+    let mut grid = test_grid();
+    for image_number in 1..=3u32 {
+        let (pane_image_id, internal) = transmitted_with_number(&mut grid, image_number);
+        let command = KittyCommand {
+            image_number: Some(image_number),
+            ..Default::default()
+        };
+        grid.place(
+            pane_image_id,
+            internal,
+            &command,
+            (0, 0),
+            SizeInPixels {
+                width: 10,
+                height: 20,
+            },
+            KittyVerticalAnchor {
+                canonical_line: 0,
+                offset_px_from_line_start: 0,
+            },
+        )
+        .expect("a placement");
+    }
+    assert_eq!(grid.image_ids.len(), 3);
+    assert_eq!(grid.image_numbers.len(), 3);
+
+    grid.offset_grid_top();
+
+    assert!(grid.placements().is_empty());
+    assert_eq!(grid.kitty_image_store.borrow().image_count(), 0);
+    assert!(grid.image_ids.is_empty());
+    assert!(grid.image_numbers.is_empty());
+}
+
+#[test]
+fn store_quota_eviction_prunes_transmit_mappings() {
+    let store = Rc::new(RefCell::new(KittyImageStore::with_quota(1100)));
+    let mut grid = KittyGrid::new(
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 10,
+            height: 20,
+        }))),
+        store.clone(),
+    );
+    for image_number in 1..=3u32 {
+        transmitted_with_number(&mut grid, image_number);
+    }
+
+    assert_eq!(store.borrow().image_count(), 2);
+    assert_eq!(grid.image_ids.len(), 2);
+    let live_ids: std::collections::HashSet<u32> = grid.image_ids.keys().copied().collect();
+    assert!(grid
+        .image_numbers
+        .values()
+        .flatten()
+        .all(|pane_image_id| live_ids.contains(pane_image_id)));
+}
+
 #[test]
 fn an_unscaled_placement_emits_from_its_source_rectangle() {
     let mut grid = test_grid();

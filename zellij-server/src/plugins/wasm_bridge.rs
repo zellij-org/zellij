@@ -19,7 +19,7 @@ use crate::plugins::shared::{
 };
 use zellij_utils::prompt::PromptResult;
 
-use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::plugin_worker::{try_send_to_worker, MessageToWorker};
 use crate::plugins::shared::SharedEventBatchEntry;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
@@ -278,7 +278,7 @@ fn event_payload_bytes(event: &Event) -> usize {
             .fold(0usize, usize::saturating_add),
         Event::SessionUpdate(sessions, resurrectable) => sessions
             .iter()
-            .map(|session| session.name.len().saturating_add(512))
+            .map(session_info_payload_bytes)
             .chain(
                 resurrectable
                     .iter()
@@ -350,6 +350,44 @@ fn event_payload_bytes(event: &Event) -> usize {
         _ => 0,
     };
     std::mem::size_of::<Event>().saturating_add(extra)
+}
+
+fn session_info_payload_bytes(session: &zellij_utils::data::SessionInfo) -> usize {
+    let tabs = session
+        .tabs
+        .iter()
+        .map(|tab| tab.name.len().saturating_add(256))
+        .fold(0usize, usize::saturating_add);
+    let panes = session
+        .panes
+        .panes
+        .values()
+        .flatten()
+        .map(|pane| {
+            pane.title
+                .len()
+                .saturating_add(pane.terminal_command.as_deref().map_or(0, str::len))
+                .saturating_add(256)
+        })
+        .fold(0usize, usize::saturating_add);
+    let plugins = session
+        .plugins
+        .values()
+        .map(|plugin| {
+            plugin
+                .location
+                .len()
+                .saturating_add(string_map_bytes(&plugin.configuration))
+                .saturating_add(256)
+        })
+        .fold(0usize, usize::saturating_add);
+    session
+        .name
+        .len()
+        .saturating_add(tabs)
+        .saturating_add(panes)
+        .saturating_add(plugins)
+        .saturating_add(512)
 }
 
 fn pipe_message_payload_bytes(message: &PipeMessage) -> usize {
@@ -648,7 +686,7 @@ pub struct WasmBridge {
     quarantine: Quarantine,
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
+    watchers: HashMap<PluginId, (PathBuf, Debouncer<RecommendedWatcher, RecommendedCache>)>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
     default_shell: Option<TerminalAction>,
@@ -699,7 +737,7 @@ impl WasmBridge {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: PluginCache = Arc::new(Mutex::new(HashMap::new()));
-        let watcher = None;
+        let watchers = HashMap::new();
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
         let max_threads = num_cpus::get().max(4).min(16);
         let plugin_executor = Arc::new(PinnedExecutor::new(
@@ -717,7 +755,7 @@ impl WasmBridge {
             plugin_map,
             plugin_executor,
             path_to_default_shell,
-            watcher,
+            watchers,
             next_plugin_id: 0,
             cached_events_for_pending_plugins: PendingPluginCaches::default(),
             plugin_ids_waiting_for_permission_request: HashSet::new(),
@@ -1083,6 +1121,7 @@ impl WasmBridge {
         info!("Bye from plugin {}", &pid);
         self.quarantine.forget(pid);
         self.permission_prompts.remove(&pid);
+        self.clear_pending_plugin_state(pid);
         self.latest_hovers.lock().unwrap().evict_plugin(pid);
         let _ = self
             .senders
@@ -1132,7 +1171,7 @@ impl WasmBridge {
 
             // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+                let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
 
             cleanups.push(Box::new(
@@ -1223,6 +1262,16 @@ impl WasmBridge {
 
         Ok(())
     }
+    fn clear_pending_plugin_state(&mut self, plugin_id: PluginId) {
+        self.plugin_ids_waiting_for_permission_request
+            .remove(&plugin_id);
+        self.cached_events_for_pending_plugins.take(&plugin_id);
+        self.cached_resizes_for_pending_plugins.remove(&plugin_id);
+        self.cached_worker_messages.remove(&plugin_id);
+        if let Some((_, watcher)) = self.watchers.remove(&plugin_id) {
+            watcher.stop_nonblocking();
+        }
+    }
     pub fn quarantine_plugin(&mut self, pid: PluginId, generation: u64) {
         // A report can arrive after the plugin was unloaded; recording it would leave an entry
         // for a dead id that nothing ever clears.
@@ -1258,11 +1307,7 @@ impl WasmBridge {
         // Quarantine discards the plugin's updates, so a key intercept it still holds would
         // swallow the client's typing until the plugin is unloaded.
         self.release_key_intercepts(plugin_id);
-        self.plugin_ids_waiting_for_permission_request
-            .remove(&plugin_id);
-        self.cached_events_for_pending_plugins.take(&plugin_id);
-        self.cached_resizes_for_pending_plugins.remove(&plugin_id);
-        self.cached_worker_messages.remove(&plugin_id);
+        self.clear_pending_plugin_state(plugin_id);
         let pipes_to_release = self.pending_pipes.unload_plugin(&plugin_id);
         self.send_pipe_releases(pipes_to_release);
         self.forget_pipe_popups_of_plugin(plugin_id);
@@ -1645,7 +1690,7 @@ impl WasmBridge {
                         move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                            if running_plugin.is_quarantined() {
+                            if !running_plugin.is_active() {
                                 return;
                             }
                             if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -1823,7 +1868,7 @@ impl WasmBridge {
                                         }
                                     }
                                     let mut running_plugin = running_plugin.lock().unwrap();
-                                    if running_plugin.is_quarantined() {
+                                    if !running_plugin.is_active() {
                                         return;
                                     }
                                     let mut plugin_render_assets = vec![];
@@ -1969,7 +2014,7 @@ impl WasmBridge {
                         return;
                     };
                     let mut running_plugin = running_plugin.lock().unwrap();
-                    if running_plugin.is_quarantined() {
+                    if !running_plugin.is_active() {
                         return;
                     }
                     let event =
@@ -2047,7 +2092,7 @@ impl WasmBridge {
                     {
                         if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
                             let mut running_plugin = running_plugin.lock().unwrap();
-                            if running_plugin.is_quarantined() {
+                            if !running_plugin.is_active() {
                                 continue;
                             }
                             let plugin_env = running_plugin.store.data_mut();
@@ -2159,7 +2204,7 @@ impl WasmBridge {
                                   _plugin_cache,
                                   _engine| {
                                 let mut running_plugin = running_plugin.lock().unwrap();
-                                if running_plugin.is_quarantined() {
+                                if !running_plugin.is_active() {
                                     return;
                                 }
                                 let mut plugin_render_assets = vec![];
@@ -2360,7 +2405,7 @@ impl WasmBridge {
             );
 
             for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+                let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
 
             self.plugin_executor.execute_for_plugin_with(
@@ -2616,7 +2661,7 @@ impl WasmBridge {
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
         }
-        if let Some(watcher) = self.watcher.take() {
+        for (_, (_, watcher)) in self.watchers.drain() {
             watcher.stop_nonblocking();
         }
     }
@@ -2813,7 +2858,7 @@ impl WasmBridge {
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                                if running_plugin.lock().unwrap().is_quarantined() {
+                                if !running_plugin.lock().unwrap().is_active() {
                                     return;
                                 }
                                 for event_or_pipe_message in events_or_pipe_messages {
@@ -2838,7 +2883,7 @@ impl WasmBridge {
                                                     }
                                                     let mut running_plugin =
                                                         running_plugin.lock().unwrap();
-                                                    if running_plugin.is_quarantined() {
+                                                    if !running_plugin.is_active() {
                                                         break;
                                                     }
                                                     let mut plugin_render_assets = vec![];
@@ -2892,7 +2937,7 @@ impl WasmBridge {
                                                 continue;
                                             }
                                             let mut running_plugin = running_plugin.lock().unwrap();
-                                            if running_plugin.is_quarantined() {
+                                            if !running_plugin.is_active() {
                                                 break;
                                             }
                                             let mut plugin_render_assets = vec![];
@@ -3111,21 +3156,30 @@ impl WasmBridge {
         if self.quarantine.contains(&plugin_id) {
             return Ok(());
         }
-        let worker =
-            self.plugin_map
-                .lock()
-                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
-                .unwrap()
-                .worker_sender(plugin_id, client_id, &worker_name);
+        let worker = self
+            .plugin_map
+            .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+            .unwrap()
+            .worker_sender(plugin_id, client_id, &worker_name);
         match worker {
             Some(worker) => {
                 for (message, payload) in messages.drain(..) {
-                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
-                        log::error!("Failed to send message to worker: {:?}", e);
-                    }
+                    let _ = try_send_to_worker(&worker, MessageToWorker::Message(message, payload));
                 }
             },
             None => {
+                let running_plugin = {
+                    let plugin_map = self.plugin_map.lock().unwrap();
+                    plugin_map.get_running_plugin(plugin_id, Some(client_id))
+                };
+                if let Some(running_plugin) = running_plugin {
+                    if !running_plugin.lock().unwrap().is_active() {
+                        // The instance was retired or quarantined after this message was
+                        // queued. Do not cache it for a replacement that reused the same key.
+                        return Ok(());
+                    }
+                }
                 log::warn!("Worker {worker_name} not found, caching messages");
                 for (message, payload) in messages.drain(..) {
                     let cached = self.cached_worker_messages.entry(plugin_id).or_default();
@@ -3157,15 +3211,25 @@ impl WasmBridge {
         }
         Ok(())
     }
-    pub fn start_fs_watcher_if_not_started(&mut self) {
-        if self.watcher.is_none() {
-            self.watcher = match watch_filesystem(self.senders.clone(), &self.zellij_cwd) {
-                Ok(watcher) => Some(watcher),
-                Err(e) => {
-                    log::error!("Failed to watch filesystem: {:?}", e);
-                    None
-                },
-            };
+    pub fn start_fs_watcher_if_not_started(&mut self, plugin_id: PluginId, host_root: PathBuf) {
+        if self
+            .watchers
+            .get(&plugin_id)
+            .map(|(root, _)| root == &host_root)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        if let Some((_, old_watcher)) = self.watchers.remove(&plugin_id) {
+            old_watcher.stop_nonblocking();
+        }
+        match watch_filesystem(self.senders.clone(), plugin_id, &host_root) {
+            Ok(watcher) => {
+                self.watchers.insert(plugin_id, (host_root, watcher));
+            },
+            Err(e) => {
+                log::error!("Failed to watch filesystem: {:?}", e);
+            },
         }
     }
     /// Whether an answer to a permission prompt still concerns the module that is running. The
@@ -4724,6 +4788,10 @@ pub fn check_event_permission(
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::LiveViewStateChanged { .. } => PermissionType::ReadPaneContents,
+        Event::FileSystemCreate(..)
+        | Event::FileSystemRead(..)
+        | Event::FileSystemUpdate(..)
+        | Event::FileSystemDelete(..) => PermissionType::FullHdAccess,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
@@ -4737,7 +4805,7 @@ pub fn check_event_permission(
     (PermissionStatus::Denied, Some(permission))
 }
 
-fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
+pub(crate) fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
     if plugin_env.plugin.is_builtin() {
         return true;
     }
@@ -4751,9 +4819,24 @@ fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
         .unwrap_or(false)
 }
 
-fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
+pub(crate) fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
     pane_info.attention = std::mem::take(&mut pane_info.attention).without_command_text();
     pane_info.command_state = std::mem::take(&mut pane_info.command_state).without_command_text();
+    pane_info.terminal_command = None;
+}
+
+pub(crate) fn redact_session_info_for_plugin(
+    plugin_env: &PluginEnv,
+    session_info: &mut zellij_utils::data::SessionInfo,
+) {
+    if can_read_command_text(plugin_env) {
+        return;
+    }
+    for pane_infos in session_info.panes.panes.values_mut() {
+        for pane_info in pane_infos.iter_mut() {
+            redact_pane_info(pane_info);
+        }
+    }
 }
 
 pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {

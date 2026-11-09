@@ -12,7 +12,7 @@ use nix::{
 };
 use tokio::io::unix::AsyncFd;
 
-use libc::{self, ioctl, TIOCGWINSZ, TIOCSWINSZ};
+use libc::{self, ioctl, TIOCSWINSZ};
 use signal_hook::consts::*;
 
 use std::{
@@ -616,10 +616,7 @@ impl UnixPtyBackend {
                         height_in_pixels,
                     );
                     if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
-                        sizes.insert(
-                            terminal_id,
-                            (cols, rows, width_in_pixels, height_in_pixels),
-                        );
+                        sizes.insert(terminal_id, (cols, rows, width_in_pixels, height_in_pixels));
                     }
                 }
             },
@@ -628,10 +625,7 @@ impl UnixPtyBackend {
                 // open so the next spawn seeds openpty with a nonzero winsize.
                 if cols > 0 && rows > 0 {
                     if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
-                        sizes.insert(
-                            terminal_id,
-                            (cols, rows, width_in_pixels, height_in_pixels),
-                        );
+                        sizes.insert(terminal_id, (cols, rows, width_in_pixels, height_in_pixels));
                     }
                 }
                 Err::<(), _>(anyhow!("failed to find terminal fd for id {terminal_id}"))
@@ -1226,7 +1220,12 @@ mod tests {
             .expect("remember size without an open endpoint");
         let winsize = backend.initial_winsize_for(3);
         assert_eq!(
-            (winsize.ws_col, winsize.ws_row, winsize.ws_xpixel, winsize.ws_ypixel),
+            (
+                winsize.ws_col,
+                winsize.ws_row,
+                winsize.ws_xpixel,
+                winsize.ws_ypixel
+            ),
             (120, 40, 960, 640)
         );
 
@@ -1252,7 +1251,7 @@ mod tests {
             ws_ypixel: 0,
         };
         #[allow(clippy::useless_conversion)]
-        let rc = unsafe { ioctl(master_fd, TIOCGWINSZ.into(), &mut readback) };
+        let rc = unsafe { ioctl(master_fd, libc::TIOCGWINSZ.into(), &mut readback) };
         assert_eq!(rc, 0, "TIOCGWINSZ must succeed");
         assert_eq!((readback.ws_col, readback.ws_row), (100, 32));
         unsafe {

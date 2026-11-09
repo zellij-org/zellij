@@ -1527,8 +1527,8 @@ pub fn start_client(
                     },
                     Err(IpcReceiveError::Disconnected) => {
                         log::error!("Lost connection to the Zellij server");
-                        let _ = send_client_instructions
-                            .send(ClientInstruction::UnblockInputThread);
+                        let _ =
+                            send_client_instructions.send(ClientInstruction::UnblockInputThread);
                         let _ = send_client_instructions.send(ClientInstruction::Error(
                             "Lost connection to the Zellij server".to_string(),
                         ));

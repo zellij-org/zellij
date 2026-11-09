@@ -642,7 +642,10 @@ fn wire_cell(
             chunk_changed_colors,
         )),
         underline_color: if styled_underlines {
-            wire_color(styles.underline_color)
+            wire_color(substitute_changed_color(
+                styles.underline_color,
+                chunk_changed_colors,
+            ))
         } else {
             WireColor::Default.pack()
         },

@@ -10,6 +10,7 @@ use crate::panes::sixel::PixelRect;
 use std::collections::HashMap;
 
 pub const DEFAULT_KITTY_STORE_QUOTA_BYTES: usize = 335_544_320;
+pub(crate) const KITTY_IMAGE_METADATA_BYTES: usize = 512;
 // derived entries are evicted down to quota / this much below the quota
 const EVICTION_SLACK_DIVISOR: usize = 16;
 
@@ -113,7 +114,8 @@ impl KittyImageStore {
     pub fn store_image(&mut self, image: DecodedImage) -> Result<InternalImageId, KittyError> {
         let (rgba, width, height) = Self::normalize_to_rgba(image);
         let size = rgba.len();
-        if size > self.quota_bytes {
+        let admission_bytes = size.saturating_add(KITTY_IMAGE_METADATA_BYTES);
+        if admission_bytes > self.quota_bytes {
             return Err(KittyError {
                 code: KittyErrorCode::Einval,
                 message: "image exceeds storage quota".to_owned(),
@@ -125,7 +127,7 @@ impl KittyImageStore {
         }
         // evict_to_fit stops when only referenced images remain; without an
         // admission check the insert below would exceed the declared quota.
-        if !self.evict_to_fit(size, None, u64::MAX) {
+        if !self.evict_to_fit(admission_bytes, None, u64::MAX) {
             return Err(KittyError {
                 code: KittyErrorCode::Einval,
                 message: "image storage quota exhausted by referenced images".to_owned(),
@@ -151,7 +153,7 @@ impl KittyImageStore {
                 derived: DerivedImageData::default(),
             },
         );
-        self.total_bytes += size;
+        self.total_bytes += admission_bytes;
         Ok(id)
     }
     pub fn get(&self, id: InternalImageId) -> Option<&KittyImage> {
@@ -447,7 +449,12 @@ impl KittyImageStore {
         self.next_lru_stamp
     }
     fn stored_image_bytes(stored: &StoredImage) -> usize {
-        stored.image.rgba.len() + stored.derived.bytes()
+        stored
+            .image
+            .rgba
+            .len()
+            .saturating_add(stored.derived.bytes())
+            .saturating_add(KITTY_IMAGE_METADATA_BYTES)
     }
     fn remove_entry(&mut self, id: InternalImageId) {
         if let Some(stored) = self.images.remove(&id) {

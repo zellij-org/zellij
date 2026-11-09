@@ -5,10 +5,12 @@ use super::super::{
 use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
 };
-use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey};
+use crate::panes::kitty_graphics::store::{
+    InternalImageId, KittyImageStore, ScaledImageKey, KITTY_IMAGE_METADATA_BYTES,
+};
 use crate::panes::kitty_graphics::KittyHostCapability;
 use crate::panes::sixel::{PixelRect, SixelImageStore};
-use crate::panes::terminal_character::AnsiCode;
+use crate::panes::terminal_character::{AnsiCode, CharacterStyles, DEFAULT_STYLES};
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
@@ -18,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
+use zellij_utils::structured_render::WireColor;
 
 /// Helper to create a simple Output instance for testing
 fn create_test_output() -> Output {
@@ -76,6 +79,29 @@ fn test_output_new() {
     assert!(
         !output.has_rendered_assets(),
         "New output should not have rendered assets"
+    );
+}
+
+#[test]
+fn a_changed_palette_register_is_substituted_into_the_underline_color() {
+    let mut changed_colors = [None; 256];
+    changed_colors[4] = Some(AnsiCode::RgbCode((12, 34, 56)));
+    let styles = CharacterStyles {
+        foreground: Some(AnsiCode::ColorIndex(4)),
+        background: Some(AnsiCode::ColorIndex(4)),
+        underline_color: Some(AnsiCode::ColorIndex(4)),
+        underline: Some(AnsiCode::Underline(None)),
+        ..DEFAULT_STYLES
+    };
+    let cell = TerminalCharacter::new('x');
+
+    let wire = super::super::wire_cell(&cell, styles, Some(&changed_colors), true);
+
+    assert_eq!(WireColor::unpack(wire.fg), WireColor::Rgb(12, 34, 56));
+    assert_eq!(WireColor::unpack(wire.bg), WireColor::Rgb(12, 34, 56));
+    assert_eq!(
+        WireColor::unpack(wire.underline_color),
+        WireColor::Rgb(12, 34, 56)
     );
 }
 
@@ -2341,7 +2367,7 @@ fn kitty_cropped_placements_preserve_pixels_after_cell_resize() {
             // top of the base raster and retained scaled variants.
             assert_eq!(
                 store.total_bytes() - store.encoded_cache_bytes(),
-                20 * 40 * 4 + scaled_bytes
+                20 * 40 * 4 + scaled_bytes + KITTY_IMAGE_METADATA_BYTES
             );
         }
     }

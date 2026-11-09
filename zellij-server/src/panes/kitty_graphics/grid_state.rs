@@ -263,6 +263,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn placement_count(&self) -> usize {
         self.placements.len()
@@ -334,7 +336,20 @@ impl KittyGrid {
         }
         self.image_ids.insert(pane_image_id, internal);
         self.kitty_image_store.borrow_mut().touch(internal);
+        self.prune_stale_image_references();
         Ok(pane_image_id)
+    }
+    fn prune_stale_image_references(&mut self) {
+        {
+            let store = self.kitty_image_store.borrow();
+            self.image_ids
+                .retain(|_, internal_id| store.get(*internal_id).is_some());
+        }
+        let image_ids = &self.image_ids;
+        self.image_numbers.retain(|_, pane_image_ids| {
+            pane_image_ids.retain(|pane_image_id| image_ids.contains_key(pane_image_id));
+            !pane_image_ids.is_empty()
+        });
     }
     pub fn resolve_display_target(
         &self,
@@ -540,6 +555,7 @@ impl KittyGrid {
         self.kitty_image_store
             .borrow_mut()
             .add_placement_ref(internal);
+        self.prune_stale_image_references();
         Ok(dest_cells)
     }
     pub fn delete(
@@ -800,7 +816,9 @@ impl KittyGrid {
                 }
             }
             self.placements = kept;
+            drop(store);
         }
+        self.prune_stale_image_references();
     }
     pub fn merge_rows_into_line_start(&mut self, line_start_row: usize, merged_row_count: usize) {
         if merged_row_count == 0 {
@@ -878,6 +896,7 @@ impl KittyGrid {
         }
     }
     pub fn insert_canonical_anchor_line_at_front(&mut self) {
+        self.invalidate_canonical_starts();
         for placement in self.placements.iter_mut() {
             placement.vertical_anchor.canonical_line += 1;
         }
@@ -962,6 +981,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn character_cell_size_possibly_changed(&mut self) {
         if let (Some(previous_cell_size), Some(character_cell_size)) =
@@ -1045,12 +1066,15 @@ impl KittyGrid {
             }
         }
         self.previous_cell_size = *self.character_cell_size.borrow();
+        self.prune_stale_image_references();
     }
     pub fn clear_all_placements(&mut self) {
         let mut store = self.kitty_image_store.borrow_mut();
         for placement in self.placements.drain(..) {
             store.free(placement.internal_id);
         }
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn clear_visible_placements(&mut self, scrollback_size_in_lines: usize) {
         let cell_size = { *self.character_cell_size.borrow() };
@@ -1075,6 +1099,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn image_cell_coordinates_in_viewport(
         &self,
@@ -1205,6 +1231,9 @@ impl KittyGrid {
                             as usize,
                         image_pixel_rect.height,
                     );
+                    if source_px_height == 0 {
+                        continue;
+                    }
 
                     if (image_top_edge >= changed_rect_top_edge
                         && image_top_edge <= changed_rect_bottom_edge)
