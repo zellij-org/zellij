@@ -145,6 +145,7 @@ impl Desktop {
                 prepared,
                 anchor: None,
                 token,
+                position: None,
             },
         );
         let spawned = std::thread::Builder::new()

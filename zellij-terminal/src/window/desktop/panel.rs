@@ -1,10 +1,12 @@
 use crate::app::desktop::tray::Anchor;
 use crate::app::AppEvent;
+use crate::config::window_state::Startup;
 use crate::window::conductor::Input;
 use crate::window::desktop::hover;
 use crate::window::desktop::panel_grip;
 use crate::window::desktop::start_grip;
 use crate::window::desktop::Hover;
+use crate::window::desktop::PanelFrame;
 use crate::window::desktop::PanelWindow;
 use crate::window::desktop::Pending;
 use crate::window::desktop::PreparedWindow;
@@ -76,12 +78,68 @@ pub(super) fn centered(start: f64, end: f64, length: f64) -> f64 {
 /// The panel window's size in logical pixels, as the window asks for it: its cells and the
 /// padding around them.
 fn logical_size(prepared: &PreparedWindow) -> (f64, f64) {
+    size_with(prepared, prepared.geometry.cols, prepared.geometry.rows)
+}
+
+fn size_with(prepared: &PreparedWindow, cols: usize, rows: usize) -> (f64, f64) {
     let geometry = &prepared.geometry;
     let padding = prepared.options.padding;
     (
-        (geometry.cell_width * geometry.cols) as f64 + padding.horizontal() as f64,
-        (geometry.cell_height * geometry.rows) as f64 + padding.vertical() as f64,
+        (geometry.cell_width * cols) as f64 + padding.horizontal() as f64,
+        (geometry.cell_height * rows) as f64 + padding.vertical() as f64,
     )
+}
+
+fn sized_as(prepared: &mut PreparedWindow, frame: PanelFrame) {
+    prepared.geometry.cols = frame.cols;
+    prepared.geometry.rows = frame.rows;
+    prepared.startup = Startup::windowed(frame.rows, frame.cols);
+}
+
+/// Where a panel the user left opens again: at the same place, pulled back inside the work area
+/// if it hangs over an edge, or nowhere in particular if it no longer fits there.
+fn kept_in_view(
+    event_loop: &ActiveEventLoop,
+    position: (f64, f64),
+    size: (f64, f64),
+) -> Option<winit::dpi::Position> {
+    if crate::window::is_wayland(event_loop) {
+        return None;
+    }
+    let (x, y) = position;
+    let scale = scale_at(event_loop, x, y);
+    let pixels = (size.0 * scale, size.1 * scale);
+    let (left, top) = kept_inside(work_area(event_loop, x, y), position, pixels)?;
+    Some(winit::dpi::PhysicalPosition::new(left, top).into())
+}
+
+pub(super) fn kept_inside(
+    area: (f64, f64, f64, f64),
+    position: (f64, f64),
+    pixels: (f64, f64),
+) -> Option<(f64, f64)> {
+    let (left, top, right, bottom) = area;
+    if pixels.0 > right - left || pixels.1 > bottom - top {
+        return None;
+    }
+    Some((
+        position.0.clamp(left, right - pixels.0),
+        position.1.clamp(top, bottom - pixels.1),
+    ))
+}
+
+fn frame_of(app: &App) -> Option<PanelFrame> {
+    let window = app.window()?;
+    let state = app.window_state();
+    let position = window
+        .outer_position()
+        .ok()
+        .map(|position| (position.x as f64, position.y as f64));
+    Some(PanelFrame {
+        cols: state.cols,
+        rows: state.rows,
+        position,
+    })
 }
 
 fn anchor_point(event_loop: &ActiveEventLoop, anchor: Option<Anchor>) -> Option<(f64, f64)> {
@@ -150,8 +208,15 @@ pub(super) fn monitor_area(event_loop: &ActiveEventLoop, x: f64, y: f64) -> (f64
 }
 
 impl Desktop {
+    /// Takes the panel away, keeping its size and place for the next time it opens.
+    pub(super) fn take_panel(&mut self) -> Option<PanelWindow> {
+        let panel = self.panel.take()?;
+        self.panel_frame = frame_of(&panel.app).or(self.panel_frame);
+        Some(panel)
+    }
+
     pub(super) fn close_panel(&mut self) {
-        if let Some(mut panel) = self.panel.take() {
+        if let Some(mut panel) = self.take_panel() {
             panel.app.leave();
             drop(panel.app.take_session());
         }
@@ -193,16 +258,24 @@ impl Desktop {
         };
         let area = self.panel_area(event_loop, anchor);
         let proxy = self.proxy.clone();
+        let frame = self.panel_frame;
         let Some(hosting) = self.hosting() else {
             return false;
         };
-        let prepared = match hosting.maker.panel(area) {
+        let mut prepared = match hosting.maker.panel(area) {
             Ok(prepared) => prepared,
             Err(e) => {
                 report!("the inbox panel could not be prepared: {:#}", e);
                 return false;
             },
         };
+        let frame = frame.filter(|frame| {
+            let (width, height) = size_with(&prepared, frame.cols, frame.rows);
+            width <= area.0 && height <= area.1
+        });
+        if let Some(frame) = frame {
+            sized_as(&mut prepared, frame);
+        }
         let connector = hosting.maker.panel_connector();
         let geometry = prepared.geometry;
         let view_name = view_payload(view);
@@ -212,6 +285,7 @@ impl Desktop {
                 prepared,
                 anchor,
                 token,
+                position: frame.and_then(|frame| frame.position),
             },
         );
         let spawned = std::thread::Builder::new()
@@ -246,12 +320,15 @@ impl Desktop {
             prepared,
             anchor,
             token,
+            position,
         } = pending;
         let size = logical_size(&prepared);
         let border = prepared.border;
         let mut made = hosting.maker.make(connection, prepared);
         made.remember = false;
-        let position = placement(event_loop, anchor, size);
+        let position = position
+            .and_then(|position| kept_in_view(event_loop, position, size))
+            .or_else(|| placement(event_loop, anchor, size));
         let app = with_activation(terminal_app(made, ticket, proxy), token);
         let mut app = as_panel(app, position, border);
         if app.on_resumed(event_loop) == Verdict::Close {
@@ -358,6 +435,37 @@ mod tests {
         assert_eq!(
             centred_in((100.0, 50.0, 900.0, 650.0), (1240.0, 693.0), 1.0),
             (100.0, 50.0)
+        );
+    }
+
+    #[test]
+    fn a_panel_reopens_where_it_was_left() {
+        let above_the_taskbar = (0.0, 0.0, 2880.0, 1704.0);
+        assert_eq!(
+            kept_inside(above_the_taskbar, (100.0, 200.0), (2480.0, 1386.0)),
+            Some((100.0, 200.0))
+        );
+    }
+
+    #[test]
+    fn a_panel_left_over_an_edge_reopens_inside_the_work_area() {
+        let above_the_taskbar = (0.0, 0.0, 2880.0, 1704.0);
+        assert_eq!(
+            kept_inside(above_the_taskbar, (1000.0, 800.0), (2480.0, 1386.0)),
+            Some((400.0, 318.0)),
+            "pulled back left of the screen's edge and above the taskbar"
+        );
+        assert_eq!(
+            kept_inside(above_the_taskbar, (-50.0, -20.0), (2480.0, 1386.0)),
+            Some((0.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn a_panel_that_no_longer_fits_is_placed_afresh() {
+        assert_eq!(
+            kept_inside((0.0, 0.0, 1920.0, 1040.0), (0.0, 0.0), (2480.0, 1386.0)),
+            None
         );
     }
 }
