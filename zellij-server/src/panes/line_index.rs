@@ -189,6 +189,10 @@ struct MeasureCursor {
     /// Uniform-width merge state at the start of each entered row.
     uniform_prefix: Vec<UniformState>,
     width: usize,
+    /// Wrap state still includes rows removed from the front of this line.
+    /// The cursor keeps its place; the summary is published only after a
+    /// later pass that starts at the surviving suffix.
+    contaminated_prefix: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -234,6 +238,7 @@ impl MeasureCursor {
             uniform_state: UniformState::default(),
             uniform_prefix: Vec::new(),
             width,
+            contaminated_prefix: false,
         }
     }
 
@@ -248,7 +253,43 @@ impl MeasureCursor {
         self.cell_prefix.push_back(0);
         self.uniform_state = UniformState::default();
         self.uniform_prefix.clear();
+        self.contaminated_prefix = false;
     }
+
+    /// Drop per-row records for `cut` leading rows. Lengths stay aligned
+    /// with `row_index`; the values may still be absolute until a clean pass.
+    fn drop_recorded_prefix(&mut self, cut: usize) {
+        let boundary_drop = cut.min(self.boundaries.len());
+        self.boundaries.drain(..boundary_drop);
+        let uniform_drop = cut.min(self.uniform_prefix.len());
+        self.uniform_prefix.drain(..uniform_drop);
+        let cell_drop = cut.min(self.cell_prefix.len());
+        self.cell_prefix.drain(..cell_drop);
+        if self.cell_prefix.is_empty() {
+            self.cell_prefix.push_back(0);
+        }
+    }
+}
+
+/// `cut` rows left the front of the line this cursor is walking.
+/// Rows already walked stay under the cursor. A cut that has not been
+/// reached resumes at the first surviving row and does not revisit the
+/// dropped prefix.
+fn rebase_cursor_past_front_cut(cursor: &mut MeasureCursor, cut: usize) {
+    if cut == 0 {
+        return;
+    }
+    let entered_surviving_row =
+        cursor.row_index > cut || (cursor.row_index == cut && cursor.cell_index > 0);
+    if !entered_surviving_row {
+        let line_index = cursor.line_index;
+        let row_start = cursor.row_start;
+        cursor.reset_for_line(line_index, row_start);
+        return;
+    }
+    cursor.row_index -= cut;
+    cursor.contaminated_prefix = true;
+    cursor.drop_recorded_prefix(cut);
 }
 
 struct LineMeasurement {
@@ -590,8 +631,7 @@ impl LineIndex {
         self.measured_lines == self.lines.len()
     }
 
-    /// Whether the oldest line still needs its summary rebuilt. While that is
-    /// true, front eviction would reset the measurement origin.
+    /// Whether the oldest line still needs its summary rebuilt.
     pub(crate) fn front_line_unmeasured(&self) -> bool {
         self.lines
             .front()
@@ -610,6 +650,14 @@ impl LineIndex {
 
     pub(crate) fn measurement_active(&self) -> bool {
         self.measure.is_some()
+    }
+
+    /// Global stored-row index the in-progress cursor will read next.
+    #[cfg(test)]
+    pub(crate) fn measure_cursor_source_row(&self) -> Option<usize> {
+        self.measure
+            .as_ref()
+            .map(|cursor| cursor.row_start + cursor.row_index)
     }
 
     /// Whether removing one row from the front keeps every summary exact.
@@ -653,13 +701,15 @@ impl LineIndex {
 
     /// Keep an in-flight measurement job aligned with the surviving line
     /// deque after rows left the front. A job on a later line keeps its
-    /// progress; a job on the partially cut first line restarts from that
-    /// line's new row zero.
+    /// place. A job on the cut line keeps rows it has already walked:
+    /// those rows slide back with the cut instead of restarting at the
+    /// first surviving row. A cut that lands past the cursor resumes at
+    /// the surviving suffix only. Dropped rows are not walked again.
     fn rebase_measure_after_front_removal(
         &mut self,
         popped_lines: usize,
         removed_rows: usize,
-        partial_front_line: bool,
+        partial_cut: usize,
     ) {
         let Some(mut cursor) = self.measure.take() else {
             return;
@@ -669,8 +719,8 @@ impl LineIndex {
         }
         cursor.line_index -= popped_lines;
         cursor.row_start = cursor.row_start.saturating_sub(removed_rows);
-        if partial_front_line && cursor.line_index == 0 {
-            cursor.reset_for_line(0, 0);
+        if partial_cut > 0 && cursor.line_index == 0 {
+            rebase_cursor_past_front_cut(&mut cursor, partial_cut);
         }
         self.measure = Some(cursor);
     }
@@ -927,6 +977,7 @@ impl LineIndex {
             self.lines.pop_front().expect("planned full line");
         }
         let partial_front_line = partial.is_some();
+        let partial_cut = if partial.is_some() { remaining } else { 0 };
         if let Some((surviving_rows, partial)) = partial {
             let line = self.lines.front_mut().expect("surviving partial line");
             line.row_count = surviving_rows;
@@ -954,7 +1005,7 @@ impl LineIndex {
             self.measure_hint_line -= full_lines;
             self.measure_hint_row_start = self.measure_hint_row_start.saturating_sub(count);
         }
-        self.rebase_measure_after_front_removal(full_lines, count, partial_front_line);
+        self.rebase_measure_after_front_removal(full_lines, count, partial_cut);
         self.apply_measured_delta(measured_delta, measured_line_delta);
         self.publish_if_fully_measured();
         if exact {
@@ -1297,6 +1348,14 @@ impl LineIndex {
             }
             let line_row_count = self.lines[cursor.line_index].row_count;
             if cursor.row_index >= line_row_count {
+                if cursor.contaminated_prefix {
+                    // Recorded boundaries still include rows that left the
+                    // front. Publish only a pass that starts on the survivors.
+                    let line_index = cursor.line_index;
+                    let row_start = cursor.row_start;
+                    cursor.reset_for_line(line_index, row_start);
+                    continue;
+                }
                 let height = cursor.state.height();
                 let row_count = line_row_count;
                 let line = &mut self.lines[cursor.line_index];

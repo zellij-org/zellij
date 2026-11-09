@@ -1430,18 +1430,16 @@ fn bounded_push(
     }
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE);
     let cell_budget = scroll_buffer_size.saturating_mul(MAX_SCROLLBACK_ROW_CELLS);
-    // While the oldest line is being measured, evicting it would move the
-    // measurement origin and restart the job. Admit a bounded reserve of new
-    // rows instead; the recount trims back to the normal cap when it finishes.
-    // If output outruns the recount, drop the newest retained rows at the 2x
-    // ceiling: the retained window stays a contiguous chronological prefix,
-    // memory stays bounded, and the loss is reported as truncated history.
+    // While the oldest line is being measured, admit up to twice the normal
+    // cap so the recount can advance before retention returns to that cap.
+    // Past either ceiling, drop the oldest rows. Dropping the newest row
+    // would glue an old prefix to a newer tail and hide a hole inside one
+    // logical line. The measure cursor slides with a front cut instead of
+    // restarting at the first survivor, so a producer that keeps scrolling
+    // does not wipe the rows already walked.
     //
-    // Outside that temporary reserve, retention is chronological front
-    // eviction. Mixed-width front cuts invalidate the line summary and the
-    // resumable recount rebuilds it under its budget — never by shedding
-    // intermediate rows from the back of a full measured line (which would
-    // silently concatenate disjoint spans).
+    // Retained graphics cannot be pulled out from under a placement. Reject
+    // the incoming row rather than popping either end.
     let reserving_for_recount =
         line_index.front_line_unmeasured() && line_index.measurement_active();
     let row_limit = if reserving_for_recount {
@@ -1473,21 +1471,11 @@ fn bounded_push(
         || (scrollback_cells.saturating_add(incoming) > cell_limit && !vec.is_empty())
     {
         if reserving_for_recount && !may_drop_back {
-            // Retained graphics make back-shedding unsafe, but evicting the
-            // measured front would restart the recount forever. Reject this
-            // scrolled-off row and keep the measurement origin stable.
+            // A placement is anchored in this buffer. Popping the back
+            // opens a hole; popping the front can drop the anchor row.
+            // Reject the scrolled-off row and keep the retained range.
             *history_truncated = true;
             return 0;
-        }
-        if reserving_for_recount && may_drop_back {
-            let Some(row) = vec.pop_back() else {
-                break;
-            };
-            *scrollback_cells = scrollback_cells.saturating_sub(row.stored_cell_count());
-            line_index.note_back_rows_removed(vec, 1);
-            kitty_grid.invalidate_canonical_starts();
-            *history_truncated = true;
-            continue;
         }
         match retire_scrollback_front(vec, sixel_grid, kitty_grid, scrollback_cells) {
             Some(_) => evicted += 1,

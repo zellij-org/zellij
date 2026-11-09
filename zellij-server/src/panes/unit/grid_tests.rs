@@ -13997,11 +13997,7 @@ fn measured_mixed_width_full_history_keeps_chronological_rows() {
         Some(scroll_buffer_size)
     );
 
-    let before: Vec<u32> = grid
-        .lines_above
-        .iter()
-        .map(scrollback_row_tag)
-        .collect();
+    let before: Vec<u32> = grid.lines_above.iter().map(scrollback_row_tag).collect();
     assert_eq!(before.first().copied(), Some(0));
     assert_eq!(
         before.last().copied(),
@@ -14023,11 +14019,7 @@ fn measured_mixed_width_full_history_keeps_chronological_rows() {
         settle += 1;
     }
 
-    let after: Vec<u32> = grid
-        .lines_above
-        .iter()
-        .map(scrollback_row_tag)
-        .collect();
+    let after: Vec<u32> = grid.lines_above.iter().map(scrollback_row_tag).collect();
     let expected: Vec<u32> = (appended..(scroll_buffer_size as u32 + appended)).collect();
     assert_eq!(
         after, expected,
@@ -14044,6 +14036,226 @@ fn measured_mixed_width_full_history_keeps_chronological_rows() {
         !grid.history_was_truncated(),
         "chronological front eviction is ordinary rolling retention, not truncation"
     );
+}
+
+fn scrollback_tags(grid: &Grid) -> Vec<u32> {
+    grid.lines_above.iter().map(scrollback_row_tag).collect()
+}
+
+fn assert_contiguous_tag_range(tags: &[u32]) {
+    assert!(!tags.is_empty(), "scrollback has no tagged rows");
+    assert!(
+        tags.windows(2).all(|pair| pair[1] == pair[0] + 1),
+        "retained tags must be a contiguous integer range, got {}..{} ({} rows)",
+        tags.first().copied().unwrap_or(0),
+        tags.last().copied().unwrap_or(0),
+        tags.len()
+    );
+}
+
+/// Fill one logical line to the recount reserve, with measurement active.
+/// Tags are the source-row ids `0..len`.
+fn fill_reserve_during_recount(grid: &mut Grid) -> usize {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let reserve = scroll_buffer_size.saturating_mul(2);
+    for tag in 0..scroll_buffer_size as u32 {
+        push_scrollback_row(grid, mixed_tagged_scrollback_row(tag == 0, tag));
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    grid.start_display_row_recount(grid.width);
+    let _ = grid.continue_display_row_recount();
+    assert!(
+        grid.retention_reserve_active(),
+        "the recount reserve must be open before the ceiling is tested"
+    );
+    for tag in scroll_buffer_size as u32..reserve as u32 {
+        push_scrollback_row(grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    assert_eq!(grid.lines_above.len(), reserve);
+    assert!(grid.retention_reserve_active());
+    reserve
+}
+
+#[test]
+fn recount_reserve_keeps_a_contiguous_scrollback_suffix() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let extra = 4u32;
+    for offset in 0..extra {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(false, reserve as u32 + offset),
+        );
+    }
+    let tags = scrollback_tags(&grid);
+    let expected: Vec<u32> = (extra..reserve as u32 + extra).collect();
+    assert_eq!(
+        tags, expected,
+        "over the recount reserve the retained rows must be the newest contiguous suffix"
+    );
+    let holed: Vec<u32> = (0..reserve as u32 - 1)
+        .chain(std::iter::once(reserve as u32 + extra - 1))
+        .collect();
+    assert_ne!(
+        tags, holed,
+        "must not keep an old prefix glued to the newest row"
+    );
+    assert!(tags.len() <= scroll_buffer_size.saturating_mul(2));
+    assert_contiguous_tag_range(&tags);
+}
+
+#[test]
+fn recount_reserve_does_not_join_a_dropped_middle_into_one_logical_line() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let extra = 4u32;
+    for offset in 0..extra {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(false, reserve as u32 + offset),
+        );
+    }
+    let tags = scrollback_tags(&grid);
+    assert_contiguous_tag_range(&tags);
+    assert_ne!(tags[0], 0, "the oldest source row must have left the front");
+    // One soft-wrapped line: search and copy both join until the next
+    // canonical row. A hole would glue r0's text to the newest row.
+    let newest = *tags.last().expect("suffix");
+    let previous = newest - 1;
+    let previous_index = tags
+        .iter()
+        .position(|tag| *tag == previous)
+        .expect("neighbor");
+    grid.search_results.needle = format!("{previous:05}\u{754c}{newest:05}");
+    let tail: Vec<&super::super::Row> = grid
+        .lines_above
+        .iter()
+        .skip(previous_index + 1)
+        .take_while(|row| !row.is_canonical)
+        .collect();
+    let hits =
+        grid.search_results
+            .search_row(previous_index, &grid.lines_above[previous_index], &tail);
+    assert!(
+        !hits.is_empty(),
+        "search did not see adjacent surviving rows {previous} and {newest} as one line"
+    );
+    let mut joined = String::new();
+    for (index, row) in grid.lines_above.iter().enumerate() {
+        if index > 0 && row.is_canonical {
+            break;
+        }
+        joined.push_str(&row_text(row));
+    }
+    assert!(
+        joined.contains(&format!("{previous:05}\u{754c}{newest:05}")),
+        "logical-line join split adjacent surviving rows"
+    );
+    assert!(
+        !joined.contains(&format!("00000\u{754c}{newest:05}")),
+        "logical-line join glued dropped id 0 to newest id {newest}"
+    );
+    assert!(
+        !joined.contains("00000"),
+        "the joined line still contains dropped source row 0"
+    );
+    let copied = grid
+        .text_in_range(
+            Position::new(-(grid.lines_above.len() as i32), 0),
+            Position::new(0, grid.width as u16),
+        )
+        .expect("scrollback should copy");
+    assert!(
+        copied.contains(&format!("{previous:05}\u{754c}{newest:05}")),
+        "copy split the surviving logical line"
+    );
+    assert!(
+        !copied.contains("00000"),
+        "copy included dropped source row 0 next to the surviving suffix"
+    );
+    assert_eq!(grid.line_index.line_count(), 1);
+}
+
+#[test]
+fn recount_reserve_with_graphics_rejects_the_incoming_row() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let (mut grid, _store) = new_kitty_grid(5, 10);
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=1,v=1,i=1,C=1", &rgb_raster(1, 1)),
+    );
+    assert!(
+        !grid.kitty_placements().is_empty(),
+        "the fixture must retain a placement so back-drop is unsafe"
+    );
+    // Placing the image can scroll. Re-open the recount if that cleared it,
+    // then pad back to the reserve ceiling without going past it.
+    if !grid.retention_reserve_active() {
+        grid.start_display_row_recount(grid.width);
+        let _ = grid.continue_display_row_recount();
+    }
+    assert!(grid.retention_reserve_active());
+    while grid.lines_above.len() < reserve
+        && grid.lines_above.len() < scroll_buffer_size.saturating_mul(2)
+    {
+        let tag = grid.lines_above.len() as u32;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    let before = scrollback_tags(&grid);
+    assert_contiguous_tag_range(&before);
+    assert_eq!(
+        before.len(),
+        reserve.min(scroll_buffer_size.saturating_mul(2))
+    );
+    let rejected = before.len() as u32 + 50_000;
+    let evicted = push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, rejected));
+    assert_eq!(
+        evicted, 0,
+        "a placement must reject the row instead of evicting"
+    );
+    let after = scrollback_tags(&grid);
+    assert_eq!(
+        after, before,
+        "rejecting the row must keep the retained range"
+    );
+    assert!(!after.contains(&rejected));
+    assert_contiguous_tag_range(&after);
+    assert!(grid.history_was_truncated());
+}
+
+#[test]
+fn recount_cursor_advances_while_the_producer_evicts_the_front() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let mut previous = scrollback_row_tag(
+        &grid.lines_above[grid
+            .line_index
+            .measure_cursor_source_row()
+            .expect("recount cursor")],
+    );
+    for cycle in 0..6 {
+        let tag = reserve as u32 + cycle;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+        assert_contiguous_tag_range(&scrollback_tags(&grid));
+        assert!(grid.lines_above.len() <= reserve);
+        let _ = grid.continue_display_row_recount();
+        let source = grid
+            .line_index
+            .measure_cursor_source_row()
+            .expect("cursor must stay active on the long line");
+        let current = scrollback_row_tag(&grid.lines_above[source]);
+        assert!(
+            current >= previous.saturating_add(64),
+            "cycle {cycle}: cursor tag moved {previous} -> {current}, which is not sustained progress"
+        );
+        previous = current;
+    }
 }
 
 fn mixed_tagged_scrollback_row(canonical: bool, tag: u32) -> super::Row {

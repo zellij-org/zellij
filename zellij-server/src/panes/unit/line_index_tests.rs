@@ -813,6 +813,70 @@ fn empty_continuation_rows_do_not_change_height_but_can_be_transferred() {
 }
 
 #[test]
+fn front_cut_during_measurement_keeps_cursor_progress_and_matches_oracle() {
+    let width = 7;
+    let rows: Vec<_> = (0..40)
+        .map(|index| character_row(&format!("{index:02}x\u{754c}"), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 4);
+    fixture.set_width(width);
+    assert_eq!(
+        fixture.measure_next(10, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let before = fixture
+        .index
+        .measure
+        .as_ref()
+        .expect("measurement stays open")
+        .row_index;
+    assert!(before > 4, "cursor row_index was only {before}");
+    let cut = 2;
+    assert_eq!(fixture.evict_front(cut), LineDelta::NeedsMeasure);
+    let cursor = fixture.index.measure.as_ref().expect("cursor");
+    assert_eq!(cursor.line_index, 0);
+    assert_eq!(
+        cursor.row_index,
+        before - cut,
+        "rows already walked must slide with the front cut"
+    );
+    let slid = cursor.row_index;
+    assert_eq!(
+        fixture.measure_next(5, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let advanced = fixture.index.measure.as_ref().expect("cursor").row_index;
+    assert!(advanced > slid, "the next quantum did not move forward");
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    assert_eq!(
+        fixture.index.measure.as_ref().expect("cursor").row_index,
+        advanced - 1
+    );
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+
+    // A cut past the cursor resumes on the surviving suffix only.
+    let rows: Vec<_> = (0..30)
+        .map(|index| character_row(&format!("z{index:02}"), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 3);
+    fixture.set_width(5);
+    assert_eq!(
+        fixture.measure_next(2, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let cursor = fixture.index.measure.as_ref().expect("cursor");
+    assert!(cursor.row_index < 8);
+    assert_eq!(fixture.evict_front(8), LineDelta::NeedsMeasure);
+    let cursor = fixture.index.measure.as_ref().expect("suffix cursor");
+    assert_eq!(cursor.row_index, 0);
+    assert_eq!(cursor.cell_index, 0);
+    assert!(!cursor.contaminated_prefix);
+    fixture.measure_all();
+    assert_exact_total(&fixture, 5);
+}
+
+#[test]
 fn back_cut_retires_a_partially_scanned_removed_row() {
     let width = 2;
     let mut fixture = Fixture::new(
