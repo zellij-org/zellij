@@ -1,6 +1,8 @@
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
 use std::borrow::Cow;
+#[cfg(test)]
+use std::cell::Cell;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -13,6 +15,12 @@ pub const DEFAULT_KITTY_STORE_QUOTA_BYTES: usize = 335_544_320;
 pub(crate) const KITTY_IMAGE_METADATA_BYTES: usize = 512;
 // derived entries are evicted down to quota / this much below the quota
 const EVICTION_SLACK_DIVISOR: usize = 16;
+/// Distinct scaled rasters kept for one image (one source rectangle at one
+/// destination pixel size each). Storing another past this drops the
+/// least-recently-used other variant of that image, and any cached encoding
+/// of the dropped raster. The byte quota can drop variants sooner. Replacing
+/// a variant that is already stored does not grow the set.
+pub(crate) const MAX_SCALED_VARIANTS_PER_IMAGE: usize = 4;
 
 pub type InternalImageId = u64;
 
@@ -70,6 +78,10 @@ struct StoredImage {
     refcount: usize,
     lru_stamp: u64,
     derived: DerivedImageData,
+    /// Successful `scale_rgba` calls for this image. Placement reuses a
+    /// stored size without incrementing it.
+    #[cfg(test)]
+    scale_count: Cell<u64>,
 }
 
 /// Identifies a regenerable derived entry for eviction.
@@ -151,6 +163,8 @@ impl KittyImageStore {
                 refcount: 0,
                 lru_stamp,
                 derived: DerivedImageData::default(),
+                #[cfg(test)]
+                scale_count: Cell::new(0),
             },
         );
         self.total_bytes += admission_bytes;
@@ -173,33 +187,72 @@ impl KittyImageStore {
             .and_then(|stored| stored.derived.scaled_variants.get(&key))
             .map(|variant| variant.bytes.as_slice())
     }
+    /// Mark a stored variant recently used without copying or rescaling it.
+    pub(crate) fn touch_scaled_variant(&mut self, id: InternalImageId, key: ScaledImageKey) {
+        let present = self
+            .images
+            .get(&id)
+            .is_some_and(|stored| stored.derived.scaled_variants.contains_key(&key));
+        if !present {
+            return;
+        }
+        let stamp = self.bump_lru();
+        if let Some(stored) = self.images.get_mut(&id) {
+            stored.lru_stamp = stamp;
+            if let Some(variant) = stored.derived.scaled_variants.get_mut(&key) {
+                variant.lru_stamp = stamp;
+            }
+        }
+    }
     /// Compute the bytes of a scaled variant from the base raster without
     /// touching the cache.
     fn render_scaled_variant(&self, id: InternalImageId, key: ScaledImageKey) -> Option<Vec<u8>> {
-        let stored = self.images.get(&id)?;
-        let (width, height) = (stored.image.width as usize, stored.image.height as usize);
-        let source = key.source;
-        if source.y < 0 || source.x >= width || source.y as usize >= height {
+        let scaled = {
+            let stored = self.images.get(&id)?;
+            let (width, height) = (stored.image.width as usize, stored.image.height as usize);
+            let source = key.source;
+            if source.y < 0 || source.x >= width || source.y as usize >= height {
+                return None;
+            }
+            let cropped = crop_rgba(
+                &stored.image.rgba,
+                width,
+                height,
+                source.x,
+                source.y as usize,
+                source.width,
+                source.height,
+            );
+            scale_rgba(
+                &cropped,
+                source.width,
+                source.height,
+                key.size.0,
+                key.size.1,
+            )
+        };
+        // an empty result (oversized or degenerate target) is not a valid raster
+        if scaled.is_empty() {
             return None;
         }
-        let cropped = crop_rgba(
-            &stored.image.rgba,
-            width,
-            height,
-            source.x,
-            source.y as usize,
-            source.width,
-            source.height,
-        );
-        let scaled = scale_rgba(
-            &cropped,
-            source.width,
-            source.height,
-            key.size.0,
-            key.size.1,
-        );
-        // an empty result (oversized or degenerate target) is not a valid raster
-        (!scaled.is_empty()).then_some(scaled)
+        #[cfg(test)]
+        self.note_scale(id);
+        Some(scaled)
+    }
+    #[cfg(test)]
+    pub(crate) fn note_scale(&self, id: InternalImageId) {
+        if let Some(stored) = self.images.get(&id) {
+            stored
+                .scale_count
+                .set(stored.scale_count.get().saturating_add(1));
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn scale_count(&self, id: InternalImageId) -> u64 {
+        self.images
+            .get(&id)
+            .map(|stored| stored.scale_count.get())
+            .unwrap_or(0)
     }
     /// Fetch a scaled variant, regenerating it from the base raster when it
     /// is not cached. Regeneration makes variant entries safe to evict
@@ -367,6 +420,7 @@ impl KittyImageStore {
         };
         if let Some((removed_len, new_len)) = inserted {
             self.total_bytes = self.total_bytes - removed_len + new_len;
+            self.drop_scaled_variants_over_cap(id, key);
             if self.total_bytes > self.quota_bytes {
                 self.evict_to_fit(0, Some(id), lru_stamp);
                 if self.total_bytes > self.quota_bytes {
@@ -396,6 +450,54 @@ impl KittyImageStore {
         let incoming = bytes.saturating_sub(existing);
         self.evict_to_fit(incoming, Some(id), u64::MAX);
         self.total_bytes + incoming <= self.quota_bytes
+    }
+    /// Drop least-recently-used variants of `id` other than `keep` until the
+    /// per-image cap holds. `keep` is the variant just stored.
+    fn drop_scaled_variants_over_cap(&mut self, id: InternalImageId, keep: ScaledImageKey) {
+        while self.images.get(&id).is_some_and(|stored| {
+            stored.derived.scaled_variants.len() > MAX_SCALED_VARIANTS_PER_IMAGE
+        }) {
+            let victim = self.images.get(&id).and_then(|stored| {
+                stored
+                    .derived
+                    .scaled_variants
+                    .iter()
+                    .filter(|(key, _)| **key != keep)
+                    .min_by_key(|(_, variant)| variant.lru_stamp)
+                    .map(|(key, _)| *key)
+            });
+            let Some(victim) = victim else {
+                break;
+            };
+            self.discard_scaled_variant(id, victim);
+        }
+    }
+    fn discard_scaled_variant(&mut self, id: InternalImageId, key: ScaledImageKey) {
+        let freed = match self.images.get_mut(&id) {
+            Some(stored) => {
+                let mut freed = stored
+                    .derived
+                    .scaled_variants
+                    .remove(&key)
+                    .map(|variant| variant.bytes.len())
+                    .unwrap_or(0);
+                let cache_keys: Vec<_> = stored
+                    .derived
+                    .base64_cache
+                    .keys()
+                    .filter(|(cached_variant, _)| *cached_variant == Some(key))
+                    .copied()
+                    .collect();
+                for cache_key in cache_keys {
+                    if let Some(cached) = stored.derived.base64_cache.remove(&cache_key) {
+                        freed += cached.value.len();
+                    }
+                }
+                freed
+            },
+            None => 0,
+        };
+        self.total_bytes = self.total_bytes.saturating_sub(freed);
     }
     pub fn clear_scaled_variants(&mut self, id: InternalImageId) {
         if let Some(stored) = self.images.get_mut(&id) {

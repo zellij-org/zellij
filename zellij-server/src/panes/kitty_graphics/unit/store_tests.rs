@@ -304,9 +304,10 @@ fn rgb24_images_are_normalized_to_rgba_at_store_time() {
 
 #[test]
 fn a_large_insert_over_many_small_variants_evicts_in_a_single_pass() {
-    // 40k distinct tiny variants; admitting one image that needs most of
-    // the quota back evicts all of them. Rescanning every entry for each
-    // eviction would take 40k * 40k entry visits.
+    // Far more distinct sizes than the per-image cap. Each insert drops
+    // the least-recently-used other size, so the attempt must not be
+    // quadratic in the number of sizes. A following large image still
+    // fits in the quota.
     let quota = 4_000_000;
     let mut store = KittyImageStore::with_quota(quota);
     let id = store.store_image(rgba_image(2, 2)).unwrap();
