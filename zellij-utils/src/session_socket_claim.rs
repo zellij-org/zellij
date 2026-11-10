@@ -58,6 +58,9 @@ impl ExclusiveMarkerClaim {
         liveness: crate::sessions::WindowsPidLiveness,
     ) -> std::io::Result<Self> {
         let lock_path = SessionSocketClaim::lock_path(socket_path)?;
+        if let Some(parent) = lock_path.parent() {
+            crate::consts::prepare_private_dir(parent)?;
+        }
         match open_exclusive_lock(&lock_path) {
             Ok(file) => finish_exclusive_claim(file, lock_path, socket_path),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -314,6 +317,9 @@ impl SessionSocketClaim {
         use nix::fcntl::{Flock, FlockArg};
         use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
         let lock_path = Self::lock_path(socket_path)?;
+        if let Some(parent) = lock_path.parent() {
+            crate::consts::prepare_private_dir(parent)?;
+        }
         loop {
             let file = std::fs::OpenOptions::new()
                 .create(true)
@@ -426,6 +432,14 @@ mod tests {
         first.release();
         let second = SessionSocketClaim::try_acquire(&path).unwrap();
         second.release();
+    }
+
+    #[test]
+    fn a_claim_creates_a_missing_socket_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing").join("session");
+        let _claim = SessionSocketClaim::try_acquire(&path).unwrap();
+        assert!(SessionSocketClaim::lock_path(&path).unwrap().is_file());
     }
 
     #[cfg(unix)]
