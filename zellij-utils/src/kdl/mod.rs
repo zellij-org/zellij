@@ -7934,6 +7934,19 @@ impl Themes {
                 }
             } else {
                 // Newer theme definition with named styles
+                let declares_ribbon_unselected =
+                    kdl_child_with_name!(theme_config, "ribbon_unselected").is_some();
+                let ribbon_unselected =
+                    Themes::style_declaration_from_node(theme_config, "ribbon_unselected")?
+                        .unwrap_or(DEFAULT_STYLES.ribbon_unselected);
+                let ribbon_hover =
+                    Themes::style_declaration_from_node(theme_config, "ribbon_hover")?.or(
+                        if declares_ribbon_unselected {
+                            None
+                        } else {
+                            DEFAULT_STYLES.ribbon_hover
+                        },
+                    );
                 let s = Styling {
                     text_unselected: Themes::style_declaration_from_node(
                         theme_config,
@@ -7945,16 +7958,13 @@ impl Themes {
                         "text_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_selected))?,
-                    ribbon_unselected: Themes::style_declaration_from_node(
-                        theme_config,
-                        "ribbon_unselected",
-                    )
-                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_unselected))?,
+                    ribbon_unselected,
                     ribbon_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "ribbon_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_selected))?,
+                    ribbon_hover,
                     table_title: Themes::style_declaration_from_node(theme_config, "table_title")
                         .map(|maybe_style| {
                         maybe_style.unwrap_or(DEFAULT_STYLES.table_title)
@@ -8101,6 +8111,7 @@ pub fn theme_to_kdl(theme_name: &str, palette: &Styling) -> KdlNode {
         ("text_selected", Some(&palette.text_selected)),
         ("ribbon_selected", Some(&palette.ribbon_selected)),
         ("ribbon_unselected", Some(&palette.ribbon_unselected)),
+        ("ribbon_hover", palette.ribbon_hover.as_ref()),
         ("table_title", Some(&palette.table_title)),
         ("table_cell_selected", Some(&palette.table_cell_selected)),
         (
