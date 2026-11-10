@@ -2,7 +2,8 @@
 source: zellij-integration-tests/tests/scroll.rs
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1  +                                                                        [ SCROLL 10/19 ]
+ Zellij (test)  Tab #1  +                                                                        [ SCROLL 11/19 ]
+line09
 line10
 line11
 line12
@@ -23,6 +24,5 @@ line26
 line27
 line28
 line29
-line30
-█ine31
+█ine30
  Ctrl + <s> SEARCH   s  Search  ↓|↑|PgDn|PgUp|d|u  Scroll  e  Edit  ENTER  Select  []  Commands 

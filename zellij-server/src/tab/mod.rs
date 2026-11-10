@@ -2364,6 +2364,10 @@ impl Tab {
             if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(&member) {
                 pane.set_geom(visible_geom);
                 pane.set_content_offset(visible_offset);
+                // This pane was a collapsed one-liner in the classic in-grid
+                // stack before it was hidden. Its PTY should now follow the
+                // expanded visible member, not the old one-line geometry.
+                pane.set_collapsed_stack_program_size(None);
                 let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
             }
         }
