@@ -229,12 +229,20 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
 
 fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<()> {
     let err_context = || format!("failed to cross-compile for {target:?}");
+    let use_zig = target.to_str() == Some("riscv64gc-unknown-linux-musl");
+    let build_subcommand = if use_zig { "zigbuild" } else { "build" };
 
     crate::cargo()
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} install cross")
-                .run()
-                .map_err(anyhow::Error::new)
+            let install = if use_zig {
+                cmd!(
+                    sh,
+                    "{cargo} install cargo-zigbuild --version 0.23.4 --locked"
+                )
+            } else {
+                cmd!(sh, "{cargo} install cross")
+            };
+            install.run().map_err(anyhow::Error::new)
         })
         .with_context(err_context)?;
 
@@ -250,14 +258,19 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
     )
     .with_context(err_context)?;
 
-    cross()
+    let compiler = if use_zig {
+        which::which("cargo-zigbuild").context("couldn't find 'cargo-zigbuild' executable")
+    } else {
+        cross()
+    };
+    compiler
         .and_then(|cross| {
             if no_web {
                 match metadata::get_no_web_features(sh, ".")
                     .context("Failed to check web features for cross compilation")?
                 {
                     Some(features) => {
-                        let mut cmd = cmd!(sh, "{cross} build --verbose --release --target {target} --no-default-features");
+                        let mut cmd = cmd!(sh, "{cross} {build_subcommand} --verbose --release --target {target} --no-default-features");
                         if !features.is_empty() {
                             cmd = cmd.arg("--features").arg(features);
                         }
@@ -265,13 +278,13 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
                     },
                     None => {
                         // Main crate doesn't have web_server_capability, build normally
-                        cmd!(sh, "{cross} build --verbose --release --target {target}")
+                        cmd!(sh, "{cross} {build_subcommand} --verbose --release --target {target}")
                             .run()
                             .map_err(anyhow::Error::new)
                     },
                 }
             } else {
-                cmd!(sh, "{cross} build --verbose --release --target {target}")
+                cmd!(sh, "{cross} {build_subcommand} --verbose --release --target {target}")
                     .run()
                     .map_err(anyhow::Error::new)
             }
