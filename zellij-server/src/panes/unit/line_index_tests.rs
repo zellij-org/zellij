@@ -900,7 +900,8 @@ fn mixed_width_front_cuts_publish_the_pass_they_interrupted() {
         assert_eq!(appended, LineDelta::NeedsMeasure);
         let progress = fixture.measure_next(quantum, usize::MAX);
         if let Some(source) = fixture.index.measure_cursor_source_row() {
-            if source + quantum < previous_source {
+            let anchored = fixture.index.measure_anchor_offset().unwrap_or(0) > 0;
+            if !anchored && source + quantum < previous_source {
                 resets += 1;
             }
             previous_source = source;
@@ -926,6 +927,190 @@ fn mixed_width_front_cuts_publish_the_pass_they_interrupted() {
     }
     assert_eq!(resets, 0, "front eviction restarted the in-progress cursor");
     assert!(saw_exact, "interrupted mixed-width passes never published");
+}
+
+#[test]
+fn measure_next_budgets_contaminated_reconciliation() {
+    let width = 10;
+    let retained = 256usize;
+    let quantum = 32usize;
+    let cell_budget = quantum * 6;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:04}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+
+    let mut completions = 0usize;
+    for turn in 0..retained.saturating_mul(4) {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        assert_eq!(
+            fixture.append(character_row(&format!("\u{754c}{turn:04}"), false)),
+            LineDelta::NeedsMeasure
+        );
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "turn {turn} measured {} rows and scanned {} lines, budget {quantum}",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "turn {turn} measured {} cells, budget {cell_budget}",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "turn {turn} discovered {} boundaries, budget {quantum}",
+            boundary_discoveries()
+        );
+        if progress == MeasureProgress::Done {
+            completions += 1;
+            assert_exact_total(&fixture, width);
+        }
+    }
+    assert!(
+        completions >= 2,
+        "only {completions} reconciliations completed"
+    );
+}
+
+#[test]
+fn reconciliation_converges_after_front_churn_stops() {
+    let width = 10;
+    let retained = 384usize;
+    let quantum = 24usize;
+    // The cell budget, not the row budget, is the limiting rate here.
+    let cell_budget = quantum * 3;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:04}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+
+    for turn in 0..retained {
+        let _ = fixture.evict_front(1);
+        let _ = fixture.append(character_row(&format!("\u{754c}{turn:04}"), false));
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let _ = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "churn turn {turn} measured {} rows and scanned {} lines",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "churn turn {turn} measured {} cells",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "churn turn {turn} discovered {} boundaries",
+            boundary_discoveries()
+        );
+    }
+
+    let mut calls = 0usize;
+    loop {
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "convergence call {calls} measured {} rows and scanned {} lines",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "convergence call {calls} measured {} cells",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "convergence call {calls} discovered {} boundaries",
+            boundary_discoveries()
+        );
+        if progress == MeasureProgress::Done {
+            break;
+        }
+        calls += 1;
+        assert!(
+            calls < retained.saturating_mul(4),
+            "reconciliation did not converge after {calls} calls"
+        );
+    }
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn helper_line_scans_are_charged_to_the_row_budget() {
+    let width = 8;
+    let line_count = 512usize;
+    let rows = (0..line_count)
+        .map(|index| character_row(&format!("{index:03}"), true))
+        .collect();
+    let mut fixture = Fixture::new(rows, width);
+    fixture.index.invalidate_line(1);
+    fixture.index.invalidate_line(line_count - 1);
+
+    let quantum = 8usize;
+    let cell_budget = quantum * width;
+    let mut scanned = 0usize;
+    let mut calls = 0usize;
+    loop {
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        let spent = row_visits() + line_scan_visits();
+        assert!(
+            spent <= quantum,
+            "call {calls} spent {spent} row units ({} measured rows, {} helper scans), budget {quantum}",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "call {calls} measured {} cells, budget {cell_budget}",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "call {calls} discovered {} boundaries",
+            boundary_discoveries()
+        );
+        scanned += line_scan_visits();
+        if progress == MeasureProgress::Done {
+            break;
+        }
+        calls += 1;
+        assert!(
+            calls < line_count.saturating_mul(2),
+            "helper scan did not converge after {calls} calls"
+        );
+    }
+    assert!(
+        scanned >= line_count / 2,
+        "the fixture only scanned {scanned} measured lines"
+    );
+    assert_exact_total(&fixture, width);
 }
 
 #[test]

@@ -173,6 +173,12 @@ pub(crate) enum MeasureProgress {
     Done,
 }
 
+enum FirstUnmeasured {
+    Found(usize, usize),
+    Exhausted,
+    Done,
+}
+
 #[derive(Clone, Debug)]
 struct MeasureCursor {
     line_index: usize,
@@ -190,9 +196,19 @@ struct MeasureCursor {
     uniform_prefix: Vec<UniformState>,
     width: usize,
     /// Wrap state still includes rows removed from the front of this line.
-    /// The cursor keeps its place. The summary is published from one rescan
-    /// of the survivors when the pass completes, not by restarting at row zero.
+    /// The cursor keeps its place. At completion the walk restarts from a
+    /// look-ahead anchor, under the caller's budget, rather than rescanning
+    /// the survivors synchronously.
     contaminated_prefix: bool,
+    /// Rows between the line's current origin and this cursor's first row.
+    /// A non-zero value is a look-ahead reconciliation: the walk starts on a
+    /// row that front eviction is expected to reach before this pass finishes,
+    /// so cuts behind the start do not invalidate the accumulated summary.
+    anchor_offset: usize,
+    /// Front-removal generation seen when an anchored pass last checked its
+    /// position. Once churn stops, this lets the walk fall back to the real
+    /// origin instead of waiting for an eviction that will never arrive.
+    anchor_last_seen_generation: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -239,6 +255,8 @@ impl MeasureCursor {
             uniform_prefix: Vec::new(),
             width,
             contaminated_prefix: false,
+            anchor_offset: 0,
+            anchor_last_seen_generation: 0,
         }
     }
 
@@ -254,6 +272,8 @@ impl MeasureCursor {
         self.uniform_state = UniformState::default();
         self.uniform_prefix.clear();
         self.contaminated_prefix = false;
+        self.anchor_offset = 0;
+        self.anchor_last_seen_generation = 0;
     }
 
     /// Drop per-row records for `cut` leading rows. Lengths stay aligned
@@ -269,19 +289,6 @@ impl MeasureCursor {
         if self.cell_prefix.is_empty() {
             self.cell_prefix.push_back(0);
         }
-    }
-
-    fn apply_measurement(&mut self, measurement: LineMeasurement) {
-        self.uniform_state = UniformState {
-            width: measurement.uniform_character_width,
-            saw_content: true,
-        };
-        self.uniform_prefix.clear();
-        self.boundaries = measurement.boundaries;
-        self.state = measurement.end;
-        self.cell_prefix = measurement.cell_prefix;
-        self.cell_index = 0;
-        self.contaminated_prefix = false;
     }
 }
 
@@ -562,6 +569,35 @@ fn measure_rows<'a>(rows: impl IntoIterator<Item = &'a Row>, width: usize) -> Li
     }
 }
 
+/// Choose how far ahead of the current line origin a reconciliation should
+/// start when front eviction is racing the walk. Starting `d` rows ahead buys
+/// `d` turns before the origin reaches the anchor; at `rows_per_turn` rows per
+/// turn that is enough to cover a line of `rows` rows once the extra turn for
+/// rows appended while the origin advances is included.
+fn lookahead_offset(rows: usize, rows_per_turn: usize) -> usize {
+    if rows == 0 || rows_per_turn >= rows {
+        return 0;
+    }
+    rows.div_ceil(rows_per_turn)
+        .saturating_add(1)
+        .min(rows.saturating_sub(1))
+}
+
+fn estimate_cells_per_row(cursor: &MeasureCursor, rows: usize) -> usize {
+    if rows == 0 {
+        return 1;
+    }
+    let Some((first, last)) = cursor.cell_prefix.front().zip(cursor.cell_prefix.back()) else {
+        return 1;
+    };
+    last.saturating_sub(*first).div_ceil(rows).max(1)
+}
+
+fn reconciliation_rows_per_turn(budget: MeasureBudget, cells_per_row: usize) -> usize {
+    let by_cells = budget.cells / cells_per_row.max(1);
+    budget.rows.max(1).min(by_cells.max(1))
+}
+
 /// Per-line summaries over an externally owned scrollback deque.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LineIndex {
@@ -578,6 +614,9 @@ pub(crate) struct LineIndex {
     /// instead of rescanning every measured line to find the first gap.
     measure_hint_line: usize,
     measure_hint_row_start: usize,
+    /// Monotonic count of front-removal operations. Measurement cursors use it
+    /// to detect whether an anchored walk is still being chased by eviction.
+    front_removal_generation: u64,
 }
 
 impl LineIndex {
@@ -596,6 +635,7 @@ impl LineIndex {
         self.measure = None;
         self.measure_hint_line = 0;
         self.measure_hint_row_start = 0;
+        self.front_removal_generation = 0;
     }
 
     /// Rebuild logical-line grouping without measuring cells.  Used when a
@@ -671,9 +711,21 @@ impl LineIndex {
     /// Global stored-row index the in-progress cursor will read next.
     #[cfg(test)]
     pub(crate) fn measure_cursor_source_row(&self) -> Option<usize> {
-        self.measure
-            .as_ref()
-            .map(|cursor| cursor.row_start + cursor.row_index)
+        let cursor = self.measure.as_ref()?;
+        let line = self.lines.get(cursor.line_index)?;
+        if line.row_count == 0 {
+            return None;
+        }
+        let row = cursor.row_index.min(line.row_count - 1);
+        let source = cursor.row_start.saturating_add(row);
+        let total_rows: usize = self.lines.iter().map(|line| line.row_count).sum();
+        Some(source.min(total_rows.saturating_sub(1)))
+    }
+
+    /// Rows between the line origin and an in-progress look-ahead cursor.
+    #[cfg(test)]
+    pub(crate) fn measure_anchor_offset(&self) -> Option<usize> {
+        self.measure.as_ref().map(|cursor| cursor.anchor_offset)
     }
 
     /// Whether removing one row from the front keeps every summary exact.
@@ -706,7 +758,7 @@ impl LineIndex {
         line.invalidate();
         if let Some(cursor) = self.measure.as_mut() {
             if cursor.line_index == line_index {
-                let row_start = cursor.row_start;
+                let row_start = cursor.row_start.saturating_sub(cursor.anchor_offset);
                 cursor.reset_for_line(line_index, row_start);
             }
         }
@@ -737,7 +789,22 @@ impl LineIndex {
         cursor.line_index -= popped_lines;
         cursor.row_start = cursor.row_start.saturating_sub(removed_rows);
         if partial_cut > 0 && cursor.line_index == 0 {
-            rebase_cursor_past_front_cut(&mut cursor, partial_cut);
+            if cursor.anchor_offset > 0 {
+                if partial_cut <= cursor.anchor_offset {
+                    // The cut stays entirely before the look-ahead anchor.
+                    // The cursor's recorded state remains valid; it just
+                    // starts closer to the new line origin.
+                    cursor.anchor_offset -= partial_cut;
+                    cursor.row_start = cursor.anchor_offset;
+                } else {
+                    // One eviction jumped past the anchor, so its start state
+                    // is no longer the line origin. Fall back to measuring
+                    // from the real origin under the next call's budget.
+                    cursor.reset_for_line(0, 0);
+                }
+            } else {
+                rebase_cursor_past_front_cut(&mut cursor, partial_cut);
+            }
         }
         self.measure = Some(cursor);
     }
@@ -757,14 +824,28 @@ impl LineIndex {
             self.measure = None;
             return;
         };
-        let surviving_rows = line.row_count;
+        let surviving_rows = line.row_count.saturating_sub(cursor.anchor_offset);
         let removed_consumed_row = cursor.row_index > surviving_rows
             || (cursor.row_index == surviving_rows && cursor.cell_index > 0);
         if removed_consumed_row {
             let line_index = cursor.line_index;
             let row_start = cursor.row_start;
             if surviving_rows == 0 {
-                cursor.reset_for_line(line_index, row_start);
+                if cursor.anchor_offset > 0 {
+                    // The anchor is still ahead of the surviving rows. Keep
+                    // waiting for the origin to reach it instead of dropping
+                    // the look-ahead.
+                    cursor.boundaries.clear();
+                    cursor.cell_prefix.clear();
+                    cursor.cell_prefix.push_back(0);
+                    cursor.uniform_prefix.clear();
+                    cursor.state = RowBoundary::default();
+                    cursor.uniform_state = UniformState::default();
+                    cursor.row_index = 0;
+                    cursor.cell_index = 0;
+                } else {
+                    cursor.reset_for_line(line_index, row_start);
+                }
             } else {
                 // `boundaries[row]` is the state at the start of that row, so
                 // the first removed row's boundary is the end of the retained
@@ -933,6 +1014,7 @@ impl LineIndex {
         if count == 0 {
             return LineDelta::Exact(0);
         }
+        self.front_removal_generation = self.front_removal_generation.wrapping_add(1);
         let mut remaining = count;
         let mut full_lines = 0;
         let mut measured_delta = 0isize;
@@ -1313,24 +1395,34 @@ impl LineIndex {
         Some(height)
     }
 
-    fn first_unmeasured(&mut self) -> Option<(usize, usize)> {
+    /// Find the first line that still needs measuring. Skipping already
+    /// measured lines is work too, so charge one row of the caller's budget
+    /// for each skipped line. This keeps a long measured suffix from being
+    /// traversed synchronously inside a single budgeted turn.
+    fn first_unmeasured(&mut self, rows_remaining: &mut usize) -> FirstUnmeasured {
         let mut line_index = self.measure_hint_line.min(self.lines.len());
         let mut row_start = self.measure_hint_row_start;
         while line_index < self.lines.len() {
-            #[cfg(test)]
-            note_line_scan_visit();
             let line = &self.lines[line_index];
             if line.measured_width != Some(self.width) {
                 self.measure_hint_line = line_index;
                 self.measure_hint_row_start = row_start;
-                return Some((line_index, row_start));
+                return FirstUnmeasured::Found(line_index, row_start);
             }
+            if *rows_remaining == 0 {
+                self.measure_hint_line = line_index;
+                self.measure_hint_row_start = row_start;
+                return FirstUnmeasured::Exhausted;
+            }
+            *rows_remaining -= 1;
+            #[cfg(test)]
+            note_line_scan_visit();
             row_start = row_start.saturating_add(line.row_count);
             line_index += 1;
         }
         self.measure_hint_line = line_index;
         self.measure_hint_row_start = row_start;
-        None
+        FirstUnmeasured::Done
     }
 
     /// Measure at most one logical line per call, in chunks bounded by
@@ -1341,42 +1433,65 @@ impl LineIndex {
         rows: &VecDeque<Row>,
         budget: MeasureBudget,
     ) -> MeasureProgress {
+        let mut rows_remaining = budget.rows.max(1);
+        let mut cells_remaining = budget.cells.max(1);
         let mut cursor = match self.measure.take() {
             Some(cursor) if cursor.width == self.width => cursor,
-            _ => {
-                let Some((line_index, row_start)) = self.first_unmeasured() else {
+            _ => match self.first_unmeasured(&mut rows_remaining) {
+                FirstUnmeasured::Found(line_index, row_start) => {
+                    MeasureCursor::new(line_index, row_start, self.width)
+                },
+                FirstUnmeasured::Exhausted => {
+                    self.measure = None;
+                    return MeasureProgress::Pending;
+                },
+                FirstUnmeasured::Done => {
+                    self.measure = None;
                     return MeasureProgress::Done;
-                };
-                MeasureCursor::new(line_index, row_start, self.width)
+                },
             },
         };
 
-        let mut rows_remaining = budget.rows.max(1);
-        let mut cells_remaining = budget.cells.max(1);
         loop {
             if cursor.line_index >= self.lines.len() {
-                if self.is_fully_measured() {
-                    self.measure_hint_line = self.lines.len();
-                    self.measure_hint_row_start =
-                        self.lines.iter().map(|line| line.row_count).sum();
-                }
+                self.measure_hint_line = self.lines.len();
+                self.measure_hint_row_start = cursor.row_start;
                 self.measure = None;
                 return MeasureProgress::Done;
             }
             let line_row_count = self.lines[cursor.line_index].row_count;
-            if cursor.row_index >= line_row_count {
+            let target_rows = line_row_count.saturating_sub(cursor.anchor_offset);
+            if cursor.row_index >= target_rows {
+                if cursor.anchor_offset > 0 {
+                    if self.front_removal_generation == cursor.anchor_last_seen_generation {
+                        // Eviction stopped before reaching the look-ahead
+                        // anchor. Measure from the real origin now; this walk
+                        // is resumable like any other.
+                        cursor.reset_for_line(cursor.line_index, 0);
+                        continue;
+                    }
+                    cursor.anchor_last_seen_generation = self.front_removal_generation;
+                    self.measure = Some(cursor);
+                    return MeasureProgress::Pending;
+                }
                 if cursor.contaminated_prefix {
-                    // The walk still includes rows that left the front. Publish
-                    // from the retained rows once, at the same moment a clean
-                    // pass stores its summary. Do not restart at row zero.
-                    let measurement = measure_rows(
-                        rows.iter().skip(cursor.row_start).take(line_row_count),
-                        self.width,
-                    );
-                    cursor.apply_measurement(measurement);
+                    // The walk still includes rows that left the front. Start
+                    // a clean look-ahead walk instead of rescanning the whole
+                    // surviving line in this turn. Front eviction is expected
+                    // to reach that anchor before the walk finishes, so cuts
+                    // behind it leave the recorded state valid.
+                    let cells_per_row = estimate_cells_per_row(&cursor, target_rows);
+                    let rows_per_turn = reconciliation_rows_per_turn(budget, cells_per_row);
+                    let offset = lookahead_offset(target_rows, rows_per_turn);
+                    let line_index = cursor.line_index;
+                    let row_start = cursor.row_start;
+                    cursor.reset_for_line(line_index, row_start + offset);
+                    cursor.anchor_offset = offset;
+                    cursor.anchor_last_seen_generation = self.front_removal_generation;
+                    continue;
                 }
                 let height = cursor.state.height();
-                let row_count = line_row_count;
+                let row_count = target_rows;
                 let line = &mut self.lines[cursor.line_index];
                 if line.measured_width == Some(self.width) {
                     self.measured_display_rows -= line.height;
@@ -1398,23 +1513,30 @@ impl LineIndex {
                 self.measured_display_rows += height;
 
                 cursor.row_start += row_count;
-                let mut next_line = cursor.line_index + 1;
-                while next_line < self.lines.len()
-                    && self.lines[next_line].measured_width == Some(self.width)
-                {
-                    cursor.row_start += self.lines[next_line].row_count;
-                    next_line += 1;
-                }
-                if next_line >= self.lines.len() {
-                    if self.is_fully_measured() {
-                        self.measure_hint_line = self.lines.len();
-                        self.measure_hint_row_start = cursor.row_start;
-                    }
+                if cursor.line_index != self.measure_hint_line {
+                    // An earlier line still needs measuring. Finish this job
+                    // without moving the hint past that gap; the next turn
+                    // resumes from the hint.
                     self.measure = None;
                     self.publish_if_fully_measured();
                     return MeasureProgress::Done;
                 }
-                cursor.reset_for_line(next_line, cursor.row_start);
+                self.measure_hint_line = cursor.line_index + 1;
+                self.measure_hint_row_start = cursor.row_start;
+                match self.first_unmeasured(&mut rows_remaining) {
+                    FirstUnmeasured::Found(line_index, row_start) => {
+                        cursor.reset_for_line(line_index, row_start);
+                    },
+                    FirstUnmeasured::Exhausted => {
+                        self.measure = None;
+                        return MeasureProgress::Pending;
+                    },
+                    FirstUnmeasured::Done => {
+                        self.measure = None;
+                        self.publish_if_fully_measured();
+                        return MeasureProgress::Done;
+                    },
+                }
                 continue;
             }
 
@@ -1423,7 +1545,7 @@ impl LineIndex {
                     self.measure = Some(cursor);
                     return MeasureProgress::Pending;
                 }
-                let rows_left = line_row_count - cursor.row_index;
+                let rows_left = target_rows - cursor.row_index;
                 let processed = rows_left.min(rows_remaining);
                 for row_index in cursor.row_index..cursor.row_index + processed {
                     #[cfg(test)]
