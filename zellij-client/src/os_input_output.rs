@@ -23,8 +23,8 @@ use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
     ipc::{
-        ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
-        IpcStream, ServerToClientMsg,
+        BlockingIoCancel, ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext,
+        IpcSenderWithContext, IpcStream, ServerToClientMsg,
     },
     shared::default_palette,
 };
@@ -100,6 +100,8 @@ pub struct ClientOsInputOutput {
     /// Clone of the socket a web write is blocked on, so cancel can shut it
     /// down without taking `send_instructions_to_server` for the whole write.
     ipc_cancel_stream: Arc<Mutex<Option<Box<dyn IpcStream>>>>,
+    /// Cancels synchronous named-pipe I/O blocked on the writing thread.
+    ipc_write_cancel: Arc<Mutex<Option<BlockingIoCancel>>>,
     reading_from_stdin: Arc<Mutex<Option<Vec<u8>>>>,
     session_name: Arc<Mutex<Option<String>>>,
     host_state: Arc<Mutex<RememberedHostState>>,
@@ -391,11 +393,39 @@ impl ClientOsApi for ClientOsInputOutput {
                 .lock()
                 .unwrap_or_else(|p| p.into_inner()) = Some(cancel_stream);
         }
+        if let Ok(cancel) = BlockingIoCancel::for_current_thread() {
+            *self
+                .ipc_write_cancel
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = Some(cancel);
+        }
+        if self.ipc_cancel.load(Ordering::Relaxed) {
+            *self
+                .ipc_write_cancel
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = None;
+            *self
+                .ipc_cancel_stream
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = None;
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "ipc write cancelled",
+            ));
+        }
         let result = sender.send_client_msg_until(msg, deadline);
+        *self
+            .ipc_write_cancel
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
         *self
             .ipc_cancel_stream
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = None;
+        if result.is_err() {
+            sender.abandon();
+            return result;
+        }
         if result.is_ok() && !self.ipc_cancel.load(Ordering::Relaxed) {
             let mut guard = self
                 .send_instructions_to_server
@@ -410,6 +440,14 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn cancel_session_ipc(&self) {
         self.ipc_cancel.store(true, Ordering::Relaxed);
+        if let Some(cancel) = self
+            .ipc_write_cancel
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
+            let _ = cancel.cancel_blocking_io();
+        }
         if let Some(stream) = self
             .ipc_cancel_stream
             .lock()
@@ -652,6 +690,7 @@ fn new_client_os_input() -> ClientOsInputOutput {
         ipc_write: Arc::new(Mutex::new(())),
         ipc_cancel: Arc::new(AtomicBool::new(false)),
         ipc_cancel_stream: Arc::new(Mutex::new(None)),
+        ipc_write_cancel: Arc::new(Mutex::new(None)),
         reading_from_stdin: Arc::new(Mutex::new(None)),
         session_name: Arc::new(Mutex::new(None)),
         host_state: Arc::new(Mutex::new(RememberedHostState::default())),

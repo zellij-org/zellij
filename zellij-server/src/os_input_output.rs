@@ -17,8 +17,8 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     ipc::{
-        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext, IpcStream,
-        ServerToClientMsg,
+        BlockingIoCancel, ClientToServerMsg, ExitReason, IpcReceiverWithContext,
+        IpcSenderWithContext, IpcStream, ServerToClientMsg,
     },
     shared::default_palette,
 };
@@ -489,6 +489,8 @@ struct ClientSender {
     abandon_queue: Arc<AtomicBool>,
     // Another handle to the client's socket, to unblock a stuck write.
     shutdown_handle: Option<Box<dyn IpcStream>>,
+    // Cancels a synchronous Windows pipe write blocked on the writer thread.
+    blocking_io_cancel: Arc<Mutex<Option<BlockingIoCancel>>>,
 }
 
 impl ClientSender {
@@ -508,9 +510,16 @@ impl ClientSender {
         let (writer_done_sender, writer_done) = std::sync::mpsc::channel::<()>();
         let abandon_queue = Arc::new(AtomicBool::new(false));
         let shutdown_handle = sender.try_clone_stream().ok();
+        let blocking_io_cancel = Arc::new(Mutex::new(None));
         let writer_abandon_queue = abandon_queue.clone();
+        let writer_blocking_io_cancel = Arc::clone(&blocking_io_cancel);
         std::thread::spawn(move || {
             let _writer_done_sender = writer_done_sender;
+            if let Ok(cancel) = BlockingIoCancel::for_current_thread() {
+                *writer_blocking_io_cancel
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(cancel);
+            }
             let err_context = || format!("failed to send message to client {client_id}");
             let mut stream_failed = false;
             while let Some(msg) = client_buffer_receiver.recv() {
@@ -529,6 +538,7 @@ impl ClientSender {
                         log::error!("{:?}; stopping client writer", error);
                     }
                     stream_failed = true;
+                    sender.abandon();
                     break;
                 }
             }
@@ -537,6 +547,10 @@ impl ClientSender {
                     exit_reason: ExitReason::Disconnect,
                 });
             }
+            writer_blocking_io_cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
         });
         ClientSender {
             client_id,
@@ -544,6 +558,7 @@ impl ClientSender {
             writer_done,
             abandon_queue,
             shutdown_handle,
+            blocking_io_cancel,
         }
     }
     /// Called when the client is removed. The writer keeps flushing what is
@@ -554,13 +569,10 @@ impl ClientSender {
     /// returned handle finishes once the writer is done, or once it is
     /// given up on, and yields whether the writer actually exited.
     ///
-    /// Platform note: shutting the socket down is what unblocks a stuck
-    /// write, and `IpcStream::shutdown_stream` does that on Unix only. On
-    /// Windows it is a no-op, so a writer blocked in a write to a named pipe
-    /// whose peer is not reading is released only when the peer reads or
-    /// the pipe closes; `abandon_queue` is checked between writes, which a
-    /// blocked write never reaches. The retained memory is still bounded by
-    /// the client queue caps, and the handle then yields `false`.
+    /// A stuck write is unblocked by `IpcStream::shutdown_stream` on Unix and
+    /// by cancelling the writer thread's synchronous named-pipe I/O on
+    /// Windows. If cancellation does not release it, the writer keeps its
+    /// slot until it actually ends and this handle yields `false`.
     fn remove(self, grace: Duration) -> std::thread::JoinHandle<bool> {
         let ClientSender {
             client_id,
@@ -568,6 +580,7 @@ impl ClientSender {
             writer_done,
             abandon_queue,
             shutdown_handle,
+            blocking_io_cancel,
         } = self;
         // With the sending half gone, the writer ends once the queue is empty.
         drop(client_buffer_sender);
@@ -579,6 +592,15 @@ impl ClientSender {
             }
             log::warn!("client {client_id} was removed while not reading; dropping its queue");
             abandon_queue.store(true, Ordering::Release);
+            if let Some(cancel) = blocking_io_cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
+                if let Err(error) = cancel.cancel_blocking_io() {
+                    log::error!("failed to cancel blocked io of client {client_id}: {error}");
+                }
+            }
             if let Some(Err(error)) = shutdown_handle.map(|handle| handle.shutdown_stream()) {
                 log::error!("failed to shut down the socket of client {client_id}: {error}");
             }

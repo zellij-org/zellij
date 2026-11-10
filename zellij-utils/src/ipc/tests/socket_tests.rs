@@ -6,11 +6,14 @@ use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
 
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-struct FlushFailureStream;
+struct FlushFailureStream {
+    flushes: Arc<AtomicUsize>,
+}
 
 impl Read for FlushFailureStream {
     fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
@@ -23,6 +26,7 @@ impl Write for FlushFailureStream {
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
+        self.flushes.fetch_add(1, Ordering::SeqCst);
         Err(std::io::Error::other("flush failed"))
     }
 }
@@ -38,14 +42,23 @@ impl IpcStream for FlushFailureStream {
 
 #[test]
 fn send_reports_flush_failure() {
+    let flushes = Arc::new(AtomicUsize::new(0));
     let mut sender =
-        IpcSenderWithContext::<ClientToServerMsg>::from_boxed(Box::new(FlushFailureStream));
+        IpcSenderWithContext::<ClientToServerMsg>::from_boxed(Box::new(FlushFailureStream {
+            flushes: Arc::clone(&flushes),
+        }));
 
     assert!(
         sender
             .send_client_msg(ClientToServerMsg::ConnStatus)
             .is_err(),
         "a failed flush must not be reported as a successful send"
+    );
+    drop(sender);
+    assert_eq!(
+        flushes.load(Ordering::SeqCst),
+        1,
+        "dropping a failed sender must not retry the flush"
     );
 }
 

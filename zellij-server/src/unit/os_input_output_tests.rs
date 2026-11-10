@@ -1,5 +1,7 @@
 use super::*;
-use zellij_utils::input::command::{OpenFilePayload, RunCommand};
+#[cfg(unix)]
+use zellij_utils::input::command::OpenFilePayload;
+use zellij_utils::input::command::RunCommand;
 
 fn make_server() -> ServerOsInputOutput {
     get_server_os_input().expect("failed to create server os input")

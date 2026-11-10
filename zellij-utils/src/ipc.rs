@@ -57,13 +57,10 @@ pub trait IpcStream: Read + Write + Send + 'static {
     /// fails any read or write blocked on it, on this handle or any clone
     /// of it. Streams that cannot do this do nothing.
     ///
-    /// Only implemented for Unix sockets. On Windows this is a no-op for
-    /// named pipes: a write blocked on a peer that does not read is not
-    /// interrupted, and the thread in it is released only once the peer
-    /// reads or the pipe closes. Cancelling it would need CancelIoEx on the
-    /// pipe handle (or CancelSynchronousIo on the writer thread), which has
-    /// not been implemented or tested there. Callers must therefore bound
-    /// what such a thread retains by other means, as the client queue caps do.
+    /// Implemented for Unix sockets and for the server end of a Windows named
+    /// pipe. Windows named-pipe clients cannot disconnect the server's end;
+    /// the IPC writer uses [`BlockingIoCancel`] for the synchronous I/O
+    /// blocked on its thread.
     fn shutdown_stream(&self) -> io::Result<()> {
         Ok(())
     }
@@ -77,6 +74,91 @@ pub trait IpcStream: Read + Write + Send + 'static {
             io::ErrorKind::Unsupported,
             "this ipc stream has no write deadline",
         ))
+    }
+}
+
+/// Cancels synchronous I/O blocked on a thread.
+///
+/// Windows named-pipe handles used by the IPC layer are synchronous, so
+/// `CancelIoEx` cannot interrupt an in-flight `ReadFile` or `WriteFile`.
+/// `CancelSynchronousIo` targets the blocked thread instead. Obtain one from
+/// the thread that performs the I/O, then call
+/// [`Self::cancel_blocking_io`] from the thread that gives up on it.
+///
+/// This is a no-op outside Windows, where socket timeouts already bound the
+/// same operations.
+#[derive(Debug)]
+pub struct BlockingIoCancel {
+    #[cfg(windows)]
+    thread: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(windows)]
+unsafe impl Send for BlockingIoCancel {}
+#[cfg(windows)]
+unsafe impl Sync for BlockingIoCancel {}
+
+impl BlockingIoCancel {
+    /// Captures a duplicate of the calling thread's handle.
+    pub fn for_current_thread() -> io::Result<Self> {
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS};
+            use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentThread};
+            let mut thread = std::ptr::null_mut();
+            let ok = unsafe {
+                DuplicateHandle(
+                    GetCurrentProcess(),
+                    GetCurrentThread(),
+                    GetCurrentProcess(),
+                    &mut thread,
+                    0,
+                    0,
+                    DUPLICATE_SAME_ACCESS,
+                )
+            };
+            if ok == 0 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(Self { thread })
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(Self {})
+        }
+    }
+
+    /// Cancels whichever synchronous I/O the captured thread is blocked in.
+    /// No pending operation is success: the write may already have finished.
+    pub fn cancel_blocking_io(&self) -> io::Result<()> {
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
+            use windows_sys::Win32::System::IO::CancelSynchronousIo;
+            if unsafe { CancelSynchronousIo(self.thread) } != 0 {
+                return Ok(());
+            }
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(ERROR_NOT_FOUND as i32) {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for BlockingIoCancel {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(self.thread);
+        }
     }
 }
 
@@ -98,6 +180,32 @@ impl IpcStream for LocalSocketStream {
     fn shutdown_stream(&self) -> io::Result<()> {
         let LocalSocketStream::UdSocket(stream) = self;
         stream.inner().shutdown(std::net::Shutdown::Both)
+    }
+    #[cfg(windows)]
+    fn shutdown_stream(&self) -> io::Result<()> {
+        use std::os::windows::io::{AsHandle, AsRawHandle};
+        use windows_sys::Win32::Foundation::{ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED};
+        use windows_sys::Win32::System::Pipes::DisconnectNamedPipe;
+
+        let LocalSocketStream::NamedPipe(pipe) = self;
+        let inner = pipe.inner();
+        if !inner.is_server() {
+            // A client handle cannot be disconnected. Cancelling a blocked
+            // write uses BlockingIoCancel on the writer thread instead.
+            return Ok(());
+        }
+        if unsafe { DisconnectNamedPipe(inner.as_handle().as_raw_handle()) } != 0 {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(code)
+                if code == ERROR_PIPE_NOT_CONNECTED as i32 || code == ERROR_BROKEN_PIPE as i32 =>
+            {
+                Ok(())
+            },
+            _ => Err(error),
+        }
     }
 }
 
@@ -489,7 +597,7 @@ There are a few things you can try now:
 
 /// Sends messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcSenderWithContext<T: Serialize> {
-    sender: io::BufWriter<Box<dyn IpcStream>>,
+    sender: Option<io::BufWriter<Box<dyn IpcStream>>>,
     _phantom: PhantomData<T>,
 }
 
@@ -497,22 +605,26 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns a sender to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(sender: LocalSocketStream) -> Self {
         Self {
-            sender: io::BufWriter::new(Box::new(sender)),
+            sender: Some(io::BufWriter::new(Box::new(sender))),
             _phantom: PhantomData,
         }
     }
 
     fn from_boxed(sender: Box<dyn IpcStream>) -> Self {
         Self {
-            sender: io::BufWriter::new(sender),
+            sender: Some(io::BufWriter::new(sender)),
             _phantom: PhantomData,
         }
     }
 
     pub fn send_client_msg(&mut self, msg: ClientToServerMsg) -> Result<()> {
+        let sender = self
+            .sender
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("ipc sender is closed"))?;
         let proto_msg: ProtoClientToServerMsg = msg.into();
-        write_protobuf_message(&mut self.sender, &proto_msg)?;
-        self.sender.flush()?;
+        write_protobuf_message(sender, &proto_msg)?;
+        sender.flush()?;
         Ok(())
     }
 
@@ -538,11 +650,20 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         }
         #[cfg(not(unix))]
         {
-            // Named-pipe sends cannot take SO_SNDTIMEO. A deadline that has
-            // already expired fails closed; a blocked pipe write still cannot
-            // be interrupted (see [`IpcStream::shutdown_stream`]).
-            self.send_client_msg(msg)
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
+            // Named-pipe sends cannot take SO_SNDTIMEO. Cancel the
+            // synchronous write on this thread when the deadline passes.
+            #[cfg(windows)]
+            {
+                run_with_deadline_cancel(deadline, || {
+                    self.send_client_msg(msg)
+                        .map_err(|err| io::Error::other(err.to_string()))
+                })
+            }
+            #[cfg(not(windows))]
+            {
+                self.send_client_msg(msg)
+                    .map_err(|err| io::Error::other(err.to_string()))
+            }
         }
     }
 
@@ -553,29 +674,48 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         deadline: Instant,
     ) -> io::Result<()> {
         let frame = encode_client_frame(msg)?;
-        if !self.sender.buffer().is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "ipc send buffer is not empty",
-            ));
+        let sender = self
+            .sender
+            .as_mut()
+            .ok_or_else(|| io::Error::other("ipc sender is closed"))?;
+        if !sender.buffer().is_empty() {
+            return Err(io::Error::other("ipc send buffer is not empty"));
         }
-        let inner = self.sender.get_mut();
+        let inner = sender.get_mut();
         write_all_ipc_until_deadline(inner.as_mut(), &frame, deadline)?;
         let _ = inner.set_write_timeout(None);
         Ok(())
     }
 
     pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
+        let sender = self
+            .sender
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("ipc sender is closed"))?;
         let proto_msg: ProtoServerToClientMsg = msg.into();
-        write_protobuf_message(&mut self.sender, &proto_msg)?;
-        self.sender.flush()?;
+        write_protobuf_message(sender, &proto_msg)?;
+        sender.flush()?;
         Ok(())
+    }
+
+    /// Drop this sender without flushing a frame left buffered by a failed
+    /// write. The frame was not delivered, and retrying its remaining bytes
+    /// during `BufWriter`'s drop could block indefinitely on Windows.
+    pub fn abandon(&mut self) {
+        if let Some(sender) = self.sender.take() {
+            let (stream, _) = sender.into_parts();
+            drop(stream);
+        }
     }
 
     /// Returns another handle to the socket this sender writes to, for
     /// shutting it down from another thread while a write is blocked.
     pub fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>> {
-        self.sender.get_ref().try_clone_stream()
+        self.sender
+            .as_ref()
+            .ok_or_else(|| io::Error::other("ipc sender is closed"))?
+            .get_ref()
+            .try_clone_stream()
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
@@ -583,8 +723,19 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     where
         F: for<'de> Deserialize<'de> + Serialize,
     {
-        let socket = self.sender.get_ref().try_clone_stream()?;
+        let socket = self
+            .sender
+            .as_ref()
+            .ok_or_else(|| io::Error::other("ipc sender is closed"))?
+            .get_ref()
+            .try_clone_stream()?;
         Ok(IpcReceiverWithContext::from_boxed(socket))
+    }
+}
+
+impl<T: Serialize> Drop for IpcSenderWithContext<T> {
+    fn drop(&mut self) {
+        self.abandon();
     }
 }
 
@@ -747,6 +898,44 @@ fn remaining_until(deadline: Instant) -> io::Result<Duration> {
             io::ErrorKind::TimedOut,
             "deadline exhausted",
         )),
+    }
+}
+
+/// Runs a synchronous operation on this thread, cancelling its blocking I/O
+/// when `deadline` passes. The watchdog is joined before returning, so a late
+/// cancellation cannot land on a later operation of the same thread.
+#[cfg(windows)]
+fn run_with_deadline_cancel<T>(
+    deadline: Instant,
+    operation: impl FnOnce() -> io::Result<T>,
+) -> io::Result<T> {
+    let remaining = match deadline.checked_duration_since(Instant::now()) {
+        Some(remaining) if !remaining.is_zero() => remaining,
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "ipc io deadline exhausted",
+            ));
+        },
+    };
+    let cancel = BlockingIoCancel::for_current_thread()?;
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let watchdog = std::thread::Builder::new()
+        .name("ipc_io_deadline".to_owned())
+        .spawn(move || {
+            if done_rx.recv_timeout(remaining).is_err() {
+                let _ = cancel.cancel_blocking_io();
+            }
+        })?;
+    let result = operation();
+    let _ = done_tx.send(());
+    let _ = watchdog.join();
+    match result {
+        Err(_) if Instant::now() >= deadline => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "ipc io deadline exhausted",
+        )),
+        result => result,
     }
 }
 
@@ -950,20 +1139,14 @@ pub fn send_protobuf_client_to_server(
     sender: &mut IpcSenderWithContext<ClientToServerMsg>,
     msg: ClientToServerMsg,
 ) -> Result<()> {
-    let proto_msg: ProtoClientToServerMsg = msg.into();
-    write_protobuf_message(&mut sender.sender, &proto_msg)?;
-    sender.sender.flush()?;
-    Ok(())
+    sender.send_client_msg(msg)
 }
 
 pub fn send_protobuf_server_to_client(
     sender: &mut IpcSenderWithContext<ServerToClientMsg>,
     msg: ServerToClientMsg,
 ) -> Result<()> {
-    let proto_msg: ProtoServerToClientMsg = msg.into();
-    write_protobuf_message(&mut sender.sender, &proto_msg)?;
-    sender.sender.flush()?;
-    Ok(())
+    sender.send_server_msg(msg)
 }
 
 pub fn recv_protobuf_client_to_server(
@@ -1011,10 +1194,9 @@ pub fn recv_protobuf_server_to_client(
 /// the kill write, and the reply frame. A trickle of bytes cannot extend it.
 ///
 /// On Windows the named pipe is half-duplex and this runs on `spawn_blocking`.
-/// A write blocked because the peer is not reading cannot be interrupted (see
-/// [`IpcStream::shutdown_stream`]) and is not reported as acknowledged.
-/// `budget` does not unblock that pipe call. Only a decoded `Exit` is
-/// [`KillReply::ShutdownAcknowledged`].
+/// The same deadline covers the connect, the write, and the reply read; a
+/// blocked synchronous call is cancelled on its thread when the deadline
+/// passes. Only a decoded `Exit` is [`KillReply::ShutdownAcknowledged`].
 ///
 /// This function does not observe process death.
 #[cfg(unix)]
@@ -1152,27 +1334,37 @@ async fn read_exit_reply(
 #[cfg(windows)]
 pub async fn async_send_kill_and_await(
     path: &std::path::Path,
-    _budget: Duration,
+    budget: Duration,
 ) -> io::Result<KillReply> {
-    // Named-pipe reads cannot be bounded by a socket timeout, and a blocked
-    // pipe write cannot be cancelled. `_budget` keeps the signature shared
-    // with Unix; it does not make a blocked call return early, and a blocked
-    // write is not an acknowledgement.
+    // Windows named pipes have no socket timeout. Bound the connect, write,
+    // and reply read with the same deadline, cancelling whichever
+    // synchronous call is blocked when it expires.
+    if budget.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "no time to send kill",
+        ));
+    }
+    let deadline = Instant::now() + budget;
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
         // Both pipes, under the per-process lock. A failed reply connect drops
         // the request instead of leaving a half the server can mis-pair.
-        // `budget` still does not cancel a write blocked in the pipe.
-        let (stream, mut reply_stream) = crate::pipe_pairs::connect_pair(&path)?;
-        let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
-        sender
-            .send_client_msg(ClientToServerMsg::KillSession)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        match read_server_frame_capped(&mut reply_stream, PROBE_MAX_FRAME_BYTES) {
-            Ok(ServerToClientMsg::Exit { .. }) => Ok(KillReply::ShutdownAcknowledged),
-            _ => Ok(KillReply::OutcomeUnknown),
-        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let (stream, mut reply_stream) =
+            crate::pipe_pairs::connect_pair_with_timeout(&path, remaining)?;
+        run_with_deadline_cancel(deadline, || {
+            let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
+            if let Err(error) = sender.send_client_msg(ClientToServerMsg::KillSession) {
+                sender.abandon();
+                return Err(io::Error::other(error.to_string()));
+            }
+            match read_server_frame_capped(&mut reply_stream, PROBE_MAX_FRAME_BYTES) {
+                Ok(ServerToClientMsg::Exit { .. }) => Ok(KillReply::ShutdownAcknowledged),
+                _ => Ok(KillReply::OutcomeUnknown),
+            }
+        })
     })
     .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+    .map_err(|e| io::Error::other(e.to_string()))?
 }

@@ -13,28 +13,33 @@ use std::{
         atomic::{AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
     },
+    time::Duration,
 };
 
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE,
-    STILL_ACTIVE, S_OK,
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, ERROR_IO_PENDING, ERROR_OPERATION_ABORTED,
+    GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, STILL_ACTIVE, S_OK, WAIT_FAILED,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
+    PIPE_ACCESS_INBOUND, PIPE_ACCESS_OUTBOUND,
 };
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
     CTRL_C_EVENT, HPCON,
 };
-use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
+use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, TerminateProcess, UpdateProcThreadAttribute,
-    WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
+    CreateEventW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
+    GetExitCodeProcess, InitializeProcThreadAttributeList, TerminateProcess,
+    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT,
+    EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION, STARTF_USESTDHANDLES,
+    STARTUPINFOEXW, STARTUPINFOW,
 };
+use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
 
@@ -43,10 +48,13 @@ pub use async_trait::async_trait;
 // Not exported by windows-sys; value from the Windows SDK.
 const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x00020016;
 const FILE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x00080000;
-const PIPE_ACCESS_INBOUND: u32 = 0x00000001;
 const PIPE_TYPE_BYTE: u32 = 0;
 const PIPE_WAIT: u32 = 0;
-const GENERIC_WRITE: u32 = 0x40000000;
+
+/// Bound on one ConPTY input write. A child that stops reading must not pin
+/// the pty-writer thread forever; the overlapped write is cancelled and
+/// reclaimed when this expires.
+const CONPTY_INPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Monotonic counter so each ConPTY output pipe gets a unique name, even when
 /// re-spawning on the same `terminal_id` (the old async reader may still hold
@@ -117,6 +125,88 @@ fn duplicate_write_handle(handle: HANDLE) -> io::Result<HANDLE> {
         Err(io::Error::last_os_error())
     } else {
         Ok(duplicated)
+    }
+}
+
+/// Write to an overlapped pipe handle, cancelling the operation and waiting
+/// for it to be reclaimed if `timeout` expires.
+///
+/// The `OVERLAPPED` and the caller's buffer stay alive until completion,
+/// including after `CancelIoEx`, so the kernel never retains a dangling
+/// pointer.
+fn write_overlapped_with_timeout(
+    handle: HANDLE,
+    buf: &[u8],
+    timeout: Duration,
+) -> (usize, io::Result<()>) {
+    if buf.is_empty() {
+        return (0, Ok(()));
+    }
+    let len = match u32::try_from(buf.len()) {
+        Ok(len) => len,
+        Err(_) => {
+            return (
+                0,
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "ConPTY input chunk exceeds u32",
+                )),
+            );
+        },
+    };
+    let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+    if event.is_null() {
+        return (0, Err(io::Error::last_os_error()));
+    }
+    let _close_event = CloseOnDrop(event);
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    overlapped.hEvent = event;
+    let mut written: u32 = 0;
+    if unsafe { WriteFile(handle, buf.as_ptr(), len, &mut written, &mut overlapped) } != 0 {
+        return (written as usize, Ok(()));
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() != Some(ERROR_IO_PENDING as i32) {
+        return (0, Err(error));
+    }
+
+    let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
+    match unsafe { WaitForSingleObject(event, timeout_ms) } {
+        WAIT_OBJECT_0 => {
+            let mut transferred: u32 = 0;
+            if unsafe { GetOverlappedResult(handle, &overlapped, &mut transferred, 0) } == 0 {
+                (0, Err(io::Error::last_os_error()))
+            } else {
+                (transferred as usize, Ok(()))
+            }
+        },
+        WAIT_TIMEOUT => {
+            unsafe { CancelIoEx(handle, &overlapped) };
+            let mut transferred: u32 = 0;
+            if unsafe { GetOverlappedResult(handle, &overlapped, &mut transferred, 1) } != 0 {
+                return (transferred as usize, Ok(()));
+            }
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(ERROR_OPERATION_ABORTED as i32) {
+                (
+                    transferred as usize,
+                    Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "ConPTY input write timed out",
+                    )),
+                )
+            } else {
+                (transferred as usize, Err(error))
+            }
+        },
+        WAIT_FAILED => (0, Err(io::Error::last_os_error())),
+        other => (
+            0,
+            Err(io::Error::other(format!(
+                "unexpected wait result {}",
+                other
+            ))),
+        ),
     }
 }
 
@@ -324,6 +414,57 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
     Ok((server, client))
 }
 
+/// Create an input pipe whose server (write) end is overlapped, so a blocked
+/// write can be cancelled with `CancelIoEx`.
+///
+/// Returns `(client_read_handle, server_write_handle)`. The read end stays
+/// synchronous because ConPTY consumes it; only the end this process writes
+/// through needs overlapped I/O.
+fn create_overlapped_input_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE)> {
+    let seq = PIPE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let name = format!(
+        r"\\.\pipe\zellij-pty-in-{}-{}-{}",
+        std::process::id(),
+        terminal_id,
+        seq
+    );
+    let wide_name = to_wide(&name);
+
+    let server = unsafe {
+        CreateNamedPipeW(
+            wide_name.as_ptr(),
+            PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+            PIPE_TYPE_BYTE | PIPE_WAIT,
+            1,     // max instances
+            65536, // out buffer (the end this process writes to)
+            0,     // in buffer (we only write)
+            0,     // default timeout
+            std::ptr::null(),
+        )
+    };
+    if server == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+
+    let client = unsafe {
+        CreateFileW(
+            wide_name.as_ptr(),
+            GENERIC_READ,
+            0,                    // no sharing
+            std::ptr::null(),     // default security
+            OPEN_EXISTING,        // pipe already exists
+            0,                    // synchronous
+            std::ptr::null_mut(), // no template
+        )
+    };
+    if client == INVALID_HANDLE_VALUE {
+        unsafe { CloseHandle(server) };
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok((client, server))
+}
+
 /// Create a ConPTY pseudo console of the given size attached to the provided
 /// pipes.
 fn create_conpty(
@@ -503,16 +644,18 @@ impl WindowsPtyBackend {
         let (output_read, output_write) =
             create_overlapped_output_pipe(terminal_id).with_context(|| err_context(&cmd))?;
 
-        // 2. Input pipe pair (anonymous, both synchronous)
-        let mut input_read: HANDLE = std::ptr::null_mut();
-        let mut input_write: HANDLE = std::ptr::null_mut();
-        if unsafe { CreatePipe(&mut input_read, &mut input_write, std::ptr::null(), 0) } == 0 {
-            unsafe {
-                CloseHandle(output_read);
-                CloseHandle(output_write);
-            }
-            return Err(io::Error::last_os_error()).with_context(|| err_context(&cmd));
-        }
+        // 2. Input pipe pair. The write end is overlapped so a blocked write
+        // can be cancelled instead of pinning the pty-writer thread.
+        let (input_read, input_write) = match create_overlapped_input_pipe(terminal_id) {
+            Ok(pipe) => pipe,
+            Err(error) => {
+                unsafe {
+                    CloseHandle(output_read);
+                    CloseHandle(output_write);
+                }
+                return Err(error).with_context(|| err_context(&cmd));
+            },
+        };
 
         // 3. Create pseudo console with the last known size (or 80x24) so a
         // rerun never starts the child at an empty ConPTY.
@@ -696,10 +839,6 @@ impl WindowsPtyBackend {
         Ok(())
     }
 
-    pub fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
-        self.write_to_tty_stdin_for_run(terminal_id, None, buf)
-    }
-
     pub fn write_to_tty_stdin_for_run(
         &self,
         terminal_id: u32,
@@ -750,24 +889,9 @@ impl WindowsPtyBackend {
             }
         };
         let _close = CloseOnDrop(handle);
-        let mut written: u32 = 0;
-        let ok = unsafe {
-            WriteFile(
-                handle,
-                buf.as_ptr(),
-                buf.len() as u32,
-                &mut written,
-                std::ptr::null_mut(),
-            )
-        };
-        if ok == 0 {
-            (
-                written as usize,
-                Err(io::Error::last_os_error()).with_context(err_context),
-            )
-        } else {
-            (written as usize, Ok(()))
-        }
+        let (written, result) =
+            write_overlapped_with_timeout(handle, buf, CONPTY_INPUT_WRITE_TIMEOUT);
+        (written, result.with_context(err_context))
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {

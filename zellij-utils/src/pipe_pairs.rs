@@ -18,9 +18,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::sync::{mpsc, Arc, Mutex};
+#[cfg(windows)]
+use std::thread::JoinHandle;
 
 /// How long half a connection waits for its other half before it is dropped.
 const MAX_WAIT: Duration = Duration::from_secs(30);
+
+/// How often the independent expiry task drops stale halves. This bounds how
+/// long a half can be retained past [`MAX_WAIT`] when no new half arrives.
+#[cfg(windows)]
+const EXPIRY_INTERVAL: Duration = Duration::from_secs(1);
 
 #[cfg(windows)]
 const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
@@ -37,25 +44,37 @@ struct Waiting<T> {
     since: Instant,
 }
 
+/// The half of the pair was refused because the waiting queue is full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapacityExceeded;
+
 /// The halves of connections that are still waiting for their other half.
+///
+/// Matching scans the waiting side for the process. The caller bounds both
+/// sides, so a burst cannot make that scan grow without limit. Expired or
+/// disconnected halves are dropped before they can be paired.
 pub struct Pairing<T> {
     requests: VecDeque<Waiting<T>>,
     replies: VecDeque<Waiting<T>>,
-}
-
-impl<T> Default for Pairing<T> {
-    fn default() -> Self {
-        Pairing {
-            requests: VecDeque::new(),
-            replies: VecDeque::new(),
-        }
-    }
+    capacity: usize,
 }
 
 impl<T> Pairing<T> {
+    /// Bounds each waiting side.
+    pub fn new(capacity: usize) -> Self {
+        Pairing {
+            requests: VecDeque::new(),
+            replies: VecDeque::new(),
+            capacity,
+        }
+    }
+
     /// Adds one half of a connection from `process`. Returns the whole connection, request half
     /// first, once its other half is there. Halves whose client is `gone`, or that waited too
-    /// long, are dropped first, so they can never take another connection's half.
+    /// long, are dropped before they can take another connection's half.
+    ///
+    /// A half is refused with [`CapacityExceeded`] when its side already holds
+    /// the configured number of halves. The stream is dropped in that case.
     pub fn add(
         &mut self,
         half: Half,
@@ -63,7 +82,7 @@ impl<T> Pairing<T> {
         stream: T,
         now: Instant,
         gone: impl Fn(&T) -> bool,
-    ) -> Option<(T, T)> {
+    ) -> Result<Option<(T, T)>, CapacityExceeded> {
         self.forget(now, &gone);
         let (mine, others) = match half {
             Half::Request => (&mut self.requests, &mut self.replies),
@@ -71,24 +90,29 @@ impl<T> Pairing<T> {
         };
         match others.iter().position(|other| other.process == process) {
             Some(index) => {
-                let other = others.remove(index)?.stream;
-                Some(match half {
+                let other = others.remove(index).expect("matched half").stream;
+                Ok(Some(match half {
                     Half::Request => (stream, other),
                     Half::Reply => (other, stream),
-                })
+                }))
             },
             None => {
+                if mine.len() >= self.capacity {
+                    return Err(CapacityExceeded);
+                }
                 mine.push_back(Waiting {
                     process,
                     stream,
                     since: now,
                 });
-                None
+                Ok(None)
             },
         }
     }
 
-    fn forget(&mut self, now: Instant, gone: &impl Fn(&T) -> bool) {
+    /// Drops every half that has waited too long or whose client is gone.
+    /// The expiry task calls this without another half arriving.
+    fn forget(&mut self, now: Instant, gone: impl Fn(&T) -> bool) {
         for waiting in [&mut self.requests, &mut self.replies] {
             waiting.retain(|half| {
                 now.saturating_duration_since(half.since) < MAX_WAIT && !gone(&half.stream)
@@ -102,18 +126,52 @@ impl<T> Pairing<T> {
     }
 }
 
+/// The pair-accepting threads plus the independent expiry task.
+#[cfg(windows)]
+pub struct PairedConnections {
+    connections: mpsc::Receiver<(
+        interprocess::local_socket::Stream,
+        interprocess::local_socket::Stream,
+    )>,
+    stop_expiry: mpsc::Sender<()>,
+    expiry: Option<JoinHandle<()>>,
+}
+
+#[cfg(windows)]
+impl Iterator for PairedConnections {
+    type Item = (
+        interprocess::local_socket::Stream,
+        interprocess::local_socket::Stream,
+    );
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.connections.recv().ok()
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PairedConnections {
+    fn drop(&mut self) {
+        let _ = self.stop_expiry.send(());
+        if let Some(expiry) = self.expiry.take() {
+            let _ = expiry.join();
+        }
+    }
+}
+
 /// Accepts the request and reply halves of connections on their two listeners and hands out each
-/// connection once both of its halves are there, request half first.
+/// connection once both of its halves are there, request half first. `capacity` bounds both the
+/// unmatched halves per side and the completed connections waiting for the server to take them.
 #[cfg(windows)]
 pub fn accept_pairs(
     requests: interprocess::local_socket::Listener,
     replies: interprocess::local_socket::Listener,
-) -> mpsc::Receiver<(
-    interprocess::local_socket::Stream,
-    interprocess::local_socket::Stream,
-)> {
-    let (paired, connections) = mpsc::channel();
-    let pairing = Arc::new(Mutex::new(Pairing::default()));
+    capacity: usize,
+) -> PairedConnections {
+    let (paired, connections) = mpsc::sync_channel(capacity);
+    let pairing = Arc::new(Mutex::new(Pairing::new(capacity)));
+    let (stop_expiry, stop) = mpsc::channel();
+    let expiry = spawn_expiry(Arc::clone(&pairing), stop);
     for (half, listener) in [(Half::Request, requests), (Half::Reply, replies)] {
         let pairing = pairing.clone();
         let paired = paired.clone();
@@ -134,13 +192,22 @@ pub fn accept_pairs(
                         },
                     };
                     let process = client_process(&stream).unwrap_or(0);
-                    let connection = pairing.lock().unwrap_or_else(|e| e.into_inner()).add(
+                    let connection = match pairing.lock().unwrap_or_else(|e| e.into_inner()).add(
                         half,
                         process,
                         stream,
                         Instant::now(),
                         |stream| !connected(stream),
-                    );
+                    ) {
+                        Ok(connection) => connection,
+                        Err(CapacityExceeded) => {
+                            log::warn!(
+                                "refusing a {:?} pipe half: too many unmatched halves",
+                                half
+                            );
+                            continue;
+                        },
+                    };
                     if let Some(connection) = connection {
                         if paired.send(connection).is_err() {
                             return;
@@ -152,7 +219,41 @@ pub fn accept_pairs(
             log::error!("failed to start accepting connections: {}", e);
         }
     }
-    connections
+    PairedConnections {
+        connections,
+        stop_expiry,
+        expiry,
+    }
+}
+
+/// Drops stale halves even while no new half arrives. Without this task a
+/// one-sided connection would retain its handle until the next client
+/// connected.
+#[cfg(windows)]
+fn spawn_expiry(
+    pairing: Arc<Mutex<Pairing<interprocess::local_socket::Stream>>>,
+    stop: mpsc::Receiver<()>,
+) -> Option<JoinHandle<()>> {
+    let thread = std::thread::Builder::new()
+        .name("pipe_expiry".to_owned())
+        .spawn(move || loop {
+            match stop.recv_timeout(EXPIRY_INTERVAL) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    pairing
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .forget(Instant::now(), |stream| !connected(stream));
+                },
+            }
+        });
+    match thread {
+        Ok(thread) => Some(thread),
+        Err(error) => {
+            log::error!("failed to start the pipe expiry task: {}", error);
+            None
+        },
+    }
 }
 
 /// Connects both pipes of a connection. Other threads of this process wait meanwhile, since the
@@ -296,24 +397,44 @@ mod tests {
         pipe.gone
     }
 
+    fn pairing() -> Pairing<Pipe> {
+        Pairing::new(16)
+    }
+
     #[test]
     fn the_halves_of_a_connection_meet_in_either_order() {
         let now = Instant::now();
-        let mut pairing = Pairing::default();
+        let mut pairing = pairing();
         assert_eq!(
-            names(pairing.add(Half::Request, 7, pipe("a"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Request, 7, pipe("a"), now, is_gone)
+                    .unwrap()
+            ),
             None
         );
         assert_eq!(
-            names(pairing.add(Half::Reply, 7, pipe("a-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 7, pipe("a-reply"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("a", "a-reply"))
         );
         assert_eq!(
-            names(pairing.add(Half::Reply, 8, pipe("b-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 8, pipe("b-reply"), now, is_gone)
+                    .unwrap()
+            ),
             None
         );
         assert_eq!(
-            names(pairing.add(Half::Request, 8, pipe("b"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Request, 8, pipe("b"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("b", "b-reply"))
         );
         assert_eq!(pairing.waiting(), (0, 0));
@@ -322,15 +443,27 @@ mod tests {
     #[test]
     fn interleaved_clients_each_get_their_own_reply_pipe() {
         let now = Instant::now();
-        let mut pairing = Pairing::default();
-        pairing.add(Half::Request, 1, pipe("a"), now, is_gone);
-        pairing.add(Half::Request, 2, pipe("b"), now, is_gone);
+        let mut pairing = pairing();
+        pairing
+            .add(Half::Request, 1, pipe("a"), now, is_gone)
+            .unwrap();
+        pairing
+            .add(Half::Request, 2, pipe("b"), now, is_gone)
+            .unwrap();
         assert_eq!(
-            names(pairing.add(Half::Reply, 2, pipe("b-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 2, pipe("b-reply"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("b", "b-reply"))
         );
         assert_eq!(
-            names(pairing.add(Half::Reply, 1, pipe("a-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 1, pipe("a-reply"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("a", "a-reply"))
         );
     }
@@ -338,43 +471,63 @@ mod tests {
     #[test]
     fn a_client_that_left_after_its_request_pipe_takes_no_one_elses_reply() {
         let now = Instant::now();
-        let mut pairing = Pairing::default();
-        pairing.add(
-            Half::Request,
-            5,
-            Pipe {
-                name: "orphan",
-                gone: true,
-            },
-            now,
-            is_gone,
-        );
-        pairing.add(Half::Request, 6, pipe("next"), now, is_gone);
+        let mut pairing = pairing();
+        pairing
+            .add(
+                Half::Request,
+                5,
+                Pipe {
+                    name: "orphan",
+                    gone: true,
+                },
+                now,
+                is_gone,
+            )
+            .unwrap();
+        pairing
+            .add(Half::Request, 6, pipe("next"), now, is_gone)
+            .unwrap();
         assert_eq!(
-            names(pairing.add(Half::Reply, 6, pipe("next-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 6, pipe("next-reply"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("next", "next-reply")),
             "pairing by arrival order gave the orphan this reply pipe"
         );
-        assert_eq!(pairing.waiting(), (0, 0), "the orphan was dropped");
+        assert_eq!(
+            pairing.waiting(),
+            (0, 0),
+            "the gone orphan is dropped before another half can match"
+        );
     }
 
     #[test]
     fn a_process_that_left_one_request_pipe_behind_still_pairs_its_next_one() {
         let now = Instant::now();
-        let mut pairing = Pairing::default();
-        pairing.add(
-            Half::Request,
-            9,
-            Pipe {
-                name: "abandoned",
-                gone: true,
-            },
-            now,
-            is_gone,
-        );
-        pairing.add(Half::Request, 9, pipe("retry"), now, is_gone);
+        let mut pairing = pairing();
+        pairing
+            .add(
+                Half::Request,
+                9,
+                Pipe {
+                    name: "abandoned",
+                    gone: true,
+                },
+                now,
+                is_gone,
+            )
+            .unwrap();
+        pairing
+            .add(Half::Request, 9, pipe("retry"), now, is_gone)
+            .unwrap();
         assert_eq!(
-            names(pairing.add(Half::Reply, 9, pipe("retry-reply"), now, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 9, pipe("retry-reply"), now, is_gone)
+                    .unwrap()
+            ),
             Some(("retry", "retry-reply"))
         );
     }
@@ -382,13 +535,105 @@ mod tests {
     #[test]
     fn a_half_left_waiting_too_long_is_dropped() {
         let then = Instant::now();
-        let mut pairing = Pairing::default();
-        pairing.add(Half::Request, 3, pipe("stuck"), then, is_gone);
+        let mut pairing = pairing();
+        pairing
+            .add(Half::Request, 3, pipe("stuck"), then, is_gone)
+            .unwrap();
         let later = then + MAX_WAIT + Duration::from_secs(1);
         assert_eq!(
-            names(pairing.add(Half::Reply, 3, pipe("late-reply"), later, is_gone)),
+            names(
+                pairing
+                    .add(Half::Reply, 3, pipe("late-reply"), later, is_gone)
+                    .unwrap()
+            ),
             None
         );
         assert_eq!(pairing.waiting(), (0, 1));
+    }
+
+    #[test]
+    fn expiry_can_run_without_another_half_arriving() {
+        let then = Instant::now();
+        let mut pairing = pairing();
+        pairing
+            .add(Half::Request, 3, pipe("stuck"), then, is_gone)
+            .unwrap();
+        pairing
+            .add(Half::Reply, 4, pipe("also-stuck"), then, is_gone)
+            .unwrap();
+
+        let later = then + MAX_WAIT + Duration::from_secs(1);
+        pairing.forget(later, is_gone);
+
+        assert_eq!(
+            pairing.waiting(),
+            (0, 0),
+            "the expiry pass did not release both halves"
+        );
+    }
+
+    #[test]
+    fn unmatched_halves_are_capped_per_side() {
+        let now = Instant::now();
+        let capacity = 4;
+        let mut pairing = Pairing::new(capacity);
+        for process in 0..capacity as u32 {
+            assert_eq!(
+                pairing
+                    .add(Half::Request, process + 1, pipe("waiting"), now, is_gone)
+                    .unwrap(),
+                None
+            );
+        }
+        assert_eq!(
+            pairing.add(
+                Half::Request,
+                capacity as u32 + 1,
+                pipe("overflow"),
+                now,
+                is_gone,
+            ),
+            Err(CapacityExceeded)
+        );
+        assert_eq!(pairing.waiting(), (capacity, 0));
+
+        assert_eq!(
+            pairing
+                .add(Half::Reply, 1, pipe("reply"), now, is_gone)
+                .unwrap(),
+            Some((pipe("waiting"), pipe("reply"))),
+            "the reply side has its own capacity and can still pair"
+        );
+        assert_eq!(pairing.waiting(), (capacity - 1, 0));
+    }
+
+    #[test]
+    fn pairing_a_half_frees_capacity_for_the_next_connection() {
+        let now = Instant::now();
+        let capacity = 1;
+        let mut pairing = Pairing::new(capacity);
+        pairing
+            .add(Half::Request, 1, pipe("one"), now, is_gone)
+            .unwrap();
+        assert_eq!(
+            pairing.add(Half::Request, 2, pipe("refused"), now, is_gone),
+            Err(CapacityExceeded)
+        );
+
+        assert_eq!(
+            names(
+                pairing
+                    .add(Half::Reply, 1, pipe("one-reply"), now, is_gone)
+                    .unwrap()
+            ),
+            Some(("one", "one-reply"))
+        );
+        assert_eq!(
+            pairing
+                .add(Half::Request, 2, pipe("two"), now, is_gone)
+                .unwrap(),
+            None,
+            "a completed pair did not release capacity for the next request"
+        );
     }
 }

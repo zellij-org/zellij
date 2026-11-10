@@ -115,6 +115,7 @@ pub use zellij_utils::data::ClientId;
 
 pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
 
+#[cfg(not(windows))]
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -4200,9 +4201,11 @@ pub fn start_server_impl(
                             return;
                         },
                     };
-                    for (stream, reply_stream) in
-                        zellij_utils::pipe_pairs::accept_pairs(listener, reply_listener)
-                    {
+                    for (stream, reply_stream) in zellij_utils::pipe_pairs::accept_pairs(
+                        listener,
+                        reply_listener,
+                        connection_admission::PRE_HANDSHAKE_CONNECTION_CEILING,
+                    ) {
                         route(stream, reply_stream);
                     }
                 }
