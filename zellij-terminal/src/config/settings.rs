@@ -22,13 +22,16 @@ pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
         defaults
     };
 
-    config.themes = config.themes.merge(get_default_themes());
+    let mut themes = get_default_themes();
+    themes = themes.merge(config.themes.clone());
     if let Some(theme_dir) = theme_dir(&config, path) {
-        let themes = Themes::from_dir(theme_dir.clone())
-            .map_err(|e| anyhow::anyhow!("{}", e))
-            .with_context(|| format!("failed to read the themes in {:?}", theme_dir))?;
-        config.themes = config.themes.merge(themes);
+        themes = themes.merge(
+            Themes::from_dir(theme_dir.clone())
+                .map_err(|e| anyhow::anyhow!("{}", e))
+                .with_context(|| format!("failed to read the themes in {:?}", theme_dir))?,
+        );
     }
+    config.themes = themes;
 
     Ok(Settings::from_config(&config))
 }
