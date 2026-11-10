@@ -516,18 +516,19 @@ impl Desktop {
         }
     }
 
-    fn type_into_panel(&self, text: &str) {
-        let plugin = self.wait_for_panel_plugin();
-        let keys = text
-            .chars()
-            .map(|character| press(plugin, BareKey::Char(character)))
-            .collect();
-        self.act_on_panel(keys);
-    }
-
     fn press_enter_in_panel(&self) {
         let plugin = self.wait_for_panel_plugin();
         self.act_on_panel(vec![press(plugin, BareKey::Enter)]);
+    }
+
+    fn type_and_press_enter_in_panel(&self, text: &str) {
+        let plugin = self.wait_for_panel_plugin();
+        let mut keys = text
+            .chars()
+            .map(|character| press(plugin, BareKey::Char(character)))
+            .collect::<Vec<_>>();
+        keys.push(press(plugin, BareKey::Enter));
+        self.act_on_panel(keys);
     }
 
     fn running_sessions(&self) -> Vec<String> {
@@ -685,8 +686,8 @@ fn choosing_a_session_in_the_panel_opens_a_window_for_it_or_brings_its_window_fo
     desktop.wait_for_state("the sessions panel", |state| {
         state.panel == panel(PopupView::Sessions)
     });
-    desktop.type_into_panel("elsewhere");
-    desktop.press_enter_in_panel();
+    desktop.wait_for_panel_to_show("Sessions");
+    desktop.type_and_press_enter_in_panel("elsewhere");
     let state = desktop.wait_for_state("a window on the chosen session", |state| {
         state.panel.is_none()
             && state
@@ -699,8 +700,8 @@ fn choosing_a_session_in_the_panel_opens_a_window_for_it_or_brings_its_window_fo
     desktop.wait_for_state("the sessions panel again", |state| {
         state.panel == panel(PopupView::Sessions)
     });
-    desktop.type_into_panel(&first);
-    desktop.press_enter_in_panel();
+    desktop.wait_for_panel_to_show("Sessions");
+    desktop.type_and_press_enter_in_panel(&first);
     let state = desktop.wait_for_state("the panel to go to the session", |state| {
         state.panel.is_none()
     });
@@ -728,6 +729,7 @@ fn confirming_quit_in_the_panel_stops_every_session_and_the_app() {
     desktop.wait_for_state("the quit question", |state| {
         state.panel == panel(PopupView::Quit)
     });
+    desktop.wait_for_panel_to_show("Quit");
     desktop.press_enter_in_panel();
     desktop.wait_for_exit(0);
     for session in [first.as_str(), "elsewhere", APP_PANEL_SESSION] {
