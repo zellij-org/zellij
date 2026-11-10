@@ -186,19 +186,21 @@ impl Iterator for BlockingSignalIterator {
 /// for server→client. Both are connected together, so the server can pair them.
 pub(crate) fn connect_ipc(
     path: &Path,
-) -> (
+) -> std::io::Result<(
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
-) {
+)> {
     let (socket, reply_socket) = loop {
         match zellij_utils::pipe_pairs::connect_pair(path) {
             Ok(pipes) => break pipes,
+            // The session belongs to another user, or was started elevated: waiting won't help.
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Err(e),
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
         }
     };
     let sender = IpcSenderWithContext::new(socket);
     let receiver = IpcReceiverWithContext::new(reply_socket);
-    (sender, receiver)
+    Ok((sender, receiver))
 }
 
 /// Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING on stdout so that ConPTY enters

@@ -446,6 +446,17 @@ fn ipc_pipe_length_error(ipc_pipe: &Path) -> Option<String> {
     ))
 }
 
+pub(crate) fn connect_error_message(error: io::Error) -> String {
+    let mut message = format!("Error: cannot connect to the session: {}", error);
+    if cfg!(windows) {
+        message.push_str(
+            "\n\nA session started from an administrator console can only be reached from \
+             another administrator console.",
+        );
+    }
+    message
+}
+
 // Session sockets are named by a fixed-length session id rather than the session name, so
 // only the socket directory's length can push the path past the limit.
 fn sock_dir_ipc_pipe_length_error(sock_dir: &Path) -> Option<String> {
@@ -1294,7 +1305,9 @@ pub fn start_client(
         }
     }
 
-    os_input.connect_to_server(&*ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*ipc_pipe) {
+        exit_after_startup_error(Some(terminal_teardown), connect_error_message(e));
+    }
     os_input.send_to_server(first_msg);
 
     let mut command_is_executing = CommandIsExecuting::new();
@@ -1946,7 +1959,10 @@ pub fn start_server_detached(
         },
     };
 
-    os_input.connect_to_server(&*ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*ipc_pipe) {
+        eprintln!("{}", connect_error_message(e));
+        std::process::exit(1);
+    }
     os_input.send_to_server(first_msg);
 }
 

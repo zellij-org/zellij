@@ -30,7 +30,10 @@ pub fn start_cli_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
         .and_then(|e| e.trim().parse().ok());
@@ -429,7 +432,10 @@ pub fn start_prompt_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
     let request = PipeRequest {
         pipe_id: Uuid::new_v4().to_string(),
         name: Some(plan.element.name().to_owned()),
@@ -806,7 +812,10 @@ pub fn start_subscribe_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
 
     // Parse pane IDs
     let pane_ids: Vec<PaneId> = subscribe_cli

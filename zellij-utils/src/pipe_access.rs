@@ -112,10 +112,11 @@ struct Descriptor(PSECURITY_DESCRIPTOR);
 
 impl Descriptor {
     fn private() -> io::Result<Self> {
-        let sddl: Vec<u16> = private_sddl(&Identity::current()?)
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
+        Self::from_sddl(&private_sddl(&Identity::current()?))
+    }
+
+    fn from_sddl(sddl: &str) -> io::Result<Self> {
+        let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
         let mut descriptor = ptr::null_mut();
         let made = unsafe {
             ConvertStringSecurityDescriptorToSecurityDescriptorW(
@@ -319,6 +320,27 @@ mod tests {
         let _requests = crate::consts::ipc_bind(&path).unwrap();
         let _replies = crate::consts::ipc_bind_reply(&path).unwrap();
         crate::pipe_pairs::connect_pair(&path).unwrap();
+    }
+
+    #[test]
+    fn a_pipe_that_refuses_this_user_fails_with_permission_denied() {
+        use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+        use interprocess::os::windows::local_socket::ListenerOptionsExt;
+        // Like a session started elevated, as seen by a normal process: only SYSTEM may use it.
+        let only_system = Descriptor::from_sddl("D:P(A;;FA;;;SY)").unwrap();
+        let descriptor = unsafe { BorrowedSecurityDescriptor::from_ptr(only_system.0) }
+            .to_owned_sd()
+            .unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("elevated");
+        let name = path.to_string_lossy().to_string();
+        let _listener = ListenerOptions::new()
+            .name(name.as_str().to_ns_name::<GenericNamespaced>().unwrap())
+            .security_descriptor(descriptor)
+            .create_sync()
+            .unwrap();
+        let error = crate::pipe_pairs::connect_pair(&path).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied, "{}", error);
     }
 
     #[test]

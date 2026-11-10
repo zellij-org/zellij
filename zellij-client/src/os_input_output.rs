@@ -178,8 +178,9 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
         quit_cb: Box<dyn Fn()>,
         resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     );
-    /// Establish a connection with the server socket.
-    fn connect_to_server(&self, path: &Path);
+    /// Establish a connection with the server socket, waiting for the server to start listening.
+    /// Fails only when the server refuses this client.
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()>;
     fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
         crate::spawn_server(socket_path, debug)
     }
@@ -344,10 +345,11 @@ impl ClientOsApi for ClientOsInputOutput {
             }
         }
     }
-    fn connect_to_server(&self, path: &Path) {
-        let (sender, receiver) = connect_ipc(path);
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()> {
+        let (sender, receiver) = connect_ipc(path)?;
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        Ok(())
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of
