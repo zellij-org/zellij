@@ -2387,8 +2387,10 @@ fn route_action_with_origin(
             popup_outside_click,
             ..
         } => {
-            drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
-                                 // this to block additionallu
+            // The action completes when the pipe is admitted. Output and
+            // release are delivered separately through CliPipeOutput and
+            // UnblockCliPipeInput.
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
                 if !seen_cli_pipes.contains(&pipe_id) {
                     seen_cli_pipes.insert(pipe_id.clone());

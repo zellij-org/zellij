@@ -2541,7 +2541,9 @@ impl WasmBridge {
                                         );
                                     },
                                 }
-                                drop(notification_end);
+                                if let Some(notification_end) = notification_end {
+                                    notification_end.complete_recorded();
+                                }
                             }
                         },
                     ) {
@@ -4894,14 +4896,35 @@ impl WasmBridge {
     fn add_client_to_shared_instances(&mut self, client_id: ClientId) {
         let instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in instance_ids {
-            self.plugin_executor.execute_for_plugin_with(
-                instance_id,
-                JobClass::Lifecycle,
-                0,
-                move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    client_job(senders, plugin_map, instance_id, client_id, true);
-                },
-            );
+            let running_plugin = self
+                .plugin_map
+                .lock()
+                .unwrap()
+                .shared_running_plugin(instance_id)
+                .map(|(running_plugin, _subscriptions)| running_plugin);
+            let is_active = running_plugin
+                .as_ref()
+                .map(|running_plugin| {
+                    let running_plugin = lock_running(running_plugin);
+                    running_plugin.is_active() && !running_plugin.is_quarantined()
+                })
+                .unwrap_or(false);
+            if is_active {
+                self.plugin_executor.execute_for_plugin_with(
+                    instance_id,
+                    JobClass::Lifecycle,
+                    0,
+                    move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
+                        client_job(senders, plugin_map, instance_id, client_id, true);
+                    },
+                );
+            } else if !self.quarantine.contains(&instance_id) {
+                // The session was left without attached clients and the
+                // instance retired before this one arrived. Start it again;
+                // start_instance_job publishes client_connected and a render
+                // for every client already in the connected list.
+                self.reload_shared_instance_with_bytes(instance_id, None);
+            }
             if self.shared_instance_subscribes_to(instance_id, EventType::InitialKeybinds) {
                 self.send_keybinds_payload_to_plugin(
                     instance_id,
@@ -5180,7 +5203,9 @@ impl WasmBridge {
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
                     apply_pipes_job(senders, plugin_map, instance_id, worker_messages);
-                    drop(notification_end);
+                    if let Some(notification_end) = notification_end {
+                        notification_end.complete_recorded();
+                    }
                 },
             ) {
                 log::warn!(
