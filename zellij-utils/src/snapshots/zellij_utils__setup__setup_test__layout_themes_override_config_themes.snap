@@ -6889,6 +6889,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7480,6 +7481,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (
@@ -8071,6 +8073,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (

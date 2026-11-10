@@ -20,16 +20,24 @@ themes {
             base 35 37 43
             background 64 160 43
             emphasis_0 85 0 16
-            emphasis_1 254 100 11
-            emphasis_2 234 118 203
+            emphasis_1 66 26 3
+            emphasis_2 56 28 49
             emphasis_3 0 31 100
         }
         ribbon_unselected {
             base 220 224 232
             background 92 95 119
             emphasis_0 255 204 239
-            emphasis_1 76 79 105
-            emphasis_2 30 102 245
+            emphasis_1 219 220 225
+            emphasis_2 206 221 253
+            emphasis_3 255 204 239
+        }
+        ribbon_hover {
+            base 220 224 232
+            background 76 79 105
+            emphasis_0 255 204 239
+            emphasis_1 219 220 225
+            emphasis_2 206 221 253
             emphasis_3 255 204 239
         }
         table_title {

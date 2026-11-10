@@ -209,6 +209,40 @@ fn styling_survives_the_colour_list() {
 }
 
 #[test]
+fn a_theme_without_a_hover_section_keeps_its_hover_fill_when_emphasis_1_changes() {
+    let mut styling = DEFAULT_STYLES;
+    styling.ribbon_hover = None;
+    let old_fill = styling.ribbon_unselected.emphasis_1;
+    let mut colours = styling_colours(&styling);
+    let index = theme_slots()
+        .iter()
+        .position(|slot| *slot == ("ribbon_unselected", "emphasis_1"))
+        .unwrap();
+    colours[index] = "#010203".to_owned();
+    let edited = styling_from_colours(&colours);
+    assert_eq!(
+        edited.ribbon_unselected.emphasis_1,
+        PaletteColor::Rgb((1, 2, 3))
+    );
+    assert_eq!(edited.ribbon_hover_style().background, old_fill);
+}
+
+#[test]
+fn a_theme_without_a_hover_section_uses_emphasis_1_as_the_hover_fill() {
+    let parsed = crate::input::theme::Themes::from_string(
+        &"themes { mine { ribbon_unselected { base 1; background 2; emphasis_0 3; emphasis_1 4; emphasis_2 5; emphasis_3 6; }; }; }".to_owned(),
+        false,
+    )
+    .unwrap();
+    let palette = parsed.get_theme("mine").unwrap().palette;
+    assert_eq!(palette.ribbon_hover, None);
+    let hover = palette.ribbon_hover_style();
+    assert_eq!(hover.background, PaletteColor::EightBit(4));
+    assert_eq!(hover.base, PaletteColor::EightBit(1));
+    assert_eq!(hover.emphasis_3, PaletteColor::EightBit(6));
+}
+
+#[test]
 fn replacing_blocks_removes_entries_that_merging_cannot() {
     let mut config = load(
         "env { A \"1\"; B \"2\"; }\nplugins { mine location=\"zellij:strider\"; }\nthemes { mine { fg 1; bg 2; red 3; green 4; blue 5; yellow 6; magenta 7; orange 8; cyan 9; black 10; white 11; }; }",
