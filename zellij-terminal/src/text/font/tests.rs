@@ -1620,7 +1620,10 @@ fn without_the_bundled_emoji_text_cjk_and_icons_still_resolve() {
         let glyph = glyph_of(&mut fonts, style, 'A');
         assert!(fonts.is_primary(glyph.font));
     }
-    assert_eq!(glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}').font, FontId(4));
+    assert_eq!(
+        glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}').font,
+        FontId(4)
+    );
     assert_eq!(
         glyph_of(&mut fonts, FaceStyle::Regular, '\u{f16a0}').font,
         SYMBOLS_FONT
