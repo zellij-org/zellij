@@ -207,11 +207,10 @@ impl ServerOsApi for MockOsApi {
                 ));
             }
         }
-        self.applied_writes.lock().unwrap().push((
-            terminal_id,
-            generation,
-            buf.to_vec(),
-        ));
+        self.applied_writes
+            .lock()
+            .unwrap()
+            .push((terminal_id, generation, buf.to_vec()));
         Ok(buf.len())
     }
     fn tcdrain(&self, _: u32) -> anyhow::Result<()> {
@@ -396,8 +395,7 @@ fn stored_generation(pty: &Pty, terminal_id: u32) -> Option<u64> {
 }
 
 fn generations_empty(pty: &Pty) -> bool {
-    !pty
-        .panes
+    !pty.panes
         .values()
         .any(|pane| pane.run.as_ref().and_then(|run| run.generation).is_some())
 }
@@ -405,11 +403,9 @@ fn generations_empty(pty: &Pty) -> bool {
 #[cfg(target_os = "linux")]
 fn stored_pidfd_raw(pty: &Pty, terminal_id: u32) -> Option<std::os::fd::RawFd> {
     pty.panes.get(&terminal_id).and_then(|pane| {
-        pane.run.as_ref().and_then(|run| {
-            run.pidfd
-                .as_ref()
-                .map(std::os::fd::AsRawFd::as_raw_fd)
-        })
+        pane.run
+            .as_ref()
+            .and_then(|run| run.pidfd.as_ref().map(std::os::fd::AsRawFd::as_raw_fd))
     })
 }
 
@@ -919,9 +915,10 @@ fn closing_pane_forgets_plugin_and_prompt_marker_state() {
 
     pty.close_pane(PaneId::Terminal(1)).unwrap();
 
-    assert!(pty.panes.get(&1).is_none_or(|pane| {
-        !pane.prompt_markers && pane.originating_plugin.is_none()
-    }));
+    assert!(pty
+        .panes
+        .get(&1)
+        .is_none_or(|pane| { !pane.prompt_markers && pane.originating_plugin.is_none() }));
 }
 
 #[test]
@@ -1149,10 +1146,7 @@ fn close_pane_uses_the_supplied_pidfd_and_does_not_numeric_kill() {
     let raw = std::os::fd::AsRawFd::as_raw_fd(&fd);
     let generation = stored_generation(&pty, 7).unwrap();
     pty.remember_run(7, Some(4242), Some(fd), generation);
-    assert_eq!(
-        stored_pidfd_raw(&pty, 7),
-        Some(raw)
-    );
+    assert_eq!(stored_pidfd_raw(&pty, 7), Some(raw));
     pty.close_pane(PaneId::Terminal(7)).unwrap();
     assert!(stored_pidfd_raw(&pty, 7).is_none());
     assert_eq!(stored_pid(&pty, 7), None);
@@ -1200,10 +1194,7 @@ fn sigint_and_sigkill_use_the_stored_pidfd_when_tcgetpgrp_is_none() {
     pty.send_sigint_to_pane(PaneId::Terminal(7));
     pty.send_sigkill_to_pane(PaneId::Terminal(7));
 
-    assert_eq!(
-        stored_pidfd_raw(&pty, 7),
-        Some(raw)
-    );
+    assert_eq!(stored_pidfd_raw(&pty, 7), Some(raw));
     assert_eq!(
         mock.foreground_group_attempts(),
         vec![("SIGINT", 7), ("SIGKILL", 7)]
@@ -1781,8 +1772,7 @@ fn reader_eof_does_not_clear_process_identity_or_count_as_child_exit() {
     assert!(!saw_exit, "reader EOF is not a child exit");
     assert_eq!(stored_pid(&pty, 7), Some(4242));
     assert!(
-        !pty
-            .bus
+        !pty.bus
             .drain_available()
             .iter()
             .any(|instruction| matches!(instruction, PtyInstruction::ClearPaneProcessIdentity(..))),

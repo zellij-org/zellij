@@ -9982,7 +9982,7 @@ pub fn run_action_plugin_command() {
     let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
     let move_focus_instruction = received_screen_instructions_guard.iter().find_map(|i| {
         if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
-            Some((*client_id, notification_end.clone()))
+            Some((*client_id, notification_end))
         } else {
             None
         }
@@ -10327,7 +10327,7 @@ pub fn run_action_without_permission() {
     let received_screen_instructions_guard = received_screen_instructions.lock().unwrap();
     let move_focus_instruction = received_screen_instructions_guard.iter().find_map(|i| {
         if let ScreenInstruction::MoveFocusLeft(client_id, notification_end) = i {
-            Some((*client_id, notification_end.clone()))
+            Some((*client_id, notification_end))
         } else {
             None
         }

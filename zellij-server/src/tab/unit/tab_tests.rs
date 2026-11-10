@@ -18146,7 +18146,11 @@ fn rejected_bracketed_paste_does_not_submit_a_begin_marker_alone() {
     expected.extend_from_slice(&body);
     expected.extend_from_slice(end);
     assert_eq!(admitted[0].1, expected);
-    assert_eq!(budget.terminal_reserved(1), 0, "dropping the write releases it");
+    assert_eq!(
+        budget.terminal_reserved(1),
+        0,
+        "dropping the write releases it"
+    );
 
     let begin_only = begin.len();
     budget
@@ -22187,4 +22191,21 @@ fn a_moved_pane_keeps_resolving_its_hyperlinks_to_its_own_targets() {
     );
     assert!(after_move.contains("https://other.example/first"));
     assert!(after_move.contains("https://other.example/second"));
+}
+
+#[test]
+fn rerunning_a_missing_terminal_pane_finishes_as_an_error() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    let (tx, rx) = oneshot::channel();
+    tab.rerun_terminal_pane_with_id(7, Some(NotificationEnd::new(tx)));
+    let result = rx.blocking_recv().unwrap();
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    let message = result.error_message.expect("missing pane is an error");
+    assert!(message.contains('7'), "{message}");
+    assert!(message.contains("Failed to find"), "{message}");
 }

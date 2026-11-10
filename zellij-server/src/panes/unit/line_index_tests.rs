@@ -924,14 +924,8 @@ fn mixed_width_front_cuts_publish_the_pass_they_interrupted() {
             break;
         }
     }
-    assert_eq!(
-        resets, 0,
-        "front eviction restarted the in-progress cursor"
-    );
-    assert!(
-        saw_exact,
-        "interrupted mixed-width passes never published"
-    );
+    assert_eq!(resets, 0, "front eviction restarted the in-progress cursor");
+    assert!(saw_exact, "interrupted mixed-width passes never published");
 }
 
 #[test]

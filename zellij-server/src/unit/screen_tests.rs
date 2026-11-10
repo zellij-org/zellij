@@ -22323,15 +22323,16 @@ mod session_rename {
             let (sender, receiver) = screen_rename_bus(&mut h.screen);
             let gate = gate_for_worker;
             let discovery_thread_id = discovery_thread_id_for_worker;
-            h.screen.session_rename_discovery =
-                super::super::SessionRenameDiscoveryHook::Override(Arc::new(move |_current, _new| {
+            h.screen.session_rename_discovery = super::super::SessionRenameDiscoveryHook::Override(
+                Arc::new(move |_current, _new| {
                     *discovery_thread_id.lock().unwrap() = Some(std::thread::current().id());
                     gate.block();
                     super::super::SessionRenameDiscovery {
                         resurrectable_sessions: BTreeMap::new(),
                         running_session_exists: Ok(false),
                     }
-                }));
+                }),
+            );
             let screen_thread_id = std::thread::current().id();
             ready_tx
                 .send((sender, client_messages, screen_thread_id))
@@ -22346,9 +22347,7 @@ mod session_rename {
                         screen
                             .begin_session_rename(name, client_id, false, completion)
                             .expect("TEST");
-                        progress_tx
-                            .send(ScreenSaw::HandlerReturned)
-                            .expect("TEST");
+                        progress_tx.send(ScreenSaw::HandlerReturned).expect("TEST");
                     },
                     ScreenInstruction::CommitSessionRename(commit) => {
                         screen.commit_session_rename(*commit).expect("TEST");
@@ -22372,8 +22371,9 @@ mod session_rename {
             )
         });
 
-        let (sender, client_messages, screen_thread_id) =
-            ready_rx.recv_timeout(Duration::from_secs(5)).expect("screen thread");
+        let (sender, client_messages, screen_thread_id) = ready_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("screen thread");
         sender
             .send(ScreenInstruction::RenameSession(
                 "offscreen-peer".to_owned(),
@@ -22416,10 +22416,7 @@ mod session_rename {
                 .expect("cache update"),
             ScreenSaw::CacheUpdated
         );
-        assert!(
-            !gate.is_released(),
-            "screen work waited for peer discovery"
-        );
+        assert!(!gate.is_released(), "screen work waited for peer discovery");
 
         gate.release();
         assert_eq!(
@@ -22511,8 +22508,7 @@ mod session_rename {
 
         let socket_name = format!("rename-offscreen-sock-{}", std::process::id());
         let _forget_socket_row = ForgetSessionName(socket_name.clone());
-        let socket_path =
-            zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&socket_name);
+        let socket_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&socket_name);
         if let Some(parent) = socket_path.parent() {
             std::fs::create_dir_all(parent).expect("socket dir");
         }

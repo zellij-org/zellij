@@ -1809,8 +1809,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SerializeLayoutForResurrection(..) => {
                 ScreenContext::SerializeLayoutForResurrection
             },
-            ScreenInstruction::RenameSession(..)
-            | ScreenInstruction::CommitSessionRename(..) => ScreenContext::RenameSession,
+            ScreenInstruction::RenameSession(..) | ScreenInstruction::CommitSessionRename(..) => {
+                ScreenContext::RenameSession
+            },
             ScreenInstruction::UpdateSessionNameDraft(..) => ScreenContext::UpdateSessionNameDraft,
             ScreenInstruction::UndoRenameSession(..) => ScreenContext::UndoRenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
@@ -9674,9 +9675,10 @@ impl Screen {
                         ))?;
                     },
                     None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
@@ -9744,8 +9746,11 @@ impl Screen {
                         }
                     },
                     None => {
-                        let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
-                        log::error!("No connected clients found - cannot load or focus plugin")
+                        let mut completion_tx =
+                            crate::route::RecordedCompletion::new(completion_tx);
+                        let message = "No connected clients found - cannot load or focus plugin";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
@@ -9891,21 +9896,27 @@ impl Screen {
     pub fn rerun_command_pane_with_id(
         &mut self,
         terminal_pane_id: u32,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
-                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx);
+                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx.take());
                 found = true;
                 break;
             }
         }
         if !found {
-            log::error!(
+            let message = format!(
                 "Failed to find terminal pane with id: {} to run",
                 terminal_pane_id
             );
+            log::error!("{message}");
+            if let Some(mut completion) = completion_tx.take() {
+                completion.set_exit_status(1);
+                completion.set_error_message(message);
+                completion.complete_recorded();
+            }
         }
     }
     pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
@@ -12623,7 +12634,7 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
-                mut completion_tx,
+                completion_tx,
                 set_blocking,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
@@ -13098,7 +13109,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::Resize(client_id, strategy, mut completion_tx) => {
+            ScreenInstruction::Resize(client_id, strategy, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut resize_result = Ok(());
                 active_tab_and_connected_client_id!(
@@ -14532,7 +14543,7 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
-                mut completion_tx,
+                completion_tx,
                 blocking_terminal,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
@@ -14694,7 +14705,7 @@ pub(crate) fn screen_thread_main(
                 default_shell,
                 create,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let swap_layouts = (
@@ -14937,21 +14948,21 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
             },
-            ScreenInstruction::SetDarkTheme(mut completion_tx) => {
+            ScreenInstruction::SetDarkTheme(completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 screen.apply_manual_host_terminal_theme_mode(
                     HostTerminalThemeMode::Dark,
                     &mut completion_tx,
                 )?;
             },
-            ScreenInstruction::SetLightTheme(mut completion_tx) => {
+            ScreenInstruction::SetLightTheme(completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 screen.apply_manual_host_terminal_theme_mode(
                     HostTerminalThemeMode::Light,
                     &mut completion_tx,
                 )?;
             },
-            ScreenInstruction::ToggleTheme(mut completion_tx) => {
+            ScreenInstruction::ToggleTheme(completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let next = match screen.host_terminal_theme_mode {
                     Some(HostTerminalThemeMode::Dark) => HostTerminalThemeMode::Light,
@@ -15276,7 +15287,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, mut completion_tx) => {
+            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut applied = false;
                 active_tab_and_connected_client_id!(
@@ -15301,11 +15312,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ApplyFloatingSwapLayout(
-                client_id,
-                layout_name,
-                mut completion_tx,
-            ) => {
+            ScreenInstruction::ApplyFloatingSwapLayout(client_id, layout_name, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut applied = false;
                 active_tab_and_connected_client_id!(
@@ -15338,7 +15345,7 @@ pub(crate) fn screen_thread_main(
                 retain_existing_plugin_panes,
                 apply_only_to_focused_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if tab_layouts.is_empty() {
@@ -15467,7 +15474,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion_tx,
             ) => {
-                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // Process each tab result
                 for tab_result in tab_results {
                     if let Some(tab) = screen.tabs.get_mut(&tab_result.tab_index) {
@@ -15642,9 +15649,10 @@ pub(crate) fn screen_thread_main(
                             ))?;
                     },
                     None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
@@ -15690,9 +15698,10 @@ pub(crate) fn screen_thread_main(
                             ))?;
                     },
                     None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
@@ -15729,7 +15738,7 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 should_focus_plugin,
                 client_id,
-                mut completion_tx,
+                completion_tx,
                 activation_token,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
@@ -15985,10 +15994,12 @@ pub(crate) fn screen_thread_main(
                                 ))?;
                         },
                         None => {
-                            let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
-                            log::error!(
-                                "Could not find an active tab - is there at least 1 connected user?"
-                            );
+                            let mut completion_tx =
+                                crate::route::RecordedCompletion::new(completion_tx);
+                            let message =
+                                "Could not find an active tab - is there at least 1 connected user?";
+                            log::error!("{message}");
+                            mark_action_as_failed(&mut completion_tx, message);
                         },
                     }
                 },
@@ -16031,8 +16042,12 @@ pub(crate) fn screen_thread_main(
                                 ))?;
                         },
                         None => {
-                            let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
-                            log::error!("No connected clients found - cannot load or focus plugin")
+                            let mut completion_tx =
+                                crate::route::RecordedCompletion::new(completion_tx);
+                            let message =
+                                "No connected clients found - cannot load or focus plugin";
+                            log::error!("{message}");
+                            mark_action_as_failed(&mut completion_tx, message);
                         },
                     }
                 },
@@ -16075,7 +16090,7 @@ pub(crate) fn screen_thread_main(
                 should_float_if_hidden,
                 should_be_in_place_if_hidden,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let pane_exists = screen
@@ -16233,7 +16248,7 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 should_change_focus_to_target_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // Verify tab exists
@@ -16284,18 +16299,18 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_shell, client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPane(default_shell, client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let default_layout = screen.default_layout.clone();
                 let result = screen.break_pane(default_shell, default_layout, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::BreakPaneRight(client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPaneRight(client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let result = screen.break_pane_to_new_tab(Direction::Right, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::BreakPaneLeft(client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPaneLeft(client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let result = screen.break_pane_to_new_tab(Direction::Left, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
@@ -16321,7 +16336,7 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 completion_tx
@@ -16789,7 +16804,7 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 new_tab_name,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 match screen.break_multiple_panes_to_new_tab(
@@ -16830,7 +16845,7 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // tab_index is the target tab ID
@@ -16891,7 +16906,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ChangeFloatingPanesCoordinates(
                 pane_ids_and_coordinates,
                 float_tiled_panes,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let failed_pane_ids = screen
@@ -16919,7 +16934,7 @@ pub(crate) fn screen_thread_main(
                 screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
-            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, mut completion_tx) => {
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.set_pane_border_style(pane_id, border_style) {
                     log::error!("Pane with id {:?} not found", pane_id);
@@ -17200,7 +17215,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::UpdateClientSessionHistory { client_id, history } => {
                 screen.update_client_session_history(client_id, history);
             },
-            ScreenInstruction::GoToNextAttention(client_id, mut completion) => {
+            ScreenInstruction::GoToNextAttention(client_id, completion) => {
                 let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.go_to_next_attention(client_id) {
                     completion.as_mut().map(|c| {
@@ -17213,7 +17228,7 @@ pub(crate) fn screen_thread_main(
                 session,
                 pane_id,
                 client_id,
-                mut completion,
+                completion,
             } => {
                 let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.mark_pane_seen(session, pane_id, client_id) {
@@ -17235,7 +17250,7 @@ pub(crate) fn screen_thread_main(
                 session_name,
                 command,
                 client_id,
-                mut completion,
+                completion,
             } => {
                 let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.session_pane_command(session_name, command, client_id) {
@@ -18055,7 +18070,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleFloatingPanesWithTabId(
                 tab_id,
                 default_shell,
-                mut completion_tx,
+                completion_tx,
             ) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
@@ -18172,7 +18187,11 @@ pub(crate) fn screen_thread_main(
                 } else {
                     push_pending_tab_event(
                         &mut pending_events_waiting_for_tab,
-                        ScreenInstruction::MoveTabWithTabId(tab_id, direction, _completion_tx.take()),
+                        ScreenInstruction::MoveTabWithTabId(
+                            tab_id,
+                            direction,
+                            _completion_tx.take(),
+                        ),
                     );
                 }
             },
@@ -18190,7 +18209,11 @@ pub(crate) fn screen_thread_main(
                 } else {
                     push_pending_tab_event(
                         &mut pending_events_waiting_for_tab,
-                        ScreenInstruction::MoveTabToPosition(tab_id, position, _completion_tx.take()),
+                        ScreenInstruction::MoveTabToPosition(
+                            tab_id,
+                            position,
+                            _completion_tx.take(),
+                        ),
                     );
                 }
             },
@@ -18231,7 +18254,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AttentionForegroundChanged(pane_id, command) => {
                 screen.attention_foreground_changed(pane_id.into(), command);
             },
-            ScreenInstruction::MutePane(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::MutePane(pane_id, client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_mute(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
@@ -18241,7 +18264,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state().non_fatal();
             },
-            ScreenInstruction::IgnorePaneOutput(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::IgnorePaneOutput(pane_id, client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_ignore_output(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
@@ -18251,7 +18274,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state().non_fatal();
             },
-            ScreenInstruction::WatchPane(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::WatchPane(pane_id, client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_watch(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
@@ -18260,7 +18283,7 @@ pub(crate) fn screen_thread_main(
                     });
                 }
             },
-            ScreenInstruction::MuteTab(tab_id, client_id, mut completion_tx) => {
+            ScreenInstruction::MuteTab(tab_id, client_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_tab_mute(tab_id, client_id) {
                     completion_tx.as_mut().map(|c| {

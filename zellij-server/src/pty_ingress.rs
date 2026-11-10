@@ -76,10 +76,12 @@ impl PtyIngressBudget {
         state.aggregate = state.aggregate.saturating_sub(released);
     }
 
+    #[cfg(test)]
     pub(crate) fn reserved_bytes(&self) -> usize {
         self.lock().aggregate
     }
 
+    #[cfg(test)]
     pub(crate) fn terminal_reserved(&self, terminal_id: u32) -> usize {
         self.lock()
             .per_terminal

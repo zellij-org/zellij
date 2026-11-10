@@ -9,8 +9,8 @@ use crate::os_input_output_unix::{
 };
 #[cfg(windows)]
 use crate::os_input_output_windows::{
-    disable_mouse_support, enable_mouse_support, restore_console_mode, setup_ipc,
-    setup_ipc_within, AsyncSignalListener, BlockingSignalIterator,
+    disable_mouse_support, enable_mouse_support, restore_console_mode, setup_ipc, setup_ipc_within,
+    AsyncSignalListener, BlockingSignalIterator,
 };
 
 use std::io::prelude::*;

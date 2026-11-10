@@ -69,6 +69,7 @@ fn timed_out_action_result(action_name: &str) -> ActionCompletionResult {
     }
 }
 
+#[cfg(test)]
 fn cancelled_action_result(action_name: &str) -> ActionCompletionResult {
     ActionCompletionResult {
         exit_status: None,

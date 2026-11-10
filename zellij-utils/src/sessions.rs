@@ -2311,6 +2311,7 @@ mod deletion_fence_tests {
 
 #[cfg(test)]
 mod session_entry_tests {
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]
@@ -2973,14 +2974,13 @@ mod windows_pid_liveness_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod concurrent_creation_claim_tests {
     use super::*;
     use crate::session_socket_claim::SessionSocketClaim;
     use std::sync::{Arc, Barrier};
     use std::thread;
 
-    #[cfg(unix)]
     #[test]
     fn only_one_of_two_concurrent_creators_wins_the_socket_claim() {
         let dir = tempfile::tempdir().unwrap();

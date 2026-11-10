@@ -9,8 +9,8 @@ mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
-pub(crate) use zellij_exports::{release_run_command, release_web_request};
 use log::info;
+pub(crate) use zellij_exports::{release_run_command, release_web_request};
 
 pub use pinned_executor::PinnedExecutor;
 pub(crate) use plugin_loader::{

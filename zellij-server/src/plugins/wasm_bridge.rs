@@ -5767,9 +5767,7 @@ mod load_result_generation_tests {
             },
             plugin_digest: "load-result".to_owned(),
             permissions: Arc::new(Mutex::new(Some(
-                [PermissionType::ReadApplicationState]
-                    .into_iter()
-                    .collect(),
+                [PermissionType::ReadApplicationState].into_iter().collect(),
             ))),
             quarantined: Arc::new(AtomicBool::new(false)),
             senders: crate::thread_bus::ThreadSenders {

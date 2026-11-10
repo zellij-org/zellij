@@ -421,10 +421,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                         if let Some(originating_plugin) =
                             run_command.and_then(|r| r.originating_plugin)
                         {
-                            pty.panes
-                                .entry(pid)
-                                .or_default()
-                                .originating_plugin = Some(originating_plugin.clone());
+                            pty.panes.entry(pid).or_default().originating_plugin =
+                                Some(originating_plugin.clone());
                             let update_event =
                                 Event::CommandPaneOpened(pid, originating_plugin.context.clone());
                             pty.bus
@@ -752,12 +750,24 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 // other unscoped closes — that wakes unrelated CLI waiters
                 // (#5752 long/short pane, #5382 concurrent list-panes).
                 let close_result = pty.close_pane(id);
+                if let Err(error) = &close_result {
+                    if let Some(completion) = completion_tx.as_mut() {
+                        completion.set_exit_status(1);
+                        completion.set_error_message(format!("{error:#}"));
+                    }
+                }
                 drop(completion_tx);
                 close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
             PtyInstruction::ClosePaneThatWasNotCreated(id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let close_result = pty.close_pane(id);
+                if let Err(error) = &close_result {
+                    if let Some(completion) = completion_tx.as_mut() {
+                        completion.set_exit_status(1);
+                        completion.set_error_message(format!("{error:#}"));
+                    }
+                }
                 drop(completion_tx);
                 close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
@@ -1296,18 +1306,10 @@ impl Pty {
             .and_then(|pane| pane.cwd.clone())
     }
     fn stored_child_pid(&self, terminal_id: u32) -> Option<u32> {
-        self.panes
-            .get(&terminal_id)?
-            .run
-            .as_ref()?
-            .child_pid
+        self.panes.get(&terminal_id)?.run.as_ref()?.child_pid
     }
     fn stored_run_generation(&self, terminal_id: u32) -> Option<u64> {
-        self.panes
-            .get(&terminal_id)?
-            .run
-            .as_ref()?
-            .generation
+        self.panes.get(&terminal_id)?.run.as_ref()?.generation
     }
     fn mint_run_generation(&mut self) -> u64 {
         let run_generation = self.next_run_generation;
@@ -1519,12 +1521,7 @@ impl Pty {
     /// closes it, which is what releases the kernel handle.
     #[cfg(target_os = "linux")]
     fn take_child_pidfd(&mut self, terminal_id: u32) -> Option<std::os::fd::OwnedFd> {
-        self.panes
-            .get_mut(&terminal_id)?
-            .run
-            .as_mut()?
-            .pidfd
-            .take()
+        self.panes.get_mut(&terminal_id)?.run.as_mut()?.pidfd.take()
     }
     fn hangup_child_on_close(&mut self, terminal_id: u32) {
         // Read the exit mark before `forget_child_pid` drops the generation.
@@ -1752,7 +1749,7 @@ impl Pty {
         error: anyError,
         terminal_ids: Vec<u32>,
         tab_index: usize,
-        mut completion_tx: Option<NotificationEnd>,
+        completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         self.rollback_unapplied_layout_terminals(terminal_ids);
         let _ = self

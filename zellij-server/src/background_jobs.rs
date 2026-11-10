@@ -231,11 +231,13 @@ impl From<isahc::http::Error> for WebRequestError {
     }
 }
 
-fn web_request_failure_event(
-    error: &WebRequestError,
-    context: BTreeMap<String, String>,
-) -> Event {
-    Event::WebRequestResult(400, BTreeMap::new(), error.to_string().into_bytes(), context)
+fn web_request_failure_event(error: &WebRequestError, context: BTreeMap<String, String>) -> Event {
+    Event::WebRequestResult(
+        400,
+        BTreeMap::new(),
+        error.to_string().into_bytes(),
+        context,
+    )
 }
 
 /// Cap rejection uses the same `RunCommandResult` shape as a failed command.
@@ -2929,7 +2931,10 @@ mod tests {
         assert!(!zellij_utils::sessions::is_session_publication_fenced(
             &error
         ));
-        assert!(layout_path.is_dir(), "the failed layout must not replace the blocker");
+        assert!(
+            layout_path.is_dir(),
+            "the failed layout must not replace the blocker"
+        );
         for path in content_paths(&folder, &contents_a)
             .into_iter()
             .chain(content_paths(&folder, &contents_b))
@@ -3959,12 +3964,9 @@ pub(crate) async fn perform_run_command(
     })
     .await;
     let event = match output {
-        Ok(output) => run_command_result_event(
-            output.exit_code,
-            output.stdout,
-            output.stderr,
-            context,
-        ),
+        Ok(output) => {
+            run_command_result_event(output.exit_code, output.stdout, output.stderr, context)
+        },
         Err(e) => {
             log::error!("Failed to run command: {}", e);
             run_command_result_event(Some(2), Vec::new(), format!("{}", e).into_bytes(), context)
@@ -4019,22 +4021,14 @@ pub(crate) async fn perform_web_request(
             .filter_map(|(name, value)| match value.to_str() {
                 Ok(value) => Some((name.to_string(), value.to_string())),
                 Err(e) => {
-                    log::error!(
-                        "Failed to convert header {:?} to string: {:?}",
-                        name,
-                        e
-                    );
+                    log::error!("Failed to convert header {:?} to string: {:?}", name, e);
                     None
                 },
             })
             .collect();
-        let body = read_web_body_within_host_pipe(
-            res.body_mut(),
-            status_code.as_u16(),
-            &headers,
-            context,
-        )
-        .await?;
+        let body =
+            read_web_body_within_host_pipe(res.body_mut(), status_code.as_u16(), &headers, context)
+                .await?;
         Ok((status_code.as_u16(), headers, body))
     }
     let Some(http_client) = http_client else {

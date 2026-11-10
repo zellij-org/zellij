@@ -4658,7 +4658,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::ClientExit(client_id, completion_tx) => {
-                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 client_histories.remove(&client_id);
                 let _ = os_input.send_to_client(
                     client_id,
@@ -4809,7 +4809,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
-                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 for client_id in &client_ids {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(*client_id);
@@ -5027,7 +5027,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
-                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if connect_to_session.name.as_deref() == Some(own_session_name.as_str()) {
                     log::error!("Cannot attach to same session");
                 } else {

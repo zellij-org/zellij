@@ -467,6 +467,7 @@ impl SearchResult {
 
     /// Search the rows of one logical line, materializing one bounded window
     /// per starting row instead of the whole continuation tail.
+    #[cfg(test)]
     pub(crate) fn search_rows(&self, ridx: usize, rows: &[&Row]) -> Vec<Selection> {
         self.search_line(ridx, rows, None)
     }
@@ -568,6 +569,7 @@ impl SearchResult {
 
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
+    #[cfg(test)]
     pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
         self.search_starting_row(
             ridx,

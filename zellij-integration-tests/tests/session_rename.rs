@@ -54,8 +54,8 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
 
     // The socket / pipe was NOT renamed: the new name resolves to the exact same
     // path the old name did.
-    let pipe_after = resolved_socket(new_name)
-        .expect("the new name should resolve after the rename");
+    let pipe_after =
+        resolved_socket(new_name).expect("the new name should resolve after the rename");
     assert_eq!(
         pipe_before, pipe_after,
         "renaming a session must not move its socket/pipe"

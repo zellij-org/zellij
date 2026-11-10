@@ -6031,8 +6031,7 @@ impl Tab {
             let pane = self
                 .get_pane_with_id_mut(pane_id)
                 .expect("pane was present");
-            match pane.adjust_input_to_terminal(&None, bracketed_paste_begin.clone(), false, None)
-            {
+            match pane.adjust_input_to_terminal(&None, bracketed_paste_begin.clone(), false, None) {
                 Some(AdjustedInput::WriteBytesToTerminal(adjusted)) => {
                     adjusted.as_slice() == bracketed_paste_begin.as_slice()
                 },
@@ -6059,8 +6058,7 @@ impl Tab {
         } else {
             bytes
         };
-        if let Err(error) =
-            self.write_to_pane_id(&None, payload, false, pane_id, None, completion)
+        if let Err(error) = self.write_to_pane_id(&None, payload, false, pane_id, None, completion)
         {
             // Admission failure already published the completion. A miss
             // before that publish is recorded above.
@@ -9569,10 +9567,7 @@ impl Tab {
         }
         let _ = self
             .senders
-            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
-                pane_id,
-                None,
-            ));
+            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(pane_id, None));
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             None,
             None,
@@ -9711,15 +9706,18 @@ impl Tab {
                         completion_tx.take(),
                     ));
                 } else {
-                    log::error!("Pane is still running!")
+                    log::error!("Pane is still running!");
+                    fail_cli_write(&mut completion_tx, "Pane is still running");
                 }
             },
             None => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
-                log::error!(
+                let message = format!(
                     "Failed to find terminal pane with id {} to rerun in tab",
                     terminal_pane_id
                 );
+                log::error!("{message}");
+                fail_cli_write(&mut completion_tx, &message);
             },
         }
     }

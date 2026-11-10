@@ -14800,7 +14800,9 @@ fn recount_cursor_advances_while_the_producer_evicts_the_front() {
     // so the next front cut poisoned that pass too. Cover several full
     // traversals while a continuation row keeps arriving.
     let quantum = super::SCREEN_ROW_QUANTUM.max(1);
-    let traversals = (reserve / quantum).saturating_mul(3).saturating_add(quantum);
+    let traversals = (reserve / quantum)
+        .saturating_mul(3)
+        .saturating_add(quantum);
     let mut saw_published_pass = false;
     let mut resets = 0usize;
     for cycle in 0..traversals {

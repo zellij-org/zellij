@@ -92,11 +92,7 @@ pub fn watch_filesystem(
                     let entries = file_system_update_within_host_pipe(
                         update_paths.into_iter().map(|p| (p, None)).collect(),
                     );
-                    updates.push((
-                        Some(plugin_id),
-                        None,
-                        Event::FileSystemUpdate(entries),
-                    ));
+                    updates.push((Some(plugin_id), None, Event::FileSystemUpdate(entries)));
                 }
                 if !delete_paths.is_empty() {
                     updates.push((

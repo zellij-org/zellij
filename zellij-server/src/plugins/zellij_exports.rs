@@ -3667,12 +3667,14 @@ fn enqueue_background_job(env: &PluginEnv, job: BackgroundJob) -> bool {
 }
 
 fn send_load_result(env: &PluginEnv, event: Event) {
-    let _ = env.senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
-        plugin_id: env.plugin_id,
-        client_id: acting_client(env),
-        event,
-        generation: env.generation,
-    });
+    let _ = env
+        .senders
+        .send_to_plugin(PluginInstruction::ApplyLoadResult {
+            plugin_id: env.plugin_id,
+            client_id: acting_client(env),
+            event,
+            generation: env.generation,
+        });
 }
 
 fn run_command(
@@ -3733,7 +3735,10 @@ fn web_request(
             "Not sending a web request for plugin {}: web-request limit reached",
             plugin_id
         );
-        send_load_result(env, crate::background_jobs::web_request_limit_event(context));
+        send_load_result(
+            env,
+            crate::background_jobs::web_request_limit_event(context),
+        );
         return;
     };
     let queued = enqueue_background_job(
@@ -3768,14 +3773,14 @@ fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()>
     }
     let plugin_id = env.plugin_id;
     let messages = vec![(plugin_message.name, plugin_message.payload)];
-    let sent = env.senders.send_to_plugin(
-        PluginInstruction::PostMessagesToPluginWorker(
+    let sent = env
+        .senders
+        .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
             plugin_id,
             acting_client(env),
             worker_name.clone(),
             messages.clone(),
-        ),
-    );
+        ));
     if sent.is_err() {
         release_admitted_worker_posts(plugin_id, &worker_name, &messages);
     }
@@ -5008,10 +5013,8 @@ fn kill_sessions(session_names: Vec<String>) {
         };
         // Pair the Windows request and reply pipes in one connect. The same
         // helper is a timed unix connect. Five seconds matches the session probe.
-        if let Err(e) = zellij_utils::sessions::send_kill_session(
-            &resolved,
-            Duration::from_secs(5),
-        ) {
+        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved, Duration::from_secs(5))
+        {
             log::error!("Failed to kill session {}: {:?}", session_name, e);
         }
     }
@@ -8176,7 +8179,8 @@ mod admission_tests {
         let mut one_more = listed;
         one_more.push((next.clone(), Some(metadata)));
         assert!(
-            stdin_frame_len(&Event::FileSystemUpdate(one_more)) > crate::plugins::WASI_HOST_PIPE_CAP
+            stdin_frame_len(&Event::FileSystemUpdate(one_more))
+                > crate::plugins::WASI_HOST_PIPE_CAP
         );
         wait_until_scans_idle();
     }
@@ -8211,11 +8215,9 @@ mod admission_tests {
 
     fn stdin_frame_len(event: &Event) -> usize {
         use prost::Message;
-        let protobuf = zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(
-            event.clone(),
-            None,
-        )
-        .expect("event protobuf");
+        let protobuf =
+            zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(event.clone(), None)
+                .expect("event protobuf");
         let json = serde_json::to_string(&protobuf.encode_to_vec()).expect("event json");
         json.len() + 2
     }
@@ -8272,11 +8274,9 @@ mod admission_tests {
             frame <= super::super::plugin_loader::WASI_HOST_PIPE_CAP,
             "stdin frame {frame} exceeds the host pipe"
         );
-        let protobuf = zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(
-            event.clone(),
-            None,
-        )
-        .unwrap();
+        let protobuf =
+            zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(event.clone(), None)
+                .unwrap();
         let encoded = prost::Message::encode_to_vec(&protobuf);
         wasi_write_object(&env, &encoded).expect("fitted FileSystemUpdate must be accepted");
         assert_eq!(
@@ -8310,11 +8310,10 @@ mod admission_tests {
 
         // RunCommands is what lets a plugin reach this host function. The
         // separate `_allow_exec_host_cmd` flag is what must still refuse a spawn.
-        env.permissions.lock().unwrap().replace(
-            [PermissionType::RunCommands]
-                .into_iter()
-                .collect(),
-        );
+        env.permissions
+            .lock()
+            .unwrap()
+            .replace([PermissionType::RunCommands].into_iter().collect());
         env.plugin._allow_exec_host_cmd = true;
         exec_cmd(&env, Vec::new());
 
@@ -8477,8 +8476,8 @@ mod admission_tests {
     #[test]
     fn plugin_worker_post_past_the_admission_bound_is_not_enqueued() {
         use crate::plugins::wasm_bridge::{
-            release_admitted_worker_posts, MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN,
-            MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN,
+            release_admitted_worker_posts, MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN,
+            MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN,
         };
         assert_eq!(MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN, 256);
         assert_eq!(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN, 1024 * 1024);
@@ -8492,11 +8491,8 @@ mod admission_tests {
         );
         let worker = "worker";
         let huge = "x".repeat(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN + 1);
-        post_message_to(
-            &env,
-            PluginMessage::new_to_worker(worker, "huge", &huge),
-        )
-        .expect("a rejected post is not a send failure");
+        post_message_to(&env, PluginMessage::new_to_worker(worker, "huge", &huge))
+            .expect("a rejected post is not a send failure");
         env.senders
             .send_to_plugin(PluginInstruction::Quarantine(plugin_id, 9))
             .unwrap();
@@ -8504,11 +8500,7 @@ mod admission_tests {
         let mut admitted = Vec::new();
         for index in 0..MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN {
             let name = format!("m{index}");
-            post_message_to(
-                &env,
-                PluginMessage::new_to_worker(worker, &name, "p"),
-            )
-            .unwrap();
+            post_message_to(&env, PluginMessage::new_to_worker(worker, &name, "p")).unwrap();
             admitted.push((name, "p".to_owned()));
         }
         struct ReleaseAdmitted {
@@ -8526,11 +8518,8 @@ mod admission_tests {
             worker: worker.to_owned(),
             messages: admitted,
         };
-        post_message_to(
-            &env,
-            PluginMessage::new_to_worker(worker, "overflow", "p"),
-        )
-        .expect("a post past the count cap is rejected without failing the send");
+        post_message_to(&env, PluginMessage::new_to_worker(worker, "overflow", "p"))
+            .expect("a post past the count cap is rejected without failing the send");
         env.senders
             .send_to_plugin(PluginInstruction::Unload(plugin_id))
             .unwrap();
@@ -8636,7 +8625,9 @@ mod admission_tests {
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
             match receiver.recv_timeout(Duration::from_millis(50)) {
-                Ok((instruction, _)) if matches!(instruction, PluginInstruction::ApplyLoadResult { .. }) => {
+                Ok((instruction, _))
+                    if matches!(instruction, PluginInstruction::ApplyLoadResult { .. }) =>
+                {
                     return instruction;
                 },
                 Ok(_) => {},
@@ -8670,7 +8661,9 @@ mod admission_tests {
         );
         assert_eq!(run_commands_in_flight(), in_flight);
         assert!(
-            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
             "a command past the per-plugin cap must not be enqueued"
         );
         match recv_load_result(&jobs.plugin_rx) {
@@ -8706,13 +8699,20 @@ mod admission_tests {
         );
         assert_eq!(run_commands_in_flight(), in_flight);
         assert!(
-            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
             "a command past the process-wide cap must not be enqueued"
         );
         match recv_load_result(&jobs.plugin_rx) {
-            PluginInstruction::ApplyLoadResult { generation, event, .. } => {
+            PluginInstruction::ApplyLoadResult {
+                generation, event, ..
+            } => {
                 assert_eq!(generation, 3);
-                assert_eq!(event, crate::background_jobs::run_command_limit_event(context));
+                assert_eq!(
+                    event,
+                    crate::background_jobs::run_command_limit_event(context)
+                );
             },
             other => panic!("expected RunCommandResult, got {other:?}"),
         }
@@ -8769,7 +8769,11 @@ mod admission_tests {
             },
             other => panic!("expected RunCommand, got {other:?}"),
         }
-        assert_eq!(run_commands_in_flight(), 0, "a finished command must release its slot");
+        assert_eq!(
+            run_commands_in_flight(),
+            0,
+            "a finished command must release its slot"
+        );
         match recv_load_result(&jobs.plugin_rx) {
             PluginInstruction::ApplyLoadResult {
                 generation,
@@ -8852,7 +8856,9 @@ mod admission_tests {
         );
         assert_eq!(web_requests_in_flight(), in_flight);
         assert!(
-            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
             "a web request past the per-plugin cap must not be enqueued"
         );
         match recv_load_result(&jobs.plugin_rx) {
@@ -8889,11 +8895,15 @@ mod admission_tests {
         );
         assert_eq!(web_requests_in_flight(), in_flight);
         assert!(
-            jobs.jobs_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
             "a web request past the process-wide cap must not be enqueued"
         );
         match recv_load_result(&jobs.plugin_rx) {
-            PluginInstruction::ApplyLoadResult { generation, event, .. } => {
+            PluginInstruction::ApplyLoadResult {
+                generation, event, ..
+            } => {
                 assert_eq!(generation, 5);
                 assert_eq!(
                     event,

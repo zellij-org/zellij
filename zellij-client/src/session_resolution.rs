@@ -260,7 +260,10 @@ pub fn resolve_attach(
             Some(session_name) => match session_exists(session_name) {
                 Ok(exists) => exists,
                 Err(error) => {
-                    return Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1));
+                    return Err(ResolutionFailure::to_stderr(
+                        session_probe_failure(&error),
+                        1,
+                    ));
                 },
             },
             None => false,
@@ -286,9 +289,8 @@ pub fn resolve_attach(
                     session_name.clone(),
                     // The layout cache is keyed by session id (== name for legacy sessions).
                     session_layout_cache_file_name(
-                        &zellij_utils::sessions::session_folder_id(session_name).map_err(|error| {
-                            ResolutionFailure::to_stderr(error, 2)
-                        })?,
+                        &zellij_utils::sessions::session_folder_id(session_name)
+                            .map_err(|error| ResolutionFailure::to_stderr(error, 2))?,
                     ),
                     args.force_run_commands,
                     new_session_cwd,
@@ -325,7 +327,10 @@ pub fn resolve_watch(
                 format!("No session with the name '{}' found!", prefix),
                 1,
             )),
-            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
+            Err(error) => Err(ResolutionFailure::to_stderr(
+                session_probe_failure(&error),
+                1,
+            )),
         },
         None => match get_active_session() {
             ActiveSession::None => Err(ResolutionFailure::to_stderr(

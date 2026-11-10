@@ -187,6 +187,9 @@ fn unlink_if_nonce_matches(
 ///
 /// Returns `Ok(false)` when the path is missing or names a replacement. The
 /// caller must not treat that as a failed claim it is allowed to destroy.
+/// Production release uses [`unlink_locked_marker_if_owned`] while the file
+/// lock is still held. This unlocked read is the test double of that rule.
+#[cfg(test)]
 fn unlink_marker_if_owned(path: &Path, claim_nonce: &[u8]) -> std::io::Result<bool> {
     let contents = match std::fs::read(path) {
         Ok(contents) => contents,
@@ -196,7 +199,7 @@ fn unlink_marker_if_owned(path: &Path, claim_nonce: &[u8]) -> std::io::Result<bo
     unlink_if_nonce_matches(path, &contents, claim_nonce)
 }
 
-/// Same ownership rule as [`unlink_marker_if_owned`], while `file` still holds the lock.
+/// Same ownership rule as `unlink_marker_if_owned`, while `file` still holds the lock.
 fn unlink_locked_marker_if_owned(
     file: &mut std::fs::File,
     path: &Path,

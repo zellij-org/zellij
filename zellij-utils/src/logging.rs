@@ -170,10 +170,7 @@ fn encode_path_component(component: &str) -> String {
 
 #[cfg(test)]
 mod debug_log_tests {
-    use super::{
-        atomic_create_dir, configure_logger_into, debug_to_file_in, encode_path_component,
-    };
-    use std::fs;
+    use super::{debug_to_file_in, encode_path_component};
 
     #[test]
     fn terminal_captures_are_written_under_a_fresh_log_directory() {
@@ -220,6 +217,8 @@ mod debug_log_tests {
     #[cfg(unix)]
     #[test]
     fn logger_setup_returns_error_when_log_paths_are_unwritable() {
+        use super::{atomic_create_dir, configure_logger_into};
+        use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
         let root = tempfile::tempdir().expect("temp root");

@@ -108,7 +108,10 @@ impl<T> Pairing<T> {
 pub fn accept_pairs(
     requests: interprocess::local_socket::Listener,
     replies: interprocess::local_socket::Listener,
-) -> mpsc::Receiver<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
+) -> mpsc::Receiver<(
+    interprocess::local_socket::Stream,
+    interprocess::local_socket::Stream,
+)> {
     let (paired, connections) = mpsc::channel();
     let pairing = Arc::new(Mutex::new(Pairing::default()));
     for (half, listener) in [(Half::Request, requests), (Half::Reply, replies)] {
@@ -157,7 +160,10 @@ pub fn accept_pairs(
 #[cfg(windows)]
 pub fn connect_pair(
     path: &Path,
-) -> io::Result<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
+) -> io::Result<(
+    interprocess::local_socket::Stream,
+    interprocess::local_socket::Stream,
+)> {
     let lock = connecting(path);
     let _one_at_a_time = lock.lock().unwrap_or_else(|e| e.into_inner());
     let request = crate::consts::ipc_connect(path)?;
@@ -171,7 +177,10 @@ pub fn connect_pair(
 pub fn connect_pair_with_timeout(
     path: &Path,
     timeout: Duration,
-) -> io::Result<(interprocess::local_socket::Stream, interprocess::local_socket::Stream)> {
+) -> io::Result<(
+    interprocess::local_socket::Stream,
+    interprocess::local_socket::Stream,
+)> {
     if timeout.is_zero() {
         return Err(io::Error::new(
             io::ErrorKind::TimedOut,
@@ -201,10 +210,7 @@ pub fn connect_pair_with_timeout(
 }
 
 #[cfg(windows)]
-fn wait_for_turn(
-    lock: &Mutex<()>,
-    timeout: Duration,
-) -> io::Result<std::sync::MutexGuard<'_, ()>> {
+fn wait_for_turn(lock: &Mutex<()>, timeout: Duration) -> io::Result<std::sync::MutexGuard<'_, ()>> {
     let deadline = Instant::now() + timeout;
     loop {
         match lock.try_lock() {
@@ -239,7 +245,9 @@ fn connecting(path: &Path) -> Arc<Mutex<()>> {
 #[cfg(windows)]
 fn client_process(stream: &interprocess::local_socket::Stream) -> Option<u32> {
     match stream {
-        interprocess::local_socket::Stream::NamedPipe(pipe) => pipe.inner().client_process_id().ok(),
+        interprocess::local_socket::Stream::NamedPipe(pipe) => {
+            pipe.inner().client_process_id().ok()
+        },
     }
 }
 
