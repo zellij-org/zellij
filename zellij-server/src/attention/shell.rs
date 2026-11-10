@@ -601,11 +601,35 @@ pub fn parse_iterm2_cwd(raw: &str, remote_host: Option<&str>) -> Option<Reported
 }
 
 pub fn is_network_path(path: &str) -> bool {
-    let mut chars = path.trim_start().chars();
+    let path = path.trim_start();
+    let mut chars = path.chars();
     matches!(
         (chars.next(), chars.next()),
         (Some('/' | '\\'), Some('/' | '\\'))
-    )
+    ) && !is_verbatim_drive_path(path)
+}
+
+/// A reported folder as the server may use it: never a network path, and a verbatim drive path in
+/// its plain form, since cmd.exe can't start in a folder that begins with `\\`.
+pub fn usable_local_path(path: &str) -> Option<&str> {
+    if is_network_path(path) {
+        return None;
+    }
+    let trimmed = path.trim_start();
+    Some(match is_verbatim_drive_path(trimmed) {
+        true => &trimmed[r"\\?\".len()..],
+        false => path,
+    })
+}
+
+/// A local drive path in Windows' verbatim form, `\\?\C:\...`, which starts like a network path.
+fn is_verbatim_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.starts_with(br"\\?\")
+        && bytes.len() >= 6
+        && bytes[4].is_ascii_alphabetic()
+        && bytes[5] == b':'
+        && matches!(bytes.get(6), None | Some(b'\\'))
 }
 
 #[cfg(test)]
@@ -627,6 +651,30 @@ mod tests {
         for path in ["/home/me", "C:\\Users\\me", "relative/dir", "", "/"] {
             assert!(!is_network_path(path), "{:?}", path);
         }
+    }
+
+    #[test]
+    fn a_verbatim_drive_path_is_local_but_other_verbatim_paths_are_not() {
+        for path in ["\\\\?\\C:\\Users\\me", "\\\\?\\d:", "  \\\\?\\C:\\"] {
+            assert!(!is_network_path(path), "{:?}", path);
+        }
+        for path in [
+            "\\\\?\\UNC\\evil.host\\share",
+            "\\\\?\\GLOBALROOT\\Device\\Mup\\evil.host\\share",
+            "\\\\?\\Volume{0}\\x",
+            "\\\\?\\C:x",
+            "\\\\.\\C:\\x",
+            "//?/C:/x",
+        ] {
+            assert!(is_network_path(path), "{:?}", path);
+        }
+        assert_eq!(
+            usable_local_path("\\\\?\\C:\\Users\\me"),
+            Some("C:\\Users\\me")
+        );
+        assert_eq!(usable_local_path("C:\\Users\\me"), Some("C:\\Users\\me"));
+        assert_eq!(usable_local_path("/home/me"), Some("/home/me"));
+        assert_eq!(usable_local_path("\\\\?\\UNC\\evil.host\\share"), None);
     }
 
     fn params(body: &str) -> Vec<Vec<u8>> {

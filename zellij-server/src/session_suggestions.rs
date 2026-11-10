@@ -1127,7 +1127,13 @@ fn session_layout_from_info(
 }
 
 fn local_folder(folder: Option<PathBuf>) -> Option<PathBuf> {
-    folder.filter(|folder| !crate::attention::shell::is_network_path(&folder.to_string_lossy()))
+    let folder = folder?;
+    let plain = {
+        let path = folder.to_string_lossy();
+        let usable = crate::attention::shell::usable_local_path(&path)?;
+        (usable.len() != path.len()).then(|| PathBuf::from(usable))
+    };
+    Some(plain.unwrap_or(folder))
 }
 
 fn run_git_rev_parse(folder: &Path) -> Option<zellij_utils::session_index::GitInfo> {
@@ -1180,6 +1186,10 @@ mod tests {
         assert_eq!(
             local_folder(Some(PathBuf::from("/home/me/project"))),
             Some(PathBuf::from("/home/me/project"))
+        );
+        assert_eq!(
+            local_folder(Some(PathBuf::from("\\\\?\\C:\\me\\project"))),
+            Some(PathBuf::from("C:\\me\\project"))
         );
         assert_eq!(local_folder(None), None);
     }
