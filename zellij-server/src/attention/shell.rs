@@ -509,6 +509,28 @@ fn split_authority(rest: &str) -> (String, &str) {
     }
 }
 
+/// A URI's path keeps a slash before a Windows drive letter, as in `file:///C:/Users`.
+#[cfg(windows)]
+fn without_slash_before_drive(path: String) -> String {
+    let bytes = path.as_bytes();
+    let drive = bytes.len() >= 3
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && bytes[2] == b':'
+        && matches!(bytes.get(3), None | Some(b'/' | b'\\'));
+    match (drive, bytes.len()) {
+        // "C:" alone would mean the current folder of drive C.
+        (true, 3) => format!("{}/", &path[1..]),
+        (true, _) => path[1..].to_owned(),
+        (false, _) => path,
+    }
+}
+
+#[cfg(not(windows))]
+fn without_slash_before_drive(path: String) -> String {
+    path
+}
+
 pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
     if let Some(rest) = uri.strip_prefix("file://") {
         let (host, path) = split_authority(rest);
@@ -516,7 +538,7 @@ pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
         if path.is_empty() {
             return None;
         }
-        let path = decode_percent(path);
+        let path = without_slash_before_drive(decode_percent(path));
         let is_local = is_local_host(&host);
         return Some(ReportedCwd {
             path,
@@ -532,7 +554,7 @@ pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
         }
         let is_local = is_local_host(&host);
         return Some(ReportedCwd {
-            path: path.to_owned(),
+            path: without_slash_before_drive(path.to_owned()),
             source: CwdSource::KittyShellCwd,
             host: (!host.is_empty()).then_some(host),
             is_local,
@@ -800,6 +822,22 @@ mod tests {
         assert_eq!(cwd.source, CwdSource::KittyShellCwd);
         assert_eq!(parse_osc7_uri("http://x/y"), None);
         assert_eq!(parse_osc7_uri("file://host"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn osc7_drive_paths_lose_the_slash_before_the_drive_letter() {
+        for (uri, path) in [
+            ("file://localhost/C:/Users/me", "C:/Users/me"),
+            ("file:///c:/a%20b", "c:/a b"),
+            ("file:///D:", "D:/"),
+            ("file:///C:\\x", "C:\\x"),
+            ("kitty-shell-cwd://host/C:/x", "C:/x"),
+            ("file:///tmp", "/tmp"),
+            ("file:///C:x", "/C:x"),
+        ] {
+            assert_eq!(parse_osc7_uri(uri).unwrap().path, path, "{}", uri);
+        }
     }
 
     #[test]
