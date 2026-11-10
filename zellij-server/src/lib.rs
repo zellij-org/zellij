@@ -112,6 +112,7 @@ pub use zellij_utils::data::ClientId;
 
 pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
 
+#[cfg(not(windows))]
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
