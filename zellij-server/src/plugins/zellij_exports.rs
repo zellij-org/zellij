@@ -6,7 +6,10 @@ use crate::plugins::wasm_bridge::{
     handle_plugin_crash, redact_session_info_for_plugin, release_admitted_worker_posts,
     try_admit_plugin_worker_post,
 };
-use crate::plugins::{PluginId, PromptCaller};
+use crate::plugins::{
+    try_acquire_refusal_report, try_acquire_run_command, try_acquire_web_request,
+    BackgroundOperationReservation, PluginId, PromptCaller,
+};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::session_suggestions::SessionSuggestionsJob;
@@ -17,7 +20,7 @@ use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process,
     str::FromStr,
     sync::Mutex,
@@ -2316,6 +2319,7 @@ fn run_action(
                 client_id,
                 event: Event::ActionComplete(action_clone, pane_id_for_event, context),
                 generation: scheduled_generation,
+                reservation: None,
             }) {
                 log::error!("Failed to send ActionComplete event: {:?}", e);
             }
@@ -3372,9 +3376,13 @@ const MAX_PLUGIN_TIMERS_IN_FLIGHT: usize = 256;
 const MAX_RUN_ACTIONS_PER_PLUGIN: usize = 4;
 const MAX_RUN_ACTIONS_IN_FLIGHT: usize = 16;
 // Separate counters from run actions. Same caps, not higher.
+#[cfg(test)]
 const MAX_RUN_COMMANDS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+#[cfg(test)]
 const MAX_RUN_COMMANDS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
+#[cfg(test)]
 const MAX_WEB_REQUESTS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+#[cfg(test)]
 const MAX_WEB_REQUESTS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
 
 struct InFlightLimits {
@@ -3420,8 +3428,6 @@ impl InFlightLimits {
 static DIRECTORY_SCANS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 static PLUGIN_TIMERS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 static RUN_ACTIONS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
-static RUN_COMMANDS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
-static WEB_REQUESTS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
 
 struct DirectoryScanPermit {
     plugin_id: PluginId,
@@ -3477,62 +3483,6 @@ fn try_acquire_run_action(plugin_id: PluginId) -> Option<RunActionPermit> {
     } else {
         None
     }
-}
-
-struct RunCommandPermit {
-    plugin_id: PluginId,
-}
-
-impl Drop for RunCommandPermit {
-    fn drop(&mut self) {
-        release_run_command(self.plugin_id);
-    }
-}
-
-struct WebRequestPermit {
-    plugin_id: PluginId,
-}
-
-impl Drop for WebRequestPermit {
-    fn drop(&mut self) {
-        release_web_request(self.plugin_id);
-    }
-}
-
-fn try_acquire_run_command(plugin_id: PluginId) -> Option<RunCommandPermit> {
-    let mut slots = RUN_COMMANDS.lock().unwrap();
-    if slots.try_acquire(
-        plugin_id,
-        MAX_RUN_COMMANDS_PER_PLUGIN,
-        MAX_RUN_COMMANDS_IN_FLIGHT,
-    ) {
-        Some(RunCommandPermit { plugin_id })
-    } else {
-        None
-    }
-}
-
-fn try_acquire_web_request(plugin_id: PluginId) -> Option<WebRequestPermit> {
-    let mut slots = WEB_REQUESTS.lock().unwrap();
-    if slots.try_acquire(
-        plugin_id,
-        MAX_WEB_REQUESTS_PER_PLUGIN,
-        MAX_WEB_REQUESTS_IN_FLIGHT,
-    ) {
-        Some(WebRequestPermit { plugin_id })
-    } else {
-        None
-    }
-}
-
-/// The background task owns the matching release. This one only runs if the
-/// job never left this thread.
-pub(crate) fn release_run_command(plugin_id: PluginId) {
-    RUN_COMMANDS.lock().unwrap().release(plugin_id);
-}
-
-pub(crate) fn release_web_request(plugin_id: PluginId) {
-    WEB_REQUESTS.lock().unwrap().release(plugin_id);
 }
 
 fn try_acquire_plugin_timer(plugin_id: PluginId) -> Option<PluginTimerPermit> {
@@ -3666,7 +3616,44 @@ fn enqueue_background_job(env: &PluginEnv, job: BackgroundJob) -> bool {
     }
 }
 
-fn send_load_result(env: &PluginEnv, event: Event) {
+fn map_bytes(map: &BTreeMap<String, String>) -> usize {
+    map.iter().fold(0usize, |bytes, (key, value)| {
+        bytes.saturating_add(key.len()).saturating_add(value.len())
+    })
+}
+
+fn run_command_payload_bytes(
+    command_line: &[String],
+    env_variables: &BTreeMap<String, String>,
+    cwd: &Path,
+    context: &BTreeMap<String, String>,
+) -> usize {
+    command_line
+        .iter()
+        .fold(64usize, |bytes, part| bytes.saturating_add(part.len()))
+        .saturating_add(map_bytes(env_variables))
+        .saturating_add(cwd.as_os_str().len())
+        .saturating_add(map_bytes(context))
+}
+
+fn web_request_payload_bytes(
+    url: &str,
+    headers: &BTreeMap<String, String>,
+    body: &[u8],
+    context: &BTreeMap<String, String>,
+) -> usize {
+    url.len()
+        .saturating_add(map_bytes(headers))
+        .saturating_add(body.len())
+        .saturating_add(map_bytes(context))
+        .saturating_add(64)
+}
+
+fn send_load_result(
+    env: &PluginEnv,
+    event: Event,
+    reservation: Option<BackgroundOperationReservation>,
+) {
     let _ = env
         .senders
         .send_to_plugin(PluginInstruction::ApplyLoadResult {
@@ -3674,6 +3661,7 @@ fn send_load_result(env: &PluginEnv, event: Event) {
             client_id: acting_client(env),
             event,
             generation: env.generation,
+            reservation,
         });
 }
 
@@ -3691,18 +3679,27 @@ fn run_command(
     let command = command_line.remove(0);
     let cwd = translate_plugin_path(env, cwd);
     let plugin_id = env.plugin_id;
-    let Some(permit) = try_acquire_run_command(plugin_id) else {
+    let payload_bytes = run_command_payload_bytes(&command_line, &env_variables, &cwd, &context);
+    let Some(reservation) =
+        try_acquire_run_command(plugin_id, env.load_alive.clone(), payload_bytes)
+    else {
         log::warn!(
             "Not running a command for plugin {}: run-command limit reached",
             plugin_id
         );
-        send_load_result(
-            env,
-            crate::background_jobs::run_command_limit_event(context),
-        );
+        match try_acquire_refusal_report(plugin_id, env.load_alive.clone()) {
+            Some(report) => send_load_result(
+                env,
+                crate::background_jobs::run_command_limit_event(context),
+                Some(report),
+            ),
+            None => log::warn!(
+                "Dropping repeated run-command refusal for plugin {plugin_id}: refusal backlog is full"
+            ),
+        }
         return;
     };
-    let queued = enqueue_background_job(
+    enqueue_background_job(
         env,
         BackgroundJob::RunCommand(
             plugin_id,
@@ -3713,12 +3710,9 @@ fn run_command(
             cwd,
             context,
             env.generation,
+            reservation,
         ),
     );
-    if queued {
-        // The job task releases the slot, including on error and panic.
-        std::mem::forget(permit);
-    }
 }
 
 fn web_request(
@@ -3730,18 +3724,27 @@ fn web_request(
     context: BTreeMap<String, String>,
 ) {
     let plugin_id = env.plugin_id;
-    let Some(permit) = try_acquire_web_request(plugin_id) else {
+    let payload_bytes = web_request_payload_bytes(&url, &headers, &body, &context);
+    let Some(reservation) =
+        try_acquire_web_request(plugin_id, env.load_alive.clone(), payload_bytes)
+    else {
         log::warn!(
             "Not sending a web request for plugin {}: web-request limit reached",
             plugin_id
         );
-        send_load_result(
-            env,
-            crate::background_jobs::web_request_limit_event(context),
-        );
+        match try_acquire_refusal_report(plugin_id, env.load_alive.clone()) {
+            Some(report) => send_load_result(
+                env,
+                crate::background_jobs::web_request_limit_event(context),
+                Some(report),
+            ),
+            None => log::warn!(
+                "Dropping repeated web-request refusal for plugin {plugin_id}: refusal backlog is full"
+            ),
+        }
         return;
     };
-    let queued = enqueue_background_job(
+    enqueue_background_job(
         env,
         BackgroundJob::WebRequest(
             plugin_id,
@@ -3752,11 +3755,9 @@ fn web_request(
             body,
             context,
             env.generation,
+            reservation,
         ),
     );
-    if queued {
-        std::mem::forget(permit);
-    }
 }
 
 fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -5669,15 +5670,19 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                                     "Directory scan for plugin {plugin_id} stopped after {MAX_DIRECTORY_SCAN_ENTRIES} entries"
                                 );
                             }
-                            let paths_in_folder =
-                                super::file_system_update_within_host_pipe(paths_in_folder);
+                            let batch = super::file_system_update_within_host_pipe(paths_in_folder);
+                            let event = if batch.truncated {
+                                Event::FileSystemUpdateIncomplete(batch.entries)
+                            } else {
+                                Event::FileSystemUpdate(batch.entries)
+                            };
                             let _ = send_plugin_instructions
                                 .ok_or(anyhow!("found no sender to send plugin instruction to"))
                                 .map(|sender| {
                                     let _ = sender.send(PluginInstruction::Update(vec![(
                                         update_target,
                                         Some(client_id),
-                                        Event::FileSystemUpdate(paths_in_folder),
+                                        event,
                                     )]));
                                 })
                                 .non_fatal();
@@ -5726,14 +5731,19 @@ fn list_windows_volumes(env: &PluginEnv) {
     thread::spawn(move || {
         let mut entries = enumerate_drives();
         entries.extend(enumerate_wsl_distributions());
-        let entries = super::file_system_update_within_host_pipe(entries);
+        let batch = super::file_system_update_within_host_pipe(entries);
+        let event = if batch.truncated {
+            Event::FileSystemUpdateIncomplete(batch.entries)
+        } else {
+            Event::FileSystemUpdate(batch.entries)
+        };
         let _ = send_plugin_instructions
             .ok_or(anyhow!("found no sender to send plugin instruction to"))
             .map(|sender| {
                 let _ = sender.send(PluginInstruction::Update(vec![(
                     update_target,
                     Some(client_id),
-                    Event::FileSystemUpdate(entries),
+                    event,
                 )]));
             })
             .non_fatal();
@@ -5881,6 +5891,7 @@ fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
     let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
         bytes,
         pane_id,
+        Some(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
     ));
     if send_result.is_ok() {
@@ -5895,6 +5906,7 @@ fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
     let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
         bytes,
         pane_id,
+        Some(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
     ));
     if send_result.is_ok() {
@@ -6476,13 +6488,19 @@ fn clear_screen_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
 fn scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn scroll_to_top_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
@@ -6500,13 +6518,19 @@ fn scroll_to_bottom_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
 fn page_scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn page_scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
@@ -8136,12 +8160,13 @@ mod admission_tests {
         }
 
         scan_host_folder(&env, PathBuf::from("/host"));
-        let listed = wait_for_scan(&receiver);
+        let (listed, incomplete) = wait_for_scan(&receiver);
         assert_eq!(
             listed.len(),
             1,
             "an admitted scan must still report its entries"
         );
+        assert!(!incomplete);
         wait_until_scans_idle();
 
         for index in 0..MAX_DIRECTORY_SCAN_ENTRIES {
@@ -8152,7 +8177,7 @@ mod admission_tests {
             MAX_DIRECTORY_SCAN_ENTRIES + 1
         );
         scan_host_folder(&env, PathBuf::from("/host"));
-        let listed = wait_for_scan(&receiver);
+        let (listed, incomplete) = wait_for_scan(&receiver);
         // `extra-*` names do not fit 4096-wide in the host pipe, so the entry
         // cap is not what truncates this listing. The result is still a
         // read-order prefix that fits, and one more name does not.
@@ -8161,6 +8186,7 @@ mod admission_tests {
             "expected a pipe-sized prefix, got {}",
             listed.len()
         );
+        assert!(incomplete, "a truncated listing must be marked incomplete");
         assert!(
             stdin_frame_len(&Event::FileSystemUpdate(listed.clone()))
                 <= crate::plugins::WASI_HOST_PIPE_CAP
@@ -8195,14 +8221,19 @@ mod admission_tests {
 
     fn wait_for_scan(
         receiver: &Receiver<(PluginInstruction, ErrorContext)>,
-    ) -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)> {
+    ) -> (
+        Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)>,
+        bool,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
             match receiver.recv_timeout(Duration::from_millis(50)) {
                 Ok((PluginInstruction::Update(updates), _)) => {
                     for (_, _, event) in updates {
-                        if let Event::FileSystemUpdate(paths) = event {
-                            return paths;
+                        match event {
+                            Event::FileSystemUpdate(paths) => return (paths, false),
+                            Event::FileSystemUpdateIncomplete(paths) => return (paths, true),
+                            _ => {},
                         }
                     }
                 },
@@ -8244,7 +8275,7 @@ mod admission_tests {
             SenderWithContext::new(to_plugin),
         );
         scan_host_folder(&env, PathBuf::from("/host"));
-        let listed = wait_for_scan(&receiver);
+        let (listed, incomplete) = wait_for_scan(&receiver);
         wait_until_scans_idle();
 
         assert!(
@@ -8255,6 +8286,7 @@ mod admission_tests {
             listed.len() < MAX_DIRECTORY_SCAN_ENTRIES,
             "4096 long names must not fit in the host pipe unchanged"
         );
+        assert!(incomplete, "a pipe-sized prefix must be marked incomplete");
 
         let mut observed = Vec::new();
         for entry in std::fs::read_dir(host.path()).unwrap() {
@@ -8583,11 +8615,15 @@ mod admission_tests {
     }
 
     fn run_commands_in_flight() -> usize {
-        RUN_COMMANDS.lock().unwrap().total
+        crate::plugins::background_operations::in_flight(
+            crate::plugins::BackgroundOperationKind::RunCommand,
+        )
     }
 
     fn web_requests_in_flight() -> usize {
-        WEB_REQUESTS.lock().unwrap().total
+        crate::plugins::background_operations::in_flight(
+            crate::plugins::BackgroundOperationKind::WebRequest,
+        )
     }
 
     fn command_context() -> BTreeMap<String, String> {
@@ -8649,7 +8685,10 @@ mod admission_tests {
         let jobs = job_channels(plugin_id, 3);
         let context = command_context();
         let holds: Vec<_> = (0..MAX_RUN_COMMANDS_PER_PLUGIN)
-            .map(|_| try_acquire_run_command(plugin_id).expect("per-plugin command slot"))
+            .map(|_| {
+                try_acquire_run_command(plugin_id, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("per-plugin command slot")
+            })
             .collect();
         let in_flight = run_commands_in_flight();
         run_command(
@@ -8687,7 +8726,10 @@ mod admission_tests {
         assert_eq!(run_commands_in_flight(), 0);
 
         let global: Vec<_> = (1..=MAX_RUN_COMMANDS_IN_FLIGHT)
-            .map(|id| try_acquire_run_command(id as PluginId).expect("process-wide command slot"))
+            .map(|id| {
+                try_acquire_run_command(id as PluginId, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("process-wide command slot")
+            })
             .collect();
         let in_flight = run_commands_in_flight();
         run_command(
@@ -8749,6 +8791,7 @@ mod admission_tests {
                 cwd,
                 job_context,
                 generation,
+                reservation,
             ) => {
                 assert_eq!(id, plugin_id);
                 assert_eq!(generation, 4);
@@ -8764,6 +8807,7 @@ mod admission_tests {
                         job_context,
                         generation,
                         jobs.env.senders.clone(),
+                        reservation,
                     ),
                 );
             },
@@ -8771,21 +8815,28 @@ mod admission_tests {
         }
         assert_eq!(
             run_commands_in_flight(),
-            0,
-            "a finished command must release its slot"
+            1,
+            "a command whose result is pending must still hold its slot"
         );
         match recv_load_result(&jobs.plugin_rx) {
             PluginInstruction::ApplyLoadResult {
                 generation,
                 event: Event::RunCommandResult(exit, _, _, event_context),
+                reservation: result_reservation,
                 ..
             } => {
                 assert_eq!(generation, 4);
                 assert_eq!(exit, Some(2));
                 assert_eq!(event_context, context);
+                drop(result_reservation);
             },
             other => panic!("expected RunCommandResult, got {other:?}"),
         }
+        assert_eq!(
+            run_commands_in_flight(),
+            0,
+            "dropping the result must release its slot"
+        );
 
         run_command(
             &jobs.env,
@@ -8812,6 +8863,7 @@ mod admission_tests {
             cwd,
             job_context,
             generation,
+            reservation,
         ) = job
         else {
             panic!("expected RunCommand");
@@ -8827,8 +8879,21 @@ mod admission_tests {
                 job_context,
                 generation,
                 jobs.env.senders.clone(),
+                reservation,
             ),
         );
+        assert_eq!(
+            run_commands_in_flight(),
+            1,
+            "the result still owns the command slot"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                reservation: result_reservation,
+                ..
+            } => drop(result_reservation),
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
         assert_eq!(run_commands_in_flight(), 0);
     }
 
@@ -8843,7 +8908,10 @@ mod admission_tests {
         let jobs = job_channels(plugin_id, 5);
         let context = command_context();
         let holds: Vec<_> = (0..MAX_WEB_REQUESTS_PER_PLUGIN)
-            .map(|_| try_acquire_web_request(plugin_id).expect("per-plugin web slot"))
+            .map(|_| {
+                try_acquire_web_request(plugin_id, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("per-plugin web slot")
+            })
             .collect();
         let in_flight = web_requests_in_flight();
         web_request(
@@ -8882,7 +8950,10 @@ mod admission_tests {
         assert_eq!(web_requests_in_flight(), 0);
 
         let global: Vec<_> = (1..=MAX_WEB_REQUESTS_IN_FLIGHT)
-            .map(|id| try_acquire_web_request(id as PluginId).expect("process-wide web slot"))
+            .map(|id| {
+                try_acquire_web_request(id as PluginId, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("process-wide web slot")
+            })
             .collect();
         let in_flight = web_requests_in_flight();
         web_request(
@@ -8945,6 +9016,7 @@ mod admission_tests {
             body,
             job_context,
             generation,
+            reservation,
         ) = job
         else {
             panic!("expected WebRequest");
@@ -8963,12 +9035,13 @@ mod admission_tests {
                 generation,
                 None,
                 jobs.env.senders.clone(),
+                reservation,
             ),
         );
         assert_eq!(
             web_requests_in_flight(),
             0,
-            "a finished web request must release its slot"
+            "a request with no http client releases its slot"
         );
 
         web_request(
@@ -8997,6 +9070,7 @@ mod admission_tests {
             body,
             job_context,
             generation,
+            reservation,
         ) = job
         else {
             panic!("expected WebRequest");
@@ -9013,6 +9087,7 @@ mod admission_tests {
                 generation,
                 None,
                 jobs.env.senders.clone(),
+                reservation,
             ),
         );
         assert_eq!(web_requests_in_flight(), 0);

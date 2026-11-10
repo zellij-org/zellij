@@ -96,6 +96,7 @@ enum EventType {
     LiveViewStateChanged = 71;
     PluginSettingsEntries = 72;
     PluginActivated = 73;
+    FileSystemUpdateIncomplete = 74;
 }
 
 message EventNameList {
@@ -168,6 +169,7 @@ message Event {
     LiveViewStateChangedPayload live_view_state_changed_payload = 63;
     PluginSettingsEntriesPayload plugin_settings_entries_payload = 64;
     PluginActivatedPayload plugin_activated_payload = 65;
+    FileListIncompletePayload file_list_incomplete_payload = 66;
   }
 }
 
@@ -661,6 +663,11 @@ message PermissionRequestResultPayload {
 }
 
 message FileListPayload {
+  repeated string paths = 1;
+  repeated FileMetadata paths_metadata = 2;
+}
+
+message FileListIncompletePayload {
   repeated string paths = 1;
   repeated FileMetadata paths_metadata = 2;
 }

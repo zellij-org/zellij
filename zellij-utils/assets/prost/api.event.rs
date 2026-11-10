@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 66")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -142,6 +142,8 @@ pub mod event {
         PluginSettingsEntriesPayload(super::PluginSettingsEntriesPayload),
         #[prost(message, tag="65")]
         PluginActivatedPayload(super::PluginActivatedPayload),
+        #[prost(message, tag="66")]
+        FileListIncompletePayload(super::FileListIncompletePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -879,6 +881,14 @@ pub struct PermissionRequestResultPayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FileListPayload {
+    #[prost(string, repeated, tag="1")]
+    pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="2")]
+    pub paths_metadata: ::prost::alloc::vec::Vec<FileMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FileListIncompletePayload {
     #[prost(string, repeated, tag="1")]
     pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, repeated, tag="2")]
@@ -1696,6 +1706,7 @@ pub enum EventType {
     LiveViewStateChanged = 71,
     PluginSettingsEntries = 72,
     PluginActivated = 73,
+    FileSystemUpdateIncomplete = 74,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1775,6 +1786,7 @@ impl EventType {
             EventType::LiveViewStateChanged => "LiveViewStateChanged",
             EventType::PluginSettingsEntries => "PluginSettingsEntries",
             EventType::PluginActivated => "PluginActivated",
+            EventType::FileSystemUpdateIncomplete => "FileSystemUpdateIncomplete",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1851,6 +1863,7 @@ impl EventType {
             "LiveViewStateChanged" => Some(Self::LiveViewStateChanged),
             "PluginSettingsEntries" => Some(Self::PluginSettingsEntries),
             "PluginActivated" => Some(Self::PluginActivated),
+            "FileSystemUpdateIncomplete" => Some(Self::FileSystemUpdateIncomplete),
             _ => None,
         }
     }

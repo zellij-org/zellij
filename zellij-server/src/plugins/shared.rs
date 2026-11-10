@@ -266,24 +266,31 @@ fn publish_store_data<T: ?Sized>(data: &T) {
 }
 
 fn retire_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) {
-    let loads = PUBLISHED_LOADS.lock().unwrap();
-    for (key, load) in loads.iter() {
-        if keep(key) {
-            load.retire_outside_execution_lock(None);
+    {
+        let loads = PUBLISHED_LOADS.lock().unwrap();
+        for (key, load) in loads.iter() {
+            if keep(key) {
+                load.retire_outside_execution_lock(None);
+            }
         }
     }
+    crate::plugins::reap_retired_operations();
 }
 
 fn take_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) -> Vec<PathBuf> {
-    let mut loads = PUBLISHED_LOADS.lock().unwrap();
-    let keys: Vec<_> = loads.keys().copied().filter(|key| keep(key)).collect();
-    let mut dirs = Vec::with_capacity(keys.len());
-    for key in keys {
-        if let Some(load) = loads.remove(&key) {
-            load.retire_outside_execution_lock(None);
-            dirs.push(load.data_dir);
+    let dirs = {
+        let mut loads = PUBLISHED_LOADS.lock().unwrap();
+        let keys: Vec<_> = loads.keys().copied().filter(|key| keep(key)).collect();
+        let mut dirs = Vec::with_capacity(keys.len());
+        for key in keys {
+            if let Some(load) = loads.remove(&key) {
+                load.retire_outside_execution_lock(None);
+                dirs.push(load.data_dir);
+            }
         }
-    }
+        dirs
+    };
+    crate::plugins::reap_retired_operations();
     dirs
 }
 
@@ -301,20 +308,23 @@ pub fn revoke_client_loads(plugin_id: PluginId, client_id: ClientId) {
 /// publishes the replacement before this runs, so the blocked previous guest
 /// does not have to be locked.
 pub fn retire_older_published_loads(plugin_id: PluginId) {
-    let loads = PUBLISHED_LOADS.lock().unwrap();
-    let newest = loads
-        .keys()
-        .filter(|(id, _, _)| *id == plugin_id)
-        .map(|(_, _, generation)| *generation)
-        .max();
-    let Some(newest) = newest else {
-        return;
-    };
-    for ((id, _, generation), load) in loads.iter() {
-        if *id == plugin_id && *generation < newest {
-            load.retire_outside_execution_lock(None);
+    {
+        let loads = PUBLISHED_LOADS.lock().unwrap();
+        let newest = loads
+            .keys()
+            .filter(|(id, _, _)| *id == plugin_id)
+            .map(|(_, _, generation)| *generation)
+            .max();
+        let Some(newest) = newest else {
+            return;
+        };
+        for ((id, _, generation), load) in loads.iter() {
+            if *id == plugin_id && *generation < newest {
+                load.retire_outside_execution_lock(None);
+            }
         }
     }
+    crate::plugins::reap_retired_operations();
 }
 
 pub fn take_plugin_data_dirs(plugin_id: PluginId) -> Vec<PathBuf> {

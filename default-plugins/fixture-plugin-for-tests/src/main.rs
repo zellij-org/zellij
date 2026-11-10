@@ -381,6 +381,7 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
+            EventType::FileSystemUpdateIncomplete,
             EventType::FileSystemDelete,
             EventType::BeforeClose,
             EventType::PluginConfigurationChanged,

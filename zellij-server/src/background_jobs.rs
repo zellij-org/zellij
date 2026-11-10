@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 
 use crate::os_input_output::PaneEnv;
 use crate::panes::PaneId;
-use crate::plugins::{PluginId, PluginInstruction};
+use crate::plugins::{BackgroundOperationReservation, PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
@@ -60,6 +60,7 @@ pub enum BackgroundJob {
         PathBuf,
         BTreeMap<String, String>,
         u64, // generation of the load that scheduled the command
+        BackgroundOperationReservation,
     ), // command, args, env_variables, cwd, context, generation
     RunInBackground {
         command: PathBuf,
@@ -76,6 +77,7 @@ pub enum BackgroundJob {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
         u64,                      // generation of the load that scheduled the request
+        BackgroundOperationReservation,
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
@@ -842,9 +844,13 @@ pub(crate) fn background_jobs_main(
                 cwd,
                 context,
                 generation,
+                reservation,
             ) => {
+                if reservation.is_cancelled() {
+                    continue;
+                }
                 let senders = bus.senders.clone();
-                runtime.spawn(perform_run_command(
+                let task = runtime.spawn(perform_run_command(
                     plugin_id,
                     client_id,
                     command,
@@ -854,7 +860,9 @@ pub(crate) fn background_jobs_main(
                     context,
                     generation,
                     senders,
+                    reservation.clone(),
                 ));
+                reservation.register_abort_handle(task.abort_handle());
             },
             BackgroundJob::RunInBackground {
                 command,
@@ -873,10 +881,14 @@ pub(crate) fn background_jobs_main(
                 body,
                 context,
                 generation,
+                reservation,
             ) => {
+                if reservation.is_cancelled() {
+                    continue;
+                }
                 let senders = bus.senders.clone();
                 let http_client = http_client.clone();
-                runtime.spawn(perform_web_request(
+                let task = runtime.spawn(perform_web_request(
                     plugin_id,
                     client_id,
                     url,
@@ -887,7 +899,9 @@ pub(crate) fn background_jobs_main(
                     generation,
                     http_client,
                     senders,
+                    reservation.clone(),
                 ));
+                reservation.register_abort_handle(task.abort_handle());
             },
             BackgroundJob::QueryZellijWebServerStatus => {
                 #[cfg(feature = "web_server_capability")]
@@ -3906,42 +3920,26 @@ fn run_command_result_event(
     fallback
 }
 
-struct ReleaseRunCommand {
-    plugin_id: PluginId,
-}
-
-impl Drop for ReleaseRunCommand {
-    fn drop(&mut self) {
-        crate::plugins::release_run_command(self.plugin_id);
-    }
-}
-
-struct ReleaseWebRequest {
-    plugin_id: PluginId,
-}
-
-impl Drop for ReleaseWebRequest {
-    fn drop(&mut self) {
-        crate::plugins::release_web_request(self.plugin_id);
-    }
-}
-
 fn send_load_result(
     senders: &crate::thread_bus::ThreadSenders,
     plugin_id: PluginId,
     client_id: ClientId,
     event: Event,
     generation: u64,
+    reservation: Option<BackgroundOperationReservation>,
 ) {
     let _ = senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
         plugin_id,
         client_id,
         event,
         generation,
+        reservation,
     });
 }
 
-/// Runs one admitted `RunCommand` and releases its slot when this task ends.
+/// Runs one admitted `RunCommand`. The reservation is carried into the result
+/// message, so capacity stays accounted for until the result is applied or
+/// dropped.
 pub(crate) async fn perform_run_command(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -3952,8 +3950,11 @@ pub(crate) async fn perform_run_command(
     context: BTreeMap<String, String>,
     generation: u64,
     senders: crate::thread_bus::ThreadSenders,
+    reservation: BackgroundOperationReservation,
 ) {
-    let _release = ReleaseRunCommand { plugin_id };
+    if reservation.is_cancelled() {
+        return;
+    }
     let output = run_background_command(BackgroundCommand {
         program: command,
         args,
@@ -3963,6 +3964,9 @@ pub(crate) async fn perform_run_command(
         timeout: None,
     })
     .await;
+    if reservation.is_cancelled() {
+        return;
+    }
     let event = match output {
         Ok(output) => {
             run_command_result_event(output.exit_code, output.stdout, output.stderr, context)
@@ -3972,10 +3976,19 @@ pub(crate) async fn perform_run_command(
             run_command_result_event(Some(2), Vec::new(), format!("{}", e).into_bytes(), context)
         },
     };
-    send_load_result(&senders, plugin_id, client_id, event, generation);
+    send_load_result(
+        &senders,
+        plugin_id,
+        client_id,
+        event,
+        generation,
+        Some(reservation),
+    );
 }
 
-/// Runs one admitted `WebRequest` and releases its slot when this task ends.
+/// Runs one admitted `WebRequest`. The reservation is carried into the result
+/// message, so capacity stays accounted for until the result is applied or
+/// dropped.
 pub(crate) async fn perform_web_request(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -3987,8 +4000,11 @@ pub(crate) async fn perform_web_request(
     generation: u64,
     http_client: Option<HttpClient>,
     senders: crate::thread_bus::ThreadSenders,
+    reservation: BackgroundOperationReservation,
 ) {
-    let _release = ReleaseWebRequest { plugin_id };
+    if reservation.is_cancelled() {
+        return;
+    }
     async fn web_request(
         url: String,
         verb: HttpVerb,
@@ -4038,15 +4054,22 @@ pub(crate) async fn perform_web_request(
 
     match web_request(url, verb, headers, body, &context, http_client).await {
         Ok((status, headers, body)) => {
+            if reservation.is_cancelled() {
+                return;
+            }
             send_load_result(
                 &senders,
                 plugin_id,
                 client_id,
                 Event::WebRequestResult(status, headers, body, context),
                 generation,
+                Some(reservation),
             );
         },
         Err(e) => {
+            if reservation.is_cancelled() {
+                return;
+            }
             log::error!("Failed to send web request: {}", e);
             send_load_result(
                 &senders,
@@ -4054,6 +4077,7 @@ pub(crate) async fn perform_web_request(
                 client_id,
                 web_request_failure_event(&e, context),
                 generation,
+                Some(reservation),
             );
         },
     }

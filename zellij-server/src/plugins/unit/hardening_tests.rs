@@ -871,7 +871,7 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
         .try_push(
             plugin_id,
             EventOrPipeMessage::Event(Event::ModeUpdate(first_mode), Some(1), None),
-            true,
+            false,
         )
         .unwrap();
     let bytes_after_one_mode = bridge
@@ -886,9 +886,11 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
             .try_push(
                 plugin_id,
                 EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), None),
-                true,
+                false,
             )
             .unwrap();
+    }
+    for index in 0..50 {
         let mut tab = zellij_utils::data::TabInfo::default();
         tab.name = format!("tab-{index:02}");
         bridge
@@ -899,6 +901,8 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
                 false,
             )
             .unwrap();
+    }
+    for index in 0..50 {
         let mut manifest = zellij_utils::data::PaneManifest::default();
         manifest.panes.insert(index, vec![]);
         bridge
@@ -909,6 +913,8 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
                 false,
             )
             .unwrap();
+    }
+    for index in 0..50 {
         bridge
             .cached_events_for_pending_plugins
             .try_push(
@@ -961,14 +967,14 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
     );
     assert!(
         matches!(
-            &cached[0],
+            &cached[1],
             EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), _)
                 if mode.session_name.as_deref() == Some("49")
         ),
         "the latest mode snapshot replaces the previous one in place"
     );
     assert!(matches!(
-        &cached[1],
+        &cached[0],
         EventOrPipeMessage::Event(Event::PastedText(text), _, _) if text == "keep"
     ));
     assert_eq!(
@@ -987,6 +993,98 @@ fn pending_cache_coalescible_snapshot_replaces_instead_of_growing() {
     assert!(!bridge
         .cached_events_for_pending_plugins
         .is_incomplete(plugin_id));
+}
+
+#[test]
+fn pending_snapshot_coalescing_does_not_cross_an_ordered_event() {
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    let (mut bridge, _dir, _screen_receiver, _plugin_receiver) = test_bridge();
+    let plugin_id = 31;
+    bridge
+        .cached_events_for_pending_plugins
+        .insert_empty(plugin_id);
+
+    let mode = |name: &str| {
+        let mut mode = zellij_utils::data::ModeInfo::default();
+        mode.session_name = Some(name.to_owned());
+        Event::ModeUpdate(mode)
+    };
+    for event in [
+        mode("before-key"),
+        Event::Key(KeyWithModifier::new(BareKey::Char('x'))),
+        mode("after-key"),
+    ] {
+        bridge
+            .cached_events_for_pending_plugins
+            .try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(event, Some(1), None),
+                false,
+            )
+            .unwrap();
+    }
+
+    let cached = bridge
+        .cached_events_for_pending_plugins
+        .cached_events(plugin_id);
+    assert_eq!(
+        cached.len(),
+        3,
+        "the newer snapshot must be appended after the ordered key event"
+    );
+    assert!(matches!(
+        &cached[0],
+        EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), _)
+            if mode.session_name.as_deref() == Some("before-key")
+    ));
+    assert!(matches!(
+        &cached[1],
+        EventOrPipeMessage::Event(Event::Key(_), Some(1), _)
+    ));
+    assert!(matches!(
+        &cached[2],
+        EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), _)
+            if mode.session_name.as_deref() == Some("after-key")
+    ));
+
+    // A snapshot that is at the tail can still replace in place.
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(mode("latest"), Some(1), None),
+            false,
+        )
+        .unwrap();
+    let cached = bridge
+        .cached_events_for_pending_plugins
+        .cached_events(plugin_id);
+    assert_eq!(cached.len(), 3);
+    assert!(matches!(
+        &cached[2],
+        EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(1), _)
+            if mode.session_name.as_deref() == Some("latest")
+    ));
+
+    // A different client's state is a different snapshot key.
+    bridge
+        .cached_events_for_pending_plugins
+        .try_push(
+            plugin_id,
+            EventOrPipeMessage::Event(mode("other-client"), Some(2), None),
+            false,
+        )
+        .unwrap();
+    let cached = bridge
+        .cached_events_for_pending_plugins
+        .cached_events(plugin_id);
+    assert_eq!(cached.len(), 4);
+    assert!(matches!(
+        &cached[3],
+        EventOrPipeMessage::Event(Event::ModeUpdate(mode), Some(2), _)
+            if mode.session_name.as_deref() == Some("other-client")
+    ));
 }
 
 fn pane_report(
@@ -1241,4 +1339,42 @@ fn a_pending_permission_request_does_not_hold_back_the_unload_of_a_plugin_unload
     assert!(!bridge
         .plugin_ids_waiting_for_permission_request
         .contains(&plugin_id));
+}
+
+#[test]
+fn a_resize_does_not_wait_for_a_blocked_guest_callback() {
+    let (mut bridge, dir, _screen_receiver, plugin_receiver) = test_bridge();
+    let run = write_noop_plugin(dir.path(), "resize-blocked-guest.wasm");
+    let plugin_id = load_noop_plugin(&mut bridge, &plugin_receiver, run);
+    let running_plugin = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .get_running_plugin(plugin_id, Some(1))
+        .expect("plugin loaded");
+
+    let (started_tx, started_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let holder = thread::spawn(move || {
+        let _guard = running_plugin.lock().unwrap();
+        started_tx.send(()).unwrap();
+        let _ = release_rx.recv_timeout(Duration::from_secs(5));
+    });
+    started_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("the guest callback holds the execution lock");
+
+    let (shutdown_sender, _shutdown_receiver) = tokio::sync::mpsc::channel(1);
+    let started = Instant::now();
+    bridge
+        .resize_plugin(plugin_id, 100, 40, shutdown_sender)
+        .expect("resize is scheduled");
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "plugin management waited for the blocked guest callback: {:?}",
+        started.elapsed()
+    );
+
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
 }

@@ -89,10 +89,15 @@ pub fn watch_filesystem(
                     ));
                 }
                 if !update_paths.is_empty() {
-                    let entries = file_system_update_within_host_pipe(
+                    let batch = file_system_update_within_host_pipe(
                         update_paths.into_iter().map(|p| (p, None)).collect(),
                     );
-                    updates.push((Some(plugin_id), None, Event::FileSystemUpdate(entries)));
+                    let event = if batch.truncated {
+                        Event::FileSystemUpdateIncomplete(batch.entries)
+                    } else {
+                        Event::FileSystemUpdate(batch.entries)
+                    };
+                    updates.push((Some(plugin_id), None, event));
                 }
                 if !delete_paths.is_empty() {
                     updates.push((

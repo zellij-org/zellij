@@ -1060,15 +1060,24 @@ fn file_system_update_fits(entries: &[(PathBuf, Option<FileMetadata>)]) -> bool 
         .is_some_and(|len| len <= WASI_HOST_PIPE_CAP)
 }
 
+pub(crate) struct FileSystemUpdateBatch {
+    pub entries: Vec<(PathBuf, Option<FileMetadata>)>,
+    pub truncated: bool,
+}
+
 /// Read-order prefix of `entries` whose `FileSystemUpdate` stdin frame fits
-/// [`WASI_HOST_PIPE_CAP`]. One entry that cannot fit becomes an empty update
-/// so the plugin still receives a result.
+/// [`WASI_HOST_PIPE_CAP`]. The returned flags tell producers whether the
+/// plugin must be told the listing is incomplete. One entry that cannot fit
+/// becomes an empty, explicitly incomplete result.
 pub(crate) fn file_system_update_within_host_pipe(
     entries: Vec<(PathBuf, Option<FileMetadata>)>,
-) -> Vec<(PathBuf, Option<FileMetadata>)> {
+) -> FileSystemUpdateBatch {
     let total = entries.len();
     if total == 0 || file_system_update_fits(&entries) {
-        return entries;
+        return FileSystemUpdateBatch {
+            entries,
+            truncated: false,
+        };
     }
     let mut lo = 0usize;
     let mut hi = total;
@@ -1092,14 +1101,21 @@ pub(crate) fn file_system_update_within_host_pipe(
         log::warn!(
             "FileSystemUpdate entry does not fit in the host pipe cap of {WASI_HOST_PIPE_CAP} bytes; sending an empty update"
         );
-        return Vec::new();
+        return FileSystemUpdateBatch {
+            entries: Vec::new(),
+            truncated: true,
+        };
     }
-    if lo < total {
+    let truncated = lo < total;
+    if truncated {
         log::warn!(
             "FileSystemUpdate trimmed from {total} entries to {lo} so its stdin frame fits the host pipe cap of {WASI_HOST_PIPE_CAP} bytes"
         );
     }
-    entries.into_iter().take(lo).collect()
+    FileSystemUpdateBatch {
+        entries: entries.into_iter().take(lo).collect(),
+        truncated,
+    }
 }
 
 fn enforce_worker_cap(plugin_id: PluginId, worker_count: usize) -> Result<()> {

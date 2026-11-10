@@ -1,3 +1,4 @@
+mod background_operations;
 mod pinned_executor;
 mod pipes;
 mod plugin_loader;
@@ -9,8 +10,13 @@ mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
+#[cfg(test)]
+pub(crate) use background_operations::BackgroundOperationKind;
+pub(crate) use background_operations::{
+    reap_retired_operations, try_acquire_refusal_report, try_acquire_run_command,
+    try_acquire_web_request, BackgroundOperationReservation,
+};
 use log::info;
-pub(crate) use zellij_exports::{release_run_command, release_web_request};
 
 pub use pinned_executor::PinnedExecutor;
 pub(crate) use plugin_loader::{
@@ -111,6 +117,7 @@ pub enum PluginInstruction {
         client_id: ClientId,
         event: Event,
         generation: u64,
+        reservation: Option<BackgroundOperationReservation>,
     },
     ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
@@ -671,6 +678,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 event,
                 generation,
+                reservation: _reservation,
             } => {
                 wasm_bridge.set_scheduled_timer_generation(generation);
                 wasm_bridge.update_plugins(

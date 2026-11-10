@@ -69,6 +69,10 @@ impl ZellijPlugin for State {
                 self.update_files(paths);
                 should_render = true;
             },
+            Event::FileSystemUpdateIncomplete(paths) => {
+                self.update_files(paths);
+                should_render = true;
+            },
             Event::HostFolderChanged(_new_host_folder) => {
                 scan_host_folder(&"/host");
                 should_render = true;

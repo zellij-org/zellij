@@ -392,6 +392,18 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the file system update Event"),
             },
+            Some(ProtobufEventType::FileSystemUpdateIncomplete) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::FileListIncompletePayload(file_list_payload)) => {
+                    let file_paths = file_list_payload
+                        .paths
+                        .iter()
+                        .zip(file_list_payload.paths_metadata.iter())
+                        .map(|(p, m)| (PathBuf::from(p), m.into()))
+                        .collect();
+                    Ok(Event::FileSystemUpdateIncomplete(file_paths))
+                },
+                _ => Err("Malformed payload for the incomplete file system update Event"),
+            },
             Some(ProtobufEventType::FileSystemDelete) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::FileListPayload(file_list_payload)) => {
                     let file_paths = file_list_payload
@@ -1256,6 +1268,22 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemUpdate as i32,
                     payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            },
+            Event::FileSystemUpdateIncomplete(event_paths) => {
+                let mut paths = vec![];
+                let mut paths_metadata = vec![];
+                for (path, path_metadata) in event_paths {
+                    paths.push(path.display().to_string());
+                    paths_metadata.push(path_metadata.into());
+                }
+                let file_list_payload = FileListIncompletePayload {
+                    paths,
+                    paths_metadata,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::FileSystemUpdateIncomplete as i32,
+                    payload: Some(event::Payload::FileListIncompletePayload(file_list_payload)),
                 })
             },
             Event::FileSystemDelete(event_paths) => {
@@ -2950,6 +2978,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FileSystemCreate => EventType::FileSystemCreate,
             ProtobufEventType::FileSystemRead => EventType::FileSystemRead,
             ProtobufEventType::FileSystemUpdate => EventType::FileSystemUpdate,
+            ProtobufEventType::FileSystemUpdateIncomplete => EventType::FileSystemUpdateIncomplete,
             ProtobufEventType::FileSystemDelete => EventType::FileSystemDelete,
             ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
@@ -3031,6 +3060,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FileSystemCreate => ProtobufEventType::FileSystemCreate,
             EventType::FileSystemRead => ProtobufEventType::FileSystemRead,
             EventType::FileSystemUpdate => ProtobufEventType::FileSystemUpdate,
+            EventType::FileSystemUpdateIncomplete => ProtobufEventType::FileSystemUpdateIncomplete,
             EventType::FileSystemDelete => ProtobufEventType::FileSystemDelete,
             EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
