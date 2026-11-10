@@ -1262,24 +1262,64 @@ pub(crate) struct SelectedDeadSession {
 pub(crate) struct DeadSessionSelection {
     pub sessions: Vec<SelectedDeadSession>,
     pub error: Option<String>,
+    /// Claims held from each session's death check through deletion.
+    /// Dropping this selection releases them. A caller that deletes `sessions`
+    /// must keep the selection alive until that delete returns.
+    claims: Vec<crate::session_socket_claim::SessionSocketClaim>,
+}
+
+impl Drop for DeadSessionSelection {
+    fn drop(&mut self) {
+        for claim in self.claims.drain(..) {
+            claim.release();
+        }
+    }
 }
 
 /// Classify dead sessions and capture each incarnation in the same pass.
 ///
-/// An incarnation file that cannot be read is not selected. That session stays,
-/// and `error` records why, so a missing lifetime cannot be treated as "delete
-/// whatever is current".
+/// Each selected session's socket claim is held across its death check and
+/// incarnation read, and stays held until this selection is dropped. An
+/// `AddrInUse` claim is a live owner, not a dead session. An incarnation file
+/// that cannot be read is not selected. That session stays, and `error`
+/// records why, so a missing lifetime cannot be treated as "delete whatever
+/// is current".
 pub(crate) fn select_dead_sessions_in(sock_dir: &Path, cache_dir: &Path) -> DeadSessionSelection {
     let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
     let mut sessions = Vec::with_capacity(dead_sessions.len());
+    let mut claims = Vec::with_capacity(dead_sessions.len());
     let mut error = None;
     for session_id in dead_sessions {
+        let claim = match crate::sessions::try_acquire_session_socket_claim(sock_dir, &session_id) {
+            Ok(Some(claim)) => claim,
+            Ok(None) => continue,
+            Err(acquire_error) => {
+                error.get_or_insert_with(|| {
+                    format!(
+                        "Failed to claim the socket of dead session {:?}: {}",
+                        session_id, acquire_error
+                    )
+                });
+                continue;
+            },
+        };
+        // The candidate list was taken before the claim. Decide death once,
+        // while this claim is held, so a resurrection cannot admit between
+        // the inventory and the incarnation read.
+        if !session_id_is_definitely_dead(sock_dir, cache_dir, &session_id) {
+            claim.release();
+            continue;
+        }
         match crate::sessions::selected_session_lifetime(cache_dir, &session_id) {
-            Ok(lifetime) => sessions.push(SelectedDeadSession {
-                id: session_id,
-                lifetime,
-            }),
+            Ok(lifetime) => {
+                sessions.push(SelectedDeadSession {
+                    id: session_id,
+                    lifetime,
+                });
+                claims.push(claim);
+            },
             Err(read_error) => {
+                claim.release();
                 error.get_or_insert_with(|| {
                     format!(
                         "Failed to read the incarnation of dead session {:?}: {}",
@@ -1289,7 +1329,11 @@ pub(crate) fn select_dead_sessions_in(sock_dir: &Path, cache_dir: &Path) -> Dead
             },
         }
     }
-    DeadSessionSelection { sessions, error }
+    DeadSessionSelection {
+        sessions,
+        error,
+        claims,
+    }
 }
 
 pub(crate) fn delete_selected_dead_sessions_in(
@@ -1354,20 +1398,25 @@ pub fn delete_dead_sessions_in(
     cache_dir: &Path,
     index: Option<&SessionIndex>,
 ) -> std::result::Result<usize, String> {
-    let DeadSessionSelection { sessions, error } = select_dead_sessions_in(sock_dir, cache_dir);
-    if sessions.is_empty() {
-        return match error {
+    // `selection` holds each socket claim until this function returns, which is
+    // after the fenced delete. Dropping it earlier would reopen the gap.
+    let selection = select_dead_sessions_in(sock_dir, cache_dir);
+    let outcome = if selection.sessions.is_empty() {
+        match selection.error.clone() {
             Some(error) => Err(error),
             None => Ok(0),
-        };
-    }
-    match delete_selected_dead_sessions_in(cache_dir, index, &sessions) {
-        Ok(deleted) => match error {
-            Some(error) => Err(error),
-            None => Ok(deleted),
-        },
-        Err(delete_error) => Err(error.unwrap_or(delete_error)),
-    }
+        }
+    } else {
+        match delete_selected_dead_sessions_in(cache_dir, index, &selection.sessions) {
+            Ok(deleted) => match selection.error.clone() {
+                Some(error) => Err(error),
+                None => Ok(deleted),
+            },
+            Err(delete_error) => Err(selection.error.clone().unwrap_or(delete_error)),
+        }
+    };
+    drop(selection);
+    outcome
 }
 
 fn session_id_for_name_in(path: &Path, name: &str) -> Result<Option<String>> {
@@ -2393,6 +2442,80 @@ mod tests {
         );
         assert!(test.index.get(stable).unwrap().is_none());
         assert!(!cache_dir.join(stable).exists());
+    }
+
+    #[test]
+    fn a_resurrection_holding_the_socket_claim_is_not_tombstoned() {
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        let resurrected = "resurrected";
+        let stable = "stable-dead";
+        for name in [resurrected, stable] {
+            test.add(name, context("/a", None, None), 1);
+            test.mark_resumable(name);
+        }
+        // The resurrection owns the socket claim and has already admitted B.
+        // No listener exists yet, so a death inventory that ignores the claim
+        // still classifies the id as dead and then reads B as the lifetime to
+        // delete.
+        let _old = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        let claim = crate::session_socket_claim::SessionSocketClaim::try_acquire(
+            &sock_dir.join(resurrected),
+        )
+        .unwrap();
+        let new = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        assert_ne!(new, _old);
+        let layout = cache_dir.join(resurrected).join(SESSION_LAYOUT_FILE_NAME);
+        let new_layout = b"layout {\n    resurrected\n}\n";
+        std::fs::write(&layout, new_layout).unwrap();
+        test.index.touch(resurrected, 50).unwrap();
+
+        let error =
+            crate::sessions::remove_fenced_dead_session_cache(&sock_dir, &cache_dir, resurrected)
+                .unwrap_err();
+        assert!(
+            error.to_string().contains("not definitely dead"),
+            "a held socket claim is not death, got {error}"
+        );
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        let row = test
+            .index
+            .get(resurrected)
+            .unwrap()
+            .expect("index row stays");
+        assert_eq!(row.last_used_at, 50);
+        let tombstone = cache_dir.join(format!("{resurrected}.deleted"));
+        assert!(
+            !tombstone.exists(),
+            "incarnation B must not be tombstoned while its claim is held"
+        );
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "the admitted incarnation must still be current, got {incarnation_file}"
+        );
+
+        let deleted = delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap();
+        assert_eq!(deleted, 1, "only the unclaimed dead session is removed");
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        assert!(!tombstone.exists());
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "bulk deletion must leave incarnation B, got {incarnation_file}"
+        );
+        assert_eq!(
+            test.index.get(resurrected).unwrap().unwrap().last_used_at,
+            50
+        );
+        assert!(test.index.get(stable).unwrap().is_none());
+        assert!(!cache_dir.join(stable).exists());
+        claim.release();
     }
 
     #[test]

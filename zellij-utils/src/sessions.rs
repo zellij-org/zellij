@@ -1274,8 +1274,35 @@ fn fence_and_remove_locked(
     }
 }
 
+fn session_is_not_definitely_dead(session_id: &str) -> io::Error {
+    io::Error::other(format!(
+        "session {session_id} is not definitely dead; its cache and index row were left in place"
+    ))
+}
+
+/// Take the session socket claim. The caller holds it across the death check,
+/// incarnation read, and fenced delete, then releases it.
+///
+/// `Ok(None)` means another owner already holds the claim. That session is not
+/// dead: server bind takes this claim before it can listen or admit a new
+/// incarnation. `AddrInUse` must not be treated as death.
+pub(crate) fn try_acquire_session_socket_claim(
+    sock_dir: &Path,
+    session_id: &str,
+) -> io::Result<Option<crate::session_socket_claim::SessionSocketClaim>> {
+    let socket_path = sock_dir.join(session_id);
+    match crate::session_socket_claim::SessionSocketClaim::try_acquire(&socket_path) {
+        Ok(claim) => Ok(Some(claim)),
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Remove `session_id`'s cache only when a socket inventory says it is dead.
 ///
+/// The socket claim is held across the death check, the incarnation read, and
+/// the fenced delete. A resurrection has to take that claim before it can bind,
+/// so it cannot admit a new incarnation into the lifetime this function reads.
 /// The same inventory as bulk deletion: an unreadable directory yields no dead
 /// ids, so this refuses. The incarnation read with that decision is checked
 /// again under the publication lock.
@@ -1284,10 +1311,21 @@ pub fn remove_fenced_dead_session_cache(
     cache_dir: &Path,
     session_id: &str,
 ) -> io::Result<SessionCacheRemoval> {
+    let Some(claim) = try_acquire_session_socket_claim(sock_dir, session_id)? else {
+        return Err(session_is_not_definitely_dead(session_id));
+    };
+    let removal = remove_fenced_dead_session_cache_while_claimed(sock_dir, cache_dir, session_id);
+    claim.release();
+    removal
+}
+
+fn remove_fenced_dead_session_cache_while_claimed(
+    sock_dir: &Path,
+    cache_dir: &Path,
+    session_id: &str,
+) -> io::Result<SessionCacheRemoval> {
     if !crate::session_index::session_id_is_definitely_dead(sock_dir, cache_dir, session_id) {
-        return Err(io::Error::other(format!(
-            "session {session_id} is not definitely dead; its cache and index row were left in place"
-        )));
+        return Err(session_is_not_definitely_dead(session_id));
     }
     let selected = selected_session_lifetime(cache_dir, session_id)?;
     remove_fenced_session_cache_for_lifetime(cache_dir, session_id, selected)
