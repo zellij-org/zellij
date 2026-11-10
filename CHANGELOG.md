@@ -51,6 +51,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
 * feat: separate font families for bold, italic and bold italic text in the terminal window (`font_bold`, `font_italic`, `font_bold_italic`), and pick a family's normal width over its wider cuts (https://github.com/zellij-org/zellij/pull/5829)
 * feat: install Zellij.app on macOS from the setup screen, with the login shell environment, notifications and reopening from Finder; the setup screen can also copy Zellij to ~/.local/bin (https://github.com/zellij-org/zellij/pull/5830)
+* feat: terminal window (desktop client) on Windows, with the tray, notifications and the setup screen (https://github.com/zellij-org/zellij/pull/5679, https://github.com/zellij-org/zellij/pull/5831, https://github.com/zellij-org/zellij/pull/5832, https://github.com/zellij-org/zellij/pull/5833, https://github.com/zellij-org/zellij/pull/5844, https://github.com/zellij-org/zellij/pull/5846, https://github.com/zellij-org/zellij/pull/5848 and https://github.com/zellij-org/zellij/pull/5857)
+* fix: replies going to the wrong client on Windows after a client drops mid-connect (https://github.com/zellij-org/zellij/pull/5849)
+* fix: tighten pipe permissions on Windows, and small fixes for starting and reaching sessions, session names and paths (https://github.com/zellij-org/zellij/pull/5853, https://github.com/zellij-org/zellij/pull/5854 and https://github.com/zellij-org/zellij/pull/5855)
 
 
 ## [0.45.1] - 2026-08-28
