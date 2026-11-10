@@ -575,10 +575,12 @@ mod tests {
     fn dropping_a_claim_does_not_unlink_a_replacement_nonce() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session");
-        let claim = ExclusiveMarkerClaim::try_acquire(&path).unwrap();
+        let mut claim = ExclusiveMarkerClaim::try_acquire(&path).unwrap();
         let lock_path = claim.lock_path().to_path_buf();
         let replacement = b"replacement-nonce";
-        std::fs::write(&lock_path, replacement).unwrap();
+        // Windows locks the marker per handle. Replace the bytes through the
+        // handle that owns the lock instead of opening a second one.
+        publish_nonce(&mut claim.file, replacement).unwrap();
         drop(claim);
         assert_eq!(
             std::fs::read(&lock_path).unwrap(),
@@ -597,16 +599,18 @@ mod tests {
         let lock_path = SessionSocketClaim::lock_path(&path).unwrap();
         std::fs::write(&lock_path, b"stale-lock").unwrap();
 
-        let first =
+        let mut first =
             ExclusiveMarkerClaim::try_acquire_with_liveness(&path, WindowsPidLiveness::Dead)
                 .expect("the first dead reclaimer takes the leftover lock");
-        let held = std::fs::read(first.lock_path()).unwrap();
+        // Read through the locked handle: Windows refuses a second open while
+        // this claim holds its lock.
+        let held = read_locked_marker(&mut first.file).unwrap();
         let error =
             ExclusiveMarkerClaim::try_acquire_with_liveness(&path, WindowsPidLiveness::Dead)
                 .expect_err("the lock holder must exclude the second reclaimer");
         assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
         assert_eq!(
-            std::fs::read(first.lock_path()).unwrap(),
+            read_locked_marker(&mut first.file).unwrap(),
             held,
             "the loser must not replace or unlink the holder's marker"
         );
