@@ -3597,6 +3597,14 @@ impl ServerSocket {
             *path = new_path;
             return Ok(());
         }
+        if cfg!(windows) {
+            // A pipe keeps the name it was created with. Moving only its marker file would list
+            // the session under a name nobody can connect to, so it stays at its old path.
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "a named pipe can't be renamed, so the session keeps its socket",
+            ));
+        }
         let new_ownership = SocketOwnership::acquire(&new_path)?;
         if let Err(e) = std::fs::rename(&*path, &new_path) {
             new_ownership.release();
@@ -3692,6 +3700,23 @@ mod server_socket_tests {
         let _second_listener = second.bind().unwrap();
 
         assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_renamed_server_keeps_its_pipe_and_marker_where_they_are() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old-name");
+        let new_path = dir.path().join("new-name");
+        let server = ServerSocket::new(old_path.clone());
+        let _listener = server.bind().unwrap();
+
+        assert!(server.rename(new_path.clone()).is_err());
+
+        assert_eq!(server.path(), old_path);
+        assert!(old_path.exists());
+        assert!(!new_path.exists());
+        assert!(zellij_utils::consts::ipc_connect(&old_path).is_ok());
     }
 
     #[cfg(unix)]
