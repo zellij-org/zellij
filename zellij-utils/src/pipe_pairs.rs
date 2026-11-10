@@ -32,6 +32,14 @@ const EXPIRY_INTERVAL: Duration = Duration::from_secs(1);
 #[cfg(windows)]
 const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
 
+/// Default bound for callers that do not have a narrower admission limit.
+///
+/// This matches the server's pre-handshake connection ceiling: enough for a
+/// burst of attaches and status probes, while keeping unmatched halves and the
+/// completed-pair backlog finite.
+#[cfg(windows)]
+pub const DEFAULT_PAIR_CAPACITY: usize = 64;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Half {
     Request,
