@@ -183,7 +183,10 @@ mod tests {
         for style in ["ribbon_unselected", "ribbon_selected"] {
             for part in ["emphasis_1", "emphasis_2"] {
                 let found = slot(&contrasts, style, part).unwrap();
-                assert_eq!(backgrounds_of(&found), vec![format!("{}.background", style)]);
+                assert_eq!(
+                    backgrounds_of(&found),
+                    vec![format!("{}.background", style)]
+                );
             }
         }
     }

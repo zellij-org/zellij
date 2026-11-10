@@ -7939,12 +7939,14 @@ impl Themes {
                 let ribbon_unselected =
                     Themes::style_declaration_from_node(theme_config, "ribbon_unselected")?
                         .unwrap_or(DEFAULT_STYLES.ribbon_unselected);
-                let ribbon_hover = Themes::style_declaration_from_node(theme_config, "ribbon_hover")?
-                    .or(if declares_ribbon_unselected {
-                        None
-                    } else {
-                        DEFAULT_STYLES.ribbon_hover
-                    });
+                let ribbon_hover =
+                    Themes::style_declaration_from_node(theme_config, "ribbon_hover")?.or(
+                        if declares_ribbon_unselected {
+                            None
+                        } else {
+                            DEFAULT_STYLES.ribbon_hover
+                        },
+                    );
                 let s = Styling {
                     text_unselected: Themes::style_declaration_from_node(
                         theme_config,

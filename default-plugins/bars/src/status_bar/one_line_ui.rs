@@ -1281,9 +1281,9 @@ fn add_shortcut(
         let palette = help.style.colors;
         let hover = palette.ribbon_hover_style();
         let body = style!(hover.base, hover.background)
-        .bold()
-        .paint(format!(" {} ", text))
-        .to_string();
+            .bold()
+            .paint(format!(" {} ", text))
+            .to_string();
         hovered_ribbon_wrap(body, palette, supports_arrow_fonts)
     } else if dimmed {
         serialize_ribbon(&Text::from(format!("{}", text)).disabled())
@@ -1376,9 +1376,9 @@ fn add_shortcut_with_key_only(
         let palette = help.style.colors;
         let hover = palette.ribbon_hover_style();
         let body = style!(hover.emphasis_0, hover.background)
-        .bold()
-        .paint(format!(" {} ", key_string))
-        .to_string();
+            .bold()
+            .paint(format!(" {} ", key_string))
+            .to_string();
         hovered_ribbon_wrap(body, palette, supports_arrow_fonts)
     } else if help.session_dimmed.unwrap_or(false) {
         serialize_ribbon(&Text::from(format!("{}", key_string)).disabled())
