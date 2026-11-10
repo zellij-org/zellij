@@ -1354,6 +1354,7 @@ mod tests {
         assert!(!startup_card_should_open(StartupCard::Attention, 0, 5));
     }
 
+    #[cfg(unix)]
     fn service_capturing_screen(
         sock_dir: &Path,
     ) -> (
@@ -1373,6 +1374,7 @@ mod tests {
         (service, screen_receiver)
     }
 
+    #[cfg(unix)]
     fn card_openings(
         screen_receiver: &zellij_utils::channels::Receiver<(
             ScreenInstruction,
@@ -1390,6 +1392,7 @@ mod tests {
             .collect()
     }
 
+    #[cfg(unix)]
     fn configure_startup_card(service: &mut SessionSuggestionsService, startup_card: StartupCard) {
         service.handle(SessionSuggestionsJob::Configure {
             config: SessionSuggestionsConfig::default(),
@@ -1398,6 +1401,7 @@ mod tests {
         });
     }
 
+    #[cfg(unix)]
     fn start(service: &mut SessionSuggestionsService, card_for_client: Option<ClientId>) {
         service.handle(SessionSuggestionsJob::SessionStarted {
             name: "me".to_owned(),

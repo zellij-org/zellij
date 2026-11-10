@@ -8352,15 +8352,22 @@ mod admission_tests {
         env.plugin._allow_exec_host_cmd = false;
         exec_cmd(&env, Vec::new());
 
-        let touch = ["/usr/bin/touch", "/bin/touch"]
-            .into_iter()
-            .find(|path| std::path::Path::new(path).is_file())
-            .expect("touch is required to prove a denied exec_cmd does not spawn");
         let marker = dir.path().join("should-not-exist");
-        exec_cmd(
-            &env,
-            vec![touch.to_owned(), marker.to_string_lossy().into_owned()],
-        );
+        #[cfg(unix)]
+        let command = {
+            let touch = ["/usr/bin/touch", "/bin/touch"]
+                .into_iter()
+                .find(|path| std::path::Path::new(path).is_file())
+                .expect("touch is required to prove a denied exec_cmd does not spawn");
+            vec![touch.to_owned(), marker.to_string_lossy().into_owned()]
+        };
+        #[cfg(windows)]
+        let command = vec![
+            "cmd".to_owned(),
+            "/C".to_owned(),
+            format!("type nul > \"{}\"", marker.display()),
+        ];
+        exec_cmd(&env, command);
         let deadline = Instant::now() + Duration::from_millis(500);
         while Instant::now() < deadline && !marker.exists() {
             thread::sleep(Duration::from_millis(10));

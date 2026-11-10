@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use zellij_utils::channels::{self, SenderWithContext};
-use zellij_utils::data::{
-    Event, GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, Palette,
-};
+use zellij_utils::data::{Event, Palette};
+#[cfg(target_os = "linux")]
+use zellij_utils::data::{GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
@@ -84,15 +84,18 @@ impl MockOsApi {
     fn plan_rerun(&self, child_pid: u32, pidfd: Option<ChildPidFd>) {
         *self.rerun_child.lock().unwrap() = Some((child_pid, pidfd));
     }
+    #[cfg(target_os = "linux")]
     fn pid_lookups(&self) -> Vec<u32> {
         self.pid_lookups.lock().unwrap().clone()
     }
+    #[cfg(target_os = "linux")]
     fn clear_pid_lookups(&self) {
         self.pid_lookups.lock().unwrap().clear();
     }
     fn signals(&self) -> Vec<(&'static str, u32)> {
         self.signals.lock().unwrap().clone()
     }
+    #[cfg(target_os = "linux")]
     fn foreground_group_attempts(&self) -> Vec<(&'static str, u32)> {
         self.foreground_group_attempts.lock().unwrap().clone()
     }
