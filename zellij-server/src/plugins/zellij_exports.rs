@@ -5006,9 +5006,11 @@ fn kill_sessions(session_names: Vec<String>) {
                 continue;
             },
         };
+        // Pair the Windows request and reply pipes in one connect. The same
+        // helper is a timed unix connect. Five seconds matches the session probe.
         if let Err(e) = zellij_utils::sessions::send_kill_session(
             &resolved,
-            std::time::Duration::from_secs(5),
+            Duration::from_secs(5),
         ) {
             log::error!("Failed to kill session {}: {:?}", session_name, e);
         }
