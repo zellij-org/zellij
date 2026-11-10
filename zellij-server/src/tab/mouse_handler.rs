@@ -1728,6 +1728,13 @@ impl MouseHandler {
             let relative_position = pane_at_position.relative_position(&position);
             pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
+            let pane_id = pane_at_position.pid();
+            if click_event.left
+                && matches!(pane_id, PaneId::Plugin(_))
+                && !pane_at_position.supports_mouse_selection()
+            {
+                tab.selecting_with_mouse_in_pane = Some(pane_id);
+            }
             return Ok(MouseEffect::state_changed());
         }
 
