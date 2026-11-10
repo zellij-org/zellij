@@ -16,7 +16,10 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use tokio::sync::oneshot;
 use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
-use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
+use zellij_utils::data::{
+    BareKey, Direction, Event, KeyWithModifier, NewPanePlacement, Resize, ResizeStrategy,
+    WebSharing,
+};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
@@ -137,6 +140,27 @@ mod input_scope_regressions {
             })
             .collect();
         assert_eq!(pasted, vec![(Some(2), None, "scope".to_owned())]);
+    }
+
+    #[test]
+    fn targeted_plugin_input_falls_back_to_the_clientless_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        let enter = Some(KeyWithModifier::new(BareKey::Enter));
+        tab.write_to_pane_id(&enter, Vec::new(), true, PaneId::Plugin(2), Some(1), None)
+            .unwrap();
+        tab.write_to_pane_id(&enter, Vec::new(), true, PaneId::Plugin(2), Some(99), None)
+            .unwrap();
+        let audiences: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, client_id, event)| {
+                (pid == Some(2) && matches!(event, Event::Key(_))).then_some(client_id)
+            })
+            .collect();
+        assert_eq!(
+            audiences,
+            vec![Some(1), None],
+            "a client with an instance stays targeted; a control client without one addresses the pane"
+        );
     }
 
     #[test]

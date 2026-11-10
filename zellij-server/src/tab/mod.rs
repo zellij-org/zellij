@@ -1256,6 +1256,9 @@ pub trait Pane {
     fn take_notification_end(&mut self) -> Option<NotificationEnd> {
         None
     }
+    fn has_client_instance(&self, _client_id: ClientId) -> bool {
+        true
+    }
     fn attach_exit_waiter(&mut self, waiter: NotificationEnd) -> Option<NotificationEnd> {
         Some(waiter)
     }
@@ -6334,18 +6337,25 @@ impl Tab {
                 client_id,
             ) {
                 Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
+                    // A control client may not have an instance of this plugin
+                    // pane. The pane itself is then the audience; dropping the
+                    // key would make targeted CLI input silently disappear.
+                    let plugin_client_id =
+                        client_id.filter(|client_id| active_pane.has_client_instance(*client_id));
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(vec![(
                             Some(pid),
-                            client_id,
+                            plugin_client_id,
                             Event::Key(key_with_modifier),
                         )]))
                         .with_context(err_context)?;
                 },
                 Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                    let plugin_client_id =
+                        client_id.filter(|client_id| active_pane.has_client_instance(*client_id));
                     let mut plugin_updates = vec![];
                     for key in parse_keys(&adjusted_input) {
-                        plugin_updates.push((Some(pid), client_id, Event::Key(key)));
+                        plugin_updates.push((Some(pid), plugin_client_id, Event::Key(key)));
                     }
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))

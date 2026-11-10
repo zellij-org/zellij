@@ -258,6 +258,9 @@ impl Pane for PluginPane {
         }
         self.write_bytes(client_id, bytes);
     }
+    fn has_client_instance(&self, client_id: ClientId) -> bool {
+        self.grids.contains_key(&client_id)
+    }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         let own_content_columns = self.get_content_columns();
         let own_content_rows = self.get_content_rows();
