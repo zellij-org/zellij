@@ -2187,3 +2187,19 @@ fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
     let own = parser.feed(b"\x1b[?62;22c");
     assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
 }
+
+#[test]
+fn malformed_osc_does_not_leak_into_keyboard_residue() {
+    // OSC 内部出现裸 ESC（后接 `[`，不是 ST 终止）时，OSC 内容绝不能变成键盘输入。
+    // 真实病例：宿主对调色板索引 150 的应答 `ESC ] 4 ; 150 ; rgb:afaf/d7d7/8787` 被
+    // 截断后，`50;rgb:afaf/d7d7/8787` 曾作为键入内容回显在 pane 里。
+    let mut parser = StdinAnsiParser::new();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b]4;150;rgb:afaf/d7d7/8787\x1b[0m");
+    assert!(replies.is_empty(), "malformed OSC is not a host reply");
+    let leaked = residue.windows(b"rgb:afaf".len()).any(|w| w == b"rgb:afaf");
+    assert!(
+        !leaked,
+        "malformed OSC payload leaked into keyboard residue: {:?}",
+        String::from_utf8_lossy(&residue)
+    );
+}
