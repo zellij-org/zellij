@@ -2,23 +2,75 @@
 //!
 //! Windows gives a new pipe read access for every user and for anonymous logons. On Unix the
 //! sockets sit in a folder only their user can open, but pipe names are machine-wide on Windows,
-//! so each pipe carries its own access list instead.
+//! so each pipe carries its own access list instead. That folder also keeps other users from
+//! putting a socket where a zellij client looks for one; on Windows anyone can create a pipe at a
+//! name no zellij server holds yet, so clients check who owns the pipe they reached.
 
 use std::io;
+use std::os::windows::io::{AsHandle, AsRawHandle};
 use std::ptr;
 
+use interprocess::local_socket::Stream;
 use interprocess::os::windows::security_descriptor::{
     AsSecurityDescriptorExt, BorrowedSecurityDescriptor, SecurityDescriptor,
 };
 use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE};
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
+    SDDL_REVISION_1, SE_KERNEL_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    GetTokenInformation, TokenIntegrityLevel, TokenOwner, PSECURITY_DESCRIPTOR, PSID,
-    SECURITY_ATTRIBUTES, TOKEN_INFORMATION_CLASS, TOKEN_QUERY,
+    GetTokenInformation, TokenIntegrityLevel, TokenOwner, TokenUser, OWNER_SECURITY_INFORMATION,
+    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, TOKEN_INFORMATION_CLASS, TOKEN_QUERY,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+/// Refuses a pipe that another user created.
+pub fn check_owner(stream: &Stream) -> io::Result<()> {
+    let owner = owner_of(handle_of(stream))?;
+    if is_ours(&owner, &Identity::current()?) {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("the pipe belongs to another user ({})", owner),
+        ))
+    }
+}
+
+/// A pipe made by this user, or by this user elevated when this process is elevated too.
+fn is_ours(owner: &str, identity: &Identity) -> bool {
+    owner == identity.user || owner == identity.owner
+}
+
+fn handle_of(stream: &Stream) -> HANDLE {
+    match stream {
+        Stream::NamedPipe(pipe) => pipe.inner().as_handle().as_raw_handle(),
+    }
+}
+
+fn owner_of(handle: HANDLE) -> io::Result<String> {
+    let mut owner = ptr::null_mut();
+    let mut descriptor = ptr::null_mut();
+    let error = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut descriptor,
+        )
+    };
+    if error != 0 {
+        return Err(io::Error::from_raw_os_error(error as i32));
+    }
+    let sid = sid_string(owner);
+    unsafe { LocalFree(descriptor) };
+    sid
+}
 
 /// The security descriptor every zellij pipe listener is created with.
 pub fn private_descriptor() -> io::Result<SecurityDescriptor> {
@@ -89,6 +141,7 @@ impl Drop for Descriptor {
 /// Who this process runs as, as SID strings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Identity {
+    user: String,
     /// Who owns what this process creates: its user, or Administrators when it is elevated.
     owner: String,
     /// The integrity level, as its SID.
@@ -99,6 +152,7 @@ impl Identity {
     fn current() -> io::Result<Self> {
         let token = Token::open()?;
         Ok(Identity {
+            user: token.sid(TokenUser)?,
             owner: token.sid(TokenOwner)?,
             level: token.sid(TokenIntegrityLevel)?,
         })
@@ -167,18 +221,12 @@ unsafe fn wide_string(text: *const u16) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use interprocess::local_socket::Stream;
-    use std::os::windows::io::{AsHandle, AsRawHandle};
-    use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SE_KERNEL_OBJECT,
-    };
+    use windows_sys::Win32::Security::Authorization::ConvertSecurityDescriptorToStringSecurityDescriptorW;
     use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, LABEL_SECURITY_INFORMATION};
 
     /// The access list and label of the pipe a client is connected to.
     fn access_of(stream: &Stream) -> String {
-        let handle = match stream {
-            Stream::NamedPipe(pipe) => pipe.inner().as_handle().as_raw_handle(),
-        };
+        let handle = handle_of(stream);
         let parts = DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
         let mut descriptor = ptr::null_mut();
         let error = unsafe {
@@ -265,8 +313,43 @@ mod tests {
     }
 
     #[test]
+    fn a_client_reaches_a_pipe_its_own_user_made() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("session");
+        let _requests = crate::consts::ipc_bind(&path).unwrap();
+        let _replies = crate::consts::ipc_bind_reply(&path).unwrap();
+        crate::pipe_pairs::connect_pair(&path).unwrap();
+    }
+
+    #[test]
+    fn a_pipe_is_ours_when_our_user_or_our_elevated_self_made_it() {
+        let user = "S-1-5-21-1-2-3-1001";
+        let administrators = "S-1-5-32-544";
+        let normal = Identity {
+            user: user.to_owned(),
+            owner: user.to_owned(),
+            level: "S-1-16-8192".to_owned(),
+        };
+        let elevated = Identity {
+            user: user.to_owned(),
+            owner: administrators.to_owned(),
+            level: "S-1-16-12288".to_owned(),
+        };
+        assert!(is_ours(user, &normal));
+        assert!(is_ours(user, &elevated));
+        assert!(is_ours(administrators, &elevated));
+        assert!(
+            !is_ours(administrators, &normal),
+            "an elevated pipe is not a normal process's"
+        );
+        assert!(!is_ours("S-1-5-21-1-2-3-1002", &normal));
+        assert!(!is_ours("S-1-5-21-1-2-3-1002", &elevated));
+    }
+
+    #[test]
     fn the_access_list_names_the_owner_and_integrity_level() {
         let identity = Identity {
+            user: "S-1-5-21-1-2-3-1001".to_owned(),
             owner: "S-1-5-32-544".to_owned(),
             level: "S-1-16-12288".to_owned(),
         };
@@ -279,7 +362,7 @@ mod tests {
     #[test]
     fn this_process_has_an_identity() {
         let identity = Identity::current().unwrap();
-        for sid in [&identity.owner, &identity.level] {
+        for sid in [&identity.user, &identity.owner, &identity.level] {
             assert!(sid.starts_with("S-1-"), "{:?}", identity);
         }
         assert!(identity.level.starts_with("S-1-16-"), "{:?}", identity);

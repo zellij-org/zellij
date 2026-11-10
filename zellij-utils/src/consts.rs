@@ -166,7 +166,9 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(unix)]
@@ -222,7 +224,9 @@ pub fn ipc_connect_reply(
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(windows)]
