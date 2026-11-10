@@ -143,6 +143,21 @@ mod input_scope_regressions {
     }
 
     #[test]
+    fn targeted_plugin_paste_falls_back_to_the_clientless_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_pane_id_for_client(b"scope".to_vec(), PaneId::Plugin(2), Some(99), None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), None, "scope".to_owned())]);
+    }
+
+    #[test]
     fn targeted_plugin_input_falls_back_to_the_clientless_audience() {
         let (mut tab, receiver) = plugin_tab();
         let enter = Some(KeyWithModifier::new(BareKey::Enter));

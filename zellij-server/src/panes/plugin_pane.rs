@@ -341,11 +341,13 @@ impl Pane for PluginPane {
             if let Some(text_being_pasted) = self.text_being_pasted.take() {
                 match String::from_utf8(text_being_pasted) {
                     Ok(pasted_text) => {
+                        let audience =
+                            client_id.filter(|client_id| self.grids.contains_key(client_id));
                         let _ = self
                             .send_plugin_instructions
                             .send(PluginInstruction::Update(vec![(
                                 Some(self.pid),
-                                client_id,
+                                audience,
                                 Event::PastedText(pasted_text),
                             )]));
                     },
