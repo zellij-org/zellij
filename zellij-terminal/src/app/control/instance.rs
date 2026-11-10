@@ -107,14 +107,7 @@ pub(crate) fn spawn_answering(listeners: Listeners, handle: Handler) -> std::io:
     std::thread::Builder::new()
         .name("app_control".to_owned())
         .spawn(move || {
-            for stream in listeners.listener.incoming() {
-                let Ok(stream) = stream else {
-                    continue;
-                };
-                let reply = match listeners.reply_to(&stream) {
-                    Ok(reply) => reply,
-                    Err(_) => continue,
-                };
+            for (stream, reply) in listeners.connections() {
                 answer(stream, reply, &*handle);
             }
         })?;

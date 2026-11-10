@@ -7,10 +7,10 @@ use interprocess::local_socket::{Listener, Stream};
 #[cfg_attr(not(windows), path = "ipc/unix.rs")]
 mod os;
 
-pub use os::{connect_reply, remove_stale};
+pub use os::{connect, remove_stale};
 
 pub struct Listeners {
-    pub listener: Listener,
+    listener: Listener,
     replies: os::Replies,
 }
 
@@ -22,11 +22,13 @@ impl Listeners {
         Ok(Self { listener, replies })
     }
 
-    pub fn reply_to(&self, stream: &Stream) -> std::io::Result<Stream> {
-        self.replies.reply_to(stream)
+    /// Each connection that comes in, with the stream its answer goes back on.
+    pub fn connections(self) -> impl Iterator<Item = (Stream, Stream)> {
+        os::connections(self.listener, self.replies)
     }
 
-    pub fn push_reply(&self) -> std::io::Result<Option<Stream>> {
-        self.replies.push_reply()
+    /// Each connection that comes in, with its own reply stream where the platform needs one.
+    pub fn pushes(self) -> impl Iterator<Item = (Stream, Option<Stream>)> {
+        os::pushes(self.listener, self.replies)
     }
 }

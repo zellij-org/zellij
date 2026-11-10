@@ -7,8 +7,11 @@ use crate::desktop_integration::{
 
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
 use linux as platform;
+#[cfg(target_os = "macos")]
+use macos as platform;
 #[cfg(not(any(
     windows,
+    target_os = "macos",
     all(unix, not(target_os = "macos"), not(target_os = "android"))
 )))]
 use unsupported as platform;
@@ -105,6 +108,13 @@ fn removal_order(items: &[Item]) -> Vec<Item> {
     .into_iter()
     .filter(|item| items.contains(item))
     .collect()
+}
+
+/// Removes the app's own registration, icon and jump list, even when nothing else was
+/// installed.
+#[cfg(windows)]
+pub fn forget_app() -> Vec<String> {
+    windows_desktop::forget_app()
 }
 
 pub fn launcher_repair_offer() -> Option<crate::desktop_integration::RepairOffer> {
@@ -224,6 +234,7 @@ pub fn owned_status(item: Item, owner: Owner, state_text: impl Into<String>) -> 
         upgrade: None,
         target: None,
         removes: vec![],
+        display_name: None,
     }
 }
 
@@ -241,10 +252,8 @@ pub fn permanent_reason(environment: &Environment) -> Option<String> {
     if let Some(manager) = &environment.package_manager {
         return Some(format!("Installed by {} at {}", manager, running.display()));
     }
-    location::system_folder_for(
-        &std::fs::canonicalize(running).unwrap_or_else(|_| running.to_path_buf()),
-    )
-    .map(|folder| format!("Installed in {} at {}", folder, running.display()))
+    location::system_folder_for(&location::canonical(running))
+        .map(|folder| format!("Installed in {} at {}", folder, running.display()))
 }
 
 pub fn copy_state(environment: &Environment, destination: &Path) -> CopyState {
@@ -423,10 +432,57 @@ pub fn copy_binary(
         std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o755))
             .with_context(|| format!("failed to make {:?} runnable", temporary))?;
     }
-    std::fs::rename(&temporary, destination).inspect_err(|_| {
+    put_in_place(&temporary, destination).inspect_err(|_| {
         let _ = std::fs::remove_file(&temporary);
     })?;
     Ok(Some(crate::desktop_integration::fingerprint_bytes(&bytes)))
+}
+
+#[cfg(not(windows))]
+fn put_in_place(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(temporary, destination)
+}
+
+/// Windows will not replace a program while it runs, but lets it be renamed. So the old file is
+/// moved aside first and deleted as soon as nothing runs it, at the latest by the next copy.
+#[cfg(windows)]
+fn put_in_place(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    clear_set_aside(destination);
+    let aside = destination
+        .exists()
+        .then(|| destination.with_extension(format!("old-{}", std::process::id())));
+    if let Some(aside) = &aside {
+        std::fs::rename(destination, aside)?;
+    }
+    if let Err(e) = std::fs::rename(temporary, destination) {
+        if let Some(aside) = &aside {
+            let _ = std::fs::rename(aside, destination);
+        }
+        return Err(e);
+    }
+    if let Some(aside) = &aside {
+        let _ = std::fs::remove_file(aside);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn clear_set_aside(destination: &Path) {
+    let (Some(folder), Some(stem)) = (
+        destination.parent(),
+        destination.file_stem().and_then(|stem| stem.to_str()),
+    ) else {
+        return;
+    };
+    let prefix = format!("{}.old-", stem);
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 pub fn remove_recorded_copy(state: &IntegrationState) -> anyhow::Result<String> {
@@ -1392,13 +1448,17 @@ mod windows_desktop {
     use crate::desktop_integration::desktop_entry::start_menu;
     use crate::desktop_integration::terminal_command::terminal_command;
 
-    const EXPLORER_KEYS: [&str; 2] = [
+    const EXPLORER_KEYS: [&str; 3] = [
         r"Software\Classes\Directory\shell\Zellij",
         r"Software\Classes\Directory\Background\shell\Zellij",
+        r"Software\Classes\Drive\shell\Zellij",
     ];
     const ZELLIJ_KEY: &str = r"Software\Zellij";
 
     pub fn describe(environment: &mut Environment) {
+        if over_ssh(|key| std::env::var_os(key)) {
+            environment.no_desktop = Some("Not available over SSH".to_owned());
+        }
         let Some(binary) = environment.binary.clone() else {
             return;
         };
@@ -1407,9 +1467,11 @@ mod windows_desktop {
             environment.binary_permanent = true;
             return;
         }
-        environment.binary_permanent = copy_destination()
-            .map(|destination| location::same_file(&binary, &destination))
-            .unwrap_or(false);
+        environment.package_manager = location::package_manager_of(&binary);
+        environment.binary_permanent = location::system_install_of(&binary).is_some()
+            || copy_destination()
+                .map(|destination| location::same_file(&binary, &destination))
+                .unwrap_or(false);
         if !environment.binary_permanent {
             let downloads = known_folder(&FOLDERID_Downloads).ok();
             let temporary = vec![std::env::temp_dir()];
@@ -1439,10 +1501,16 @@ mod windows_desktop {
             .any(|root| registry::get_dword(root, ZELLIJ_KEY, name) == Some(1))
     }
 
+    /// The folder the installer uses for a per-user install, where earlier Zellij versions and
+    /// their files already are.
     fn copy_folder() -> Result<PathBuf> {
-        Ok(known_folder(&FOLDERID_LocalAppData)?
-            .join("Programs")
-            .join("Zellij"))
+        Ok(known_folder(&FOLDERID_LocalAppData)?.join("Zellij"))
+    }
+
+    /// The installer put a Zellij in the copy's folder, so it manages that file: a copy would
+    /// overwrite it behind the installer's back.
+    fn installer_owns(destination: &Path) -> bool {
+        installed_by_msi(destination)
     }
 
     fn copy_destination() -> Option<PathBuf> {
@@ -1454,34 +1522,67 @@ mod windows_desktop {
     pub fn items(environment: &Environment, state: &IntegrationState) -> Vec<ItemStatus> {
         vec![
             copy_binary_status(environment, state),
-            start_menu_status(state),
+            without_desktop(environment, Item::StartMenu)
+                .unwrap_or_else(|| start_menu_status(state)),
             ItemStatus::unavailable(
                 Item::DefaultTerminal,
                 "Not offered on Windows; use \"Open Zellij here\" in Explorer instead",
             ),
-            explorer_status(state),
+            without_desktop(environment, Item::ExplorerItem)
+                .unwrap_or_else(|| explorer_status(state)),
             ItemStatus::unavailable(Item::Launcher, "Linux only"),
         ]
     }
 
+    /// The Start menu and Explorer items are of no use without a desktop, as over SSH, or when
+    /// ZELLIJ_DESKTOP_INTEGRATION turns them off. The copy to a permanent folder still is.
+    fn without_desktop(environment: &Environment, item: Item) -> Option<ItemStatus> {
+        environment
+            .no_desktop
+            .as_ref()
+            .map(|reason| ItemStatus::unavailable(item, reason.clone()))
+    }
+
+    fn over_ssh(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+        ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+            .iter()
+            .any(|key| get(key).is_some_and(|value| !value.is_empty()))
+    }
+
     fn copy_binary_status(environment: &Environment, _state: &IntegrationState) -> ItemStatus {
         let target = copy_destination();
+        let shadow = shadowing_copy(environment, target.as_deref());
+        let noted = |text: String| match &shadow {
+            Some(note) => format!("{} {}", text, note),
+            None => text,
+        };
         if let Some(destination) = &target {
-            match super::copy_state(environment, destination) {
+            let copy_state = super::copy_state(environment, destination);
+            if !matches!(copy_state, super::CopyState::Permanent(_)) && installer_owns(destination)
+            {
+                return ItemStatus::already(
+                    Item::CopyBinary,
+                    noted(format!(
+                        "The Zellij installer manages {}, so a newer installer updates it",
+                        destination.display()
+                    )),
+                );
+            }
+            match copy_state {
                 super::CopyState::Permanent(reason) => {
-                    return ItemStatus::already(Item::CopyBinary, reason);
+                    return ItemStatus::already(Item::CopyBinary, noted(reason));
                 },
                 super::CopyState::Copied => {
                     return ItemStatus::already(
                         Item::CopyBinary,
-                        format!("Copied to {}", destination.display()),
+                        noted(format!("Copied to {}", destination.display())),
                     );
                 },
                 super::CopyState::Update(upgrade) => {
                     return owned_status(
                         Item::CopyBinary,
                         Owner::Nobody,
-                        super::upgrade_state_text(&destination, &upgrade),
+                        noted(super::upgrade_state_text(destination, &upgrade)),
                     )
                     .with_upgrade(upgrade)
                     .with_target(destination.clone());
@@ -1495,18 +1596,44 @@ mod windows_desktop {
         let status = owned_status(
             Item::CopyBinary,
             Owner::Nobody,
-            format!(
-                "{}{}",
-                environment.binary_location_note.clone().unwrap_or_default(),
-                destination
-            )
-            .trim()
-            .to_owned(),
+            noted(
+                format!(
+                    "{}{}",
+                    environment.binary_location_note.clone().unwrap_or_default(),
+                    destination
+                )
+                .trim()
+                .to_owned(),
+            ),
         );
         match target {
             Some(target) => status.with_target(target),
             None => status,
         }
+    }
+
+    /// Another Zellij that comes first on the PATH, so typing zellij in a terminal runs it rather
+    /// than this one or its permanent copy.
+    fn shadowing_copy(environment: &Environment, destination: Option<&Path>) -> Option<String> {
+        let name = crate::distribution::name();
+        let first = location::find_on_path(name)?;
+        let ours = [environment.binary.as_deref(), destination];
+        if ours
+            .into_iter()
+            .flatten()
+            .any(|path| location::same_file(&first, path))
+        {
+            return None;
+        }
+        let version = super::version_of(&first)
+            .map(|version| format!(" ({})", version))
+            .unwrap_or_default();
+        Some(format!(
+            "{}{} comes first on your PATH, so typing {} in a terminal runs that one.",
+            first.display(),
+            version,
+            name
+        ))
     }
 
     fn start_menu_status(state: &IntegrationState) -> ItemStatus {
@@ -1554,7 +1681,7 @@ mod windows_desktop {
             return owned_status(
                 Item::ExplorerItem,
                 owner,
-                "Right-click a folder to open Zellij there",
+                "Right-click a folder or a drive to open Zellij there",
             )
             .with_removes(
                 EXPLORER_KEYS
@@ -1566,7 +1693,7 @@ mod windows_desktop {
         owned_status(
             Item::ExplorerItem,
             Owner::Nobody,
-            "Adds \"Open Zellij here\" when right-clicking a folder",
+            "Adds \"Open Zellij here\" when right-clicking a folder or a drive",
         )
     }
 
@@ -1587,19 +1714,80 @@ mod windows_desktop {
     pub fn remove(item: Item, _environment: &Environment) -> Outcome {
         let result = match item {
             Item::CopyBinary => remove_copy(),
-            Item::StartMenu => remove_start_menu(),
-            Item::ExplorerItem => remove_explorer_item(),
+            Item::StartMenu => remove_start_menu().map(with_app_forgotten),
+            Item::ExplorerItem => remove_explorer_item().map(with_app_forgotten),
             _ => Err(anyhow::anyhow!("Not available on Windows")),
         };
         outcome(item, false, result)
     }
 
+    fn with_app_forgotten(message: String) -> String {
+        std::iter::once(message)
+            .chain(forget_app())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Removes what the app sets up for itself whenever it starts: the name and icon Windows
+    /// shows on its toasts, and its taskbar jump list. They come back if the app runs again.
+    pub fn forget_app() -> Vec<String> {
+        let name = crate::distribution::name();
+        let mut lines = vec![];
+        let key = crate::desktop_integration::windows_app_id_key(name);
+        if registry::key_exists(registry::Root::CurrentUser, &key) {
+            lines.push(
+                match registry::delete_tree(registry::Root::CurrentUser, &key) {
+                    Ok(()) => format!(r"Removed HKEY_CURRENT_USER\{}", key),
+                    Err(e) => format!("{:#}", e),
+                },
+            );
+        }
+        let icon = crate::desktop_integration::windows_app_icon_path(
+            &crate::consts::ZELLIJ_CACHE_DIR,
+            name,
+        );
+        if icon.exists() {
+            lines.push(match std::fs::remove_file(&icon) {
+                Ok(()) => format!("Removed {}", icon.display()),
+                Err(e) => format!("failed to remove {}: {}", icon.display(), e),
+            });
+        }
+        if load().windows.jump_list {
+            lines.push(match delete_jump_list() {
+                Ok(()) => {
+                    let _ = update(|state: &mut IntegrationState| state.windows.jump_list = false);
+                    "Removed the taskbar jump list".to_owned()
+                },
+                Err(e) => format!("failed to remove the taskbar jump list: {:#}", e),
+            });
+        }
+        lines
+    }
+
+    fn delete_jump_list() -> Result<()> {
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::Shell::{DestinationList, ICustomDestinationList};
+        let _com = Com::initialize()?;
+        unsafe {
+            let list: ICustomDestinationList =
+                CoCreateInstance(&DestinationList, None, CLSCTX_INPROC_SERVER)
+                    .context("failed to reach the jump list")?;
+            list.DeleteList(&windows::core::HSTRING::from(
+                crate::desktop_integration::windows_app_id(),
+            ))?;
+        }
+        Ok(())
+    }
+
     fn current_binary() -> Result<PathBuf> {
-        super::entry_binary(
-            &super::environment(),
-            copy_destination().as_deref(),
-            &load(),
-        )
+        let destination = copy_destination();
+        if let Some(installed) = destination
+            .as_ref()
+            .filter(|destination| destination.is_file() && installer_owns(destination))
+        {
+            return Ok(installed.clone());
+        }
+        super::entry_binary(&super::environment(), destination.as_deref(), &load())
     }
 
     fn install_copy(overwrite: bool) -> Result<String> {
@@ -1609,6 +1797,12 @@ mod windows_desktop {
             .file_name()
             .context("the running binary has no file name")?;
         let destination = folder.join(name);
+        if installer_owns(&destination) && !location::same_file(&source, &destination) {
+            bail!(
+                "The Zellij installer manages {}; run a newer installer to update it",
+                destination.display()
+            );
+        }
         let overwrite = overwrite
             || matches!(
                 super::copy_state(&super::environment(), &destination),
@@ -1636,17 +1830,33 @@ mod windows_desktop {
         };
         update(move |state: &mut IntegrationState| state.binary_copy = Some(record))?;
         if !location::path_contains(&folder) {
-            lines.push(format!(
-                "{} is not on your PATH; add it to run zellij from a terminal",
-                folder.display()
-            ));
+            lines.push(match add_to_user_path(&folder) {
+                Ok(added) => {
+                    if added {
+                        let recorded = folder.clone();
+                        update(move |state: &mut IntegrationState| {
+                            state.windows.added_to_path = Some(recorded)
+                        })?;
+                    }
+                    format!(
+                        "{} is on your PATH for terminals started from now on",
+                        folder.display()
+                    )
+                },
+                Err(e) => format!(
+                    "{} could not be added to your PATH ({:#}); add it to run {} from a terminal",
+                    folder.display(),
+                    e,
+                    crate::distribution::name()
+                ),
+            });
         }
         Ok(lines.join("\n"))
     }
 
     fn remove_copy() -> Result<String> {
         let state = load();
-        let message = super::remove_recorded_copy(&state)?;
+        let mut message = super::remove_recorded_copy(&state)?;
         if let Some(record) = &state.binary_copy {
             if let Some(folder) = record.destination.parent() {
                 let launcher = folder.join(format!("{}-terminal.exe", crate::distribution::name()));
@@ -1655,7 +1865,109 @@ mod windows_desktop {
                 }
             }
         }
+        let copy_gone = state
+            .binary_copy
+            .as_ref()
+            .map(|record| !record.destination.exists())
+            .unwrap_or(true);
+        if let (Some(folder), true) = (&state.windows.added_to_path, copy_gone) {
+            if remove_from_user_path(folder)? {
+                message.push_str(&format!("\nRemoved {} from your PATH", folder.display()));
+            }
+            update(|state: &mut IntegrationState| state.windows.added_to_path = None)?;
+        }
         Ok(message)
+    }
+
+    const ENVIRONMENT_KEY: &str = "Environment";
+
+    /// Adds `folder` at the end of the user's PATH, as the installer does. Tells whether it was
+    /// added, as opposed to there already.
+    fn add_to_user_path(folder: &Path) -> Result<bool> {
+        use windows_sys::Win32::System::Registry::REG_EXPAND_SZ;
+        let (value, kind) =
+            registry::get_raw_text(registry::Root::CurrentUser, ENVIRONMENT_KEY, "Path")
+                .unwrap_or_else(|| (String::new(), REG_EXPAND_SZ));
+        let Some(updated) = path_with(&value, &folder.display().to_string()) else {
+            return Ok(false);
+        };
+        registry::set_text(
+            registry::Root::CurrentUser,
+            ENVIRONMENT_KEY,
+            "Path",
+            &updated,
+            kind,
+        )?;
+        announce_environment_change();
+        Ok(true)
+    }
+
+    fn remove_from_user_path(folder: &Path) -> Result<bool> {
+        let Some((value, kind)) =
+            registry::get_raw_text(registry::Root::CurrentUser, ENVIRONMENT_KEY, "Path")
+        else {
+            return Ok(false);
+        };
+        let Some(updated) = path_without(&value, &folder.display().to_string()) else {
+            return Ok(false);
+        };
+        registry::set_text(
+            registry::Root::CurrentUser,
+            ENVIRONMENT_KEY,
+            "Path",
+            &updated,
+            kind,
+        )?;
+        announce_environment_change();
+        Ok(true)
+    }
+
+    /// Lets Explorer, and the programs it starts from now on, see the new PATH.
+    fn announce_environment_change() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
+        };
+        let area = registry::wide(ENVIRONMENT_KEY);
+        unsafe {
+            SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SETTINGCHANGE,
+                0,
+                area.as_ptr() as isize,
+                SMTO_ABORTIFHUNG,
+                5000,
+                std::ptr::null_mut(),
+            );
+        }
+    }
+
+    /// The PATH with `folder` added at the end, or nothing when it is there already.
+    fn path_with(value: &str, folder: &str) -> Option<String> {
+        if value.split(';').any(|entry| same_entry(entry, folder)) {
+            return None;
+        }
+        let kept = value.trim_end_matches(';');
+        Some(if kept.is_empty() {
+            folder.to_owned()
+        } else {
+            format!("{};{}", kept, folder)
+        })
+    }
+
+    /// The PATH without `folder`, or nothing when it is not there.
+    fn path_without(value: &str, folder: &str) -> Option<String> {
+        let entries: Vec<&str> = value.split(';').collect();
+        let kept: Vec<&str> = entries
+            .iter()
+            .copied()
+            .filter(|entry| !same_entry(entry, folder))
+            .collect();
+        (kept.len() != entries.len()).then(|| kept.join(";"))
+    }
+
+    fn same_entry(entry: &str, folder: &str) -> bool {
+        let tidy = |text: &str| text.trim().trim_end_matches('\\').to_lowercase();
+        !entry.trim().is_empty() && tidy(entry) == tidy(folder)
     }
 
     fn install_start_menu() -> Result<String> {
@@ -1734,7 +2046,8 @@ mod windows_desktop {
         use windows_sys::Win32::System::Registry::{
             RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegGetValueW, RegOpenKeyExW,
             RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE,
-            REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+            REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RRF_NOEXPAND, RRF_RT_REG_DWORD,
+            RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
         };
 
         #[derive(Clone, Copy)]
@@ -1750,7 +2063,7 @@ mod windows_desktop {
             }
         }
 
-        fn wide(text: &str) -> Vec<u16> {
+        pub(super) fn wide(text: &str) -> Vec<u16> {
             text.encode_utf16().chain(std::iter::once(0)).collect()
         }
 
@@ -1767,14 +2080,34 @@ mod windows_desktop {
         }
 
         pub fn get_string(at: Root, key: &str, name: &str) -> Option<String> {
+            get_text(at, key, name, RRF_RT_REG_SZ).map(|(text, _)| text)
+        }
+
+        /// A text value as it is stored, `%VARIABLES%` unexpanded, with its type.
+        pub fn get_raw_text(at: Root, key: &str, name: &str) -> Option<(String, REG_VALUE_TYPE)> {
+            get_text(
+                at,
+                key,
+                name,
+                RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+            )
+        }
+
+        fn get_text(
+            at: Root,
+            key: &str,
+            name: &str,
+            flags: u32,
+        ) -> Option<(String, REG_VALUE_TYPE)> {
             let mut size: u32 = 0;
+            let mut kind: REG_VALUE_TYPE = REG_SZ;
             let first = unsafe {
                 RegGetValueW(
                     root(at),
                     wide(key).as_ptr(),
                     wide(name).as_ptr(),
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
+                    flags,
+                    &mut kind,
                     std::ptr::null_mut(),
                     &mut size,
                 )
@@ -1788,8 +2121,8 @@ mod windows_desktop {
                     root(at),
                     wide(key).as_ptr(),
                     wide(name).as_ptr(),
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
+                    flags,
+                    &mut kind,
                     buffer.as_mut_ptr() as *mut _,
                     &mut size,
                 )
@@ -1798,7 +2131,7 @@ mod windows_desktop {
                 return None;
             }
             let end = buffer.iter().position(|c| *c == 0).unwrap_or(buffer.len());
-            Some(String::from_utf16_lossy(&buffer[..end]))
+            Some((String::from_utf16_lossy(&buffer[..end]), kind))
         }
 
         pub fn get_dword(at: Root, key: &str, name: &str) -> Option<u32> {
@@ -1819,6 +2152,16 @@ mod windows_desktop {
         }
 
         pub fn set_string(at: Root, key: &str, name: &str, value: &str) -> Result<()> {
+            set_text(at, key, name, value, REG_SZ)
+        }
+
+        pub fn set_text(
+            at: Root,
+            key: &str,
+            name: &str,
+            value: &str,
+            kind: REG_VALUE_TYPE,
+        ) -> Result<()> {
             let mut handle: HKEY = std::ptr::null_mut();
             let created = unsafe {
                 RegCreateKeyExW(
@@ -1843,7 +2186,7 @@ mod windows_desktop {
                     handle,
                     name.as_ptr(),
                     0,
-                    REG_SZ,
+                    kind,
                     data.as_ptr() as *const u8,
                     (data.len() * std::mem::size_of::<u16>()) as u32,
                 )
@@ -1863,10 +2206,784 @@ mod windows_desktop {
             }
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_copy_folder_is_added_at_the_end_of_the_path_once() {
+            let folder = r"C:\Users\me\AppData\Local\Zellij";
+            assert_eq!(
+                path_with(r"%USERPROFILE%\bin;C:\tools", folder).as_deref(),
+                Some(r"%USERPROFILE%\bin;C:\tools;C:\Users\me\AppData\Local\Zellij")
+            );
+            assert_eq!(
+                path_with(r"C:\tools;", folder).as_deref(),
+                Some(r"C:\tools;C:\Users\me\AppData\Local\Zellij")
+            );
+            assert_eq!(path_with("", folder).as_deref(), Some(folder));
+            assert_eq!(
+                path_with(r"c:\users\ME\appdata\local\zellij\;C:\tools", folder),
+                None,
+                "already there, spelled differently"
+            );
+        }
+
+        #[test]
+        fn only_the_copy_folder_is_taken_off_the_path() {
+            let folder = r"C:\Users\me\AppData\Local\Zellij";
+            assert_eq!(
+                path_without(
+                    r"C:\tools;C:\Users\me\AppData\Local\Zellij;%USERPROFILE%\bin",
+                    folder
+                )
+                .as_deref(),
+                Some(r"C:\tools;%USERPROFILE%\bin")
+            );
+            assert_eq!(path_without(r"C:\tools", folder), None);
+        }
+
+        #[test]
+        fn the_desktop_items_wait_for_a_desktop_but_the_copy_does_not() {
+            let mut environment = Environment::default();
+            assert!(without_desktop(&environment, Item::StartMenu).is_none());
+            environment.no_desktop = Some("Turned off by ZELLIJ_DESKTOP_INTEGRATION".to_owned());
+            for item in [Item::StartMenu, Item::ExplorerItem] {
+                let status = without_desktop(&environment, item).unwrap();
+                assert!(!status.available);
+                assert_eq!(
+                    status.state_text,
+                    "Turned off by ZELLIJ_DESKTOP_INTEGRATION"
+                );
+            }
+        }
+
+        #[test]
+        fn an_ssh_session_has_no_desktop() {
+            let from_ssh = |key: &str| {
+                (key == "SSH_CONNECTION")
+                    .then(|| std::ffi::OsString::from("10.0.0.2 5 10.0.0.1 22"))
+            };
+            assert!(over_ssh(from_ssh));
+            assert!(!over_ssh(|_| None));
+            assert!(!over_ssh(|_| Some(std::ffi::OsString::new())));
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use std::path::{Path, PathBuf};
+
+    use anyhow::{bail, Context, Result};
+
+    use super::{copy_binary, outcome, owned_status};
+    use crate::desktop_integration::macos_bundle::{self, Build, Installed};
+    use crate::desktop_integration::{
+        load, location, update, BinaryCopyRecord, Environment, IntegrationState, Item, ItemStatus,
+        Outcome, Owner, RepairOffer, Upgrade,
+    };
+
+    pub(super) struct Running {
+        pub path: PathBuf,
+        pub version: String,
+        pub build: Build,
+    }
+
+    fn home() -> Option<PathBuf> {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|h| h.is_absolute())
+    }
+
+    fn copy_destination() -> Option<PathBuf> {
+        home().map(|h| {
+            h.join(".local")
+                .join("bin")
+                .join(crate::distribution::name())
+        })
+    }
+
+    pub fn describe(environment: &mut Environment) {
+        if over_ssh(|key| std::env::var_os(key)) {
+            environment.no_desktop = Some("Not available over SSH".to_owned());
+        }
+        if let Some(binary) = environment.binary.clone() {
+            environment.package_manager = location::package_manager_of(&binary);
+            environment.binary_permanent = location::system_install_of(&binary).is_some()
+                || copy_destination()
+                    .map(|destination| location::same_file(&binary, &destination))
+                    .unwrap_or(false);
+            if !environment.binary_permanent {
+                let downloads = home().map(|h| h.join("Downloads"));
+                let place =
+                    location::place_of(&binary, downloads.as_deref(), &location::temporary_dirs());
+                environment.binary_location_note = Some(location::place_note(place));
+            }
+        }
+    }
+
+    pub fn items(environment: &Environment, _state: &IntegrationState) -> Vec<ItemStatus> {
+        let copy = match copy_destination() {
+            Some(destination) => copy_binary_status(environment, &destination),
+            None => ItemStatus::unavailable(Item::CopyBinary, "There is no home folder"),
+        };
+        let app = match (macos_bundle::applications_dir(), running(environment)) {
+            (Ok(applications), Some(running)) => app_item(environment, &applications, &running),
+            (Err(e), _) => ItemStatus::unavailable(Item::Launcher, format!("{:#}", e)),
+            (_, None) => {
+                ItemStatus::unavailable(Item::Launcher, "The running zellij could not be found")
+            },
+        };
+        vec![
+            copy,
+            app,
+            other_item(Item::DefaultTerminal),
+            other_item(Item::StartMenu),
+            other_item(Item::ExplorerItem),
+        ]
+    }
+
+    pub(super) fn app_item(
+        environment: &Environment,
+        applications: &Path,
+        running: &Running,
+    ) -> ItemStatus {
+        if let Some(reason) = &environment.no_desktop {
+            return ItemStatus::unavailable(Item::Launcher, reason.clone());
+        }
+        let bundle = macos_bundle::bundle_path(applications);
+        let installed = macos_bundle::installed(applications);
+        if installed.is_none() && bundle.symlink_metadata().is_ok() {
+            return owned_status(
+                Item::Launcher,
+                Owner::Someone,
+                format!("{} is not Zellij's, so it is left alone", bundle.display()),
+            )
+            .with_display_name(macos_bundle::bundle_name())
+            .with_target(bundle);
+        }
+        app_status(installed.as_ref(), &bundle, running)
+    }
+
+    pub(super) fn over_ssh(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+        ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+            .iter()
+            .any(|key| get(key).is_some_and(|value| !value.is_empty()))
+    }
+
+    fn running(environment: &Environment) -> Option<Running> {
+        let path = environment.binary.clone()?;
+        let build = macos_bundle::build_of(&path)?;
+        Some(Running {
+            path,
+            version: crate::distribution::distribution().version.to_owned(),
+            build,
+        })
+    }
+
+    pub(super) fn app_status(
+        installed: Option<&Installed>,
+        bundle: &Path,
+        running: &Running,
+    ) -> ItemStatus {
+        let name = macos_bundle::bundle_name();
+        let base = ItemStatus {
+            available: true,
+            changeable: true,
+            owner: Owner::Zellij,
+            ..ItemStatus::unavailable(Item::Launcher, "")
+        }
+        .with_display_name(name.clone())
+        .with_target(bundle.to_path_buf());
+        if macos_bundle::is_inside_a_bundle(&running.path) {
+            return ItemStatus {
+                installed: installed.is_some(),
+                changeable: false,
+                state_text: format!("This is the copy of Zellij inside {}", name),
+                ..base
+            }
+            .with_hint(format!(
+                "To update {}, run zellij setup --install-desktop-entry from a terminal",
+                name
+            ));
+        }
+        match installed {
+            None => ItemStatus {
+                state_text: format!("{} is not installed", name),
+                ..base
+            },
+            Some(app) => {
+                // Don't offer to "update" an app that was built from a newer zellij.
+                let newer = crate::desktop_integration::version_number(&app.version)
+                    > crate::desktop_integration::version_number(&running.version);
+                let current =
+                    newer || (app.version == running.version && app.build == running.build);
+                let status = ItemStatus {
+                    installed: current,
+                    state_text: format!(
+                        "{} {} is installed in {}",
+                        name,
+                        app.version,
+                        parent_of(bundle)
+                    ),
+                    ..base
+                }
+                .with_removes(vec![bundle.display().to_string()]);
+                if current {
+                    status
+                } else {
+                    status.with_upgrade(Upgrade {
+                        path: bundle.to_path_buf(),
+                        from: app.version.clone(),
+                        to: running.version.clone(),
+                        same_version: app.version == running.version,
+                    })
+                }
+            },
+        }
+    }
+
+    fn parent_of(bundle: &Path) -> String {
+        bundle
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn copy_binary_status(environment: &Environment, destination: &Path) -> ItemStatus {
+        // The binary inside the app has been re-signed, so a copy of it would never match
+        // the app.
+        if let Some(running) = environment
+            .binary
+            .as_deref()
+            .filter(|b| macos_bundle::is_inside_a_bundle(b))
+        {
+            return ItemStatus::unavailable(
+                Item::CopyBinary,
+                format!(
+                    "{} is the copy of Zellij inside {}",
+                    running.display(),
+                    macos_bundle::bundle_name()
+                ),
+            )
+            .with_hint(format!(
+                "To put zellij on your PATH, run zellij setup --copy-to-permanent-folder \
+                 from the zellij you made {} from",
+                macos_bundle::bundle_name()
+            ));
+        }
+        let mut text = match super::copy_state(environment, destination) {
+            super::CopyState::Permanent(reason) => {
+                return ItemStatus::already(Item::CopyBinary, reason);
+            },
+            super::CopyState::Copied => {
+                return ItemStatus::already(
+                    Item::CopyBinary,
+                    format!("Copied to {}", destination.display()),
+                );
+            },
+            super::CopyState::Update(upgrade) => {
+                return owned_status(
+                    Item::CopyBinary,
+                    Owner::Nobody,
+                    super::upgrade_state_text(destination, &upgrade),
+                )
+                .with_upgrade(upgrade)
+                .with_target(destination.to_path_buf());
+            },
+            super::CopyState::Occupied => format!(
+                "A different file is already at {}, replacing it asks first.",
+                destination.display()
+            ),
+            super::CopyState::Fresh => String::new(),
+        };
+        text = environment
+            .binary_location_note
+            .clone()
+            .map(|note| format!("{} {}", note, text))
+            .unwrap_or(text);
+        text.push_str(&format!(
+            " It would be copied to {}.",
+            destination.display()
+        ));
+        if let Some(dir) = destination.parent() {
+            if !location::path_contains(dir) {
+                text.push_str(&format!(
+                    " {} is not on your PATH, so add it to run `zellij` from a terminal.",
+                    dir.display()
+                ));
+            }
+        }
+        owned_status(Item::CopyBinary, Owner::Nobody, text.trim().to_owned())
+            .with_target(destination.to_path_buf())
+    }
+
+    pub(super) fn other_item(item: Item) -> ItemStatus {
+        let reason = match item {
+            Item::DefaultTerminal => "Not available on macOS",
+            Item::StartMenu | Item::ExplorerItem => "Windows only",
+            Item::Launcher | Item::CopyBinary => "Not available here",
+        };
+        ItemStatus::unavailable(item, reason)
+    }
+
+    pub fn repair_offer(_state: &IntegrationState) -> Option<RepairOffer> {
+        None
+    }
+
+    pub fn install(item: Item, environment: &Environment, overwrite: bool) -> Outcome {
+        let result = match item {
+            Item::Launcher => install_app(environment),
+            Item::CopyBinary => install_copy(environment, overwrite),
+            other => Err(anyhow::anyhow!(other_item(other).state_text)),
+        };
+        outcome(item, true, result)
+    }
+
+    pub fn remove(item: Item, _environment: &Environment) -> Outcome {
+        let result = match item {
+            Item::Launcher => macos_bundle::applications_dir()
+                .and_then(|applications| macos_bundle::uninstall(&applications))
+                .map(|removed| removed_message(removed.as_deref())),
+            Item::CopyBinary => super::remove_recorded_copy(&load()),
+            other => Err(anyhow::anyhow!(other_item(other).state_text)),
+        };
+        outcome(item, false, result)
+    }
+
+    fn install_copy(environment: &Environment, overwrite: bool) -> Result<String> {
+        let source = environment
+            .binary
+            .clone()
+            .context("The running zellij could not be found")?;
+        let destination = copy_destination().context("there is no home folder")?;
+        let upgrade = match super::copy_state(environment, &destination) {
+            super::CopyState::Update(upgrade) => Some(upgrade),
+            _ => None,
+        };
+        let overwrite = overwrite || upgrade.is_some();
+        let existed = destination.exists();
+        let Some(fingerprint) = copy_keeping_build(&source, &destination, overwrite)? else {
+            return Ok(format!("{} is this copy already", destination.display()));
+        };
+        let record = BinaryCopyRecord {
+            destination: destination.clone(),
+            created: !existed || (overwrite && upgrade.is_none()),
+            fingerprint,
+        };
+        update(move |state: &mut IntegrationState| state.binary_copy = Some(record))?;
+        let mut message = format!("Wrote {}", destination.display());
+        match &upgrade {
+            Some(upgrade) if upgrade.same_version => {
+                message.push_str(&format!(
+                    "\nReplaced the other build of Zellij {} with this one",
+                    upgrade.to
+                ));
+            },
+            Some(upgrade) => {
+                message.push_str(&format!(
+                    "\nUpdated Zellij from {} to {}",
+                    upgrade.from, upgrade.to
+                ));
+            },
+            None => {},
+        }
+        if let Some(dir) = destination.parent() {
+            if !location::path_contains(dir) {
+                message.push_str(&format!(
+                    "\n{} is not on your PATH yet; add it to run `zellij` from a terminal",
+                    dir.display()
+                ));
+            }
+        }
+        Ok(message)
+    }
+
+    /// Like `copy_binary`, but keeps the source's mtime, so the app sees both files as the
+    /// same build.
+    pub(super) fn copy_keeping_build(
+        source: &Path,
+        destination: &Path,
+        overwrite: bool,
+    ) -> Result<Option<String>> {
+        let fingerprint = copy_binary(source, destination, overwrite)?;
+        if fingerprint.is_some() {
+            let kept = source
+                .metadata()
+                .and_then(|m| m.modified())
+                .and_then(|modified| {
+                    std::fs::File::options()
+                        .write(true)
+                        .open(destination)?
+                        .set_modified(modified)
+                });
+            if let Err(e) = kept {
+                log::warn!("failed to give {:?} its source's time: {}", destination, e);
+            }
+        }
+        Ok(fingerprint)
+    }
+
+    fn install_app(environment: &Environment) -> Result<String> {
+        let binary = environment
+            .binary
+            .clone()
+            .context("The running zellij could not be found")?;
+        if macos_bundle::is_inside_a_bundle(&binary) {
+            bail!(
+                "This is the copy of Zellij inside {}. To update it, run zellij setup \
+                 --install-desktop-entry from a terminal",
+                macos_bundle::bundle_name()
+            );
+        }
+        let applications = macos_bundle::applications_dir()?;
+        let bundle = macos_bundle::install(&applications, &binary, macos_bundle::codesign)?;
+        Ok(installed_message(&bundle))
+    }
+
+    pub(super) fn installed_message(bundle: &Path) -> String {
+        format!(
+            "Wrote {}\nRestart Zellij to use the new version.",
+            bundle.display()
+        )
+    }
+
+    pub(super) fn removed_message(removed: Option<&Path>) -> String {
+        match removed {
+            Some(bundle) => format!("Removed {}\nQuit Zellij to finish.", bundle.display()),
+            None => "Nothing written by Zellij was found".to_owned(),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::desktop_integration::macos_bundle::Installed;
+        use crate::desktop_integration::{Owner, Upgrade};
+        use std::path::{Path, PathBuf};
+
+        const BUNDLE: &str = "/Users/me/Applications/Zellij.app";
+        const RUNNING: &str = "/opt/homebrew/bin/zellij";
+
+        fn status(
+            installed: Option<Installed>,
+            version: &str,
+            len: u64,
+            inside: bool,
+        ) -> ItemStatus {
+            status_of_build(installed, version, Build { len, modified: 1 }, inside)
+        }
+
+        fn status_of_build(
+            installed: Option<Installed>,
+            version: &str,
+            build: Build,
+            inside: bool,
+        ) -> ItemStatus {
+            app_status(
+                installed.as_ref(),
+                Path::new(BUNDLE),
+                &Running {
+                    path: PathBuf::from(if inside {
+                        "/Users/me/Applications/Zellij.app/Contents/MacOS/zellij"
+                    } else {
+                        RUNNING
+                    }),
+                    version: version.to_owned(),
+                    build,
+                },
+            )
+        }
+
+        fn at(version: &str, len: u64) -> Option<Installed> {
+            Some(Installed {
+                version: version.to_owned(),
+                build: Build { len, modified: 1 },
+            })
+        }
+
+        #[test]
+        fn a_rebuild_of_the_same_size_offers_a_reinstall() {
+            let installed = Some(Installed {
+                version: "0.46.0".to_owned(),
+                build: Build {
+                    len: 10,
+                    modified: 1,
+                },
+            });
+            let s = status_of_build(
+                installed,
+                "0.46.0",
+                Build {
+                    len: 10,
+                    modified: 2,
+                },
+                false,
+            );
+            assert!(!s.installed && s.changeable);
+            assert!(s.upgrade.is_some());
+        }
+
+        #[test]
+        fn an_app_not_installed_is_offered() {
+            let s = status(None, "0.46.0", 10, false);
+            assert_eq!(s.item, Item::Launcher);
+            assert!(s.available && s.changeable && !s.installed);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.display_name.as_deref(), Some("Zellij.app"));
+        }
+
+        #[test]
+        fn an_app_made_from_this_binary_is_installed_and_removable() {
+            let s = status(at("0.46.0", 10), "0.46.0", 10, false);
+            assert!(s.available && s.changeable && s.installed);
+            assert_eq!(s.owner, Owner::Zellij);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.removes, vec![BUNDLE.to_owned()]);
+        }
+
+        #[test]
+        fn another_version_offers_an_update() {
+            let s = status(at("0.45.1", 10), "0.46.0", 10, false);
+            assert!(s.available && s.changeable && !s.installed);
+            assert_eq!(
+                s.upgrade,
+                Some(Upgrade {
+                    path: PathBuf::from(BUNDLE),
+                    from: "0.45.1".to_owned(),
+                    to: "0.46.0".to_owned(),
+                    same_version: false,
+                })
+            );
+        }
+
+        #[test]
+        fn a_newer_app_is_not_offered_as_a_downgrade() {
+            let s = status(at("0.47.0", 10), "0.46.0", 10, false);
+            assert!(s.installed && s.changeable, "{:?}", s);
+            assert_eq!(s.upgrade, None);
+            assert_eq!(s.removes, vec![BUNDLE.to_owned()]);
+        }
+
+        fn running_here() -> Running {
+            Running {
+                path: PathBuf::from(RUNNING),
+                version: "0.46.0".to_owned(),
+                build: Build {
+                    len: 10,
+                    modified: 1,
+                },
+            }
+        }
+
+        #[test]
+        fn an_app_that_is_not_zellijs_is_left_alone() {
+            let dir = tempfile::tempdir().unwrap();
+            let bundle = macos_bundle::bundle_path(dir.path());
+            std::fs::create_dir_all(bundle.join("Contents")).unwrap();
+            let s = app_item(&Environment::default(), dir.path(), &running_here());
+            assert!(s.installed && !s.changeable, "{:?}", s);
+            assert_eq!(s.owner, Owner::Someone);
+            assert!(s.state_text.contains("left alone"), "{}", s.state_text);
+        }
+
+        #[test]
+        fn the_app_is_not_offered_without_a_desktop() {
+            let dir = tempfile::tempdir().unwrap();
+            let environment = Environment {
+                no_desktop: Some("Not available over SSH".to_owned()),
+                ..Environment::default()
+            };
+            let s = app_item(&environment, dir.path(), &running_here());
+            assert!(!s.available && !s.changeable, "{:?}", s);
+            assert_eq!(s.state_text, "Not available over SSH");
+        }
+
+        #[test]
+        fn an_ssh_session_has_no_desktop() {
+            let only = |name: &'static str| {
+                move |key: &str| (key == name).then(|| std::ffi::OsString::from("x"))
+            };
+            assert!(over_ssh(only("SSH_CONNECTION")));
+            assert!(over_ssh(only("SSH_TTY")));
+            assert!(!over_ssh(only("TERM")));
+        }
+
+        #[test]
+        fn same_version_rebuild_offers_a_reinstall() {
+            let s = status(at("0.46.0", 10), "0.46.0", 11, false);
+            assert!(!s.installed && s.changeable);
+            let upgrade = s.upgrade.unwrap();
+            assert_eq!(
+                (upgrade.from.as_str(), upgrade.to.as_str()),
+                ("0.46.0", "0.46.0")
+            );
+            assert!(upgrade.same_version);
+        }
+
+        #[test]
+        fn from_inside_the_app_nothing_can_be_changed() {
+            let s = status(at("0.46.0", 10), "0.46.0", 10, true);
+            assert!(s.installed && !s.changeable);
+            assert!(
+                s.hint
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("zellij setup --install-desktop-entry"),
+                "{:?}",
+                s.hint
+            );
+        }
+
+        fn running_from(binary: &Path) -> Environment {
+            Environment {
+                binary: Some(binary.to_path_buf()),
+                ..Environment::default()
+            }
+        }
+
+        #[test]
+        fn copy_is_offered_for_a_binary_outside_the_path() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("Downloads").join("zellij");
+            std::fs::create_dir_all(running.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"zellij").unwrap();
+            let destination = dir.path().join(".local").join("bin").join("zellij");
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert_eq!(s.item, Item::CopyBinary);
+            assert!(s.available && s.changeable && !s.installed, "{:?}", s);
+            assert_eq!(s.target.as_deref(), Some(destination.as_path()));
+            assert!(
+                s.state_text
+                    .contains(&format!("It would be copied to {}", destination.display())),
+                "{}",
+                s.state_text
+            );
+            assert!(
+                s.state_text.contains("is not on your PATH"),
+                "{}",
+                s.state_text
+            );
+        }
+
+        #[test]
+        fn another_build_of_the_same_version_is_offered_as_a_replacement() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let destination = dir.path().join("bin").join("zellij");
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"this build").unwrap();
+            std::fs::write(
+                &destination,
+                format!("#!/bin/sh\necho zellij {}\n", crate::consts::VERSION),
+            )
+            .unwrap();
+            std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert!(
+                s.upgrade.as_ref().is_some_and(|u| u.same_version),
+                "{:?}",
+                s
+            );
+            assert_eq!(
+                s.state_text,
+                format!(
+                    "{} is a different build of Zellij {}",
+                    destination.display(),
+                    crate::consts::VERSION
+                )
+            );
+        }
+
+        #[test]
+        fn a_binary_already_copied_shows_as_copied() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let destination = dir.path().join("bin").join("zellij");
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&running, b"zellij").unwrap();
+            std::fs::write(&destination, b"zellij").unwrap();
+            let s = copy_binary_status(&running_from(&running), &destination);
+            assert!(s.installed && !s.changeable, "{:?}", s);
+            assert_eq!(s.state_text, format!("Copied to {}", destination.display()));
+        }
+
+        #[test]
+        fn the_copy_counts_as_the_same_build_as_its_source() {
+            let dir = tempfile::tempdir().unwrap();
+            let running = dir.path().join("zellij");
+            let copy = dir.path().join("bin").join("zellij");
+            std::fs::write(&running, b"zellij").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            copy_keeping_build(&running, &copy, false).unwrap();
+            let source = macos_bundle::build_of(&running).unwrap();
+            assert_eq!(macos_bundle::build_of(&copy), Some(source));
+            let app = Installed {
+                version: "0.46.0".to_owned(),
+                build: source,
+            };
+            let from_copy = app_status(
+                Some(&app),
+                Path::new(BUNDLE),
+                &Running {
+                    path: copy.clone(),
+                    version: "0.46.0".to_owned(),
+                    build: macos_bundle::build_of(&copy).unwrap(),
+                },
+            );
+            assert!(
+                from_copy.installed && from_copy.upgrade.is_none(),
+                "{:?}",
+                from_copy
+            );
+        }
+
+        #[test]
+        fn copy_is_not_offered_from_inside_the_app() {
+            let s = copy_binary_status(
+                &running_from(Path::new(
+                    "/Users/me/Applications/Zellij.app/Contents/MacOS/zellij",
+                )),
+                Path::new("/Users/me/.local/bin/zellij"),
+            );
+            assert!(!s.available && !s.changeable, "{:?}", s);
+            assert!(
+                s.state_text.contains("inside Zellij.app"),
+                "{}",
+                s.state_text
+            );
+        }
+
+        #[test]
+        fn the_other_items_are_unavailable_on_macos() {
+            for item in [Item::DefaultTerminal, Item::StartMenu, Item::ExplorerItem] {
+                let s = other_item(item);
+                assert_eq!(s.item, item);
+                assert!(!s.available && !s.changeable && !s.installed, "{:?}", item);
+                assert!(!s.state_text.is_empty());
+            }
+        }
+
+        #[test]
+        fn messages_say_what_to_do_next() {
+            assert!(installed_message(Path::new(BUNDLE))
+                .ends_with("Restart Zellij to use the new version."));
+            assert!(installed_message(Path::new(BUNDLE)).starts_with(&format!("Wrote {}", BUNDLE)));
+            assert_eq!(
+                removed_message(Some(Path::new(BUNDLE))),
+                format!("Removed {}\nQuit Zellij to finish.", BUNDLE)
+            );
+            assert_eq!(removed_message(None), "Nothing written by Zellij was found");
+        }
+    }
 }
 
 #[cfg(not(any(
     windows,
+    target_os = "macos",
     all(unix, not(target_os = "macos"), not(target_os = "android"))
 )))]
 mod unsupported {
@@ -1963,5 +3080,46 @@ mod tests {
         assert!(copy_binary(&source, &destination, true).unwrap().is_some());
         assert_eq!(std::fs::read(&destination).unwrap(), b"new");
         assert!(copy_binary(&source, &destination, false).unwrap().is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_copy_that_is_running_is_replaced() {
+        struct Running(std::process::Child);
+        impl Drop for Running {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let dir = tempfile::TempDir::new().unwrap();
+        let destination = dir.path().join("zellij.exe");
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+        std::fs::copy(system.join("PING.EXE"), &destination).unwrap();
+        let running = Running(
+            std::process::Command::new(&destination)
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let source = dir.path().join("newer.exe");
+        std::fs::write(&source, b"a newer zellij").unwrap();
+        let replaced = copy_binary(&source, &destination, true);
+        assert!(replaced.is_ok(), "{:?}", replaced);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"a newer zellij");
+        drop(running);
+        std::fs::write(&source, b"the newest zellij").unwrap();
+        assert!(copy_binary(&source, &destination, true).is_ok());
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            !left.iter().any(|name| name.starts_with("zellij.old-")),
+            "the old file is cleared once it no longer runs: {:?}",
+            left
+        );
     }
 }

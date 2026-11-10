@@ -3,6 +3,18 @@ use crate::session::connection::Detacher;
 use std::path::PathBuf;
 use winit::window::{Window, WindowAttributes};
 
+pub(in crate::window) fn bring_opened_window_forward(_window: &Window) {}
+
+pub(in crate::window) fn created_hidden(attributes: WindowAttributes) -> WindowAttributes {
+    attributes
+}
+
+pub(in crate::window) fn show_cloaked(_window: &Window) -> bool {
+    false
+}
+
+pub(in crate::window) fn uncloak(_window: &Window) {}
+
 pub(in crate::window) fn square_without_system_border(_window: &Window) {}
 
 pub(in crate::window) fn skip_taskbar(attributes: WindowAttributes) -> WindowAttributes {

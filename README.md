@@ -24,19 +24,12 @@
 </p>
 
 <br>
-    <p align="center">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/bc5daac4-140a-4b83-8729-71c944ee1100">
-      <img src="https://github.com/user-attachments/assets/55156624-a71a-46b5-939e-f562e3b2dd7f" alt="Sponsored by ">
-    </picture>
-    &nbsp;
-    &nbsp;
-    <a href="https://www.gresearch.com/">
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d609936a-abf8-4406-8cfc-889f76a09d74">
-          <img src="https://github.com/user-attachments/assets/742ae902-fe9d-41c6-baf2-4bc143061da3" alt="gresearch logo">
-        </picture>
-    </a>
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/bc5daac4-140a-4b83-8729-71c944ee1100"><img src="https://github.com/user-attachments/assets/55156624-a71a-46b5-939e-f562e3b2dd7f" alt="Sponsored by"></picture>
+  &nbsp;&nbsp;
+  <a href="https://www.gresearch.com/"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d609936a-abf8-4406-8cfc-889f76a09d74"><img src="https://github.com/user-attachments/assets/742ae902-fe9d-41c6-baf2-4bc143061da3" alt="G-Research logo"></picture></a>
+  &nbsp;&nbsp;
+  <a href="https://www.codo.tech/"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7887429c-f299-4a1f-9b61-2ea5e8cd512f"><img height="30" src="https://github.com/user-attachments/assets/d92b43d1-e009-4c73-a238-e96ffee3a9e0" alt="codo.tech logo"></picture></a>
 </p>
 
 # What is this?

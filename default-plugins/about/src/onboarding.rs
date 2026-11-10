@@ -485,11 +485,20 @@ pub fn open_settings(page: Option<&str>) {
 pub fn kdl_for_binds(binds: &[(InputMode, KeyWithModifier, Vec<Action>)]) -> Vec<String> {
     let mut lines = vec!["keybinds {".to_owned()];
     for (mode, key, actions) in binds {
-        let actions: Vec<String> = actions.iter().map(|a| format!("{};", a)).collect();
+        let actions: Vec<String> = actions
+            .iter()
+            .map(|action| {
+                let written = action
+                    .to_kdl()
+                    .map(|node| node.to_string().trim().to_owned())
+                    .unwrap_or_else(|| action.to_string());
+                format!("{};", written)
+            })
+            .collect();
         lines.push(format!(
             "    {} {{ bind \"{}\" {{ {} }} }}",
             format!("{:?}", mode).to_lowercase(),
-            key,
+            key.to_kdl(),
             actions.join(" ")
         ));
     }

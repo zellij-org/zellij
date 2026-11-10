@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 993
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -6888,6 +6889,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7479,6 +7481,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (
@@ -8070,6 +8073,7 @@ Config {
                         ),
                     ),
                 },
+                ribbon_hover: None,
                 table_title: StyleDeclaration {
                     base: Rgb(
                         (
@@ -13705,6 +13709,9 @@ Config {
     },
     terminal: TerminalConfig {
         font: None,
+        font_bold: None,
+        font_italic: None,
+        font_bold_italic: None,
         font_size: None,
         system_fonts: None,
         ligatures: None,

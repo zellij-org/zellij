@@ -4,8 +4,11 @@ const MAGIC: &[u8; 4] = b"icns";
 const HEADER: usize = 8;
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
+// 1024px, so the icon stays sharp at 512pt on Retina screens.
+const LARGE_ICON_PNG: &[u8] = include_bytes!("../../assets/icons/logo1024.png");
+
 pub fn zellij() -> Result<Vec<u8>> {
-    from_pngs(&[crate::window::ICON_PNG])
+    from_pngs(&[super::ICON_PNG, LARGE_ICON_PNG])
 }
 
 pub fn from_pngs(pngs: &[&[u8]]) -> Result<Vec<u8>> {
@@ -72,25 +75,22 @@ fn png_size(png: &[u8]) -> Result<(u32, u32)> {
 mod tests {
     use super::*;
 
-    const ICON_PNG: &[u8] = crate::window::ICON_PNG;
+    const ICON_PNG: &[u8] = super::super::ICON_PNG;
 
     fn declared_length(icns: &[u8]) -> u32 {
         u32::from_be_bytes([icns[4], icns[5], icns[6], icns[7]])
     }
 
     #[test]
-    fn the_embedded_icon_becomes_a_one_chunk_icns_file() {
+    fn the_embedded_icons_become_an_icns_file_of_two_chunks() {
         let icns = zellij().unwrap();
 
         assert_eq!(&icns[..4], MAGIC);
         assert_eq!(declared_length(&icns) as usize, icns.len());
-        assert_eq!(icns.len(), HEADER + HEADER + ICON_PNG.len());
-        assert_eq!(&icns[8..12], b"ic07");
         assert_eq!(
-            u32::from_be_bytes([icns[12], icns[13], icns[14], icns[15]]) as usize,
-            HEADER + ICON_PNG.len()
+            icns.len(),
+            HEADER + HEADER + ICON_PNG.len() + HEADER + LARGE_ICON_PNG.len()
         );
-        assert_eq!(&icns[16..], ICON_PNG);
     }
 
     #[test]
@@ -107,17 +107,26 @@ mod tests {
                 icns[offset + 7],
             ]) as usize;
             assert!(length >= HEADER && offset + length <= icns.len());
-            assert_eq!(&icns[offset + HEADER..offset + length], ICON_PNG);
-            seen.push(String::from_utf8(chunk_type.to_vec()).unwrap());
+            seen.push((
+                String::from_utf8(chunk_type.to_vec()).unwrap(),
+                icns[offset + HEADER..offset + length].to_vec(),
+            ));
             offset += length;
         }
         assert_eq!(offset, icns.len());
-        assert_eq!(seen, vec!["ic07".to_string()]);
+        assert_eq!(
+            seen,
+            vec![
+                ("ic07".to_string(), ICON_PNG.to_vec()),
+                ("ic10".to_string(), LARGE_ICON_PNG.to_vec()),
+            ]
+        );
     }
 
     #[test]
     fn the_declared_size_of_each_image_picks_its_chunk_type() {
         assert_eq!(png_size(ICON_PNG).unwrap(), (128, 128));
+        assert_eq!(png_size(LARGE_ICON_PNG).unwrap(), (1024, 1024));
         assert_eq!(chunk_type(256), Some(b"ic08"));
         assert_eq!(chunk_type(48), None);
     }

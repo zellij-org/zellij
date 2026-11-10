@@ -171,7 +171,12 @@ fn the_bundled_default_themes_are_readable() {
         }
 
         let ribbon = styling.ribbon_unselected;
-        for (part, color) in [("base", ribbon.base), ("emphasis_0", ribbon.emphasis_0)] {
+        for (part, color) in [
+            ("base", ribbon.base),
+            ("emphasis_0", ribbon.emphasis_0),
+            ("emphasis_1", ribbon.emphasis_1),
+            ("emphasis_2", ribbon.emphasis_2),
+        ] {
             assert_contrast(
                 name,
                 &format!("ribbon_unselected.{} on its background", part),
@@ -179,11 +184,21 @@ fn the_bundled_default_themes_are_readable() {
                 ribbon.background,
                 4.5,
             );
+        }
+
+        let hover = styling.ribbon_hover_style();
+        for (part, color) in [
+            ("base", hover.base),
+            ("emphasis_0", hover.emphasis_0),
+            ("emphasis_1", hover.emphasis_1),
+            ("emphasis_2", hover.emphasis_2),
+            ("emphasis_3", hover.emphasis_3),
+        ] {
             assert_contrast(
                 name,
-                &format!("ribbon_unselected.{} on the hover fill", part),
+                &format!("ribbon_hover.{} on the hover fill", part),
                 color,
-                ribbon.emphasis_1,
+                hover.background,
                 4.5,
             );
         }

@@ -3760,6 +3760,7 @@ pub fn start_server_impl(
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
+            #[cfg(not(windows))]
             use interprocess::local_socket::prelude::*;
             #[cfg(unix)]
             use zellij_utils::shared::set_permissions;
@@ -3791,46 +3792,49 @@ pub fn start_server_impl(
                 #[cfg(unix)]
                 drop(set_permissions(&socket_path, 0o1700));
 
-                // On Windows, named pipes are half-duplex, so we need a separate
-                // reply pipe for server→client messages.
-                #[cfg(windows)]
-                let reply_listener = zellij_utils::consts::ipc_bind_reply(&socket_path).unwrap();
+                let route = |stream: interprocess::local_socket::Stream,
+                             #[cfg(windows)] reply_stream: interprocess::local_socket::Stream| {
+                    let os_input = os_input.clone();
+                    let session_data = session_data.clone();
+                    let session_state = session_state.clone();
+                    let to_server = to_server.clone();
+                    let spawn_result = thread::Builder::new()
+                        .name("server_router".to_string())
+                        .spawn(move || {
+                            handle_new_connection(
+                                session_data,
+                                session_state,
+                                os_input,
+                                to_server,
+                                stream,
+                                #[cfg(windows)]
+                                reply_stream,
+                            )
+                            .fatal()
+                        });
+                    if let Err(err) = spawn_result {
+                        log::error!("Failed to spawn router thread: {:?}", err);
+                    }
+                };
 
+                // On Windows, named pipes are half-duplex, so a connection has a separate reply
+                // pipe for server→client messages. Its two pipes are accepted separately and
+                // paired by the client process that connected them.
+                #[cfg(windows)]
+                {
+                    let reply_listener =
+                        zellij_utils::consts::ipc_bind_reply(&socket_path).unwrap();
+                    for (stream, reply_stream) in
+                        zellij_utils::pipe_pairs::accept_pairs(listener, reply_listener)
+                    {
+                        route(stream, reply_stream);
+                    }
+                }
+
+                #[cfg(not(windows))]
                 for stream in listener.incoming() {
                     match stream {
-                        Ok(stream) => {
-                            let os_input = os_input.clone();
-
-                            #[cfg(windows)]
-                            let reply_stream = match reply_listener.accept() {
-                                Ok(reply_stream) => reply_stream,
-                                Err(err) => {
-                                    log::error!("Failed to accept reply connection: {:?}", err);
-                                    continue;
-                                },
-                            };
-
-                            let session_data = session_data.clone();
-                            let session_state = session_state.clone();
-                            let to_server = to_server.clone();
-                            let spawn_result = thread::Builder::new()
-                                .name("server_router".to_string())
-                                .spawn(move || {
-                                    handle_new_connection(
-                                        session_data,
-                                        session_state,
-                                        os_input,
-                                        to_server,
-                                        stream,
-                                        #[cfg(windows)]
-                                        reply_stream,
-                                    )
-                                    .fatal()
-                                });
-                            if let Err(err) = spawn_result {
-                                log::error!("Failed to spawn router thread: {:?}", err);
-                            }
-                        },
+                        Ok(stream) => route(stream),
                         Err(err) => {
                             log::error!("Failed to accept connection: {:?}", err);
                             thread::sleep(ACCEPT_ERROR_BACKOFF);

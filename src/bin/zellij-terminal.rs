@@ -63,9 +63,34 @@ fn strip_suffix_ignoring_case<'a>(text: &'a str, suffix: &str) -> Option<&'a str
 }
 
 fn arguments(forwarded: impl Iterator<Item = OsString>) -> Vec<OsString> {
-    std::iter::once(OsString::from("terminal"))
-        .chain(forwarded)
-        .collect()
+    let mut arguments = vec![OsString::from("terminal")];
+    let mut folder_next = false;
+    for argument in forwarded {
+        let argument = if folder_next {
+            repaired_folder(argument)
+        } else {
+            argument
+        };
+        folder_next = argument.as_os_str() == "--working-directory";
+        arguments.push(argument);
+    }
+    arguments
+}
+
+/// Explorer passes a drive's root as "C:\", and Windows reads its \" as an escaped quote, so
+/// the folder arrives as C:" instead. A folder name cannot hold a quote, so it is put right.
+fn repaired_folder(folder: OsString) -> OsString {
+    if !cfg!(windows) {
+        return folder;
+    }
+    let Some(trimmed) = folder.to_str().and_then(|text| text.strip_suffix('"')) else {
+        return folder;
+    };
+    if trimmed.ends_with(':') {
+        OsString::from(format!("{}\\", trimmed))
+    } else {
+        OsString::from(trimmed)
+    }
 }
 
 fn working_dir(
@@ -245,6 +270,28 @@ mod tests {
             arguments(explorer.into_iter()),
             ["terminal", "--working-directory", r"C:\Users\me\project"].map(OsString::from),
             "the folder Explorer passes reaches the window, which prefers it to its own folder"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_root_from_explorer_arrives_whole() {
+        let root = ["--working-directory", "D:\""].map(OsString::from);
+        assert_eq!(
+            arguments(root.into_iter()),
+            ["terminal", "--working-directory", r"D:\"].map(OsString::from),
+            "\"D:\\\" reaches the launcher as D:\" because of how Windows reads quotes"
+        );
+        let share = ["--working-directory", r#"\\server\share""#].map(OsString::from);
+        assert_eq!(
+            arguments(share.into_iter()),
+            ["terminal", "--working-directory", r"\\server\share"].map(OsString::from)
+        );
+        let session = ["my\"session"].map(OsString::from);
+        assert_eq!(
+            arguments(session.into_iter()),
+            ["terminal", "my\"session"].map(OsString::from),
+            "only the folder is repaired"
         );
     }
 

@@ -32,6 +32,7 @@ fn grapheme_grid() -> Grid {
         false,
     );
     grid.grapheme_mode = true;
+    grid.ui_components_enabled = true;
     grid
 }
 

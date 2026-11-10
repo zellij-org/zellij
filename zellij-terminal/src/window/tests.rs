@@ -5,6 +5,7 @@ use winit::event::{MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, NamedKey, SmolStr};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::mouse::MouseEventType;
+use zellij_utils::input::options::OnForceClose;
 use zellij_utils::ipc::{ClientToServerMsg, ExitReason};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1116,6 +1117,28 @@ fn closing_after_a_resize_remembers_the_new_size_in_cells() {
             ..
         }
     ));
+}
+
+#[test]
+fn closing_the_window_quits_the_session_when_on_force_close_is_quit() {
+    let mut harness = Harness::new(1, true, "");
+    harness.app.settings.on_force_close = Some(OnForceClose::Quit);
+    assert!(harness.app.close_requested());
+    assert_eq!(
+        harness.actions(),
+        vec![Action::SkipConfirm {
+            action: Box::new(Action::Quit)
+        }]
+    );
+}
+
+#[test]
+fn a_watcher_closing_the_window_only_stops_watching_even_when_on_force_close_is_quit() {
+    let mut harness = Harness::new(1, true, "");
+    harness.app.role = Role::Watcher;
+    harness.app.settings.on_force_close = Some(OnForceClose::Quit);
+    assert!(harness.app.close_requested());
+    assert!(matches!(harness.sent()[0], ClientToServerMsg::Key { .. }));
 }
 
 #[test]

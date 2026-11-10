@@ -132,9 +132,23 @@ fn remove_placement_ref_keeps_data_but_makes_image_evictable() {
     assert!(store.get(id_b).is_some());
     assert!(store.get(id_c).is_some());
     store.add_placement_ref(id_c);
-    let id_d = store.store_image(rgba_image(10, 10)).unwrap();
-    assert!(store.get(id_d).is_some());
-    assert_eq!(store.total_bytes(), 1200);
+    let refused = store.store_image(rgba_image(10, 10));
+    assert!(matches!(refused, Err(err) if err.code == KittyErrorCode::Einval));
+    assert_eq!(store.total_bytes(), 800);
+}
+
+#[test]
+fn scaled_variant_reservation_respects_quota_when_images_are_pinned() {
+    let mut store = KittyImageStore::with_quota(1000);
+    let id_a = store.store_image(rgba_image(10, 10)).unwrap();
+    store.add_placement_ref(id_a);
+    let key = super::ScaledImageKey {
+        source: crate::panes::sixel::PixelRect::new(0, 0, 10, 10),
+        size: (12, 12),
+    };
+    assert!(store.reserve_scaled_variant(id_a, key, 576));
+    assert!(!store.reserve_scaled_variant(id_a, key, 700));
+    assert!(!store.reserve_scaled_variant(id_a, key, usize::MAX));
 }
 
 #[test]

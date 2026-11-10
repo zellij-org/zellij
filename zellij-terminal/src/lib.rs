@@ -3,7 +3,6 @@ mod diagnostics;
 mod app;
 mod config;
 mod emulation;
-pub mod icns;
 mod input;
 mod launch;
 mod platform;
@@ -49,9 +48,4 @@ pub fn run(args: TerminalArgs, opts: CliArgs) -> Result<()> {
     };
     run.finish(&result);
     result
-}
-
-#[cfg(windows)]
-pub fn unregister_app() -> Result<Vec<String>> {
-    windows_shell::app_registration::unregister()
 }

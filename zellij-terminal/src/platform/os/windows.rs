@@ -18,13 +18,19 @@ impl Run {
 }
 
 pub fn claim_app_identity() {
-    crate::app::desktop::platform_windows::set_process_app_id();
-    crate::app::desktop::platform_windows::register_app_id();
+    if let Err(e) = crate::windows_shell::app_registration::register() {
+        report!(
+            "the app could not register its name and icon for desktop notifications: {:#}",
+            e
+        );
+    }
     crate::windows_shell::jump_list::install();
 }
 
 pub fn terminate_on_signal(poster: AppPoster) {
-    let _ = poster;
+    crate::windows_shell::console_events::end_on_console_event(move || {
+        poster.post(crate::app::AppEvent::Terminate);
+    });
 }
 
 pub fn detach_from_terminal(command: &mut std::process::Command) {

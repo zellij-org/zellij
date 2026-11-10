@@ -1,5 +1,7 @@
 pub mod commands;
 mod double_click;
+#[cfg(target_os = "macos")]
+mod macos_app;
 #[cfg(test)]
 mod tests;
 
@@ -48,8 +50,14 @@ pub(crate) fn socket_dir_override(opts: &CliArgs) -> Option<&std::path::Path> {
 }
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    let login_environment_problem = macos_app::adopt_login_environment();
     configure_logger();
     create_config_and_cache_folders();
+    #[cfg(target_os = "macos")]
+    if let Some(problem) = login_environment_problem {
+        log::warn!("{}", problem);
+    }
     let opts = double_click::reroute(CliArgs::parse_for_distribution());
     if let Some(socket_dir) = socket_dir_override(&opts) {
         std::env::set_var(zellij_utils::envs::SOCKET_DIR_ENV_KEY, socket_dir);

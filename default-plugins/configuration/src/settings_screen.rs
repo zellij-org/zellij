@@ -13,8 +13,8 @@ use crate::page::{
 use crate::settings::{
     check_text, choice_label, danger_warning, describe, inherits_from, kdl_for, needs_attention,
     option_value, page_matches, parse_hex_colour, placement, search_settings, section, settings_in,
-    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, BUNDLED_FONT,
-    CATEGORIES, MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
+    value_for_label, Category, Scope, SettingInfo, SettingKind, TextCheck, CATEGORIES,
+    MISSING_SUFFIX, SUB_PAGES, UNSET_CHOICE, ZELLIJ_TERMINAL_NOTE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -253,6 +253,12 @@ fn is_plain_key(key: &KeyWithModifier, bare_key: BareKey) -> bool {
 
 fn is_ctrl_key(key: &KeyWithModifier, character: char) -> bool {
     key.is_key_with_ctrl_modifier(BareKey::Char(character))
+}
+
+/// Whether picking `label` for `key` clears the setting rather than saving it.
+fn unsets(key: SettingKey, label: &str) -> bool {
+    label == UNSET_CHOICE
+        || matches!(describe(key).kind, SettingKind::FontFamily { unset } if unset == label)
 }
 
 fn is_shift_tab(key: &KeyWithModifier) -> bool {
@@ -817,12 +823,12 @@ impl SettingsScreen {
                 "false".to_owned(),
             ],
             SettingKind::Theme { can_be_unset } => self.theme_options(can_be_unset, &current),
-            SettingKind::FontFamily => self.font_options(&current),
+            SettingKind::FontFamily { unset } => self.font_options(unset, &current),
             _ => vec![],
         }
     }
-    fn font_options(&self, current: &Option<String>) -> Vec<String> {
-        let mut options = vec![BUNDLED_FONT.to_owned()];
+    fn font_options(&self, unset: &str, current: &Option<String>) -> Vec<String> {
+        let mut options = vec![unset.to_owned()];
         options.extend(self.snapshot.font_families.iter().cloned());
         if let Some(current) = current {
             let listed = self
@@ -846,7 +852,7 @@ impl SettingsScreen {
             | SettingKind::Theme {
                 can_be_unset: false,
             } => Some(info.default.to_owned()),
-            SettingKind::FontFamily => Some(BUNDLED_FONT.to_owned()),
+            SettingKind::FontFamily { unset } => Some(unset.to_owned()),
             _ => Some(UNSET_CHOICE.to_owned()),
         });
         value
@@ -898,14 +904,14 @@ impl SettingsScreen {
             SettingKind::Toggle => Toggle::new(info.name, self.toggle_value(key))
                 .label_width(label_width)
                 .into(),
-            SettingKind::FontFamily if !self.font_is_listed() => {
+            SettingKind::FontFamily { unset } if !self.font_is_listed() => {
                 TextInput::new(self.current_value(key).unwrap_or_default())
                     .label(info.name)
                     .label_width(label_width)
-                    .placeholder(BUNDLED_FONT)
+                    .placeholder(unset)
                     .into()
             },
-            SettingKind::FontFamily
+            SettingKind::FontFamily { .. }
             | SettingKind::OptionalToggle
             | SettingKind::Choice(_)
             | SettingKind::OptionalChoice(_)
@@ -967,7 +973,7 @@ impl SettingsScreen {
                         toggle.set_on(on);
                     }
                 },
-                SettingKind::FontFamily
+                SettingKind::FontFamily { .. }
                 | SettingKind::OptionalToggle
                 | SettingKind::Choice(_)
                 | SettingKind::OptionalChoice(_)
@@ -1000,7 +1006,7 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Text(_) | SettingKind::FontFamily => {
+                SettingKind::Text(_) | SettingKind::FontFamily { .. } => {
                     let current = self.current_value(key).unwrap_or_default();
                     let editing = self.editing == Some(key);
                     if let Some(input) = self.elements.text_input_mut(&key) {
@@ -1987,7 +1993,7 @@ impl SettingsScreen {
             UiResponse::Changed(UiValue::Bool(on)) => self.set_value(key, &on.to_string()),
             UiResponse::Changed(UiValue::Choice { label, .. }) => {
                 self.theme_preview.commit(key);
-                if label == UNSET_CHOICE || label == BUNDLED_FONT {
+                if unsets(key, &label) {
                     self.unset_value(key);
                 } else {
                     let value = value_for_label(key, &label);
@@ -3126,6 +3132,7 @@ impl SettingsScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::{BUNDLED_FONT, SAME_AS_FONT};
 
     const ROWS: usize = 200;
     const COLS: usize = 160;
@@ -3163,10 +3170,10 @@ mod tests {
         screen
     }
 
-    fn font_choice(screen: &SettingsScreen) -> (Vec<String>, String) {
-        let info = describe(SettingKey::TerminalFont);
-        let options = screen.choice_options(SettingKey::TerminalFont, &info);
-        let selected = screen.selected_choice_index(SettingKey::TerminalFont, &options);
+    fn choice_of(screen: &SettingsScreen, key: SettingKey) -> (Vec<String>, String) {
+        let info = describe(key);
+        let options = screen.choice_options(key, &info);
+        let selected = screen.selected_choice_index(key, &options);
         let shown = options[selected].clone();
         (options, shown)
     }
@@ -3201,10 +3208,50 @@ mod tests {
         assert!(!screen.heading_is_locked("Inside Zellij"));
     }
 
+    const STYLE_FONTS: [SettingKey; 3] = [
+        SettingKey::TerminalFontBold,
+        SettingKey::TerminalFontItalic,
+        SettingKey::TerminalFontBoldItalic,
+    ];
+
+    #[test]
+    fn a_style_font_dropdown_starts_with_the_main_font_then_the_installed_ones() {
+        let screen = screen_with(&[], &["Iosevka Term"]);
+        for key in STYLE_FONTS {
+            let (options, shown) = choice_of(&screen, key);
+            assert_eq!(
+                options,
+                vec![SAME_AS_FONT.to_owned(), "Iosevka Term".to_owned()],
+                "{:?}",
+                key
+            );
+            assert_eq!(shown, SAME_AS_FONT, "{:?}", key);
+            assert!(unsets(key, SAME_AS_FONT), "{:?}", key);
+            assert!(!unsets(key, BUNDLED_FONT), "{:?}", key);
+        }
+        assert!(unsets(SettingKey::TerminalFont, BUNDLED_FONT));
+    }
+
+    #[test]
+    fn a_style_font_set_in_the_file_is_selected() {
+        let screen = screen_with(
+            &[(SettingKey::TerminalFontItalic, "Iosevka Term")],
+            &["Iosevka Term"],
+        );
+        assert_eq!(
+            choice_of(&screen, SettingKey::TerminalFontItalic).1,
+            "Iosevka Term"
+        );
+        assert_eq!(
+            choice_of(&screen, SettingKey::TerminalFontBold).1,
+            SAME_AS_FONT
+        );
+    }
+
     #[test]
     fn the_font_dropdown_starts_with_the_bundled_font_then_the_installed_ones() {
         let screen = screen_with(&[], &["Iosevka Term", "JetBrains Mono"]);
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(
             options,
             vec![
@@ -3222,7 +3269,7 @@ mod tests {
             &[(SettingKey::TerminalFont, "iosevka term")],
             &["Iosevka Term", "JetBrains Mono"],
         );
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(options.len(), 3, "{:?}", options);
         assert_eq!(shown, "Iosevka Term");
     }
@@ -3233,7 +3280,7 @@ mod tests {
             &[(SettingKey::TerminalFont, "Gone Mono")],
             &["Iosevka Term"],
         );
-        let (options, shown) = font_choice(&screen);
+        let (options, shown) = choice_of(&screen, SettingKey::TerminalFont);
         assert_eq!(
             options,
             vec![

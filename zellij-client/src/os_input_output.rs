@@ -4,12 +4,12 @@ use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
 use crate::os_input_output_unix::{
-    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    connect_ipc, disable_mouse_support, enable_mouse_support, AsyncSignalListener,
     BlockingSignalIterator,
 };
 #[cfg(windows)]
 use crate::os_input_output_windows::{
-    disable_mouse_support, enable_mouse_support, restore_console_mode, setup_ipc,
+    connect_ipc, disable_mouse_support, enable_mouse_support, restore_console_mode,
     AsyncSignalListener, BlockingSignalIterator,
 };
 
@@ -345,19 +345,7 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let socket;
-        loop {
-            match zellij_utils::consts::ipc_connect(path) {
-                Ok(sock) => {
-                    socket = sock;
-                    break;
-                },
-                Err(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                },
-            }
-        }
-        let (sender, receiver) = setup_ipc(socket, path);
+        let (sender, receiver) = connect_ipc(path);
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

@@ -724,6 +724,13 @@ web_client {
 //     // configuration. An unresolvable family falls back to the built-in font.
 //     font "Iosevka Term"
 //
+//     // Families for bold, italic and bold italic text, each in place of the
+//     // font family's own face for that style. A style without one keeps the
+//     // font family's face, and so does one whose family does not resolve.
+//     font_bold "Iosevka Term"
+//     font_italic "Iosevka Term"
+//     font_bold_italic "Iosevka Term"
+//
 //     // Font size in points, as other terminals measure it
 //     font_size 12
 //
@@ -999,9 +1006,9 @@ web_client {
 //     done_threshold_secs 10
 //
 //     // List commands as working once they run longer than
-//     // done_threshold_secs. Commands that use the full screen (vim, less,
-//     // htop) or that you type into are left out.
-//     track_commands true
+//     // done_threshold_secs (off unless turned on). Commands that use the
+//     // full screen (vim, less, htop) or that you type into are left out.
+//     track_commands false
 //
 //     // Seconds of steady output before quiet detection applies.
 //     idle_activity_secs 10

@@ -49,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: standard macOS menu for the desktop window and save window state when quitting from the Dock (https://github.com/zellij-org/zellij/pull/5782)
 * fix: allow cycling with tab/shift-tab in session-manager/welcome-screen (https://github.com/zellij-org/zellij/pull/5818)
 * feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
+* feat: separate font families for bold, italic and bold italic text in the terminal window (`font_bold`, `font_italic`, `font_bold_italic`), and pick a family's normal width over its wider cuts (https://github.com/zellij-org/zellij/pull/5829)
+* feat: install Zellij.app on macOS from the setup screen, with the login shell environment, notifications and reopening from Finder; the setup screen can also copy Zellij to ~/.local/bin (https://github.com/zellij-org/zellij/pull/5830)
 
 
 ## [0.45.1] - 2026-08-28

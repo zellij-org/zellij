@@ -1,7 +1,7 @@
 use crate::emulation::palette;
 use crate::emulation::terminal::{FrameError, TerminalState};
 use crate::session::client_loop::Ending;
-use crate::session::connection::{request_detach, send, Geometry};
+use crate::session::connection::{request_detach, request_force_close, send, Geometry};
 use crate::window::handover_to;
 use crate::window::window_title;
 use crate::window::window_to_reuse;
@@ -85,7 +85,22 @@ impl App {
 
     pub(in crate::window) fn closing(&mut self) -> bool {
         self.leaving = true;
-        if let Err(e) = self.detach() {
+        let result = self.detach();
+        self.report_close_failure(result)
+    }
+
+    fn force_closing(&mut self) -> bool {
+        self.leaving = true;
+        let on_force_close = self.settings.on_force_close.unwrap_or_default();
+        let result = match &self.sender {
+            Some(sender) => request_force_close(sender, self.role, on_force_close),
+            None => Ok(()),
+        };
+        self.report_close_failure(result)
+    }
+
+    fn report_close_failure(&self, result: Result<()>) -> bool {
+        if let Err(e) = result {
             report!(
                 "the session could not be asked to let the window go, \
                  so the window closes on its own: {}",
@@ -257,7 +272,7 @@ impl App {
 
     pub(in crate::window) fn close_requested(&mut self) -> bool {
         self.remember();
-        self.closing()
+        self.force_closing()
     }
 
     pub(in crate::window) fn stranded(&mut self, failure: anyhow::Error) {

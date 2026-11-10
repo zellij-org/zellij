@@ -48,7 +48,7 @@ impl Stores {
     }
 
     fn grid(&self, rows: usize, cols: usize) -> Grid {
-        Grid::new(
+        let mut grid = Grid::new(
             rows,
             cols,
             Rc::new(RefCell::new(Default::default())),
@@ -63,7 +63,9 @@ impl Stores {
             true,
             true,
             false,
-        )
+        );
+        grid.ui_components_enabled = true;
+        grid
     }
 }
 
