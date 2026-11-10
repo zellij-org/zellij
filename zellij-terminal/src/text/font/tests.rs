@@ -1581,3 +1581,99 @@ fn a_cluster_shape_is_cached_like_a_run() {
     assert_eq!(first, second);
     assert_eq!(fonts.shaped_clusters(), count);
 }
+
+fn without_bundled_emoji() -> FontStack {
+    FontStack::without_bundled_emoji(
+        &FontOptions {
+            system_fonts: false,
+            ..FontOptions::default()
+        },
+        None,
+    )
+    .unwrap()
+}
+
+const EMOJI_SAMPLES: [&str; 5] = [
+    "\u{1f600}",
+    "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}",
+    "\u{1f1fa}\u{1f1f8}",
+    "\u{2764}\u{fe0f}",
+    "\u{1f44d}\u{1f3fd}",
+];
+
+#[test]
+fn without_the_bundled_emoji_no_embedded_face_is_in_color() {
+    let fonts = without_bundled_emoji();
+    assert!(!fonts.color_capable.iter().any(|capable| *capable));
+    assert!(!fonts.fallback_faces().contains(&EMOJI_FONT));
+}
+
+#[test]
+fn without_the_bundled_emoji_text_cjk_and_icons_still_resolve() {
+    let mut fonts = without_bundled_emoji();
+    for style in [
+        FaceStyle::Regular,
+        FaceStyle::Bold,
+        FaceStyle::Italic,
+        FaceStyle::BoldItalic,
+    ] {
+        let glyph = glyph_of(&mut fonts, style, 'A');
+        assert!(fonts.is_primary(glyph.font));
+    }
+    assert_eq!(glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}').font, FontId(4));
+    assert_eq!(
+        glyph_of(&mut fonts, FaceStyle::Regular, '\u{f16a0}').font,
+        SYMBOLS_FONT
+    );
+}
+
+#[test]
+fn without_any_emoji_font_an_emoji_is_left_undrawn_rather_than_failing() {
+    let mut fonts = without_bundled_emoji();
+    for text in EMOJI_SAMPLES {
+        for character in text.chars() {
+            if let Some(glyph) = fonts.lookup(FaceStyle::Regular, character) {
+                assert!(!fonts.has_color(glyph.font));
+                let _ = fonts.rasterize(glyph, 2);
+            }
+        }
+        match fonts.rasterize_cluster(FaceStyle::Regular, text, 2) {
+            ClusterRaster::Sprite(bitmap) => assert_eq!(bitmap.content, GlyphContent::Mask),
+            ClusterRaster::Blank | ClusterRaster::Uncovered => {},
+        }
+    }
+}
+
+#[test]
+fn without_the_bundled_emoji_an_installed_emoji_font_is_used_before_the_symbols() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut fonts =
+        FontStack::without_bundled_emoji(&FontOptions::default(), Some(discovery)).unwrap();
+    let fallbacks = fonts.fallback_faces().to_vec();
+    let installed = fallbacks
+        .iter()
+        .position(|font| fonts.has_color(*font))
+        .expect("the installed colour emoji font was not adopted");
+    let symbols = fallbacks
+        .iter()
+        .position(|font| *font == SYMBOLS_FONT)
+        .unwrap();
+    assert!(installed < symbols, "{:?}", fallbacks);
+    let glyph = glyph_of(&mut fonts, FaceStyle::Regular, '\u{1f600}');
+    assert_eq!(
+        fonts.rasterize(glyph, 2).unwrap().content,
+        GlyphContent::Color
+    );
+    for text in EMOJI_SAMPLES {
+        assert!(
+            matches!(
+                fonts.rasterize_cluster(FaceStyle::Regular, text, 2),
+                ClusterRaster::Sprite(_)
+            ),
+            "{:?}",
+            text
+        );
+    }
+}

@@ -160,7 +160,7 @@ impl FontStack {
         let bundled = self
             .fallbacks
             .iter()
-            .position(|fallback| *fallback == EMOJI_FONT)
+            .position(|fallback| *fallback == EMOJI_FONT || *fallback == SYMBOLS_FONT)
             .unwrap_or(self.fallbacks.len());
         self.fallbacks.insert(bundled, font);
     }
