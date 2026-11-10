@@ -1,17 +1,28 @@
 use super::WasmBridge;
-use crate::plugins::{plugin_tests::e2e_plugin_path, PluginInstruction};
+use crate::plugins::{plugin_tests::e2e_plugin_path, PluginId, PluginInstruction};
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::ThreadSenders;
+use crate::ClientId;
+use std::collections::HashSet;
+use std::io::Write;
 use std::time::{Duration, Instant};
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use zellij_utils::channels::{self, SenderWithContext};
-use zellij_utils::data::{Event, EventType, PermissionStatus};
+use zellij_utils::data::{Event, EventType, PermissionStatus, PermissionType};
+use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::RunPlugin;
+use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::pane_size::Size;
 
-#[test]
-#[ignore]
-fn cached_background_permission_results_reach_existing_instances_before_client_connects() {
+struct FixtureBridge {
+    bridge: WasmBridge,
+    plugin_ids: Vec<PluginId>,
+    screen_receiver: channels::Receiver<(ScreenInstruction, ErrorContext)>,
+    _plugin_dir: TempDir,
+}
+
+/// Loads `count` fixture plugins for one client and waits until each has loaded.
+fn load_fixture_plugins(count: usize, client_id: ClientId) -> FixtureBridge {
     let (to_plugin, plugin_receiver) = channels::unbounded();
     let (to_screen, screen_receiver) = channels::unbounded();
     let senders = ThreadSenders {
@@ -44,8 +55,7 @@ fn cached_background_permission_results_reach_existing_instances_before_client_c
     ))
     .unwrap();
     let mut plugin_ids = vec![];
-    let client_id = 1;
-    for _ in 0..2 {
+    for _ in 0..count {
         let (plugin_id, loaded_client_id) = bridge
             .load_plugin_with_kind(
                 &Some(run.clone()),
@@ -71,6 +81,24 @@ fn cached_background_permission_results_reach_existing_instances_before_client_c
         }
     }
 
+    FixtureBridge {
+        bridge,
+        plugin_ids,
+        screen_receiver,
+        _plugin_dir: plugin_dir,
+    }
+}
+
+#[test]
+#[ignore]
+fn cached_background_permission_results_reach_existing_instances_before_client_connects() {
+    let client_id = 1;
+    let FixtureBridge {
+        mut bridge,
+        plugin_ids,
+        screen_receiver,
+        _plugin_dir,
+    } = load_fixture_plugins(2, client_id);
     // Let the existing fixture render permission results as well as its usual events.
     for plugin_id in &plugin_ids {
         bridge
@@ -160,4 +188,122 @@ fn cached_background_permission_results_reach_existing_instances_before_client_c
             }
         }
     }
+}
+
+#[test]
+#[ignore]
+fn granted_permissions_add_up_and_a_denial_keeps_them() {
+    let client_id = 1;
+    let FixtureBridge {
+        mut bridge,
+        plugin_ids,
+        _plugin_dir,
+        ..
+    } = load_fixture_plugins(1, client_id);
+    let plugin_id = plugin_ids[0];
+    let running_plugin = bridge
+        .plugin_map
+        .lock()
+        .unwrap()
+        .get_running_plugin(plugin_id, Some(client_id))
+        .unwrap();
+    let location = running_plugin
+        .lock()
+        .unwrap()
+        .store
+        .data()
+        .plugin
+        .location
+        .to_string();
+
+    // Granted in an earlier session but not requested in this one.
+    let cache_dir = tempdir().unwrap();
+    let cache_path = cache_dir.path().join("permissions.kdl");
+    let mut earlier_session = PermissionCache::from_path_or_default(Some(cache_path.clone()));
+    earlier_session.cache(location.clone(), vec![PermissionType::WriteToStdin]);
+    earlier_session.write_to_file().unwrap();
+
+    let mut respond = |permissions: Vec<PermissionType>, status| {
+        bridge
+            .cache_plugin_permissions(
+                plugin_id,
+                Some(client_id),
+                permissions,
+                status,
+                Some(cache_path.clone()),
+            )
+            .unwrap();
+        let running = running_plugin
+            .lock()
+            .unwrap()
+            .store
+            .data()
+            .permissions
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
+        let cached: HashSet<_> = PermissionCache::from_path_or_default(Some(cache_path.clone()))
+            .get_permissions(location.clone())
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        (running, cached)
+    };
+
+    assert_eq!(
+        respond(
+            vec![PermissionType::ReadApplicationState],
+            PermissionStatus::Granted,
+        ),
+        (
+            HashSet::from([PermissionType::ReadApplicationState]),
+            HashSet::from([
+                PermissionType::ReadApplicationState,
+                PermissionType::WriteToStdin,
+            ]),
+        )
+    );
+    let granted = (
+        HashSet::from([
+            PermissionType::ReadApplicationState,
+            PermissionType::RunCommands,
+        ]),
+        HashSet::from([
+            PermissionType::ReadApplicationState,
+            PermissionType::RunCommands,
+            PermissionType::WriteToStdin,
+        ]),
+    );
+    assert_eq!(
+        respond(vec![PermissionType::RunCommands], PermissionStatus::Granted),
+        granted
+    );
+
+    // Rewriting the cache drops comments, so this one shows whether the file was written again.
+    let untouched = "// untouched\n";
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&cache_path)
+        .unwrap()
+        .write_all(untouched.as_bytes())
+        .unwrap();
+    assert_eq!(
+        respond(
+            vec![PermissionType::ChangeApplicationState],
+            PermissionStatus::Denied,
+        ),
+        granted
+    );
+    assert_eq!(
+        respond(
+            vec![PermissionType::ReadApplicationState],
+            PermissionStatus::Granted,
+        ),
+        granted
+    );
+    assert!(std::fs::read_to_string(&cache_path)
+        .unwrap()
+        .ends_with(untouched));
 }

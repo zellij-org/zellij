@@ -480,8 +480,12 @@ impl PluginEnv {
         )
     }
 
-    pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
-        self.permissions.lock().unwrap().replace(permissions);
+    pub fn grant_permissions(&mut self, permissions: impl IntoIterator<Item = PermissionType>) {
+        self.permissions
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashSet::new)
+            .extend(permissions);
     }
 }
 

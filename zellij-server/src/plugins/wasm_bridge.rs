@@ -2278,6 +2278,11 @@ impl WasmBridge {
         status: PermissionStatus,
         cache_path: Option<PathBuf>,
     ) -> Result<()> {
+        // A denial leaves earlier grants in place, and isn't cached, so the plugin can ask again.
+        if status != PermissionStatus::Granted {
+            return Ok(());
+        }
+
         let err_context = || format!("Failed to write plugin permission {plugin_id}");
 
         let shared_running_plugin = self.shared_instance_of(plugin_id).and_then(|instance_id| {
@@ -2299,26 +2304,25 @@ impl WasmBridge {
 
         let mut running_plugin = running_plugin.lock().unwrap();
 
-        let permissions = if status == PermissionStatus::Granted {
-            permissions
-        } else {
-            vec![]
-        };
-
         running_plugin
             .store
             .data_mut()
-            .set_permissions(HashSet::from_iter(permissions.clone()));
+            .grant_permissions(permissions.iter().copied());
 
         if running_plugin.store.data().plugin.is_builtin() {
             return Ok(());
         }
 
+        // A plugin whose permissions are already cached arrives here on every load, so only
+        // write when the grant grew.
         let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-        permission_cache.cache(
+        let changed = permission_cache.cache(
             running_plugin.store.data().plugin.location.to_string(),
             permissions,
         );
+        if !changed {
+            return Ok(());
+        }
 
         permission_cache.write_to_file().with_context(err_context)
     }
