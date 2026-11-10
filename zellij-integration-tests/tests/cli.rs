@@ -97,6 +97,26 @@ fn send_blocking_command_through_the_cli() {
 }
 
 #[test]
+fn send_plain_blocking_command_through_the_cli() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    let blocking_command = zellij.run_plain_blocking_floating_command(&["blocking-command"]);
+    let floating_terminal = zellij.expect_pty_spawn();
+    zellij.wait_until("floating command pane appeared", |grid_snapshot| {
+        grid_snapshot.contains("PIN")
+    });
+
+    floating_terminal.exit(Some(42));
+    assert_eq!(blocking_command.wait_for_exit(), 42);
+
+    zellij.wait_until("floating pane closed on exit", |grid_snapshot| {
+        !grid_snapshot.contains("PIN") && grid_snapshot.cursor_is_at(col(2).row(1))
+    });
+    zellij.quit();
+}
+
+#[test]
 fn watcher_client_functionality() {
     let mut zellij = start_zellij();
     let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);

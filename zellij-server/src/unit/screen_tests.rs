@@ -15111,6 +15111,7 @@ pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::ScrollUpWithPaneId(
+            client_id,
             PaneId::Terminal(1),
             None,
         ));
@@ -15119,6 +15120,109 @@ pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
         last_change_mode_for_client(&received_server_instructions, client_id),
         None,
         "scrolling a pane the client is not focused on should not change its mode",
+    );
+
+    // A targeted write clears the target pane's scroll only. It must not
+    // synchronize the client's mode from that target: the client may still be
+    // viewing the scrolled, unfocused pane.
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::Write {
+            bytes: b"\r".to_vec(),
+            pane_id: Some("0".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "a targeted write must not pull the client out of the other pane's scroll",
+    );
+
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::WriteChars {
+            chars: "\r".to_owned(),
+            pane_id: Some("0".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "write-chars to the active pane must not interrupt scrolling another pane",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn write_chars_to_another_pane_does_not_interrupt_active_scroll() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill active pane with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Scroll the active pane; Scroll mode follows the client's active pane.
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ScrollUpWithPaneId(
+            client_id,
+            PaneId::Terminal(0),
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "scrolling the active pane enters Scroll mode",
+    );
+    received_server_instructions.lock().unwrap().clear();
+
+    // A targeted write to the other pane must not reset the active pane's
+    // scroll or pull the client out of Scroll mode.
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::WriteChars {
+            chars: "\r".to_owned(),
+            pane_id: Some("1".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "write-chars to another pane must not interrupt the active pane's scroll",
     );
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -18718,10 +18822,11 @@ fn route_cli_action(
 fn assert_cli_failure(result: &ActionCompletionResult, exit: i32) {
     assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
     assert!(
-        result
-            .error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("rejected") || message.contains("not admitted")),
+        result.error_message.as_deref().is_some_and(|message| {
+            message.contains("rejected")
+                || message.contains("not admitted")
+                || message.contains("not found")
+        }),
         "admission failure was not recorded: {result:?}"
     );
     assert!(
@@ -18828,6 +18933,25 @@ fn cli_write_to_pane_reports_admission_rejection_and_admits_a_small_write() {
         &session,
         &os_input,
         cli_client_id,
+        Action::WriteKeyToPaneId {
+            key_with_modifier: Some(zellij_utils::data::KeyWithModifier::new(
+                zellij_utils::data::BareKey::Char('a'),
+            )),
+            pane_id,
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected targeted key was queued: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
         Action::Paste {
             chars: "paste-rejected".into(),
             pane_id: Some(pane_id),
@@ -18872,6 +18996,51 @@ fn cli_write_to_pane_reports_admission_rejection_and_admits_a_small_write() {
             .any(|(bytes, metered)| bytes == &admitted && *metered),
         "admitted write was missing from the metered inbox: {queued:?}"
     );
+
+    mock_screen.teardown(vec![screen_thread]);
+}
+
+#[test]
+fn cli_targeted_actions_report_a_missing_pane_as_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let session = mock_screen.clone_session_metadata();
+    let os_input = mock_screen.os_input.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    std::thread::sleep(Duration::from_millis(150));
+    let missing = zellij_utils::data::PaneId::Terminal(999);
+    let cli_client_id = 77;
+    let actions = [
+        Action::WriteToPaneId {
+            bytes: b"missing".to_vec(),
+            pane_id: missing,
+        },
+        Action::Paste {
+            chars: "missing".into(),
+            pane_id: Some(missing),
+        },
+        Action::WriteKeyToPaneId {
+            key_with_modifier: Some(zellij_utils::data::KeyWithModifier::new(
+                zellij_utils::data::BareKey::Char('a'),
+            )),
+            pane_id: missing,
+        },
+    ];
+
+    for action in actions {
+        let (result, exit) = route_cli_action(&session, &os_input, cli_client_id, action);
+        assert_cli_failure(&result, exit);
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("not found")),
+            "missing-target failure was not recorded: {result:?}"
+        );
+    }
 
     mock_screen.teardown(vec![screen_thread]);
 }
@@ -22288,6 +22457,65 @@ mod session_rename {
         fn drop(&mut self) {
             self.0.release();
         }
+    }
+
+    #[test]
+    fn a_busy_rename_discovery_worker_refuses_new_requests_without_blocking_screen() {
+        let mut h = harness();
+        let gate = Arc::new(DiscoveryGate::new());
+        let _release = ReleaseDiscovery(Arc::clone(&gate));
+        let (_sender, _receiver) = screen_rename_bus(&mut h.screen);
+        let worker_gate = Arc::clone(&gate);
+        h.screen.session_rename_discovery =
+            super::super::SessionRenameDiscoveryHook::Override(Arc::new(move |_current, _new| {
+                worker_gate.block();
+                super::super::SessionRenameDiscovery {
+                    resurrectable_sessions: BTreeMap::new(),
+                    running_session_exists: Ok(false),
+                }
+            }));
+
+        let (first_tx, _first_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "one".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(first_tx)),
+            )
+            .expect("TEST");
+        gate.wait_until_entered();
+
+        let (queued_tx, _queued_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "two".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(queued_tx)),
+            )
+            .expect("TEST");
+
+        let (refused_tx, mut refused_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "three".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(refused_tx)),
+            )
+            .expect("TEST");
+        let refused = refused_rx
+            .try_recv()
+            .expect("a request beyond the worker and its one queued job is refused");
+        assert_eq!(refused.kind, crate::route::ActionCompletionKind::Finished);
+        assert!(
+            refused
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already being checked")),
+            "{refused:?}"
+        );
     }
 
     #[derive(Debug, PartialEq, Eq)]

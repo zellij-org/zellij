@@ -111,51 +111,48 @@ impl FromStr for KeyWithModifier {
     }
 }
 
-#[derive(Debug, Clone, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct KeyWithModifier {
     pub bare_key: BareKey,
     pub key_modifiers: BTreeSet<KeyModifier>,
 }
 
+impl KeyWithModifier {
+    /// One canonical representation for equality, hashing, and ordering.
+    /// An uppercase ASCII character is the lowercase character plus Shift.
+    fn canonical_key(&self) -> (BareKey, BTreeSet<KeyModifier>) {
+        match self.bare_key {
+            BareKey::Char(character) if character.is_ascii_uppercase() => {
+                let mut key_modifiers = self.key_modifiers.clone();
+                key_modifiers.insert(KeyModifier::Shift);
+                (BareKey::Char(character.to_ascii_lowercase()), key_modifiers)
+            },
+            _ => (self.bare_key, self.key_modifiers.clone()),
+        }
+    }
+}
+
 impl PartialEq for KeyWithModifier {
     fn eq(&self, other: &Self) -> bool {
-        match (self.bare_key, other.bare_key) {
-            (BareKey::Char(self_char), BareKey::Char(other_char))
-                if self_char.to_ascii_lowercase() == other_char.to_ascii_lowercase() =>
-            {
-                let mut self_cloned = self.clone();
-                let mut other_cloned = other.clone();
-                if self_char.is_ascii_uppercase() {
-                    self_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
-                    self_cloned.key_modifiers.insert(KeyModifier::Shift);
-                }
-                if other_char.is_ascii_uppercase() {
-                    other_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
-                    other_cloned.key_modifiers.insert(KeyModifier::Shift);
-                }
-                self_cloned.bare_key == other_cloned.bare_key
-                    && self_cloned.key_modifiers == other_cloned.key_modifiers
-            },
-            _ => self.bare_key == other.bare_key && self.key_modifiers == other.key_modifiers,
-        }
+        self.canonical_key() == other.canonical_key()
+    }
+}
+
+impl PartialOrd for KeyWithModifier {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for KeyWithModifier {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.canonical_key().cmp(&other.canonical_key())
     }
 }
 
 impl Hash for KeyWithModifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self.bare_key {
-            BareKey::Char(character) if character.is_ascii_uppercase() => {
-                let mut to_hash = self.clone();
-                to_hash.bare_key = BareKey::Char(character.to_ascii_lowercase());
-                to_hash.key_modifiers.insert(KeyModifier::Shift);
-                to_hash.bare_key.hash(state);
-                to_hash.key_modifiers.hash(state);
-            },
-            _ => {
-                self.bare_key.hash(state);
-                self.key_modifiers.hash(state);
-            },
-        }
+        self.canonical_key().hash(state);
     }
 }
 
@@ -1285,6 +1282,9 @@ pub enum Event {
     FileSystemRead(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A file was modified somewhere in the Zellij CWD folder
     FileSystemUpdate(Vec<(PathBuf, Option<FileMetadata>)>),
+    /// A file-system update was too large for the host pipe. Carries the
+    /// fitting read-order prefix; the listing is explicitly incomplete.
+    FileSystemUpdateIncomplete(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A Result of plugin permission request
@@ -6384,6 +6384,51 @@ mod extract_text_cluster_tests {
         );
         assert_eq!(extract_text_to_column(line, 2), "ae\u{0301}");
         assert_eq!(extract_text_by_columns(line, 3, 5), "\u{1F468}\u{200D}");
+    }
+}
+
+#[cfg(test)]
+mod key_with_modifier_contract_tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::collections::{BTreeSet, HashSet};
+    use std::hash::{Hash, Hasher};
+
+    fn key(bare_key: BareKey, modifiers: &[KeyModifier]) -> KeyWithModifier {
+        KeyWithModifier {
+            bare_key,
+            key_modifiers: modifiers.iter().copied().collect(),
+        }
+    }
+
+    fn hash(key: &KeyWithModifier) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn case_shift_equivalence_agrees_with_ordering_and_hashing() {
+        let cases = [
+            (
+                key(BareKey::Char('A'), &[]),
+                key(BareKey::Char('a'), &[KeyModifier::Shift]),
+            ),
+            (
+                key(BareKey::Char('A'), &[KeyModifier::Ctrl]),
+                key(BareKey::Char('a'), &[KeyModifier::Ctrl, KeyModifier::Shift]),
+            ),
+        ];
+        for (upper, lower_shift) in cases {
+            assert_eq!(upper, lower_shift);
+            assert_eq!(upper.cmp(&lower_shift), std::cmp::Ordering::Equal);
+            assert_eq!(hash(&upper), hash(&lower_shift));
+
+            let ordered: BTreeSet<_> = [upper.clone(), lower_shift.clone()].into();
+            assert_eq!(ordered.len(), 1);
+            let hashed: HashSet<_> = [upper, lower_shift].into();
+            assert_eq!(hashed.len(), 1);
+        }
     }
 }
 

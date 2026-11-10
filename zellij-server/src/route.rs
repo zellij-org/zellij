@@ -629,49 +629,31 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::WriteToPaneId { bytes, pane_id } => {
-            // Clear scroll of the *targeted* pane, not the active one, so writing
-            // to a background pane does not yank the focused pane out of scrollback.
-            senders
-                .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
-                    pane_id.into(),
-                    None,
-                ))
-                .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
                     bytes,
                     pane_id.into(),
+                    Some(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::WriteCharsToPaneId { chars, pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
-                    pane_id.into(),
-                    None,
-                ))
-                .with_context(err_context)?;
             let bytes = chars.into_bytes();
             senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
                     bytes,
                     pane_id.into(),
+                    Some(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::Paste { chars, pane_id } => {
-            match pane_id {
-                Some(pane_id) => senders
-                    .send_to_screen(ScreenInstruction::ScrollToBottomWithPaneId(
-                        pane_id.into(),
-                        None,
-                    ))
-                    .with_context(err_context)?,
-                None => senders
+            if pane_id.is_none() {
+                senders
                     .send_to_screen(ScreenInstruction::ClearScroll(client_id))
-                    .with_context(err_context)?,
+                    .with_context(err_context)?;
             }
             let bytes = chars.into_bytes();
             senders
@@ -2715,6 +2697,7 @@ fn route_action_with_origin(
         Action::ScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2723,6 +2706,7 @@ fn route_action_with_origin(
         Action::ScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2747,6 +2731,7 @@ fn route_action_with_origin(
         Action::PageScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::PageScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2755,6 +2740,7 @@ fn route_action_with_origin(
         Action::PageScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::PageScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2763,6 +2749,7 @@ fn route_action_with_origin(
         Action::HalfPageScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2771,6 +2758,7 @@ fn route_action_with_origin(
         Action::HalfPageScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -4743,8 +4731,10 @@ mod tests {
                 "targeted action {action:?} must not clear the active pane scroll, got: {instructions:?}"
             );
             assert!(
-                instructions.iter().any(|i| i == "ScrollToBottomWithPaneId"),
-                "targeted action {action:?} must scroll the target pane to the bottom, got: {instructions:?}"
+                !instructions
+                    .iter()
+                    .any(|i| i == "ScrollToBottomWithPaneId" || i == "ClearScroll"),
+                "targeted action {action:?} must let the screen clear only its target after validation, got: {instructions:?}"
             );
         }
     }

@@ -38,6 +38,205 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
+// Input must retain its recipient, client audience, and kind across adapters.
+mod input_scope_regressions {
+    use super::*;
+
+    fn plugin_tab() -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+        let (mut tab, receiver) =
+            create_new_tab_with_plugin_receiver(Size { rows: 24, cols: 80 }, true);
+        tab.new_no_preference_pane(
+            PaneId::Plugin(2),
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Plugin(2)));
+        receiver.try_iter().for_each(drop);
+        (tab, receiver)
+    }
+
+    fn updates(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> Vec<(Option<u32>, Option<ClientId>, Event)> {
+        receiver
+            .try_iter()
+            .flat_map(|(instruction, _)| match instruction {
+                PluginInstruction::Update(events) => events,
+                _ => vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn direct_write_is_not_filtered_by_sync_exclusion() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.write_to_pane_id(&None, b"x".to_vec(), false, PaneId::Plugin(2), None, None)
+            .unwrap();
+        assert!(updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+    }
+
+    #[test]
+    fn synchronized_fanout_still_honors_exclusion() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.write_to_terminals_on_current_tab(&None, b"x".to_vec(), false, 1)
+            .unwrap();
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(false);
+        tab.write_to_terminals_on_current_tab(&None, b"x".to_vec(), false, 1)
+            .unwrap();
+        assert!(updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+    }
+
+    #[test]
+    fn focused_plugin_paste_keeps_the_originating_client() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_active_terminal(b"scope".to_vec(), 1, None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), Some(1), "scope".to_owned())]);
+    }
+
+    #[test]
+    fn explicitly_clientless_plugin_paste_keeps_its_existing_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_pane_id(b"scope".to_vec(), PaneId::Plugin(2), None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), None, "scope".to_owned())]);
+    }
+
+    #[test]
+    fn paste_cannot_answer_a_permission_prompt_but_a_keypress_can() {
+        use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+        let (mut tab, receiver) = plugin_tab();
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .request_permissions_from_user(Some(PluginPermission {
+                name: "input-scope-fixture".to_owned(),
+                permissions: vec![PermissionType::FullHdAccess],
+                prompt_id: 7,
+            }));
+        receiver.try_iter().for_each(drop);
+        assert!(tab
+            .paste_to_pane_id(b"y".to_vec(), PaneId::Plugin(2), None)
+            .is_err());
+        assert!(tab
+            .paste_to_active_terminal(b"y".to_vec(), 1, None)
+            .is_err());
+        assert!(tab
+            .get_pane_with_id(PaneId::Plugin(2))
+            .unwrap()
+            .is_requesting_permissions());
+        assert!(!receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, PluginInstruction::PermissionRequestResult(..))
+        }));
+        tab.write_to_pane_id(
+            &None,
+            b"y".to_vec(),
+            false,
+            PaneId::Plugin(2),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        assert!(receiver.try_iter().any(|(instruction, _)| {
+            matches!(
+                instruction,
+                PluginInstruction::PermissionRequestResult(
+                    2,
+                    Some(1),
+                    _,
+                    PermissionStatus::Granted,
+                    _,
+                    7
+                )
+            )
+        }));
+    }
+
+    #[test]
+    fn selected_plugin_text_does_not_consume_the_paste_begin_marker() {
+        let (mut tab, receiver) = plugin_tab();
+        {
+            let pane = tab.get_pane_with_id_mut(PaneId::Plugin(2)).unwrap();
+            pane.handle_plugin_bytes(1, b"selected text".to_vec());
+            pane.set_mouse_selection_support(true);
+            pane.start_selection(&Position::new(0, 0), 1);
+            pane.end_selection(&Position::new(0, 3), 1);
+            assert!(pane.get_selected_text(1).is_some());
+        }
+        receiver.try_iter().for_each(drop);
+        tab.paste_to_active_terminal(b"scope".to_vec(), 1, None)
+            .unwrap();
+        let events = updates(&receiver);
+        assert!(events.iter().any(|(pid, cid, event)| {
+            *pid == Some(2)
+                && *cid == Some(1)
+                && matches!(event, Event::PastedText(text) if text == "scope")
+        }));
+        assert!(!events
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::Key(_))));
+    }
+
+    #[test]
+    fn plugin_cursor_is_clipped_before_adding_frame_offsets() {
+        use zellij_utils::pane_size::Offset;
+        let (mut tab, _receiver) = plugin_tab();
+        let pane = tab.get_pane_with_id_mut(PaneId::Plugin(2)).unwrap();
+        for offset in [Offset::frame(1), Offset::default()] {
+            pane.set_content_offset(offset);
+            let cols = pane.get_content_columns();
+            let rows = pane.get_content_rows();
+            assert!(cols > 0 && rows > 0);
+            let offset = pane.get_content_offset();
+            pane.show_cursor(1, Some((cols - 1, rows - 1)));
+            assert_eq!(
+                pane.cursor_coordinates(Some(1)),
+                Some((cols - 1 + offset.left, rows - 1 + offset.top, true)),
+            );
+            pane.show_cursor(1, Some((cols, 0)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+            pane.show_cursor(1, Some((0, rows)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+        }
+    }
+}
+
 #[derive(Clone)]
 struct FakeInputOutput {}
 
@@ -17169,7 +17368,7 @@ pub fn scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.scroll_up_by_pane_id(pane_id);
+    tab.scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17181,7 +17380,7 @@ pub fn pending_vte_bytes_are_bounded_while_scrolled() {
         tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
             .unwrap();
     }
-    tab.scroll_up_by_pane_id(pane_id);
+    tab.scroll_up_by_pane_id(pane_id, 1);
     assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
 
     // The ceiling rejects the pane's whole unparsed queue so the suffix can
@@ -17241,7 +17440,7 @@ pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
             .unwrap();
     }
     tab.horizontal_split(pane_b, None, 1, None, None).unwrap();
-    tab.scroll_up_by_pane_id(pane_a);
+    tab.scroll_up_by_pane_id(pane_a, 1);
     assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
     let viewport_before = tab
         .get_pane_with_id(pane_a)
@@ -17339,7 +17538,7 @@ pub fn scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.scroll_down_by_pane_id(pane_id);
+    let _ = tab.scroll_down_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17375,7 +17574,7 @@ pub fn page_scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.page_scroll_up_by_pane_id(pane_id);
+    tab.page_scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17387,7 +17586,7 @@ pub fn page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.page_scroll_down_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17399,7 +17598,7 @@ pub fn half_page_scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.half_page_scroll_up_by_pane_id(pane_id);
+    tab.half_page_scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17411,7 +17610,7 @@ pub fn half_page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.half_page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.half_page_scroll_down_by_pane_id(pane_id, 1);
 }
 
 fn lines_below(tab: &Tab, pane_id: PaneId) -> usize {
@@ -17457,7 +17656,7 @@ pub fn targeted_page_and_half_page_scrolls_use_content_rows() {
     assert_ne!(content_rows, rows_minus_one);
     assert_ne!(content_rows / 2, rows_minus_one / 2);
 
-    tab.page_scroll_up_by_pane_id(pane_id);
+    tab.page_scroll_up_by_pane_id(pane_id, 1);
     assert_eq!(lines_below(&tab, pane_id), content_rows);
 
     tab.get_pane_with_id_mut(pane_id)
@@ -17465,11 +17664,38 @@ pub fn targeted_page_and_half_page_scrolls_use_content_rows() {
         .scroll_down(content_rows, 1);
     assert_eq!(lines_below(&tab, pane_id), 0);
 
-    tab.half_page_scroll_up_by_pane_id(pane_id);
+    tab.half_page_scroll_up_by_pane_id(pane_id, 1);
     let half = content_rows / 2;
     assert_eq!(lines_below(&tab, pane_id), half);
-    tab.half_page_scroll_down_by_pane_id(pane_id).unwrap();
+    tab.half_page_scroll_down_by_pane_id(pane_id, 1).unwrap();
     assert_eq!(lines_below(&tab, pane_id), 0);
+}
+
+#[test]
+fn clearing_one_panes_scroll_does_not_reset_another_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let scrolled_pane = PaneId::Terminal(1);
+    let written_pane = PaneId::Terminal(2);
+    tab.vertical_split(written_pane, None, 1, None, None)
+        .unwrap();
+    for line in 0..40 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.scroll_up_by_pane_id(scrolled_pane, 1);
+    assert!(tab.get_pane_with_id(scrolled_pane).unwrap().is_scrolled());
+
+    // This is the preparation performed by a targeted write before delivery.
+    tab.scroll_to_bottom_by_pane_id(written_pane).unwrap();
+
+    assert!(
+        tab.get_pane_with_id(scrolled_pane).unwrap().is_scrolled(),
+        "clearing the write target's scroll must not reset another pane"
+    );
 }
 
 #[test]
@@ -17627,7 +17853,7 @@ pub fn scroll_up_nonexistent_pane_id_does_not_panic() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(999);
     assert!(!tab.has_pane_with_pid(&pane_id));
-    tab.scroll_up_by_pane_id(pane_id);
+    tab.scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -21932,6 +22158,49 @@ fn ctrl_wheel_resizes_and_alt_wheel_jumps_prompts_regardless_of_the_line_count()
     alt.wheel_lines = 9;
     tab.handle_mouse_event(&alt, 1).unwrap();
     assert_ne!(scrolled_lines(&tab), 9);
+}
+
+#[test]
+fn ctrl_wheel_resize_targets_the_hovered_tiled_pane_not_the_active_one() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, true);
+    let left_pane = PaneId::Terminal(1);
+    let right_pane = PaneId::Terminal(2);
+    tab.vertical_split(right_pane, None, client_id, None, None)
+        .unwrap();
+    tab.focus_pane_with_id(left_pane, false, false, client_id)
+        .unwrap();
+    assert_eq!(tab.get_active_pane_id(client_id), Some(left_pane));
+
+    let left_before = geom_of(&tab, left_pane);
+    let right_before = geom_of(&tab, right_pane);
+    let hovered = {
+        let pane = tab.get_pane_with_id(right_pane).unwrap();
+        zellij_utils::position::Position::new(
+            (pane.y() + pane.rows() / 2) as i32,
+            (pane.x() + pane.cols() / 2) as u16,
+        )
+    };
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_ctrl_scroll_up_event(hovered),
+        client_id,
+    )
+    .unwrap();
+
+    let left_after = geom_of(&tab, left_pane);
+    let right_after = geom_of(&tab, right_pane);
+    assert!(
+        right_after.cols.as_usize() > right_before.cols.as_usize(),
+        "the pane under the pointer grows"
+    );
+    assert!(
+        left_after.cols.as_usize() < left_before.cols.as_usize(),
+        "the active pane gives space to the hovered pane"
+    );
 }
 
 #[test]

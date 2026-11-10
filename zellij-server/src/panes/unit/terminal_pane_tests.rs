@@ -1,13 +1,16 @@
 use super::super::{TerminalPane, MAX_PENDING_PTY_BYTES};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
+use crate::route::{ActionCompletionKind, NotificationEnd};
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use tokio::sync::oneshot;
 use zellij_utils::{
-    data::{Palette, Style},
+    data::{Palette, Style, UnblockCondition},
+    input::command::RunCommand,
     pane_size::{Offset, PaneGeom, SizeInPixels},
     position::Position,
 };
@@ -15,6 +18,14 @@ use zellij_utils::{
 use std::fmt::Write;
 
 fn terminal_pane_with_size(rows: usize, cols: usize) -> TerminalPane {
+    terminal_pane_with_notification(rows, cols, None)
+}
+
+fn terminal_pane_with_notification(
+    rows: usize,
+    cols: usize,
+    notification_end: Option<NotificationEnd>,
+) -> TerminalPane {
     let mut geom = PaneGeom::default();
     geom.cols.set_inner(cols);
     geom.rows.set_inner(rows);
@@ -36,8 +47,86 @@ fn terminal_pane_with_size(rows: usize, cols: usize) -> TerminalPane {
         true,
         true,
         false,
-        None,
+        notification_end,
     )
+}
+
+#[test]
+fn closing_a_pane_completes_a_plain_blocking_waiter_with_its_exit_status() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane =
+        terminal_pane_with_notification(4, 20, Some(NotificationEnd::new(completion_tx)));
+
+    pane.update_exit_status(42);
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("closing the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(42));
+    assert!(outcome.error_message.is_none());
+}
+
+#[test]
+fn dropping_a_pane_releases_a_plain_blocking_waiter() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let pane = terminal_pane_with_notification(4, 20, Some(NotificationEnd::new(completion_tx)));
+
+    drop(pane);
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("dropping the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, None);
+    assert!(outcome.error_message.is_none());
+}
+
+#[test]
+fn a_met_unblock_condition_releases_the_waiter_when_the_pane_is_held() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane = terminal_pane_with_notification(
+        4,
+        20,
+        Some(NotificationEnd::new_with_condition(
+            completion_tx,
+            UnblockCondition::OnAnyExit,
+        )),
+    );
+
+    pane.hold(Some(7), false, RunCommand::default());
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("a met unblock condition releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(7));
+}
+
+#[test]
+fn an_unmet_unblock_condition_keeps_the_waiter_until_the_pane_closes() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane = terminal_pane_with_notification(
+        4,
+        20,
+        Some(NotificationEnd::new_with_condition(
+            completion_tx,
+            UnblockCondition::OnExitSuccess,
+        )),
+    );
+
+    pane.hold(Some(1), false, RunCommand::default());
+    assert!(
+        completion_rx.try_recv().is_err(),
+        "a failure does not satisfy OnExitSuccess"
+    );
+
+    drop(pane);
+    let outcome = completion_rx
+        .try_recv()
+        .expect("closing the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(1));
 }
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {

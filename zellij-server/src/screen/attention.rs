@@ -580,13 +580,14 @@ impl Screen {
         pane_id: zellij_utils::data::PaneId,
         key: Option<KeyWithModifier>,
         bytes: Vec<u8>,
+        client_id: ClientId,
     ) -> bool {
         let server_pane_id: PaneId = pane_id.into();
         let is_kitty = key.is_some();
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&server_pane_id) {
                 return tab
-                    .write_to_pane_id(&key, bytes, is_kitty, server_pane_id, None, None)
+                    .write_to_pane_id(&key, bytes, is_kitty, server_pane_id, Some(client_id), None)
                     .is_ok();
             }
         }
@@ -605,14 +606,14 @@ impl Screen {
                     self.mark_pane_seen(None, Some(pane_id), client_id)
                 },
                 SessionPaneCommand::Write(pane_id, bytes) => {
-                    self.write_to_local_pane(pane_id, None, bytes)
+                    self.write_to_local_pane(pane_id, None, bytes, client_id)
                 },
                 SessionPaneCommand::Key(pane_id, key) => {
                     let bytes = key
                         .serialize_kitty()
                         .map(|s| s.into_bytes())
                         .unwrap_or_default();
-                    self.write_to_local_pane(pane_id, Some(key), bytes)
+                    self.write_to_local_pane(pane_id, Some(key), bytes, client_id)
                 },
                 SessionPaneCommand::ToggleMute(pane_id) => {
                     self.toggle_pane_mute(Some(pane_id), client_id)

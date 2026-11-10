@@ -14814,7 +14814,8 @@ fn recount_cursor_advances_while_the_producer_evicts_the_front() {
         match grid.line_index.measure_cursor_source_row() {
             Some(source) => {
                 let current = scrollback_row_tag(&grid.lines_above[source]);
-                if current.saturating_add(quantum as u32) < previous {
+                let anchored = grid.line_index.measure_anchor_offset().unwrap_or(0) > 0;
+                if !anchored && current.saturating_add(quantum as u32) < previous {
                     resets += 1;
                 }
                 previous = current;

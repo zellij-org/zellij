@@ -334,6 +334,12 @@ pub struct SessionIndex {
     indexed_facts: HashSet<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenameOutcome {
+    Renamed,
+    Conflict,
+}
+
 fn sanitize_identifier(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -617,10 +623,7 @@ impl SessionIndex {
 
     pub fn rename(&self, old_name: &str, new_name: &str) -> Result<bool> {
         match self.session_id(old_name)? {
-            Some(id) => {
-                self.rename_by_id(&id, new_name, now_secs())?;
-                Ok(true)
-            },
+            Some(id) => Ok(self.rename_by_id(&id, new_name, now_secs())? == RenameOutcome::Renamed),
             None => Ok(false),
         }
     }
@@ -662,13 +665,19 @@ impl SessionIndex {
 
     /// Give the session with this id a new name. Nothing on disk is renamed: the socket and the
     /// cache folder stay named by the id.
-    pub fn rename_by_id(&self, id: &str, new_name: &str, now: u64) -> Result<()> {
+    pub fn rename_by_id(&self, id: &str, new_name: &str, now: u64) -> Result<RenameOutcome> {
         let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        // A row left under the new name by a session that no longer exists gives way.
-        transaction.execute(
-            "DELETE FROM sessions WHERE name = ?1 AND COALESCE(id, name) <> ?2",
+        let target_is_owned = transaction.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sessions
+                WHERE name = ?1 AND COALESCE(id, name) <> ?2
+            )",
             params![new_name, id],
+            |row| row.get::<_, bool>(0),
         )?;
+        if target_is_owned {
+            return Ok(RenameOutcome::Conflict);
+        }
         // Pinning the id keeps a session from before ids existed (no id, named on disk by its old
         // name) reachable under its new name.
         let renamed = transaction.execute(
@@ -685,7 +694,7 @@ impl SessionIndex {
             )?;
         }
         transaction.commit()?;
-        Ok(())
+        Ok(RenameOutcome::Renamed)
     }
 
     /// The id of the session with this name, if the index knows the session.
@@ -2094,6 +2103,28 @@ mod tests {
         assert_eq!(
             test.index.session_name(&id).unwrap(),
             Some("after".to_owned())
+        );
+    }
+
+    #[test]
+    fn renaming_onto_a_name_owned_by_another_session_is_a_conflict() {
+        let test = TestIndex::new();
+        let first = test.index.register("first", 10).unwrap();
+        let second = test.index.register("second", 11).unwrap();
+
+        assert_eq!(
+            test.index.rename_by_id(&first, "second", 20).unwrap(),
+            RenameOutcome::Conflict
+        );
+        assert_eq!(
+            test.index.session_id("first").unwrap(),
+            Some(first),
+            "the source session must keep its name"
+        );
+        assert_eq!(
+            test.index.session_id("second").unwrap(),
+            Some(second),
+            "the session that already owns the target name must be untouched"
         );
     }
 

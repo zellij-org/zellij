@@ -265,15 +265,14 @@ impl Pane for PluginPane {
         if let Some(coordinates) =
             client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
         {
-            coordinates
-                .map(|(x, y)| (x + left, y + top))
-                .and_then(|(x, y)| {
-                    if x >= own_content_columns || y >= own_content_rows {
-                        None
-                    } else {
-                        Some((x, y, true)) // plugins always show cursor when position is set
-                    }
-                })
+            coordinates.and_then(|(x, y)| {
+                // Bounds are in content coordinates; translate only after checking.
+                if x >= own_content_columns || y >= own_content_rows {
+                    None
+                } else {
+                    Some((x + left, y + top, true)) // plugins always show cursor when position is set
+                }
+            })
         } else {
             None
         }

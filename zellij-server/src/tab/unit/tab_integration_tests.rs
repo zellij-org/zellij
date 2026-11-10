@@ -14157,7 +14157,7 @@ fn test_ctrl_scroll_down_on_active_tiled_pane_decreases_pane_size() {
 }
 
 #[test]
-fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size() {
+fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_hovered_pane_size() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -14207,7 +14207,7 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
 }
 
 #[test]
-fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size() {
+fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_hovered_pane_size() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -19455,6 +19455,127 @@ fn another_clients_left_press_does_not_clear_an_in_progress_selection() {
             .get_selected_text(client_a)
             .is_none(),
         "client A's own later press may clear client A's selection"
+    );
+}
+
+#[test]
+fn a_stale_clients_release_or_disconnect_cannot_clear_a_newer_selection() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_a = 1;
+    let client_b = 2;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.handle_pty_bytes(1, Vec::from("alpha beta gamma delta".as_bytes()))
+        .unwrap();
+    tab.add_client(client_b, None).unwrap();
+    let pane_id = PaneId::Terminal(1);
+    let start = {
+        let pane = tab.get_pane_with_id(pane_id).unwrap();
+        Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16)
+    };
+    let dragged = Position::new(start.line() as i32, (start.column() + 8) as u16);
+
+    // Client A opens a selection in the shared terminal grid.
+    tab.focus_pane_with_id(pane_id, false, false, client_a)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(start), client_a)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(dragged), client_a)
+        .unwrap();
+    let selection_a = tab
+        .get_pane_with_id(pane_id)
+        .unwrap()
+        .get_selected_text(client_a);
+    assert!(selection_a.is_some(), "client A started a selection");
+
+    // Client B replaces the shared selection with a newer gesture.
+    tab.focus_pane_with_id(pane_id, false, false, client_b)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(start), client_b)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(dragged), client_b)
+        .unwrap();
+    let selection_b = tab
+        .get_pane_with_id(pane_id)
+        .unwrap()
+        .get_selected_text(client_b);
+    assert!(selection_b.is_some(), "client B started a newer selection");
+    assert!(
+        tab.get_pane_with_id(pane_id)
+            .unwrap()
+            .get_selected_text(client_a)
+            .is_none(),
+        "the shared selection is owned by client B"
+    );
+
+    // A's stale release must not finalize or clear B's selection.
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(dragged), client_a)
+        .unwrap();
+    assert_eq!(
+        tab.get_pane_with_id(pane_id)
+            .unwrap()
+            .get_selected_text(client_b),
+        selection_b
+    );
+
+    // Disconnecting A cleans up A's gesture tracker, not B's selection.
+    tab.remove_client(client_a);
+    assert_eq!(
+        tab.get_pane_with_id(pane_id)
+            .unwrap()
+            .get_selected_text(client_b),
+        selection_b
+    );
+}
+
+#[test]
+fn targeted_plugin_write_carries_the_acting_client_audience() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    tab.new_pane(
+        PaneId::Plugin(7),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    while plugin_receiver.try_recv().is_ok() {}
+
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('x'));
+    tab.write_to_pane_id(
+        &Some(key.clone()),
+        b"x".to_vec(),
+        false,
+        PaneId::Plugin(7),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+
+    let mut key_audiences = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (plugin_id, audience, event) in updates {
+                if plugin_id == Some(7) && matches!(event, zellij_utils::data::Event::Key(_)) {
+                    key_audiences.push(audience);
+                }
+            }
+        }
+    }
+    assert_eq!(
+        key_audiences,
+        vec![Some(client_id)],
+        "a targeted plugin write must not broadcast to every client instance"
     );
 }
 

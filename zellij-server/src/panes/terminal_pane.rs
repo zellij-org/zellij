@@ -167,6 +167,10 @@ pub struct TerminalPane {
     pub style: Style,
     vte_parser: vt_parser::Parser,
     selection_scrolled_at: time::Instant,
+    /// The client whose mouse gesture owns the shared grid selection. The
+    /// terminal pane has one viewport and one selection, so a stale client's
+    /// release or disconnect must not clear a newer client's selection.
+    selection_owner: Option<ClientId>,
     content_offset: Offset,
     pane_title: String,
     pane_name: String,
@@ -231,6 +235,16 @@ pub struct TerminalPane {
     /// Bytes from before this pane existed were dropped. Shown in the title,
     /// never written into the PTY stream.
     output_truncated: bool,
+}
+
+impl Drop for TerminalPane {
+    fn drop(&mut self) {
+        // A blocking waiter is attached to this pane for its whole lifetime.
+        // Closing the pane without an exit status (for example, the user
+        // closes a still-running blocking pane) must release that waiter with
+        // whatever outcome was recorded, not report abandonment.
+        self.complete_pending_notification();
+    }
 }
 
 struct OutputCatchup {
@@ -1224,12 +1238,16 @@ impl Pane for TerminalPane {
             .set_selection_options(osc133_command_selection, word_separators);
     }
 
-    fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
+    fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+        self.selection_owner = Some(client_id);
         self.grid.start_selection(start);
         self.set_should_render(true);
     }
 
-    fn update_selection(&mut self, to: &Position, _client_id: ClientId) {
+    fn update_selection(&mut self, to: &Position, client_id: ClientId) {
+        if self.selection_owner != Some(client_id) {
+            return;
+        }
         let should_scroll = self.selection_scrolled_at.elapsed()
             >= time::Duration::from_millis(SELECTION_SCROLL_INTERVAL_MS);
         let cursor_at_the_bottom = to.line.0 < 0 && should_scroll;
@@ -1252,16 +1270,28 @@ impl Pane for TerminalPane {
         }
     }
 
-    fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, client_id: ClientId) {
+        if self.selection_owner != Some(client_id) {
+            return;
+        }
         self.grid.end_selection(end);
         self.set_should_render(true);
     }
 
-    fn reset_selection(&mut self, _client_id: Option<ClientId>) {
+    fn reset_selection(&mut self, client_id: Option<ClientId>) {
+        if let Some(client_id) = client_id {
+            if self.selection_owner != Some(client_id) {
+                return;
+            }
+        }
+        self.selection_owner = None;
         self.grid.reset_selection();
     }
 
-    fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
+    fn get_selected_text(&self, client_id: ClientId) -> Option<String> {
+        if self.selection_owner != Some(client_id) {
+            return None;
+        }
         self.grid.get_selected_text()
     }
 
@@ -1415,6 +1445,7 @@ impl Pane for TerminalPane {
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
         self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
+        let mut condition_met = false;
         if let Some(notification_end) = self.notification_end.as_mut() {
             if let Some(exit_status) = exit_status {
                 notification_end.set_exit_status(exit_status);
@@ -1422,11 +1453,13 @@ impl Pane for TerminalPane {
                 // Check if unblock condition is met
                 if let Some(condition) = notification_end.unblock_condition() {
                     if condition.is_met(exit_status) {
-                        // Condition met - drop the NotificationEnd now to unblock
-                        drop(self.notification_end.take());
+                        condition_met = true;
                     }
                 }
             }
+        }
+        if condition_met {
+            self.complete_pending_notification();
         }
         if is_first_run {
             self.render_first_run_banner();
@@ -1487,7 +1520,7 @@ impl Pane for TerminalPane {
             if let Some(exit_status) = self.exit_status() {
                 waiter.set_exit_status(exit_status);
             }
-            drop(waiter);
+            waiter.complete_recorded();
             return None;
         }
         if self.notification_end.is_some() {
@@ -1722,14 +1755,10 @@ impl Pane for TerminalPane {
     fn update_exit_status(&mut self, exit_status: i32) {
         if let Some(notification_end) = self.notification_end.as_mut() {
             notification_end.set_exit_status(exit_status);
-            // Check if unblock condition is met
-            if let Some(condition) = notification_end.unblock_condition() {
-                if condition.is_met(exit_status) {
-                    // Condition met - drop the NotificationEnd now to unblock
-                    drop(self.notification_end.take());
-                }
-            }
         }
+        // The pane is being removed, so the waiter must be released whether
+        // or not its unblock condition matched.
+        self.complete_pending_notification();
     }
     fn set_plugin_regex_highlights(
         &mut self,
@@ -1809,6 +1838,12 @@ impl Pane for TerminalPane {
 }
 
 impl TerminalPane {
+    fn complete_pending_notification(&mut self) {
+        if let Some(notification_end) = self.notification_end.take() {
+            notification_end.complete_recorded();
+        }
+    }
+
     /// Apply terminal operations against the live model even when the user
     /// is looking at history. The held view is restored afterwards, so a
     /// deferred REP quantum and the bytes behind it cannot land in history.
@@ -2307,6 +2342,7 @@ impl TerminalPane {
             active_at: Instant::now(),
             style,
             selection_scrolled_at: time::Instant::now(),
+            selection_owner: None,
             pane_title: initial_pane_title,
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,

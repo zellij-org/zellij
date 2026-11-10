@@ -1249,6 +1249,16 @@ impl TestSession {
         }
     }
 
+    pub fn run_plain_blocking_floating_command(&self, command: &[&str]) -> CliClientHandle {
+        let mut action = new_pane_cli_action(command, true, true, false, false);
+        if let CliAction::NewPane { blocking, .. } = &mut action {
+            *blocking = true;
+        }
+        CliClientHandle {
+            thread: self.spawn_cli_client(action),
+        }
+    }
+
     pub fn join_main_client(&mut self) -> Option<ConnectToSession> {
         self.main_client.join()
     }

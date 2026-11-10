@@ -76,6 +76,12 @@ pub fn rename_session(session_id: &str, new_name: &str) -> Result<(), String> {
                 session_id, e
             )
         })
+        .and_then(|outcome| match outcome {
+            session_index::RenameOutcome::Renamed => Ok(()),
+            session_index::RenameOutcome::Conflict => {
+                Err("A session by this name already exists.".to_owned())
+            },
+        })
 }
 
 /// The id of the session with this name.

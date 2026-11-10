@@ -394,6 +394,15 @@ pub struct SessionRenameCommit {
     pub completion: Option<NotificationEnd>,
 }
 
+struct SessionRenameDiscoveryJob {
+    name: String,
+    current_session_name: String,
+    client_id: ClientId,
+    discovery: SessionRenameDiscoveryHook,
+    popup_on_error: bool,
+    completion: Option<NotificationEnd>,
+}
+
 #[derive(Clone)]
 enum SessionRenameDiscoveryHook {
     /// [`discover_session_rename_conflicts`], which calls the real session scan.
@@ -1031,7 +1040,7 @@ pub enum ScreenInstruction {
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
-    WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    WriteToPaneId(Vec<u8>, PaneId, Option<ClientId>, Option<NotificationEnd>),
     Paste(Vec<u8>, Option<PaneId>, ClientId, Option<NotificationEnd>),
     SetPaneColor(
         PaneId,
@@ -1044,18 +1053,19 @@ pub enum ScreenInstruction {
         Vec<u8>,
         bool, // is_kitty_keyboard_protocol
         PaneId,
+        Option<ClientId>,
         Option<NotificationEnd>,
     ),
     CopyTextToClipboard(String, u32), // String - text to copy, u32 - plugin_id
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
-    ScrollUpInPaneId(PaneId),
-    ScrollDownInPaneId(PaneId),
+    ScrollUpInPaneId(ClientId, PaneId),
+    ScrollDownInPaneId(ClientId, PaneId),
     ScrollToTopInPaneId(PaneId),
     ScrollToBottomInPaneId(PaneId),
-    PageScrollUpInPaneId(PaneId),
-    PageScrollDownInPaneId(PaneId),
+    PageScrollUpInPaneId(ClientId, PaneId),
+    PageScrollDownInPaneId(ClientId, PaneId),
     TogglePaneIdFullscreen(PaneId),
     SetMobileRenderPreferences {
         client_id: ClientId,
@@ -1318,14 +1328,14 @@ pub enum ScreenInstruction {
     ClearHintTextCache,
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
-    ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    ScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    ScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
     ScrollToTopWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollToBottomWithPaneId(PaneId, Option<NotificationEnd>),
-    PageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    PageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
-    HalfPageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    HalfPageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    PageScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    PageScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    HalfPageScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    HalfPageScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
     ResizeWithPaneId(PaneId, ResizeStrategy, Option<NotificationEnd>),
     MovePaneWithPaneIdCli(PaneId, Option<Direction>, Option<NotificationEnd>),
     MovePaneBackwardsWithPaneId(PaneId, Option<NotificationEnd>),
@@ -2401,6 +2411,7 @@ pub(crate) struct Screen {
     rename_tab_targets: HashMap<ClientId, usize>,
     session_rename_drafts: HashMap<ClientId, String>,
     session_rename_discovery: SessionRenameDiscoveryHook,
+    session_rename_worker: Option<std::sync::mpsc::SyncSender<SessionRenameDiscoveryJob>>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -2884,6 +2895,7 @@ impl Screen {
             rename_tab_targets: HashMap::new(),
             session_rename_drafts: HashMap::new(),
             session_rename_discovery: SessionRenameDiscoveryHook::Production,
+            session_rename_worker: None,
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -8910,12 +8922,16 @@ impl Screen {
             }
             None
         } else {
-            self.session_rename_drafts.remove(&client_id)
+            self.session_rename_drafts.get(&client_id).cloned()
         };
         if let Some(new_name) = pending_session_rename {
             if new_name != self.session_name {
                 self.begin_session_rename(new_name, client_id, true, None)?;
+            } else {
+                self.session_rename_drafts.remove(&client_id);
             }
+        } else if new_mode != InputMode::RenameSession {
+            self.session_rename_drafts.remove(&client_id);
         }
         let displayed_session_name = self.displayed_session_name(client_id);
         if mode_info.session_name.as_ref() != Some(&displayed_session_name) {
@@ -9022,6 +9038,8 @@ impl Screen {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+            self.session_rename_drafts.remove(&client_id);
+            self.refresh_displayed_session_name(client_id).non_fatal();
             self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
             let mut completion = crate::route::RecordedCompletion::new(completion);
             Self::record_session_rename_failure(&mut completion, &error_text);
@@ -9029,49 +9047,86 @@ impl Screen {
         }
         let hook = self.session_rename_discovery.clone();
         let current_session_name = self.session_name.clone();
-        let senders = self.bus.senders.clone();
-        // Capacity 1 so the screen thread can hand off the completion without
-        // waiting for the probe thread to be scheduled.
-        let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(1);
-        let spawned = std::thread::Builder::new()
-            .name("session-rename-discovery".to_owned())
-            .spawn(move || {
-                let completion = completion_rx.recv().unwrap_or(None);
-                let discovery = hook.discover(&current_session_name, &name);
-                let _ = senders.send_to_screen(ScreenInstruction::CommitSessionRename(Box::new(
-                    SessionRenameCommit {
-                        name,
-                        client_id,
-                        discovery,
-                        popup_on_error,
-                        completion,
-                    },
-                )));
-            });
-        match spawned {
-            Ok(_worker) => {
-                if let Err(std::sync::mpsc::SendError(completion)) = completion_tx.send(completion)
-                {
-                    let error_text =
-                        "Could not check whether a session by this name exists: discovery thread stopped";
-                    self.report_session_rename_failure(
-                        client_id,
-                        popup_on_error,
-                        error_text.to_owned(),
-                    );
-                    let mut completion = crate::route::RecordedCompletion::new(completion);
-                    Self::record_session_rename_failure(&mut completion, error_text);
-                }
-            },
+        let worker = match self.session_rename_worker() {
+            Ok(worker) => worker,
             Err(error) => {
                 let error_text =
                     format!("Could not check whether a session by this name exists: {error}");
                 self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
                 let mut completion = crate::route::RecordedCompletion::new(completion);
                 Self::record_session_rename_failure(&mut completion, &error_text);
+                return Ok(());
+            },
+        };
+        let job = SessionRenameDiscoveryJob {
+            name,
+            current_session_name,
+            client_id,
+            discovery: hook,
+            popup_on_error,
+            completion,
+        };
+        match worker.try_send(job) {
+            Ok(()) => {},
+            Err(std::sync::mpsc::TrySendError::Full(job)) => {
+                let error_text =
+                    "Could not rename the session: another rename is already being checked";
+                self.reject_session_rename_job(job, error_text);
+            },
+            Err(std::sync::mpsc::TrySendError::Disconnected(job)) => {
+                self.session_rename_worker = None;
+                let error_text =
+                    "Could not check whether a session by this name exists: discovery worker stopped";
+                self.reject_session_rename_job(job, error_text);
             },
         }
         Ok(())
+    }
+
+    fn session_rename_worker(
+        &mut self,
+    ) -> Result<std::sync::mpsc::SyncSender<SessionRenameDiscoveryJob>> {
+        if let Some(worker) = self.session_rename_worker.as_ref() {
+            return Ok(worker.clone());
+        }
+        let (worker, jobs) = std::sync::mpsc::sync_channel::<SessionRenameDiscoveryJob>(1);
+        let senders = self.bus.senders.clone();
+        std::thread::Builder::new()
+            .name("session-rename-discovery".to_owned())
+            .spawn(move || {
+                while let Ok(job) = jobs.recv() {
+                    let discovery = job.discovery.discover(&job.current_session_name, &job.name);
+                    let commit = SessionRenameCommit {
+                        name: job.name,
+                        client_id: job.client_id,
+                        discovery,
+                        popup_on_error: job.popup_on_error,
+                        completion: job.completion,
+                    };
+                    if senders
+                        .send_to_screen(ScreenInstruction::CommitSessionRename(Box::new(commit)))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .with_context(|| "failed to start session-rename discovery worker")?;
+        self.session_rename_worker = Some(worker.clone());
+        Ok(worker)
+    }
+
+    fn reject_session_rename_job(&mut self, job: SessionRenameDiscoveryJob, error_text: &str) {
+        self.session_rename_drafts.remove(&job.client_id);
+        self.refresh_displayed_session_name(job.client_id)
+            .non_fatal();
+        self.report_session_rename_failure(
+            job.client_id,
+            job.popup_on_error,
+            error_text.to_owned(),
+        );
+        let mut completion = crate::route::RecordedCompletion::new(job.completion);
+        Self::record_session_rename_failure(&mut completion, error_text);
     }
 
     fn commit_session_rename(&mut self, commit: SessionRenameCommit) -> Result<()> {
@@ -9084,12 +9139,18 @@ impl Screen {
         } = commit;
         let mut completion = crate::route::RecordedCompletion::new(completion);
         match self.apply_discovered_session_rename(name, discovery) {
-            Ok(Ok(())) => {},
+            Ok(Ok(())) => {
+                self.session_rename_drafts.remove(&client_id);
+            },
             Ok(Err(error_text)) => {
+                self.session_rename_drafts.remove(&client_id);
+                self.refresh_displayed_session_name(client_id).non_fatal();
                 Self::record_session_rename_failure(&mut completion, &error_text);
                 self.report_session_rename_failure(client_id, popup_on_error, error_text);
             },
             Err(error) => {
+                self.session_rename_drafts.remove(&client_id);
+                self.refresh_displayed_session_name(client_id).non_fatal();
                 Self::record_session_rename_failure(&mut completion, &error.to_string());
                 return Err(error);
             },
@@ -9129,9 +9190,10 @@ impl Screen {
         }
     }
 
-    /// `rename_by_id` deletes any other row with this name. The off-screen
-    /// probe can be stale, so read the index and the socket path here, before
-    /// that write. A read error is a failure. This does not call `session_exists`.
+    /// The off-screen probe can be stale, so read the index and the socket
+    /// path here too. The index transaction makes the final decision; this
+    /// check only gives the user an earlier, clearer error. A read error is a
+    /// failure. This does not call `session_exists`.
     fn rename_target_is_taken(&self, name: &str) -> std::result::Result<bool, String> {
         let indexed_id = zellij_utils::sessions::resolve_session_id(name)?;
         if indexed_id.as_deref() == Some(self.session_id.as_str()) {
@@ -16496,25 +16558,41 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::WriteToPaneId(bytes, pane_id, completion) => {
-                // The pty write carries no CLI token. Admission failure comes
-                // back as `Err`. Record it on this owner; the guard publishes
-                // that failure. An empty owner is a finished success.
+            ScreenInstruction::WriteToPaneId(bytes, pane_id, client_id, completion) => {
+                // This completion reports admission of the write request, not
+                // the pty writer's eventual write. An empty owner is a
+                // finished admission; a missing target or rejected admission
+                // must record a failure.
                 let mut completion = crate::route::RecordedCompletion::new(completion);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        found = true;
                         if tab.is_pane_requesting_permissions(pane_id) {
+                            mark_action_as_failed(
+                                &mut completion,
+                                &format!(
+                                    "Failed to write to pane with id {pane_id:?}: the pane is requesting permissions"
+                                ),
+                            );
                             break;
                         }
+                        tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
                         if let Err(error) =
-                            tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
+                            tab.write_to_pane_id(&None, bytes, false, pane_id, client_id, None)
                         {
-                            mark_action_as_failed(&mut *completion, &format!("{error:#}"));
+                            mark_action_as_failed(&mut completion, &format!("{error:#}"));
                             Err::<(), _>(error).non_fatal();
                         }
                         break;
                     }
+                }
+                if !found {
+                    mark_action_as_failed(
+                        &mut completion,
+                        &format!("Failed to write to pane with id {pane_id:?}: pane not found"),
+                    );
                 }
                 screen.render(None)?;
             },
@@ -16523,12 +16601,32 @@ pub(crate) fn screen_thread_main(
                 match pane_id {
                     Some(pane_id) => {
                         let all_tabs = screen.get_tabs_mut();
+                        let mut found = false;
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
+                                found = true;
+                                if tab.is_pane_requesting_permissions(pane_id) {
+                                    mark_action_as_failed(
+                                        &mut _completion,
+                                        &format!(
+                                            "Failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+                                        ),
+                                    );
+                                    break;
+                                }
+                                tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
                                 tab.paste_to_pane_id(bytes, pane_id, _completion.take())
                                     .non_fatal();
                                 break;
                             }
+                        }
+                        if !found {
+                            mark_action_as_failed(
+                                &mut _completion,
+                                &format!(
+                                    "Failed to paste into pane with id {pane_id:?}: pane not found"
+                                ),
+                            );
                         }
                     },
                     None => {
@@ -16561,26 +16659,46 @@ pub(crate) fn screen_thread_main(
                 bytes,
                 is_kitty,
                 pane_id,
+                client_id,
                 _completion,
             ) => {
                 let mut _completion = crate::route::RecordedCompletion::new(_completion);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        found = true;
                         if tab.is_pane_requesting_permissions(pane_id) {
+                            mark_action_as_failed(
+                                &mut _completion,
+                                &format!(
+                                    "Failed to write a key to pane with id {pane_id:?}: the pane is requesting permissions"
+                                ),
+                            );
                             break;
                         }
-                        tab.write_to_pane_id(
+                        tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
+                        if let Err(error) = tab.write_to_pane_id(
                             &key_with_modifier,
                             bytes,
                             is_kitty,
                             pane_id,
-                            None, // client_id not needed for targeted write
+                            client_id,
                             None, // completion handled by instruction
-                        )
-                        .non_fatal();
+                        ) {
+                            mark_action_as_failed(&mut _completion, &format!("{error:#}"));
+                            Err::<(), _>(error).non_fatal();
+                        }
                         break;
                     }
+                }
+                if !found {
+                    mark_action_as_failed(
+                        &mut _completion,
+                        &format!(
+                            "Failed to write a key to pane with id {pane_id:?}: pane not found"
+                        ),
+                    );
                 }
                 screen.render(None)?;
             },
@@ -16637,18 +16755,14 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollUpInPaneId(pane_id) => {
+            ScreenInstruction::ScrollUpInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_up(terminal_pane_id)?;
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling up"
-                            );
+                            tab.scroll_up_by_pane_id(pane_id, client_id);
                         }
                         break;
                     }
@@ -16656,18 +16770,14 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollDownInPaneId(pane_id) => {
+            ScreenInstruction::ScrollDownInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_down(terminal_pane_id)?;
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling down"
-                            );
+                            tab.scroll_down_by_pane_id(pane_id, client_id).non_fatal();
                         }
                         break;
                     }
@@ -16711,18 +16821,14 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollUpInPaneId(pane_id) => {
+            ScreenInstruction::PageScrollUpInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_page_up(terminal_pane_id);
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling"
-                            );
+                            tab.page_scroll_up_by_pane_id(pane_id, client_id);
                         }
                         break;
                     }
@@ -16730,18 +16836,15 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollDownInPaneId(pane_id) => {
+            ScreenInstruction::PageScrollDownInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_page_down(terminal_pane_id);
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling"
-                            );
+                            tab.page_scroll_down_by_pane_id(pane_id, client_id)
+                                .non_fatal();
                         }
                         break;
                     }
@@ -17618,13 +17721,13 @@ pub(crate) fn screen_thread_main(
                 screen.broadcast_mode_update(mode_info, target_client_id)?;
             },
             // Pane-targeting CLI handlers
-            ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::ScrollUpWithPaneId(client_id, pane_id, mut _completion_tx) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.scroll_up_by_pane_id(pane_id);
+                        tab.scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
@@ -17639,13 +17742,13 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::ScrollDownWithPaneId(client_id, pane_id, mut _completion_tx) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.scroll_down_by_pane_id(pane_id, client_id).non_fatal();
                         found = true;
                         break;
                     }
@@ -17702,13 +17805,13 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::PageScrollUpWithPaneId(client_id, pane_id, mut _completion_tx) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.page_scroll_up_by_pane_id(pane_id);
+                        tab.page_scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
@@ -17723,13 +17826,14 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::PageScrollDownWithPaneId(client_id, pane_id, mut _completion_tx) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.page_scroll_down_by_pane_id(pane_id, client_id)
+                            .non_fatal();
                         found = true;
                         break;
                     }
@@ -17744,13 +17848,17 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::HalfPageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::HalfPageScrollUpWithPaneId(
+                client_id,
+                pane_id,
+                mut _completion_tx,
+            ) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.half_page_scroll_up_by_pane_id(pane_id);
+                        tab.half_page_scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
@@ -17765,13 +17873,18 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::HalfPageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::HalfPageScrollDownWithPaneId(
+                client_id,
+                pane_id,
+                mut _completion_tx,
+            ) => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.half_page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.half_page_scroll_down_by_pane_id(pane_id, client_id)
+                            .non_fatal();
                         found = true;
                         break;
                     }

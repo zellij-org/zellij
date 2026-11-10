@@ -5863,7 +5863,17 @@ impl Tab {
                 .copied(),
         );
         let mut recipient_failure = None;
+        let is_sync_panes_active = self.is_sync_panes_active();
         for pane_id in pane_ids {
+            // Exclusion controls synchronized fanout, not explicitly addressed input.
+            if is_sync_panes_active
+                && self
+                    .get_pane_with_id(pane_id)
+                    .map(|pane| pane.exclude_from_sync())
+                    .unwrap_or(false)
+            {
+                continue;
+            }
             match self.write_to_pane_id(
                 key_with_modifier,
                 raw_input_bytes.clone(),
@@ -5974,11 +5984,36 @@ impl Tab {
         pane_id: PaneId,
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
+        self.paste_to_pane_id_for_client(bytes, pane_id, None, completion)
+    }
+
+    fn paste_to_pane_id_for_client(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        // Paste is data, not a permission decision. Check before the marker
+        // protocol can reinterpret a one-byte body as a y/n keypress.
+        if self.is_pane_requesting_permissions(pane_id) {
+            let error = anyhow!(
+                "failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+            );
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
         let bytes = without_paste_markers(bytes);
         // Plugin panes collect the paste across begin, body, and end, and
         // emit PastedText from the end marker. Those steps are not pty writes.
+        // Preserve the client audience of the focused-paste entry point.
         if matches!(pane_id, PaneId::Plugin(_)) {
-            return self.paste_in_marker_steps(bytes, pane_id, completion);
+            // The normal key path consumes the first input to clear a selection.
+            // Do that before BEGIN, or the paste body would become key events.
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.reset_selection(client_id);
+            }
+            return self.paste_in_marker_steps(bytes, pane_id, client_id, completion);
         }
         self.paste_terminal_in_one_write(bytes, pane_id, completion)
     }
@@ -5989,21 +6024,34 @@ impl Tab {
         &mut self,
         bytes: Vec<u8>,
         pane_id: PaneId,
+        client_id: Option<ClientId>,
         mut completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
-        if let Err(error) =
-            self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)
-        {
+        if let Err(error) = self.write_to_pane_id(
+            &None,
+            bracketed_paste_begin,
+            false,
+            pane_id,
+            client_id,
+            None,
+        ) {
             fail_cli_write(&mut completion, &format!("{error:#}"));
             return Err(error);
         }
-        if let Err(error) = self.write_to_pane_id(&None, bytes, false, pane_id, None, None) {
+        if let Err(error) = self.write_to_pane_id(&None, bytes, false, pane_id, client_id, None) {
             fail_cli_write(&mut completion, &format!("{error:#}"));
             return Err(error);
         }
-        self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
+        self.write_to_pane_id(
+            &None,
+            bracketed_paste_end,
+            false,
+            pane_id,
+            client_id,
+            completion,
+        )?;
         Ok(())
     }
 
@@ -6044,7 +6092,7 @@ impl Tab {
                 .map(|pane| pane.is_held())
                 .unwrap_or(false);
             if held {
-                return self.paste_in_marker_steps(bytes, pane_id, completion);
+                return self.paste_in_marker_steps(bytes, pane_id, None, completion);
             }
         }
         let payload = if keeps_bracketed_paste {
@@ -6142,9 +6190,16 @@ impl Tab {
             .with_context(err_context)?;
         self.local_input.insert(active_pane_id);
         self.typed_into.insert(active_pane_id);
-        self.paste_to_pane_id(bytes, active_pane_id, completion)
+        self.paste_to_pane_id_for_client(bytes, active_pane_id, Some(client_id), completion)
     }
 
+    /// Write input to an explicitly addressed pane.
+    ///
+    /// For plugin panes, `client_id` is the input audience. `None` is reserved
+    /// for the explicitly clientless plugin API (for example
+    /// [`Self::paste_to_pane_id`]) and deliberately addresses all client
+    /// instances of that plugin. Adapters that know the acting client must
+    /// pass `Some(client_id)` so a targeted write cannot become a broadcast.
     pub fn write_to_pane_id(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
@@ -6158,7 +6213,6 @@ impl Tab {
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
         let mut should_update_ui = false;
-        let is_sync_panes_active = self.is_sync_panes_active();
         let live_view_focus = client_id.and_then(|client_id| self.live_view_focus(client_id));
 
         let active_pane = self
@@ -6168,16 +6222,6 @@ impl Tab {
             .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
             .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
             .with_context(err_context)?;
-
-        // We always write for non-synced terminals.
-        // However if the terminal is part of a tab-sync, we need to
-        // check if the terminal should receive input or not (depending on its
-        // 'exclude_from_sync' configuration).
-        let should_not_write_to_terminal = is_sync_panes_active && active_pane.exclude_from_sync();
-
-        if should_not_write_to_terminal {
-            return Ok(should_update_ui);
-        }
 
         if let (PaneId::Plugin(plugin_id), Some(client_id)) = (pane_id, client_id) {
             if self.live_views.borrow().is_captured(plugin_id, client_id)
@@ -10284,16 +10328,14 @@ impl Tab {
             .unwrap_or(false)
     }
     // --- Pane-targeting CLI methods ---
-    pub fn scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.scroll_up(1, fictitious_client_id);
+            pane.scroll_up(1, client_id);
         }
     }
-    pub fn scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn scroll_down_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.scroll_down(1, fictitious_client_id);
+            pane.scroll_down(1, client_id);
         }
         Ok(())
     }
@@ -10309,33 +10351,37 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = terminal_page_scroll_rows(pane.get_content_rows());
-            pane.scroll_up(scroll_rows, fictitious_client_id);
+            pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn page_scroll_down_by_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = pane.get_content_rows();
-            pane.scroll_down(scroll_rows, fictitious_client_id);
+            pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
     }
-    pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
-            pane.scroll_up(scroll_rows, fictitious_client_id);
+            pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn half_page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn half_page_scroll_down_by_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
-            pane.scroll_down(scroll_rows, fictitious_client_id);
+            pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
     }
