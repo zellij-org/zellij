@@ -4170,8 +4170,10 @@ impl Grid {
     }
 
     fn handle_reported_cwd(&mut self, cwd: zellij_utils::attention::ReportedCwd) {
-        if cwd.is_local && !crate::attention::shell::is_network_path(&cwd.path) {
-            self.pending_osc7_cwd = Some(std::path::PathBuf::from(&cwd.path));
+        if cwd.is_local {
+            if let Some(path) = crate::attention::shell::usable_local_path(&cwd.path) {
+                self.pending_osc7_cwd = Some(std::path::PathBuf::from(path));
+            }
         }
         self.shell_reports
             .push(crate::attention::signals::PaneSignal::Cwd(cwd));

@@ -247,12 +247,19 @@ fn write_private_media(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The shared-memory folder, on systems that have one. On Windows "/dev/shm" would name a folder
+/// on the current drive.
+fn shm_dir() -> Option<&'static Path> {
+    let shm = Path::new(SHM_DIR);
+    (cfg!(unix) && shm.is_dir()).then_some(shm)
+}
+
 fn write_shared_media(rgba: &[u8], host_state: &mut HostKittyState) -> Option<PathBuf> {
     let serial = NEXT_MEDIA_FILE.fetch_add(1, Ordering::Relaxed);
     let file_name = format!("{}-{}-{}", KITTY_MEDIA_PREFIX, std::process::id(), serial);
-    let directory = match Path::new(SHM_DIR).is_dir() {
-        true => PathBuf::from(SHM_DIR),
-        false => std::env::temp_dir(),
+    let directory = match shm_dir() {
+        Some(shm) => shm.to_path_buf(),
+        None => std::env::temp_dir(),
     };
     let path = directory.join(file_name);
     if let Err(e) = write_private_media(&path, rgba) {
@@ -1244,8 +1251,7 @@ fn emit_kitty_transmit(
 fn kitty_media_target() -> (u8, String, PathBuf) {
     let serial = NEXT_MEDIA_FILE.fetch_add(1, Ordering::Relaxed);
     let file_name = format!("{}-{}-{}", KITTY_MEDIA_PREFIX, std::process::id(), serial);
-    let shm = Path::new(SHM_DIR);
-    if shm.is_dir() {
+    if let Some(shm) = shm_dir() {
         let path = shm.join(&file_name);
         return (b's', format!("/{}", file_name), path);
     }

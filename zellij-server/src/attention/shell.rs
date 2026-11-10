@@ -509,6 +509,28 @@ fn split_authority(rest: &str) -> (String, &str) {
     }
 }
 
+/// A URI's path keeps a slash before a Windows drive letter, as in `file:///C:/Users`.
+#[cfg(windows)]
+fn without_slash_before_drive(path: String) -> String {
+    let bytes = path.as_bytes();
+    let drive = bytes.len() >= 3
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && bytes[2] == b':'
+        && matches!(bytes.get(3), None | Some(b'/' | b'\\'));
+    match (drive, bytes.len()) {
+        // "C:" alone would mean the current folder of drive C.
+        (true, 3) => format!("{}/", &path[1..]),
+        (true, _) => path[1..].to_owned(),
+        (false, _) => path,
+    }
+}
+
+#[cfg(not(windows))]
+fn without_slash_before_drive(path: String) -> String {
+    path
+}
+
 pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
     if let Some(rest) = uri.strip_prefix("file://") {
         let (host, path) = split_authority(rest);
@@ -516,7 +538,7 @@ pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
         if path.is_empty() {
             return None;
         }
-        let path = decode_percent(path);
+        let path = without_slash_before_drive(decode_percent(path));
         let is_local = is_local_host(&host);
         return Some(ReportedCwd {
             path,
@@ -532,7 +554,7 @@ pub fn parse_osc7_uri(uri: &str) -> Option<ReportedCwd> {
         }
         let is_local = is_local_host(&host);
         return Some(ReportedCwd {
-            path: path.to_owned(),
+            path: without_slash_before_drive(path.to_owned()),
             source: CwdSource::KittyShellCwd,
             host: (!host.is_empty()).then_some(host),
             is_local,
@@ -579,11 +601,35 @@ pub fn parse_iterm2_cwd(raw: &str, remote_host: Option<&str>) -> Option<Reported
 }
 
 pub fn is_network_path(path: &str) -> bool {
-    let mut chars = path.trim_start().chars();
+    let path = path.trim_start();
+    let mut chars = path.chars();
     matches!(
         (chars.next(), chars.next()),
         (Some('/' | '\\'), Some('/' | '\\'))
-    )
+    ) && !is_verbatim_drive_path(path)
+}
+
+/// A reported folder as the server may use it: never a network path, and a verbatim drive path in
+/// its plain form, since cmd.exe can't start in a folder that begins with `\\`.
+pub fn usable_local_path(path: &str) -> Option<&str> {
+    if is_network_path(path) {
+        return None;
+    }
+    let trimmed = path.trim_start();
+    Some(match is_verbatim_drive_path(trimmed) {
+        true => &trimmed[r"\\?\".len()..],
+        false => path,
+    })
+}
+
+/// A local drive path in Windows' verbatim form, `\\?\C:\...`, which starts like a network path.
+fn is_verbatim_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.starts_with(br"\\?\")
+        && bytes.len() >= 6
+        && bytes[4].is_ascii_alphabetic()
+        && bytes[5] == b':'
+        && matches!(bytes.get(6), None | Some(b'\\'))
 }
 
 #[cfg(test)]
@@ -605,6 +651,30 @@ mod tests {
         for path in ["/home/me", "C:\\Users\\me", "relative/dir", "", "/"] {
             assert!(!is_network_path(path), "{:?}", path);
         }
+    }
+
+    #[test]
+    fn a_verbatim_drive_path_is_local_but_other_verbatim_paths_are_not() {
+        for path in ["\\\\?\\C:\\Users\\me", "\\\\?\\d:", "  \\\\?\\C:\\"] {
+            assert!(!is_network_path(path), "{:?}", path);
+        }
+        for path in [
+            "\\\\?\\UNC\\evil.host\\share",
+            "\\\\?\\GLOBALROOT\\Device\\Mup\\evil.host\\share",
+            "\\\\?\\Volume{0}\\x",
+            "\\\\?\\C:x",
+            "\\\\.\\C:\\x",
+            "//?/C:/x",
+        ] {
+            assert!(is_network_path(path), "{:?}", path);
+        }
+        assert_eq!(
+            usable_local_path("\\\\?\\C:\\Users\\me"),
+            Some("C:\\Users\\me")
+        );
+        assert_eq!(usable_local_path("C:\\Users\\me"), Some("C:\\Users\\me"));
+        assert_eq!(usable_local_path("/home/me"), Some("/home/me"));
+        assert_eq!(usable_local_path("\\\\?\\UNC\\evil.host\\share"), None);
     }
 
     fn params(body: &str) -> Vec<Vec<u8>> {
@@ -800,6 +870,22 @@ mod tests {
         assert_eq!(cwd.source, CwdSource::KittyShellCwd);
         assert_eq!(parse_osc7_uri("http://x/y"), None);
         assert_eq!(parse_osc7_uri("file://host"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn osc7_drive_paths_lose_the_slash_before_the_drive_letter() {
+        for (uri, path) in [
+            ("file://localhost/C:/Users/me", "C:/Users/me"),
+            ("file:///c:/a%20b", "c:/a b"),
+            ("file:///D:", "D:/"),
+            ("file:///C:\\x", "C:\\x"),
+            ("kitty-shell-cwd://host/C:/x", "C:/x"),
+            ("file:///tmp", "/tmp"),
+            ("file:///C:x", "/C:x"),
+        ] {
+            assert_eq!(parse_osc7_uri(uri).unwrap().path, path, "{}", uri);
+        }
     }
 
     #[test]
