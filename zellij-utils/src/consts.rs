@@ -166,7 +166,9 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(unix)]
@@ -179,9 +181,13 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
 #[cfg(windows)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -200,9 +206,13 @@ pub fn ipc_bind_async(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_tokio()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -214,7 +224,9 @@ pub fn ipc_connect_reply(
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(windows)]
@@ -222,9 +234,13 @@ pub fn ipc_bind_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    ListenerOptions::new().name(ns_name).create_sync()
+    ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()
 }
 
 // Kept short: macOS limits socket paths to 104 bytes, and the temp dir already uses about half.
