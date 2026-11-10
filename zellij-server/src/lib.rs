@@ -5769,12 +5769,14 @@ fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     // Fence first. The index row is removed only after this session's cache is
     // gone; a fence failure leaves both the folder and the row.
     match zellij_utils::sessions::remove_fenced_session_cache(session_id) {
-        Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => {
+        Ok(
+            zellij_utils::sessions::SessionCacheRemoval::Removed
+            | zellij_utils::sessions::SessionCacheRemoval::NotFound,
+        ) => {
             if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
                 let _ = index.delete(session_name);
             }
         },
-        Ok(zellij_utils::sessions::SessionCacheRemoval::NotFound) => {},
         Err(error) => {
             log::error!(
                 "Failed to delete session cache for {} on exit: {}",
