@@ -149,35 +149,19 @@ impl Page {
     }
     pub fn new_update_keybindings(shared: &Shared) -> Page {
         let keybinding_state = &shared.keybinding_state;
-        let base_mode_name = keybinding_state.borrow().base_mode_name();
-        let keybind_items: Vec<ActiveComponent> = keybinding_state
-            .borrow()
-            .binds_to_add()
-            .iter()
-            .map(|bind| {
-                let mode_name = bind.mode_name();
-                let bind_text = if bind.returns_to_base_mode {
-                    format!(
-                        "{} mode + {} - {}, returns to {}",
-                        mode_name,
-                        bind.key_text(),
-                        bind.description,
-                        base_mode_name
-                    )
-                } else {
-                    format!(
-                        "{} mode + {} - {}",
-                        mode_name,
-                        bind.key_text(),
-                        bind.description
-                    )
-                };
-                ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::from(bind_text)
-                        .color_substring(3, &mode_name)
-                        .color_substring(3, &bind.key_text())
-                        .color_substring(3, &base_mode_name),
-                ))
+        let keybind_items: Vec<ActiveComponent> = grouped_binds_to_add(keybinding_state)
+            .into_iter()
+            .map(|(mode_name, binds)| {
+                let keys: Vec<String> = binds
+                    .iter()
+                    .map(|(key_text, description)| format!("{} {}", key_text, description))
+                    .collect();
+                let mut text = Text::from(format!("{} mode + {}", mode_name, keys.join(", ")))
+                    .color_substring(3, &mode_name);
+                for (key_text, _description) in &binds {
+                    text = text.color_substring(3, key_text);
+                }
+                ActiveComponent::new(TextOrCustomRender::Text(text))
             })
             .collect();
         let conflicting_binds: Vec<ComponentLine> = keybinding_state
@@ -200,7 +184,7 @@ impl Page {
         let mut page = Page::new()
             .with_kind(PageKind::UpdateKeybindings)
             .with_title(Text::from("Update Keybindings").color_range(0, ..))
-            .with_paragraph(vec![ComponentLine::new(feature_sentence(shared))])
+            .with_paragraph(feature_sentence(shared))
             .with_bulletin_list(
                 BulletinList::new(Text::from("New keybindings:").color_range(2, ..))
                     .with_items(keybind_items),
@@ -388,39 +372,87 @@ pub fn link(label: impl Into<String>, action: ClickAction) -> ActiveComponent {
     .keyboard_selectable()
 }
 
-fn feature_sentence(shared: &Shared) -> Vec<ActiveComponent> {
-    let features = shared.keybinding_state.borrow().features_to_add();
-    let mut sentence = vec![ActiveComponent::new(TextOrCustomRender::Text(Text::from(
-        "This version includes new keybindings for ",
-    )))];
-    for (feature_index, feature) in features.iter().enumerate() {
-        if feature_index > 0 {
-            let separator = if feature_index == features.len().saturating_sub(1) {
-                " and "
-            } else {
-                ", "
-            };
-            sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::from(
-                separator,
-            ))));
-        }
-        let feature = *feature;
-        if feature_has_page(feature) {
-            let shared = shared.clone();
-            sentence.push(link(
-                feature.label(),
-                ClickAction::new_change_page(move || feature_page(feature, &shared)),
-            ));
-        } else {
-            sentence.push(ActiveComponent::new(TextOrCustomRender::Text(
-                Text::from(feature.label()).color_range(3, ..),
-            )));
+fn grouped_binds_to_add(
+    keybinding_state: &Rc<RefCell<KeybindingState>>,
+) -> Vec<(String, Vec<(String, &'static str)>)> {
+    let mut groups: Vec<(Feature, String, Vec<(String, &'static str)>)> = vec![];
+    for bind in keybinding_state.borrow().binds_to_add() {
+        let mode_name = bind.mode_name();
+        let entry = (bind.key_text(), bind.description);
+        match groups.last_mut() {
+            Some((feature, group_mode_name, binds))
+                if *feature == bind.feature && *group_mode_name == mode_name =>
+            {
+                binds.push(entry);
+            },
+            _ => groups.push((bind.feature, mode_name, vec![entry])),
         }
     }
-    sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::from(
-        ".",
-    ))));
-    sentence
+    groups
+        .into_iter()
+        .map(|(_feature, mode_name, binds)| (mode_name, binds))
+        .collect()
+}
+
+const FEATURE_SENTENCE_WIDTH: usize = 78;
+
+fn feature_sentence(shared: &Shared) -> Vec<ComponentLine> {
+    let features = shared.keybinding_state.borrow().features_to_add();
+    let mut pieces: Vec<(String, Option<Feature>)> = vec![(
+        "This version includes new keybindings for ".to_owned(),
+        None,
+    )];
+    for (feature_index, feature) in features.iter().enumerate() {
+        let is_last = feature_index == features.len().saturating_sub(1);
+        if feature_index > 0 && is_last {
+            pieces.push(("and ".to_owned(), None));
+        }
+        pieces.push((feature.label().to_owned(), Some(*feature)));
+        let punctuation = if is_last {
+            "."
+        } else if feature_index + 2 == features.len() {
+            " "
+        } else {
+            ", "
+        };
+        pieces.push((punctuation.to_owned(), None));
+    }
+    let mut lines: Vec<Vec<ActiveComponent>> = vec![vec![]];
+    let mut line_width = 0;
+    for (piece, feature) in pieces {
+        let words: Vec<String> = match feature {
+            Some(_) => vec![piece],
+            None => piece
+                .split_inclusive(' ')
+                .map(|word| word.to_owned())
+                .collect(),
+        };
+        for word in words {
+            let width = zellij_tile::graphemes::display_width(word.trim_end());
+            if line_width > 0 && line_width + width > FEATURE_SENTENCE_WIDTH {
+                lines.push(vec![]);
+                line_width = 0;
+            }
+            line_width += zellij_tile::graphemes::display_width(&word);
+            let component = match feature {
+                Some(feature) if feature_has_page(feature) => {
+                    let shared = shared.clone();
+                    link(
+                        word,
+                        ClickAction::new_change_page(move || feature_page(feature, &shared)),
+                    )
+                },
+                Some(_) => ActiveComponent::new(TextOrCustomRender::Text(
+                    Text::from(word).color_range(3, ..),
+                )),
+                None => ActiveComponent::new(TextOrCustomRender::Text(Text::from(word))),
+            };
+            if let Some(line) = lines.last_mut() {
+                line.push(component);
+            }
+        }
+    }
+    lines.into_iter().map(ComponentLine::new).collect()
 }
 
 impl Page {
