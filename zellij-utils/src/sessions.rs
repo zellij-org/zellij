@@ -425,7 +425,16 @@ pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
 
 pub fn delete_session(name: &str, force: bool) {
     // The socket and the cache folder are named by the session id; the index row by the name.
-    let session_id = resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    let session_id = match resolve_session_id(name) {
+        Some(id) => id,
+        None => {
+            if display_name_for_session_id(name) != name {
+                eprintln!("Session: {:?} not found.", name);
+                process::exit(2);
+            }
+            name.to_owned()
+        },
+    };
     if let Err(e) = validate_session_folder_name(&session_id) {
         eprintln!("{}", e);
         process::exit(1);
