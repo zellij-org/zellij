@@ -418,6 +418,8 @@ pub struct TerminalSettings {
     pub theme_dark: Option<Theme>,
     pub theme_light: Option<Theme>,
     pub explicit_hue: Option<ThemeHue>,
+    #[serde(default)]
+    pub on_force_close: Option<crate::input::options::OnForceClose>,
 }
 
 impl TerminalSettings {
@@ -428,6 +430,7 @@ impl TerminalSettings {
             theme_dark: config.theme_dark(),
             theme_light: config.theme_light(),
             explicit_hue: config.options.explicit_theme_hue,
+            on_force_close: config.options.on_force_close,
         }
     }
 

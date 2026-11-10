@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Result};
 use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
 use zellij_utils::data::{BareKey, KeyWithModifier};
+use zellij_utils::input::options::OnForceClose;
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
     PixelDimensions, ServerToClientMsg,
@@ -343,6 +344,25 @@ impl Detacher {
             bail!("the window is showing no session to detach from");
         };
         request_detach(&sender, role)
+    }
+}
+
+pub fn request_force_close(
+    sender: &SharedSender,
+    role: Role,
+    on_force_close: OnForceClose,
+) -> Result<()> {
+    match (role, on_force_close) {
+        (Role::Participant, OnForceClose::Quit) => send(
+            sender,
+            ClientToServerMsg::Action {
+                action: on_force_close.into(),
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+        ),
+        _ => request_detach(sender, role),
     }
 }
 
