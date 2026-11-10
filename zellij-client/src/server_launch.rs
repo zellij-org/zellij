@@ -3,7 +3,7 @@ use std::env::current_exe;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchStyle {
@@ -90,7 +90,12 @@ pub fn spawn_server_with(launch: &ServerLaunch) -> io::Result<()> {
             }
         },
         LaunchStyle::Detached => {
-            cmd.spawn()?;
+            // The server outlives this process. Inheriting its stdio would keep a caller that
+            // reads this process's output waiting until the server exits.
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()?;
             Ok(())
         },
     }
