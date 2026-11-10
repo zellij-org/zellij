@@ -3,7 +3,7 @@ use std::env::current_exe;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchStyle {
@@ -90,9 +90,57 @@ pub fn spawn_server_with(launch: &ServerLaunch) -> io::Result<()> {
             }
         },
         LaunchStyle::Detached => {
-            cmd.spawn()?;
+            // The server outlives this process. Holding this process's stdio would keep a caller
+            // that reads this process's output waiting until the server exits.
+            #[cfg(windows)]
+            let _withheld = WithheldStdio::new();
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()?;
             Ok(())
         },
+    }
+}
+
+/// A child process on Windows inherits every inheritable handle of its parent, not only the
+/// stdio it's given, so this process's own stdio is made non-inheritable while it lasts.
+#[cfg(windows)]
+struct WithheldStdio(Vec<windows_sys::Win32::Foundation::HANDLE>);
+
+#[cfg(windows)]
+impl WithheldStdio {
+    fn new() -> Self {
+        use windows_sys::Win32::Foundation::{
+            GetHandleInformation, SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::System::Console::{
+            GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+        };
+        let mut withheld = Vec::new();
+        for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            let handle = unsafe { GetStdHandle(id) };
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE || withheld.contains(&handle) {
+                continue;
+            }
+            let mut flags = 0;
+            let inheritable = unsafe { GetHandleInformation(handle, &mut flags) } != 0
+                && flags & HANDLE_FLAG_INHERIT != 0;
+            if inheritable && unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) } != 0 {
+                withheld.push(handle);
+            }
+        }
+        WithheldStdio(withheld)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WithheldStdio {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+        for handle in &self.0 {
+            unsafe { SetHandleInformation(*handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) };
+        }
     }
 }
 

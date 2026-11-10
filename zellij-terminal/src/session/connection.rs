@@ -145,13 +145,14 @@ pub fn new_session_socket_path(session_name: &str) -> Result<PathBuf> {
 }
 
 fn checked_socket_path(path: PathBuf) -> Result<PathBuf> {
-    let length = path.as_os_str().len();
+    let length = zellij_utils::consts::socket_path_length(&path);
     if length >= ZELLIJ_SOCK_MAX_LENGTH {
         bail!(
-            "socket path {:?} is {} bytes, exceeding the {} byte limit",
+            "socket path {:?} is {} {}, over the limit of {}",
             path,
             length,
-            ZELLIJ_SOCK_MAX_LENGTH
+            zellij_utils::consts::SOCKET_PATH_LENGTH_UNIT,
+            ZELLIJ_SOCK_MAX_LENGTH - 1
         );
     }
     Ok(path)

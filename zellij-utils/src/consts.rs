@@ -325,6 +325,13 @@ mod unix_only {
     #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "bytes";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it.
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
+
     lazy_static! {
         static ref UID: Uid = Uid::current();
         pub static ref ZELLIJ_TMP_DIR: PathBuf =
@@ -372,7 +379,24 @@ mod not_unix {
         path
     }
 
-    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
+    // A pipe's whole name, `\\.\pipe\` + the socket path + `-reply`, must fit in MAX_PATH (260
+    // UTF-16 units with its NUL), since Zellij isn't long-path aware.
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 260 - r"\\.\pipe\".len() - "-reply".len();
+
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "characters";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it: in UTF-16 units, as Windows
+    /// counts a pipe name.
+    #[cfg(windows)]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        use std::os::windows::ffi::OsStrExt;
+        path.as_os_str().encode_wide().count()
+    }
+
+    #[cfg(not(windows))]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
 
     lazy_static! {
         pub static ref ZELLIJ_TMP_DIR: PathBuf = {
@@ -474,5 +498,22 @@ mod app_dir_tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o700);
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod socket_length_tests {
+    use super::*;
+
+    #[test]
+    fn the_longest_socket_path_allowed_still_binds_and_connects() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut path = dir.path().to_path_buf();
+        let room = ZELLIJ_SOCK_MAX_LENGTH - 1 - socket_path_length(&path) - 1;
+        path.push("a".repeat(room));
+        assert_eq!(socket_path_length(&path), ZELLIJ_SOCK_MAX_LENGTH - 1);
+        let _requests = ipc_bind(&path).unwrap();
+        let _replies = ipc_bind_reply(&path).unwrap();
+        crate::pipe_pairs::connect_pair(&path).unwrap();
     }
 }
