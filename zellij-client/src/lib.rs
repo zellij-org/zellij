@@ -411,21 +411,38 @@ fn spawn_web_server(_cli_args: &CliArgs) -> Result<String, String> {
 }
 
 fn ipc_pipe_length_error(ipc_pipe: &Path) -> Option<String> {
-    use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
-    let path_len = ipc_pipe.as_os_str().len();
+    use zellij_utils::consts::{
+        socket_path_length, SOCKET_PATH_LENGTH_UNIT, ZELLIJ_SOCK_MAX_LENGTH,
+    };
+    let path_len = socket_path_length(ipc_pipe);
     if path_len < ZELLIJ_SOCK_MAX_LENGTH {
         return None;
     }
+    let name = zellij_utils::distribution::name();
+    let (cause, example) = if cfg!(windows) {
+        (
+            "TEMP",
+            format!(
+                "$env:ZELLIJ_SOCKET_DIR = \"$env:LOCALAPPDATA\\Temp\\{}\"; {}",
+                name, name
+            ),
+        )
+    } else {
+        (
+            "$TMPDIR",
+            format!("ZELLIJ_SOCKET_DIR=/tmp/{} {}", name, name),
+        )
+    };
     Some(format!(
-        "Error: the IPC socket path is too long ({} bytes, max {}):\n  {}\n\n\
-         This is usually caused by a long $TMPDIR path.\n\
-         To fix this, set a shorter socket directory, eg.:\n  \
-         ZELLIJ_SOCKET_DIR=/tmp/{} {}",
+        "Error: the IPC socket path is too long ({} {}, max {}):\n  {}\n\n\
+         This is usually caused by a long {} path.\n\
+         To fix this, set a shorter socket directory, eg.:\n  {}",
         path_len,
+        SOCKET_PATH_LENGTH_UNIT,
         ZELLIJ_SOCK_MAX_LENGTH - 1,
         ipc_pipe.display(),
-        zellij_utils::distribution::name(),
-        zellij_utils::distribution::name()
+        cause,
+        example
     ))
 }
 
