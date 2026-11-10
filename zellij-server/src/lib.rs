@@ -103,7 +103,8 @@ use zellij_utils::{
         theme::{Theme, Themes},
     },
     ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiveError, IpcReceiverWithContext,
+        ServerToClientMsg,
     },
     shared::web_server_base_url,
 };
@@ -116,6 +117,7 @@ pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const UNREADABLE_FIRST_MESSAGE_ERROR: &str = "This session could not read the request. It may be running a different version of Zellij that does not support it.";
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
@@ -3322,7 +3324,18 @@ fn handle_new_connection(
     let _ = receiver.set_read_timeout(Some(PRE_HANDSHAKE_READ_TIMEOUT));
     let first_instruction = match receiver.try_recv_client_msg() {
         Ok((instruction, _err_ctx)) => instruction,
-        Err(_) => return Ok(()),
+        Err(IpcReceiveError::Undecodable) => {
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::LogError {
+                    lines: vec![UNREADABLE_FIRST_MESSAGE_ERROR.to_owned()],
+                },
+            );
+            return Ok(());
+        },
+        Err(IpcReceiveError::Disconnected) => return Ok(()),
     };
     let _ = receiver.set_read_timeout(None);
 
