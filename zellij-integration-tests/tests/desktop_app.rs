@@ -183,7 +183,10 @@ impl Desktop {
             .join("cache")
             .join(zellij_utils::consts::ZELLIJ_CACHE_DIR.file_name()?)
             .join(&*CLIENT_SERVER_CONTRACT_DIR);
-        let index_path = cache_dir.join(zellij_utils::session_index::SESSION_INDEX_FILE_NAME);
+        let index_path = cache_dir.join(zellij_utils::session_index::index_file_name(
+            &self.contract_dir(),
+            true,
+        ));
         if !index_path.exists() {
             return None;
         }
