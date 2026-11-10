@@ -43,7 +43,20 @@ pub(super) fn safe_to_map(path: &Path) -> bool {
     unsafe { libc::access(path.as_ptr(), libc::W_OK) != 0 }
 }
 
-#[cfg(not(unix))]
+/// Windows keeps a mapped file from being overwritten, so a font installer could not update a
+/// font while the app runs. Only the system's fonts, which Windows replaces only by servicing,
+/// are mapped; the rest are read.
+#[cfg(windows)]
+pub(super) fn safe_to_map(path: &Path) -> bool {
+    let Some(windows) = std::env::var_os("SystemRoot") else {
+        return false;
+    };
+    let fonts = Path::new(&windows).join("Fonts");
+    let folder = format!("{}\\", fonts.to_string_lossy().to_lowercase());
+    path.to_string_lossy().to_lowercase().starts_with(&folder)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub(super) fn safe_to_map(_path: &Path) -> bool {
     true
 }
