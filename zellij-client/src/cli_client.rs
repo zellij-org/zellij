@@ -256,7 +256,11 @@ enum PipeEvent {
     Payload(Option<String>),
 }
 
-const STREAM_BATCH_BYTES: usize = 256 * 1024;
+// The plugin host accepts at most 256 KiB in one stdin frame, and that frame
+// is the JSON encoding of a protobuf byte array. Each payload byte can become
+// four JSON characters ("255,"), so batching near the host cap would exceed
+// it. Keep the raw batch well below the cap.
+const STREAM_BATCH_BYTES: usize = 32 * 1024;
 
 pub(crate) fn next_payload(
     queued: &mut VecDeque<Option<String>>,

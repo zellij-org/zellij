@@ -164,9 +164,20 @@ pub fn send_actions_to_session(session_name: &str, actions: Vec<Action>) -> Resu
         loop {
             match link.recv(PEER_ACTION_TIMEOUT)? {
                 ServerToClientMsg::UnblockInputThread => break,
-                ServerToClientMsg::Exit { .. } | ServerToClientMsg::LogError { .. } => {
+                ServerToClientMsg::Exit { exit_reason } => {
                     let _ = link.send(ClientToServerMsg::ClientExited);
-                    return Err(format!("The session {} refused the request", session_name));
+                    return Err(format!(
+                        "The session {} refused the request: {}",
+                        session_name, exit_reason
+                    ));
+                },
+                ServerToClientMsg::LogError { lines } => {
+                    let _ = link.send(ClientToServerMsg::ClientExited);
+                    return Err(format!(
+                        "The session {} refused the request: {}",
+                        session_name,
+                        lines.join("\n")
+                    ));
                 },
                 _ => {},
             }
