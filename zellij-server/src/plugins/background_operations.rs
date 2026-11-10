@@ -92,7 +92,6 @@ struct ReservationInner {
     kind: BackgroundOperationKind,
     bytes: usize,
     load_alive: Arc<AtomicBool>,
-    released: AtomicBool,
     cancelled: AtomicBool,
 }
 
@@ -108,21 +107,14 @@ impl ReservationInner {
     fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
-
-    fn release(&self) {
-        if self.released.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        self.quota()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .release(self.plugin_id, self.bytes);
-    }
 }
 
 impl Drop for ReservationInner {
     fn drop(&mut self) {
-        self.release();
+        self.quota()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .release(self.plugin_id, self.bytes);
         OPERATIONS
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -236,7 +228,6 @@ fn try_acquire(
         kind,
         bytes,
         load_alive,
-        released: AtomicBool::new(false),
         cancelled: AtomicBool::new(false),
     });
     OPERATIONS
@@ -302,11 +293,10 @@ pub(crate) fn try_acquire_refusal_report(
     )
 }
 
-/// Cancel and release every operation whose originating load was retired.
-/// This makes unload recover capacity immediately even when a result message
-/// is still queued behind a blocked plugin.
+/// Cancel every operation whose originating load was retired. Retained-work
+/// quota stays charged until the operation's payload or queued result drops.
 pub(crate) fn reap_retired_operations() {
-    let mut retired = Vec::new();
+    let mut upgraded = Vec::new();
     {
         let mut operations = OPERATIONS
             .lock()
@@ -315,21 +305,48 @@ pub(crate) fn reap_retired_operations() {
             let Some(inner) = entry.inner.upgrade() else {
                 return false;
             };
-            if inner.load_alive.load(Ordering::Acquire) {
-                return true;
-            }
-            inner.cancel();
-            retired.push((inner, entry.abort.take()));
-            false
+            #[cfg(test)]
+            pause_reaper_after_upgrade(&inner);
+            let retired = !inner.load_alive.load(Ordering::Acquire);
+            let abort = if retired { entry.abort.take() } else { None };
+            upgraded.push((inner, abort, retired));
+            !retired
         });
     }
-    for (inner, abort) in retired {
-        inner.release();
+    for (inner, abort, retired) in upgraded {
+        if !retired {
+            continue;
+        }
+        inner.cancel();
         if let Some(abort) = abort {
             abort.abort();
         }
-        drop(inner);
     }
+}
+
+#[cfg(test)]
+struct ReaperUpgradeHook {
+    id: u64,
+    reached: Arc<std::sync::Barrier>,
+    resume: Arc<std::sync::Barrier>,
+}
+
+#[cfg(test)]
+static REAPER_UPGRADE_HOOK: Mutex<Option<ReaperUpgradeHook>> = Mutex::new(None);
+
+#[cfg(test)]
+fn pause_reaper_after_upgrade(inner: &ReservationInner) {
+    let hook = REAPER_UPGRADE_HOOK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(hook) = hook.as_ref() else {
+        return;
+    };
+    if hook.id != inner.id {
+        return;
+    }
+    hook.reached.wait();
+    hook.resume.wait();
 }
 
 #[cfg(test)]
@@ -395,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn a_retired_load_releases_queued_capacity_immediately() {
+    fn a_retired_load_keeps_queued_capacity_until_the_reservation_drops() {
         let _lock = lock();
         let plugin_id = 91_002;
         let alive = live();
@@ -406,17 +423,77 @@ mod tests {
         );
         alive.store(false, Ordering::Release);
         reap_retired_operations();
+        assert!(reservation.is_cancelled());
         assert_eq!(
             in_flight_for(BackgroundOperationKind::WebRequest, plugin_id),
-            0,
-            "a retired load must not retain admission capacity"
+            1,
+            "retained work must keep its quota charge after retirement"
         );
-        assert!(reservation.is_cancelled());
+        reap_retired_operations();
+        assert_eq!(
+            in_flight_for(BackgroundOperationKind::WebRequest, plugin_id),
+            1,
+            "reaping repeatedly must not release a retained charge"
+        );
         drop(reservation);
         assert_eq!(
             in_flight_for(BackgroundOperationKind::WebRequest, plugin_id),
             0,
-            "dropping the already-reaped reservation must not double release"
+            "the charge returns when the retained reservation drops"
+        );
+        assert!(
+            try_acquire_web_request(plugin_id, live(), 64).is_some(),
+            "admission capacity returns with the retained work"
+        );
+    }
+
+    #[test]
+    fn reaping_a_live_operation_does_not_drop_its_last_reference_under_the_registry_lock() {
+        struct ClearHook;
+        impl Drop for ClearHook {
+            fn drop(&mut self) {
+                REAPER_UPGRADE_HOOK
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .take();
+            }
+        }
+
+        let _lock = lock();
+        let plugin_id = 91_004;
+        let reservation = try_acquire_web_request(plugin_id, live(), 64).expect("admission");
+        let reached = Arc::new(std::sync::Barrier::new(2));
+        let resume = Arc::new(std::sync::Barrier::new(2));
+        *REAPER_UPGRADE_HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(ReaperUpgradeHook {
+            id: reservation.inner.id,
+            reached: reached.clone(),
+            resume: resume.clone(),
+        });
+        let _clear_hook = ClearHook;
+
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let reaper = std::thread::spawn(move || {
+            reap_retired_operations();
+            let _ = finished_tx.send(());
+        });
+
+        reached.wait();
+        drop(reservation);
+        resume.wait();
+        finished_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the reaper deadlocked by dropping its last arc under the registry lock");
+        reaper.join().expect("the reaper panicked");
+
+        assert_eq!(
+            in_flight_for(BackgroundOperationKind::WebRequest, plugin_id),
+            0
+        );
+        assert!(
+            try_acquire_web_request(plugin_id, live(), 64).is_some(),
+            "admission must remain usable after reaping a live operation"
         );
     }
 
