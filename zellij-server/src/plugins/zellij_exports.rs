@@ -702,9 +702,10 @@ pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
 
 fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
     let mut env = caller.data_mut();
-    if !env.is_alive() {
+    if !env.is_alive() && !crate::plugins::pinned_executor::before_close_host_calls_allowed() {
         // A callback queued before unload/quarantine must not reach the host. There is nobody
-        // left to consume a response, so do not execute or answer the command.
+        // left to consume a response, so do not execute or answer the command. BeforeClose is
+        // the exception: unload revokes the load first, and that callback still reverts state.
         return;
     }
     let plugin_command = env.name();
@@ -7867,6 +7868,7 @@ mod admission_tests {
         PluginEnv {
             plugin_id,
             generation: 9,
+            session_scope: 0,
             load_alive: Arc::new(AtomicBool::new(true)),
             client_id: 3,
             plugin: PluginConfig {

@@ -966,8 +966,37 @@ impl DeadlineIo for LocalSocketStream {
     }
 }
 
-/// `read_exact` against one previously installed socket timeout. The timeout
-/// is refreshed from `deadline` before each `read`. `Interrupted` retries.
+/// Errors that mean "the peer is not ready yet", not "the probe is done".
+///
+/// macOS `poll` reports `POLLHUP` with `SO_ERROR == 0` for a unix socket that
+/// has connected and is sitting in the accept queue. A read or write then
+/// returns `WouldBlock`, `TimedOut`, `NotConnected`, or an immediate EOF
+/// before `accept`. Those are not a finished exchange: the same socket
+/// answers `Connected` once the server accepts.
+#[cfg(unix)]
+fn peer_not_ready(kind: io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        io::ErrorKind::Interrupted
+            | io::ErrorKind::WouldBlock
+            | io::ErrorKind::TimedOut
+            | io::ErrorKind::NotConnected
+    )
+}
+
+/// Wait a millisecond, or less when the deadline is closer. A kernel `EAGAIN`
+/// must not spin. The wait never extends the deadline.
+#[cfg(unix)]
+fn pause_until_peer_ready(deadline: Instant) -> io::Result<()> {
+    let remaining = remaining_until(deadline)?;
+    std::thread::sleep(Duration::from_millis(1).min(remaining));
+    Ok(())
+}
+
+/// `read_exact` against one absolute deadline. The socket timeout is refreshed
+/// from `deadline` before each `read`. `Interrupted`, `WouldBlock`,
+/// `TimedOut`, `NotConnected`, and an immediate EOF retry until the deadline:
+/// on macOS those are what a connected socket returns before `accept`.
 /// Zero remaining time returns [`io::ErrorKind::TimedOut`] without another
 /// blocking call.
 #[cfg(unix)]
@@ -984,14 +1013,10 @@ where
         let remaining = remaining_until(deadline)?;
         reader.refresh_read_timeout(Some(remaining))?;
         match reader.read(&mut buf[filled..]) {
-            Ok(0) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "short read before the deadline",
-                ));
-            },
+            Ok(0) => pause_until_peer_ready(deadline)?,
             Ok(n) => filled += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
             Err(err) => return Err(err),
         }
     }
@@ -1042,10 +1067,11 @@ fn write_all_ipc_until_deadline(
     Ok(())
 }
 
-/// `write_all` against one previously installed socket timeout. The timeout
-/// is refreshed from `deadline` before each `write`. `Interrupted` retries.
+/// `write_all` against one absolute deadline. The socket timeout is refreshed
+/// from `deadline` before each `write`. A zero-length write, `Interrupted`,
+/// `WouldBlock`, `TimedOut`, and `NotConnected` retry until the deadline.
 /// Zero remaining time returns [`io::ErrorKind::TimedOut`] without another
-/// blocking call.
+/// blocking call. `flush` uses the same retry.
 #[cfg(unix)]
 pub(crate) fn write_all_until_deadline<W>(
     writer: &mut W,
@@ -1060,21 +1086,23 @@ where
         let remaining = remaining_until(deadline)?;
         writer.refresh_write_timeout(Some(remaining))?;
         match writer.write(&buf[written..]) {
-            Ok(0) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::WriteZero,
-                    "write returned 0 before the deadline",
-                ));
-            },
+            Ok(0) => pause_until_peer_ready(deadline)?,
             Ok(n) => written += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
             Err(err) => return Err(err),
         }
     }
-    let remaining = remaining_until(deadline)?;
-    writer.refresh_write_timeout(Some(remaining))?;
-    writer.flush()?;
-    Ok(())
+    loop {
+        let remaining = remaining_until(deadline)?;
+        writer.refresh_write_timeout(Some(remaining))?;
+        match writer.flush() {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -1113,6 +1141,99 @@ where
     let mut buf = vec![0u8; len];
     read_exact_until_deadline(reader, &mut buf, deadline)?;
     decode_server_frame(&buf)
+}
+
+#[cfg(all(test, unix))]
+mod probe_io_retry {
+    use super::{read_exact_until_deadline, write_all_until_deadline, DeadlineIo};
+    use std::io::{self, Read, Write};
+    use std::time::{Duration, Instant};
+
+    struct Scripted {
+        reads: Vec<io::Result<usize>>,
+        writes: Vec<io::Result<usize>>,
+        payload: Vec<u8>,
+    }
+
+    impl DeadlineIo for Scripted {
+        fn refresh_read_timeout(&self, _timeout: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+        fn refresh_write_timeout(&self, _timeout: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Read for Scripted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.reads.is_empty() {
+                let n = self.payload.len().min(buf.len());
+                buf[..n].copy_from_slice(&self.payload[..n]);
+                self.payload.drain(..n);
+                return Ok(n);
+            }
+            match self.reads.remove(0) {
+                Ok(0) => Ok(0),
+                Ok(n) => {
+                    let n = n.min(buf.len()).min(self.payload.len());
+                    buf[..n].copy_from_slice(&self.payload[..n]);
+                    self.payload.drain(..n);
+                    Ok(n)
+                },
+                Err(err) => Err(err),
+            }
+        }
+    }
+
+    impl Write for Scripted {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.writes.is_empty() {
+                return Ok(buf.len());
+            }
+            self.writes.remove(0)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn an_early_eof_and_would_block_are_retried_until_the_peer_answers() {
+        let mut reader = Scripted {
+            reads: vec![
+                Ok(0),
+                Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "waiting for accept",
+                )),
+            ],
+            writes: vec![],
+            payload: b"ok".to_vec(),
+        };
+        let mut buf = [0u8; 2];
+        read_exact_until_deadline(
+            &mut reader,
+            &mut buf,
+            Instant::now() + Duration::from_secs(2),
+        )
+        .expect("the reply arrives after the pre-accept errors");
+        assert_eq!(&buf, b"ok");
+    }
+
+    #[test]
+    fn a_zero_write_before_accept_is_retried() {
+        let mut writer = Scripted {
+            reads: vec![],
+            writes: vec![Ok(0)],
+            payload: vec![],
+        };
+        write_all_until_deadline(
+            &mut writer,
+            b"ping",
+            Instant::now() + Duration::from_secs(2),
+        )
+        .expect("the write completes once the peer accepts");
+    }
 }
 
 #[cfg(windows)]

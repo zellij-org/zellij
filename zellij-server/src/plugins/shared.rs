@@ -212,10 +212,17 @@ impl PublishedLoad {
 
 /// `load_alive` handles cloned out of `RunningPlugin` at the first refuel, so
 /// management can retire a load without taking the execution mutex.
-static PUBLISHED_LOADS: LazyLock<Mutex<HashMap<(PluginId, ClientId, u64), PublishedLoad>>> =
+///
+/// The key starts with the server's `session_scope`. Two servers in one
+/// process (a nested guest inside its host) both number plugins from 0, and
+/// retiring by plugin id alone flips the other server's `load_alive`.
+type PublishedLoadKey = (u64, PluginId, ClientId, u64);
+
+static PUBLISHED_LOADS: LazyLock<Mutex<HashMap<PublishedLoadKey, PublishedLoad>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn publish_plugin_load(
+    session_scope: u64,
     plugin_id: PluginId,
     client_id: ClientId,
     generation: u64,
@@ -224,7 +231,7 @@ fn publish_plugin_load(
 ) {
     let mut loads = PUBLISHED_LOADS.lock().unwrap();
     loads
-        .entry((plugin_id, client_id, generation))
+        .entry((session_scope, plugin_id, client_id, generation))
         .or_insert(PublishedLoad { alive, data_dir });
 }
 
@@ -257,6 +264,7 @@ fn publish_store_data<T: ?Sized>(data: &T) {
     // SAFETY: the TypeId check above is true only when `T` is `PluginEnv`.
     let env = unsafe { &*(data as *const T as *const PluginEnv) };
     publish_plugin_load(
+        env.session_scope,
         env.plugin_id,
         env.client_id,
         env.generation,
@@ -265,11 +273,11 @@ fn publish_store_data<T: ?Sized>(data: &T) {
     );
 }
 
-fn retire_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) {
+fn retire_matching(session_scope: u64, mut keep: impl FnMut(&PluginId, &ClientId, &u64) -> bool) {
     {
         let loads = PUBLISHED_LOADS.lock().unwrap();
-        for (key, load) in loads.iter() {
-            if keep(key) {
+        for ((scope, plugin_id, client_id, generation), load) in loads.iter() {
+            if *scope == session_scope && keep(plugin_id, client_id, generation) {
                 load.retire_outside_execution_lock(None);
             }
         }
@@ -277,10 +285,19 @@ fn retire_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) {
     crate::plugins::reap_retired_operations();
 }
 
-fn take_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) -> Vec<PathBuf> {
+fn take_matching(
+    session_scope: u64,
+    mut keep: impl FnMut(&PluginId, &ClientId, &u64) -> bool,
+) -> Vec<PathBuf> {
     let dirs = {
         let mut loads = PUBLISHED_LOADS.lock().unwrap();
-        let keys: Vec<_> = loads.keys().copied().filter(|key| keep(key)).collect();
+        let keys: Vec<_> = loads
+            .keys()
+            .copied()
+            .filter(|(scope, plugin_id, client_id, generation)| {
+                *scope == session_scope && keep(plugin_id, client_id, generation)
+            })
+            .collect();
         let mut dirs = Vec::with_capacity(keys.len());
         for key in keys {
             if let Some(load) = loads.remove(&key) {
@@ -294,32 +311,36 @@ fn take_matching(mut keep: impl FnMut(&(PluginId, ClientId, u64)) -> bool) -> Ve
     dirs
 }
 
-/// Flip every published `load_alive` for `plugin_id` without the execution mutex.
-pub fn revoke_plugin_loads(plugin_id: PluginId) {
-    retire_matching(|(id, _, _)| *id == plugin_id);
+/// Flip every published `load_alive` for `plugin_id` in this server, without
+/// the execution mutex.
+pub fn revoke_plugin_loads(session_scope: u64, plugin_id: PluginId) {
+    retire_matching(session_scope, |id, _, _| *id == plugin_id);
 }
 
 /// Flip this client instance's `load_alive` handles without the execution mutex.
-pub fn revoke_client_loads(plugin_id: PluginId, client_id: ClientId) {
-    retire_matching(|(id, cid, _)| *id == plugin_id && *cid == client_id);
+pub fn revoke_client_loads(session_scope: u64, plugin_id: PluginId, client_id: ClientId) {
+    retire_matching(session_scope, |id, cid, _| {
+        *id == plugin_id && *cid == client_id
+    });
 }
 
-/// Retire loads of `plugin_id` other than the newest generation. A reload
-/// publishes the replacement before this runs, so the blocked previous guest
-/// does not have to be locked.
-pub fn retire_older_published_loads(plugin_id: PluginId) {
+/// Retire loads of `plugin_id` other than the newest generation in this server.
+/// A reload publishes the replacement before this runs, so the blocked previous
+/// guest does not have to be locked. Other servers that reused the plugin id
+/// stay alive.
+pub fn retire_older_published_loads(session_scope: u64, plugin_id: PluginId) {
     {
         let loads = PUBLISHED_LOADS.lock().unwrap();
         let newest = loads
             .keys()
-            .filter(|(id, _, _)| *id == plugin_id)
-            .map(|(_, _, generation)| *generation)
+            .filter(|(scope, id, _, _)| *scope == session_scope && *id == plugin_id)
+            .map(|(_, _, _, generation)| *generation)
             .max();
         let Some(newest) = newest else {
             return;
         };
-        for ((id, _, generation), load) in loads.iter() {
-            if *id == plugin_id && *generation < newest {
+        for ((scope, id, _, generation), load) in loads.iter() {
+            if *scope == session_scope && *id == plugin_id && *generation < newest {
                 load.retire_outside_execution_lock(None);
             }
         }
@@ -327,35 +348,42 @@ pub fn retire_older_published_loads(plugin_id: PluginId) {
     crate::plugins::reap_retired_operations();
 }
 
-pub fn take_plugin_data_dirs(plugin_id: PluginId) -> Vec<PathBuf> {
-    take_matching(|(id, _, _)| *id == plugin_id)
+pub fn take_plugin_data_dirs(session_scope: u64, plugin_id: PluginId) -> Vec<PathBuf> {
+    take_matching(session_scope, |id, _, _| *id == plugin_id)
 }
 
-pub fn take_client_data_dirs(plugin_id: PluginId, client_id: ClientId) -> Vec<PathBuf> {
-    take_matching(|(id, cid, _)| *id == plugin_id && *cid == client_id)
+pub fn take_client_data_dirs(
+    session_scope: u64,
+    plugin_id: PluginId,
+    client_id: ClientId,
+) -> Vec<PathBuf> {
+    take_matching(session_scope, |id, cid, _| {
+        *id == plugin_id && *cid == client_id
+    })
 }
 
 /// Host-only slot removals waiting on a guest callback. This is not the
 /// execution mutex: recording a removal must not wait for the guest.
-static PENDING_HOST_SLOT_REMOVALS: LazyLock<Mutex<HashMap<PluginId, HashSet<PluginId>>>> =
+/// Keyed by session scope for the same reason as `PUBLISHED_LOADS`.
+static PENDING_HOST_SLOT_REMOVALS: LazyLock<Mutex<HashMap<(u64, PluginId), HashSet<PluginId>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn record_pending_host_slot_removal(instance_id: PluginId, slot_id: PluginId) {
+fn record_pending_host_slot_removal(session_scope: u64, instance_id: PluginId, slot_id: PluginId) {
     PENDING_HOST_SLOT_REMOVALS
         .lock()
         .unwrap()
-        .entry(instance_id)
+        .entry((session_scope, instance_id))
         .or_default()
         .insert(slot_id);
 }
 
 /// Copy the ids out and drop the pending mutex before the caller mutates
 /// `shared.slots` under the execution lock.
-fn take_pending_host_slot_removals(instance_id: PluginId) -> Vec<PluginId> {
+fn take_pending_host_slot_removals(session_scope: u64, instance_id: PluginId) -> Vec<PluginId> {
     PENDING_HOST_SLOT_REMOVALS
         .lock()
         .unwrap()
-        .remove(&instance_id)
+        .remove(&(session_scope, instance_id))
         .map(|ids| ids.into_iter().collect())
         .unwrap_or_default()
 }
@@ -366,14 +394,18 @@ pub fn apply_pending_host_slot_removals(running_plugin: &mut RunningPlugin) {
     if running_plugin.store.data().shared.is_none() {
         return;
     }
+    let session_scope = running_plugin.store.data().session_scope;
     let instance_id = running_plugin.store.data().plugin_id;
-    let slot_ids = take_pending_host_slot_removals(instance_id);
+    let slot_ids = take_pending_host_slot_removals(session_scope, instance_id);
     if slot_ids.is_empty() {
         return;
     }
     let Some(shared) = running_plugin.store.data_mut().shared.as_mut() else {
         let mut pending = PENDING_HOST_SLOT_REMOVALS.lock().unwrap();
-        pending.entry(instance_id).or_default().extend(slot_ids);
+        pending
+            .entry((session_scope, instance_id))
+            .or_default()
+            .extend(slot_ids);
         return;
     };
     for slot_id in slot_ids {
@@ -998,6 +1030,7 @@ pub fn remove_slot_job(
     tear_down: bool,
     allow_guest: bool,
 ) {
+    let session_scope = plugin_map.lock().unwrap().session_scope();
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
         if allow_guest {
             if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
@@ -1014,14 +1047,14 @@ pub fn remove_slot_job(
                 // The guest holds the execution mutex. Keep the host removal
                 // and apply it when that mutex is free. Do not wait, and do
                 // not call the guest from this thread.
-                record_pending_host_slot_removal(instance_id, slot_id);
+                record_pending_host_slot_removal(session_scope, instance_id, slot_id);
             }
         } else {
             // Lifecycle admission rejected this job, so it is running on the
             // management thread. Record the host removal without the execution
             // mutex, then apply it only when that mutex is free. Do not enter
             // the guest and do not wait if a callback holds the mutex.
-            record_pending_host_slot_removal(instance_id, slot_id);
+            record_pending_host_slot_removal(session_scope, instance_id, slot_id);
             let _running_plugin = try_lock_running(&running_plugin);
         }
     }
@@ -1038,10 +1071,11 @@ fn tear_down_instance(
 ) {
     // Revoke before taking the execution mutex. A blocked guest callback may
     // hold that mutex for the rest of the host call.
-    revoke_plugin_loads(instance_id);
+    let session_scope = plugin_map.lock().unwrap().session_scope();
+    revoke_plugin_loads(session_scope, instance_id);
     let removed = plugin_map.lock().unwrap().remove_shared(instance_id);
     let Some((running_plugin, subscriptions, workers)) = removed else {
-        delete_data_dirs(&take_plugin_data_dirs(instance_id));
+        delete_data_dirs(&take_plugin_data_dirs(session_scope, instance_id));
         let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(instance_id));
         return;
     };
@@ -1057,12 +1091,16 @@ fn tear_down_instance(
                 .unwrap()
                 .contains(&EventType::BeforeClose);
             if needs_before_close && !running_plugin.is_quarantined() {
-                if let Err(e) = call_update(
-                    &mut running_plugin,
-                    &Event::BeforeClose,
-                    None,
-                    EventContext::default(),
-                ) {
+                if let Err(e) =
+                    crate::plugins::pinned_executor::with_before_close_host_calls(|| {
+                        call_update(
+                            &mut running_plugin,
+                            &Event::BeforeClose,
+                            None,
+                            EventContext::default(),
+                        )
+                    })
+                {
                     log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);
                 }
                 send_pipe_changes(senders, &mut running_plugin, instance_id, None);
@@ -1086,7 +1124,7 @@ fn tear_down_instance(
             locked_dir = Some(running_plugin.store.data().plugin_own_data_dir.clone());
         }
     }
-    let mut data_dirs = take_plugin_data_dirs(instance_id);
+    let mut data_dirs = take_plugin_data_dirs(session_scope, instance_id);
     if let Some(dir) = locked_dir {
         if !data_dirs.contains(&dir) {
             data_dirs.push(dir);
@@ -1266,7 +1304,10 @@ pub fn start_instance_job(
         Ok(running_plugin) => {
             // The replacement is published; only now is it safe to retire the old workers.
             if let Some((previous_plugin, _subscriptions, workers)) = previous {
-                retire_older_published_loads(instance_id);
+                retire_older_published_loads(
+                    plugin_map.lock().unwrap().session_scope(),
+                    instance_id,
+                );
                 // Backup for a load that never refueled. Do not wait if its
                 // guest callback still holds the execution mutex.
                 if let Some(previous_plugin) = try_lock_running(&previous_plugin) {
@@ -1547,6 +1588,82 @@ mod retirement_tests {
         assert!(
             !alive.load(Ordering::Acquire),
             "retirement must clear load_alive without the execution mutex"
+        );
+    }
+
+    #[test]
+    fn one_session_cannot_retire_another_sessions_plugin_load() {
+        // Above anything `PluginMap::default` hands out. The allocator starts at 1.
+        let host_scope = u64::MAX - 4;
+        let guest_scope = u64::MAX - 3;
+        let host_alive = Arc::new(AtomicBool::new(true));
+        let guest_alive = Arc::new(AtomicBool::new(true));
+        let host_dir = PathBuf::from("/tmp/host-session-plugin-load");
+        let guest_dir = PathBuf::from("/tmp/guest-session-plugin-load");
+        super::publish_plugin_load(host_scope, 1, 1, 1, host_alive.clone(), host_dir.clone());
+        super::publish_plugin_load(guest_scope, 1, 1, 1, guest_alive.clone(), guest_dir.clone());
+
+        super::revoke_client_loads(guest_scope, 1, 1);
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "a guest client unload must not flip the host bars load"
+        );
+        assert!(!guest_alive.load(Ordering::Acquire));
+        assert_eq!(
+            super::take_client_data_dirs(guest_scope, 1, 1),
+            vec![guest_dir]
+        );
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "taking the guest dir must leave the host load alive"
+        );
+
+        let guest_old = Arc::new(AtomicBool::new(true));
+        let guest_new = Arc::new(AtomicBool::new(true));
+        let guest_old_dir = PathBuf::from("/tmp/guest-session-plugin-load-old");
+        let guest_new_dir = PathBuf::from("/tmp/guest-session-plugin-load-new");
+        super::publish_plugin_load(
+            guest_scope,
+            1,
+            1,
+            2,
+            guest_old.clone(),
+            guest_old_dir.clone(),
+        );
+        super::publish_plugin_load(
+            guest_scope,
+            1,
+            1,
+            9,
+            guest_new.clone(),
+            guest_new_dir.clone(),
+        );
+        super::retire_older_published_loads(guest_scope, 1);
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "reloading the guest must not retire the host generation"
+        );
+        assert!(!guest_old.load(Ordering::Acquire));
+        assert!(guest_new.load(Ordering::Acquire));
+
+        let mut taken = super::take_plugin_data_dirs(guest_scope, 1);
+        taken.sort();
+        let mut expected = vec![guest_old_dir, guest_new_dir];
+        expected.sort();
+        assert_eq!(taken, expected);
+        assert_eq!(super::take_plugin_data_dirs(host_scope, 1), vec![host_dir]);
+        assert!(!host_alive.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn pending_slot_removal_stays_inside_its_session() {
+        let host_scope = u64::MAX - 2;
+        let guest_scope = u64::MAX - 1;
+        super::record_pending_host_slot_removal(guest_scope, 1, 2);
+        assert!(super::take_pending_host_slot_removals(host_scope, 1).is_empty());
+        assert_eq!(
+            super::take_pending_host_slot_removals(guest_scope, 1),
+            vec![2]
         );
     }
 }

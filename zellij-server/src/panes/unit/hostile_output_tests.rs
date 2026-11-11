@@ -972,10 +972,15 @@ impl Soak {
             capture_len <= KITTY_CAPTURE_LIMIT && capture_capacity <= 2 * KITTY_CAPTURE_LIMIT,
             "kitty capture holds {capture_len} bytes (capacity {capture_capacity}), {at}"
         );
+        let pending = &self.pane.pending_pty_input;
+        let pending_preview: Vec<u8> = pending.iter().take(32).copied().collect();
         assert_eq!(
-            self.pane.pending_pty_input.len(),
+            pending.len(),
             0,
-            "bytes still held back for a host reply, {at}"
+            "bytes still held back for a host reply, {at}, held_escape={}, forward_paused={}, scrolled={}, pending={pending_preview:02x?}",
+            self.pane.held_escape,
+            self.pane.forward_paused,
+            self.pane.grid.is_scrolled,
         );
 
         // notification bookkeeping
@@ -1020,10 +1025,42 @@ impl Soak {
         );
     }
 
+    /// The screen thread parses bytes that were queued while the view was far
+    /// from the live bottom one row-quantum at a time. The soak has no screen
+    /// thread, so settlement has to take those same steps before it requires
+    /// the queue to be empty. Host queries found along the way are answered
+    /// the way [`Self::feed`] answers them.
+    fn drain_deferred_pane_work(&mut self) {
+        for _ in 0..100_000 {
+            if !self.pane.has_deferred_pane_work() {
+                return;
+            }
+            self.pane.advance_deferred_pane_work();
+            self.pane.drain_messages_to_pty();
+            self.pane.drain_nested_session_messages();
+            self.pane.drain_clipboard_update();
+            self.pane.drain_desktop_notifications();
+            self.pane.drain_osc7_cwd();
+            self.pane.drain_prompt_return();
+            self.pane.drain_pane_signals();
+            if self.pane.drain_forwarded_queries().is_empty() {
+                continue;
+            }
+            self.pane.arm_forward_pause();
+            self.pane.clear_forward_pause();
+            let held = self.pane.drain_pending_pty_input();
+            if !held.is_empty() {
+                self.pane.handle_pty_bytes(held);
+            }
+        }
+        panic!("deferred pane work made no progress before settlement");
+    }
+
     /// End every string in progress, then check that the buffers that grew
     /// during the case have been released.
     fn settle_and_check(&mut self) {
         self.feed(b"\x18\x1b\\\x07\x18\x1b\\\x18");
+        self.drain_deferred_pane_work();
         self.check_bounds();
         let state = self.pane.grid.retained_state();
         assert_eq!(
@@ -1198,6 +1235,11 @@ fn single_kind_budget(kind: Kind) -> usize {
 // ---------------------------------------------------------------------------
 // tests
 // ---------------------------------------------------------------------------
+
+#[test]
+fn seed_1027_settles() {
+    run_case(1027, 1_500_000, true);
+}
 
 #[test]
 fn hostile_output_keeps_retained_state_bounded() {

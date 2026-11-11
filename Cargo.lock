@@ -6541,6 +6541,7 @@ dependencies = [
  "insta",
  "interprocess",
  "isahc",
+ "libc",
  "log",
  "regex",
  "serde_json",

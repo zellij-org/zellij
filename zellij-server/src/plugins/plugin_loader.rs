@@ -97,6 +97,7 @@ pub struct PluginLoader {
     skip_cache: bool,
     plugin_id: PluginId,
     generation: u64,
+    session_scope: u64,
     client_id: ClientId,
     plugin_cwd: PathBuf,
     plugin_own_data_dir: PathBuf,
@@ -155,9 +156,11 @@ impl PluginLoader {
             &loading_context.plugin_own_data_dir,
             &loading_context.plugin_own_cache_dir,
         );
+        let session_scope = plugin_map.lock().unwrap().session_scope();
         Self {
             plugin_id: loading_context.plugin_id,
             generation: loading_context.generation,
+            session_scope,
             client_id: loading_context.client_id,
             plugin_cwd: loading_context.plugin_cwd,
             plugin_own_data_dir: loading_context.plugin_own_data_dir,
@@ -549,6 +552,7 @@ impl PluginLoader {
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             generation: self.generation,
+            session_scope: self.session_scope,
             load_alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             client_id: self.client_id,
             plugin: self.plugin_config.clone(), // TODO: change field name in PluginEnv to plugin_config
@@ -674,6 +678,7 @@ impl PluginLoader {
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             generation: self.generation,
+            session_scope: self.session_scope,
             load_alive,
             client_id: self.client_id,
             plugin: plugin_config,

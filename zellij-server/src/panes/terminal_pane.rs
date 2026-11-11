@@ -834,8 +834,11 @@ impl Pane for TerminalPane {
             self.set_should_render(true);
         }
     }
-    fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {
+    fn select_command_at_scroll_position(&mut self, client_id: ClientId) {
         if self.grid.select_command_at_scroll_position() {
+            // Copy reads the selection only for the client that owns it. A
+            // mouse drag sets that owner; this key action has to as well.
+            self.selection_owner = Some(client_id);
             self.set_should_render(true);
         }
     }

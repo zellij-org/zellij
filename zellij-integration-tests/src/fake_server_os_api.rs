@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::process::Child;
 use std::sync::{Arc, Mutex};
 
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -38,6 +39,26 @@ impl NonBlockingClientSender {
     }
 }
 
+/// A real child whose pidfd the server can probe. The numeric pid handed to
+/// the server stays the fake one: foreground lookup is keyed by terminal id.
+/// Dropping the fd does not signal the child. Pane close SIGHUPs the pidfd,
+/// which hits this sleeper rather than the test process. The child is reaped
+/// when the last harness handle drops.
+struct PaneStandIn(Mutex<Child>);
+
+impl Drop for PaneStandIn {
+    fn drop(&mut self) {
+        let mut child = self.0.lock().unwrap();
+        if child.try_wait().ok().flatten().is_none() {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
+    }
+}
+
+#[derive(Clone, Default)]
+struct PaneStandIns(Arc<Mutex<Vec<Arc<PaneStandIn>>>>);
+
 #[derive(Clone, Default)]
 pub struct FakeServerOsApi {
     pub shared_ptys: SharedPtys,
@@ -46,6 +67,7 @@ pub struct FakeServerOsApi {
     // mirrors the resize caching of the real ServerOsInputOutput, so that tests see the same
     // resizes a real pane's pty would
     cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>,
+    pane_stand_ins: PaneStandIns,
 }
 
 impl FakeServerOsApi {
@@ -124,7 +146,7 @@ impl ServerOsApi for FakeServerOsApi {
             terminal_id,
             fake_async_reader,
             Some(FAKE_PID_BASE + terminal_id),
-            None,
+            self.pane_stand_ins.pidfd(),
         ))
     }
     fn reserve_terminal_id(&self) -> Result<u32> {
@@ -249,10 +271,51 @@ impl ServerOsApi for FakeServerOsApi {
         Option<zellij_server::os_input_output::ChildPidFd>,
     )> {
         let fake_async_reader = self.shared_ptys.rerun(terminal_id, quit_cb);
-        Ok((fake_async_reader, Some(FAKE_PID_BASE + terminal_id), None))
+        Ok((
+            fake_async_reader,
+            Some(FAKE_PID_BASE + terminal_id),
+            self.pane_stand_ins.pidfd(),
+        ))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
         self.shared_ptys.remove(terminal_id);
         Ok(())
+    }
+}
+
+impl PaneStandIns {
+    /// Linux pidfd for a dedicated sleeper. `None` where pidfd does not exist
+    /// or the sleeper could not be started. The server probes this fd with
+    /// signal 0 before it will ask for the foreground command.
+    fn pidfd(&self) -> Option<zellij_server::os_input_output::ChildPidFd> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            None
+        }
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::FromRawFd;
+            let mut child = std::process::Command::new("/bin/sleep")
+                .arg("3600")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+            let pid = child.id();
+            // SAFETY: pidfd_open returns a new fd owned by this process, or -1.
+            let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
+            if fd < 0 {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            self.0
+                .lock()
+                .unwrap()
+                .push(Arc::new(PaneStandIn(Mutex::new(child))));
+            // SAFETY: the syscall just created this fd and no one else owns it.
+            Some(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as std::os::fd::RawFd) })
+        }
     }
 }

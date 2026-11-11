@@ -159,6 +159,13 @@ impl PeerAttentionState {
     }
 }
 
+/// A push can arrive before the first directory scan. That peer is published
+/// so a panel opened on the inbox can see its rows. An empty unscanned state
+/// stays quiet so startup does not announce "no sessions".
+fn ready_to_publish(state: &PeerAttentionState) -> bool {
+    !state.own_name.is_empty() && (state.scanned || !state.peers.is_empty())
+}
+
 pub fn spawn_peer_attention_service(
     senders: ThreadSenders,
     own_name: Arc<Mutex<String>>,
@@ -388,7 +395,7 @@ impl PeerAttentionService {
     }
 
     fn publish(&mut self) {
-        if self.state.own_name.is_empty() || !self.state.scanned {
+        if !ready_to_publish(&self.state) {
             return;
         }
         let live_changed = self.live_sessions.set(self.state.live());
@@ -445,6 +452,25 @@ mod tests {
             local: attention(AttentionStatus::Done),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_pushed_peer_is_published_before_the_first_scan() {
+        let mut state = PeerAttentionState {
+            own_name: ".zj-panel".to_owned(),
+            ..Default::default()
+        };
+        assert!(!ready_to_publish(&state));
+        state.peer_changed(
+            "elsewhere".to_owned(),
+            Some(attention(AttentionStatus::NeedsYou)),
+        );
+        assert!(ready_to_publish(&state));
+        state.scanned = true;
+        state.peers.clear();
+        assert!(ready_to_publish(&state));
+        state.own_name.clear();
+        assert!(!ready_to_publish(&state));
     }
 
     #[test]

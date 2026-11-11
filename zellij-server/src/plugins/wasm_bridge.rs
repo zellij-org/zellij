@@ -803,7 +803,10 @@ impl LoadingContext {
             .join(make_plugin_url_path_safe(
                 Url::from(&plugin_config.location).to_string(),
             ))
-            .join(format!("{}-{}", plugin_id, client_id));
+            .join(format!(
+                "{}-{}-{}",
+                wasm_bridge.session_scope, plugin_id, client_id
+            ));
         let plugin_own_cache_dir = ZELLIJ_CACHE_DIR
             .join(make_plugin_url_path_safe(
                 Url::from(&plugin_config.location).to_string(),
@@ -972,6 +975,9 @@ pub struct WasmBridge {
     senders: ThreadSenders,
     plugin_dir: PathBuf,
     plugin_map: Arc<Mutex<PluginMap>>,
+    /// Same value as `plugin_map`'s session scope. Copied so teardown can
+    /// name this server without taking the map lock.
+    session_scope: u64,
     plugin_executor: Arc<PinnedExecutor>,
     next_plugin_id: PluginId,
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
@@ -1041,6 +1047,7 @@ impl WasmBridge {
         default_keybinds: SharedKeybinds,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
+        let session_scope = plugin_map.lock().unwrap().session_scope();
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: PluginCache = Arc::new(Mutex::new(HashMap::new()));
         let watchers = HashMap::new();
@@ -1059,6 +1066,7 @@ impl WasmBridge {
             senders,
             plugin_dir,
             plugin_map,
+            session_scope,
             plugin_executor,
             path_to_default_shell,
             watchers,
@@ -1462,7 +1470,8 @@ impl WasmBridge {
         {
             // `load_alive` was cloned out at refuel. Clearing it does not take
             // the execution mutex a guest callback may be holding.
-            revoke_client_loads(plugin_id, client_id);
+            let session_scope = self.session_scope;
+            revoke_client_loads(session_scope, plugin_id, client_id);
             // Release this plugin's key intercept for the client without asking the
             // RunningPlugin whether it has one. The screen only drops an intercept
             // this plugin owns.
@@ -1516,7 +1525,7 @@ impl WasmBridge {
                             rp.store.data().retire_load();
                         }
                     }
-                    let mut data_dirs = take_client_data_dirs(plugin_id, client_id);
+                    let mut data_dirs = take_client_data_dirs(session_scope, plugin_id, client_id);
                     if data_dirs.is_empty() {
                         if let Some(rp) = try_lock_running(&running_plugin) {
                             data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
@@ -2695,7 +2704,8 @@ impl WasmBridge {
             // Retire before async host work (timers) can deliver into a
             // replacement instance that reused (plugin_id, client_id).
             // The handle lives outside the execution mutex.
-            revoke_client_loads(plugin_id, client_id);
+            let session_scope = self.session_scope;
+            revoke_client_loads(session_scope, plugin_id, client_id);
             let _ = self
                 .senders
                 .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
@@ -2717,7 +2727,7 @@ impl WasmBridge {
             self.plugin_executor.submit_lifecycle_or_run(
                 plugin_id,
                 move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let mut data_dirs = take_client_data_dirs(plugin_id, client_id);
+                    let mut data_dirs = take_client_data_dirs(session_scope, plugin_id, client_id);
                     if data_dirs.is_empty() {
                         if let Some(rp) = try_lock_running(&running_plugin) {
                             data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
@@ -4528,7 +4538,7 @@ impl WasmBridge {
                     .join(make_plugin_url_path_safe(
                         Url::from(&loading_context.plugin_config.location).to_string(),
                     ))
-                    .join(format!("{}", instance_id));
+                    .join(format!("{}-{}", self.session_scope, instance_id));
                 let persisted_loading_context = {
                     let mut loading_context = loading_context.clone();
                     loading_context.wasm_bytes = None;
@@ -4650,7 +4660,7 @@ impl WasmBridge {
             None => true,
         };
         if tearing_down {
-            revoke_plugin_loads(instance_id);
+            revoke_plugin_loads(self.session_scope, instance_id);
             self.release_key_intercepts(instance_id);
         }
         let Some(instance_id) = self.shared_slot_owner.remove(&slot_id) else {
@@ -5692,9 +5702,10 @@ pub fn apply_before_close_event_to_plugin(
     wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
         .with_context(err_context)?;
     crate::plugins::shared::refuel_for_callback(&mut running_plugin.store);
-    let _should_render = update
-        .call(&mut running_plugin.store, ())
-        .with_context(err_context)?;
+    let _should_render = crate::plugins::pinned_executor::with_before_close_host_calls(|| {
+        update.call(&mut running_plugin.store, ())
+    })
+    .with_context(err_context)?;
     let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
     let plugin_render_asset =
         PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipes_to_block_or_unblock);
@@ -5800,6 +5811,7 @@ mod load_result_generation_tests {
         let env = PluginEnv {
             plugin_id: 1,
             generation,
+            session_scope: 0,
             load_alive: Arc::new(AtomicBool::new(true)),
             client_id: 1,
             plugin: PluginConfig {

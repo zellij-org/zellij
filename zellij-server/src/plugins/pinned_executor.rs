@@ -11,12 +11,33 @@ use std::thread;
 
 thread_local! {
     static PLUGIN_EXECUTOR_THREAD: Cell<bool> = const { Cell::new(false) };
+    /// Unload revokes `load_alive` before `BeforeClose`, so a guest blocked in
+    /// a host call cannot keep issuing commands. The close callback still has
+    /// to reach the host (a theme preview reverts from there). This flag is
+    /// set only around that callback, on the thread running it. A worker on
+    /// another thread stays revoked.
+    static BEFORE_CLOSE_HOST_CALLS: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Whether the current thread is a pinned plugin executor. Guest callbacks are
 /// optional off this thread: inline host cleanup must not run them.
 pub fn on_plugin_executor() -> bool {
     PLUGIN_EXECUTOR_THREAD.with(|flag| flag.get())
+}
+
+/// Host calls from the `BeforeClose` guest callback are allowed even after
+/// `load_alive` was revoked. Other threads do not see the flag.
+pub fn before_close_host_calls_allowed() -> bool {
+    BEFORE_CLOSE_HOST_CALLS.with(|flag| flag.get())
+}
+
+pub fn with_before_close_host_calls<R>(body: impl FnOnce() -> R) -> R {
+    BEFORE_CLOSE_HOST_CALLS.with(|flag| {
+        let previous = flag.replace(true);
+        let result = body();
+        flag.set(previous);
+        result
+    })
 }
 use wasmi::Engine;
 

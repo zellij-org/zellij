@@ -47,7 +47,6 @@ pub struct PluginMetadata {
     pub is_background: bool,
 }
 
-#[derive(Default)]
 pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
     plugin_quarantine_flags: HashMap<PluginKey, Arc<AtomicBool>>,
@@ -59,9 +58,35 @@ pub struct PluginMap {
     // meanwhile
     loads_in_progress: HashSet<PluginId>,
     unloaded_during_load: HashSet<PluginId>,
+    /// Distinguishes this server from another server in the same process.
+    /// Plugin ids restart at 0 in each server. Process-global load tables
+    /// include this so one server cannot retire the other's load.
+    session_scope: u64,
+}
+
+static NEXT_SESSION_SCOPE: AtomicU64 = AtomicU64::new(1);
+
+impl Default for PluginMap {
+    fn default() -> Self {
+        Self {
+            plugin_assets: HashMap::new(),
+            plugin_quarantine_flags: HashMap::new(),
+            plugin_metadata: HashMap::new(),
+            shared_assets: HashMap::new(),
+            shared_quarantine_flags: HashMap::new(),
+            shared_blocking_calls: HashMap::new(),
+            loads_in_progress: HashSet::new(),
+            unloaded_during_load: HashSet::new(),
+            session_scope: NEXT_SESSION_SCOPE.fetch_add(1, Ordering::Relaxed),
+        }
+    }
 }
 
 impl PluginMap {
+    pub fn session_scope(&self) -> u64 {
+        self.session_scope
+    }
+
     /// Remove a single (plugin, client) instance, returning its assets
     /// so the caller can retire workers. Used to roll back a provisional
     /// registration after a failed _start/load.
@@ -436,6 +461,8 @@ pub fn next_permission_prompt_id() -> u64 {
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub generation: u64,
+    /// `PluginMap::session_scope` of the server that loaded this instance.
+    pub session_scope: u64,
     /// Cleared when this load instance is retired (unload / client remove /
     /// reload). Async host work scheduled by this instance (timers) must check
     /// it before delivering into a possibly-replaced `(plugin_id, client_id)`.

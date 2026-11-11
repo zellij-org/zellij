@@ -57,6 +57,9 @@ pub(crate) struct State {
     app_quit: bool,
     app_panel_initial_view: Option<String>,
     app_panel_auto_pending: bool,
+    /// True after an attention snapshot arrived for the current inbox request.
+    /// Input before that snapshot is the window opening, not a choice to stay.
+    app_panel_attention_since_request: bool,
     app_panel_view_shown: bool,
     app_panel_cols: usize,
     session_name: Option<String>,
@@ -269,6 +272,7 @@ impl ZellijPlugin for State {
             self.app_panel_initial_view = None;
             let view = pipe_message.payload.unwrap_or_else(|| "auto".to_owned());
             self.app_panel_auto_pending = app_panel::waits_for_items(&view);
+            self.app_panel_attention_since_request = false;
             self.show_app_panel_view(Some(&view));
             self.settle_inbox_hold();
             return true;
@@ -3748,13 +3752,21 @@ impl State {
         if !app_panel::is_enabled() {
             return false;
         }
-        if user_input {
+        // A key, scroll, or click after the inbox rows have been seen means
+        // the user is driving the panel. The press that opens the window, and
+        // an empty snapshot that arrives before those rows, must not cancel
+        // the requested inbox view.
+        if user_input && self.app_panel_attention_since_request {
             self.app_panel_auto_pending = false;
         }
         if let Some(view) = self.app_panel_initial_view.take() {
             self.app_panel_auto_pending = app_panel::waits_for_items(&view);
+            self.app_panel_attention_since_request = false;
             self.show_app_panel_view(Some(&view));
             return true;
+        }
+        if attention && self.inbox.has_rows() {
+            self.app_panel_attention_since_request = true;
         }
         if attention && self.app_panel_auto_pending && self.inbox.has_rows() {
             self.app_panel_auto_pending = false;
