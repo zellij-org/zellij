@@ -2002,16 +2002,46 @@ impl WasmBridge {
                         // let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let _s = shutdown_sender.clone();
-                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let mut running_plugin = lock_running(&running_plugin);
+                        move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                             // Allocate the event id in the execution owner. Taking
                             // the guest lock on the management thread here would let
                             // a blocked callback stall unrelated plugin management.
-                            let event_id = running_plugin.next_event_id(AtomicEvent::Resize);
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                            let captured = running_plugin;
+                            // The queued job captured the instance that was current
+                            // when the resize was accepted. A second load of this
+                            // client retires that instance before the job runs, and
+                            // the replacement is still at its 0×0 load size, so the
+                            // pane would otherwise stay blank. A replacement that
+                            // already has a size keeps it.
+                            let target = if lock_running(&captured).is_active() {
+                                captured
+                            } else {
+                                let Some(live) = plugin_map
+                                    .lock()
+                                    .unwrap()
+                                    .get_running_plugin(plugin_id, Some(client_id))
+                                else {
+                                    return;
+                                };
+                                if Arc::ptr_eq(&live, &captured) {
+                                    return;
+                                }
+                                let live_is_unsized = {
+                                    let live_plugin = lock_running(&live);
+                                    live_plugin.is_active()
+                                        && (live_plugin.rows == 0 || live_plugin.columns == 0)
+                                };
+                                if !live_is_unsized {
+                                    return;
+                                }
+                                live
+                            };
+                            let mut running_plugin = lock_running(&target);
                             if !running_plugin.is_active() {
                                 return;
                             }
+                            let event_id = running_plugin.next_event_id(AtomicEvent::Resize);
                             if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                                 let old_rows = running_plugin.rows;
                                 let old_columns = running_plugin.columns;

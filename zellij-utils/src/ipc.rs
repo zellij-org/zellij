@@ -969,19 +969,38 @@ impl DeadlineIo for LocalSocketStream {
 /// Errors that mean "the peer is not ready yet", not "the probe is done".
 ///
 /// macOS `poll` reports `POLLHUP` with `SO_ERROR == 0` for a unix socket that
-/// has connected and is sitting in the accept queue. A read or write then
-/// returns `WouldBlock`, `TimedOut`, `NotConnected`, or an immediate EOF
-/// before `accept`. Those are not a finished exchange: the same socket
-/// answers `Connected` once the server accepts.
+/// has connected and is sitting in the accept queue. The same poll result is
+/// reported when `accept` is already waiting (a later write succeeds) and
+/// when `accept` has not entered the kernel yet. In that second window a
+/// write or read returns `WouldBlock`, `TimedOut`, `NotConnected`, an
+/// immediate EOF, or `BrokenPipe` / `ConnectionReset` / `ConnectionAborted`.
+/// Rust ignores `SIGPIPE`, so the broken pipe is an error on this socket
+/// rather than a dead process. None of those are a finished exchange: the
+/// same file descriptor answers once the server accepts. Retrying stops at
+/// the caller's deadline, so a peer that stays reset does not wait longer
+/// than the probe was already allowed, and this does not open a new socket.
 #[cfg(unix)]
-fn peer_not_ready(kind: io::ErrorKind) -> bool {
-    matches!(
-        kind,
+fn peer_not_ready(err: &io::Error) -> bool {
+    if matches!(
+        err.kind(),
         io::ErrorKind::Interrupted
             | io::ErrorKind::WouldBlock
             | io::ErrorKind::TimedOut
             | io::ErrorKind::NotConnected
-    )
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
+    ) {
+        return true;
+    }
+    // macOS has returned a transient `EPROTOTYPE` for a write to a unix
+    // socket whose peer is not fully established. It is not a protocol
+    // mismatch the probe can act on; the deadline bounds the retry.
+    #[cfg(target_vendor = "apple")]
+    if err.raw_os_error() == Some(nix::errno::Errno::EPROTOTYPE as i32) {
+        return true;
+    }
+    false
 }
 
 /// Wait a millisecond, or less when the deadline is closer. A kernel `EAGAIN`
@@ -995,10 +1014,11 @@ fn pause_until_peer_ready(deadline: Instant) -> io::Result<()> {
 
 /// `read_exact` against one absolute deadline. The socket timeout is refreshed
 /// from `deadline` before each `read`. `Interrupted`, `WouldBlock`,
-/// `TimedOut`, `NotConnected`, and an immediate EOF retry until the deadline:
+/// `TimedOut`, `NotConnected`, `BrokenPipe`, `ConnectionReset`,
+/// `ConnectionAborted`, and an immediate EOF retry until the deadline:
 /// on macOS those are what a connected socket returns before `accept`.
-/// Zero remaining time returns [`io::ErrorKind::TimedOut`] without another
-/// blocking call.
+/// Bytes already stored stay stored. Zero remaining time returns
+/// [`io::ErrorKind::TimedOut`] without another blocking call.
 #[cfg(unix)]
 pub(crate) fn read_exact_until_deadline<R>(
     reader: &mut R,
@@ -1016,7 +1036,7 @@ where
             Ok(0) => pause_until_peer_ready(deadline)?,
             Ok(n) => filled += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
             Err(err) => return Err(err),
         }
     }
@@ -1069,9 +1089,12 @@ fn write_all_ipc_until_deadline(
 
 /// `write_all` against one absolute deadline. The socket timeout is refreshed
 /// from `deadline` before each `write`. A zero-length write, `Interrupted`,
-/// `WouldBlock`, `TimedOut`, and `NotConnected` retry until the deadline.
-/// Zero remaining time returns [`io::ErrorKind::TimedOut`] without another
-/// blocking call. `flush` uses the same retry.
+/// `WouldBlock`, `TimedOut`, `NotConnected`, `BrokenPipe`, `ConnectionReset`,
+/// and `ConnectionAborted` retry until the deadline. A short write keeps the
+/// bytes already counted and retries only the tail, so a reset in the middle
+/// of the frame is not sent twice. Zero remaining time returns
+/// [`io::ErrorKind::TimedOut`] without another blocking call. `flush` uses
+/// the same retry.
 #[cfg(unix)]
 pub(crate) fn write_all_until_deadline<W>(
     writer: &mut W,
@@ -1089,7 +1112,7 @@ where
             Ok(0) => pause_until_peer_ready(deadline)?,
             Ok(n) => written += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
             Err(err) => return Err(err),
         }
     }
@@ -1099,7 +1122,7 @@ where
         match writer.flush() {
             Ok(()) => return Ok(()),
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(err.kind()) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
             Err(err) => return Err(err),
         }
     }
@@ -1233,6 +1256,111 @@ mod probe_io_retry {
             Instant::now() + Duration::from_secs(2),
         )
         .expect("the write completes once the peer accepts");
+    }
+
+    #[test]
+    fn a_broken_pipe_before_accept_is_retried_on_the_same_socket() {
+        let mut writer = Scripted {
+            reads: vec![],
+            writes: vec![Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "accept has not run",
+            ))],
+            payload: vec![],
+        };
+        write_all_until_deadline(
+            &mut writer,
+            b"ping",
+            Instant::now() + Duration::from_secs(2),
+        )
+        .expect("the same socket accepts the frame after the reset");
+        assert!(
+            writer.writes.is_empty(),
+            "the retry must consume the broken-pipe result"
+        );
+    }
+
+    #[test]
+    fn a_short_write_then_reset_retries_only_the_unwritten_tail() {
+        let mut writer = Scripted {
+            reads: vec![],
+            writes: vec![
+                Ok(1),
+                Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "reset after one byte",
+                )),
+                Ok(3),
+            ],
+            payload: vec![],
+        };
+        write_all_until_deadline(
+            &mut writer,
+            b"ping",
+            Instant::now() + Duration::from_secs(2),
+        )
+        .expect("the tail is written after the reset");
+        assert!(writer.writes.is_empty());
+    }
+
+    #[test]
+    fn a_connection_reset_before_the_reply_is_retried() {
+        let mut reader = Scripted {
+            reads: vec![Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "accept has not run",
+            ))],
+            writes: vec![],
+            payload: b"ok".to_vec(),
+        };
+        let mut buf = [0u8; 2];
+        read_exact_until_deadline(
+            &mut reader,
+            &mut buf,
+            Instant::now() + Duration::from_secs(2),
+        )
+        .expect("the reply arrives after the reset");
+        assert_eq!(&buf, b"ok");
+    }
+
+    #[test]
+    fn a_peer_that_stays_reset_stops_at_the_deadline() {
+        struct AlwaysReset;
+
+        impl DeadlineIo for AlwaysReset {
+            fn refresh_read_timeout(&self, _timeout: Option<Duration>) -> io::Result<()> {
+                Ok(())
+            }
+            fn refresh_write_timeout(&self, _timeout: Option<Duration>) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl Write for AlwaysReset {
+            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+                Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "peer stays reset",
+                ))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let started = Instant::now();
+        let err = write_all_until_deadline(
+            &mut AlwaysReset,
+            b"ping",
+            started + Duration::from_millis(40),
+        )
+        .expect_err("a peer that stays reset must not succeed");
+        let elapsed = started.elapsed();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "reset retry ran past the deadline: {elapsed:?}"
+        );
     }
 }
 
