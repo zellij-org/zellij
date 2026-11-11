@@ -3829,9 +3829,12 @@ impl State {
         }
         self.single_screen_state.search_term.clear();
         self.single_screen_state.selected_index = None;
+        // A click on the icon ("auto") opens the inbox only when it has items, and the sessions
+        // otherwise. Asking for the inbox ("Show inbox", `--inbox`) opens it even when empty.
         let tab = match view {
             _ if self.attention_disabled() => BrowserTab::Sessions,
             Some("sessions") => BrowserTab::Sessions,
+            Some("inbox") => BrowserTab::Inbox,
             _ if !self.inbox.has_rows() => BrowserTab::Sessions,
             _ => BrowserTab::Inbox,
         };
@@ -4429,6 +4432,34 @@ mod live_view_state_tests {
             BrowserTab::Sessions,
             "a fresh open with nothing left shows the sessions"
         );
+    }
+
+    #[test]
+    fn an_inbox_asked_for_by_name_opens_even_when_empty() {
+        let mut state = browser();
+        state.inbox.update_global(nothing_is_left());
+        state.update(Event::Visible(false));
+        state.show_app_panel_view(Some("auto"));
+        assert_eq!(
+            state.inbox.tab,
+            BrowserTab::Sessions,
+            "a click on the icon with nothing in the inbox shows the sessions"
+        );
+        state.show_app_panel_view(Some("inbox"));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox_is_shown());
+        state.render_plugin(16, 88);
+    }
+
+    #[test]
+    fn the_first_item_to_reach_an_empty_inbox_is_selected() {
+        let mut state = browser();
+        state.inbox.update_global(nothing_is_left());
+        state.update(Event::Visible(false));
+        state.show_app_panel_view(Some("inbox"));
+        state.update(Event::GlobalAttentionUpdate(only_web_is_left()));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox.is_selected(&key_of("web", 2)));
     }
 
     fn with_attention_off(mut global: GlobalAttention) -> GlobalAttention {
