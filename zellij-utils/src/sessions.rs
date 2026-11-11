@@ -140,10 +140,10 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 }
 
 /// How long the ConnStatus probe waits for a server's reply. A server that accepts
-/// the connection but does not answer within this window (MEASURED: a just-spawned
-/// server was still "Compiling plugins using Cranelift") is reported as NOT a live
-/// session — the same answer `ConnectionRefused` already gets — instead of blocking
-/// the caller. The bound is per socket, not a deadline on the whole listing.
+/// the connection but does not answer within this window — the shape of a server
+/// that is still starting up — is reported as NOT a live session, the same answer
+/// `ConnectionRefused` already gets, instead of blocking the caller. The bound is
+/// per socket, not a deadline on the whole listing.
 const CONN_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn assert_socket(name: &str) -> bool {
