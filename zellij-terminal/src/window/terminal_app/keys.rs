@@ -183,6 +183,7 @@ impl App {
     }
 
     pub(in crate::window) fn dropped_file(&mut self, path: &Path) {
+        self.set_selection(None);
         let text = dropped::dropped_file_text(path);
         if let Err(e) = self.tell(clipboard::paste_message(text)) {
             report!("failed to send a dropped file's path: {}", e);
