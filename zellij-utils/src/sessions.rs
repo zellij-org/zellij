@@ -177,20 +177,14 @@ fn probe_conn_status(stream: LocalSocketStream, timeout: Duration) -> bool {
     }
 }
 
-/// Bound reads on `stream` by SO_RCVTIMEO. `interprocess` 1.x exposes no recv
-/// timeout, but the option belongs to the socket rather than the descriptor, so
-/// setting it through a dup bounds the reads made through `stream` too (MEASURED
-/// on this box: a 400ms timeout set through a dup fired on the original after
-/// 0.414s). The dup exists only to carry the setsockopt; closing it leaves the
-/// option in force on the shared socket.
+/// Bound reads on `stream` by SO_RCVTIMEO. `interprocess` 2.x sets that option for
+/// us (`Stream::set_recv_timeout`), and the option belongs to the socket rather
+/// than to the descriptor — so the receiver, which reads through a clone of this
+/// stream, is bounded too. That is what the tests below measure: a server that
+/// accepts the connection and never answers makes the probe return on its deadline
+/// instead of blocking the caller.
 fn set_recv_timeout(stream: &LocalSocketStream, timeout: Duration) {
-    use std::os::unix::io::{AsRawFd, FromRawFd};
-    let dup_fd = match nix::unistd::dup(stream.as_raw_fd()) {
-        Ok(fd) => fd,
-        Err(_) => return,
-    };
-    let dup_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(dup_fd) };
-    let _ = dup_stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_recv_timeout(Some(timeout));
 }
 
 #[cfg(test)]
