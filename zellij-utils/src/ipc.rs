@@ -952,6 +952,10 @@ fn decode_server_frame(buf: &[u8]) -> io::Result<ServerToClientMsg> {
 pub(crate) trait DeadlineIo {
     fn refresh_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
     fn refresh_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    fn wait_readable(&self, deadline: Instant) -> io::Result<()> {
+        let _ = deadline;
+        Ok(())
+    }
 }
 
 #[cfg(unix)]
@@ -963,6 +967,35 @@ impl DeadlineIo for LocalSocketStream {
     fn refresh_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         use interprocess::local_socket::traits::Stream;
         self.set_send_timeout(timeout)
+    }
+    fn wait_readable(&self, deadline: Instant) -> io::Result<()> {
+        use nix::errno::Errno;
+        use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+        use std::os::fd::AsFd;
+
+        let interprocess::local_socket::Stream::UdSocket(stream) = self;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "deadline exhausted",
+                ));
+            }
+            let poll_timeout = PollTimeout::try_from(remaining).unwrap_or(PollTimeout::MAX);
+            let mut fds = [PollFd::new(stream.as_fd(), PollFlags::POLLIN)];
+            match poll(&mut fds, poll_timeout) {
+                Err(Errno::EINTR) => continue,
+                Err(error) => return Err(error.into()),
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "deadline exhausted",
+                    ))
+                },
+                Ok(_) => return Ok(()),
+            }
+        }
     }
 }
 
@@ -1000,6 +1033,12 @@ fn peer_not_ready(err: &io::Error) -> bool {
     if err.raw_os_error() == Some(nix::errno::Errno::EPROTOTYPE as i32) {
         return true;
     }
+    // macOS has returned EINVAL while a just-connected Unix socket was not yet
+    // ready for the probe read. Retrying is bounded by the caller's deadline.
+    #[cfg(target_vendor = "apple")]
+    if err.kind() == io::ErrorKind::InvalidInput {
+        return true;
+    }
     false
 }
 
@@ -1031,8 +1070,14 @@ where
     let mut filled = 0;
     let mut traced = false;
     while filled < buf.len() {
-        let remaining = remaining_until(deadline)?;
-        reader.refresh_read_timeout(Some(remaining))?;
+        #[cfg(not(target_vendor = "apple"))]
+        {
+            let remaining = remaining_until(deadline)?;
+            reader.refresh_read_timeout(Some(remaining))?;
+        }
+        #[cfg(target_vendor = "apple")]
+        remaining_until(deadline)?;
+        reader.wait_readable(deadline)?;
         match reader.read(&mut buf[filled..]) {
             Ok(0) => {
                 trace_probe_retry_once(
