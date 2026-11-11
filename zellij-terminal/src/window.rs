@@ -458,6 +458,9 @@ impl App {
             },
             WindowEvent::CursorLeft { .. } => self.on_cursor_left(),
             WindowEvent::Ime(event) => self.on_ime(event),
+            // winit sends this on macOS, Windows and X11; we only receive it and never
+            // register anything ourselves. On Wayland winit 0.30 never sends it, so drops
+            // there do nothing until native Wayland support lands.
             WindowEvent::DroppedFile(path) => self.dropped_file(&path),
             WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
