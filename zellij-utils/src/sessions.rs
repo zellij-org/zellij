@@ -500,40 +500,93 @@ fn assert_socket_in(dir: &Path, name: &str, timeout: Duration) -> SessionProbeRe
 /// [`SessionProbeResult::Absent`] and are not unlinked.
 #[cfg(unix)]
 fn assert_socket_path(path: &Path, timeout: Duration) -> SessionProbeResult {
+    let started = Instant::now();
+    match probe_socket_path_detailed(path, timeout) {
+        Ok(result) => result,
+        Err(failure) => {
+            log::debug!(
+                "session probe {} failed during {} after {:?}: {:?}",
+                path.display(),
+                failure.stage,
+                started.elapsed(),
+                failure.error
+            );
+            // Capture the actual native failure in a failing test even when no
+            // logger was installed. Do not print arbitrary reply payloads.
+            #[cfg(test)]
+            eprintln!(
+                "session probe {} failed during {} after {:?}: {:?}",
+                path.display(),
+                failure.stage,
+                started.elapsed(),
+                failure.error
+            );
+            SessionProbeResult::Unknown
+        },
+    }
+}
+
+#[cfg(unix)]
+#[derive(Debug)]
+struct SessionProbeFailure {
+    stage: &'static str,
+    error: io::Error,
+}
+
+#[cfg(unix)]
+fn probe_socket_path_detailed(
+    path: &Path,
+    timeout: Duration,
+) -> Result<SessionProbeResult, SessionProbeFailure> {
     use crate::consts::ipc_connect_with_timeout;
     use crate::ipc::{
         encode_client_frame, read_server_frame_until_deadline, write_all_until_deadline,
         PROBE_MAX_FRAME_BYTES,
     };
-
     if timeout.is_zero() {
-        return SessionProbeResult::Unknown;
+        return Ok(SessionProbeResult::Unknown);
     }
     let deadline = Instant::now() + timeout;
     let mut stream = match ipc_connect_with_timeout(path, timeout) {
         Ok(stream) => stream,
-        // Refused / missing: proven gone for observation. Do not unlink — a concurrent
-        // replacement may already own this pathname.
-        Err(err)
+        Err(error)
             if matches!(
-                err.kind(),
+                error.kind(),
                 io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
             ) =>
         {
-            return SessionProbeResult::Absent;
+            return Ok(SessionProbeResult::Absent)
         },
-        Err(_) => return SessionProbeResult::Unknown,
+        Err(error) => {
+            return Err(SessionProbeFailure {
+                stage: "connect",
+                error,
+            })
+        },
     };
-    let frame = match encode_client_frame(ClientToServerMsg::ConnStatus) {
-        Ok(frame) => frame,
-        Err(_) => return SessionProbeResult::Unknown,
-    };
-    if write_all_until_deadline(&mut stream, &frame, deadline).is_err() {
-        return SessionProbeResult::Unknown;
-    }
-    match read_server_frame_until_deadline(&mut stream, deadline, PROBE_MAX_FRAME_BYTES) {
-        Ok(ServerToClientMsg::Connected) => SessionProbeResult::Responsive,
-        Ok(_) | Err(_) => SessionProbeResult::Unknown,
+    let frame = encode_client_frame(ClientToServerMsg::ConnStatus).map_err(|error| {
+        SessionProbeFailure {
+            stage: "encode request",
+            error,
+        }
+    })?;
+    write_all_until_deadline(&mut stream, &frame, deadline).map_err(|error| {
+        SessionProbeFailure {
+            stage: "write request",
+            error,
+        }
+    })?;
+    let response = read_server_frame_until_deadline(&mut stream, deadline, PROBE_MAX_FRAME_BYTES)
+        .map_err(|error| SessionProbeFailure {
+        stage: "read/decode reply",
+        error,
+    })?;
+    match response {
+        ServerToClientMsg::Connected => Ok(SessionProbeResult::Responsive),
+        _ => Err(SessionProbeFailure {
+            stage: "validate reply",
+            error: io::Error::new(io::ErrorKind::InvalidData, "expected Connected reply"),
+        }),
     }
 }
 

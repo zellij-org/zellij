@@ -262,15 +262,14 @@ fn clear_nonblock(fd: &std::os::fd::OwnedFd) -> std::io::Result<()> {
 #[cfg(unix)]
 fn wait_for_unix_connect(
     fd: &std::os::fd::OwnedFd,
-    timeout: std::time::Duration,
+    deadline: std::time::Instant,
 ) -> std::io::Result<()> {
     use nix::errno::Errno;
     use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
-    use nix::sys::socket::{getsockopt, sockopt};
-    use std::os::fd::AsFd;
+    use nix::sys::socket::{getpeername, getsockopt, sockopt, UnixAddr};
+    use std::os::fd::{AsFd, AsRawFd};
     use std::time::Instant;
 
-    let deadline = Instant::now() + timeout;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -300,7 +299,13 @@ fn wait_for_unix_connect(
                     pollnval: revents.contains(PollFlags::POLLNVAL),
                     so_error,
                 }) {
-                    UnixConnectReadiness::Connected => return Ok(()),
+                    UnixConnectReadiness::Connected => {
+                        // A writable/hangup readiness with SO_ERROR == 0 is not
+                        // by itself proof of a peer. Require the kernel to name
+                        // the connected peer before handing the socket out.
+                        getpeername::<UnixAddr>(fd.as_raw_fd()).map_err(std::io::Error::from)?;
+                        return Ok(());
+                    },
                     UnixConnectReadiness::Pending => continue,
                     UnixConnectReadiness::Failed(code) => {
                         return Err(std::io::Error::from_raw_os_error(code));
@@ -311,12 +316,10 @@ fn wait_for_unix_connect(
     }
 }
 
-/// Connect with an absolute wait bound. Session probes must use this so a full accept queue
-/// cannot stall past the remaining discovery deadline before a read timeout is installed.
-///
-/// The socket address is built with `sun_len` set, and a `POLLHUP` whose `SO_ERROR` is 0 is a
-/// completed connect. Both differ from interprocess 2.3's nonblocking connect on macOS, which
-/// can time out before a listening server replies `Connected`.
+/// Connect under one absolute deadline. A full Unix accept queue can return
+/// EAGAIN without starting a connection; polling that socket is not evidence
+/// that it is connected. Only EINPROGRESS/EALREADY enter the poll-completion
+/// path. Retry EAGAIN with a fresh descriptor and the original deadline.
 #[cfg(unix)]
 pub fn ipc_connect_with_timeout(
     path: &std::path::Path,
@@ -326,6 +329,7 @@ pub fn ipc_connect_with_timeout(
     use nix::errno::Errno;
     use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, UnixAddr};
     use std::os::fd::{AsRawFd, OwnedFd};
+    use std::time::{Duration, Instant};
 
     if timeout.is_zero() {
         return Err(std::io::Error::new(
@@ -333,27 +337,60 @@ pub fn ipc_connect_with_timeout(
             "ipc connect timed out",
         ));
     }
+    let deadline = Instant::now().checked_add(timeout).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "ipc connect timeout is too large",
+        )
+    })?;
     let address = UnixAddr::new(path)?;
-    let fd: OwnedFd = socket(
-        AddressFamily::Unix,
-        SockType::Stream,
-        SockFlag::empty(),
-        None,
-    )?;
-    set_cloexec_and_nonblock(&fd)?;
-    let in_progress = loop {
-        match connect(fd.as_raw_fd(), &address) {
-            Ok(()) => break false,
-            Err(Errno::EINTR) => continue,
-            Err(Errno::EINPROGRESS) | Err(Errno::EAGAIN) => break true,
-            Err(error) => return Err(error.into()),
+    let timed_out = || std::io::Error::new(std::io::ErrorKind::TimedOut, "ipc connect timed out");
+    'attempt: loop {
+        if Instant::now() >= deadline {
+            return Err(timed_out());
         }
-    };
-    if in_progress {
-        wait_for_unix_connect(&fd, timeout)?;
+        let fd: OwnedFd = socket(
+            AddressFamily::Unix,
+            SockType::Stream,
+            SockFlag::empty(),
+            None,
+        )?;
+        set_cloexec_and_nonblock(&fd)?;
+        loop {
+            if Instant::now() >= deadline {
+                return Err(timed_out());
+            }
+            match connect(fd.as_raw_fd(), &address) {
+                Ok(()) | Err(Errno::EISCONN) => break,
+                Err(Errno::EINTR) => continue,
+                Err(Errno::EAGAIN) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Err(timed_out());
+                    }
+                    std::thread::sleep(Duration::from_millis(1).min(remaining));
+                    continue 'attempt;
+                },
+                Err(Errno::EINPROGRESS) | Err(Errno::EALREADY) => {
+                    match wait_for_unix_connect(&fd, deadline) {
+                        Ok(()) => break,
+                        Err(error) if error.raw_os_error() == Some(Errno::ENOTCONN as i32) => {
+                            let remaining = deadline.saturating_duration_since(Instant::now());
+                            if remaining.is_zero() {
+                                return Err(timed_out());
+                            }
+                            std::thread::sleep(Duration::from_millis(1).min(remaining));
+                            continue 'attempt;
+                        },
+                        Err(error) => return Err(error),
+                    }
+                },
+                Err(error) => return Err(error.into()),
+            }
+        }
+        clear_nonblock(&fd)?;
+        return Ok(LocalSocketStream::UdSocket(fd.into()));
     }
-    clear_nonblock(&fd)?;
-    Ok(LocalSocketStream::UdSocket(fd.into()))
 }
 
 /// Windows named-pipe connect does not honour `ConnectWaitMode::Timeout` the same way Unix does,
@@ -753,5 +790,33 @@ mod app_dir_tests {
             }),
             UnixConnectReadiness::Failed(_)
         ));
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod timed_connect_backlog_regression {
+    use super::ipc_connect_with_timeout;
+    use std::io::ErrorKind;
+    use std::os::unix::net::UnixListener;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn full_backlog_never_returns_an_unconnected_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("full-backlog");
+        let listener = UnixListener::bind(&path).unwrap();
+        nix::sys::socket::listen(&listener, nix::sys::socket::Backlog::new(1).unwrap()).unwrap();
+        // Linux admits backlog + 1 pending Unix stream connections.
+        let _first = ipc_connect_with_timeout(&path, Duration::from_secs(1)).unwrap();
+        let _second = ipc_connect_with_timeout(&path, Duration::from_secs(1)).unwrap();
+        let started = Instant::now();
+        let error = ipc_connect_with_timeout(&path, Duration::from_millis(80))
+            .expect_err("EAGAIN plus POLLHUP/SO_ERROR=0 is not a connection");
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // Free a slot. A later attempt must still be able to connect.
+        let (_accepted, _) = listener.accept().unwrap();
+        let _third = ipc_connect_with_timeout(&path, Duration::from_secs(1))
+            .expect("freed backlog capacity must be usable");
     }
 }

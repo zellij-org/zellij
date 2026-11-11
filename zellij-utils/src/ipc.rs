@@ -1029,18 +1029,48 @@ where
     R: Read + DeadlineIo,
 {
     let mut filled = 0;
+    let mut traced = false;
     while filled < buf.len() {
         let remaining = remaining_until(deadline)?;
         reader.refresh_read_timeout(Some(remaining))?;
         match reader.read(&mut buf[filled..]) {
-            Ok(0) => pause_until_peer_ready(deadline)?,
+            Ok(0) => {
+                trace_probe_retry_once(
+                    &mut traced,
+                    "read",
+                    filled,
+                    buf.len(),
+                    &io::Error::new(io::ErrorKind::UnexpectedEof, "read returned zero"),
+                );
+                pause_until_peer_ready(deadline)?;
+            },
             Ok(n) => filled += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => {
+                trace_probe_retry_once(&mut traced, "read", filled, buf.len(), &err);
+                pause_until_peer_ready(deadline)?;
+            },
             Err(err) => return Err(err),
         }
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn trace_probe_retry_once(
+    traced: &mut bool,
+    stage: &str,
+    completed: usize,
+    total: usize,
+    error: &io::Error,
+) {
+    if *traced {
+        return;
+    }
+    *traced = true;
+    log::debug!("probe {stage} first retry at {completed}/{total} bytes: {error:?}");
+    #[cfg(test)]
+    eprintln!("probe {stage} first retry at {completed}/{total} bytes: {error:?}");
 }
 
 /// `write_all` + `flush` on an [`IpcStream`], refreshing `SO_SNDTIMEO` from
@@ -1105,14 +1135,27 @@ where
     W: Write + DeadlineIo,
 {
     let mut written = 0;
+    let mut traced = false;
     while written < buf.len() {
         let remaining = remaining_until(deadline)?;
         writer.refresh_write_timeout(Some(remaining))?;
         match writer.write(&buf[written..]) {
-            Ok(0) => pause_until_peer_ready(deadline)?,
+            Ok(0) => {
+                trace_probe_retry_once(
+                    &mut traced,
+                    "write",
+                    written,
+                    buf.len(),
+                    &io::Error::new(io::ErrorKind::WriteZero, "write returned zero"),
+                );
+                pause_until_peer_ready(deadline)?;
+            },
             Ok(n) => written += n,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => {
+                trace_probe_retry_once(&mut traced, "write", written, buf.len(), &err);
+                pause_until_peer_ready(deadline)?;
+            },
             Err(err) => return Err(err),
         }
     }
@@ -1122,7 +1165,10 @@ where
         match writer.flush() {
             Ok(()) => return Ok(()),
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if peer_not_ready(&err) => pause_until_peer_ready(deadline)?,
+            Err(err) if peer_not_ready(&err) => {
+                trace_probe_retry_once(&mut traced, "flush", written, buf.len(), &err);
+                pause_until_peer_ready(deadline)?;
+            },
             Err(err) => return Err(err),
         }
     }
