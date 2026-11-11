@@ -2567,6 +2567,18 @@ fn pasting_clears_the_selection() {
 }
 
 #[test]
+fn dropping_a_file_clears_the_selection() {
+    let mut harness = Harness::new(0, true, "");
+    with_a_selection(&mut harness);
+    harness
+        .app
+        .on_window_event(WindowEvent::DroppedFile(std::path::PathBuf::from(
+            "/shots/shot.png",
+        )));
+    assert_eq!(harness.app.mouse.selection, None);
+}
+
+#[test]
 fn text_from_the_input_method_clears_the_selection() {
     let mut harness = Harness::new(0, true, "");
     with_a_selection(&mut harness);

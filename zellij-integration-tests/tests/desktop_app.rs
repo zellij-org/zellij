@@ -1844,6 +1844,22 @@ mod xdnd {
                     served = true;
                     send(atoms.drop, [source, 0, x11rb::CURRENT_TIME, 0, 0])?;
                 },
+                Event::SelectionRequest(request) => {
+                    // Anything else is refused with no property, as ICCCM asks, so a
+                    // requestor is never left waiting on us.
+                    let refusal = SelectionNotifyEvent {
+                        response_type: SELECTION_NOTIFY_EVENT,
+                        sequence: 0,
+                        time: request.time,
+                        requestor: request.requestor,
+                        selection: request.selection,
+                        target: request.target,
+                        property: x11rb::NONE,
+                    };
+                    conn.send_event(false, request.requestor, EventMask::NO_EVENT, refusal)
+                        .map_err(|e| e.to_string())?;
+                    conn.flush().map_err(|e| e.to_string())?;
+                },
                 Event::ClientMessage(message) if message.type_ == atoms.status => {
                     let [_, flags, ..] = message.data.as_data32();
                     if flags & 1 == 0 {
@@ -1913,8 +1929,9 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     let Some(mut desktop) = Desktop::start() else {
         return;
     };
-    // A fresh install opens a welcome card that takes focus, and with it the drop;
-    // start as if it had been seen, so the drop reaches the shell.
+    // A fresh install opens the setup wizard or a welcome card, which take focus and
+    // with it the drop; start as if both had been dealt with, so the drop reaches
+    // the shell. (Which one shows depends on the machine: CI gets the wizard.)
     {
         use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
         let state = desktop
@@ -1923,6 +1940,7 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
             .join("data/zellij")
             .join(STATE_FILE_NAME);
         update_at(&state, |state| {
+            state.set(Flag::SetupNeverShow);
             state.set(Flag::WelcomeCardShown);
             state.set(Flag::MissingServicesShown);
         })
@@ -1942,9 +1960,26 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     }
 
     let expected = file.display().to_string().replace(' ', "\\ ");
-    desktop.wait_for_screen(&session, "the escaped path once at the prompt", |screen| {
-        screen.matches(&expected).count() == 1
+    // The prompt line holds the path and nothing else: `$ ` (or `# ` as root),
+    // then the path; its trailing space is trimmed from the dump.
+    let prompt_holds_just_the_path = |screen: &str| {
+        screen.lines().any(|line| {
+            line.trim_end()
+                .strip_suffix(expected.as_str())
+                .is_some_and(|prompt| prompt == "$ " || prompt == "# ")
+        })
+    };
+    desktop.wait_for_screen(&session, "the escaped path alone at the prompt", |screen| {
+        prompt_holds_just_the_path(screen)
     });
+    // A second paste of the same drop would land on that line a moment later.
+    std::thread::sleep(Duration::from_millis(500));
+    let screen = desktop.screen_of(&session).unwrap_or_default();
+    assert!(
+        prompt_holds_just_the_path(&screen),
+        "the prompt line changed after the drop:\n{}",
+        screen
+    );
 }
 
 #[test]
