@@ -532,18 +532,27 @@ mod client_writer {
 
     /// Reads until the end of the stream, returning how many bytes arrived.
     fn read_to_end_of_stream(client_end: &mut UnixStream, timeout: Duration) -> usize {
-        client_end.set_read_timeout(Some(timeout)).unwrap();
+        client_end.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + timeout;
         let mut received = 0;
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
             match client_end.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(read) => received += read,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "the client never reached the end of its stream"
+                    );
+                    std::thread::sleep(Duration::from_millis(1));
+                },
                 // A reset also ends the stream.
                 Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
                 Err(error) => panic!("the client never reached the end of its stream: {error}"),
             }
         }
+        let _ = client_end.set_nonblocking(false);
         received
     }
 
