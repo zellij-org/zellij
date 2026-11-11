@@ -12,6 +12,7 @@ pub fn dropped_file_text(path: &Path) -> String {
 
 /// Backslash-escapes what a POSIX shell would split on or expand, as Ghostty,
 /// iTerm2 and Terminal.app do, so the path survives being pasted at a prompt.
+/// `^` and `~` are included for zsh's EXTENDED_GLOB, where they are glob operators.
 ///
 /// A control character (a newline, say) cannot be escaped this way: pasted into a
 /// pane without bracketed paste, it would run the line typed so far. It becomes a
@@ -20,7 +21,7 @@ pub fn dropped_file_text(path: &Path) -> String {
 fn escape(path: &str) -> String {
     const SPECIAL: &[char] = &[
         ' ', '\\', '"', '\'', '`', '$', '!', '#', '&', ';', '|', '*', '?', '(', ')', '[', ']', '{',
-        '}', '<', '>',
+        '}', '<', '>', '^', '~',
     ];
     let mut escaped = String::with_capacity(path.len());
     for c in path.chars() {
@@ -83,6 +84,15 @@ mod tests {
         );
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn zsh_extended_glob_operators_are_escaped() {
+        assert_eq!(
+            dropped_file_text(Path::new("/tmp/x^y~z.png")),
+            "/tmp/x\\^y\\~z.png "
+        );
+    }
+
     #[test]
     fn control_characters_never_reach_the_pane_as_keystrokes() {
         let text = dropped_file_text(Path::new("/tmp/a\nrm -rf ~\r\tb\u{1b}[c\u{7f}d\u{9b}201~e"));
@@ -98,7 +108,7 @@ mod tests {
     fn a_newline_in_a_name_becomes_a_glob_that_still_matches_it() {
         assert_eq!(
             dropped_file_text(Path::new("/tmp/a\nrm -rf ~")),
-            "/tmp/a?rm\\ -rf\\ ~ "
+            "/tmp/a?rm\\ -rf\\ \\~ "
         );
     }
 
