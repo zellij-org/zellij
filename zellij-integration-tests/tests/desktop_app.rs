@@ -1683,16 +1683,17 @@ impl Desktop {
     }
 }
 
-/// A minimal XDND drag source, so a test can drop a file on the window the way a
-/// file manager would: over the real X server and winit's real drop handling.
+/// A minimal XDND drag source, to drop files on the real window under Xvfb.
 mod xdnd {
     use std::path::Path;
     use std::time::{Duration, Instant};
 
+    use anyhow::{bail, Result};
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::{
         Atom, AtomEnum, ClientMessageEvent, ConnectionExt as _, CreateWindowAux, EventMask,
-        MapState, PropMode, SelectionNotifyEvent, Window, WindowClass, SELECTION_NOTIFY_EVENT,
+        MapState, PropMode, SelectionNotifyEvent, SelectionRequestEvent, Window, WindowClass,
+        SELECTION_NOTIFY_EVENT,
     };
     use x11rb::protocol::Event;
     use x11rb::rust_connection::RustConnection;
@@ -1701,43 +1702,20 @@ mod xdnd {
     const XDND_VERSION: u32 = 5;
     const WAIT: Duration = Duration::from_secs(30);
 
-    struct Atoms {
-        aware: Atom,
-        enter: Atom,
-        position: Atom,
-        status: Atom,
-        drop: Atom,
-        finished: Atom,
-        selection: Atom,
-        action_copy: Atom,
-        uri_list: Atom,
-    }
-
-    impl Atoms {
-        fn intern(conn: &RustConnection) -> Result<Atoms, String> {
-            let atom = |name: &str| -> Result<Atom, String> {
-                Ok(conn
-                    .intern_atom(false, name.as_bytes())
-                    .map_err(|e| e.to_string())?
-                    .reply()
-                    .map_err(|e| e.to_string())?
-                    .atom)
-            };
-            Ok(Atoms {
-                aware: atom("XdndAware")?,
-                enter: atom("XdndEnter")?,
-                position: atom("XdndPosition")?,
-                status: atom("XdndStatus")?,
-                drop: atom("XdndDrop")?,
-                finished: atom("XdndFinished")?,
-                selection: atom("XdndSelection")?,
-                action_copy: atom("XdndActionCopy")?,
-                uri_list: atom("text/uri-list")?,
-            })
+    x11rb::atom_manager! {
+        Atoms: AtomsCookie {
+            XdndAware,
+            XdndEnter,
+            XdndPosition,
+            XdndStatus,
+            XdndDrop,
+            XdndFinished,
+            XdndSelection,
+            XdndActionCopy,
+            URI_LIST: b"text/uri-list",
         }
     }
 
-    /// The `file://` URI of a path, percent-encoding all but the unreserved bytes.
     pub fn file_uri(path: &Path) -> String {
         let mut uri = String::from("file://");
         for byte in path.to_str().expect("a UTF-8 path").bytes() {
@@ -1751,17 +1729,15 @@ mod xdnd {
         uri
     }
 
-    /// Drops `path` on the one window that takes drops, and returns once that
-    /// window has reported the drop finished. That alone does not prove a path
-    /// arrived: winit 0.30 accepts a drop even when it got no data, so callers
-    /// check what the pane shows.
-    pub fn drop_file(display: &str, path: &Path) -> Result<(), String> {
-        let (conn, screen) = x11rb::connect(Some(display)).map_err(|e| e.to_string())?;
+    /// Returns once winit finishes the drop, which it does even without data,
+    /// so callers check the pane.
+    pub fn drop_file(display: &str, path: &Path) -> Result<()> {
+        let (conn, screen) = x11rb::connect(Some(display))?;
         let root = conn.setup().roots[screen].root;
-        let atoms = Atoms::intern(&conn)?;
+        let atoms = Atoms::new(&conn)?.reply()?;
         let target = wait_for_drop_target(&conn, root, &atoms)?;
 
-        let source = conn.generate_id().map_err(|e| e.to_string())?;
+        let source = conn.generate_id()?;
         conn.create_window(
             x11rb::COPY_DEPTH_FROM_PARENT,
             source,
@@ -1774,153 +1750,125 @@ mod xdnd {
             WindowClass::INPUT_OUTPUT,
             x11rb::COPY_FROM_PARENT,
             &CreateWindowAux::new(),
-        )
-        .map_err(|e| e.to_string())?;
-        conn.set_selection_owner(source, atoms.selection, x11rb::CURRENT_TIME)
-            .map_err(|e| e.to_string())?;
+        )?;
+        conn.set_selection_owner(source, atoms.XdndSelection, x11rb::CURRENT_TIME)?;
 
-        let send = |message: Atom, data: [u32; 5]| -> Result<(), String> {
+        let send = |message: Atom, data: [u32; 5]| -> Result<()> {
             let event = ClientMessageEvent::new(32, target, message, data);
-            conn.send_event(false, target, EventMask::NO_EVENT, event)
-                .map_err(|e| e.to_string())?;
-            conn.flush().map_err(|e| e.to_string())
+            conn.send_event(false, target, EventMask::NO_EVENT, event)?;
+            conn.flush()?;
+            Ok(())
         };
-
+        let position = (10 << 16) | 10;
         send(
-            atoms.enter,
-            [source, XDND_VERSION << 24, atoms.uri_list, 0, 0],
+            atoms.XdndEnter,
+            [source, XDND_VERSION << 24, atoms.URI_LIST, 0, 0],
         )?;
         send(
-            atoms.position,
+            atoms.XdndPosition,
             [
                 source,
                 0,
-                (10 << 16) | 10,
+                position,
                 x11rb::CURRENT_TIME,
-                atoms.action_copy,
+                atoms.XdndActionCopy,
             ],
         )?;
 
-        // winit asks for the data on the first position and only uses it on the drop,
-        // so the drop is sent right after the data is served: the X server delivers
-        // our events to winit in the order we send them, so it reads the data first.
+        // Events reach winit in the order sent, so it reads the data before the drop.
         let data = format!("{}\r\n", file_uri(path));
         let mut served = false;
         let deadline = Instant::now() + WAIT;
-        loop {
-            if Instant::now() >= deadline {
-                return Err(format!("the drop never finished (data served: {})", served));
-            }
-            let Some(event) = conn.poll_for_event().map_err(|e| e.to_string())? else {
+        while Instant::now() < deadline {
+            let Some(event) = conn.poll_for_event()? else {
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
             };
             match event {
                 Event::SelectionRequest(request)
-                    if request.selection == atoms.selection
-                        && request.target == atoms.uri_list
+                    if request.selection == atoms.XdndSelection
+                        && request.target == atoms.URI_LIST
                         && !served =>
                 {
                     conn.change_property8(
                         PropMode::REPLACE,
                         request.requestor,
                         request.property,
-                        atoms.uri_list,
+                        atoms.URI_LIST,
                         data.as_bytes(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    let notify = SelectionNotifyEvent {
-                        response_type: SELECTION_NOTIFY_EVENT,
-                        sequence: 0,
-                        time: request.time,
-                        requestor: request.requestor,
-                        selection: request.selection,
-                        target: request.target,
-                        property: request.property,
-                    };
-                    conn.send_event(false, request.requestor, EventMask::NO_EVENT, notify)
-                        .map_err(|e| e.to_string())?;
-                    conn.flush().map_err(|e| e.to_string())?;
+                    )?;
+                    answer(&conn, &request, request.property)?;
                     served = true;
-                    send(atoms.drop, [source, 0, x11rb::CURRENT_TIME, 0, 0])?;
+                    send(atoms.XdndDrop, [source, 0, x11rb::CURRENT_TIME, 0, 0])?;
                 },
-                Event::SelectionRequest(request) => {
-                    // Anything else is refused with no property, as ICCCM asks, so a
-                    // requestor is never left waiting on us.
-                    let refusal = SelectionNotifyEvent {
-                        response_type: SELECTION_NOTIFY_EVENT,
-                        sequence: 0,
-                        time: request.time,
-                        requestor: request.requestor,
-                        selection: request.selection,
-                        target: request.target,
-                        property: x11rb::NONE,
-                    };
-                    conn.send_event(false, request.requestor, EventMask::NO_EVENT, refusal)
-                        .map_err(|e| e.to_string())?;
-                    conn.flush().map_err(|e| e.to_string())?;
-                },
-                Event::ClientMessage(message) if message.type_ == atoms.status => {
-                    let [_, flags, ..] = message.data.as_data32();
-                    if flags & 1 == 0 {
-                        return Err("the window rejected the drop".to_owned());
+                // Refuse anything else (ICCCM), so no requestor waits on us.
+                Event::SelectionRequest(request) => answer(&conn, &request, x11rb::NONE)?,
+                Event::ClientMessage(message) if message.type_ == atoms.XdndStatus => {
+                    if message.data.as_data32()[1] & 1 == 0 {
+                        bail!("the window rejected the drop");
                     }
                 },
-                Event::ClientMessage(message) if message.type_ == atoms.finished => {
-                    let [_, flags, ..] = message.data.as_data32();
-                    return if flags & 1 == 1 {
-                        Ok(())
-                    } else {
-                        Err("the window finished the drop without accepting it".to_owned())
-                    };
+                Event::ClientMessage(message) if message.type_ == atoms.XdndFinished => {
+                    if message.data.as_data32()[1] & 1 == 0 {
+                        bail!("the window finished the drop without accepting it");
+                    }
+                    return Ok(());
                 },
                 _ => {},
             }
         }
+        bail!("the drop never finished (data served: {})", served)
     }
 
-    fn wait_for_drop_target(
+    fn answer(
         conn: &RustConnection,
-        root: Window,
-        atoms: &Atoms,
-    ) -> Result<Window, String> {
+        request: &SelectionRequestEvent,
+        property: Atom,
+    ) -> Result<()> {
+        let notify = SelectionNotifyEvent {
+            response_type: SELECTION_NOTIFY_EVENT,
+            sequence: 0,
+            time: request.time,
+            requestor: request.requestor,
+            selection: request.selection,
+            target: request.target,
+            property,
+        };
+        conn.send_event(false, request.requestor, EventMask::NO_EVENT, notify)?;
+        conn.flush()?;
+        Ok(())
+    }
+
+    fn wait_for_drop_target(conn: &RustConnection, root: Window, atoms: &Atoms) -> Result<Window> {
         let deadline = Instant::now() + WAIT;
         loop {
             let mut targets = vec![];
-            let children = conn
-                .query_tree(root)
-                .map_err(|e| e.to_string())?
-                .reply()
-                .map_err(|e| e.to_string())?
-                .children;
-            for window in children {
-                let aware = conn
-                    .get_property(false, window, atoms.aware, AtomEnum::ANY, 0, 1)
-                    .map_err(|e| e.to_string())?
-                    .reply()
-                    .map(|reply| reply.value_len > 0)
-                    .unwrap_or(false);
-                let viewable = conn
-                    .get_window_attributes(window)
-                    .map_err(|e| e.to_string())?
-                    .reply()
-                    .map(|attributes| attributes.map_state == MapState::VIEWABLE)
-                    .unwrap_or(false);
-                if aware && viewable {
+            for window in conn.query_tree(root)?.reply()?.children {
+                if takes_drops(conn, window, atoms)? {
                     targets.push(window);
                 }
             }
             match targets.as_slice() {
                 [window] => return Ok(*window),
                 _ if Instant::now() >= deadline => {
-                    return Err(format!(
-                        "expected one window taking drops, found {}",
-                        targets.len()
-                    ))
+                    bail!("expected one window taking drops, found {}", targets.len())
                 },
                 _ => std::thread::sleep(Duration::from_millis(50)),
             }
         }
+    }
+
+    /// A window that may vanish mid-scan simply does not count.
+    fn takes_drops(conn: &RustConnection, window: Window, atoms: &Atoms) -> Result<bool> {
+        let aware = conn
+            .get_property(false, window, atoms.XdndAware, AtomEnum::ANY, 0, 1)?
+            .reply()
+            .is_ok_and(|reply| reply.value_len > 0);
+        let viewable = conn
+            .get_window_attributes(window)?
+            .reply()
+            .is_ok_and(|attributes| attributes.map_state == MapState::VIEWABLE);
+        Ok(aware && viewable)
     }
 }
 
@@ -1929,9 +1877,7 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     let Some(mut desktop) = Desktop::start() else {
         return;
     };
-    // A fresh install opens the setup wizard or a welcome card, which take focus and
-    // with it the drop; start as if both had been dealt with, so the drop reaches
-    // the shell. (Which one shows depends on the machine: CI gets the wizard.)
+    // Skip the first-run setup wizard and welcome card: they take focus, and the drop.
     {
         use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
         let state = desktop
@@ -1950,18 +1896,16 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     let file = desktop.root.path().join("dropped shot.png");
     std::fs::write(&file, b"").unwrap();
     let file = file.canonicalize().unwrap();
-    // `$`, or `#` when the tests run as root.
     desktop.wait_for_screen(&session, "the shell prompt", |screen| {
         screen.trim_end().ends_with(['$', '#'])
     });
 
     if let Err(e) = xdnd::drop_file(&desktop.display, &file) {
-        panic!("dropping the file failed: {}\n{}", e, desktop.logs());
+        panic!("dropping the file failed: {:#}\n{}", e, desktop.logs());
     }
 
     let expected = file.display().to_string().replace(' ', "\\ ");
-    // The prompt line holds the path and nothing else: `$ ` (or `# ` as root),
-    // then the path; its trailing space is trimmed from the dump.
+    // `$ ` or `# ` (root), then the path; the dump trims the trailing space.
     let prompt_holds_just_the_path = |screen: &str| {
         screen.lines().any(|line| {
             line.trim_end()
@@ -1972,7 +1916,7 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     desktop.wait_for_screen(&session, "the escaped path alone at the prompt", |screen| {
         prompt_holds_just_the_path(screen)
     });
-    // A second paste of the same drop would land on that line a moment later.
+    // Catch a late duplicate paste.
     std::thread::sleep(Duration::from_millis(500));
     let screen = desktop.screen_of(&session).unwrap_or_default();
     assert!(

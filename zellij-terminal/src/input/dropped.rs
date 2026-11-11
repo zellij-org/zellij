@@ -1,6 +1,4 @@
-//! A file dropped onto the window reaches the focused pane as its path, the way
-//! other terminals hand drops over: pasted, escaped for a shell, and followed by
-//! a space so the next drop or word does not run into it.
+//! The text pasted for a dropped file: its shell-escaped path and a space.
 
 use std::path::Path;
 
@@ -10,13 +8,9 @@ pub fn dropped_file_text(path: &Path) -> String {
     text
 }
 
-/// Backslash-escapes what a POSIX shell would split on or expand, as Ghostty,
-/// iTerm2 and Terminal.app do, so the path survives being pasted at a prompt.
-/// `^` and `~` are included for zsh's EXTENDED_GLOB, where they are glob operators.
-///
-/// A control character (a newline, say) cannot be escaped this way: pasted into a
-/// pane without bracketed paste, it would run the line typed so far. It becomes a
-/// bare `?` instead, which a shell glob still matches against that one character.
+/// Backslash-escapes what a shell (zsh's EXTENDED_GLOB included) would split or
+/// expand. Control characters become a bare `?`, which still globs to them but
+/// cannot act as a keystroke.
 #[cfg(not(windows))]
 fn escape(path: &str) -> String {
     const SPECIAL: &[char] = &[
@@ -37,10 +31,7 @@ fn escape(path: &str) -> String {
     escaped
 }
 
-/// Backslashes separate Windows paths, so a path that needs protecting is
-/// wrapped in double quotes instead, which cmd and PowerShell both accept.
-/// Windows forbids control characters in file names, but should one arrive it
-/// becomes `?` rather than a keystroke, as on other platforms.
+/// Backslashes are separators here, so the path is quoted instead.
 #[cfg(windows)]
 fn escape(path: &str) -> String {
     const SPECIAL: &[char] = &[' ', '&', '(', ')', '^', ';', ',', '\'', '`', '$'];
