@@ -139,6 +139,13 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     }
 }
 
+/// How long the ConnStatus probe waits for a server's reply. A server that accepts
+/// the connection but does not answer within this window (MEASURED: a just-spawned
+/// server was still "Compiling plugins using Cranelift") is reported as NOT a live
+/// session — the same answer `ConnectionRefused` already gets — instead of blocking
+/// the caller. The bound is per socket, not a deadline on the whole listing.
+const CONN_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     let fs_name = match path.to_fs_name::<GenericFilePath>() {
@@ -146,21 +153,142 @@ fn assert_socket(name: &str) -> bool {
         Err(_) => return false,
     };
     match LocalSocketStream::connect(fs_name) {
-        Ok(stream) => {
-            let mut sender: IpcSenderWithContext<ClientToServerMsg> =
-                IpcSenderWithContext::new(stream);
-            let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            match receiver.recv_server_msg() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
-            }
-        },
+        Ok(stream) => probe_conn_status(stream, CONN_STATUS_TIMEOUT),
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
             false
         },
         Err(_) => false,
+    }
+}
+
+/// Ask a connected server for its ConnStatus, waiting at most `timeout` for the
+/// answer. A server that accepted the connection but never answers reads as an io
+/// error from the decoder, which answers `false` — the same as a server that closed
+/// the socket — rather than blocking the caller forever.
+fn probe_conn_status(stream: LocalSocketStream, timeout: Duration) -> bool {
+    set_recv_timeout(&stream, timeout);
+    let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
+    let _ = sender.send_client_msg(ClientToServerMsg::ConnStatus);
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    match receiver.recv_server_msg() {
+        Some((ServerToClientMsg::Connected, _)) => true,
+        None | Some((_, _)) => false,
+    }
+}
+
+/// Bound reads on `stream` by SO_RCVTIMEO. `interprocess` 1.x exposes no recv
+/// timeout, but the option belongs to the socket rather than the descriptor, so
+/// setting it through a dup bounds the reads made through `stream` too (MEASURED
+/// on this box: a 400ms timeout set through a dup fired on the original after
+/// 0.414s). The dup exists only to carry the setsockopt; closing it leaves the
+/// option in force on the shared socket.
+fn set_recv_timeout(stream: &LocalSocketStream, timeout: Duration) {
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+    let dup_fd = match nix::unistd::dup(stream.as_raw_fd()) {
+        Ok(fd) => fd,
+        Err(_) => return,
+    };
+    let dup_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(dup_fd) };
+    let _ = dup_stream.set_read_timeout(Some(timeout));
+}
+
+#[cfg(test)]
+mod conn_status_probe_tests {
+    use super::*;
+    use interprocess::local_socket::ListenerOptions;
+    use std::path::PathBuf;
+    use std::thread;
+
+    fn socket_path(tag: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let path = std::env::temp_dir().join(format!(
+            "zellij-conn-status-{}-{}-{}",
+            std::process::id(),
+            tag,
+            unique
+        ));
+        let _ = fs::remove_file(&path);
+        path
+    }
+
+    /// A server that is up enough to accept the connection but does not answer
+    /// ConnStatus — the shape of a server that is still starting (compiling
+    /// plugins) — must read as "not a live session", and must do so on its
+    /// deadline instead of blocking the listing forever.
+    #[test]
+    fn a_server_that_never_answers_conn_status_is_not_a_live_session() {
+        let path = socket_path("wedged");
+        let listener = ListenerOptions::new()
+            .name(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+            .create_sync()
+            .unwrap();
+        let wedged_server = thread::spawn(move || {
+            let _connection = listener.incoming().next().unwrap().unwrap();
+            // Hold the connection open and never write a reply.
+            thread::sleep(Duration::from_secs(30));
+        });
+        let stream =
+            LocalSocketStream::connect(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+                .unwrap();
+        let started = std::time::Instant::now();
+        let answered = probe_conn_status(stream, Duration::from_millis(300));
+        let waited = started.elapsed();
+        assert!(
+            !answered,
+            "a server that never answers ConnStatus must not be reported as a live session"
+        );
+        assert!(
+            waited < Duration::from_secs(5),
+            "the probe must return on its deadline, not block: it waited {:?}",
+            waited
+        );
+        let _ = fs::remove_file(&path);
+        drop(wedged_server);
+    }
+
+    /// The capability the deadline must not remove: a server that does answer
+    /// ConnStatus is still listed as a live session.
+    #[test]
+    fn a_server_that_answers_conn_status_is_a_live_session() {
+        let path = socket_path("answering");
+        let listener = ListenerOptions::new()
+            .name(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+            .create_sync()
+            .unwrap();
+        let answering_server = thread::spawn(move || {
+            let stream = listener.incoming().next().unwrap().unwrap();
+            let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+                IpcReceiverWithContext::new(stream);
+            let (msg, _ctx) = receiver.recv_client_msg().unwrap();
+            assert!(
+                matches!(msg, ClientToServerMsg::ConnStatus),
+                "the probe must ask for ConnStatus, got: {:?}",
+                msg
+            );
+            let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+            sender
+                .send_server_msg(ServerToClientMsg::Connected)
+                .unwrap();
+        });
+        let stream =
+            LocalSocketStream::connect(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+                .unwrap();
+        let started = std::time::Instant::now();
+        let answered = probe_conn_status(stream, Duration::from_secs(5));
+        assert!(
+            answered,
+            "a server that answers ConnStatus must be reported as a live session"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "an answering server must not wait out the deadline"
+        );
+        answering_server.join().unwrap();
+        let _ = fs::remove_file(&path);
     }
 }
 
