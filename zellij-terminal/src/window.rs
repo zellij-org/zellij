@@ -458,6 +458,24 @@ impl App {
             },
             WindowEvent::CursorLeft { .. } => self.on_cursor_left(),
             WindowEvent::Ime(event) => self.on_ime(event),
+            // winit sends this on macOS, Windows and X11; we only receive it and never
+            // register anything ourselves.
+            //
+            // Wayland: winit 0.30 never sends it (no wl_data_device), so drops there do
+            // nothing; under XWayland (`WAYLAND_DISPLAY= zellij terminal`) they work.
+            // Two ways to fix it:
+            // - Move to winit 0.31, which reports Wayland drops through its new
+            //   drag-and-drop API (rust-windowing/winit#4571). Blocked for now: 0.31 is
+            //   still in beta, glutin-winit 0.5 only supports winit 0.30, and 0.31 reworks
+            //   the window, lifecycle and pointer APIs used all over this crate. A
+            //   backport to 0.30 was proposed and not merged (winit#4729, winit#4787).
+            // - Receive drops ourselves on winit's Wayland connection, the way
+            //   `wayland_activation` does: bind wl_data_device_manager per seat, accept
+            //   `text/uri-list`, read it off the main thread and decode the `file://`
+            //   URIs into paths for `dropped_file`. Delete that once on winit 0.31.
+            //   Note winit#4729: Hyprland only sends drags to a client's first data
+            //   device on a connection, so nothing else may bind one before it.
+            WindowEvent::DroppedFile(path) => self.dropped_file(&path),
             WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
                 self.set_focused(false);

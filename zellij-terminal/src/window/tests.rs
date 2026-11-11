@@ -959,6 +959,21 @@ fn an_empty_clipboard_sends_no_paste_at_all() {
     assert_eq!(harness.sent().len(), 1);
 }
 
+#[test]
+fn a_dropped_file_is_pasted_as_its_path() {
+    let mut harness = Harness::new(1, true, "");
+    harness
+        .app
+        .on_window_event(WindowEvent::DroppedFile("/shots/shot.png".into()));
+    assert_eq!(
+        harness.actions(),
+        vec![Action::Paste {
+            chars: "/shots/shot.png ".to_owned(),
+            pane_id: None
+        }]
+    );
+}
+
 static RINGS_COUNTED: AtomicUsize = AtomicUsize::new(0);
 
 fn count_a_ring() {
@@ -2543,6 +2558,16 @@ fn pasting_clears_the_selection() {
     with_a_selection(&mut harness);
     harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
     harness.press(&character("V"));
+    assert_eq!(harness.app.mouse.selection, None);
+}
+
+#[test]
+fn dropping_a_file_clears_the_selection() {
+    let mut harness = Harness::new(0, true, "");
+    with_a_selection(&mut harness);
+    harness
+        .app
+        .on_window_event(WindowEvent::DroppedFile("/shots/shot.png".into()));
     assert_eq!(harness.app.mouse.selection, None);
 }
 
