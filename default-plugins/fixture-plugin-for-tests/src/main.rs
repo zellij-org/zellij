@@ -429,7 +429,9 @@ impl ZellijPlugin for State {
         if should_subscribe_settings_entries {
             subscribe(&[EventType::PluginSettingsEntries]);
         }
-        watch_filesystem();
+        if watch_filesystem_fixture {
+            watch_filesystem();
+        }
     }
 
     fn update(&mut self, event: Event) -> bool {
