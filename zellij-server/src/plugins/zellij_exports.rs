@@ -4513,18 +4513,38 @@ fn delete_dead_session_cache(session_name: &str) -> Result<()> {
                 session_id,
             )
         },
-        |display_name| delete_session_index_row(display_name),
+        delete_session_index_row,
     )
 }
 
 fn delete_dead_session_cache_with(
     session_name: &str,
     remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
+    delete_index: impl FnMut(&str),
+) -> Result<()> {
+    delete_dead_session_cache_with_lookup(
+        session_name,
+        zellij_utils::sessions::session_folder_id,
+        |id| {
+            zellij_utils::session_index::session_name_for_id(id).map_err(|error| error.to_string())
+        },
+        remove_cache,
+        delete_index,
+    )
+}
+
+// Dependency injection keeps filesystem/index fixtures private without
+// changing process-global paths or production lookup/error semantics.
+fn delete_dead_session_cache_with_lookup(
+    session_name: &str,
+    lookup: impl FnOnce(&str) -> std::result::Result<String, String>,
+    lookup_display_name: impl FnOnce(&str) -> std::result::Result<Option<String>, String>,
+    remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
     mut delete_index: impl FnMut(&str),
 ) -> Result<()> {
     // The cache folder is keyed by session id. `Ok(None)` keeps the name as the id.
     // A lookup error must not remove that name's folder or an index row guessed from it.
-    let id = zellij_utils::sessions::session_folder_id(session_name).map_err(|error| {
+    let id = lookup(session_name).map_err(|error| {
         anyhow!(
             "session index lookup failed; the cache and the index row were left in place: {}",
             error
@@ -4533,7 +4553,7 @@ fn delete_dead_session_cache_with(
     validate_session_folder_name(&id).map_err(|error| anyhow!(error))?;
     // The session index is keyed by display name, which differs from the argument
     // when called with an id. A lookup error leaves the row in place.
-    let display_name = match zellij_utils::session_index::session_name_for_id(&id) {
+    let display_name = match lookup_display_name(&id) {
         Ok(Some(name)) => name,
         Ok(None) => id.clone(),
         Err(error) => {
@@ -7762,44 +7782,22 @@ mod focus_and_dead_session_tests {
 
     #[test]
     fn live_session_is_not_removed_by_the_single_session_delete() {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static LIVE_IDS: AtomicU32 = AtomicU32::new(0);
-
-        let session_id = format!(
-            "dl{:x}{:x}",
-            std::process::id(),
-            LIVE_IDS.fetch_add(1, Ordering::Relaxed)
-        );
-        let sock_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&session_id);
+        // A unique session name does not isolate the shared SQLite database.
+        // Exercise the production deletion boundary with a private filesystem
+        // and index, without changing process-global environment variables.
+        let dir = tempfile::tempdir().unwrap();
+        let session_id = "live";
+        let sock_dir = dir.path().join("sock");
+        let cache_dir = dir.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let sock_path = sock_dir.join(session_id);
         assert!(
             sock_path.as_os_str().len() < zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH,
             "socket path exceeds the platform limit: {}",
             sock_path.display()
         );
-        remove_sidecars(&session_id);
-        let _ = std::fs::remove_file(&sock_path);
-        std::fs::create_dir_all(&*zellij_utils::consts::ZELLIJ_SOCK_DIR).unwrap();
-        std::fs::create_dir_all(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR).unwrap();
-
-        struct Cleanup {
-            session_id: String,
-            sock_path: std::path::PathBuf,
-        }
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.sock_path);
-                remove_sidecars(&self.session_id);
-                if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
-                    let _ = index.delete(&self.session_id);
-                }
-            }
-        }
-        let _cleanup = Cleanup {
-            session_id: session_id.clone(),
-            sock_path: sock_path.clone(),
-        };
-
-        let folder = session_info_folder_for_session(&session_id);
+        let folder = cache_dir.join(session_id);
         std::fs::create_dir_all(&folder).unwrap();
         let marker = folder.join("session-metadata.kdl");
         std::fs::write(&marker, "live-cache").unwrap();
@@ -7809,27 +7807,46 @@ mod focus_and_dead_session_tests {
         #[cfg(not(unix))]
         std::fs::write(&sock_path, b"").unwrap();
 
-        let index =
-            zellij_utils::session_index::SessionIndex::open_default().expect("session index");
-        index.ensure_row(&session_id, 1).unwrap();
-
-        match delete_dead_session_reply(&session_id) {
-            DeleteDeadSessionResponse::Err(error) => {
-                assert!(
-                    error.contains("not definitely dead"),
-                    "a live session must be refused, got {error}"
-                );
+        let index = zellij_utils::session_index::SessionIndex::open(
+            &dir.path().join("index.sqlite"),
+            sock_dir.clone(),
+            cache_dir.clone(),
+        )
+        .expect("private session index");
+        index.ensure_row(session_id, 1).unwrap();
+        let mut deleted_index = false;
+        let error = delete_dead_session_cache_with_lookup(
+            session_id,
+            |name| {
+                assert_eq!(name, session_id);
+                Ok(session_id.to_owned())
             },
-            DeleteDeadSessionResponse::Ok => panic!("a live session must not be deleted"),
-        }
+            |id| {
+                assert_eq!(id, session_id);
+                Ok(Some(session_id.to_owned()))
+            },
+            |id| {
+                zellij_utils::sessions::remove_fenced_dead_session_cache(&sock_dir, &cache_dir, id)
+            },
+            |name| {
+                deleted_index = true;
+                index.delete(name).expect("delete from private index");
+            },
+        )
+        .expect_err("a live session must not be deleted");
+        assert!(
+            format!("{error:#}").contains("not definitely dead"),
+            "a live session must be refused, got {error:#}"
+        );
+        assert!(!deleted_index, "refusal must not call the index deleter");
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "live-cache");
         assert!(folder.exists());
         assert!(
-            index.get(&session_id).unwrap().is_some(),
+            index.get(session_id).unwrap().is_some(),
             "the index row of a live session must stay"
         );
         assert!(
-            !session_deletion_tombstone_path(&session_id).exists(),
+            !cache_dir.join(format!("{session_id}.deleted")).exists(),
             "a live session must not be tombstoned"
         );
     }
