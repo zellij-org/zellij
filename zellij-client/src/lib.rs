@@ -1967,21 +1967,7 @@ pub fn start_server_detached(
 pub(crate) fn write_chunked_to_stdout(stdout: &mut dyn Write, bytes: &[u8]) -> std::io::Result<()> {
     #[cfg(windows)]
     {
-        const STDOUT_CHUNK_SIZE: usize = 65536; // 64 KB limit for Windows console / non-paged pool
-        for chunk in bytes.chunks(STDOUT_CHUNK_SIZE) {
-            match stdout.write_all(chunk) {
-                Ok(()) => {},
-                Err(e) if e.raw_os_error() == Some(1450) && chunk.len() > 4096 => {
-                    for sub_chunk in chunk.chunks(chunk.len() / 2) {
-                        stdout.write_all(sub_chunk)?;
-                        let _ = stdout.flush();
-                    }
-                },
-                Err(e) => return Err(e),
-            }
-            let _ = stdout.flush();
-        }
-        Ok(())
+        os_input_output_windows::write_all_chunked(stdout, bytes)
     }
     #[cfg(not(windows))]
     {
