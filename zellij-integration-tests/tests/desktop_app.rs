@@ -1646,3 +1646,305 @@ fn switching_to_a_session_no_window_shows_switches_in_place() {
     desktop.wait_for_client_count(FIRST, 0);
     assert!(desktop.answers(FIRST));
 }
+
+impl Desktop {
+    fn screen_of(&self, session: &str) -> Option<String> {
+        let dump = self.root.path().join("screen.txt");
+        let _ = std::fs::remove_file(&dump);
+        self.act_on(
+            session,
+            vec![Action::DumpScreen {
+                file_path: Some(dump.display().to_string()),
+                include_scrollback: false,
+                pane_id: None,
+                ansi: false,
+            }],
+        );
+        std::fs::read_to_string(&dump).ok()
+    }
+
+    fn wait_for_screen(&self, session: &str, what: &str, check: impl Fn(&str) -> bool) {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let screen = self.screen_of(session).unwrap_or_default();
+            if check(&screen) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {}\nlast screen:\n{}\n{}",
+                    what,
+                    screen,
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+/// A minimal XDND drag source, so a test can drop a file on the window the way a
+/// file manager would: over the real X server and winit's real drop handling.
+mod xdnd {
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{
+        Atom, AtomEnum, ClientMessageEvent, ConnectionExt as _, CreateWindowAux, EventMask,
+        MapState, PropMode, SelectionNotifyEvent, Window, WindowClass, SELECTION_NOTIFY_EVENT,
+    };
+    use x11rb::protocol::Event;
+    use x11rb::rust_connection::RustConnection;
+    use x11rb::wrapper::ConnectionExt as _;
+
+    const XDND_VERSION: u32 = 5;
+    const WAIT: Duration = Duration::from_secs(30);
+
+    struct Atoms {
+        aware: Atom,
+        enter: Atom,
+        position: Atom,
+        status: Atom,
+        drop: Atom,
+        finished: Atom,
+        selection: Atom,
+        action_copy: Atom,
+        uri_list: Atom,
+    }
+
+    impl Atoms {
+        fn intern(conn: &RustConnection) -> Result<Atoms, String> {
+            let atom = |name: &str| -> Result<Atom, String> {
+                Ok(conn
+                    .intern_atom(false, name.as_bytes())
+                    .map_err(|e| e.to_string())?
+                    .reply()
+                    .map_err(|e| e.to_string())?
+                    .atom)
+            };
+            Ok(Atoms {
+                aware: atom("XdndAware")?,
+                enter: atom("XdndEnter")?,
+                position: atom("XdndPosition")?,
+                status: atom("XdndStatus")?,
+                drop: atom("XdndDrop")?,
+                finished: atom("XdndFinished")?,
+                selection: atom("XdndSelection")?,
+                action_copy: atom("XdndActionCopy")?,
+                uri_list: atom("text/uri-list")?,
+            })
+        }
+    }
+
+    /// The `file://` URI of a path, percent-encoding all but the unreserved bytes.
+    pub fn file_uri(path: &Path) -> String {
+        let mut uri = String::from("file://");
+        for byte in path.to_str().expect("a UTF-8 path").bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                    uri.push(byte as char)
+                },
+                _ => uri.push_str(&format!("%{:02X}", byte)),
+            }
+        }
+        uri
+    }
+
+    /// Drops `path` on the one window that takes drops, and returns once that
+    /// window has reported the drop finished and accepted.
+    pub fn drop_file(display: &str, path: &Path) -> Result<(), String> {
+        let (conn, screen) = x11rb::connect(Some(display)).map_err(|e| e.to_string())?;
+        let root = conn.setup().roots[screen].root;
+        let atoms = Atoms::intern(&conn)?;
+        let target = wait_for_drop_target(&conn, root, &atoms)?;
+
+        let source = conn.generate_id().map_err(|e| e.to_string())?;
+        conn.create_window(
+            x11rb::COPY_DEPTH_FROM_PARENT,
+            source,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &CreateWindowAux::new(),
+        )
+        .map_err(|e| e.to_string())?;
+        conn.set_selection_owner(source, atoms.selection, x11rb::CURRENT_TIME)
+            .map_err(|e| e.to_string())?;
+
+        let send = |message: Atom, data: [u32; 5]| -> Result<(), String> {
+            let event = ClientMessageEvent::new(32, target, message, data);
+            conn.send_event(false, target, EventMask::NO_EVENT, event)
+                .map_err(|e| e.to_string())?;
+            conn.flush().map_err(|e| e.to_string())
+        };
+
+        send(
+            atoms.enter,
+            [source, XDND_VERSION << 24, atoms.uri_list, 0, 0],
+        )?;
+        send(
+            atoms.position,
+            [
+                source,
+                0,
+                (10 << 16) | 10,
+                x11rb::CURRENT_TIME,
+                atoms.action_copy,
+            ],
+        )?;
+
+        // winit asks for the data on the first position and only uses it on the drop,
+        // so the drop is sent right after the data is served: the X server delivers
+        // our events to winit in the order we send them, so it reads the data first.
+        let data = format!("{}\r\n", file_uri(path));
+        let mut served = false;
+        let deadline = Instant::now() + WAIT;
+        loop {
+            if Instant::now() >= deadline {
+                return Err(format!("the drop never finished (data served: {})", served));
+            }
+            let Some(event) = conn.poll_for_event().map_err(|e| e.to_string())? else {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            };
+            match event {
+                Event::SelectionRequest(request) if request.selection == atoms.selection => {
+                    conn.change_property8(
+                        PropMode::REPLACE,
+                        request.requestor,
+                        request.property,
+                        atoms.uri_list,
+                        data.as_bytes(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let notify = SelectionNotifyEvent {
+                        response_type: SELECTION_NOTIFY_EVENT,
+                        sequence: 0,
+                        time: request.time,
+                        requestor: request.requestor,
+                        selection: request.selection,
+                        target: request.target,
+                        property: request.property,
+                    };
+                    conn.send_event(false, request.requestor, EventMask::NO_EVENT, notify)
+                        .map_err(|e| e.to_string())?;
+                    conn.flush().map_err(|e| e.to_string())?;
+                    served = true;
+                    send(atoms.drop, [source, 0, x11rb::CURRENT_TIME, 0, 0])?;
+                },
+                Event::ClientMessage(message) if message.type_ == atoms.status => {
+                    let [_, flags, ..] = message.data.as_data32();
+                    if flags & 1 == 0 {
+                        return Err("the window rejected the drop".to_owned());
+                    }
+                },
+                Event::ClientMessage(message) if message.type_ == atoms.finished => {
+                    let [_, flags, ..] = message.data.as_data32();
+                    return if flags & 1 == 1 {
+                        Ok(())
+                    } else {
+                        Err("the window finished the drop without accepting it".to_owned())
+                    };
+                },
+                _ => {},
+            }
+        }
+    }
+
+    fn wait_for_drop_target(
+        conn: &RustConnection,
+        root: Window,
+        atoms: &Atoms,
+    ) -> Result<Window, String> {
+        let deadline = Instant::now() + WAIT;
+        loop {
+            let mut targets = vec![];
+            let children = conn
+                .query_tree(root)
+                .map_err(|e| e.to_string())?
+                .reply()
+                .map_err(|e| e.to_string())?
+                .children;
+            for window in children {
+                let aware = conn
+                    .get_property(false, window, atoms.aware, AtomEnum::ANY, 0, 1)
+                    .map_err(|e| e.to_string())?
+                    .reply()
+                    .map(|reply| reply.value_len > 0)
+                    .unwrap_or(false);
+                let viewable = conn
+                    .get_window_attributes(window)
+                    .map_err(|e| e.to_string())?
+                    .reply()
+                    .map(|attributes| attributes.map_state == MapState::VIEWABLE)
+                    .unwrap_or(false);
+                if aware && viewable {
+                    targets.push(window);
+                }
+            }
+            match targets.as_slice() {
+                [window] => return Ok(*window),
+                _ if Instant::now() >= deadline => {
+                    return Err(format!(
+                        "expected one window taking drops, found {}",
+                        targets.len()
+                    ))
+                },
+                _ => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    // A fresh install opens a welcome card that takes focus, and with it the drop;
+    // start as if it had been seen, so the drop reaches the shell.
+    {
+        use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
+        let state = desktop
+            .root
+            .path()
+            .join("data/zellij")
+            .join(STATE_FILE_NAME);
+        update_at(&state, |state| {
+            state.set(Flag::WelcomeCardShown);
+            state.set(Flag::MissingServicesShown);
+        })
+        .unwrap();
+    }
+    let session = desktop.start_app();
+    let file = desktop.root.path().join("dropped shot.png");
+    std::fs::write(&file, b"").unwrap();
+    let file = file.canonicalize().unwrap();
+    // `$`, or `#` when the tests run as root.
+    desktop.wait_for_screen(&session, "the shell prompt", |screen| {
+        screen.trim_end().ends_with(['$', '#'])
+    });
+
+    if let Err(e) = xdnd::drop_file(&desktop.display, &file) {
+        panic!("dropping the file failed: {}\n{}", e, desktop.logs());
+    }
+
+    let expected = file.display().to_string().replace(' ', "\\ ");
+    desktop.wait_for_screen(&session, "the escaped path at the prompt", |screen| {
+        screen.contains(&expected)
+    });
+}
+
+#[test]
+fn a_dropped_file_uri_is_percent_encoded() {
+    assert_eq!(
+        xdnd::file_uri(Path::new("/tmp/a b/shot%1.png")),
+        "file:///tmp/a%20b/shot%251.png"
+    );
+}
