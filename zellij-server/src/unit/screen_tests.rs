@@ -5228,3 +5228,44 @@ pub fn send_cli_close_tab_by_id_action() {
     // The action should complete successfully
     assert!(true, "CloseTabById CLI action completed without errors");
 }
+
+/// A plugin thread that has exited is a ROUTINE event, not the end of the session.
+///
+/// Every send to a plugin is a send to a thread that can already be gone (a killed plugin, a
+/// session with no plugins), and the screen thread used to `?` those failures out of
+/// `generate_and_report_tab_state` / `generate_and_report_pane_state` /
+/// `log_and_report_session_state`. An `Err` out of the screen loop ends at `screen_thread_main`'s
+/// `.fatal()` spawn site (zellij-server/src/lib.rs), which panics the WHOLE server — every pane in
+/// every tab. MEASURED LIVE 2026-11-10 21:06 (fingerprint 559dc96fad05, promise RED
+/// `interruptions_within_budget`): nine such panics in 22.5 h against a budget of 8, three of them
+/// `failed to update tabs` and one `Failed to log and report session state`.
+///
+/// The plugin channel here is real and its receiver is DROPPED, which is what a dead plugin thread
+/// looks like from the screen thread; the bus has no background-jobs sender for the same reason.
+/// `should_silently_fail` is off (it is on in `Bus::empty()`, which every other test here uses),
+/// so a send really fails — otherwise this test would pass against the pre-fix code and pin
+/// nothing (MEASURED: it did, until this line was added). Pre-fix the first assertion is an `Err`
+/// (in the server, a panic); post-fix every one of these logs the failed send and still reports
+/// the state it could build.
+#[test]
+fn a_plugin_thread_that_has_exited_does_not_end_the_session_state_report() {
+    let mut screen = create_new_screen(Size { rows: 24, cols: 80 }, false);
+    screen.bus.senders.should_silently_fail = false;
+    // the plugin thread exits: its receiver goes away, so every send to it fails
+    let (to_plugin, plugin_receiver) = channels::unbounded();
+    screen.bus.senders.to_plugin = Some(channels::SenderWithContext::new(to_plugin));
+    drop(plugin_receiver);
+
+    assert!(
+        screen.generate_and_report_tab_state().is_ok(),
+        "a send to a plugin thread that has exited ended the screen thread's tab report"
+    );
+    assert!(
+        screen.generate_and_report_pane_state().is_ok(),
+        "a send to a plugin thread that has exited ended the screen thread's pane report"
+    );
+    assert!(
+        screen.log_and_report_session_state().is_ok(),
+        "a send to a background-jobs thread that has exited ended the session-state report"
+    );
+}
