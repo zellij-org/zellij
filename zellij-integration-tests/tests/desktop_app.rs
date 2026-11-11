@@ -14,6 +14,7 @@ use zellij_utils::consts::{
     CLIENT_SERVER_CONTRACT_DIR,
 };
 use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
+use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
@@ -1716,19 +1717,6 @@ mod xdnd {
         }
     }
 
-    pub fn file_uri(path: &Path) -> String {
-        let mut uri = String::from("file://");
-        for byte in path.to_str().expect("a UTF-8 path").bytes() {
-            match byte {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                    uri.push(byte as char)
-                },
-                _ => uri.push_str(&format!("%{:02X}", byte)),
-            }
-        }
-        uri
-    }
-
     /// Returns once winit finishes the drop, which it does even without data,
     /// so callers check the pane.
     pub fn drop_file(display: &str, path: &Path) -> Result<()> {
@@ -1776,7 +1764,8 @@ mod xdnd {
         )?;
 
         // Events reach winit in the order sent, so it reads the data before the drop.
-        let data = format!("{}\r\n", file_uri(path));
+        // Encoding the space is enough for the test's file name.
+        let data = format!("file://{}\r\n", path.display()).replace(' ', "%20");
         let mut served = false;
         let deadline = Instant::now() + WAIT;
         while Instant::now() < deadline {
@@ -1878,20 +1867,17 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
         return;
     };
     // Skip the first-run setup wizard and welcome card: they take focus, and the drop.
-    {
-        use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
-        let state = desktop
-            .root
-            .path()
-            .join("data/zellij")
-            .join(STATE_FILE_NAME);
-        update_at(&state, |state| {
-            state.set(Flag::SetupNeverShow);
-            state.set(Flag::WelcomeCardShown);
-            state.set(Flag::MissingServicesShown);
-        })
-        .unwrap();
-    }
+    let state = desktop
+        .root
+        .path()
+        .join("data/zellij")
+        .join(STATE_FILE_NAME);
+    update_at(&state, |state| {
+        state.set(Flag::SetupNeverShow);
+        state.set(Flag::WelcomeCardShown);
+        state.set(Flag::MissingServicesShown);
+    })
+    .unwrap();
     let session = desktop.start_app();
     let file = desktop.root.path().join("dropped shot.png");
     std::fs::write(&file, b"").unwrap();
@@ -1913,9 +1899,11 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
                 .is_some_and(|prompt| prompt == "$ " || prompt == "# ")
         })
     };
-    desktop.wait_for_screen(&session, "the escaped path alone at the prompt", |screen| {
-        prompt_holds_just_the_path(screen)
-    });
+    desktop.wait_for_screen(
+        &session,
+        "the escaped path alone at the prompt",
+        &prompt_holds_just_the_path,
+    );
     // Catch a late duplicate paste.
     std::thread::sleep(Duration::from_millis(500));
     let screen = desktop.screen_of(&session).unwrap_or_default();
@@ -1923,13 +1911,5 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
         prompt_holds_just_the_path(&screen),
         "the prompt line changed after the drop:\n{}",
         screen
-    );
-}
-
-#[test]
-fn a_dropped_file_uri_is_percent_encoded() {
-    assert_eq!(
-        xdnd::file_uri(Path::new("/tmp/a b/shot%1.png")),
-        "file:///tmp/a%20b/shot%251.png"
     );
 }

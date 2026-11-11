@@ -962,18 +962,13 @@ fn an_empty_clipboard_sends_no_paste_at_all() {
 #[test]
 fn a_dropped_file_is_pasted_as_its_path() {
     let mut harness = Harness::new(1, true, "");
-    let path = std::path::PathBuf::from(if cfg!(windows) {
-        r"C:\shots\shot.png"
-    } else {
-        "/shots/shot.png"
-    });
     harness
         .app
-        .on_window_event(WindowEvent::DroppedFile(path.clone()));
+        .on_window_event(WindowEvent::DroppedFile("/shots/shot.png".into()));
     assert_eq!(
         harness.actions(),
         vec![Action::Paste {
-            chars: format!("{} ", path.display()),
+            chars: "/shots/shot.png ".to_owned(),
             pane_id: None
         }]
     );
@@ -2572,9 +2567,7 @@ fn dropping_a_file_clears_the_selection() {
     with_a_selection(&mut harness);
     harness
         .app
-        .on_window_event(WindowEvent::DroppedFile(std::path::PathBuf::from(
-            "/shots/shot.png",
-        )));
+        .on_window_event(WindowEvent::DroppedFile("/shots/shot.png".into()));
     assert_eq!(harness.app.mouse.selection, None);
 }
 

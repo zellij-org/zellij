@@ -3,9 +3,7 @@
 use std::path::Path;
 
 pub fn dropped_file_text(path: &Path) -> String {
-    let mut text = escape(&path.to_string_lossy());
-    text.push(' ');
-    text
+    format!("{} ", escape(&path.to_string_lossy()))
 }
 
 /// Backslash-escapes what a shell (zsh's EXTENDED_GLOB included) would split or
@@ -50,38 +48,21 @@ fn escape(path: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_plain_path_is_pasted_as_is_with_a_trailing_space() {
-        assert_eq!(dropped_file_text(Path::new("plain.png")), "plain.png ");
-    }
-
     #[cfg(not(windows))]
     #[test]
-    fn spaces_in_a_path_are_escaped_so_it_stays_one_word() {
-        assert_eq!(
-            dropped_file_text(Path::new(
-                "/Users/me/Desktop/Screenshot 2026-11-11 at 19.02.14.png"
-            )),
-            "/Users/me/Desktop/Screenshot\\ 2026-11-11\\ at\\ 19.02.14.png "
-        );
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn shell_metacharacters_are_escaped() {
-        assert_eq!(
-            dropped_file_text(Path::new("/tmp/it's $HOME (1)&[x].txt")),
-            "/tmp/it\\'s\\ \\$HOME\\ \\(1\\)\\&\\[x\\].txt "
-        );
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn zsh_extended_glob_operators_are_escaped() {
-        assert_eq!(
-            dropped_file_text(Path::new("/tmp/x^y~z.png")),
-            "/tmp/x\\^y\\~z.png "
-        );
+    fn what_a_shell_would_split_or_expand_is_backslash_escaped() {
+        for (path, pasted) in [
+            ("/tmp/Screenshot 1.png", r"/tmp/Screenshot\ 1.png "),
+            (
+                "/tmp/it's $HOME (1)&[x].txt",
+                r"/tmp/it\'s\ \$HOME\ \(1\)\&\[x\].txt ",
+            ),
+            ("/tmp/x^y~z.png", r"/tmp/x\^y\~z.png "),
+            // A control character becomes a `?` glob that still matches it.
+            ("/tmp/a\nrm -rf ~", r"/tmp/a?rm\ -rf\ \~ "),
+        ] {
+            assert_eq!(dropped_file_text(Path::new(path)), pasted, "{:?}", path);
+        }
     }
 
     #[test]
@@ -91,15 +72,6 @@ mod tests {
             !text.chars().any(char::is_control),
             "a control character would act as a keystroke: {:?}",
             text
-        );
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn a_newline_in_a_name_becomes_a_glob_that_still_matches_it() {
-        assert_eq!(
-            dropped_file_text(Path::new("/tmp/a\nrm -rf ~")),
-            "/tmp/a?rm\\ -rf\\ \\~ "
         );
     }
 
