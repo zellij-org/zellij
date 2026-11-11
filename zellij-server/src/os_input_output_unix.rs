@@ -59,7 +59,7 @@ fn signal_pid(pid: u32, signal: Signal) -> Result<()> {
 /// An `AsyncReader` that wraps a `RawFd` using epoll via `AsyncFd`.
 ///
 /// Construction sets O_NONBLOCK but defers `AsyncFd` registration to the first
-/// `read()` call, because `AsyncFd::new()` requires a live Tokio reactor and
+/// `read()` call, because `AsyncFd::register()` requires a live Tokio reactor and
 /// `spawn_terminal` runs on the plain PTY thread (outside the runtime).
 struct RawFdAsyncReader {
     /// Holds the file before reactor registration; `None` after promotion.
@@ -93,7 +93,9 @@ impl RawFdAsyncReader {
                 .pending
                 .take()
                 .expect("RawFdAsyncReader used after init");
-            self.async_fd = Some(AsyncFd::new(file)?);
+            // SAFETY: `file` owns this descriptor for as long as the AsyncFd
+            // exists, and nothing else re-registers or replaces it.
+            self.async_fd = Some(unsafe { AsyncFd::register(file)? });
         }
         // SAFETY: initialized above when None; otherwise already Some
         Ok(self.async_fd.as_mut().unwrap())
