@@ -1752,7 +1752,9 @@ mod xdnd {
     }
 
     /// Drops `path` on the one window that takes drops, and returns once that
-    /// window has reported the drop finished and accepted.
+    /// window has reported the drop finished. That alone does not prove a path
+    /// arrived: winit 0.30 accepts a drop even when it got no data, so callers
+    /// check what the pane shows.
     pub fn drop_file(display: &str, path: &Path) -> Result<(), String> {
         let (conn, screen) = x11rb::connect(Some(display)).map_err(|e| e.to_string())?;
         let root = conn.setup().roots[screen].root;
@@ -1814,7 +1816,11 @@ mod xdnd {
                 continue;
             };
             match event {
-                Event::SelectionRequest(request) if request.selection == atoms.selection => {
+                Event::SelectionRequest(request)
+                    if request.selection == atoms.selection
+                        && request.target == atoms.uri_list
+                        && !served =>
+                {
                     conn.change_property8(
                         PropMode::REPLACE,
                         request.requestor,
@@ -1936,8 +1942,8 @@ fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
     }
 
     let expected = file.display().to_string().replace(' ', "\\ ");
-    desktop.wait_for_screen(&session, "the escaped path at the prompt", |screen| {
-        screen.contains(&expected)
+    desktop.wait_for_screen(&session, "the escaped path once at the prompt", |screen| {
+        screen.matches(&expected).count() == 1
     });
 }
 

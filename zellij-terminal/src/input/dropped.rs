@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn control_characters_never_reach_the_pane_as_keystrokes() {
-        let text = dropped_file_text(Path::new("/tmp/a\nrm -rf ~\r\tb\u{1b}[c"));
+        let text = dropped_file_text(Path::new("/tmp/a\nrm -rf ~\r\tb\u{1b}[c\u{7f}d\u{9b}201~e"));
         assert!(
             !text.chars().any(char::is_control),
             "a control character would act as a keystroke: {:?}",
