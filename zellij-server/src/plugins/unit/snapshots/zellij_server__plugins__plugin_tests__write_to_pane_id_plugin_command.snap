@@ -13,6 +13,9 @@ Some(
             2,
         ),
         Some(
+            1,
+        ),
+        Some(
             NotificationEnd {
                 channel: None,
                 exit_status: None,

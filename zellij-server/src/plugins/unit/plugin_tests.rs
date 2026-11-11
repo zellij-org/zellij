@@ -29,6 +29,296 @@ use crate::{plugins::PluginInstruction, pty::PtyInstruction};
 
 use zellij_utils::channels::{self, ChannelWithContext, Receiver};
 
+trait SettleCompletion {
+    fn settle_completion(&mut self);
+}
+
+fn publish_fake_completion(completion: &mut Option<crate::route::NotificationEnd>) {
+    if let Some(owner) = completion {
+        owner.publish_recorded();
+    }
+}
+
+fn normalize_reservation_fields(debug: String) -> String {
+    let mut normalized = String::with_capacity(debug.len());
+    let lines: Vec<&str> = debug.lines().collect();
+    for (index, line) in lines.iter().enumerate() {
+        let line = *line;
+        let trimmed = line.trim_start();
+        let indent = &line[..line.len() - trimmed.len()];
+        let precedes_reservation = lines
+            .get(index + 1)
+            .map(|next| {
+                next.trim_start()
+                    .starts_with("BackgroundOperationReservation")
+            })
+            .unwrap_or(false);
+        if precedes_reservation
+            && trimmed
+                .strip_suffix(',')
+                .map(|value| value.parse::<u64>().is_ok())
+                .unwrap_or(false)
+        {
+            normalized.push_str(indent);
+            normalized.push_str("<dynamic>,\n");
+        } else if trimmed
+            .strip_prefix("id: ")
+            .map(|value| value.ends_with(','))
+            .unwrap_or(false)
+        {
+            normalized.push_str(indent);
+            normalized.push_str("id: <dynamic>,\n");
+        } else if trimmed
+            .strip_prefix("bytes: ")
+            .map(|value| value.ends_with(','))
+            .unwrap_or(false)
+        {
+            normalized.push_str(indent);
+            normalized.push_str("bytes: <dynamic>,\n");
+        } else {
+            normalized.push_str(line);
+            normalized.push('\n');
+        }
+    }
+    normalized
+}
+
+impl SettleCompletion for ScreenInstruction {
+    fn settle_completion(&mut self) {
+        match self {
+            ScreenInstruction::NewPane(_, _, _, _, _, _, _, completion, _) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::TogglePaneEmbedOrFloating(_, completion) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::ToggleFloatingPanes(_, _, completion) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::ShowFloatingPanes { completion, .. }
+            | ScreenInstruction::HideFloatingPanes { completion, .. }
+            | ScreenInstruction::AreFloatingPanesVisible { completion, .. } => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::WriteCharacter(_, _, _, _, completion)
+            | ScreenInstruction::KeyToPopup(_, _, _, _, completion) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::Resize(_, _, completion)
+            | ScreenInstruction::SwitchFocus(_, completion)
+            | ScreenInstruction::FocusNextPane(_, completion)
+            | ScreenInstruction::FocusPreviousPane(_, completion)
+            | ScreenInstruction::FocusLastPane(_, completion)
+            | ScreenInstruction::MoveFocusLeft(_, completion)
+            | ScreenInstruction::MoveFocusLeftOrPreviousTab(_, completion)
+            | ScreenInstruction::MoveFocusDown(_, completion)
+            | ScreenInstruction::MoveFocusUp(_, completion)
+            | ScreenInstruction::MoveFocusRight(_, completion)
+            | ScreenInstruction::MoveFocusRightOrNextTab(_, completion)
+            | ScreenInstruction::MovePane(_, completion)
+            | ScreenInstruction::MovePaneBackwards(_, completion)
+            | ScreenInstruction::MovePaneUp(_, completion)
+            | ScreenInstruction::MovePaneDown(_, completion)
+            | ScreenInstruction::MovePaneRight(_, completion)
+            | ScreenInstruction::MovePaneLeft(_, completion)
+            | ScreenInstruction::ClearScreen(_, completion)
+            | ScreenInstruction::SaveSession(_, completion)
+            | ScreenInstruction::ScrollUp(_, completion)
+            | ScreenInstruction::ScrollDown(_, completion)
+            | ScreenInstruction::ScrollToBottom(_, completion)
+            | ScreenInstruction::ScrollToTop(_, completion)
+            | ScreenInstruction::ScrollToPreviousPrompt(_, completion)
+            | ScreenInstruction::ScrollToNextPrompt(_, completion)
+            | ScreenInstruction::SelectCommandAtScrollPosition(_, completion)
+            | ScreenInstruction::CopyLastCommandOutput(_, completion)
+            | ScreenInstruction::PageScrollUp(_, completion)
+            | ScreenInstruction::PageScrollDown(_, completion)
+            | ScreenInstruction::HalfPageScrollUp(_, completion)
+            | ScreenInstruction::HalfPageScrollDown(_, completion)
+            | ScreenInstruction::CloseFocusedPane(_, completion)
+            | ScreenInstruction::ToggleActiveTerminalFullscreen(_, completion)
+            | ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(_, completion)
+            | ScreenInstruction::TogglePaneFrames(completion)
+            | ScreenInstruction::ToggleStackListOrientation(_, completion)
+            | ScreenInstruction::ToggleStackListOrientationWithPaneId(_, completion)
+            | ScreenInstruction::SetPaneFrameStyle(_, completion)
+            | ScreenInstruction::UndoRenamePane(_, completion)
+            | ScreenInstruction::SwitchTabNext(_, completion)
+            | ScreenInstruction::SwitchTabPrev(_, completion)
+            | ScreenInstruction::ToggleActiveSyncTab(_, completion)
+            | ScreenInstruction::CloseTab(_, completion)
+            | ScreenInstruction::ToggleTab(_, completion)
+            | ScreenInstruction::UndoRenameTab(_, completion)
+            | ScreenInstruction::MoveTabLeft(_, completion)
+            | ScreenInstruction::MoveTabRight(_, completion)
+            | ScreenInstruction::CloseTabWithId(_, completion)
+            | ScreenInstruction::RerunCommandPane(_, completion)
+            | ScreenInstruction::EditScrollbackForPaneWithId(_, completion)
+            | ScreenInstruction::WriteToPaneId(_, _, _, completion)
+            | ScreenInstruction::Paste(_, _, _, completion)
+            | ScreenInstruction::SetPaneColor(_, _, _, completion)
+            | ScreenInstruction::WriteKeyToPaneId(_, _, _, _, _, completion)
+            | ScreenInstruction::TogglePanePinned(_, completion)
+            | ScreenInstruction::ScrollUpWithPaneId(_, _, completion)
+            | ScreenInstruction::ScrollDownWithPaneId(_, _, completion)
+            | ScreenInstruction::ScrollToTopWithPaneId(_, completion)
+            | ScreenInstruction::ScrollToBottomWithPaneId(_, completion)
+            | ScreenInstruction::PageScrollUpWithPaneId(_, _, completion)
+            | ScreenInstruction::PageScrollDownWithPaneId(_, _, completion)
+            | ScreenInstruction::HalfPageScrollUpWithPaneId(_, _, completion)
+            | ScreenInstruction::HalfPageScrollDownWithPaneId(_, _, completion)
+            | ScreenInstruction::ResizeWithPaneId(_, _, completion)
+            | ScreenInstruction::MovePaneWithPaneIdCli(_, _, completion)
+            | ScreenInstruction::MovePaneBackwardsWithPaneId(_, completion)
+            | ScreenInstruction::ClearScreenWithPaneId(_, completion)
+            | ScreenInstruction::EditScrollbackWithPaneId(_, _, completion)
+            | ScreenInstruction::ToggleFullscreenWithPaneId(_, completion)
+            | ScreenInstruction::ToggleNoUiFullscreenWithPaneId(_, completion)
+            | ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(_, _, completion)
+            | ScreenInstruction::CloseFocusWithPaneId(_, completion)
+            | ScreenInstruction::RenamePaneWithPaneId(_, _, completion)
+            | ScreenInstruction::UndoRenamePaneWithPaneId(_, completion)
+            | ScreenInstruction::TogglePanePinnedWithPaneId(_, completion)
+            | ScreenInstruction::UndoRenameTabWithTabId(_, completion)
+            | ScreenInstruction::ToggleActiveSyncTabWithTabId(_, completion)
+            | ScreenInstruction::ToggleFloatingPanesWithTabId(_, _, completion)
+            | ScreenInstruction::PreviousSwapLayoutWithTabId(_, completion)
+            | ScreenInstruction::NextSwapLayoutWithTabId(_, completion)
+            | ScreenInstruction::ApplyTiledSwapLayoutWithTabId(_, _, completion)
+            | ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(_, _, completion)
+            | ScreenInstruction::MoveTabWithTabId(_, _, completion)
+            | ScreenInstruction::MoveTabToPosition(_, _, completion)
+            | ScreenInstruction::FocusHostSession(_, completion)
+            | ScreenInstruction::FocusGuestSession(_, completion)
+            | ScreenInstruction::ToggleHostFullscreen(_, completion)
+            | ScreenInstruction::MutePane(_, _, completion)
+            | ScreenInstruction::IgnorePaneOutput(_, _, completion)
+            | ScreenInstruction::WatchPane(_, _, completion)
+            | ScreenInstruction::MuteTab(_, _, completion)
+            | ScreenInstruction::MuteSession(_, completion)
+            | ScreenInstruction::SetDarkTheme(completion)
+            | ScreenInstruction::SetLightTheme(completion)
+            | ScreenInstruction::ToggleTheme(completion)
+            | ScreenInstruction::Copy(_, completion)
+            | ScreenInstruction::SearchDown(_, completion)
+            | ScreenInstruction::SearchUp(_, completion)
+            | ScreenInstruction::SearchToggleCaseSensitivity(_, completion)
+            | ScreenInstruction::SearchToggleWholeWord(_, completion)
+            | ScreenInstruction::SearchToggleWrap(_, completion)
+            | ScreenInstruction::PreviousSwapLayout(_, completion)
+            | ScreenInstruction::NextSwapLayout(_, completion)
+            | ScreenInstruction::ApplyTiledSwapLayout(_, _, completion)
+            | ScreenInstruction::ApplyFloatingSwapLayout(_, _, completion)
+            | ScreenInstruction::QueryTabNames(_, completion) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::DumpScreen(_, _, _, _, completion, _, _)
+            | ScreenInstruction::DumpLayout(_, _, completion)
+            | ScreenInstruction::EditScrollback(_, _, completion)
+            | ScreenInstruction::ScrollUpAt(_, _, completion)
+            | ScreenInstruction::ScrollDownAt(_, _, completion)
+            | ScreenInstruction::ClosePane(_, _, completion, _, _, _)
+            | ScreenInstruction::UpdatePaneName(_, _, completion)
+            | ScreenInstruction::NewTab(_, _, _, _, _, _, _, _, _, _, completion)
+            | ScreenInstruction::GoToTab(_, _, completion)
+            | ScreenInstruction::GoToTabName(_, _, _, _, completion)
+            | ScreenInstruction::UpdateTabName(_, _, completion)
+            | ScreenInstruction::GoToTabWithId(_, _, completion)
+            | ScreenInstruction::RenameTabWithId(_, _, completion)
+            | ScreenInstruction::NewTiledPluginPane(_, _, _, _, _, completion, _, _)
+            | ScreenInstruction::NewFloatingPluginPane(_, _, _, _, _, _, completion, _, _)
+            | ScreenInstruction::NewInPlacePluginPane(_, _, _, _, _, _, completion, _, _)
+            | ScreenInstruction::StartOrReloadPluginPane(_, _, completion)
+            | ScreenInstruction::AddPlugin(_, _, _, _, _, _, _, _, _, _, _, _, _, completion, _)
+            | ScreenInstruction::LaunchOrFocusPlugin(_, _, _, _, _, _, _, _, completion, _)
+            | ScreenInstruction::LaunchPlugin(_, _, _, _, _, _, _, _, completion, _, _)
+            | ScreenInstruction::FocusPaneWithId(_, _, _, _, completion)
+            | ScreenInstruction::RenamePane(_, _, completion)
+            | ScreenInstruction::RenameActivePane(_, _, completion)
+            | ScreenInstruction::RenameTab(_, _, completion)
+            | ScreenInstruction::BreakPane(_, _, completion)
+            | ScreenInstruction::BreakPaneRight(_, completion)
+            | ScreenInstruction::BreakPaneLeft(_, completion)
+            | ScreenInstruction::ReplacePane(_, _, _, _, _, _, completion)
+            | ScreenInstruction::RenameSession(_, _, completion)
+            | ScreenInstruction::UpdateSessionNameDraft(_, _, completion)
+            | ScreenInstruction::UndoRenameSession(_, completion)
+            | ScreenInstruction::ListClientsMetadata(_, _, completion)
+            | ScreenInstruction::ChangeMode(_, _, _, completion)
+            | ScreenInstruction::ChangeModeForAllClients(_, _, completion)
+            | ScreenInstruction::MouseEvent(_, _, completion)
+            | ScreenInstruction::UpdateSearch(_, _, completion)
+            | ScreenInstruction::OverrideLayout(_, _, _, _, _, _, _, completion)
+            | ScreenInstruction::OverrideLayoutComplete(_, _, _, _, completion) => {
+                publish_fake_completion(completion)
+            },
+            ScreenInstruction::ApplyLayout(_, _, _, _, _, _, _, _, completion, blocking) => {
+                publish_fake_completion(completion);
+                if let Some((_, owner)) = blocking {
+                    owner.publish_recorded();
+                }
+            },
+            ScreenInstruction::BreakPanesToNewTab { completion_tx, .. }
+            | ScreenInstruction::BreakPanesToTabWithIndex { completion_tx, .. }
+            | ScreenInstruction::BreakPanesToTabWithId { completion_tx, .. } => {
+                publish_fake_completion(completion_tx)
+            },
+            _ => {},
+        }
+    }
+}
+
+impl SettleCompletion for PtyInstruction {
+    fn settle_completion(&mut self) {
+        match self {
+            PtyInstruction::SpawnTerminal(_, _, _, _, _, completion, _, _)
+            | PtyInstruction::SpawnInPlaceTerminal(_, _, _, _, completion, _)
+            | PtyInstruction::OpenInPlaceEditor(_, _, _, completion)
+            | PtyInstruction::NewTab(_, _, _, _, _, _, _, _, _, _, completion)
+            | PtyInstruction::OverrideLayout(_, _, _, _, _, _, completion)
+            | PtyInstruction::ClosePane(_, completion)
+            | PtyInstruction::ClosePaneThatWasNotCreated(_, completion)
+            | PtyInstruction::ReRunCommandInPane(_, _, completion)
+            | PtyInstruction::DumpLayout(_, _, completion)
+            | PtyInstruction::ListClientsMetadata(_, _, completion) => {
+                publish_fake_completion(completion)
+            },
+            PtyInstruction::DropToShellInPane { completion_tx, .. }
+            | PtyInstruction::SaveSessionToDisk { completion_tx, .. }
+            | PtyInstruction::RunInBackground { completion_tx, .. }
+            | PtyInstruction::SetResurrectCommand { completion_tx, .. } => {
+                publish_fake_completion(completion_tx)
+            },
+            PtyInstruction::FillPluginCwd(_, _, _, _, _, _, _, _, _, _, _, _, _, completion, _) => {
+                publish_fake_completion(completion)
+            },
+            _ => {},
+        }
+    }
+}
+
+impl SettleCompletion for ServerInstruction {
+    fn settle_completion(&mut self) {
+        match self {
+            ServerInstruction::ClientExit(_, completion)
+            | ServerInstruction::DetachSession(_, completion)
+            | ServerInstruction::Log(_, _, completion)
+            | ServerInstruction::LogError(_, _, completion)
+            | ServerInstruction::SwitchSession(_, _, completion)
+            | ServerInstruction::SwitchSessionAndCloseCurrent(_, _, completion)
+            | ServerInstruction::HistoryMove(_, _, completion)
+            | ServerInstruction::ChangeMode(_, _, completion) => {
+                publish_fake_completion(completion)
+            },
+            _ => {},
+        }
+    }
+}
+
+impl SettleCompletion for BackgroundJob {
+    fn settle_completion(&mut self) {}
+}
+
 macro_rules! log_actions_in_thread {
     ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr ) => {
         std::thread::Builder::new()
@@ -36,10 +326,20 @@ macro_rules! log_actions_in_thread {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event(..) => {
                             exit_event_count += 1;
@@ -65,10 +365,20 @@ macro_rules! log_actions_in_thread_struct {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event { .. } => {
                             exit_event_count += 1;
@@ -94,12 +404,22 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let cache_path = $cache_path.clone();
                 let plugin_thread_sender = $plugin_thread_sender.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event(..) => {
                             exit_event_count += 1;
@@ -155,9 +475,12 @@ macro_rules! grant_permissions_and_log_actions_until {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 move || loop {
                     let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                    let Ok((event, _err_ctx)) = $receiver.recv_timeout(remaining) else {
-                        break;
-                    };
+                    let (mut event, _err_ctx) = $receiver.recv_timeout(remaining)
+                        .unwrap_or_else(|error| panic!(
+                            "fake screen did not observe its completion predicate before the deadline: {:?}",
+                            error
+                        ));
+                    event.settle_completion();
                     match event {
                         ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
                             let status = if plugin_permission.permissions.contains($permission_type)
@@ -198,12 +521,22 @@ macro_rules! deny_permissions_and_log_actions_in_thread {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let cache_path = $cache_path.clone();
                 let plugin_thread_sender = $plugin_thread_sender.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event(..) => {
                             exit_event_count += 1;
@@ -242,12 +575,22 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let cache_path = $cache_path.clone();
                 let plugin_thread_sender = $plugin_thread_sender.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event => {
                             exit_event_count += 1;
@@ -298,12 +641,22 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 let mut exit_event_count = 0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let cache_path = $cache_path.clone();
                 let plugin_thread_sender = $plugin_thread_sender.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
+                    let (mut event, _err_ctx) = $receiver
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fake owner waiting for {} ({}/{} observed): {:?}",
+                                stringify!($exit_event),
+                                exit_event_count,
+                                $exit_after_count,
+                                error
+                            )
+                        });
+                    event.settle_completion();
                     match event {
                         $exit_event { .. } => {
                             exit_event_count += 1;
@@ -345,6 +698,28 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
             })
             .unwrap()
     };
+}
+
+#[test]
+fn captured_success_publishes_its_completion_before_the_log_is_dropped() {
+    use crate::route::{ActionCompletionKind, NotificationEnd};
+    let (sender, mut receiver) = tokio::sync::oneshot::channel();
+    let mut owner = Some(NotificationEnd::new(sender));
+    assert!(matches!(
+        receiver.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    publish_fake_completion(&mut owner);
+    // A second observation does not send a second reply or turn success into
+    // abandonment. The instruction can remain in the log for snapshots.
+    publish_fake_completion(&mut owner);
+    let result = receiver
+        .try_recv()
+        .expect("the fake owner must settle immediately");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert!(result.error_message.is_none());
+    assert!(format!("{owner:#?}").contains("channel: None"));
+    drop(owner);
 }
 
 pub(super) fn create_plugin_thread(
@@ -1094,15 +1469,18 @@ pub fn can_subscribe_to_hd_events() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let host_root = plugin_host_folder.clone();
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder), None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
+    let mut plugin_configuration = BTreeMap::new();
+    plugin_configuration.insert("watch_filesystem".to_owned(), "true".to_owned());
     let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
-        configuration: Default::default(),
+        configuration: PluginUserConfiguration::new(plugin_configuration),
         ..Default::default()
     });
     let tab_index = 1;
@@ -1112,15 +1490,21 @@ pub fn can_subscribe_to_hd_events() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_until!(
         received_screen_instructions,
-        ScreenInstruction::PluginBytes,
         screen_receiver,
-        2,
-        &PermissionType::ChangeApplicationState,
+        &PermissionType::FullHdAccess,
         cache_path,
         plugin_thread_sender,
-        client_id
+        client_id,
+        |event: &ScreenInstruction| match event {
+            ScreenInstruction::PluginBytes(plugin_render_assets) => {
+                plugin_render_assets.iter().any(|plugin_render_asset| {
+                    String::from_utf8_lossy(&plugin_render_asset.bytes).contains("/host/test1")
+                })
+            },
+            _ => false,
+        }
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1144,9 +1528,17 @@ pub fn can_subscribe_to_hd_events() {
     ));
     // extra long time because we only start the fs watcher on plugin load
     std::thread::sleep(std::time::Duration::from_millis(5000));
+    // The fixture's HD request is permission-gated. Exercise the watcher path
+    // directly here; the permission gate has its own tests.
+    let _ = plugin_thread_sender.send(PluginInstruction::WatchFilesystem {
+        plugin_id: 0,
+        host_root,
+    });
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     std::fs::OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(false)
         .open(PathBuf::from(temp_folder.path()).join("test1"))
         .unwrap();
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
@@ -1166,7 +1558,11 @@ pub fn can_subscribe_to_hd_events() {
         }
         None
     });
-    assert!(plugin_bytes_event.is_some());
+    assert!(
+        plugin_bytes_event.is_some(),
+        "{:#?}",
+        received_screen_instructions_guard
+    );
 }
 
 #[test]
@@ -6265,10 +6661,13 @@ pub fn granted_permission_request_result() {
         .spawn({
             let cache_path = cache_path.clone();
             let plugin_thread_sender = plugin_thread_sender.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             move || loop {
-                let (event, _err_ctx) = screen_receiver
-                    .recv()
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let (mut event, _err_ctx) = screen_receiver
+                    .recv_timeout(remaining)
                     .expect("failed to receive event on channel");
+                event.settle_completion();
                 match event {
                     ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
                         let _ =
@@ -6363,10 +6762,13 @@ pub fn denied_permission_request_result() {
         .spawn({
             let cache_path = cache_path.clone();
             let plugin_thread_sender = plugin_thread_sender.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             move || loop {
-                let (event, _err_ctx) = screen_receiver
-                    .recv()
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let (mut event, _err_ctx) = screen_receiver
+                    .recv_timeout(remaining)
                     .expect("failed to receive event on channel");
+                event.settle_completion();
                 match event {
                     ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
                         let _ =
@@ -6590,7 +6992,10 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    assert_snapshot!(normalize_reservation_fields(format!(
+        "{:#?}",
+        new_tab_event
+    )));
 }
 
 #[test]
@@ -6674,7 +7079,10 @@ pub fn web_request_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    assert_snapshot!(normalize_reservation_fields(format!(
+        "{:#?}",
+        new_tab_event
+    )));
 }
 
 #[test]
@@ -12984,10 +13392,13 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
             let log = received_screen_instructions.clone();
             let cache_path = cache_path.clone();
             let plugin_thread_sender = plugin_thread_sender.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             move || loop {
-                let (event, _err_ctx) = screen_receiver
-                    .recv()
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let (mut event, _err_ctx) = screen_receiver
+                    .recv_timeout(remaining)
                     .expect("failed to receive event on channel");
+                event.settle_completion();
                 match event {
                     ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                         let _ =
@@ -13157,10 +13568,13 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
             let log = received_screen_instructions.clone();
             let cache_path = cache_path.clone();
             let plugin_thread_sender = plugin_thread_sender.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             move || loop {
-                let (event, _err_ctx) = screen_receiver
-                    .recv()
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                let (mut event, _err_ctx) = screen_receiver
+                    .recv_timeout(remaining)
                     .expect("failed to receive event on channel");
+                event.settle_completion();
                 match event {
                     ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                         let _ =
@@ -13391,13 +13805,16 @@ fn run_nested_keybinds_scenario(
             let request_to_result = request_to_result.clone();
             let cache_path = cache_path.clone();
             let plugin_thread_sender = plugin_thread_sender.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             move || {
                 let mut unanswered_channels = vec![];
                 let mut request_received_at = None;
                 loop {
-                    let (event, _err_ctx) = screen_receiver
-                        .recv()
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    let (mut event, _err_ctx) = screen_receiver
+                        .recv_timeout(remaining)
                         .expect("failed to receive event on channel");
+                    event.settle_completion();
                     match event {
                         ScreenInstruction::RequestPluginPermissions(
                             plugin_id,
