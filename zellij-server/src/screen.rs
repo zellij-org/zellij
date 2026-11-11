@@ -1731,8 +1731,15 @@ impl Screen {
 
             for (tab_index, tab) in &mut self.tabs {
                 if tab.has_selectable_tiled_panes() {
+                    // A tab that cannot render is a pane whose writer has already gone (a
+                    // killed plugin, a closed pane) — routine in a live session. Log it and
+                    // render the other tabs; an `Err` out of `screen_thread_main` reaches that
+                    // thread's `.fatal()` spawn site (lib.rs) and panics every pane in the
+                    // session.
                     // Pass None for normal client rendering
-                    tab.render(&mut output, None).context(err_context)?;
+                    tab.render(&mut output, None)
+                        .context(err_context)
+                        .non_fatal();
                 } else if !tab.is_pending() {
                     tabs_to_close.push(*tab_index);
                 }
@@ -1746,12 +1753,18 @@ impl Screen {
 
             non_watcher_output_was_dirty = output.is_dirty();
             if non_watcher_output_was_dirty {
-                let serialized_output = output.serialize().context(err_context)?;
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    .context(err_context);
+                // Same reason: a frame that cannot be serialized or sent costs this frame,
+                // not the session.
+                match output.serialize().context(err_context) {
+                    Ok(serialized_output) => {
+                        self.bus
+                            .senders
+                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                            .context(err_context)
+                            .non_fatal();
+                    },
+                    Err(err) => Err::<(), _>(err).non_fatal(),
+                }
             }
         } else {
             // No regular clients, output is not dirty
@@ -2288,10 +2301,14 @@ impl Screen {
             plugin_tab_updates.sort_by(|a, b| a.position.cmp(&b.position));
             plugin_updates.push((None, Some(*client_id), Event::TabUpdate(plugin_tab_updates)));
         }
+        // A plugin thread that has exited (a killed plugin, a session with no plugins) is the
+        // only way this send fails, and that is routine: log it and still report the tab state
+        // to the screen. `?` here ends the screen thread at its `.fatal()` spawn site.
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
-            .context("failed to update tabs")?;
+            .context("failed to update tabs")
+            .non_fatal();
         Ok(tab_infos_for_screen_state.values().cloned().collect())
     }
     fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
@@ -2306,7 +2323,8 @@ impl Screen {
                 None,
                 Event::PaneUpdate(pane_manifest.clone()),
             )]))
-            .context("failed to update tabs")?;
+            .context("failed to update tabs")
+            .non_fatal();
 
         Ok(pane_manifest)
     }
@@ -2424,18 +2442,21 @@ impl Screen {
                 self.session_name.to_owned(),
                 session_info,
             ))
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
 
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
 
         // TODO: consider moving this elsewhere
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::QueryZellijWebServerStatus)
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         Ok(())
     }
     fn dump_layout_to_hd(&mut self) -> Result<()> {
@@ -2445,7 +2466,8 @@ impl Screen {
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
 
         Ok(())
     }
