@@ -959,6 +959,26 @@ fn an_empty_clipboard_sends_no_paste_at_all() {
     assert_eq!(harness.sent().len(), 1);
 }
 
+#[test]
+fn a_dropped_file_is_pasted_as_its_path() {
+    let mut harness = Harness::new(1, true, "");
+    let path = std::path::PathBuf::from(if cfg!(windows) {
+        r"C:\shots\shot.png"
+    } else {
+        "/shots/shot.png"
+    });
+    harness
+        .app
+        .on_window_event(WindowEvent::DroppedFile(path.clone()));
+    assert_eq!(
+        harness.actions(),
+        vec![Action::Paste {
+            chars: format!("{} ", path.display()),
+            pane_id: None
+        }]
+    );
+}
+
 static RINGS_COUNTED: AtomicUsize = AtomicUsize::new(0);
 
 fn count_a_ring() {

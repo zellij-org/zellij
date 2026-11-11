@@ -458,6 +458,7 @@ impl App {
             },
             WindowEvent::CursorLeft { .. } => self.on_cursor_left(),
             WindowEvent::Ime(event) => self.on_ime(event),
+            WindowEvent::DroppedFile(path) => self.dropped_file(&path),
             WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
                 self.set_focused(false);
