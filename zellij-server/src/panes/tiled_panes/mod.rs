@@ -56,17 +56,18 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
     // from its content to leave room for the boundary between it and the next pane (if it doesn't
     // draw its own frame)
-    let columns_offset = if position_and_size.x + position_and_size.cols.as_usize() < viewport.cols
-    {
-        1
-    } else {
-        0
-    };
-    let rows_offset = if position_and_size.y + position_and_size.rows.as_usize() < viewport.rows {
-        1
-    } else {
-        0
-    };
+    let columns_offset =
+        if position_and_size.x + position_and_size.cols.as_usize() < viewport.x + viewport.cols {
+            1
+        } else {
+            0
+        };
+    let rows_offset =
+        if position_and_size.y + position_and_size.rows.as_usize() < viewport.y + viewport.rows {
+            1
+        } else {
+            0
+        };
     (columns_offset, rows_offset)
 }
 
@@ -3578,4 +3579,37 @@ fn fit_stack_members_into(
             (*pane_id, fitted)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod pane_content_offset_tests {
+    use super::pane_content_offset;
+    use zellij_utils::pane_size::{Dimension, PaneGeom, Viewport};
+
+    fn geom(x: usize, y: usize, cols: usize, rows: usize) -> PaneGeom {
+        PaneGeom {
+            x,
+            y,
+            cols: Dimension::fixed(cols),
+            rows: Dimension::fixed(rows),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn panes_reserve_room_for_a_boundary_unless_they_touch_the_edge_of_an_offset_viewport() {
+        // a borderless sidebar on the left and a bar on top shift the viewport to (30, 1)
+        let viewport = Viewport {
+            x: 30,
+            y: 1,
+            cols: 60,
+            rows: 23,
+        };
+        let left_pane = geom(30, 1, 30, 22);
+        let right_pane = geom(60, 1, 30, 22);
+        let bottom_pane = geom(30, 23, 60, 1);
+        assert_eq!(pane_content_offset(&left_pane, &viewport), (1, 1));
+        assert_eq!(pane_content_offset(&right_pane, &viewport), (0, 1));
+        assert_eq!(pane_content_offset(&bottom_pane, &viewport), (0, 0));
+    }
 }

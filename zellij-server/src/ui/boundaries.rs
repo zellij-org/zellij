@@ -587,7 +587,9 @@ impl Boundaries {
                     BoundarySymbol::new(boundary_type::TOP_LEFT)
                         .color(color)
                         .line_style(border_style.top)
-                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
+                } else if col == last_col_coordinates - 1
+                    && col != self.viewport.x + self.viewport.cols - 1
+                {
                     BoundarySymbol::new(boundary_type::TOP_RIGHT)
                         .color(color)
                         .line_style(border_style.top)
@@ -661,7 +663,9 @@ impl Boundaries {
                     BoundarySymbol::new(boundary_type::BOTTOM_LEFT)
                         .color(color)
                         .line_style(border_style.bottom)
-                } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
+                } else if col == last_col_coordinates - 1
+                    && col != self.viewport.x + self.viewport.cols - 1
+                {
                     BoundarySymbol::new(boundary_type::BOTTOM_RIGHT)
                         .color(color)
                         .line_style(border_style.bottom)
@@ -712,7 +716,7 @@ impl Boundaries {
         Ok(character_chunks)
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
-        rect.x() + rect.cols() < self.viewport.cols
+        rect.x() + rect.cols() < self.viewport.x + self.viewport.cols
     }
     fn rect_bottom_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.y() + rect.rows() < self.viewport.y + self.viewport.rows
@@ -747,8 +751,8 @@ impl Boundaries {
         rect.y() + rect.rows()
     }
     fn rect_bottom_boundary_col_start(&self, rect: &dyn Pane) -> usize {
-        if rect.x() == 0 {
-            0
+        if rect.x() == self.viewport.x {
+            rect.x()
         } else {
             rect.x() - 1
         }
@@ -815,5 +819,86 @@ mod tests {
         )
         .unwrap();
         assert_eq!(combined.glyph(LineStyle::Single), "┳");
+    }
+
+    fn terminal_pane(x: usize, y: usize, cols: usize, rows: usize) -> crate::panes::TerminalPane {
+        use crate::panes::kitty_graphics::KittyImageStore;
+        use crate::panes::sixel::SixelImageStore;
+        use crate::panes::LinkHandler;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use zellij_utils::data::{Palette, Style};
+        use zellij_utils::pane_size::{Dimension, PaneGeom};
+        let geom = PaneGeom {
+            x,
+            y,
+            cols: Dimension::fixed(cols),
+            rows: Dimension::fixed(rows),
+            ..Default::default()
+        };
+        crate::panes::TerminalPane::new(
+            1,
+            geom,
+            Style::default(),
+            0,
+            String::new(),
+            Rc::new(RefCell::new(LinkHandler::new())),
+            Rc::new(RefCell::new(None)),
+            Rc::new(RefCell::new(SixelImageStore::default())),
+            Rc::new(RefCell::new(KittyImageStore::default())),
+            Rc::new(RefCell::new(Palette::default())),
+            Rc::new(RefCell::new(HashMap::new())),
+            None,
+            None,
+            false,
+            true,
+            true,
+            true,
+            false,
+            None,
+        )
+    }
+
+    #[test]
+    fn a_boundary_between_panes_spanning_an_offset_viewport_has_no_corners_at_its_ends() {
+        // a borderless plugin pane on the left edge (eg. a sidebar) shifts the viewport to
+        // x = 30, two panes stacked on top of each other fill the rest of the 90 columns
+        let viewport = Viewport {
+            x: 30,
+            y: 0,
+            cols: 60,
+            rows: 24,
+        };
+        let mut top_pane = terminal_pane(30, 0, 60, 11);
+        top_pane.set_content_offset(Offset::shift(1, 0));
+        let bottom_pane = terminal_pane(30, 11, 60, 13);
+        let mut boundaries = Boundaries::new(viewport, LineStyle::Single);
+        for pane in [&top_pane as &dyn Pane, &bottom_pane as &dyn Pane] {
+            boundaries.add_rect(
+                pane,
+                None,
+                BorderStyle::default(),
+                false,
+                false,
+                false,
+                false,
+            );
+        }
+        let boundary_row: HashMap<usize, String> = boundaries
+            .render(None)
+            .unwrap()
+            .into_iter()
+            .filter(|chunk| chunk.y == 10)
+            .map(|chunk| (chunk.x, chunk.terminal_characters[0].character.to_string()))
+            .collect();
+        assert_eq!(boundary_row.get(&29), None, "drew outside the viewport");
+        for col in 30..90 {
+            assert_eq!(
+                boundary_row.get(&col).map(String::as_str),
+                Some(boundary_type::HORIZONTAL),
+                "column {}",
+                col
+            );
+        }
     }
 }
