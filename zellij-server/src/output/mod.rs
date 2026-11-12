@@ -3664,7 +3664,19 @@ impl OutputBuffer {
         row: &Row,
         viewport_width: usize,
     ) -> Vec<TerminalCharacter> {
-        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().cloned().collect();
+        // kitty image placeholder cells reach the host as blanks: the image is drawn over
+        // them, and forwarded as-is the host would resolve them against its own image ids
+        let mut terminal_characters: Vec<TerminalCharacter> = row
+            .columns
+            .iter()
+            .map(|character| {
+                if character.character == crate::panes::kitty_graphics::PLACEHOLDER_CHAR {
+                    TerminalCharacter::new_styled(' ', character.styles.clone())
+                } else {
+                    character.clone()
+                }
+            })
+            .collect();
         // pad row
         let row_width = row.width();
         if row_width < viewport_width {
