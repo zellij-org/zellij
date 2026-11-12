@@ -48,14 +48,20 @@ impl ActiveComponent {
         columns: usize,
         extend_hit_area_to_end_of_line: bool,
     ) -> usize {
+        // Links are also opened by the terminal showing Zellij, on the user's
+        // own machine. Our own click handler can't open them on every system,
+        // nor where the user is when the session is remote.
+        let link = self.link_destination();
         let mut component_width = 0;
         match self.text_hover.as_mut() {
             Some(text) if self.is_active => {
-                let text_len = text.render(x, y, rows, columns);
+                let text_len = text.render(x, y, rows, columns, link.as_deref());
                 component_width += text_len;
             },
             _ => {
-                let text_len = self.text_no_hover.render(x, y, rows, columns);
+                let text_len = self
+                    .text_no_hover
+                    .render(x, y, rows, columns, link.as_deref());
                 component_width += text_len;
             },
         }
@@ -66,6 +72,16 @@ impl ActiveComponent {
         };
         self.last_rendered_coordinates = Some(ComponentCoordinates::new(x, y, 1, hit_area_width));
         component_width
+    }
+    fn link_destination(&self) -> Option<String> {
+        match &self.left_click_action {
+            Some(ClickAction::OpenLink(destination, _executable))
+                if !destination.chars().any(char::is_control) =>
+            {
+                Some(destination.clone())
+            },
+            _ => None,
+        }
     }
     pub fn left_click_action(&mut self) -> Option<Page> {
         match self.left_click_action.take() {

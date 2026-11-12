@@ -879,13 +879,35 @@ impl TextOrCustomRender {
             TextOrCustomRender::CustomRender(_render_fn, len_fn) => len_fn(),
         }
     }
-    pub fn render(&mut self, x: usize, y: usize, rows: usize, columns: usize) -> usize {
+    pub fn render(
+        &mut self,
+        x: usize,
+        y: usize,
+        rows: usize,
+        columns: usize,
+        link: Option<&str>,
+    ) -> usize {
         match self {
             TextOrCustomRender::Text(text) => {
-                print_text_with_coordinates(text.clone(), x, y, Some(columns), Some(rows));
+                let mut text_to_print = text.clone();
+                if let Some(url) = link {
+                    text_to_print = text_to_print.link_all(url);
+                }
+                print_text_with_coordinates(text_to_print, x, y, Some(columns), Some(rows));
                 text.len()
             },
-            TextOrCustomRender::CustomRender(render_fn, _len_fn) => render_fn(x, y),
+            TextOrCustomRender::CustomRender(render_fn, _len_fn) => {
+                // This is drawn with raw escape sequences, so it gets a raw
+                // OSC 8 hyperlink around it.
+                if let Some(url) = link {
+                    print!("\u{1b}]8;;{}\u{1b}\\", url);
+                }
+                let text_len = render_fn(x, y);
+                if link.is_some() {
+                    print!("\u{1b}]8;;\u{1b}\\");
+                }
+                text_len
+            },
         }
     }
 }
