@@ -305,3 +305,68 @@ fn menu_component_cuts_and_highlights_whole_clusters() {
         Some(AnsiCode::from(style.colors.text_unselected.base))
     );
 }
+
+const LINK_URL: &str = "https://zellij.dev/documentation/inbox-integrations.html";
+
+fn link_at_cell(grid: &Grid, row: usize, index: usize) -> Option<String> {
+    let link_handler = grid.link_handler.borrow();
+    grid.viewport
+        .get(row)
+        .and_then(|row| row.columns.get(index))
+        .and_then(|cell| link_handler.uri(cell.styles.link_anchor))
+        .map(str::to_owned)
+}
+
+#[test]
+fn a_text_component_with_a_link_links_exactly_those_cells() {
+    let text = "see our integrations.";
+    let hex: String = LINK_URL
+        .bytes()
+        .map(|byte| format!("{:02x}", byte))
+        .collect();
+    let positions: Vec<String> = (4..20).map(|index| index.to_string()).collect();
+    let params = format!(
+        "{}l{},{}${}",
+        "$".repeat(9),
+        hex,
+        positions.join(","),
+        encoded(text)
+    );
+    let grid = render("text", &params);
+    assert_eq!(row_text(&row_cells(&grid, 0)).trim_end(), text);
+    assert_eq!(link_at_cell(&grid, 0, 3), None);
+    for index in 4..20 {
+        assert_eq!(
+            link_at_cell(&grid, 0, index).as_deref(),
+            Some(LINK_URL),
+            "cell {}",
+            index
+        );
+    }
+    assert_eq!(link_at_cell(&grid, 0, 20), None);
+}
+
+// A plugin can also wrap a component in its own OSC 8 hyperlink, as the
+// about plugin does for parts it draws itself.
+#[test]
+fn a_text_component_inside_an_osc8_hyperlink_carries_the_link() {
+    let label = "our integrations";
+    for params in [encoded(label), format!("3${}", encoded(label))] {
+        let mut vte_parser = vt_parser::Parser::new();
+        let mut grid = grapheme_grid();
+        let st = "\u{1b}\\";
+        let bytes = format!("\u{1b}]8;;{LINK_URL}{st}\u{1b}Pztext;{params}{st}\u{1b}]8;;{st}x");
+        vte_parser.feed(&mut grid, bytes.as_bytes());
+        let text: String = row_text(&row_cells(&grid, 0));
+        assert!(text.starts_with("our integrationsx"), "{:?}", text);
+        for index in 0..label.len() {
+            assert_eq!(
+                link_at_cell(&grid, 0, index).as_deref(),
+                Some(LINK_URL),
+                "cell {}",
+                index
+            );
+        }
+        assert_eq!(link_at_cell(&grid, 0, label.len()), None);
+    }
+}
