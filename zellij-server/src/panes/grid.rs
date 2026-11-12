@@ -2400,11 +2400,10 @@ impl Grid {
         }
         // a missing c= or r= is derived from the image's aspect ratio, both
         // missing means the image's own size, as in KittyGrid::place
-        let ceil_div = |a: usize, b: usize| (a + b - 1) / b;
         let (columns, rows) = match (placement.columns as usize, placement.rows as usize) {
             (0, 0) => (
-                ceil_div(image_width, cell.width),
-                ceil_div(image_height, cell.height),
+                image_width.div_ceil(cell.width),
+                image_height.div_ceil(cell.height),
             ),
             (columns, 0) => {
                 let height_px =
