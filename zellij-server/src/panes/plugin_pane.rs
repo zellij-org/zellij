@@ -250,15 +250,14 @@ impl Pane for PluginPane {
         if let Some(coordinates) =
             client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
         {
-            coordinates
-                .map(|(x, y)| (x + left, y + top))
-                .and_then(|(x, y)| {
-                    if x >= own_content_columns || y >= own_content_rows {
-                        None
-                    } else {
-                        Some((x, y, true)) // plugins always show cursor when position is set
-                    }
-                })
+            coordinates.and_then(|(x, y)| {
+                // Bounds are in content coordinates; translate only after checking.
+                if x >= own_content_columns || y >= own_content_rows {
+                    None
+                } else {
+                    Some((x + left, y + top, true)) // plugins always show cursor when position is set
+                }
+            })
         } else {
             None
         }
@@ -1164,5 +1163,30 @@ mod loading_indication_tests {
         pane.start_loading_indication(LoadingIndication::new("plugin".to_owned()));
         assert!(!shown_to(&pane, 1).contains("first"));
         assert!(!shown_to(&pane, 2).contains("second"));
+    }
+
+    #[test]
+    fn plugin_cursor_is_clipped_in_content_coordinates() {
+        let mut pane = plugin_pane(vec![1]);
+        for content_offset in [Offset::frame(1), Offset::default()] {
+            pane.set_content_offset(content_offset);
+            let cols = pane.get_content_columns();
+            let rows = pane.get_content_rows();
+            assert!(cols > 0 && rows > 0);
+            let content_offset = pane.get_content_offset();
+            pane.show_cursor(1, Some((cols - 1, rows - 1)));
+            assert_eq!(
+                pane.cursor_coordinates(Some(1)),
+                Some((
+                    cols - 1 + content_offset.left,
+                    rows - 1 + content_offset.top,
+                    true
+                )),
+            );
+            pane.show_cursor(1, Some((cols, 0)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+            pane.show_cursor(1, Some((0, rows)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+        }
     }
 }
