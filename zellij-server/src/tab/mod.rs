@@ -1245,15 +1245,15 @@ impl Tab {
         web_server_ip: IpAddr,
         web_server_port: u16,
     ) -> Self {
-        let default_name = if name.is_empty() {
-            format!("Tab #{}", id + 1)
+        let default_name = format!("Tab #{}", id + 1);
+        // A serialized layout stores the tab's displayed name, so a tab that was
+        // never renamed comes back as its default name. Recognize that case,
+        // otherwise the restored tab reports itself as renamed and stops
+        // following its single pane's title.
+        let (name, default_name) = if name.is_empty() || name == default_name {
+            (default_name.clone(), default_name)
         } else {
-            String::new()
-        };
-        let name = if name.is_empty() {
-            default_name.clone()
-        } else {
-            name
+            (name, String::new())
         };
 
         let mut connected_clients = HashSet::new();
@@ -2912,7 +2912,7 @@ impl Tab {
         self.pane_frame_style.draws_titles()
             && self.get_selectable_tiled_content_panes().count() == 1
     }
-    fn tab_name_is_default(&self) -> bool {
+    pub fn tab_name_is_default(&self) -> bool {
         !self.name.is_empty() && self.name == self.default_name
     }
     pub fn single_pane_tab_name(&self) -> Option<String> {
