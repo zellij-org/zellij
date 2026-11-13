@@ -266,3 +266,235 @@ pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
     }
     Ok(())
 }
+
+/// Maximum chunk size for stdout writes on Windows (64 KB).
+///
+/// Windows Console and Named Pipes can fail with ERROR_NO_SYSTEM_RESOURCES (OS error 1450)
+/// if a single I/O operation attempts to write more than available non-paged pool memory,
+/// which typically manifests on buffers larger than 64 KB.
+pub const STDOUT_CHUNK_SIZE: usize = 65536;
+
+/// Smallest chunk the 1450 back-off will shrink to.
+const MIN_STDOUT_CHUNK_SIZE: usize = 4096;
+
+/// Writes all of `bytes` in chunks of at most `STDOUT_CHUNK_SIZE`.
+///
+/// Progress is tracked through `write()` so that a partial write followed by
+/// ERROR_NO_SYSTEM_RESOURCES (1450) never re-sends bytes that already reached
+/// the writer; after a 1450 the chunk size is halved for the rest of the call.
+pub(crate) fn write_all_chunked(w: &mut dyn io::Write, mut bytes: &[u8]) -> io::Result<()> {
+    let mut chunk_size = STDOUT_CHUNK_SIZE;
+    while !bytes.is_empty() {
+        let to_write = std::cmp::min(bytes.len(), chunk_size);
+        match w.write(&bytes[..to_write]) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(written) => {
+                bytes = &bytes[written..];
+                let _ = w.flush();
+            },
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {},
+            Err(e) if e.raw_os_error() == Some(1450) && to_write > MIN_STDOUT_CHUNK_SIZE => {
+                chunk_size = to_write / 2;
+            },
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+/// A wrapper around a writer that chunks all writes to at most 64 KB on Windows,
+/// avoiding ERROR_NO_SYSTEM_RESOURCES (1450).
+pub struct ChunkedStdoutWriter<W: io::Write> {
+    inner: W,
+}
+
+impl<W: io::Write> ChunkedStdoutWriter<W> {
+    pub fn new(inner: W) -> Self {
+        Self { inner }
+    }
+}
+
+impl<W: io::Write> io::Write for ChunkedStdoutWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let to_write = std::cmp::min(buf.len(), STDOUT_CHUNK_SIZE);
+        match self.inner.write(&buf[..to_write]) {
+            Ok(n) => Ok(n),
+            Err(e) if e.raw_os_error() == Some(1450) && to_write > 4096 => {
+                self.inner.write(&buf[..to_write / 2])
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        write_all_chunked(&mut self.inner, buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self.inner.flush() {
+            Ok(()) => Ok(()),
+            Err(e) if e.raw_os_error() == Some(1450) => {
+                std::thread::yield_now();
+                self.inner.flush()
+            },
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct RecordingWriter {
+        writes: Vec<usize>,
+        output: Vec<u8>,
+    }
+
+    impl RecordingWriter {
+        fn new() -> Self {
+            Self {
+                writes: Vec::new(),
+                output: Vec::new(),
+            }
+        }
+    }
+
+    impl io::Write for RecordingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.writes.push(buf.len());
+            self.output.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_chunked_stdout_writer_splits_large_writes() {
+        let recorder = RecordingWriter::new();
+        let mut chunked = ChunkedStdoutWriter::new(recorder);
+
+        let data = vec![b'a'; 150_000]; // 150 KB > 64 KB
+        chunked.write_all(&data).unwrap();
+
+        assert_eq!(chunked.inner.output, data);
+        assert!(chunked.inner.writes.len() >= 3);
+        for &write_len in &chunked.inner.writes {
+            assert!(write_len <= STDOUT_CHUNK_SIZE);
+        }
+    }
+
+    /// Replays a script of outcomes, one per `write()` call, then accepts everything.
+    enum Step {
+        Partial(usize),
+        Os1450,
+        Interrupted,
+        Zero,
+    }
+
+    struct ScriptedWriter {
+        script: std::collections::VecDeque<Step>,
+        output: Vec<u8>,
+        sizes: Vec<usize>,
+    }
+
+    impl ScriptedWriter {
+        fn new(script: Vec<Step>) -> Self {
+            Self {
+                script: script.into(),
+                output: Vec::new(),
+                sizes: Vec::new(),
+            }
+        }
+    }
+
+    impl io::Write for ScriptedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.sizes.push(buf.len());
+            let take = match self.script.pop_front() {
+                Some(Step::Partial(n)) => n.min(buf.len()),
+                Some(Step::Os1450) => return Err(io::Error::from_raw_os_error(1450)),
+                Some(Step::Interrupted) => return Err(io::ErrorKind::Interrupted.into()),
+                Some(Step::Zero) => return Ok(0),
+                None => buf.len(),
+            };
+            self.output.extend_from_slice(&buf[..take]);
+            Ok(take)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn pattern(len: usize) -> Vec<u8> {
+        (0..len).map(|i| (i % 251) as u8).collect()
+    }
+
+    #[test]
+    fn partial_write_then_1450_does_not_repeat_bytes() {
+        let data = pattern(150_000);
+        let mut writer = ScriptedWriter::new(vec![Step::Partial(10_000), Step::Os1450]);
+        write_all_chunked(&mut writer, &data).unwrap();
+        assert_eq!(writer.output, data);
+        // after the 1450 on a request of STDOUT_CHUNK_SIZE bytes the chunk size halves
+        assert!(writer.sizes[2..]
+            .iter()
+            .all(|&s| s <= STDOUT_CHUNK_SIZE / 2));
+    }
+
+    #[test]
+    fn repeated_1450_backs_off_to_the_floor_then_fails() {
+        let data = pattern(STDOUT_CHUNK_SIZE);
+        let script = (0..16).map(|_| Step::Os1450).collect();
+        let mut writer = ScriptedWriter::new(script);
+        let err = write_all_chunked(&mut writer, &data).unwrap_err();
+        assert_eq!(err.raw_os_error(), Some(1450));
+        assert_eq!(writer.sizes.last().copied(), Some(MIN_STDOUT_CHUNK_SIZE));
+        assert!(writer.output.is_empty());
+    }
+
+    #[test]
+    fn interrupted_is_retried_and_zero_write_is_an_error() {
+        let data = pattern(5_000);
+        let mut writer = ScriptedWriter::new(vec![Step::Interrupted, Step::Partial(1)]);
+        write_all_chunked(&mut writer, &data).unwrap();
+        assert_eq!(writer.output, data);
+
+        let mut zero = ScriptedWriter::new(vec![Step::Zero]);
+        let err = write_all_chunked(&mut zero, &data).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WriteZero);
+    }
+
+    #[test]
+    fn chunk_boundaries_are_preserved() {
+        for len in [
+            0,
+            1,
+            4096,
+            4097,
+            STDOUT_CHUNK_SIZE - 1,
+            STDOUT_CHUNK_SIZE,
+            STDOUT_CHUNK_SIZE + 1,
+        ] {
+            let data = pattern(len);
+            let mut writer = ScriptedWriter::new(vec![]);
+            write_all_chunked(&mut writer, &data).unwrap();
+            assert_eq!(writer.output, data, "len {len}");
+        }
+    }
+
+    #[test]
+    fn wrapper_write_all_shares_the_helper_behaviour() {
+        let data = pattern(70_000);
+        let mut wrapped = ChunkedStdoutWriter::new(ScriptedWriter::new(vec![
+            Step::Partial(3_000),
+            Step::Os1450,
+        ]));
+        io::Write::write_all(&mut wrapped, &data).unwrap();
+        assert_eq!(wrapped.inner.output, data);
+    }
+}

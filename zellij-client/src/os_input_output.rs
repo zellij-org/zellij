@@ -10,7 +10,7 @@ use crate::os_input_output_unix::{
 #[cfg(windows)]
 use crate::os_input_output_windows::{
     connect_ipc, disable_mouse_support, enable_mouse_support, restore_console_mode,
-    AsyncSignalListener, BlockingSignalIterator,
+    AsyncSignalListener, BlockingSignalIterator, ChunkedStdoutWriter,
 };
 
 use std::io::prelude::*;
@@ -279,7 +279,14 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         let stdout = ::std::io::stdout();
-        Box::new(stdout)
+        #[cfg(windows)]
+        {
+            Box::new(ChunkedStdoutWriter::new(stdout))
+        }
+        #[cfg(not(windows))]
+        {
+            Box::new(stdout)
+        }
     }
 
     fn get_stdin_reader(&self) -> Box<dyn io::BufRead> {
