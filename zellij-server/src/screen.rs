@@ -10292,7 +10292,14 @@ impl Screen {
                 })
                 .collect();
             session_layout_metadata.add_tab(
-                tab.name.clone(),
+                // A default tab name is derived on restore, so storing it would
+                // make the restored tab look renamed and stop it from showing
+                // its single pane's title.
+                if tab.tab_name_is_default() {
+                    String::new()
+                } else {
+                    tab.name.clone()
+                },
                 tab_is_focused,
                 hide_floating_panes,
                 tiled_panes,

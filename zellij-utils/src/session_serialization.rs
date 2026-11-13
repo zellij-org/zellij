@@ -110,9 +110,13 @@ fn serialize_tab(
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
             let tiled_panes = tiled_panes_to_serialize(tiled_panes_layout);
-            serialized_tab
-                .entries_mut()
-                .push(KdlEntry::new_prop("name", tab_name));
+            // An unnamed tab is restored with its default name, so there is
+            // nothing to persist.
+            if !tab_name.is_empty() {
+                serialized_tab
+                    .entries_mut()
+                    .push(KdlEntry::new_prop("name", tab_name));
+            }
             if is_focused {
                 serialized_tab
                     .entries_mut()
@@ -1321,6 +1325,33 @@ mod tests {
             r#"{ "x": 0, "y": 41, "rows": { "constraint": "Fixed(5)", "inner": 5 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,
         ],
     ];
+
+    #[test]
+    fn a_tab_without_a_name_serializes_without_one() {
+        let geoms = PANEGEOMS_JSON[0]
+            .iter()
+            .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
+            .collect();
+        let tab_layout_manifest = TabLayoutManifest {
+            tiled_panes: geoms,
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![(String::new(), tab_layout_manifest)],
+            ..Default::default()
+        };
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
+        assert!(
+            !kdl.0.contains("name="),
+            "an unnamed tab must not persist a name: {}",
+            kdl.0
+        );
+        assert!(kdl.0.contains("tab {"), "the tab is still serialized");
+    }
 
     #[test]
     fn geoms() {

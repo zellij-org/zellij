@@ -262,9 +262,12 @@ fn create_new_tab_with_plugin_receiver(
 }
 
 fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
+    create_new_tab_with_name_and_layout(size, layout, String::new())
+}
+
+fn create_new_tab_with_name_and_layout(size: Size, layout: TiledPaneLayout, name: String) -> Tab {
     let index = 0;
     let position = 0;
-    let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
@@ -1038,6 +1041,25 @@ pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() 
         first_pane_geom.y, new_pane_geom.y,
         "both panes share the same row"
     );
+}
+
+#[test]
+pub fn a_tab_created_with_its_default_name_keeps_following_its_single_pane() {
+    let size = Size { cols: 50, rows: 20 };
+    let tab =
+        create_new_tab_with_name_and_layout(size, TiledPaneLayout::default(), "Tab #1".to_owned());
+    assert!(
+        tab.tab_name_is_default(),
+        "a restored default name must not count as a rename"
+    );
+}
+
+#[test]
+pub fn a_tab_created_with_a_custom_name_is_not_default() {
+    let size = Size { cols: 50, rows: 20 };
+    let tab =
+        create_new_tab_with_name_and_layout(size, TiledPaneLayout::default(), "my tab".to_owned());
+    assert!(!tab.tab_name_is_default());
 }
 
 #[test]
