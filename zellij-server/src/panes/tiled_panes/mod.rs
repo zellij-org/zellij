@@ -53,16 +53,24 @@ use std::{
 
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
     // (columns_offset, rows_offset)
-    // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
-    // from its content to leave room for the boundary between it and the next pane (if it doesn't
-    // draw its own frame)
-    let columns_offset = if position_and_size.x + position_and_size.cols.as_usize() < viewport.cols
-    {
+    // Reserve one content cell for the boundary with the next pane when this pane is not on the
+    // viewport's right/bottom edge. Compare against the viewport origin+size (not only cols/rows),
+    // and do not reserve when the pane ends at or before the viewport — those boundary cells are
+    // outside what Boundaries draws, so reserving them left a permanently stale column/row.
+    let pane_right = position_and_size.x + position_and_size.cols.as_usize();
+    let pane_bottom = position_and_size.y + position_and_size.rows.as_usize();
+    let viewport_right = viewport.x + viewport.cols;
+    let viewport_bottom = viewport.y + viewport.rows;
+    let columns_offset = if pane_right <= viewport.x {
+        0
+    } else if pane_right < viewport_right {
         1
     } else {
         0
     };
-    let rows_offset = if position_and_size.y + position_and_size.rows.as_usize() < viewport.rows {
+    let rows_offset = if pane_bottom <= viewport.y {
+        0
+    } else if pane_bottom < viewport_bottom {
         1
     } else {
         0
