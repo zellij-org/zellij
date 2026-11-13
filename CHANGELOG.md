@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: resurrected sessions without input being deleted on session switch (https://github.com/zellij-org/zellij/pull/5889)
 * fix: bring a new window of the desktop app to the front on macOS (https://github.com/zellij-org/zellij/pull/5865)
 * feat: plugins can link text, so links in the about plugin open on Windows and over SSH or the web client (https://github.com/zellij-org/zellij/pull/5884)
+* feat: open links with Cmd+click in the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5888)
+* feat: paste the path of a file dropped onto the window (https://github.com/zellij-org/zellij/pull/5870)
 * fix: web client on touch devices with a hardware keyboard losing function keys and shortcuts, and dropping doubled letters from pastes (https://github.com/zellij-org/zellij/pull/5890)
 
 ## [0.46.0] - 2026-11-11
