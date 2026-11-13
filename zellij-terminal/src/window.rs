@@ -85,7 +85,6 @@ pub(crate) enum Wake {
 
 pub(crate) enum WindowWake {
     Frame(Vec<u8>),
-    Reconfigured(Settings),
     SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
     Finished(Ending),
@@ -192,10 +191,6 @@ impl RenderSink for ProxySink {
 
     fn acknowledges_frames(&self) -> bool {
         true
-    }
-
-    fn reconfigured(&mut self, settings: Settings) -> bool {
-        self.send(WindowWake::Reconfigured(settings))
     }
 
     fn settings_pushed(&mut self, settings: Settings) -> bool {
@@ -389,7 +384,6 @@ impl App {
     pub(crate) fn on_wake(&mut self, wake: WindowWake) -> Verdict {
         match wake {
             WindowWake::Frame(frame) => self.on_frame(&frame),
-            WindowWake::Reconfigured(settings) => self.reconfigured(settings),
             WindowWake::SettingsPushed(settings) => self.settings_pushed(settings),
             WindowWake::ThemeMode(mode) => {
                 self.theme_mode = Some(mode);

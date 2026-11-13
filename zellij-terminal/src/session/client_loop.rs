@@ -8,7 +8,7 @@ use zellij_utils::data::HostTerminalThemeMode;
 
 use zellij_utils::data::ConnectToSession;
 
-use crate::config::settings::{self, Settings};
+use crate::config::settings::Settings;
 use crate::emulation::color::Paints;
 use crate::input::clipboard::{self, ClipboardHandle};
 use crate::session::connection::{
@@ -35,7 +35,6 @@ pub struct LoopOptions {
     pub record_path: Option<PathBuf>,
     pub clipboard: Option<ClipboardHandle>,
     pub structured_grace: Duration,
-    pub config_path: Option<PathBuf>,
     pub settings: Settings,
     pub font_families: Option<Vec<String>>,
     pub allow_remote_clipboard_read: bool,
@@ -47,7 +46,6 @@ impl Default for LoopOptions {
             record_path: None,
             clipboard: None,
             structured_grace: STRUCTURED_GRACE,
-            config_path: None,
             settings: Settings::default(),
             font_families: None,
             allow_remote_clipboard_read: false,
@@ -76,11 +74,8 @@ pub trait RenderSink {
     fn frame(&mut self, frame: Vec<u8>) -> bool;
     fn finished(&mut self, ending: Ending) -> bool;
     fn acknowledges_frames(&self) -> bool;
-    fn reconfigured(&mut self, _settings: Settings) -> bool {
+    fn settings_pushed(&mut self, _settings: Settings) -> bool {
         true
-    }
-    fn settings_pushed(&mut self, settings: Settings) -> bool {
-        self.reconfigured(settings)
     }
     fn theme_mode(&mut self, _mode: HostTerminalThemeMode) -> bool {
         true
@@ -301,7 +296,6 @@ impl<'a> Served<'a> {
             ServerToClientMsg::ForwardQueryToHost {
                 token, query_bytes, ..
             } => self.answer_host_query(token, &query_bytes)?,
-            ServerToClientMsg::ConfigFileUpdated => self.reload_config(),
             ServerToClientMsg::TerminalSettingsChanged { settings } => {
                 self.settings_pushed(*settings)
             },
@@ -381,26 +375,6 @@ impl<'a> Served<'a> {
             self.sender,
             ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes },
         )
-    }
-
-    fn reload_config(&mut self) {
-        let Some(config_path) = self.options.config_path.as_deref() else {
-            return;
-        };
-        match settings::load(Some(config_path)) {
-            Ok(reloaded) => {
-                self.settings = reloaded;
-                self.repaint();
-                self.sink.reconfigured(self.settings.clone());
-                self.refresh_paste_shortcut();
-            },
-            Err(e) => report!(
-                "keeping the options in force; \
-                 the changed configuration at {:?} is unusable: {}",
-                config_path,
-                e
-            ),
-        }
     }
 
     fn settings_pushed(&mut self, pushed: Settings) {
@@ -546,7 +520,7 @@ mod tests {
 
     #[derive(Default)]
     struct RecordingSink {
-        reconfigured: Vec<Settings>,
+        pushed: Vec<Settings>,
         modes: Vec<HostTerminalThemeMode>,
         endings: Vec<Ending>,
     }
@@ -562,8 +536,8 @@ mod tests {
         fn acknowledges_frames(&self) -> bool {
             false
         }
-        fn reconfigured(&mut self, settings: Settings) -> bool {
-            self.reconfigured.push(settings);
+        fn settings_pushed(&mut self, settings: Settings) -> bool {
+            self.pushed.push(settings);
             true
         }
         fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
@@ -678,37 +652,22 @@ mod tests {
     }
 
     #[test]
-    fn a_changed_configuration_is_re_read_and_handed_to_the_window() {
-        let directory = TempDir::new().unwrap();
-        let config_path = directory.path().join("config.kdl");
-        std::fs::write(
-            &config_path,
-            "terminal {\n theme {\n background \"#0a0a0a\"\n }\n}\n",
-        )
-        .unwrap();
-
-        let mut options = options();
-        options.config_path = Some(config_path);
-
-        let (sink, replies) = driven(options, |side| {
+    fn a_changed_configuration_file_is_left_to_the_session_so_unsaved_settings_stay() {
+        let mut pushed = Settings::default();
+        pushed.section.font = Some("New Mono".to_owned());
+        let sent = pushed.clone();
+        let (sink, _replies) = driven(options(), move |side| {
+            side.send(ServerToClientMsg::TerminalSettingsChanged {
+                settings: Box::new(sent),
+            });
             side.send(ServerToClientMsg::ConfigFileUpdated);
             side.send(background_query());
         });
 
-        assert_eq!(sink.reconfigured.len(), 1);
         assert_eq!(
-            sink.reconfigured[0]
-                .section
-                .theme
-                .as_ref()
-                .unwrap()
-                .background,
-            Some(zellij_utils::data::PaletteColor::Rgb((10, 10, 10)))
-        );
-        assert_eq!(
-            answered_background(&replies),
-            "\u{1b}]11;rgb:0a0a/0a0a/0a0a\u{1b}\\",
-            "the colours a pane is told must move with the configuration"
+            sink.pushed,
+            vec![pushed],
+            "the window replaced the settings the session pushed with the file on disk"
         );
     }
 
@@ -742,7 +701,7 @@ mod tests {
         });
 
         assert_eq!(
-            sink.reconfigured,
+            sink.pushed,
             vec![pushed],
             "the same settings pushed twice are applied once"
         );
@@ -750,103 +709,6 @@ mod tests {
             answered_background(&replies),
             "\u{1b}]11;rgb:0505/0505/0505\u{1b}\\",
             "a theme picked in the settings must reach the window colours"
-        );
-    }
-
-    #[test]
-    fn a_local_session_reloads_once_per_edit_because_the_window_watches_no_file_of_its_own() {
-        let directory = TempDir::new().unwrap();
-        let config_path = directory.path().join("config.kdl");
-        let write = |background: &str| {
-            std::fs::write(
-                &config_path,
-                format!(
-                    "terminal {{\n theme {{\n background \"{}\"\n }}\n}}\n",
-                    background
-                ),
-            )
-            .unwrap()
-        };
-        write("#0a0a0a");
-
-        let mut options = options();
-        options.config_path = Some(config_path.clone());
-
-        let edited = config_path.clone();
-        let (sink, _replies) = driven(options, move |side| {
-            std::fs::write(
-                &edited,
-                "terminal {\n theme {\n background \"#0b0b0b\"\n }\n}\n",
-            )
-            .unwrap();
-            std::thread::sleep(Duration::from_millis(1500));
-            std::fs::write(
-                &edited,
-                "terminal {\n theme {\n background \"#0c0c0c\"\n }\n}\n",
-            )
-            .unwrap();
-            side.send(ServerToClientMsg::ConfigFileUpdated);
-            side.send(background_query());
-        });
-
-        assert_eq!(
-            sink.reconfigured.len(),
-            1,
-            "a local session's window reloaded more than once for the one signal it was sent; \
-             two edits spanning longer than a watcher's poll interval must reach it only through \
-             the session"
-        );
-        assert_eq!(
-            sink.reconfigured[0]
-                .section
-                .theme
-                .as_ref()
-                .unwrap()
-                .background,
-            Some(zellij_utils::data::PaletteColor::Rgb((12, 12, 12)))
-        );
-    }
-
-    #[test]
-    fn a_changed_configuration_that_does_not_parse_leaves_the_options_in_force() {
-        let directory = TempDir::new().unwrap();
-        let config_path = directory.path().join("config.kdl");
-        std::fs::write(&config_path, "terminal {\n font_size \"enormous\"\n}\n").unwrap();
-
-        let mut options = options();
-        options.config_path = Some(config_path);
-        options.settings = Settings {
-            theme: Some(styling(7)),
-            ..Settings::default()
-        };
-
-        let (sink, replies) = driven(options, |side| {
-            side.send(ServerToClientMsg::ConfigFileUpdated);
-            side.send(background_query());
-        });
-
-        assert!(
-            sink.reconfigured.is_empty(),
-            "the window was told about a configuration that does not parse"
-        );
-        assert_eq!(
-            answered_background(&replies),
-            "\u{1b}]11;rgb:0707/0707/0707\u{1b}\\",
-            "the options in force were disturbed by a configuration that does not parse"
-        );
-    }
-
-    #[test]
-    fn a_client_with_no_configuration_file_ignores_the_reload_signal() {
-        let (sink, replies) = driven(options(), |side| {
-            side.send(ServerToClientMsg::ConfigFileUpdated);
-            side.send(background_query());
-        });
-
-        assert!(sink.reconfigured.is_empty());
-        assert_eq!(
-            answered_background(&replies),
-            "\u{1b}]11;rgb:0000/0000/0000\u{1b}\\"
         );
     }
 

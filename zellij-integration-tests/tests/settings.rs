@@ -386,3 +386,48 @@ fn clicking_a_focused_text_setting_starts_editing_it() {
     });
     zellij.quit();
 }
+
+const A_FONT: &str = "terminal {\n    font \"Old Mono\"\n}";
+
+fn told_font(settings: &[zellij_utils::input::terminal::TerminalSettings], font: &str) -> bool {
+    settings
+        .iter()
+        .any(|settings| settings.section.font.as_deref() == Some(font))
+}
+
+#[test]
+fn windows_are_told_their_settings_when_they_attach() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE).with_config(A_FONT).start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.wait_for_terminal_settings("the first window is told its font", |settings| {
+        settings.section.font.as_deref() == Some("Old Mono")
+    });
+
+    let attached = zellij.attach_client(TERMINAL_SIZE);
+    zellij_integration_tests::wait_for("an attaching window is told its font", || {
+        told_font(&attached.received_terminal_settings(), "Old Mono")
+    });
+    drop(attached);
+    zellij.quit();
+}
+
+#[test]
+fn a_watching_window_is_told_its_settings_and_follows_the_configuration_file() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE).with_config(A_FONT).start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let config_file_path = zellij.config_file_path().unwrap();
+    let watcher = zellij.attach_watcher(TERMINAL_SIZE);
+    zellij_integration_tests::wait_for("a watching window is told its font", || {
+        told_font(&watcher.received_terminal_settings(), "Old Mono")
+    });
+
+    let edited = std::fs::read_to_string(&config_file_path)
+        .unwrap()
+        .replace("\"Old Mono\"", "\"File Mono\"");
+    zellij_integration_tests::wait_for("a watching window follows an edited font", || {
+        std::fs::write(&config_file_path, &edited).unwrap();
+        told_font(&watcher.received_terminal_settings(), "File Mono")
+    });
+    drop(watcher);
+    zellij.quit();
+}
