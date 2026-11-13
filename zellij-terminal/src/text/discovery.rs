@@ -192,6 +192,9 @@ mod fontconfig {
 
     impl Fontconfig {
         pub(super) fn load() -> Option<Mutex<Self>> {
+            if !crate::platform::static_build::LOADS_SYSTEM_LIBRARIES {
+                return None;
+            }
             let Some(library) = library_name() else {
                 report!(
                     "system font discovery has no backend on this platform; \

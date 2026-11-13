@@ -101,6 +101,21 @@ looked up in the configured plugin directory and then in `$PREFIX/share/zellij/p
 via `cargo x proto`. The `web_server_capability` and `vendored_curl` features are optional
 and may be dropped with `--no-default-features`.
 
+### Linux release builds
+
+The Linux releases ship two builds per architecture. The `*-unknown-linux-musl` builds are
+fully static and run anywhere, but cannot open the desktop terminal, because a static binary
+cannot load Wayland, X11, OpenGL or fontconfig. The `*-unknown-linux-gnu` builds can, and still
+start on machines without those libraries. They are built against glibc 2.17 with
+[`cargo-zigbuild`](https://github.com/rust-cross/cargo-zigbuild), so they run on practically
+every glibc-based distribution. To build one locally, install `zig` and
+`cargo install --locked cargo-zigbuild`, then run:
+
+```sh
+cargo xtask ci cross x86_64-unknown-linux-gnu
+bash .github/scripts/check-gnu-binary.sh target/x86_64-unknown-linux-gnu/release/zellij
+```
+
 ## Running the end-to-end tests
 Zellij includes some end-to-end tests which test the whole application as a black-box from the outside.
 These tests work by running a docker container which contains the Zellij binary, connecting to it via ssh, sending some commands and comparing the output received against predefined snapshots.

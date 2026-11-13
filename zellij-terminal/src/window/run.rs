@@ -368,6 +368,7 @@ pub(crate) struct Windowing {
 
 impl Windowing {
     pub(crate) fn bring_up() -> Result<Self> {
+        crate::platform::static_build::ensure_windows()?;
         Ok(Self {
             event_loop: EventLoop::<Wake>::with_user_event()
                 .build()
