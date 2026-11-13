@@ -143,7 +143,7 @@ impl KittyKeyboardParser {
     pub fn advance(&mut self, byte: u8) -> bool {
         // returns false if we failed parsing
         match (&self.state, byte) {
-            (KittyKeysParsingState::Ground, 0x1b | 0x5b) => {
+            (KittyKeysParsingState::Ground, 0x1b) => {
                 self.state = KittyKeysParsingState::ReceivedEscapeCharacter;
             },
             (KittyKeysParsingState::ReceivedEscapeCharacter, 91) => {
