@@ -22,6 +22,7 @@ use zellij_utils::cli::{CliArgs, TerminalArgs};
 
 pub use app::probe::{NotificationProbe, ProbeEvent};
 pub use app::{clear_all_sessions, detach_everywhere, stop_all_sessions};
+pub use platform::static_build::OPENS_WINDOWS;
 
 #[cfg(all(target_os = "linux", feature = "test-support"))]
 pub mod test_support {

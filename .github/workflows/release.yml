@@ -75,6 +75,8 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
+          - linux gnu x64
+          - linux gnu aarch64
           #- linux musl riscv64
           - macos x64
           - macos aarch64
@@ -86,6 +88,12 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
+          - build: linux gnu x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - build: linux gnu aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
 #          - build: linux musl riscv64
 #            os: ubuntu-latest
 #            target: riscv64gc-unknown-linux-musl
@@ -144,6 +152,23 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: Install Zig and cargo-zigbuild (GNU)
+        if: endsWith(matrix.target, '-unknown-linux-gnu')
+        env:
+          ZIG_VERSION: "0.17.0"
+          ZIG_SHA256: "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026"
+          CARGO_ZIGBUILD_VERSION: "0.24.1"
+        run: |
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "$RUNNER_TEMP/zig.tar.xz" \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zig/zig" version
+          cargo install --locked "cargo-zigbuild@${CARGO_ZIGBUILD_VERSION}"
+
       - name: Install NASM (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
@@ -151,6 +176,14 @@ jobs:
       - name: Build release binary (cross-compiled)
         if: matrix.build != 'windows x64'
         run: cargo xtask ci cross ${{ matrix.target }}
+
+      - name: Check the GNU binary
+        if: endsWith(matrix.target, '-unknown-linux-gnu')
+        run: bash .github/scripts/check-gnu-binary.sh "target/${{ matrix.target }}/release/zellij" 2.17
+
+      - name: Run the GNU binary
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: '"target/${{ matrix.target }}/release/zellij" --version'
 
       - name: Build release binary (Windows native)
         if: matrix.build == 'windows x64'
@@ -281,6 +314,8 @@ jobs:
         build:
           - linux musl x64
           - linux musl aarch64
+          - linux gnu x64
+          - linux gnu aarch64
           #- linux musl riscv64
           - macos x64
           - macos aarch64
@@ -292,6 +327,12 @@ jobs:
           - build: linux musl aarch64
             os: ubuntu-latest
             target: aarch64-unknown-linux-musl
+          - build: linux gnu x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - build: linux gnu aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
 #          - build: linux musl riscv64
 #            os: ubuntu-latest
 #            target: riscv64gc-unknown-linux-musl
@@ -350,6 +391,23 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: Install Zig and cargo-zigbuild (GNU)
+        if: endsWith(matrix.target, '-unknown-linux-gnu')
+        env:
+          ZIG_VERSION: "0.17.0"
+          ZIG_SHA256: "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026"
+          CARGO_ZIGBUILD_VERSION: "0.24.1"
+        run: |
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "$RUNNER_TEMP/zig.tar.xz" \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zig/zig" version
+          cargo install --locked "cargo-zigbuild@${CARGO_ZIGBUILD_VERSION}"
+
       - name: Install NASM (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
@@ -357,6 +415,14 @@ jobs:
       - name: Build release binary (cross-compiled, no-web)
         if: matrix.build != 'windows x64'
         run: cargo xtask ci cross ${{ matrix.target }} --no-web
+
+      - name: Check the GNU binary
+        if: endsWith(matrix.target, '-unknown-linux-gnu')
+        run: bash .github/scripts/check-gnu-binary.sh "target/${{ matrix.target }}/release/zellij" 2.17
+
+      - name: Run the GNU binary
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: '"target/${{ matrix.target }}/release/zellij" --version'
 
       - name: Build release binary (Windows native, no-web)
         if: matrix.build == 'windows x64'

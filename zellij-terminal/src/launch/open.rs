@@ -36,6 +36,9 @@ pub(crate) fn load(args: &TerminalArgs, opts: &CliArgs) -> std::result::Result<L
 }
 
 pub(crate) fn open(args: TerminalArgs, opts: CliArgs) -> Result<()> {
+    if !args.headless {
+        crate::platform::static_build::ensure_windows()?;
+    }
     if panel_view(&args).is_some() {
         return launch_app(args, opts, None);
     }

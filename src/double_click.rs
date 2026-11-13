@@ -96,8 +96,18 @@ pub(crate) fn current_launch() -> Launch {
         has_terminal: has_terminal(),
         has_desktop: env_is_set("DISPLAY") || env_is_set("WAYLAND_DISPLAY"),
         over_ssh: env_is_set("SSH_CONNECTION"),
-        built_with_window: cfg!(feature = "terminal"),
+        built_with_window: built_with_window(),
     }
+}
+
+#[cfg(feature = "terminal")]
+fn built_with_window() -> bool {
+    zellij_terminal::OPENS_WINDOWS
+}
+
+#[cfg(not(feature = "terminal"))]
+fn built_with_window() -> bool {
+    false
 }
 
 fn window_opts() -> Option<CliArgs> {

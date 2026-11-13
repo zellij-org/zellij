@@ -168,7 +168,9 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 
 #[cfg(feature = "terminal")]
 fn register_app_starter() {
-    zellij_server::set_app_starter(Box::new(start_terminal_app));
+    if zellij_terminal::OPENS_WINDOWS {
+        zellij_server::set_app_starter(Box::new(start_terminal_app));
+    }
 }
 
 #[cfg(not(feature = "terminal"))]
