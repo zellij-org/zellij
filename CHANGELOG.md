@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: bring a new window of the desktop app to the front on macOS (https://github.com/zellij-org/zellij/pull/5865)
 * feat: plugins can link text, so links in the about plugin open on Windows and over SSH or the web client (https://github.com/zellij-org/zellij/pull/5884)
 * feat: open links with Cmd+click in the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5888)
+* feat: paste the path of a file dropped onto the window (https://github.com/zellij-org/zellij/pull/5870)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
