@@ -1,8 +1,10 @@
 use super::{
-    is_too_wide, parse_disabled, parse_indices, parse_opaque, parse_selected, Coordinates,
+    is_too_wide, parse_disabled, parse_indices, parse_links, parse_opaque, parse_selected,
+    Coordinates,
 };
 use crate::panes::terminal_character::RESET_STYLES;
 use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
+use std::collections::BTreeMap;
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
     shared::ansi_len,
@@ -66,6 +68,13 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     }
 }
 
+// OSC 8 hyperlinks, which the grid keeps on the cells they cover.
+const LINK_END: &str = "\u{1b}]8;;\u{1b}\\";
+
+fn link_start(url: &str) -> String {
+    format!("\u{1b}]8;;{}\u{1b}\\", url)
+}
+
 pub fn stringify_text(
     text: &Text,
     left_padding: Option<usize>,
@@ -83,6 +92,7 @@ pub fn stringify_text(
     };
     stringified.push_str(&format!("{}", base_text_style));
     let styled = !text.indices.is_empty() || text.selected || text.opaque;
+    let mut open_link: Option<&str> = None;
     for (cluster, cluster_width, index) in text_clusters(&text.text) {
         if is_too_wide(
             cluster_width,
@@ -90,6 +100,16 @@ pub fn stringify_text(
             &coordinates,
         ) {
             break;
+        }
+        let link = text.link_at(index);
+        if link != open_link {
+            if open_link.is_some() {
+                stringified.push_str(LINK_END);
+            }
+            if let Some(url) = link {
+                stringified.push_str(&link_start(url));
+            }
+            open_link = link;
         }
         text_width += cluster_width;
         if text.selected || text.opaque {
@@ -102,6 +122,9 @@ pub fn stringify_text(
         } else {
             stringified.push_str(cluster)
         }
+    }
+    if open_link.is_some() {
+        stringified.push_str(LINK_END);
     }
     let coordinates_width = coordinates.as_ref().and_then(|c| c.width);
     match (coordinates_width, base_text_style.background) {
@@ -169,6 +192,7 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
             let disabled = parse_disabled(&mut stringified);
+            let links = parse_links(&stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             Ok::<Text, String>(Text {
@@ -177,6 +201,7 @@ pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) 
                 selected,
                 disabled,
                 indices,
+                links,
             })
         })
         .collect::<Vec<Text>>()
@@ -189,6 +214,7 @@ pub struct Text {
     pub opaque: bool,
     pub disabled: bool,
     pub indices: Vec<Vec<usize>>,
+    pub links: BTreeMap<usize, String>, // index level -> URL
 }
 
 pub fn decode_text_field(raw: &str) -> Text {
@@ -196,6 +222,7 @@ pub fn decode_text_field(raw: &str) -> Text {
     let selected = parse_selected(&mut stringified);
     let opaque = parse_opaque(&mut stringified);
     let disabled = parse_disabled(&mut stringified);
+    let links = parse_links(&stringified);
     let indices = parse_indices(&mut stringified);
     let text = if stringified.is_empty() {
         String::new()
@@ -208,6 +235,7 @@ pub fn decode_text_field(raw: &str) -> Text {
         opaque,
         disabled,
         indices,
+        links,
     }
 }
 
@@ -219,16 +247,31 @@ impl Text {
             opaque: false,
             disabled: false,
             indices: vec![],
+            links: BTreeMap::new(),
         }
     }
     pub fn is_styled_at(&self, index: usize) -> bool {
-        self.indices.iter().any(|indices| indices.contains(&index))
+        self.indices
+            .iter()
+            .enumerate()
+            .any(|(level, indices)| !self.links.contains_key(&level) && indices.contains(&index))
+    }
+    pub fn link_at(&self, index: usize) -> Option<&str> {
+        self.links
+            .iter()
+            .find(|(level, _)| {
+                self.indices
+                    .get(**level)
+                    .is_some_and(|indices| indices.contains(&index))
+            })
+            .map(|(_, url)| url.as_str())
     }
     pub fn into_disabled(mut self) -> Self {
         self.selected = false;
         self.opaque = false;
         self.disabled = true;
         self.indices = vec![];
+        self.links = BTreeMap::new();
         self
     }
 
@@ -369,6 +412,7 @@ mod empty_text_tests {
             opaque: false,
             disabled: false,
             indices,
+            links: BTreeMap::new(),
         };
         let style = StyleDeclaration::default();
         let styling = zellij_utils::data::Styling::default();
@@ -380,5 +424,188 @@ mod empty_text_tests {
             text.style_of_index(1, &style, &styling),
             Some(PaletteColor::Rgb((0x8e, 0x4e, 0xc6)))
         );
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::super::nested_list::parse_nested_list_items;
+    use super::super::parse_indices;
+    use super::*;
+
+    const URL: &str = "https://zellij.dev/documentation/inbox-integrations.html";
+    const OTHER_URL: &str = "https://zellij.dev/";
+
+    fn hex(url: &str) -> String {
+        url.bytes().map(|byte| format!("{:02x}", byte)).collect()
+    }
+
+    fn body(text: &str) -> String {
+        text.bytes()
+            .map(|byte| byte.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    // What zellij-tile writes for Text::from(text).link_range(url, range).
+    fn linked(text: &str, url: &str, range: std::ops::Range<usize>) -> String {
+        let positions: Vec<String> = range.map(|index| index.to_string()).collect();
+        format!(
+            "{}l{},{}${}",
+            "$".repeat(9),
+            hex(url),
+            positions.join(","),
+            body(text)
+        )
+    }
+
+    fn parsed(serialized: &str) -> Text {
+        let mut params = vec![serialized.to_owned()];
+        parse_text_params(params.iter_mut()).remove(0)
+    }
+
+    // The drawn text with its style sequences removed, keeping the link tags.
+    fn rendered(text: &Text, width: Option<usize>) -> String {
+        let coordinates = width.map(|width| Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(width),
+            height: None,
+        });
+        let (stringified, _) = stringify_text(
+            text,
+            None,
+            &coordinates,
+            &StyleDeclaration::default(),
+            &zellij_utils::data::Styling::default(),
+            RESET_STYLES,
+        );
+        let mut kept = String::new();
+        let mut characters = stringified.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' && characters.peek() == Some(&'[') {
+                for character in characters.by_ref() {
+                    if character.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                kept.push(character);
+            }
+        }
+        kept
+    }
+
+    #[test]
+    fn a_link_mark_becomes_a_link_on_its_level() {
+        let text = parsed(&linked("see docs", URL, 4..8));
+        assert_eq!(text.text, "see docs");
+        assert_eq!(text.links.get(&9).map(String::as_str), Some(URL));
+        assert_eq!(text.link_at(3), None);
+        assert_eq!(text.link_at(4), Some(URL));
+        assert_eq!(text.link_at(7), Some(URL));
+    }
+
+    #[test]
+    fn a_bad_link_is_dropped_but_its_text_is_kept() {
+        let too_long = format!("https://{}", "a".repeat(2100));
+        for url in [
+            "no-scheme-here",
+            "https://a b",
+            "https://a\u{1b}]8;;",
+            "1https://a",
+            "https:",
+            too_long.as_str(),
+        ] {
+            let text = parsed(&linked("ab", url, 0..2));
+            assert!(text.links.is_empty(), "{:?}", url);
+            assert_eq!(text.text, "ab");
+        }
+        for token in ["l123", "lff", "lzz"] {
+            let text = parsed(&format!("{}{},0,1${}", "$".repeat(9), token, body("ab")));
+            assert!(text.links.is_empty(), "{:?}", token);
+            assert_eq!(text.text, "ab");
+        }
+    }
+
+    #[test]
+    fn older_versions_read_a_link_level_as_unstyled_positions() {
+        // parse_indices is all that versions without links run on this.
+        let mut serialized = linked("ab", URL, 0..2);
+        let indices = parse_indices(&mut serialized);
+        assert_eq!(indices[9], vec![0, 1]);
+        assert_eq!(serialized, body("ab"));
+        let as_older_versions_see_it = Text {
+            indices,
+            ..Text::plain("ab")
+        };
+        let style = StyleDeclaration::default();
+        let styling = zellij_utils::data::Styling::default();
+        assert_eq!(
+            as_older_versions_see_it.style_of_index(0, &style, &styling),
+            Some(style.base)
+        );
+    }
+
+    #[test]
+    fn the_link_tag_wraps_exactly_the_linked_characters() {
+        let text = parsed(&linked("see docs.", URL, 4..8));
+        assert_eq!(
+            rendered(&text, None),
+            format!("see {}docs{}.", link_start(URL), LINK_END)
+        );
+    }
+
+    #[test]
+    fn a_cut_off_link_is_still_closed() {
+        let text = parsed(&linked("see docs", URL, 4..8));
+        assert_eq!(
+            rendered(&text, Some(6)),
+            format!("see {}do{}", link_start(URL), LINK_END)
+        );
+    }
+
+    #[test]
+    fn background_padding_is_not_linked() {
+        let text = parsed(&format!("z{}", linked("ab", URL, 0..2)));
+        assert_eq!(
+            rendered(&text, Some(5)),
+            format!("{}ab{}   ", link_start(URL), LINK_END)
+        );
+    }
+
+    #[test]
+    fn two_links_side_by_side_stay_separate() {
+        let text = parsed(&format!(
+            "{}l{},0$l{},1${}",
+            "$".repeat(9),
+            hex(URL),
+            hex(OTHER_URL),
+            body("ab")
+        ));
+        assert_eq!(
+            rendered(&text, None),
+            format!(
+                "{}a{}{}b{}",
+                link_start(URL),
+                LINK_END,
+                link_start(OTHER_URL),
+                LINK_END
+            )
+        );
+    }
+
+    #[test]
+    fn a_link_level_is_not_a_style() {
+        let text = parsed(&linked("ab", URL, 0..2));
+        assert!(!text.is_styled_at(0));
+        assert_eq!(text.into_disabled().link_at(0), None);
+    }
+
+    #[test]
+    fn a_nested_list_item_keeps_its_link() {
+        let mut params = vec![format!("|{}", linked("ab", URL, 0..2))];
+        let items = parse_nested_list_items(params.iter_mut());
+        assert_eq!(items[0].text.link_at(1), Some(URL));
     }
 }

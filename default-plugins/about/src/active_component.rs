@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use zellij_tile::prelude::*;
 
@@ -48,14 +49,20 @@ impl ActiveComponent {
         columns: usize,
         extend_hit_area_to_end_of_line: bool,
     ) -> usize {
+        // Links are also opened by the terminal showing Zellij, on the user's
+        // own machine. Our own click handler can't open them on every system,
+        // nor where the user is when the session is remote.
+        let link = self.link_destination();
         let mut component_width = 0;
         match self.text_hover.as_mut() {
             Some(text) if self.is_active => {
-                let text_len = text.render(x, y, rows, columns);
+                let text_len = text.render(x, y, rows, columns, link.as_deref());
                 component_width += text_len;
             },
             _ => {
-                let text_len = self.text_no_hover.render(x, y, rows, columns);
+                let text_len = self
+                    .text_no_hover
+                    .render(x, y, rows, columns, link.as_deref());
                 component_width += text_len;
             },
         }
@@ -66,6 +73,16 @@ impl ActiveComponent {
         };
         self.last_rendered_coordinates = Some(ComponentCoordinates::new(x, y, 1, hit_area_width));
         component_width
+    }
+    fn link_destination(&self) -> Option<String> {
+        match &self.left_click_action {
+            Some(ClickAction::OpenLink(destination, _executable))
+                if !destination.chars().any(char::is_control) =>
+            {
+                Some(destination.clone())
+            },
+            _ => None,
+        }
     }
     pub fn left_click_action(&mut self) -> Option<Page> {
         match self.left_click_action.take() {
@@ -88,11 +105,19 @@ impl ActiveComponent {
         let Some(last_rendered_coordinates) = &self.last_rendered_coordinates else {
             return None;
         };
-        if last_rendered_coordinates.contains(x, y) {
-            self.left_click_action()
-        } else {
-            None
+        if !last_rendered_coordinates.contains(x, y) {
+            return None;
         }
+        if self.leaves_click_to_terminal(&mouse_modifiers()) {
+            return None;
+        }
+        self.left_click_action()
+    }
+    // A click with a modifier held (e.g. Ctrl+click) is the terminal's own
+    // gesture for opening the link it is drawn with, so we don't open it a
+    // second time. A plain click still opens it ourselves.
+    fn leaves_click_to_terminal(&self, modifiers: &BTreeSet<KeyModifier>) -> bool {
+        !modifiers.is_empty() && self.link_destination().is_some()
     }
     pub fn handle_hover_at_position(&mut self, x: usize, y: usize) -> bool {
         let Some(last_rendered_coordinates) = &self.last_rendered_coordinates else {
@@ -181,5 +206,59 @@ impl ClickAction {
         F: Fn() + 'static,
     {
         ClickAction::Run(Rc::new(effect))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const URL: &str = "https://zellij.dev";
+
+    fn link_component(destination: &str) -> ActiveComponent {
+        ActiveComponent::new(TextOrCustomRender::Text(Text::from("docs"))).with_left_click_action(
+            ClickAction::new_open_link(
+                destination.to_owned(),
+                Rc::new(RefCell::new("xdg-open".to_owned())),
+            ),
+        )
+    }
+
+    fn held(modifiers: &[KeyModifier]) -> BTreeSet<KeyModifier> {
+        modifiers.iter().copied().collect()
+    }
+
+    #[test]
+    fn a_plain_click_on_a_link_is_ours_to_open() {
+        assert!(!link_component(URL).leaves_click_to_terminal(&held(&[])));
+    }
+
+    #[test]
+    fn a_click_with_a_modifier_on_a_link_is_left_to_the_terminal() {
+        for modifier in [
+            KeyModifier::Ctrl,
+            KeyModifier::Alt,
+            KeyModifier::Shift,
+            KeyModifier::Super,
+        ] {
+            assert!(
+                link_component(URL).leaves_click_to_terminal(&held(&[modifier])),
+                "{:?}",
+                modifier
+            );
+        }
+    }
+
+    #[test]
+    fn a_link_drawn_without_a_hyperlink_is_still_opened_on_a_modified_click() {
+        let component = link_component("https://zellij.dev/\u{7}");
+        assert!(!component.leaves_click_to_terminal(&held(&[KeyModifier::Ctrl])));
+    }
+
+    #[test]
+    fn a_modified_click_on_something_other_than_a_link_still_acts() {
+        let component = ActiveComponent::new(TextOrCustomRender::Text(Text::from("next")))
+            .with_left_click_action(ClickAction::new_run(|| {}));
+        assert!(!component.leaves_click_to_terminal(&held(&[KeyModifier::Ctrl])));
     }
 }

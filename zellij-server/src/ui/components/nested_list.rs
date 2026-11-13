@@ -1,6 +1,6 @@
 use super::{
-    is_too_high, parse_indices, parse_opaque, parse_selected, parse_text, stringify_text,
-    Coordinates, Text,
+    is_too_high, parse_indices, parse_links, parse_opaque, parse_selected, parse_text,
+    stringify_text, Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::data::Style;
@@ -82,6 +82,7 @@ pub fn parse_nested_list_items<'a>(
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
             let opaque = parse_opaque(&mut stringified);
+            let links = parse_links(&stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
             let text = Text {
@@ -90,6 +91,7 @@ pub fn parse_nested_list_items<'a>(
                 selected,
                 disabled: false,
                 indices,
+                links,
             };
             Ok::<NestedListItem, String>(NestedListItem {
                 text,
