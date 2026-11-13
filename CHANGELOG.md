@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
 * fix: broken links to the inbox integrations and plugin workers docs (https://github.com/zellij-org/zellij/pull/5877)
 * fix: terminal settings occasionally not properly applied or bounce back from the settings interface (https://github.com/zellij-org/zellij/pull/5887)
+* feat: plugins can link text, so links in the about plugin open on Windows and over SSH or the web client (https://github.com/zellij-org/zellij/pull/5884)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
