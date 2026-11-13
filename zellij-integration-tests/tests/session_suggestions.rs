@@ -369,6 +369,50 @@ fn switch_and_close_removes_the_unused_session() {
     zellij.quit();
 }
 
+#[test]
+fn switch_and_close_keeps_a_resurrected_session() {
+    let background = start_running_session_in_background();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(&format!(
+            "{}\nsession_serialization true",
+            SESSION_FEATURES_ON
+        ))
+        .with_layout(LayoutInfo::Stringified(RESUME_LAYOUT.to_owned()))
+        .start();
+    zellij.expect_pty_spawn().output(PROMPT);
+    zellij.wait_until("session loaded", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.status_bar_appears()
+    });
+    zellij.save_session();
+    zellij.wait_for_serialized_session();
+    zellij.quit();
+    zellij.resurrect(TERMINAL_SIZE);
+    zellij.wait_until("resurrected session rendered", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    let resurrected_session = zellij.session_name().to_owned();
+    let socket = zellij.socket_path();
+    let cache_folder = zellij_utils::consts::session_info_folder_for_session(&zellij.session_id());
+    open_the_browser_with_the_inbox_key(&zellij);
+    zellij.wait_until(
+        "the sessions tab lists the other session",
+        |grid_snapshot| grid_snapshot.contains(background.session_name()),
+    );
+    zellij.send_stdin(&keys::DOWN);
+    wait_for_preview_of(
+        &zellij,
+        background.session_name(),
+        "the other session is selected",
+    );
+    zellij.send_stdin(&keys::ENTER);
+    let (_switch, _previous) = zellij.follow_switch_into(background);
+    stays_true_once_true(
+        "the resurrected session keeps running with its cache folder",
+        || socket.exists() && cache_folder.exists() && answers(&resurrected_session),
+    );
+    zellij.quit();
+}
+
 fn stays_true_once_true(what: &str, check: impl Fn() -> bool) {
     zellij_integration_tests::wait_for(what, &check);
     let settled_at = Instant::now() + std::time::Duration::from_millis(1500);
