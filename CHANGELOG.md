@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: broken links to the inbox integrations and plugin workers docs (https://github.com/zellij-org/zellij/pull/5877)
 * fix: terminal settings occasionally not properly applied or bounce back from the settings interface (https://github.com/zellij-org/zellij/pull/5887)
 * fix: resurrected sessions without input being deleted on session switch (https://github.com/zellij-org/zellij/pull/5889)
+* fix: bring a new window of the desktop app to the front on macOS (https://github.com/zellij-org/zellij/pull/5865)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)

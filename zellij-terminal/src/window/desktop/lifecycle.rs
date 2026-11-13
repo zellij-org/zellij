@@ -229,6 +229,8 @@ impl Desktop {
         if let Some(window) = self.windows.get(&ticket).and_then(|app| app.window()) {
             crate::window::bring_opened_window_forward(window);
         }
+        // On macOS a new window only comes to the front if the app is active.
+        crate::window::activate_app();
         true
     }
 }
