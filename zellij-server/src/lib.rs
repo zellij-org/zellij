@@ -3784,6 +3784,8 @@ pub fn start_server_impl(
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
+    let session_was_resurrected = !session_id.is_empty()
+        && zellij_utils::consts::session_layout_cache_file_name(&session_id).exists();
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -4735,7 +4737,11 @@ pub fn start_server_impl(
                     client_id,
                     completion_tx,
                 ));
-                if switching_away && !command_was_run && !other_clients_attached {
+                if switching_away
+                    && !command_was_run
+                    && !other_clients_attached
+                    && !session_was_resurrected
+                {
                     delete_session_on_exit = true;
                     let _ = to_server.send(ServerInstruction::KillSession);
                 }
