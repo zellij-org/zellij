@@ -148,6 +148,7 @@ pub fn action_without_arguments(
             this_session: false,
         }),
         "Copy" => Ok(Action::Copy),
+        "SmartCopy" => Ok(Action::SmartCopy),
         "Confirm" => Ok(Action::Confirm),
         "Deny" => Ok(Action::Deny),
         "ToggleMouseMode" => Ok(Action::ToggleMouseMode),

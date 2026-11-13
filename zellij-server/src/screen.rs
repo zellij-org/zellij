@@ -13346,11 +13346,11 @@ pub(crate) fn screen_thread_main(
                 if state_changed {
                     screen.log_and_report_session_state()?;
                 }
-                screen.unblock_input()?;
                 screen.render(None)?;
             },
             ScreenInstruction::SessionEnding => {
                 screen.end_mirrors_with_the_session();
+            },
             ScreenInstruction::Exit => {
                 screen.close_all_mirror_subscribers(
                     zellij_utils::data::MirrorClosedReason::SessionEnding,

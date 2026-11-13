@@ -3700,9 +3700,6 @@ impl Grid {
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
-    pub fn has_selection(&self) -> bool {
-        !self.selection.is_empty()
-    }
     pub fn get_selected_text(&self) -> Option<String> {
         self.text_in_selection(&self.selection)
     }
