@@ -7386,6 +7386,124 @@ fn kitty_cursor_unmoved_with_c1() {
 }
 
 #[test]
+fn kitty_unicode_placeholders_render_image_rows() {
+    use crate::panes::kitty_graphics::PLACEHOLDER_CHAR;
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    // a 30x40 px image in a 3x2 cell placement fills it exactly (cells are 10x20)
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc(
+            "a=T,U=1,f=32,s=30,v=40,i=42,c=3,r=2,q=2",
+            &rgba_raster(30, 40),
+        ),
+    );
+    // the protocol's own example: only the first cell of each row names its
+    // row, the rest inherit row and next column from the cell to the left
+    let rows = format!(
+        "\x1b[38;5;42m{p}\u{0305}{p}{p}\r\n{p}\u{030D}{p}{p}\x1b[0m",
+        p = PLACEHOLDER_CHAR
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        rows.as_bytes(),
+    );
+    let mut chunks = grid.placeholder_kitty_chunks(0, 0);
+    chunks.sort_by_key(|chunk| chunk.cell_y);
+    let geometry: Vec<_> = chunks
+        .iter()
+        .map(|chunk| {
+            (
+                chunk.cell_x,
+                chunk.cell_y,
+                chunk.source_px_x,
+                chunk.source_px_y,
+                chunk.source_px_width,
+                chunk.source_px_height,
+            )
+        })
+        .collect();
+    assert_eq!(geometry, vec![(0, 0, 0, 0, 30, 20), (0, 1, 0, 20, 30, 20)]);
+}
+
+#[test]
+fn kitty_unicode_placeholders_letterbox_the_image_in_its_box() {
+    use crate::panes::kitty_graphics::PLACEHOLDER_CHAR;
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    // a square image in a 30x40 px box scales to 30x30, centered 5 px down
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc(
+            "a=T,U=1,f=32,s=20,v=20,i=42,c=3,r=2,q=2",
+            &rgba_raster(20, 20),
+        ),
+    );
+    let rows = format!(
+        "\x1b[38;5;42m{p}\u{0305}{p}{p}\r\n{p}\u{030D}{p}{p}\x1b[0m",
+        p = PLACEHOLDER_CHAR
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        rows.as_bytes(),
+    );
+    let mut chunks = grid.placeholder_kitty_chunks(0, 0);
+    chunks.sort_by_key(|chunk| chunk.cell_y);
+    let geometry: Vec<_> = chunks
+        .iter()
+        .map(|chunk| {
+            (
+                chunk.cell_y,
+                chunk.source_px_y,
+                chunk.source_px_height,
+                chunk.cell_offset_y,
+                chunk.scaled_image.map(|key| key.size),
+            )
+        })
+        .collect();
+    assert_eq!(
+        geometry,
+        vec![
+            (0, 0, 15, 5, Some((30, 30))),
+            (1, 15, 15, 0, Some((30, 30)))
+        ]
+    );
+}
+
+#[test]
+fn kitty_unicode_placeholders_are_blanked_for_the_host_terminal() {
+    use crate::panes::kitty_graphics::PLACEHOLDER_CHAR;
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    let text = format!("\x1b[38;5;42m{}\u{0305}\u{0305}x", PLACEHOLDER_CHAR);
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        text.as_bytes(),
+    );
+    let (chunks, _, _) = grid.read_changes(0, 0);
+    let text: String = chunks[0]
+        .terminal_characters
+        .iter()
+        .take(2)
+        .map(|character| character.text().into_owned())
+        .collect();
+    assert_eq!(text, " x");
+}
+
+#[test]
 fn kitty_placement_survives_text_overwrite_and_erase() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
