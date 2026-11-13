@@ -1119,6 +1119,12 @@ impl SessionMetaData {
                 Box::new(settings),
             ));
     }
+    fn send_saved_terminal_settings(&mut self, client_ids: &[ClientId]) {
+        let saved_config = self.session_configuration.saved_config.clone();
+        for client_id in client_ids {
+            self.send_terminal_settings_if_changed(*client_id, &saved_config);
+        }
+    }
     fn forget_window_client(&mut self, client_id: ClientId) {
         self.sent_terminal_settings.remove(&client_id);
         self.font_families.remove(&client_id);
@@ -4004,6 +4010,10 @@ pub fn start_server_impl(
                 session
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
+                let client_configuration = session
+                    .session_configuration
+                    .get_client_configuration(&client_id);
+                session.send_terminal_settings_if_changed(client_id, &client_configuration);
                 let default_input_mode = session
                     .session_configuration
                     .get_client_default_input_mode(&client_id);
@@ -4286,6 +4296,7 @@ pub fn start_server_impl(
                 let client_configuration = session_data
                     .session_configuration
                     .get_client_configuration(&client_id);
+                session_data.send_terminal_settings_if_changed(client_id, &client_configuration);
                 if client_configuration.has_command_line_keybinds() {
                     session_data.propagate_configuration_changes(
                         vec![(client_id, client_configuration)],
@@ -4335,6 +4346,9 @@ pub fn start_server_impl(
                         terminal_size,
                     ))
                     .unwrap();
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.send_saved_terminal_settings(&[client_id]);
+                }
             },
             ServerInstruction::UnblockInputThread => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -4872,6 +4886,10 @@ pub fn start_server_impl(
             },
             ServerInstruction::ConfigWrittenToDisk(new_config) => {
                 apply_new_saved_config(new_config, &session_data);
+                let watcher_ids = session_state.read().unwrap().watcher_client_ids();
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.send_saved_terminal_settings(&watcher_ids);
+                }
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
                     send_to_client!(

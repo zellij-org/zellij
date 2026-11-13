@@ -185,6 +185,7 @@ impl App {
                 session
                     .detacher
                     .follow(connection.sender.clone(), connection.role);
+                session.loop_options.settings = self.settings.clone();
                 session.spawn(connection);
                 self.start_over(geometry);
                 self.set_title(window_title(&session_name));
