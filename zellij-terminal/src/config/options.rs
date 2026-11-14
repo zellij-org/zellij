@@ -11,7 +11,7 @@ use crate::platform::Platform;
 use crate::render::scene::Transparency;
 use crate::text::font::{
     points_to_pixels, CellAdjust, FontFeature, FontOptions, DEFAULT_FONT_POINTS,
-    DEFAULT_FONT_WEIGHT, DEFAULT_LIGATURES,
+    DEFAULT_FONT_WEIGHT, DEFAULT_HINTING, DEFAULT_LIGATURES,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +104,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             size: points_to_pixels(section.font_size.unwrap_or(DEFAULT_FONT_POINTS)),
             system_fonts: section.system_fonts.unwrap_or(true),
             ligatures: section.ligatures.unwrap_or(DEFAULT_LIGATURES),
+            hinting: section.hinting.unwrap_or(DEFAULT_HINTING),
             weight: section.font_weight.unwrap_or(DEFAULT_FONT_WEIGHT),
             features: section
                 .font_features
@@ -633,6 +634,20 @@ mod tests {
             16.0
         };
         assert_eq!(options.font.size, expected);
+    }
+
+    #[test]
+    fn hinting_is_off_unless_the_configuration_turns_it_on() {
+        let default = resolve(&settings(TerminalConfig::default()), None);
+        assert!(!default.font.hinting);
+        let on = resolve(
+            &settings(TerminalConfig {
+                hinting: Some(true),
+                ..TerminalConfig::default()
+            }),
+            None,
+        );
+        assert!(on.font.hinting);
     }
 
     #[test]

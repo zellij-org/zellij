@@ -249,7 +249,7 @@ impl FontStack {
             .context
             .builder(font)
             .size(size)
-            .hint(false)
+            .hint(self.hinting)
             .normalized_coords(coords.iter())
             .build();
         let image = Render::new(sources)
