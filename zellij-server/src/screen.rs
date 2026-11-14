@@ -2380,6 +2380,7 @@ pub(crate) struct Screen {
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
     render_waits_for_ack: bool,
+    render_lock_wake_due: Option<Instant>,
     /// `ApplyScrolledPtyQuantum` is already sitting on the screen channel.
     scrolled_pty_continuation_queued: bool,
     /// The process run each terminal is reading. Output and a child exit from
@@ -2870,6 +2871,7 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
             render_waits_for_ack: false,
+            render_lock_wake_due: None,
             scrolled_pty_continuation_queued: false,
             terminal_runs: HashMap::new(),
             clipboard_paste_clients: HashMap::new(),
@@ -4290,7 +4292,33 @@ impl Screen {
         if std::mem::take(&mut self.render_waits_for_ack) {
             self.render_to_clients()?;
         }
+        self.schedule_render_lock_wake();
         Ok(())
+    }
+
+    fn schedule_render_lock_wake(&mut self) {
+        let now = Instant::now();
+        if self.render_lock_wake_due.is_some_and(|due| due <= now) {
+            self.render_lock_wake_due = None;
+        }
+        let Some(deadline) = self
+            .tabs
+            .values()
+            .filter_map(|tab| tab.next_render_lock_deadline())
+            .min()
+        else {
+            return;
+        };
+        if self.render_lock_wake_due.is_some_and(|due| due <= deadline) {
+            return;
+        }
+        self.render_lock_wake_due = Some(deadline);
+        let senders = self.bus.senders.clone();
+        let delay = deadline.saturating_duration_since(now) + Duration::from_millis(1);
+        crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
+        });
     }
 
     fn every_client_awaits_a_frame_ack(&self) -> bool {
@@ -4845,6 +4873,73 @@ impl Screen {
             }
         }
         Ok(false)
+    }
+
+    /// Settle any queued or in-flight host query for `pane_id` so a
+    /// replaced, closed, or reset pane cannot hold the global forward
+    /// slot until an unrelated reply or timeout arrives.
+    fn cancel_forward_for_pane(&mut self, pane_id: PaneId) {
+        loop {
+            match self.stop_waiting_for_forward_reply(pane_id) {
+                Ok(true) => continue,
+                Ok(false) => break,
+                Err(error) => {
+                    log::error!(
+                        "failed to settle a forwarded query for closed or replaced pane {:?}: \
+                         {error:#}",
+                        pane_id
+                    );
+                    break;
+                },
+            }
+        }
+    }
+
+    /// Whether `pane_id` still has a query belonging to an older run. An
+    /// unstamped query is kept: it was emitted before the first run was
+    /// announced and belongs to that run.
+    fn forward_is_from_another_run(&self, pane_id: PaneId, generation: u64) -> bool {
+        let stale_entry = |entry: &PendingForwardEntry| {
+            entry.pane_id == pane_id && entry.run_generation != Some(generation)
+        };
+        let stale_queued = |pending: &PendingForward| {
+            pending.pane_id == pane_id && pending.run_generation != Some(generation)
+        };
+        self.pending_forwarded_queries
+            .values()
+            .any(|entry| stale_entry(entry))
+            || self
+                .pending_clipboard_forwards
+                .values()
+                .any(|entry| stale_entry(entry))
+            || self.forward_queue.iter().any(|entry| stale_queued(entry))
+            || self
+                .clipboard_forward_queue
+                .iter()
+                .any(|entry| stale_queued(entry))
+    }
+
+    /// A request that was issued before the first run was announced belongs
+    /// to that run. Stamp it so a later replacement can identify it as stale.
+    fn stamp_unstamped_forwards_for_pane(&mut self, pane_id: PaneId, generation: u64) {
+        for entry in self
+            .pending_forwarded_queries
+            .values_mut()
+            .chain(self.pending_clipboard_forwards.values_mut())
+        {
+            if entry.pane_id == pane_id && entry.run_generation.is_none() {
+                entry.run_generation = Some(generation);
+            }
+        }
+        for entry in self
+            .forward_queue
+            .iter_mut()
+            .chain(self.clipboard_forward_queue.iter_mut())
+        {
+            if entry.pane_id == pane_id && entry.run_generation.is_none() {
+                entry.run_generation = Some(generation);
+            }
+        }
     }
 
     /// Deliver a forwarded reply (or cache-fallback synthesis, or a
@@ -6603,6 +6698,7 @@ impl Screen {
             return Ok(());
         }
         self.render_waits_for_ack = false;
+        self.schedule_render_lock_wake();
         let _row_shifts = RowShiftsWhileRendering::new(self.row_shifts_possible());
         self.sync_attention_visibility();
         self.sync_plugin_visibility();
@@ -8547,74 +8643,88 @@ impl Screen {
         client_id: ClientId,
         completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
-        let err_context = || "Failed to save session";
-        let session_layout_metadata = if self.session_serialization {
-            self.publication_layout_metadata(Some(self.default_shell.clone()), None)
-        } else {
-            Some(SessionLayoutMetadata::new(self.default_layout.clone()))
-        };
-        let Some(session_layout_metadata) = session_layout_metadata else {
+        let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+        let result: Result<()> = (|| {
+            let err_context = || "Failed to save session";
+            let session_layout_metadata = if self.session_serialization {
+                self.publication_layout_metadata(Some(self.default_shell.clone()), None)
+            } else {
+                Some(SessionLayoutMetadata::new(self.default_layout.clone()))
+            };
+            let Some(session_layout_metadata) = session_layout_metadata else {
+                self.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::SaveSession(
+                        client_id,
+                        completion_tx.take(),
+                    ))
+                    .with_context(err_context)?;
+                return Ok(());
+            };
+
+            self.update_active_pane_ids();
+            let pane_manifest = self.generate_and_report_pane_state()?;
+            let tab_infos = self.generate_and_report_tab_state()?;
+
+            #[cfg(not(test))]
+            let (available_layouts, _layout_errors) =
+                Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+            #[cfg(test)]
+            let available_layouts = vec![];
+
+            let creation_time = {
+                // The socket is named by the stable session id, not the display name.
+                let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
+                std::fs::metadata(&sock_path)
+                    .ok()
+                    .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                    .and_then(|d| d.elapsed().ok())
+                    .map(|d| Duration::from_secs(d.as_secs()))
+                    .unwrap_or_default()
+            };
+            let session_info = SessionInfo {
+                name: self.session_name.clone(),
+                tabs: tab_infos,
+                panes: pane_manifest,
+                connected_clients: self.active_tab_ids.keys().len(),
+                is_current_session: true,
+                available_layouts,
+                web_clients_allowed: self.web_sharing.web_clients_allowed(),
+                web_client_count: self
+                    .connected_clients
+                    .borrow()
+                    .iter()
+                    .filter(|(_client_id, is_web_client)| **is_web_client)
+                    .count(),
+                plugins: Default::default(),
+                tab_history: self.tab_history.clone(),
+                pane_history: self
+                    .pane_history
+                    .iter()
+                    .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
+                    .collect(),
+                creation_time,
+                attention_muted: self.attention.session_is_muted(),
+            };
+
             self.bus
                 .senders
-                .send_to_screen(ScreenInstruction::SaveSession(client_id, completion_tx))
+                .send_to_pty(PtyInstruction::SaveSessionToDisk {
+                    session_name: self.session_name.clone(),
+                    session_info,
+                    session_layout_metadata,
+                    completion_tx: completion_tx.take(),
+                })
                 .with_context(err_context)?;
-            return Ok(());
-        };
-
-        self.update_active_pane_ids();
-        let pane_manifest = self.generate_and_report_pane_state()?;
-        let tab_infos = self.generate_and_report_tab_state()?;
-
-        #[cfg(not(test))]
-        let (available_layouts, _layout_errors) =
-            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
-        #[cfg(test)]
-        let available_layouts = vec![];
-
-        let creation_time = {
-            // The socket is named by the stable session id, not the display name.
-            let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
-            std::fs::metadata(&sock_path)
-                .ok()
-                .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                .and_then(|d| d.elapsed().ok())
-                .map(|d| Duration::from_secs(d.as_secs()))
-                .unwrap_or_default()
-        };
-        let session_info = SessionInfo {
-            name: self.session_name.clone(),
-            tabs: tab_infos,
-            panes: pane_manifest,
-            connected_clients: self.active_tab_ids.keys().len(),
-            is_current_session: true,
-            available_layouts,
-            web_clients_allowed: self.web_sharing.web_clients_allowed(),
-            web_client_count: self
-                .connected_clients
-                .borrow()
-                .iter()
-                .filter(|(_client_id, is_web_client)| **is_web_client)
-                .count(),
-            plugins: Default::default(),
-            tab_history: self.tab_history.clone(),
-            pane_history: self
-                .pane_history
-                .iter()
-                .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
-                .collect(),
-            creation_time,
-            attention_muted: self.attention.session_is_muted(),
-        };
-
-        self.bus
-            .senders
-            .send_to_pty(PtyInstruction::SaveSessionToDisk {
-                session_name: self.session_name.clone(),
-                session_info,
-                session_layout_metadata,
-                completion_tx,
-            })
-            .with_context(err_context)?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            log::error!("Failed to save session: {error:#}");
+            if let Some(completion) = completion_tx.as_mut() {
+                completion.set_exit_status(1);
+                completion.set_error_message(format!("{error:#}"));
+            }
+        }
         Ok(())
     }
     fn session_infos_changed(
@@ -12764,7 +12874,17 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::TerminalRunStarted(terminal_id, generation) => {
+                let had_previous_run = screen.terminal_runs.contains_key(&terminal_id);
                 screen.note_terminal_run_started(terminal_id, generation);
+                if screen.terminal_run_generation_matches(terminal_id, generation) {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    if !had_previous_run {
+                        screen.stamp_unstamped_forwards_for_pane(pane_id, generation);
+                    }
+                    if screen.forward_is_from_another_run(pane_id, generation) {
+                        screen.cancel_forward_for_pane(pane_id);
+                    }
+                }
             },
             ScreenInstruction::PtyRunDrained(terminal_id, generation) => {
                 screen.note_pty_run_drained(terminal_id, generation);
@@ -13652,10 +13772,12 @@ pub(crate) fn screen_thread_main(
                 match file {
                     Some(file_path) => {
                         // Write dump to file (existing behavior)
-                        match pane_id {
+                        let result: Result<()> = (|| match pane_id {
                             Some(pane_id) => {
+                                let mut found = false;
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
+                                        found = true;
                                         if ansi {
                                             tab.dump_with_ansi_terminal_screen(
                                                 Some(file_path.clone()),
@@ -13672,43 +13794,79 @@ pub(crate) fn screen_thread_main(
                                         break;
                                     }
                                 }
+                                if found {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow!("Pane with id {:?} not found", pane_id))
+                                }
                             },
                             None => {
+                                let mut dump_error = None;
+                                let mut attempted = false;
                                 if ansi {
                                     active_tab_and_connected_client_id!(
                                         screen,
                                         client_id,
-                                        |tab: &mut Tab, client_id: ClientId| tab.dump_with_ansi_active_terminal_screen(
-                                            Some(file_path.to_string()),
-                                            client_id,
-                                            full
-                                        ),
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            let result = tab.dump_with_ansi_active_terminal_screen(
+                                                Some(file_path.to_string()),
+                                                client_id,
+                                                full
+                                            );
+                                            if let Err(ref error) = result {
+                                                dump_error = Some(anyhow!("{error:#}"));
+                                            }
+                                            result
+                                        },
                                         ?
                                     );
                                 } else {
                                     active_tab_and_connected_client_id!(
                                         screen,
                                         client_id,
-                                        |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                                            Some(file_path.to_string()),
-                                            client_id,
-                                            full
-                                        ),
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            let result = tab.dump_active_terminal_screen(
+                                                Some(file_path.to_string()),
+                                                client_id,
+                                                full
+                                            );
+                                            if let Err(ref error) = result {
+                                                dump_error = Some(anyhow!("{error:#}"));
+                                            }
+                                            result
+                                        },
                                         ?
                                     );
                                 }
+                                match dump_error {
+                                    Some(error) => Err(error),
+                                    None if attempted => Ok(()),
+                                    None => Err(anyhow!("No active tab or client for dump screen")),
+                                }
                             },
+                        })();
+                        if let Err(error) = result {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("failed to dump screen: {error:#}"),
+                            );
                         }
                         screen.render(None)?;
                         drop(completion_tx);
                     },
                     None => {
                         // Dump to STDOUT via Log
-                        let dump = match pane_id {
+                        let mut dump_error = None;
+                        let mut attempted = pane_id.is_some();
+                        let (dump, found) = match pane_id {
                             Some(pane_id) => {
                                 let mut result = String::new();
+                                let mut found = false;
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
+                                        found = true;
                                         if ansi {
                                             if let Some(dump) = tab
                                                 .get_dump_with_ansi_terminal_screen(pane_id, full)
@@ -13725,7 +13883,7 @@ pub(crate) fn screen_thread_main(
                                         break;
                                     }
                                 }
-                                result
+                                (result, found)
                             },
                             None => {
                                 let mut result = String::new();
@@ -13734,6 +13892,13 @@ pub(crate) fn screen_thread_main(
                                         screen,
                                         client_id,
                                         |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            if tab.get_active_pane_id(client_id).is_none() {
+                                                dump_error = Some(anyhow!(
+                                                    "No active pane for client {client_id}"
+                                                ));
+                                                return Ok::<(), anyhow::Error>(());
+                                            }
                                             result = tab.get_dump_with_ansi_active_terminal_screen(client_id, full);
                                             Ok::<(), anyhow::Error>(())
                                         },
@@ -13744,15 +13909,43 @@ pub(crate) fn screen_thread_main(
                                         screen,
                                         client_id,
                                         |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            if tab.get_active_pane_id(client_id).is_none() {
+                                                dump_error = Some(anyhow!(
+                                                    "No active pane for client {client_id}"
+                                                ));
+                                                return Ok::<(), anyhow::Error>(());
+                                            }
                                             result = tab.get_dump_active_terminal_screen(client_id, full);
                                             Ok::<(), anyhow::Error>(())
                                         },
                                         ?
                                     );
                                 }
-                                result
+                                (result, true)
                             },
                         };
+                        if let Some(error) = dump_error {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("failed to dump screen: {error:#}"),
+                            );
+                            continue;
+                        }
+                        if !attempted {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                "No active tab or client for dump screen",
+                            );
+                            continue;
+                        }
+                        if !found {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("Pane with id {:?} not found", pane_id.unwrap()),
+                            );
+                            continue;
+                        }
                         screen.bus.senders.send_to_server(ServerInstruction::Log(
                             vec![dump],
                             cli_client_id.unwrap_or(client_id),
@@ -14530,6 +14723,7 @@ pub(crate) fn screen_thread_main(
                 // deferred exit so it cannot pin the pane closed forever.
                 screen.terminal_runs.remove(&terminal_id);
                 let pid = PaneId::Terminal(terminal_id);
+                screen.cancel_forward_for_pane(pid);
                 if !screen.has_pane_with_pid(&pid) {
                     screen.remember_terminal_closed(terminal_id);
                     pending_events_waiting_for_pane.discard(pid);
@@ -16722,12 +16916,20 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::EditScrollbackForPaneWithId(pane_id, completion_tx) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        found = true;
                         tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx.take())
                             .non_fatal();
                         break;
                     }
+                }
+                if !found {
+                    mark_action_as_failed(
+                        &mut completion_tx,
+                        &format!("Pane with id {:?} not found", pane_id),
+                    );
                 }
                 screen.render(None)?;
             },
@@ -16771,6 +16973,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::Paste(bytes, pane_id, client_id, _completion) => {
                 let mut _completion = crate::route::RecordedCompletion::new(_completion);
+                screen.record_client_input(client_id);
                 match pane_id {
                     Some(pane_id) => {
                         let all_tabs = screen.get_tabs_mut();
@@ -16803,21 +17006,41 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                     None => {
-                        screen.release_live_view_if_unreachable(client_id);
+                        if screen.write_paste_to_live_view(client_id, bytes.clone()) {
+                            drop(_completion);
+                            screen.render(None)?;
+                            continue;
+                        }
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
                             |tab: &mut Tab, _client_id: ClientId| {
-                                tab.paste_to_active_terminal(bytes, client_id, _completion.take())
-                                    .non_fatal();
+                                let result = if tab.is_sync_panes_active() {
+                                    tab.paste_to_terminals_on_current_tab(
+                                        bytes,
+                                        client_id,
+                                        _completion.take(),
+                                    )
+                                } else {
+                                    tab.paste_to_active_terminal(
+                                        bytes,
+                                        client_id,
+                                        _completion.take(),
+                                    )
+                                };
+                                if let Err(error) = result {
+                                    mark_action_as_failed(&mut _completion, &format!("{error:#}"));
+                                }
                             }
                         );
                     },
                 }
+                screen.note_attention_input();
                 screen.render(None)?;
             },
             ScreenInstruction::ResetPaneInputModes(pane_id, client_id, _completion) => {
                 let mut _completion = crate::route::RecordedCompletion::new(_completion);
+                let forward_target = pane_id.or_else(|| screen.get_active_pane_id(&client_id));
                 let result = match pane_id {
                     Some(pane_id) => {
                         let all_tabs = screen.get_tabs_mut();
@@ -16843,6 +17066,9 @@ pub(crate) fn screen_thread_main(
                         result
                     },
                 };
+                if let Some(target) = forward_target {
+                    screen.cancel_forward_for_pane(target);
+                }
                 if let Err(error) = result {
                     mark_action_as_failed(&mut _completion, &format!("{error:#}"));
                 }
@@ -18206,6 +18432,10 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
                 }
                 screen.render(None)?;
             },

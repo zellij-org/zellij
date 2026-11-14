@@ -8819,6 +8819,48 @@ pub fn send_cli_dump_screen_action_without_ansi_strips_codes() {
 }
 
 #[test]
+pub fn dumping_a_missing_explicit_pane_reports_failure() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(None, vec![]);
+    let (completion, receiver) = completion_and_receiver();
+
+    mock_screen
+        .to_screen
+        .send(ScreenInstruction::DumpScreen(
+            Some("/tmp/zellij-missing-pane-dump".to_owned()),
+            1,
+            true,
+            Some(PaneId::Terminal(999)),
+            Some(completion),
+            None,
+            false,
+        ))
+        .unwrap();
+
+    let result = receiver.blocking_recv().expect("the action must complete");
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("not found")),
+        "the completion must report the missing pane: {:?}",
+        result.error_message
+    );
+    assert!(
+        !mock_screen
+            .os_input
+            .fake_filesystem
+            .lock()
+            .unwrap()
+            .contains_key("/tmp/zellij-missing-pane-dump"),
+        "a missing target must not publish a successful dump file"
+    );
+    mock_screen.teardown(vec![screen_thread]);
+}
+
+#[test]
 pub fn send_cli_edit_scrollback_action_with_ansi() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10;
@@ -10937,6 +10979,122 @@ fn reply_from_a_previous_run_is_discarded() {
         "a reply from run 1 must not reach run 2"
     );
     assert_eq!(screen.forward_in_flight_token, None);
+}
+
+#[test]
+fn cancelling_a_forward_for_a_replaced_run_releases_the_global_slot() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    screen.cancel_forward_for_pane(PaneId::Terminal(1));
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a cancelled reply from run 1 must not reach run 2"
+    );
+    assert_eq!(
+        screen.forward_in_flight_token, None,
+        "the global forward slot must be released"
+    );
+    assert!(
+        screen.pending_forwarded_queries.get(&7).is_none(),
+        "the stale query must be removed"
+    );
+}
+
+#[test]
+fn cancelling_a_panes_forward_dispatches_the_next_queued_query() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 0);
+    let first = screen.forward_host_query(PaneId::Terminal(1), bg_query());
+    let second = screen.forward_host_query(PaneId::Terminal(2), fg_query());
+    assert_eq!(screen.forward_in_flight_token, Some(first));
+    assert_eq!(
+        screen.forward_queue.front().map(|pending| pending.token),
+        Some(second)
+    );
+
+    screen.cancel_forward_for_pane(PaneId::Terminal(1));
+
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(second),
+        "the queued query must take the released slot"
+    );
+    assert!(
+        capture
+            .drain_forward_queries()
+            .iter()
+            .any(|(token, _)| *token == second),
+        "the next queued query must be dispatched to the host"
+    );
+}
+
+#[test]
+fn run_start_only_cancels_forwards_from_an_older_run() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    assert!(
+        screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "a query stamped with the replaced run must be cancelled"
+    );
+
+    screen
+        .pending_forwarded_queries
+        .get_mut(&7)
+        .unwrap()
+        .run_generation = Some(2);
+    assert!(
+        !screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "a query from the newly started run must be kept"
+    );
+
+    screen
+        .pending_forwarded_queries
+        .get_mut(&7)
+        .unwrap()
+        .run_generation = None;
+    assert!(
+        screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "an unstamped query after a run was known is stale"
+    );
+
+    screen.stamp_unstamped_forwards_for_pane(PaneId::Terminal(1), 2);
+    assert!(
+        !screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "stamping the pre-first-run query keeps it for the first run"
+    );
 }
 
 #[test]
