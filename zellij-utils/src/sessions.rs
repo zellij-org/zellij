@@ -1450,6 +1450,25 @@ pub fn remove_fenced_dead_session_cache_and_index(
     }
     let removal = (|| {
         if !crate::session_index::session_id_is_definitely_dead(sock_dir, cache_dir, session_id) {
+            let cache_exists = cache_dir.join(session_id).try_exists()?;
+            let socket_exists = socket_path.try_exists()?;
+            if !cache_exists && !socket_exists {
+                let deleted = match index {
+                    Some(index) => index
+                        .delete_by_ids(std::slice::from_ref(&session_id.to_owned()))
+                        .map_err(|error| {
+                            io::Error::other(format!(
+                                "stale session index row could not be removed: {error}"
+                            ))
+                        })?,
+                    None => 0,
+                };
+                return Ok(if deleted > 0 {
+                    SessionCacheRemoval::Removed
+                } else {
+                    SessionCacheRemoval::NotFound
+                });
+            }
             return Err(session_is_not_definitely_dead(session_id));
         }
         let selected = selected_session_lifetime(cache_dir, session_id)?;

@@ -2697,6 +2697,29 @@ mod tests {
     }
 
     #[test]
+    fn a_stale_index_row_without_cache_or_socket_is_removed_under_the_claim() {
+        let test = TestIndex::new();
+        test.add("stale", context("/gone", None, None), 1);
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+
+        let removal = crate::sessions::remove_fenced_dead_session_cache_and_index(
+            &sock_dir,
+            &cache_dir,
+            Some(&test.index),
+            "stale",
+        )
+        .unwrap();
+
+        assert_eq!(
+            removal,
+            crate::sessions::SessionCacheRemoval::Removed,
+            "the stale index row counts as the deletion"
+        );
+        assert!(test.index.get("stale").unwrap().is_none());
+    }
+
+    #[test]
     fn running_session_names_keep_an_unreadable_socket() {
         let kept = socket_type_error_is_not_death(Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
