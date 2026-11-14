@@ -16,7 +16,6 @@ use anyhow::{bail, Result};
 use std::time::Duration;
 use zellij_utils::cli::{CliArgs, TerminalArgs};
 use zellij_utils::data::ConnectToSession;
-use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
 use zellij_utils::ipc::ExitReason;
 
@@ -125,7 +124,6 @@ pub(crate) fn drive(
 
     let loop_options = LoopOptions {
         record_path: args.record.clone(),
-        config_path: windowed.then(|| Config::config_file_path(&opts)).flatten(),
         settings: settings.clone(),
         font_families: windowed.then(installed_font_families),
         allow_remote_clipboard_read: options.allow_remote_clipboard_read,

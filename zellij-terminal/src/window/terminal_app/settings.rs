@@ -11,13 +11,6 @@ use crate::window::WindowLook;
 use std::time::Instant;
 
 impl App {
-    pub(in crate::window) fn reconfigured(&mut self, settings: Settings) {
-        self.settings = settings;
-        let zoom_reset = self.zoom != 1.0;
-        self.zoom = 1.0;
-        self.reapply(zoom_reset);
-    }
-
     pub(in crate::window) fn settings_pushed(&mut self, settings: Settings) {
         let font_size_changed = settings.section.font_size != self.settings.section.font_size;
         self.settings = settings;

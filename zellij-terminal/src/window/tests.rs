@@ -1495,10 +1495,6 @@ fn settings(section: TerminalConfig) -> Settings {
 }
 
 impl Harness {
-    fn reconfigure(&mut self, section: TerminalConfig) {
-        self.app.reconfigured(settings(section));
-    }
-
     fn push(&mut self, section: TerminalConfig) {
         self.app.settings_pushed(settings(section));
     }
@@ -1527,7 +1523,7 @@ fn a_reload_that_changes_the_font_size_rebuilds_the_cell_and_reports_it() {
         (8, 20)
     );
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
         ..TerminalConfig::default()
     });
@@ -1555,7 +1551,7 @@ fn a_reload_that_changes_the_colors_re_declares_them_without_touching_the_font()
     let mut harness = Harness::new(3, true, "");
     let before = harness.app.metrics;
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         theme: Some(TerminalTheme {
             background: Some(zellij_utils::data::PaletteColor::Rgb((4, 5, 6))),
             ..TerminalTheme::default()
@@ -1578,7 +1574,7 @@ fn a_reload_that_changes_the_colors_re_declares_them_without_touching_the_font()
 #[test]
 fn a_reload_that_changes_the_paste_chords_claims_the_new_one() {
     let mut harness = Harness::new(2, true, "copied");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         paste_keys: Some(vec![zellij_utils::data::KeyWithModifier::new(
             zellij_utils::data::BareKey::F(5),
         )]),
@@ -1615,7 +1611,7 @@ fn a_reload_that_changes_nothing_disturbs_nothing() {
     let mut harness = Harness::new(0, true, "");
 
     let before = harness.app.metrics;
-    harness.reconfigure(TerminalConfig::default());
+    harness.push(TerminalConfig::default());
     assert_eq!(harness.app.metrics, before);
     assert_eq!(harness.app.options.font.size, DEFAULT_FONT_SIZE);
     assert_eq!(
@@ -1680,7 +1676,7 @@ fn a_reloaded_cursor_leaves_the_font_and_the_session_alone() {
     let mut harness = Harness::new(0, true, "");
     let before = harness.app.metrics;
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         cursor_style: Some(zellij_utils::input::terminal::CursorStyle::Bar),
         cursor_blink: Some(true),
         ..TerminalConfig::default()
@@ -1717,7 +1713,7 @@ fn a_reload_that_changes_the_opacity_reaches_the_scene_on_the_next_frame() {
     assert!(!harness.app.retained.rebuilt_everything());
     assert_eq!(harness.app.retained.transparency(), Transparency::OPAQUE);
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.8),
         ..TerminalConfig::default()
     });
@@ -1734,7 +1730,7 @@ fn a_reload_that_changes_the_opacity_reaches_the_scene_on_the_next_frame() {
         "the scene was not rebuilt for the new opacity"
     );
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.8),
         opacity_mode: Some(OpacityMode::Everything),
         ..TerminalConfig::default()
@@ -1749,7 +1745,7 @@ fn a_reload_that_changes_the_opacity_reaches_the_scene_on_the_next_frame() {
     );
     assert!(harness.app.retained.rebuilt_everything());
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.8),
         opacity_mode: Some(OpacityMode::Everything),
         blur: Some(true),
@@ -1778,13 +1774,13 @@ fn only_a_window_drawn_below_full_opacity_is_see_through() {
     let mut harness = Harness::new(0, true, "");
     assert!(!harness.app.see_through());
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.9),
         ..TerminalConfig::default()
     });
     assert!(harness.app.see_through());
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(1.0),
         blur: Some(true),
         ..TerminalConfig::default()
@@ -1795,7 +1791,7 @@ fn only_a_window_drawn_below_full_opacity_is_see_through() {
     );
 
     harness.app.appearance.transparency_available = false;
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.5),
         ..TerminalConfig::default()
     });
@@ -1806,7 +1802,7 @@ fn only_a_window_drawn_below_full_opacity_is_see_through() {
 fn a_display_without_transparency_draws_opaque_and_warns_once() {
     let mut harness = Harness::new(0, true, "");
     harness.app.appearance.transparency_available = false;
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         opacity: Some(0.5),
         ..TerminalConfig::default()
     });
@@ -1890,7 +1886,7 @@ fn a_reloaded_font_that_cannot_be_built_leaves_the_one_in_place_alone() {
     let mut harness = Harness::new(0, true, "");
     let before = harness.app.metrics;
 
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         font_size: Some(100_000.0),
         ..TerminalConfig::default()
     });
@@ -1955,7 +1951,7 @@ fn the_reset_chord_returns_to_the_resolved_size() {
 #[test]
 fn a_zoom_chord_reaches_the_pane_when_it_is_unbound() {
     let mut harness = Harness::new(1, true, "");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         zoom_in_keys: Some(Vec::new()),
         ..TerminalConfig::default()
     });
@@ -1965,23 +1961,6 @@ fn a_zoom_chord_reaches_the_pane_when_it_is_unbound() {
     assert!(
         matches!(harness.sent()[0], ClientToServerMsg::Key { .. }),
         "an unbound chord must be the escape hatch it is advertised as"
-    );
-}
-
-#[test]
-fn any_configuration_reload_resets_the_zoom() {
-    let mut harness = Harness::new(0, true, "");
-    let plain = harness.app.metrics;
-    harness.app.modifiers = ModifiersState::CONTROL;
-    harness.press(&character("="));
-    assert!(harness.app.metrics.height > plain.height);
-
-    harness.reconfigure(TerminalConfig::default());
-
-    assert_eq!(harness.app.zoom, 1.0);
-    assert_eq!(
-        harness.app.metrics, plain,
-        "a reload that changed nothing still has to take the zoom back"
     );
 }
 
@@ -2012,22 +1991,6 @@ fn a_pushed_font_size_resets_the_zoom() {
     harness.press(&character("="));
 
     harness.push(TerminalConfig {
-        font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
-        ..TerminalConfig::default()
-    });
-
-    assert_eq!(harness.app.zoom, 1.0);
-    assert_eq!(harness.app.metrics.height, 40);
-    assert_eq!(harness.app.options.font.size, DEFAULT_FONT_SIZE * 2.0);
-}
-
-#[test]
-fn a_reload_that_changes_the_size_resolves_it_without_the_zoom() {
-    let mut harness = Harness::new(0, true, "");
-    harness.app.modifiers = ModifiersState::CONTROL;
-    harness.press(&character("="));
-
-    harness.reconfigure(TerminalConfig {
         font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
         ..TerminalConfig::default()
     });
@@ -2221,7 +2184,7 @@ fn a_press_away_from_any_link_arms_nothing() {
 fn opening_links_switched_off_arms_nothing() {
     links::launch::forget_opened();
     let mut harness = Harness::new(3, true, "");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         open_links: Some(false),
         ..TerminalConfig::default()
     });
@@ -2263,7 +2226,7 @@ fn switching_opening_off_takes_the_hand_away() {
     let mut harness = Harness::new(1, true, "");
     with_a_link_under_the_pointer(&mut harness, "https://example.com");
     assert_eq!(harness.app.pointer_shape(), CursorIcon::Pointer);
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         open_links: Some(false),
         ..TerminalConfig::default()
     });
@@ -2314,7 +2277,7 @@ fn a_shift_click_on_a_link_opens_it_in_a_pane_that_is_not_watching_the_mouse() {
 fn a_shift_click_on_a_link_opens_nothing_once_shift_opening_is_off() {
     links::launch::forget_opened();
     let mut harness = Harness::new(1, true, "");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         open_links_with_shift: Some(false),
         ..TerminalConfig::default()
     });
@@ -2333,7 +2296,7 @@ fn a_shift_click_on_a_link_opens_nothing_once_shift_opening_is_off() {
 fn a_shift_click_on_a_link_opens_it_and_reaches_the_session_when_selecting_is_off() {
     links::launch::forget_opened();
     let mut harness = Harness::new(3, true, "");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         shift_drag_selects: Some(false),
         ..TerminalConfig::default()
     });
@@ -2469,7 +2432,7 @@ fn a_frame_drawn_under_the_selection_leaves_it_in_place() {
 #[test]
 fn a_shift_drag_reaches_the_session_when_selecting_is_off() {
     let mut harness = Harness::new(4, true, "");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         shift_drag_selects: Some(false),
         ..TerminalConfig::default()
     });
@@ -2495,7 +2458,7 @@ fn switching_selecting_off_drops_the_selection() {
     let mut harness = Harness::new(1, true, "");
     with_an_interface_on_screen(&mut harness);
     shift_drag(&mut harness, (0, 0), (1, 3));
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         shift_drag_selects: Some(false),
         ..TerminalConfig::default()
     });
@@ -2855,7 +2818,7 @@ fn a_middle_click_with_nothing_selected_reaches_the_session_as_before() {
 fn a_middle_click_reaches_the_session_when_the_option_is_off() {
     let mut harness = Harness::new(2, true, "");
     harness.set_primary("selected");
-    harness.reconfigure(TerminalConfig {
+    harness.push(TerminalConfig {
         middle_click_paste: Some(false),
         ..TerminalConfig::default()
     });
@@ -2912,7 +2875,7 @@ fn the_bell_mode_decides_what_a_bell_does() {
         (BellMode::None, false, false),
     ] {
         let mut harness = Harness::new(1, true, "");
-        harness.reconfigure(TerminalConfig {
+        harness.push(TerminalConfig {
             bell: Some(mode),
             ..TerminalConfig::default()
         });
@@ -3655,7 +3618,7 @@ mod smooth_scrolling {
     fn turning_smooth_scrolling_off_ends_a_running_slide_at_its_final_position() {
         let mut harness = scrolled(2);
         assert!(harness.app.scroll.is_active());
-        harness.reconfigure(TerminalConfig {
+        harness.push(TerminalConfig {
             smooth_scrolling: Some(false),
             ..TerminalConfig::default()
         });
@@ -3669,7 +3632,7 @@ mod smooth_scrolling {
     #[test]
     fn the_configured_duration_is_used_after_a_reload() {
         let mut harness = Harness::new(2, true, "");
-        harness.reconfigure(TerminalConfig {
+        harness.push(TerminalConfig {
             scroll_animation_duration: Some(400),
             ..TerminalConfig::default()
         });
@@ -3690,7 +3653,7 @@ mod smooth_scrolling {
     #[test]
     fn a_configuration_reload_or_theme_change_cancels_the_slide() {
         let mut harness = scrolled(3);
-        harness.reconfigure(TerminalConfig::default());
+        harness.push(TerminalConfig::default());
         assert!(!harness.app.scroll.is_active());
 
         harness.app.on_frame(&frame(3, false, 95, Some(2)));
@@ -3996,7 +3959,7 @@ mod scroll_momentum {
             ),
             (
                 "a configuration reload",
-                Box::new(|f: &mut Fling| f.harness.reconfigure(TerminalConfig::default())),
+                Box::new(|f: &mut Fling| f.harness.push(TerminalConfig::default())),
             ),
             (
                 "a session switch",
@@ -4033,7 +3996,7 @@ mod scroll_momentum {
     #[test]
     fn turning_momentum_off_stops_it_and_keeps_it_off() {
         let mut fling = Fling::coasting_fling(true);
-        fling.harness.reconfigure(TerminalConfig {
+        fling.harness.push(TerminalConfig {
             scroll_momentum: Some(false),
             ..TerminalConfig::default()
         });
@@ -4045,7 +4008,7 @@ mod scroll_momentum {
     #[test]
     fn momentum_works_with_smooth_scrolling_off() {
         let mut fling = Fling::offline(true);
-        fling.harness.reconfigure(TerminalConfig {
+        fling.harness.push(TerminalConfig {
             smooth_scrolling: Some(false),
             ..TerminalConfig::default()
         });

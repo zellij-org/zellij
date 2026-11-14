@@ -17,7 +17,7 @@ use crate::pages::{
 
 pub const DESKTOP_TIP_INDEX: usize = 12;
 pub const LAST_ONBOARDING_TIP_INDEX: usize = 16;
-pub const INTEGRATIONS_URL: &str = "https://zellij.dev/PLACEHOLDER-integrations";
+pub const INTEGRATIONS_URL: &str = "https://zellij.dev/documentation/inbox-integrations.html";
 pub const HOME_MANAGER_NOTE: &str =
     "If your config file comes from home-manager, set this through programs.zellij.settings.";
 

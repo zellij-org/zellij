@@ -18,6 +18,7 @@ use crate::panes::grid::Grid;
 use crate::vt_parser;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::collections::BTreeMap;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 
@@ -241,4 +242,52 @@ fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
             all_indices
         })
         .unwrap_or_default()
+}
+
+// A link is an index level whose first entry is LINK_MARK followed by the URL
+// in hex (see zellij-tile's Text). parse_indices skips that entry, so call
+// this first, on the same string.
+const LINK_MARK: char = 'l';
+const MAX_LINK_LENGTH: usize = 2048;
+
+fn parse_links(stringified: &str) -> BTreeMap<usize, String> {
+    let Some(end) = stringified.rfind('$') else {
+        return BTreeMap::new();
+    };
+    stringified[..end]
+        .split('$')
+        .enumerate()
+        .filter_map(|(level, entries)| {
+            let hex = entries
+                .split(',')
+                .find_map(|entry| entry.strip_prefix(LINK_MARK))?;
+            decode_link(hex).map(|url| (level, url))
+        })
+        .collect()
+}
+
+fn decode_link(hex: &str) -> Option<String> {
+    if hex.len() % 2 != 0 || hex.len() > MAX_LINK_LENGTH * 2 {
+        return None;
+    }
+    let bytes = (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok())
+        .collect::<Option<Vec<u8>>>()?;
+    let url = String::from_utf8(bytes).ok()?;
+    is_linkable(&url).then_some(url)
+}
+
+// The terminal decides what it will open; this only keeps out what would
+// break the escape sequence or isn't a URL at all.
+fn is_linkable(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    let mut scheme_chars = scheme.chars();
+    let scheme_is_valid = scheme_chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && scheme_chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    scheme_is_valid && !rest.is_empty() && !url.chars().any(|c| c.is_control() || c.is_whitespace())
 }
