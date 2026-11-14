@@ -3035,6 +3035,39 @@ impl Screen {
         self.switch_active_tab(tab_index.saturating_sub(1), None, true, client_id)
     }
 
+    fn go_to_tab_with_id(
+        &mut self,
+        tab_id: usize,
+        client_id: Option<ClientId>,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let client_id_to_switch = client_id
+            .and_then(|cid| {
+                if self.active_tab_ids.contains_key(&cid) {
+                    Some(cid)
+                } else {
+                    self.active_tab_ids.keys().next().copied()
+                }
+            })
+            .or_else(|| self.active_tab_ids.keys().next().copied());
+
+        if let Some(client_id) = client_id_to_switch {
+            if let Some(tab_position) = self.get_tab_position_by_id(tab_id) {
+                // switch_active_tab expects 0-based position and records the previous tab
+                // in tab_history.
+                self.switch_active_tab(tab_position, None, true, client_id)?;
+                self.render(None)?;
+            } else {
+                log::error!("Tab with ID {} not found", tab_id);
+                if let Some(mut c) = completion_tx {
+                    c.set_exit_status(1);
+                    c.set_error_message(format!("Tab with id {} not found", tab_id));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         self.switch_active_tab_name(name, client_id)
     }
@@ -14502,33 +14535,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::GoToTabWithId(tab_id, client_id, _completion_tx) => {
-                let client_id_to_switch = client_id
-                    .and_then(|cid| {
-                        if screen.active_tab_ids.contains_key(&cid) {
-                            Some(cid)
-                        } else {
-                            screen.active_tab_ids.keys().next().copied()
-                        }
-                    })
-                    .or_else(|| screen.active_tab_ids.keys().next().copied());
-
-                if let Some(client_id) = client_id_to_switch {
-                    // Get the position from the ID
-                    if let Some(tab_position) = screen.get_tab_position_by_id(tab_id) {
-                        // switch_active_tab expects 0-based position
-                        screen.switch_active_tab(tab_position, None, true, client_id)?;
-                        screen.render(None)?;
-
-                        screen
-                            .tab_history
-                            .entry(client_id)
-                            .or_insert_with(Vec::new)
-                            .push(tab_id);
-                    } else {
-                        log::error!("Tab with ID {} not found", tab_id);
-                    }
-                }
+            ScreenInstruction::GoToTabWithId(tab_id, client_id, completion_tx) => {
+                screen.go_to_tab_with_id(tab_id, client_id, completion_tx)?;
             },
             ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
                 // Use get_tab_by_id_mut() helper method

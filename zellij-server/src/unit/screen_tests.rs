@@ -5641,6 +5641,54 @@ pub fn go_to_tab_by_id_verifies_screen_state() {
 }
 
 #[test]
+pub fn go_to_tab_with_id_does_not_duplicate_history_for_toggle_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
+
+    screen.go_to_tab_with_id(0, Some(client_id), None).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 0);
+    assert_eq!(
+        screen.tab_history.get(&client_id).unwrap().last(),
+        Some(&2),
+        "GoToTabWithId should record the previous tab, not the destination"
+    );
+
+    screen.toggle_tab(client_id).unwrap();
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        2,
+        "ToggleTab should return to the tab that was active before GoToTabWithId"
+    );
+}
+
+#[test]
+pub fn go_to_missing_tab_with_id_reports_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| ScreenInstruction::GoToTabWithId(99, Some(1), Some(completion)),
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert_eq!(
+        result.completion.error_message.as_deref(),
+        Some("Tab with id 99 not found")
+    );
+}
+
+#[test]
 pub fn send_cli_go_to_tab_by_id_action() {
     let size = Size {
         cols: 121,
