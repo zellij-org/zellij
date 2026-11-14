@@ -356,7 +356,6 @@ struct GuestModalRow {
 struct GuestModalLayout {
     rows: Vec<GuestModalRow>,
     block_width: usize,
-    option_rows: Vec<usize>,
     option_row_ranges: Vec<std::ops::Range<usize>>,
     left_pad: usize,
     start_row: usize,
@@ -383,7 +382,6 @@ fn guest_modal_fallback_layout(
             block_fill: styles.fill.clone(),
         }],
         block_width,
-        option_rows: vec![],
         option_row_ranges: vec![],
         left_pad,
         start_row: rows / 2,
@@ -443,7 +441,6 @@ fn guest_modal_layout(
     let block_width = block_width.min(columns);
 
     let mut rows_content: Vec<GuestModalRow> = Vec::new();
-    let mut option_rows: Vec<usize> = Vec::new();
     let mut option_row_ranges: Vec<std::ops::Range<usize>> = Vec::new();
     rows_content.push(GuestModalRow {
         segments: title,
@@ -488,7 +485,6 @@ fn guest_modal_layout(
         };
         let marker = if is_selected { "> " } else { "  " };
         let option_start = rows_content.len();
-        option_rows.push(option_start);
         rows_content.push(GuestModalRow {
             segments: vec![
                 (format!("{}{}", marker, number), marker_styles),
@@ -529,7 +525,6 @@ fn guest_modal_layout(
     GuestModalLayout {
         rows: rows_content,
         block_width,
-        option_rows,
         option_row_ranges,
         left_pad,
         start_row,

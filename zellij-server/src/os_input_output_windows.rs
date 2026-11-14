@@ -23,7 +23,7 @@ use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
     CTRL_C_EVENT, HPCON,
 };
-use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
+use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe, PIPE_REJECT_REMOTE_CLIENTS};
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
@@ -239,17 +239,19 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
         seq
     );
     let wide_name = to_wide(&name);
+    let private = zellij_utils::pipe_access::PrivateAttributes::new()?;
+    let attributes = private.attributes();
 
     let server = unsafe {
         CreateNamedPipeW(
             wide_name.as_ptr(),
             PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-            PIPE_TYPE_BYTE | PIPE_WAIT,
+            PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1,     // max instances
             0,     // out buffer (we only read)
             65536, // in buffer
             0,     // default timeout
-            std::ptr::null(),
+            &attributes,
         )
     };
     if server == INVALID_HANDLE_VALUE {

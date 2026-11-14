@@ -405,17 +405,17 @@ pub fn tab_line(
     }]);
 
     let supports_arrow_fonts = !capabilities.arrow_fonts;
-    let new_tab_button_background = if hover.new_tab_button {
-        palette.ribbon_unselected.emphasis_1
+    let new_tab_button_declaration = if hover.new_tab_button {
+        palette.ribbon_hover_style()
     } else if supports_arrow_fonts {
-        palette.ribbon_unselected.background
+        palette.ribbon_unselected
     } else if is_alternate_tab {
-        palette.ribbon_unselected.emphasis_1
+        palette.ribbon_hover_style()
     } else {
-        palette.ribbon_unselected.background
+        palette.ribbon_unselected
     };
     let new_tab_button =
-        new_tab_button_line_part(palette, capabilities, new_tab_button_background, dimmed);
+        new_tab_button_line_part(palette, capabilities, new_tab_button_declaration, dimmed);
     let used = prefix.iter().map(|p| p.len).sum::<usize>();
     let current_indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
     let room = cols
@@ -535,17 +535,19 @@ fn scroll_status(scroll: (usize, usize), palette: Styling, dimmed: bool) -> Line
 fn new_tab_button_line_part(
     palette: Styling,
     capabilities: PluginCapabilities,
-    background_color: PaletteColor,
+    declaration: StyleDeclaration,
     dimmed: bool,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
     let separator_width = display_width(separator);
-    let foreground_color = palette.ribbon_unselected.base;
     let separator_fill_color = palette.text_unselected.background;
-    let background_color = if dimmed {
-        palette.ribbon_unselected.background
+    let (foreground_color, background_color) = if dimmed {
+        (
+            palette.ribbon_unselected.base,
+            palette.ribbon_unselected.background,
+        )
     } else {
-        background_color
+        (declaration.base, declaration.background)
     };
     let text_style = if dimmed {
         style!(foreground_color, background_color).italic()

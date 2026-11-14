@@ -193,6 +193,7 @@ pub mod default_theme_colors {
     pub const WINE: (u8, u8, u8) = (79, 26, 34);
     pub const NAVY: (u8, u8, u8) = (20, 49, 79);
     pub const BELL: (u8, u8, u8) = (99, 11, 20);
+    pub const PLUM: (u8, u8, u8) = (60, 20, 70);
 }
 
 pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {

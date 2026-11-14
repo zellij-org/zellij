@@ -49,6 +49,7 @@ impl NotificationProtocol {
         } else {
             format!("{}: {}", title, body)
         };
+        let payload: String = payload.chars().filter(|c| !c.is_control()).collect();
         match self {
             NotificationProtocol::Osc99 => Some(format!("\u{1b}]99;;{}\u{7}", payload)),
             NotificationProtocol::Osc9 => Some(format!("\u{1b}]9;{}\u{7}", payload)),

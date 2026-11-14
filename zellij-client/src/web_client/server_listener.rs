@@ -345,7 +345,10 @@ pub fn structured_client_declarations() -> Vec<ClientToServerMsg> {
             local_media: false,
         },
         ClientToServerMsg::SixelSupport { supported: true },
-        ClientToServerMsg::StructuredRenderSupport { supported: true },
+        ClientToServerMsg::StructuredRenderSupport {
+            supported: true,
+            row_shifts: false,
+        },
     ]
 }
 
@@ -427,7 +430,10 @@ mod tests {
                     local_media: false,
                 },
                 ClientToServerMsg::SixelSupport { supported: true },
-                ClientToServerMsg::StructuredRenderSupport { supported: true },
+                ClientToServerMsg::StructuredRenderSupport {
+                    supported: true,
+                    row_shifts: false
+                },
             ],
             "a remote structured client renders inline media itself and can read no file this \
              machine writes"

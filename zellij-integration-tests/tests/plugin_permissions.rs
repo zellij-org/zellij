@@ -73,6 +73,8 @@ fn write_into(zellij: &TestSession, session: &str, terminal: &FakePtyHandle) -> 
         plugin_title: None,
         popup: None,
         popup_no_focus: false,
+        popup_capture_all_keys: false,
+        popup_outside_click: None,
     };
     zellij.run_cli_pipe(
         pipe,

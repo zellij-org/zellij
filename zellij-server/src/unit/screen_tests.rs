@@ -22,7 +22,7 @@ use zellij_utils::input::layout::{
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::{
-    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
+    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle, StackListOrientation,
     DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -65,8 +65,8 @@ fn take_snapshot_and_cursor_coordinates(
     ansi_instructions: &str,
     grid: &mut Grid,
 ) -> (Option<(usize, usize)>, String) {
-    let mut vte_parser = vte::Parser::new();
-    vte_parser.advance(grid, ansi_instructions.as_bytes());
+    let mut vte_parser = crate::vt_parser::Parser::new();
+    vte_parser.feed(grid, ansi_instructions.as_bytes());
     let coords = grid
         .cursor_coordinates()
         .and_then(|(x, y, visible)| if visible { Some((x, y)) } else { None });
@@ -384,6 +384,7 @@ fn create_new_screen_with_capture(
         support_kitty_graphics_protocol,
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -1026,6 +1027,46 @@ fn open_new_tab() {
         screen.get_active_tab(1).unwrap().position,
         1,
         "Active tab switched to new tab"
+    );
+}
+
+#[test]
+fn first_client_gets_its_tab_when_later_cli_clients_leave_before_the_tab_is_laid_out() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    for cli_client_id in 2..=5 {
+        screen.remove_client(cli_client_id).expect("TEST");
+    }
+    new_tab(&mut screen, 1, 0);
+
+    assert!(
+        screen.get_active_tab(1).is_ok(),
+        "the client that started the session is attached to the first tab"
+    );
+    assert!(
+        screen.connected_clients.borrow().contains_key(&1),
+        "the client that started the session counts as connected"
+    );
+}
+
+#[test]
+fn first_client_is_not_attached_when_it_left_before_the_tab_is_laid_out() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+
+    screen.remove_client(1).expect("TEST");
+    new_tab(&mut screen, 1, 0);
+
+    assert!(
+        screen.get_active_tab(1).is_err(),
+        "a client that already disconnected is not attached to the new tab"
     );
 }
 
@@ -5482,6 +5523,36 @@ pub fn send_cli_set_pane_border_style_action() {
 }
 
 #[test]
+fn cli_stack_orientation_toggle_reports_completion() {
+    let mut mock_screen = MockScreen::new(Size { cols: 80, rows: 10 });
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = std::thread::spawn(move || {
+        while let Ok(instruction) = server_receiver.recv() {
+            if matches!(instruction, (ServerInstruction::KillSession, _)) {
+                break;
+            }
+        }
+    });
+    let result = route_action(
+        Action::ToggleStackListOrientation,
+        999,
+        Some(999),
+        None,
+        session_metadata.senders.clone(),
+        None,
+        None,
+        InputMode::Normal,
+        None,
+        true,
+    );
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let (_, completion) = result.unwrap();
+    assert!(completion.is_some());
+}
+
+#[test]
 pub fn set_pane_border_style_reports_an_unknown_pane() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10;
@@ -6008,6 +6079,7 @@ fn create_new_screen_with_message_capture(
         true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -9254,6 +9326,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         true, // support_kitty_graphics_protocol
         stacked_resize,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -10247,6 +10320,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         true,
         true,
         false,
+        StackListOrientation::default(),
         None,
         false,
         web_sharing,
@@ -11072,6 +11146,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         true,  // support_kitty_graphics_protocol
         true,  // stacked_resize
         false,
+        StackListOrientation::default(),
         None,
         false,
         WebSharing::Off,
@@ -16605,7 +16680,7 @@ fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
             tab_id,
             run_plugin_or_alias,
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             20,
             5,
             None,
@@ -16627,6 +16702,73 @@ fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
         .try_iter()
         .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(42)));
     assert!(unloaded);
+}
+
+#[test]
+fn a_click_outside_a_popup_that_closes_on_outside_click_unloads_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    for (plugin_id, behavior) in [
+        (42, crate::tab::PopupBehavior::prompt()),
+        (
+            43,
+            crate::tab::PopupBehavior::prompt()
+                .on_outside_click(zellij_utils::data::OutsideClick::Close),
+        ),
+    ] {
+        screen
+            .add_popup(
+                plugin_id,
+                client_id,
+                tab_id,
+                run_plugin_or_alias.clone(),
+                crate::tab::PopupPlacement::At(Position::new(3, 3)),
+                behavior,
+                20,
+                5,
+                None,
+            )
+            .unwrap();
+        screen.reveal_popup(plugin_id).unwrap();
+    }
+    let outside = MouseEvent::new_left_press_event(Position::new(15, 80));
+    assert!(screen.handle_popup_mouse_event(&outside, client_id));
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .popup_plugin_id(client_id),
+        Some(42)
+    );
+    assert!(screen.handle_popup_mouse_event(&outside, client_id));
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .popup_plugin_id(client_id),
+        Some(42)
+    );
+    let unloaded: Vec<u32> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Unload(plugin_id) => Some(plugin_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unloaded, vec![43]);
 }
 
 #[test]
@@ -16658,7 +16800,7 @@ fn closing_the_pane_a_popup_belongs_to_closes_the_popup() {
             tab_id,
             run_plugin_or_alias.clone(),
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             20,
             5,
             Some(PaneId::Terminal(2)),
@@ -16671,7 +16813,7 @@ fn closing_the_pane_a_popup_belongs_to_closes_the_popup() {
             tab_id,
             run_plugin_or_alias,
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             20,
             5,
             Some(PaneId::Terminal(1)),
@@ -16716,7 +16858,7 @@ fn closing_the_top_popup_from_a_key_leaves_information_popups_open() {
             tab_id,
             run_plugin_or_alias.clone(),
             crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
-            crate::tab::PopupKind::Info,
+            crate::tab::PopupBehavior::info(),
             20,
             3,
             None,
@@ -16729,7 +16871,7 @@ fn closing_the_top_popup_from_a_key_leaves_information_popups_open() {
             tab_id,
             run_plugin_or_alias,
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             20,
             5,
             None,
@@ -16777,15 +16919,15 @@ fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
     let first_tab_id = screen.get_active_tab(client_id).unwrap().id;
     let run_plugin_or_alias =
         RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
-    for (plugin_id, kind, placement) in [
+    for (plugin_id, behavior, placement) in [
         (
             50,
-            crate::tab::PopupKind::Info,
+            crate::tab::PopupBehavior::info(),
             crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
         ),
         (
             42,
-            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupBehavior::prompt(),
             crate::tab::PopupPlacement::At(Position::new(3, 3)),
         ),
     ] {
@@ -16796,7 +16938,7 @@ fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
                 first_tab_id,
                 run_plugin_or_alias.clone(),
                 placement,
-                kind,
+                behavior,
                 20,
                 3,
                 None,
@@ -16820,6 +16962,57 @@ fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
         })
         .collect();
     assert_eq!(unloaded, vec![42]);
+}
+
+#[test]
+fn switching_tabs_moves_a_popup_asking_for_permissions_along_with_its_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let first_tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            50,
+            client_id,
+            first_tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupBehavior::info(),
+            20,
+            3,
+            None,
+        )
+        .unwrap();
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .request_plugin_permissions(
+            50,
+            Some(zellij_utils::data::PluginPermission::new(
+                "my-plugin".to_owned(),
+                vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            )),
+        );
+    screen.switch_tab_prev(None, true, client_id).unwrap();
+    let new_tab = screen.get_active_tab(client_id).unwrap();
+    assert_ne!(new_tab.id, first_tab_id);
+    assert_eq!(new_tab.popup_plugin_ids_for_client(client_id), vec![50]);
+    assert!(new_tab.has_focused_popup_for_client(client_id));
+    assert!(!plugin_receiver
+        .try_iter()
+        .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(_))));
 }
 
 struct MockScreenWithPrompt {
@@ -16856,7 +17049,7 @@ impl MockScreenWithPrompt {
             run_plugin_or_alias: RunPluginOrAlias::from_url("zellij:prompt", &None, None, None)
                 .unwrap(),
             placement: crate::tab::PopupPlacement::At(Position::new(3, 3)),
-            kind: crate::tab::PopupKind::Prompt,
+            behavior: crate::tab::PopupBehavior::prompt(),
             width: 20,
             height: 5,
             anchor_pane: None,
@@ -17035,7 +17228,7 @@ fn loaded_prompt_popup(
     plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
 ) -> (
     ClientId,
-    crate::tab::PopupKind,
+    crate::tab::PopupBehavior,
     Option<PaneId>,
     BTreeMap<String, String>,
 ) {
@@ -17044,11 +17237,11 @@ fn loaded_prompt_popup(
         .find_map(|(instruction, _)| match instruction {
             PluginInstruction::LoadPopup {
                 client_id,
-                kind,
+                behavior,
                 anchor_pane,
                 pipe: Some((crate::plugins::PopupRequest::Prompt(caller), caller_args)),
                 ..
-            } if caller == prompt_caller() => Some((client_id, kind, anchor_pane, caller_args)),
+            } if caller == prompt_caller() => Some((client_id, behavior, anchor_pane, caller_args)),
             _ => None,
         })
         .expect("a prompt popup was loaded")
@@ -17066,11 +17259,11 @@ fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
         None,
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
-    let (client_id, kind, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
+    let (client_id, behavior, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(client_id, 1);
-    assert_eq!(kind, crate::tab::PopupKind::Prompt);
+    assert_eq!(behavior, crate::tab::PopupBehavior::prompt());
     assert_eq!(anchor_pane, focused_pane);
     assert!(caller_args.contains_key(zellij_utils::prompt::CALLER_PANE_TITLE_ARG));
     assert!(!caller_args.contains_key(zellij_utils::prompt::CALLER_PANE_ID_ARG));
@@ -17094,7 +17287,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(anchor_pane, Some(focused_pane));
@@ -17113,11 +17306,194 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
         )),
         false,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
-    let (_, kind, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
-    assert_eq!(kind, crate::tab::PopupKind::Info);
+    let (_, behavior, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
+    assert_eq!(behavior, crate::tab::PopupBehavior::info());
     assert_eq!(anchor_pane, None);
+}
+
+#[test]
+fn a_popup_asking_for_permissions_reports_its_focus_to_the_server() {
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::unbounded();
+    screen.bus.senders.to_server = Some(SenderWithContext::new(to_server));
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupBehavior::info(),
+            40,
+            6,
+            None,
+        )
+        .unwrap();
+    let focus_reports = || -> Vec<bool> {
+        server_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ServerInstruction::PopupStateChanged(1, has_focused_popup, _) => {
+                    Some(has_focused_popup)
+                },
+                _ => None,
+            })
+            .collect()
+    };
+    focus_reports();
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .request_plugin_permissions(
+            42,
+            Some(zellij_utils::data::PluginPermission::new(
+                "my-plugin".to_owned(),
+                vec![zellij_utils::data::PermissionType::ReadApplicationState],
+            )),
+        );
+    screen.report_popup_state_for_plugin(42);
+    assert_eq!(focus_reports(), vec![true]);
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('y'));
+    assert!(screen.send_key_to_popup(client_id, key, vec![b'y'], false));
+    assert_eq!(focus_reports(), vec![false]);
+}
+
+#[test]
+fn plugin_popups_take_key_capture_and_outside_click_from_their_options() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::{OutsideClick, PopupOptions};
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:session-manager", &None, None, None).unwrap();
+    for (options, expected) in [
+        (PopupOptions::default(), PopupBehavior::menu()),
+        (
+            PopupOptions::default()
+                .capture_all_keys(true)
+                .outside_click(OutsideClick::Block),
+            PopupBehavior::menu()
+                .capturing_all_keys(true)
+                .on_outside_click(OutsideClick::Block),
+        ),
+        (
+            PopupOptions::default().focused(false),
+            PopupBehavior::info(),
+        ),
+    ] {
+        screen.open_plugin_popup_for_plugin(
+            9,
+            1,
+            run_plugin_or_alias.clone(),
+            2,
+            2,
+            30,
+            8,
+            options,
+        );
+        let loaded: Vec<PopupBehavior> = plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::LoadPopup { behavior, .. } => Some(behavior),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(loaded, vec![expected]);
+    }
+}
+
+#[test]
+fn changing_a_popups_focus_keeps_its_key_capture_and_outside_click() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::OutsideClick;
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    let behavior = PopupBehavior::prompt()
+        .capturing_all_keys(true)
+        .on_outside_click(OutsideClick::Close);
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            behavior,
+            20,
+            5,
+            None,
+        )
+        .unwrap();
+    screen.set_popup_focused(42, false);
+    assert!(!screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .focused_popup_takes_all_keys(client_id));
+    screen.set_popup_focused(42, true);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(tab.focused_popup_takes_all_keys(client_id));
+    assert_eq!(tab.popup_behavior_of_plugin(42), Some(behavior));
+}
+
+#[test]
+fn pipe_and_prompt_popups_take_key_capture_and_outside_click_from_the_request() {
+    use crate::tab::PopupBehavior;
+    use zellij_utils::data::OutsideClick;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let focused_pane = screen.get_active_tab(1).unwrap().get_active_pane_id(1);
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    for (capture_all_keys, outside_click, expected) in [
+        (false, OutsideClick::Block, PopupBehavior::prompt()),
+        (
+            false,
+            OutsideClick::Close,
+            PopupBehavior::prompt().on_outside_click(OutsideClick::Close),
+        ),
+        (
+            true,
+            OutsideClick::Close,
+            PopupBehavior::prompt()
+                .capturing_all_keys(true)
+                .on_outside_click(OutsideClick::Close),
+        ),
+    ] {
+        screen.open_pipe_popup(
+            "pipe".to_owned(),
+            run_plugin_or_alias.clone(),
+            focused_pane,
+            zellij_utils::data::PipePopupPlacement::Mouse,
+            true,
+            capture_all_keys,
+            outside_click,
+        );
+        screen.open_prompt_popup(
+            prompt_caller(),
+            1,
+            focused_pane,
+            run_plugin_or_alias.clone(),
+            None,
+            true,
+            capture_all_keys,
+            outside_click,
+        );
+        let loaded: Vec<PopupBehavior> = plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::LoadPopup { behavior, .. } => Some(behavior),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(loaded, vec![expected; 2]);
+    }
 }
 
 #[test]
@@ -17131,7 +17507,7 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         None,
         true,
         false,
-        false,
+        zellij_utils::data::OutsideClick::Block,
     );
     let failed = plugin_receiver.try_iter().any(|(instruction, _)| {
         matches!(
@@ -17140,6 +17516,58 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         )
     });
     assert!(failed);
+}
+
+#[test]
+fn stack_orientation_toggles_survive_session_serialization() {
+    let mut screen = create_new_screen(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+        true,
+    );
+    *screen.stacked_pane_list.borrow_mut() = true;
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            false,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(1)),
+                borderless: None,
+                border_style: None,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .sync_stacked_pane_list_mode();
+    for direction in ["horizontal", "vertical"] {
+        assert!(screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .toggle_stack_list_orientation(1));
+        let metadata = screen.get_layout_metadata(None, None);
+        assert!(metadata.is_dirty());
+        let (kdl, _) =
+            zellij_utils::session_serialization::serialize_session_layout(metadata.into()).unwrap();
+        assert!(
+            kdl.contains(&format!("stack_orientation=\"{}\"", direction)),
+            "{}",
+            kdl
+        );
+        Layout::from_kdl(&kdl, None, None, None).unwrap();
+    }
 }
 
 #[test]
@@ -17368,8 +17796,8 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
         "a client that has not acknowledged must not be sent a second frame"
     );
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     expire_in_flight_frame(&screen, client_id);
@@ -17489,8 +17917,8 @@ fn a_resize_discards_the_pending_overlay_and_forces_a_full_repaint() {
     delivered_frame(&server_receiver, client_id).expect("the first frame must reach the client");
     render_with_pending_output(&mut screen, client_id);
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     let resized = Size {
@@ -17793,8 +18221,8 @@ fn a_pane_resize_releases_the_in_flight_frame() {
         "a client that has not acknowledged must not be sent a second frame"
     );
     assert!(
-        structured_client_with(&screen, client_id, |state| state.overlay.is_dirty()),
-        "the undelivered update must be waiting in the overlay"
+        screen.render_waits_for_ack,
+        "the undelivered update must wait for the acknowledgement"
     );
 
     screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(1));
@@ -19015,7 +19443,7 @@ fn screen_with_session_card(
             tab_id,
             run_plugin_or_alias,
             crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
-            crate::tab::PopupKind::Info,
+            crate::tab::PopupBehavior::info(),
             40,
             6,
             None,
@@ -19037,15 +19465,15 @@ fn an_information_popup_can_take_focus_and_give_it_back() {
     assert!(tab.has_focused_popup_for_client(client_id));
     assert_eq!(tab.popup_plugin_id(client_id), Some(60));
     assert_eq!(
-        tab.popup_kind_of_plugin(60),
-        Some(crate::tab::PopupKind::Prompt)
+        tab.popup_behavior_of_plugin(60),
+        Some(crate::tab::PopupBehavior::prompt())
     );
     screen.set_popup_focused(60, false);
     let tab = screen.get_active_tab(client_id).unwrap();
     assert!(!tab.has_focused_popup_for_client(client_id));
     assert_eq!(
-        tab.popup_kind_of_plugin(60),
-        Some(crate::tab::PopupKind::Info)
+        tab.popup_behavior_of_plugin(60),
+        Some(crate::tab::PopupBehavior::info())
     );
     assert!(tab.has_popup_for_client(client_id));
 }
@@ -19129,8 +19557,8 @@ fn f9_focuses_an_unfocused_session_card() {
     screen.toggle_session_card(client_id);
     let tab = screen.get_active_tab(client_id).unwrap();
     assert_eq!(
-        tab.popup_kind_of_plugin(63),
-        Some(crate::tab::PopupKind::Prompt)
+        tab.popup_behavior_of_plugin(63),
+        Some(crate::tab::PopupBehavior::prompt())
     );
     assert_eq!(keybind_pipes_to(&plugin_receiver, 63), vec!["focus_card"]);
 }
@@ -19208,34 +19636,85 @@ fn the_startup_session_card_is_unfocused_and_says_so() {
     let client_id = 1;
     let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
     screen.open_session_card(client_id);
-    let loaded: Vec<(crate::tab::PopupKind, Option<String>)> = plugin_receiver
+    let loaded: Vec<(crate::tab::PopupBehavior, Option<String>)> = plugin_receiver
         .try_iter()
         .filter_map(|(instruction, _)| match instruction {
             PluginInstruction::LoadPopup {
                 run_plugin_or_alias,
-                kind,
+                behavior,
                 ..
-            } => Some((kind, role_of(&run_plugin_or_alias))),
+            } => Some((behavior, role_of(&run_plugin_or_alias))),
             _ => None,
         })
         .collect();
     assert_eq!(
         loaded,
-        vec![(crate::tab::PopupKind::Info, Some("card_startup".to_owned()))]
+        vec![(
+            crate::tab::PopupBehavior::info(),
+            Some("card_startup".to_owned())
+        )]
     );
+}
+
+#[test]
+fn with_attention_off_the_session_card_does_not_open_and_plugins_get_no_attention() {
+    use zellij_utils::attention::{
+        AttentionItem, AttentionStatus, GlobalAttention, PaneAttention, SessionAttention,
+    };
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    let mut busy = SessionAttention::default();
+    let item = AttentionItem {
+        pane_id: zellij_utils::data::PaneId::Terminal(1),
+        tab_id: 0,
+        tab_name: "tab".to_owned(),
+        pane_title: "pane".to_owned(),
+        attention: PaneAttention {
+            status: AttentionStatus::NeedsYou,
+            ..Default::default()
+        },
+    };
+    busy.counts.add(&item.attention);
+    busy.items.push(item);
+    screen.set_global_attention(GlobalAttention::build(
+        "here",
+        vec![
+            ("here".to_owned(), Default::default()),
+            ("other".to_owned(), busy),
+        ],
+    ));
+    let told: Vec<GlobalAttention> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::GlobalAttentionUpdate(global) => Some(global),
+            _ => None,
+        })
+        .collect();
+    let global = told.last().expect("plugins are told");
+    assert!(global.attention_disabled);
+    assert!(global.items.is_empty());
+    assert_eq!(global.counts, Default::default());
+    assert_eq!(global.running(), 2);
+    screen.open_session_card(client_id);
+    assert!(loaded_popups(&plugin_receiver).is_empty());
+    assert_eq!(screen.pending_session_card, None);
 }
 
 fn loaded_popups(
     plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
-) -> Vec<(crate::tab::PopupKind, Option<String>)> {
+) -> Vec<(crate::tab::PopupBehavior, Option<String>)> {
     plugin_receiver
         .try_iter()
         .filter_map(|(instruction, _)| match instruction {
             PluginInstruction::LoadPopup {
                 run_plugin_or_alias,
-                kind,
+                behavior,
                 ..
-            } => Some((kind, role_of(&run_plugin_or_alias))),
+            } => Some((behavior, role_of(&run_plugin_or_alias))),
             _ => None,
         })
         .collect()
@@ -19262,7 +19741,10 @@ fn a_session_card_requested_before_any_tab_exists_opens_once_a_tab_exists() {
     assert_eq!(screen.pending_session_card, None);
     assert_eq!(
         loaded_popups(&plugin_receiver),
-        vec![(crate::tab::PopupKind::Info, Some("card_startup".to_owned()))]
+        vec![(
+            crate::tab::PopupBehavior::info(),
+            Some("card_startup".to_owned())
+        )]
     );
     screen.open_pending_session_card();
     assert!(loaded_popups(&plugin_receiver).is_empty());
@@ -19756,4 +20238,174 @@ mod session_rename {
         assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
         assert!(h.screen.session_rename_drafts.is_empty());
     }
+}
+
+struct ClientCells {
+    cols: usize,
+    rows: usize,
+    cells: Vec<zellij_utils::structured_render::WireCell>,
+    clusters: std::collections::HashMap<usize, String>,
+    links: std::collections::HashMap<u8, String>,
+}
+
+impl ClientCells {
+    fn new() -> Self {
+        ClientCells {
+            cols: 0,
+            rows: 0,
+            cells: vec![],
+            clusters: Default::default(),
+            links: Default::default(),
+        }
+    }
+
+    fn apply(&mut self, frame: &[u8]) -> (usize, usize) {
+        use zellij_utils::structured_render::WireCell;
+        let view = zellij_utils::structured_render::decode(frame).expect("TEST");
+        let header = view.header();
+        let (cols, rows) = (header.cols as usize, header.rows as usize);
+        if cols != self.cols || rows != self.rows || header.full_repaint() || header.clear() {
+            self.cols = cols;
+            self.rows = rows;
+            self.cells = vec![WireCell::BLANK; cols * rows];
+            self.clusters.clear();
+        }
+        let shifts = view.shifts();
+        for shift in &shifts.entries {
+            shift.apply(&mut self.cells, cols, rows);
+            self.clusters = std::mem::take(&mut self.clusters)
+                .into_iter()
+                .filter_map(|(at, text)| match shift.moved_position(at, cols) {
+                    None => Some((at, text)),
+                    Some(moved) => moved.map(|at| (at, text)),
+                })
+                .collect();
+        }
+        for entry in view.links().entries {
+            self.links.insert(entry.id, entry.uri);
+        }
+        let clusters = view.clusters();
+        let mut written = 0;
+        for (record, cells) in view.rows() {
+            written += 1;
+            for (offset, cell) in cells.iter().enumerate() {
+                let at = record.y as usize * cols + record.x0 as usize + offset;
+                match cell.cluster_id() {
+                    Some(id) => {
+                        self.clusters
+                            .insert(at, clusters.get(id).unwrap_or(" ").to_owned());
+                    },
+                    None => {
+                        self.clusters.remove(&at);
+                    },
+                }
+            }
+        }
+        view.apply(&mut self.cells, cols, rows);
+        (shifts.entries.len(), written)
+    }
+
+    fn screen(&self) -> Vec<String> {
+        (0..self.rows)
+            .map(|row| {
+                (0..self.cols)
+                    .map(|col| {
+                        let at = row * self.cols + col;
+                        let cell = self.cells[at];
+                        let text = match self.clusters.get(&at) {
+                            Some(text) => text.clone(),
+                            None => cell.character().to_string(),
+                        };
+                        let link = self.links.get(&cell.link).cloned().unwrap_or_default();
+                        format!(
+                            "{}|{:x}|{:x}|{:x}|{}|{}",
+                            text, cell.fg, cell.bg, cell.attrs, cell.width, link
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect()
+    }
+}
+
+fn frames_for(server_receiver: &ServerReceiver, client_id: ClientId) -> Vec<Vec<u8>> {
+    let mut frames = vec![];
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(payloads)) = instruction {
+            if let Some(frame) = payloads.get(&client_id).and_then(|p| p.frame()) {
+                frames.push(frame.to_vec());
+            }
+        }
+    }
+    frames
+}
+
+#[test]
+fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint() {
+    let size = Size { cols: 40, rows: 12 };
+    let client_id = 1;
+    let mut stream = String::new();
+    for i in 0..60 {
+        match i % 6 {
+            0 => stream.push_str(&format!("plain line {}\r\n", i)),
+            1 => stream.push_str(&format!(
+                "\u{1b}[31mred\u{1b}[0m and \u{1b}[1;44mbold {}\u{1b}[m\r\n",
+                i
+            )),
+            2 => stream.push_str(&format!("{} {}\r\n", "long ".repeat(12), i)),
+            3 => stream.push_str("漢字한국어カナ mixed 👍🏽 e\u{301}\r\n"),
+            4 => stream.push_str(&format!("see https://example.com/{} now\r\n", i)),
+            _ => stream.push_str("\u{1b}[42m\u{1b}[K\u{1b}[0mpartial"),
+        }
+    }
+    let bytes = stream.into_bytes();
+
+    let (mut shifting, _tty, shifting_receiver) = structured_screen_with_client(size, client_id);
+    shifting.set_row_shift_support(client_id, true);
+    let mut client = ClientCells::new();
+    shifting.render_to_clients().expect("TEST");
+    let mut shifted_frames = 0;
+    let mut smallest_frame = usize::MAX;
+    let mut pieces = bytes.chunks(97);
+    loop {
+        let piece = pieces.next();
+        if let Some(piece) = piece {
+            shifting.apply_pty_bytes(1, piece.to_vec()).expect("TEST");
+            shifting.render_to_clients().expect("TEST");
+        }
+        let frames = frames_for(&shifting_receiver, client_id);
+        if piece.is_none() && frames.is_empty() {
+            break;
+        }
+        for frame in frames {
+            let (shifts, rows) = client.apply(&frame);
+            if shifts > 0 {
+                shifted_frames += 1;
+                smallest_frame = smallest_frame.min(rows);
+            }
+            let seq = zellij_utils::structured_render::decode(&frame)
+                .expect("TEST")
+                .header()
+                .seq;
+            shifting
+                .handle_render_frame_ack(client_id, seq)
+                .expect("TEST");
+        }
+    }
+
+    let (mut reference, _tty, reference_receiver) = structured_screen_with_client(size, client_id);
+    reference.apply_pty_bytes(1, bytes.clone()).expect("TEST");
+    reference.render_to_clients().expect("TEST");
+    let mut expected = ClientCells::new();
+    for frame in frames_for(&reference_receiver, client_id) {
+        expected.apply(&frame);
+    }
+
+    assert!(shifted_frames > 0, "the client was never sent a row shift");
+    assert!(
+        smallest_frame < size.rows,
+        "a shifted frame must not resend every row"
+    );
+    assert_eq!(client.screen(), expected.screen());
 }

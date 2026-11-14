@@ -12,6 +12,7 @@ use std::path::Path;
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
 pub const MAX_DIMENSION: u32 = 10_000;
+const MAX_ENCODED_PAYLOAD_BYTES: usize = MAX_DECODED_BYTES / 3 * 4 + 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KittyAction {
@@ -223,6 +224,11 @@ impl KittyCommandParser {
                     }
                 }
                 let pending = self.pending.as_mut().unwrap();
+                if pending.payload_b64.len() + payload.len() > MAX_ENCODED_PAYLOAD_BYTES {
+                    let pending = self.pending.take().unwrap();
+                    let echo = EchoFields::from_command(&pending.command);
+                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
+                }
                 pending.payload_b64.extend_from_slice(payload);
                 if more_chunks {
                     return None;
@@ -511,11 +517,33 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
     Ok(command)
 }
 
-fn should_delete_temp_file(path: &Path) -> bool {
-    path.to_string_lossy().contains("tty-graphics-protocol")
-        || path.starts_with(std::env::temp_dir())
-        || path.starts_with("/tmp")
-        || path.starts_with("/dev/shm")
+const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
+
+fn resolve_parent(path: &Path) -> Option<std::path::PathBuf> {
+    let file_name = path.file_name()?;
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => return None,
+    };
+    let canonical_parent = std::fs::canonicalize(parent).ok()?;
+    Some(canonical_parent.join(file_name))
+}
+
+fn is_deletable_temp_file(resolved: &Path) -> bool {
+    let roots = [
+        std::env::temp_dir(),
+        std::path::PathBuf::from("/tmp"),
+        std::path::PathBuf::from("/dev/shm"),
+    ];
+    roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .any(|root| {
+            resolved
+                .strip_prefix(&root)
+                .map(|relative| relative.to_string_lossy().contains(TEMP_FILE_MARKER))
+                .unwrap_or(false)
+        })
 }
 
 fn read_file_range(
@@ -566,14 +594,25 @@ fn run_payload_pipeline(
         KittyMedium::File | KittyMedium::TempFile => {
             let path_string = String::from_utf8(decoded)
                 .map_err(|_| echo.error(KittyErrorCode::Ebadf, "invalid file path"))?;
-            let path = std::path::PathBuf::from(path_string);
+            let requested_path = std::path::PathBuf::from(path_string);
+            let (path, deletable) = if command.medium == KittyMedium::TempFile {
+                match resolve_parent(&requested_path) {
+                    Some(resolved) => {
+                        let deletable = is_deletable_temp_file(&resolved);
+                        (resolved, deletable)
+                    },
+                    None => (requested_path, false),
+                }
+            } else {
+                (requested_path, false)
+            };
             let metadata = std::fs::metadata(&path)
                 .map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))?;
             if !metadata.is_file() {
                 return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
             }
             let read_result = read_file_range(&path, metadata.len(), &command, &echo);
-            if command.medium == KittyMedium::TempFile && should_delete_temp_file(&path) {
+            if deletable {
                 let _ = std::fs::remove_file(&path);
             }
             read_result?
@@ -622,6 +661,7 @@ fn run_payload_pipeline(
             }
             let mut data = data;
             data.truncate(expected as usize);
+            data.shrink_to_fit();
             DecodedImage {
                 bytes: data,
                 width,

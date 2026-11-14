@@ -29,6 +29,14 @@ themes {
             emphasis_2 4
             emphasis_3 5
         }
+        ribbon_hover {
+            base 0
+            background 15
+            emphasis_0 1
+            emphasis_1 8
+            emphasis_2 4
+            emphasis_3 5
+        }
         ribbon_selected {
             base 0
             background 2

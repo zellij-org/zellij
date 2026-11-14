@@ -16,10 +16,8 @@ use tips::MAX_TIP_INDEX;
 use crate::active_component::ActiveComponent;
 use crate::keybindings::{apply_missing_binds, ApplyStatus, Feature, KeybindingState};
 use crate::onboarding::{DesktopFacts, DESKTOP_TIP_INDEX, HOME_MANAGER_NOTE};
-use crate::pages::{ComponentLine, PageKind, TextOrCustomRender};
-use zellij_tile::prelude::desktop_integration::{
-    opt_out_kdl, opt_out_record, Item, RepairAnswer, Request, Response,
-};
+use crate::pages::{ComponentLine, PageKind, Shared, TextOrCustomRender};
+use zellij_tile::prelude::desktop_integration::{Item, RepairAnswer, Request, Response};
 
 const UI_ROWS: usize = 28;
 const UI_COLUMNS: usize = 90;
@@ -48,7 +46,6 @@ struct App {
     error: Option<String>,
     facts: Rc<RefCell<DesktopFacts>>,
     special: Special,
-    waiting_for_opt_out: bool,
 }
 
 impl Default for App {
@@ -81,7 +78,6 @@ impl Default for App {
             error: None,
             facts,
             special: Special::None,
-            waiting_for_opt_out: false,
         }
     }
 }
@@ -172,19 +168,6 @@ impl ZellijPlugin for App {
         match event {
             Event::DesktopIntegration(payload) => {
                 should_render = self.desktop_integration(payload);
-            },
-            Event::FailedToWriteConfigToDisk(file_path) if self.waiting_for_opt_out => {
-                self.waiting_for_opt_out = false;
-                request_desktop_integration(&Request::ClearOptOut);
-                self.active_page =
-                    Page::new_message("Not saved", &onboarding::opt_out_failed_lines(file_path));
-                should_render = true;
-            },
-            Event::ConfigWasWrittenToDisk if self.waiting_for_opt_out => {
-                self.waiting_for_opt_out = false;
-                self.active_page =
-                    Page::new_message("Opted out", &onboarding::opt_out_done_lines());
-                should_render = true;
             },
             Event::FailedToWriteConfigToDisk(file_path) => {
                 if self.applying_keybindings() {
@@ -326,7 +309,6 @@ impl App {
                 facts.launcher_installable = launcher
                     .map(|l| l.available && l.changeable && !l.installed)
                     .unwrap_or(false);
-                facts.platform = status.environment.platform;
                 drop(facts);
                 self.refresh_active_page();
                 true
@@ -357,13 +339,16 @@ impl App {
             },
         }
     }
-    fn opt_out(&mut self) {
-        self.waiting_for_opt_out = true;
-        request_desktop_integration(&Request::RecordOptOut(opt_out_record()));
-        reconfigure(opt_out_kdl(), true);
+    fn shared(&self) -> Shared {
+        Shared {
+            link_executable: self.link_executable.clone(),
+            keybinding_state: self.keybinding_state.clone(),
+            facts: self.facts.clone(),
+            main_screen: self.main_screen_builder(),
+        }
     }
     fn update_keybindings_screen(&self) -> Page {
-        Page::new_update_keybindings(self.keybinding_state.clone(), self.main_screen_builder())
+        Page::new_update_keybindings(&self.shared())
     }
     fn applying_keybindings(&self) -> bool {
         self.keybinding_state.borrow().status() == &ApplyStatus::Applying
@@ -371,18 +356,6 @@ impl App {
     fn awaiting_keybinding_confirmation(&self) -> bool {
         let is_confirmation_page = match self.active_page.kind {
             PageKind::UpdateKeybindings => true,
-            PageKind::NestedSessions => self
-                .keybinding_state
-                .borrow()
-                .has_missing_binds_for(Feature::NestedSessions),
-            PageKind::PaneFocus => self
-                .keybinding_state
-                .borrow()
-                .has_missing_binds_for(Feature::PaneFocus),
-            PageKind::ScrollByCommand => self
-                .keybinding_state
-                .borrow()
-                .has_missing_binds_for(Feature::ScrollByCommand),
             PageKind::Inbox => {
                 let state = self.keybinding_state.borrow();
                 state.has_missing_binds_for(Feature::Inbox)
@@ -407,31 +380,17 @@ impl App {
             PageKind::MainScreen => {
                 self.active_page = self.main_screen();
             },
-            PageKind::NestedSessions => {
-                self.active_page = Page::new_nested_sessions(
-                    self.keybinding_state.clone(),
-                    self.main_screen_builder(),
-                );
-            },
-            PageKind::PaneFocus => {
-                self.active_page =
-                    Page::new_pane_focus(self.keybinding_state.clone(), self.main_screen_builder());
-            },
-            PageKind::ScrollByCommand => {
-                self.active_page = Page::new_scroll_by_command(
-                    self.keybinding_state.clone(),
-                    self.main_screen_builder(),
-                );
-            },
             PageKind::UpdateKeybindings => {
                 self.active_page = self.update_keybindings_screen();
             },
             PageKind::DesktopApp => {
-                self.active_page = Page::new_desktop_app(self.facts.clone());
+                self.active_page = Page::new_desktop_app(&self.shared());
             },
             PageKind::Inbox => {
-                self.active_page =
-                    Page::new_inbox(self.keybinding_state.clone(), self.main_screen_builder());
+                self.active_page = Page::new_inbox(&self.shared());
+            },
+            PageKind::SessionPreviews => {
+                self.active_page = Page::new_session_previews(&self.shared());
             },
             PageKind::Other => {},
         }
@@ -516,10 +475,6 @@ impl App {
             return None;
         }
         match key.bare_key {
-            BareKey::Char('o') if kind == PageKind::MainScreen => {
-                self.opt_out();
-                Some(true)
-            },
             BareKey::Char('s') if kind == PageKind::MainScreen || kind == PageKind::DesktopApp => {
                 onboarding::open_setup();
                 Some(true)
@@ -595,10 +550,7 @@ impl App {
                 self.active_page = self.main_screen();
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('?')
-            && !self.is_release_notes
-            && !self.is_startup_tip
-        {
+        } else if key.bare_key == BareKey::Char('?') && !self.is_startup_tip {
             self.is_startup_tip = true;
             self.active_page = Page::new_tip_screen(
                 self.link_executable.clone(),

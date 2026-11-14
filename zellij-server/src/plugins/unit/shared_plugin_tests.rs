@@ -79,6 +79,7 @@ struct ScreenLog {
     renders: Renders,
     render_log: Vec<(PluginId, ClientId, String)>,
     collapsed: HashSet<PaneId>,
+    granted: Vec<PluginId>,
 }
 
 impl ScreenLog {
@@ -94,6 +95,7 @@ impl ScreenLog {
             renders: HashMap::new(),
             render_log: vec![],
             collapsed: HashSet::new(),
+            granted: vec![],
         }
     }
     fn receive_one(&mut self, timeout: Duration) {
@@ -114,6 +116,7 @@ impl ScreenLog {
                 }
             },
             ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
+                self.granted.push(plugin_id);
                 let _ = self
                     .plugin_thread_sender
                     .send(PluginInstruction::PermissionRequestResult(
@@ -138,6 +141,15 @@ impl ScreenLog {
                     "timed out waiting for: {}, renders: {:#?}",
                     description, self.renders
                 );
+            }
+            self.receive_one(Duration::from_millis(100));
+        }
+    }
+    fn wait_for_grants(&mut self, count: usize) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while self.granted.len() < count {
+            if Instant::now() > deadline {
+                panic!("timed out waiting for {} permission grants", count);
             }
             self.receive_one(Duration::from_millis(100));
         }
@@ -594,4 +606,115 @@ pub fn legacy_plugin_keeps_one_instance_per_client() {
         "the other client's instance did not receive the key"
     );
     assert!(screen.renders[&(plugin_id, 1)].starts_with("Rows: "));
+}
+
+fn settings_entries_observer() -> RunPluginOrAlias {
+    let mut configuration = BTreeMap::new();
+    configuration.insert("subscribe_settings_entries".to_owned(), "true".to_owned());
+    RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(fixture_path("fixture-plugin-for-tests")),
+        configuration: PluginUserConfiguration::new(configuration),
+        ..Default::default()
+    })
+}
+
+fn observed_settings_entries(renders: &Renders) -> Option<String> {
+    let rendered = renders
+        .values()
+        .find(|rendered| rendered.starts_with("Rows: "))?;
+    let start = rendered.rfind("PluginSettingsEntries(")?;
+    let end = start + rendered[start..].find("])")? + 2;
+    Some(rendered[start..end].to_owned())
+}
+
+fn pipe_to_slot(
+    sender: &SenderWithContext<PluginInstruction>,
+    name: &str,
+    slot_id: PluginId,
+    client_id: ClientId,
+) {
+    let _ = sender.send(PluginInstruction::KeybindPipe {
+        name: name.to_owned(),
+        payload: None,
+        plugin: None,
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id,
+        plugin_and_client_id: Some((slot_id, client_id)),
+        notification_end: None,
+    });
+}
+
+fn shared_slot_with_settings_entry(
+    sender: &SenderWithContext<PluginInstruction>,
+    screen: &mut ScreenLog,
+    client_id: ClientId,
+) -> PluginId {
+    load(sender, settings_entries_observer(), 0, client_id);
+    screen.wait_for_grants(1);
+    load(
+        sender,
+        shared_fixture(&[("label", "a"), ("settings_entries", "true")]),
+        1,
+        client_id,
+    );
+    screen.wait_until("the shared slot was granted its permission", |renders| {
+        renders
+            .values()
+            .any(|rendered| field(rendered, "permissions") == "Granted")
+    });
+    let slot_id = *screen
+        .renders
+        .iter()
+        .find(|(_, rendered)| field(rendered, "permissions") == "Granted")
+        .map(|((slot_id, _), _)| slot_id)
+        .unwrap();
+    pipe_to_slot(sender, "register_settings_entry", slot_id, client_id);
+    screen.wait_until("the observer lists the shared plugin's entry", |renders| {
+        observed_settings_entries(renders)
+            .map(|entries| entries.contains("Shared settings"))
+            .unwrap_or(false)
+    });
+    slot_id
+}
+
+#[test]
+#[ignore]
+pub fn a_crashed_shared_plugin_loses_its_settings_entry() {
+    let (sender, mut screen, teardown, _temp_folder) = start();
+    let client_id = 1;
+    let _ = sender.send(PluginInstruction::AddClient(client_id));
+    let slot_id = shared_slot_with_settings_entry(&sender, &mut screen, client_id);
+    pipe_to_slot(&sender, "panic", slot_id, client_id);
+    screen.wait_until("the observer no longer lists the entry", |renders| {
+        observed_settings_entries(renders).as_deref() == Some("PluginSettingsEntries([])")
+    });
+    teardown();
+}
+
+#[test]
+#[ignore]
+pub fn a_shared_plugin_reloaded_by_url_loses_its_settings_entry() {
+    let (sender, mut screen, teardown, _temp_folder) = start();
+    let client_id = 1;
+    let _ = sender.send(PluginInstruction::AddClient(client_id));
+    shared_slot_with_settings_entry(&sender, &mut screen, client_id);
+    let _ = sender.send(PluginInstruction::Reload(
+        Some(false),
+        None,
+        shared_fixture(&[("label", "a"), ("settings_entries", "true")]),
+        1,
+        Size { cols: 80, rows: 5 },
+        None,
+    ));
+    screen.wait_until("the observer no longer lists the entry", |renders| {
+        observed_settings_entries(renders).as_deref() == Some("PluginSettingsEntries([])")
+    });
+    teardown();
 }

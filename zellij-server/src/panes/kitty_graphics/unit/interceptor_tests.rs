@@ -16,15 +16,20 @@ struct RecordingPerformer {
     events: Vec<String>,
 }
 
-impl vte::Perform for RecordingPerformer {
+impl crate::vt_parser::Handler for RecordingPerformer {
     fn print(&mut self, c: char) {
         self.events.push(format!("print({:?})", c));
     }
     fn execute(&mut self, byte: u8) {
         self.events.push(format!("execute({})", byte));
     }
-    fn hook(&mut self, params: &vte::Params, intermediates: &[u8], ignore: bool, action: char) {
-        let params: Vec<Vec<u16>> = params.iter().map(|p| p.to_vec()).collect();
+    fn hook(&mut self, sequence: &crate::vt_parser::Sequence) {
+        let (intermediates, ignore, action) = (
+            sequence.intermediates(),
+            sequence.overflowed(),
+            sequence.final_char(),
+        );
+        let params: Vec<Vec<u16>> = sequence.parameters().iter().map(|p| p.to_vec()).collect();
         self.events.push(format!(
             "hook({:?},{:?},{},{:?})",
             params, intermediates, ignore, action
@@ -36,25 +41,29 @@ impl vte::Perform for RecordingPerformer {
     fn unhook(&mut self) {
         self.events.push("unhook".to_string());
     }
-    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+    fn osc_end(&mut self, params: &[&[u8]], bell_terminated: bool) {
         let params: Vec<Vec<u8>> = params.iter().map(|p| p.to_vec()).collect();
         self.events
             .push(format!("osc({:?},{})", params, bell_terminated));
     }
-    fn csi_dispatch(
-        &mut self,
-        params: &vte::Params,
-        intermediates: &[u8],
-        ignore: bool,
-        action: char,
-    ) {
-        let params: Vec<Vec<u16>> = params.iter().map(|p| p.to_vec()).collect();
+    fn csi_dispatch(&mut self, sequence: &crate::vt_parser::Sequence) {
+        let (intermediates, ignore, action) = (
+            sequence.intermediates(),
+            sequence.overflowed(),
+            sequence.final_char(),
+        );
+        let params: Vec<Vec<u16>> = sequence.parameters().iter().map(|p| p.to_vec()).collect();
         self.events.push(format!(
             "csi({:?},{:?},{},{:?})",
             params, intermediates, ignore, action
         ));
     }
-    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+    fn esc_dispatch(&mut self, sequence: &crate::vt_parser::Sequence) {
+        let (intermediates, ignore, byte) = (
+            sequence.intermediates(),
+            sequence.overflowed(),
+            sequence.final_byte(),
+        );
         self.events
             .push(format!("esc({:?},{},{})", intermediates, ignore, byte));
     }
@@ -62,7 +71,7 @@ impl vte::Perform for RecordingPerformer {
 
 fn feed(
     interceptor: &mut KittyApcInterceptor,
-    parser: &mut vte::Parser,
+    parser: &mut crate::vt_parser::Parser,
     performer: &mut RecordingPerformer,
     captured: &mut Vec<Vec<u8>>,
     input: &[u8],
@@ -71,7 +80,7 @@ fn feed(
         match interceptor.advance(*byte) {
             InterceptorResult::Forward(fwd) => {
                 for b in fwd.as_slice() {
-                    parser.advance(performer, std::slice::from_ref(b));
+                    parser.feed(performer, std::slice::from_ref(b));
                 }
             },
             InterceptorResult::Swallow => {},
@@ -82,7 +91,7 @@ fn feed(
 
 fn run_through_interceptor(input: &[u8], chunk_size: usize) -> (Vec<Vec<u8>>, RecordingPerformer) {
     let mut interceptor = KittyApcInterceptor::new();
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vt_parser::Parser::new();
     let mut performer = RecordingPerformer::default();
     let mut captured = Vec::new();
     for chunk in input.chunks(chunk_size) {
@@ -98,10 +107,10 @@ fn run_through_interceptor(input: &[u8], chunk_size: usize) -> (Vec<Vec<u8>>, Re
 }
 
 fn run_bare(input: &[u8]) -> RecordingPerformer {
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vt_parser::Parser::new();
     let mut performer = RecordingPerformer::default();
     for byte in input {
-        parser.advance(&mut performer, std::slice::from_ref(byte));
+        parser.feed(&mut performer, std::slice::from_ref(byte));
     }
     performer
 }
@@ -143,7 +152,7 @@ fn non_kitty_streams_pass_through_byte_identically() {
 #[test]
 fn lone_trailing_esc_is_held_across_calls() {
     let mut interceptor = KittyApcInterceptor::new();
-    let mut parser = vte::Parser::new();
+    let mut parser = crate::vt_parser::Parser::new();
     let mut performer = RecordingPerformer::default();
     let mut captured = Vec::new();
     feed(

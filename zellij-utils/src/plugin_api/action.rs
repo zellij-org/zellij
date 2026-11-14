@@ -342,6 +342,27 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("TogglePaneFrames should not have a payload"),
                 None => Ok(Action::TogglePaneFrames),
             },
+            Some(ProtobufActionName::ToggleStackListOrientation) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleStackListOrientation should not have a payload"),
+                    None => Ok(Action::ToggleStackListOrientation),
+                }
+            },
+            Some(ProtobufActionName::ToggleStackListOrientationByPaneId) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                        Ok(Action::ToggleStackListOrientationByPaneId {
+                            pane_id: payload
+                                .pane_id
+                                .ok_or(
+                                    "Missing pane id for Action::ToggleStackListOrientationByPaneId",
+                                )?
+                                .try_into()?,
+                        })
+                    },
+                    _ => Err("Wrong payload for Action::ToggleStackListOrientationByPaneId"),
+                }
+            },
             Some(ProtobufActionName::SetPaneFrameStyle) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SetPaneFrameStylePayload(payload)) => {
                     match ProtobufPaneFrameStyle::try_from(payload.pane_frame_style).ok() {
@@ -1790,6 +1811,16 @@ impl TryFrom<Action> for ProtobufAction {
             Action::TogglePaneFrames => Ok(ProtobufAction {
                 name: ProtobufActionName::TogglePaneFrames as i32,
                 optional_payload: None,
+            }),
+            Action::ToggleStackListOrientation => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleStackListOrientation as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleStackListOrientationByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleStackListOrientationByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
             }),
             Action::SetPaneFrameStyle(pane_frame_style) => Ok(ProtobufAction {
                 name: ProtobufActionName::SetPaneFrameStyle as i32,
@@ -3727,6 +3758,10 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            stack_orientation: protobuf
+                .stack_orientation
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
             default_fg: None,
             default_bg: None,
             border_style: protobuf.border_style.map(BorderStyleOverride::from),
@@ -3764,6 +3799,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             hide_floating_panes: internal.hide_floating_panes,
             pane_initial_contents: internal.pane_initial_contents,
             border_style: internal.border_style.map(|b| b.into()),
+            stack_orientation: internal.stack_orientation.map(|d| d.to_string()),
         })
     }
 }
@@ -4014,6 +4050,9 @@ mod tests {
             },
             Action::PasteFromClipboardByPaneId {
                 pane_id: PaneId::Terminal(3),
+            },
+            Action::ToggleStackListOrientationByPaneId {
+                pane_id: PaneId::Terminal(4),
             },
         ] {
             let protobuf: ProtobufAction = original.clone().try_into().unwrap();

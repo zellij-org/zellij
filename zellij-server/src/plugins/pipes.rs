@@ -323,6 +323,13 @@ fn apply_pipe_message_to_plugin_inner(
         .clone()
         .try_into()
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
+    if running_plugin.built_against_0_45
+        && !zellij_utils::plugin_api::released_contract::pipe_message_decodable_by_0_45(
+            &protobuf_pipe_message,
+        )
+    {
+        return Ok(());
+    }
     match instance.get_typed_func::<(), i32>(&mut running_plugin.store, "pipe") {
         Ok(pipe) => {
             wasi_write_object(

@@ -110,3 +110,15 @@ fn a_missing_title_or_body_is_not_padded_with_a_separator() {
         Some("\u{1b}]9;title\u{7}".to_owned())
     );
 }
+
+#[test]
+fn control_characters_are_stripped_from_rendered_notifications() {
+    assert_eq!(
+        NotificationProtocol::Osc9.render("ti\u{1b}]52;c;eA==\u{7}tle", "bo\u{9b}dy\n"),
+        Some("\u{1b}]9;ti]52;c;eA==tle: body\u{7}".to_owned())
+    );
+    assert_eq!(
+        NotificationProtocol::Osc99.render("", "\u{1b}[2Jbody"),
+        Some("\u{1b}]99;;[2Jbody\u{7}".to_owned())
+    );
+}

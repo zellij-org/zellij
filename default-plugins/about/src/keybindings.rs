@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
@@ -10,6 +11,11 @@ pub enum Feature {
     ScrollByCommand,
     Inbox,
     SessionHistory,
+    FloatingPanes,
+    StackOrientation,
+    Bars,
+    SwapLayouts,
+    SessionRename,
 }
 
 impl Feature {
@@ -20,8 +26,19 @@ impl Feature {
             Feature::ScrollByCommand => "scrolling by command",
             Feature::Inbox => "the inbox and pane status",
             Feature::SessionHistory => "moving between sessions",
+            Feature::FloatingPanes => "floating panes",
+            Feature::StackOrientation => "stack orientation",
+            Feature::Bars => "hiding the bars",
+            Feature::SwapLayouts => "swap layouts",
+            Feature::SessionRename => "renaming sessions",
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Detection {
+    ActionBoundAnywhere(Action),
+    KeyBoundToActions,
 }
 
 #[derive(Debug, Clone)]
@@ -29,13 +46,41 @@ pub struct ExpectedBind {
     pub feature: Feature,
     pub mode: InputMode,
     pub key: KeyWithModifier,
-    pub action: Action,
+    pub bound_actions: Vec<Action>,
+    pub detection: Detection,
     pub description: &'static str,
     pub returns_to_base_mode: bool,
     pub in_base_mode: bool,
 }
 
 impl ExpectedBind {
+    fn new(
+        feature: Feature,
+        mode: InputMode,
+        key: KeyWithModifier,
+        action: Action,
+        description: &'static str,
+        returns_to_base_mode: bool,
+    ) -> Self {
+        ExpectedBind {
+            feature,
+            mode,
+            key,
+            bound_actions: vec![action.clone()],
+            detection: Detection::ActionBoundAnywhere(action),
+            description,
+            returns_to_base_mode,
+            in_base_mode: false,
+        }
+    }
+    fn with_bound_actions(mut self, bound_actions: Vec<Action>) -> Self {
+        self.bound_actions = bound_actions;
+        self
+    }
+    fn detected_by_key(mut self) -> Self {
+        self.detection = Detection::KeyBoundToActions;
+        self
+    }
     pub fn key_text(&self) -> String {
         format!("<{}>", self.key)
     }
@@ -53,15 +98,21 @@ impl ExpectedBind {
         }
     }
     pub fn actions(&self, base_mode: InputMode) -> Vec<Action> {
+        let mut actions = self.bound_actions.clone();
         if self.returns_to_base_mode {
-            vec![
-                self.action.clone(),
-                Action::SwitchToMode {
-                    input_mode: base_mode,
-                },
-            ]
-        } else {
-            vec![self.action.clone()]
+            actions.push(Action::SwitchToMode {
+                input_mode: base_mode,
+            });
+        }
+        actions
+    }
+    fn is_bound(&self, keybinds: &KeybindsVec, base_mode: InputMode) -> bool {
+        match &self.detection {
+            Detection::ActionBoundAnywhere(action) => action_is_bound(keybinds, action),
+            Detection::KeyBoundToActions => {
+                actions_bound_to_key(keybinds, self.mode_in(base_mode), &self.key)
+                    == Some(self.actions(base_mode))
+            },
         }
     }
 }
@@ -74,6 +125,12 @@ pub enum ApplyStatus {
     Failed(Option<String>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shortcut {
+    pub keys: String,
+    pub action: Action,
+}
+
 #[derive(Debug)]
 pub struct KeybindingState {
     expected: Vec<ExpectedBind>,
@@ -82,6 +139,8 @@ pub struct KeybindingState {
     applied: Vec<ExpectedBind>,
     base_mode: InputMode,
     status: ApplyStatus,
+    inbox: Option<Shortcut>,
+    session_manager: Option<Shortcut>,
 }
 
 impl Default for KeybindingState {
@@ -93,6 +152,8 @@ impl Default for KeybindingState {
             applied: vec![],
             base_mode: InputMode::Normal,
             status: ApplyStatus::NotApplied,
+            inbox: None,
+            session_manager: None,
         }
     }
 }
@@ -103,18 +164,12 @@ impl KeybindingState {
         self.base_mode = base_mode;
         changed
     }
-    pub fn base_mode(&self) -> InputMode {
-        self.base_mode
-    }
-    pub fn base_mode_name(&self) -> String {
-        format!("{:?}", self.base_mode).to_uppercase()
-    }
     pub fn update_from_keybinds(&mut self, keybinds: &KeybindsVec) -> bool {
         let base_mode = self.base_mode;
         let mut missing = vec![];
         let mut conflicts = vec![];
         for (index, expected_bind) in self.expected.iter().enumerate() {
-            if action_is_bound(keybinds, &expected_bind.action) {
+            if expected_bind.is_bound(keybinds, base_mode) {
                 continue;
             }
             missing.push(index);
@@ -128,10 +183,51 @@ impl KeybindingState {
                 }
             }
         }
-        let changed = missing != self.missing || conflicts != self.conflicts;
+        let inbox = find_shortcut(keybinds, base_mode, |action| {
+            matches!(action, Action::ToggleSessionCard)
+        });
+        let session_manager = find_shortcut(keybinds, base_mode, |action| {
+            action.launches_plugin("session-manager")
+                || action.launches_plugin("zellij:session-manager")
+        });
+        let changed = missing != self.missing
+            || conflicts != self.conflicts
+            || inbox != self.inbox
+            || session_manager != self.session_manager;
         self.missing = missing;
         self.conflicts = conflicts;
+        self.inbox = inbox;
+        self.session_manager = session_manager;
         changed
+    }
+    pub fn inbox_keys(&self) -> Option<String> {
+        self.inbox.as_ref().map(|shortcut| shortcut.keys.clone())
+    }
+    pub fn session_manager_keys(&self) -> Option<String> {
+        self.session_manager
+            .as_ref()
+            .map(|shortcut| shortcut.keys.clone())
+    }
+    pub fn open_inbox(&self) {
+        let action = self
+            .inbox
+            .as_ref()
+            .map(|shortcut| shortcut.action.clone())
+            .unwrap_or(Action::ToggleSessionCard);
+        run_action(action, BTreeMap::new());
+    }
+    pub fn open_session_manager(&self) {
+        match &self.session_manager {
+            Some(shortcut) => run_action(shortcut.action.clone(), BTreeMap::new()),
+            None => {
+                open_plugin_pane_floating(
+                    "zellij:session-manager",
+                    BTreeMap::new(),
+                    None,
+                    BTreeMap::new(),
+                );
+            },
+        }
     }
     pub fn has_missing_binds(&self) -> bool {
         !self.missing.is_empty()
@@ -153,9 +249,6 @@ impl KeybindingState {
     }
     pub fn has_conflicts(&self) -> bool {
         !self.conflicts.is_empty()
-    }
-    pub fn bind_for_action(&self, action: &Action) -> Option<&ExpectedBind> {
-        self.expected.iter().find(|bind| &bind.action == action)
     }
     pub fn binds_to_add(&self) -> Vec<&ExpectedBind> {
         if !self.applied.is_empty() {
@@ -232,169 +325,292 @@ pub fn apply_missing_binds(keybinding_state: &Rc<RefCell<KeybindingState>>) {
 
 pub fn expected_binds() -> Vec<ExpectedBind> {
     vec![
-        ExpectedBind {
-            feature: Feature::NestedSessions,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Char(']')),
-            action: Action::FocusHostSession,
-            description: "Focus the host (outer) session",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::NestedSessions,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Char('[')),
-            action: Action::FocusGuestSession,
-            description: "Focus the guest (inner) session",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::NestedSessions,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Char('f')),
-            action: Action::ToggleHostFullscreen,
-            description: "Toggle host session fullscreen",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::PaneFocus,
-            mode: InputMode::Pane,
-            key: KeyWithModifier::new(BareKey::Char(';')),
-            action: Action::FocusLastPane,
-            description: "Focus the last focused pane",
-            returns_to_base_mode: false,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::ScrollByCommand,
-            mode: InputMode::Scroll,
-            key: KeyWithModifier::new(BareKey::Char('[')),
-            action: Action::ScrollToPreviousPrompt,
-            description: "Scroll to the previous command",
-            returns_to_base_mode: false,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::ScrollByCommand,
-            mode: InputMode::Scroll,
-            key: KeyWithModifier::new(BareKey::Char(']')),
-            action: Action::ScrollToNextPrompt,
-            description: "Scroll to the next command",
-            returns_to_base_mode: false,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::ScrollByCommand,
-            mode: InputMode::Scroll,
-            key: KeyWithModifier::new(BareKey::Char('m')),
-            action: Action::SelectCommandAtScrollPosition,
-            description: "Select the command at the scroll position",
-            returns_to_base_mode: false,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::ScrollByCommand,
-            mode: InputMode::Scroll,
-            key: KeyWithModifier::new(BareKey::Char('c')),
-            action: Action::CopyLastCommandOutput,
-            description: "Copy the output of the last command",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Normal,
-            key: KeyWithModifier::new(BareKey::F(9)),
-            action: Action::ToggleSessionCard,
-            description: "Open or close the inbox",
-            returns_to_base_mode: false,
-            in_base_mode: true,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Pane,
-            key: KeyWithModifier::new(BareKey::Char('u')),
-            action: Action::MutePane,
-            description: "Mute the focused pane",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Pane,
-            key: KeyWithModifier::new(BareKey::Char('g')),
-            action: Action::IgnorePaneOutput,
-            description: "Ignore the focused pane's output",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Pane,
-            key: KeyWithModifier::new(BareKey::Char('v')),
-            action: Action::WatchPane,
-            description: "Watch the focused pane",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Tab,
-            key: KeyWithModifier::new(BareKey::Char('u')),
-            action: Action::MuteTab,
-            description: "Mute the focused tab",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Char('u')),
-            action: Action::MuteSession,
-            description: "Mute this session",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::Inbox,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Char('n')),
-            action: Action::GoToNextAttention,
-            description: "Go to the next item that needs you",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::SessionHistory,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Tab),
-            action: Action::ToggleSession,
-            description: "Return to the previous session",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::SessionHistory,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Left),
-            action: Action::GoToPreviousSession,
-            description: "Go back in session history",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
-        ExpectedBind {
-            feature: Feature::SessionHistory,
-            mode: InputMode::Session,
-            key: KeyWithModifier::new(BareKey::Right),
-            action: Action::GoToNextSession,
-            description: "Go forward in session history",
-            returns_to_base_mode: true,
-            in_base_mode: false,
-        },
+        ExpectedBind::new(
+            Feature::NestedSessions,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char(']')),
+            Action::FocusHostSession,
+            "host session",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::NestedSessions,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('[')),
+            Action::FocusGuestSession,
+            "guest session",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::NestedSessions,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('f')),
+            Action::ToggleHostFullscreen,
+            "host fullscreen",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::PaneFocus,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char(';')),
+            Action::FocusLastPane,
+            "last focused pane",
+            false,
+        ),
+        ExpectedBind::new(
+            Feature::ScrollByCommand,
+            InputMode::Scroll,
+            KeyWithModifier::new(BareKey::Char('[')),
+            Action::ScrollToPreviousPrompt,
+            "previous command",
+            false,
+        ),
+        ExpectedBind::new(
+            Feature::ScrollByCommand,
+            InputMode::Scroll,
+            KeyWithModifier::new(BareKey::Char(']')),
+            Action::ScrollToNextPrompt,
+            "next command",
+            false,
+        ),
+        ExpectedBind::new(
+            Feature::ScrollByCommand,
+            InputMode::Scroll,
+            KeyWithModifier::new(BareKey::Char('m')),
+            Action::SelectCommandAtScrollPosition,
+            "select command",
+            false,
+        ),
+        ExpectedBind::new(
+            Feature::ScrollByCommand,
+            InputMode::Scroll,
+            KeyWithModifier::new(BareKey::Char('c')),
+            Action::CopyLastCommandOutput,
+            "copy last output",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('i')),
+            Action::ToggleSessionCard,
+            "inbox",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('u')),
+            Action::MuteSession,
+            "mute session",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('n')),
+            Action::GoToNextAttention,
+            "next item that needs you",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('u')),
+            Action::MutePane,
+            "mute",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('g')),
+            Action::IgnorePaneOutput,
+            "ignore output",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('v')),
+            Action::WatchPane,
+            "watch",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Inbox,
+            InputMode::Tab,
+            KeyWithModifier::new(BareKey::Char('u')),
+            Action::MuteTab,
+            "mute tab",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::SessionHistory,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Tab),
+            Action::ToggleSession,
+            "previous session",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::SessionHistory,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Left),
+            Action::GoToPreviousSession,
+            "back",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::SessionHistory,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Right),
+            Action::GoToNextSession,
+            "forward",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::FloatingPanes,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('a')),
+            Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            },
+            "new floating pane",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::StackOrientation,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('s')).with_shift_modifier(),
+            Action::ToggleStackListOrientation,
+            "toggle stack orientation",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::Bars,
+            InputMode::Pane,
+            KeyWithModifier::new(BareKey::Char('z')).with_shift_modifier(),
+            Action::ToggleBars { bars: vec![] },
+            "hide or show the bars",
+            true,
+        ),
+        ExpectedBind::new(
+            Feature::SwapLayouts,
+            InputMode::Tab,
+            KeyWithModifier::new(BareKey::Char(' ')),
+            Action::NextSwapLayout,
+            "next",
+            false,
+        )
+        .detected_by_key(),
+        ExpectedBind::new(
+            Feature::SwapLayouts,
+            InputMode::Tab,
+            KeyWithModifier::new(BareKey::Char(' ')).with_shift_modifier(),
+            Action::PreviousSwapLayout,
+            "previous",
+            false,
+        )
+        .detected_by_key(),
+        ExpectedBind::new(
+            Feature::SessionRename,
+            InputMode::Session,
+            KeyWithModifier::new(BareKey::Char('r')),
+            Action::SwitchToMode {
+                input_mode: InputMode::RenameSession,
+            },
+            "rename session",
+            false,
+        )
+        .with_bound_actions(vec![
+            Action::SwitchToMode {
+                input_mode: InputMode::RenameSession,
+            },
+            Action::SessionNameInput { input: vec![0] },
+        ]),
+        ExpectedBind::new(
+            Feature::SessionRename,
+            InputMode::RenameSession,
+            KeyWithModifier::new(BareKey::Esc),
+            Action::UndoRenameSession,
+            "undo",
+            false,
+        )
+        .with_bound_actions(vec![
+            Action::UndoRenameSession,
+            Action::SwitchToMode {
+                input_mode: InputMode::Session,
+            },
+        ]),
+        ExpectedBind::new(
+            Feature::SessionRename,
+            InputMode::RenameSession,
+            KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
+            Action::SwitchToMode {
+                input_mode: InputMode::Normal,
+            },
+            "done",
+            true,
+        )
+        .with_bound_actions(vec![])
+        .detected_by_key(),
     ]
+}
+
+const MAX_MODE_HOPS: usize = 3;
+
+pub fn find_shortcut(
+    keybinds: &KeybindsVec,
+    base_mode: InputMode,
+    is_target: impl Fn(&Action) -> bool,
+) -> Option<Shortcut> {
+    let mut visited = vec![base_mode];
+    let mut frontier: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![(base_mode, vec![])];
+    for _ in 0..=MAX_MODE_HOPS {
+        let mut next_frontier = vec![];
+        for (mode, path) in &frontier {
+            let Some((_, mode_binds)) = keybinds.iter().find(|(m, _)| m == mode) else {
+                continue;
+            };
+            for (key, actions) in mode_binds {
+                if let Some(action) = actions.iter().find(|action| is_target(action)) {
+                    let mut keys = path.clone();
+                    keys.push(key.clone());
+                    return Some(Shortcut {
+                        keys: keys
+                            .iter()
+                            .map(|key| key.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" + "),
+                        action: action.clone(),
+                    });
+                }
+            }
+            for (key, actions) in mode_binds {
+                for action in actions {
+                    if let Action::SwitchToMode { input_mode } = action {
+                        if !visited.contains(input_mode) {
+                            visited.push(*input_mode);
+                            let mut keys = path.clone();
+                            keys.push(key.clone());
+                            next_frontier.push((*input_mode, keys));
+                        }
+                    }
+                }
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+    None
 }
 
 fn action_is_bound(keybinds: &KeybindsVec, action: &Action) -> bool {

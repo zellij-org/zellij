@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[cfg(windows)]
 pub mod com;
 #[cfg(not(target_family = "wasm"))]
 pub mod desktop_entry;
+#[cfg(target_os = "macos")]
+pub mod icns;
+#[cfg(target_os = "macos")]
+pub mod macos_bundle;
 #[cfg(not(target_family = "wasm"))]
 pub mod platform;
 #[cfg(windows)]
@@ -28,42 +32,21 @@ pub fn windows_app_id() -> String {
     windows_app_id_for(crate::distribution::name())
 }
 
+/// Where Windows keeps the name and icon of an app id that comes without a manifest. The app
+/// writes it when it starts and uninstalling the desktop entry removes it.
+pub fn windows_app_id_key(name: &str) -> String {
+    format!(
+        r"Software\Classes\AppUserModelId\{}",
+        windows_app_id_for(name)
+    )
+}
+
+/// The image the app id's registry key points Windows at.
+pub fn windows_app_icon_path(cache_dir: &std::path::Path, name: &str) -> PathBuf {
+    cache_dir.join(format!("{}.png", name))
+}
+
 pub const REMOTE_WARNING: &str = "The window opens on the computer running Zellij.";
-
-pub const OPT_OUT_ATTENTION: [(&str, &str); 6] = [
-    ("frame_markers", "false"),
-    ("host_status", "false"),
-    ("tab_markers", "false"),
-    ("startup_card", "\"never\""),
-    ("tray_icon", "false"),
-    ("desktop_notifications", "\"none\""),
-];
-
-pub const OPT_OUT_TOP_LEVEL: [(&str, &str); 1] = [("session_indicator", "false")];
-
-pub fn opt_out_kdl() -> String {
-    let mut text = String::from("attention {\n");
-    for (key, value) in OPT_OUT_ATTENTION {
-        text.push_str(&format!("    {} {}\n", key, value));
-    }
-    text.push_str("}\n");
-    for (key, value) in OPT_OUT_TOP_LEVEL {
-        text.push_str(&format!("{} {}\n", key, value));
-    }
-    text
-}
-
-pub fn opt_out_record() -> BTreeMap<String, String> {
-    OPT_OUT_ATTENTION
-        .iter()
-        .map(|(key, value)| (format!("attention.{}", key), value.to_string()))
-        .chain(
-            OPT_OUT_TOP_LEVEL
-                .iter()
-                .map(|(key, value)| (key.to_string(), value.to_string())),
-        )
-        .collect()
-}
 
 pub const DESKTOP_OVERRIDE_ENV: &str = "ZELLIJ_DESKTOP_INTEGRATION";
 
@@ -156,7 +139,11 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
     }
     if wants_entry {
         if entry_installable.is_empty() {
-            plan.explain(status, &DESKTOP_ENTRY_ITEMS, "Install the desktop entry");
+            let here: Vec<Item> = DESKTOP_ENTRY_ITEMS
+                .into_iter()
+                .filter(|item| item.exists_on(status.environment.platform))
+                .collect();
+            plan.explain(status, &here, "Install the desktop entry");
         } else {
             plan.install.extend(entry_installable);
         }
@@ -165,11 +152,16 @@ pub fn plan_setup(status: &Status, actions: SetupActions) -> SetupPlan {
     if needs_the_copy && installable(&Item::CopyBinary) && !plan.install.contains(&Item::CopyBinary)
     {
         plan.install.insert(0, Item::CopyBinary);
-        plan.notes.push(
-            "Copying Zellij to a permanent folder first, so the desktop entry and the default \
+        plan.notes
+            .push(if status.environment.platform == Platform::Windows {
+                "Copying Zellij to a permanent folder first, so the Start menu and \"Open Zellij \
+             here\" run that copy"
+                    .to_owned()
+            } else {
+                "Copying Zellij to a permanent folder first, so the desktop entry and the default \
              terminal run that copy"
-                .to_owned(),
-        );
+                    .to_owned()
+            });
     }
     if actions.uninstall_desktop_entry {
         let removable: Vec<Item> = DESKTOP_ENTRY_ITEMS
@@ -235,7 +227,7 @@ pub fn window_welcome_points(only_missing: bool) -> Vec<String> {
         );
         lines.push(
             "Desktop notifications tell you when a command finishes, fails or needs you. Choose \
-             which in Settings → Attention."
+             which in Settings → Notifications."
                 .to_owned(),
         );
         lines.push(
@@ -286,6 +278,15 @@ impl Item {
             Item::ExplorerItem => "\"Open Zellij here\" in Explorer",
         }
     }
+    /// Whether the item exists on the platform at all, rather than being one another platform
+    /// has: the Start menu items on Windows, the launcher everywhere else.
+    pub fn exists_on(&self, platform: Platform) -> bool {
+        match self {
+            Item::StartMenu | Item::ExplorerItem => platform == Platform::Windows,
+            Item::Launcher => platform != Platform::Windows,
+            Item::CopyBinary | Item::DefaultTerminal => true,
+        }
+    }
     pub fn opens_a_window(&self) -> bool {
         matches!(
             self,
@@ -318,6 +319,9 @@ pub struct ItemStatus {
     pub target: Option<PathBuf>,
     #[serde(default)]
     pub removes: Vec<String>,
+    /// Shown instead of the item's usual name, e.g. "Zellij.app".
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -325,6 +329,8 @@ pub struct Upgrade {
     pub path: PathBuf,
     pub from: String,
     pub to: String,
+    #[serde(default)]
+    pub same_version: bool,
 }
 
 impl ItemStatus {
@@ -341,6 +347,7 @@ impl ItemStatus {
             upgrade: None,
             target: None,
             removes: vec![],
+            display_name: None,
         }
     }
     pub fn already(item: Item, reason: impl Into<String>) -> Self {
@@ -363,6 +370,10 @@ impl ItemStatus {
     }
     pub fn with_instructions(mut self, instructions: Vec<String>) -> Self {
         self.instructions = instructions;
+        self
+    }
+    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
+        self.display_name = Some(name.into());
         self
     }
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
@@ -423,9 +434,14 @@ impl Status {
     pub fn item(&self, item: Item) -> Option<&ItemStatus> {
         self.items.iter().find(|status| status.item == item)
     }
+    /// Whether Zellij can remove this item. Also true for ours when an update is waiting.
     pub fn removable(&self, item: Item) -> bool {
         self.item(item)
-            .map(|status| status.installed && status.changeable && status.owner == Owner::Zellij)
+            .map(|status| {
+                (status.installed || status.upgrade.is_some())
+                    && status.changeable
+                    && status.owner == Owner::Zellij
+            })
             .unwrap_or(false)
     }
     pub fn offered(&self, item: Item) -> bool {
@@ -470,8 +486,6 @@ pub enum Request {
     },
     Repair(RepairAnswer),
     SetFlag(Flag),
-    RecordOptOut(BTreeMap<String, String>),
-    ClearOptOut,
     ReportMissingServices(Vec<String>),
 }
 
@@ -537,6 +551,9 @@ pub struct WindowsRecord {
     pub start_menu: Option<PathBuf>,
     pub explorer_item: bool,
     pub jump_list: bool,
+    /// The folder Zellij added to the user's PATH, so that only Zellij takes it away again.
+    #[serde(default)]
+    pub added_to_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -552,7 +569,6 @@ pub struct IntegrationState {
     pub icons: Vec<PathBuf>,
     pub binary_copy: Option<BinaryCopyRecord>,
     pub windows: WindowsRecord,
-    pub opt_out: BTreeMap<String, String>,
     pub repair: RepairRecord,
     pub flags: BTreeSet<Flag>,
     pub missing_services: Vec<String>,
@@ -590,14 +606,6 @@ impl IntegrationState {
         match request {
             Request::SetFlag(flag) => {
                 self.set(*flag);
-                true
-            },
-            Request::RecordOptOut(values) => {
-                self.opt_out = values.clone();
-                true
-            },
-            Request::ClearOptOut => {
-                self.opt_out.clear();
                 true
             },
             Request::ReportMissingServices(services) => {
@@ -707,6 +715,7 @@ pub use storage::*;
 #[cfg(not(target_family = "wasm"))]
 pub mod location {
     use super::*;
+    use std::collections::BTreeMap;
     use std::path::Path;
 
     pub const MARKER_KEY: &str = "X-Zellij-Installed";
@@ -753,10 +762,110 @@ pub mod location {
                 == Some(fingerprint(&without_marker(text)).as_str())
     }
 
+    /// The real path of a file. On Windows it keeps the usual `C:\...` form rather than the
+    /// `\\?\C:\...` one, so it can be compared with folders read from the environment.
+    pub fn canonical(path: &Path) -> PathBuf {
+        #[cfg(windows)]
+        let canonical = dunce::canonicalize(path);
+        #[cfg(not(windows))]
+        let canonical = std::fs::canonicalize(path);
+        canonical.unwrap_or_else(|_| path.to_path_buf())
+    }
+
     pub fn package_manager_of(path: &Path) -> Option<String> {
-        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let canonical = canonical(path);
+        if cfg!(windows) {
+            return windows_package_manager_for(&canonical, &WindowsInstallRoots::from_env());
+        }
         let homebrew = std::env::var_os("HOMEBREW_PREFIX").map(PathBuf::from);
         package_manager_for(&canonical, homebrew.as_deref())
+    }
+
+    /// Where the Windows package managers, and Windows itself, put the programs they install.
+    #[derive(Debug, Clone, Default)]
+    pub struct WindowsInstallRoots {
+        pub cargo_bin: Option<PathBuf>,
+        pub scoop: Vec<PathBuf>,
+        pub chocolatey: Option<PathBuf>,
+        pub winget: Option<PathBuf>,
+        pub program_files: Vec<PathBuf>,
+    }
+
+    impl WindowsInstallRoots {
+        pub fn from_env() -> Self {
+            let var = |name: &str| {
+                std::env::var_os(name)
+                    .map(PathBuf::from)
+                    .filter(|path| path.is_absolute())
+            };
+            let profile = var("USERPROFILE");
+            let cargo_home =
+                var("CARGO_HOME").or_else(|| profile.as_ref().map(|p| p.join(".cargo")));
+            let scoop = [
+                var("SCOOP").or_else(|| profile.as_ref().map(|p| p.join("scoop"))),
+                var("SCOOP_GLOBAL").or_else(|| var("ProgramData").map(|p| p.join("scoop"))),
+            ];
+            WindowsInstallRoots {
+                cargo_bin: cargo_home.map(|home| home.join("bin")),
+                scoop: scoop.into_iter().flatten().collect(),
+                chocolatey: var("ChocolateyInstall")
+                    .or_else(|| var("ProgramData").map(|p| p.join("chocolatey"))),
+                winget: var("LOCALAPPDATA").map(|p| p.join("Microsoft").join("WinGet")),
+                program_files: ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"]
+                    .iter()
+                    .filter_map(|name| var(name))
+                    .collect(),
+            }
+        }
+    }
+
+    pub fn windows_package_manager_for(
+        canonical: &Path,
+        roots: &WindowsInstallRoots,
+    ) -> Option<String> {
+        if roots
+            .cargo_bin
+            .as_deref()
+            .is_some_and(|bin| inside(canonical, bin))
+        {
+            return Some("cargo install".to_owned());
+        }
+        if roots.scoop.iter().any(|root| inside(canonical, root)) {
+            return Some("Scoop".to_owned());
+        }
+        if roots
+            .chocolatey
+            .as_deref()
+            .is_some_and(|root| inside(canonical, root))
+        {
+            return Some("Chocolatey".to_owned());
+        }
+        if roots
+            .winget
+            .as_deref()
+            .is_some_and(|root| inside(canonical, root))
+        {
+            return Some("winget".to_owned());
+        }
+        None
+    }
+
+    pub fn windows_system_folder_for(
+        canonical: &Path,
+        roots: &WindowsInstallRoots,
+    ) -> Option<String> {
+        roots
+            .program_files
+            .iter()
+            .find(|folder| inside(canonical, folder))
+            .map(|folder| format!("a system folder ({})", folder.display()))
+    }
+
+    /// Windows paths ignore case, so a folder from the environment and a file on disk may be
+    /// spelled differently.
+    fn inside(path: &Path, folder: &Path) -> bool {
+        let lower = |path: &Path| PathBuf::from(path.to_string_lossy().to_lowercase());
+        lower(path).starts_with(lower(folder))
     }
 
     pub fn package_manager_for(canonical: &Path, homebrew_prefix: Option<&Path>) -> Option<String> {
@@ -953,13 +1062,12 @@ pub mod location {
         if let Some(manager) = package_manager_of(path) {
             return Some(manager);
         }
-        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        system_folder_for(&canonical)
+        system_folder_for(&canonical(path))
     }
 
     pub fn system_folder_for(canonical: &Path) -> Option<String> {
         if cfg!(windows) {
-            return None;
+            return windows_system_folder_for(canonical, &WindowsInstallRoots::from_env());
         }
         ["/usr/local", "/opt"]
             .iter()
@@ -1100,6 +1208,69 @@ pub mod location {
                 )
                 .as_deref(),
                 Some("Homebrew")
+            );
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn windows_package_managers_and_program_files_are_recognised() {
+            let roots = WindowsInstallRoots {
+                cargo_bin: Some(PathBuf::from(r"C:\Users\me\.cargo\bin")),
+                scoop: vec![
+                    PathBuf::from(r"C:\Users\me\scoop"),
+                    PathBuf::from(r"C:\ProgramData\scoop"),
+                ],
+                chocolatey: Some(PathBuf::from(r"C:\ProgramData\chocolatey")),
+                winget: Some(PathBuf::from(r"C:\Users\me\AppData\Local\Microsoft\WinGet")),
+                program_files: vec![PathBuf::from(r"C:\Program Files")],
+            };
+            for (path, expected) in [
+                (r"C:\Users\me\.cargo\bin\zellij.exe", Some("cargo install")),
+                (
+                    r"C:\Users\me\scoop\apps\zellij\current\zellij.exe",
+                    Some("Scoop"),
+                ),
+                (r"c:\users\ME\Scoop\shims\zellij.exe", Some("Scoop")),
+                (
+                    r"C:\ProgramData\chocolatey\lib\zellij\tools\zellij.exe",
+                    Some("Chocolatey"),
+                ),
+                (
+                    r"C:\Users\me\AppData\Local\Microsoft\WinGet\Packages\Zellij_x\zellij.exe",
+                    Some("winget"),
+                ),
+                (r"C:\Users\me\Downloads\zellij.exe", None),
+                (r"C:\Program Files\Zellij\zellij.exe", None),
+            ] {
+                assert_eq!(
+                    windows_package_manager_for(Path::new(path), &roots).as_deref(),
+                    expected,
+                    "{}",
+                    path
+                );
+            }
+            assert_eq!(
+                windows_system_folder_for(Path::new(r"C:\Program Files\Zellij\zellij.exe"), &roots)
+                    .as_deref(),
+                Some(r"a system folder (C:\Program Files)")
+            );
+            assert_eq!(
+                windows_system_folder_for(
+                    Path::new(r"C:\Users\me\code\target\release\zellij.exe"),
+                    &roots
+                ),
+                None
+            );
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn a_canonical_windows_path_has_no_verbatim_prefix() {
+            let canonical = canonical(&std::env::temp_dir());
+            assert!(
+                !canonical.to_string_lossy().starts_with(r"\\?\"),
+                "{}",
+                canonical.display()
             );
         }
 
@@ -1261,7 +1432,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(STATE_FILE_NAME);
         let handles: Vec<_> = [
-            Request::RecordOptOut(opt_out_record()),
+            Request::SetFlag(Flag::RemindersOff),
             Request::SetFlag(Flag::SetupApproved),
             Request::SetFlag(Flag::WizardDismissed),
             Request::SetFlag(Flag::ExitLineShown),
@@ -1276,7 +1447,7 @@ mod tests {
             handle.join().unwrap();
         }
         let state = load_from(&path);
-        assert_eq!(state.opt_out, opt_out_record());
+        assert!(state.has(Flag::RemindersOff));
         assert!(state.has(Flag::SetupApproved));
         assert!(state.has(Flag::WizardDismissed));
         assert!(state.has(Flag::ExitLineShown));
@@ -1293,10 +1464,6 @@ mod tests {
             other => panic!("{:?}", other),
         }
         assert!(load_from(&path).has(Flag::DesktopAppIntroduced));
-        handle_state_request_at(&path, &Request::RecordOptOut(opt_out_record()));
-        assert_eq!(load_from(&path).opt_out, opt_out_record());
-        handle_state_request_at(&path, &Request::ClearOptOut);
-        assert!(load_from(&path).opt_out.is_empty());
     }
 
     #[test]
@@ -1403,6 +1570,28 @@ mod tests {
     }
 
     #[test]
+    fn on_windows_the_refusal_names_the_reason_of_the_start_menu_items() {
+        let off = "Turned off by ZELLIJ_DESKTOP_INTEGRATION";
+        let mut status = status_with(vec![
+            ItemStatus::unavailable(Item::Launcher, "Linux only"),
+            ItemStatus::unavailable(Item::StartMenu, off),
+            ItemStatus::unavailable(Item::ExplorerItem, off),
+        ]);
+        status.environment.platform = Platform::Windows;
+        let plan = plan_setup(
+            &status,
+            SetupActions {
+                install_desktop_entry: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            plan.refused,
+            vec![format!("Install the desktop entry: {}", off)]
+        );
+    }
+
+    #[test]
     fn the_setup_plan_explains_what_it_cannot_do() {
         let status = status_with(vec![
             ItemStatus::already(
@@ -1446,6 +1635,27 @@ mod tests {
         let plan = plan_setup(&status_with(vec![someone]), actions);
         assert!(plan.remove.is_empty());
         assert_eq!(plan.refused.len(), 1);
+    }
+
+    #[test]
+    fn an_entry_of_ours_with_an_update_waiting_can_still_be_removed() {
+        let out_of_date = ItemStatus {
+            installed: false,
+            ..ours(Item::Launcher)
+        }
+        .with_upgrade(Upgrade {
+            path: PathBuf::from("/Users/me/Applications/Zellij.app"),
+            from: "0.46.0".to_owned(),
+            to: "0.46.1".to_owned(),
+            same_version: false,
+        });
+        let actions = SetupActions {
+            uninstall_desktop_entry: true,
+            ..Default::default()
+        };
+        let plan = plan_setup(&status_with(vec![out_of_date]), actions);
+        assert_eq!(plan.remove, vec![Item::Launcher]);
+        assert!(plan.notes.is_empty(), "{:?}", plan.notes);
     }
 
     #[test]
@@ -1502,15 +1712,6 @@ mod tests {
         let mut dismissed = IntegrationState::default();
         dismissed.set(Flag::WizardDismissed);
         assert!(!dismissed.setup_resolved());
-    }
-
-    #[test]
-    fn the_opt_out_writes_every_attention_key_and_the_session_indicator() {
-        let kdl = opt_out_kdl();
-        for (key, value) in OPT_OUT_ATTENTION {
-            assert!(kdl.contains(&format!("{} {}", key, value)), "{}", kdl);
-        }
-        assert!(kdl.contains("session_indicator false"));
     }
 
     #[test]

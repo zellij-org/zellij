@@ -245,6 +245,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     plain("ToggleFocusNoUiFullscreen", "Fullscreen without any UI"),
     plain("TogglePaneFrames", "Show or hide pane frames"),
     plain(
+        "ToggleStackListOrientation",
+        "Show the focused stack's titles in a row or in a column",
+    ),
+    plain(
         "TogglePaneEmbedOrFloating",
         "Float or embed the focused pane",
     ),
@@ -536,6 +540,11 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     menu_only(
         "IgnorePaneOutputByPaneId",
         "Ignore new output of the clicked pane",
+        &[],
+    ),
+    menu_only(
+        "ToggleStackListOrientationByPaneId",
+        "Show the clicked stack's titles in a row or in a column (stack titles only)",
         &[],
     ),
     menu_only(

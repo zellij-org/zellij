@@ -274,6 +274,12 @@ pub enum Action {
     ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Switch the focused stack between showing its titles in a column (vertical) and in a row
+    /// (horizontal)
+    ToggleStackListOrientation,
+    ToggleStackListOrientationByPaneId {
+        pane_id: PaneId,
+    },
     SetPaneFrameStyle(PaneFrameStyle),
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
@@ -604,6 +610,10 @@ pub enum Action {
         popup: Option<crate::data::PipePopupPlacement>,
         #[serde(default)]
         popup_no_focus: bool,
+        #[serde(default)]
+        popup_capture_all_keys: bool,
+        #[serde(default)]
+        popup_outside_click: Option<crate::data::OutsideClick>,
     },
     KeybindPipe {
         name: Option<String>,
@@ -1298,6 +1308,16 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
+            CliAction::ToggleStackListOrientation { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ToggleStackListOrientationByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ToggleStackListOrientation]),
+            },
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleBars { bars } => Ok(vec![Action::ToggleBars { bars }]),
             CliAction::HideBars { bars } => Ok(vec![Action::HideBars { bars }]),
@@ -2208,6 +2228,8 @@ impl Action {
                 plugin_title,
                 popup,
                 popup_no_focus,
+                popup_capture_all_keys,
+                popup_outside_click,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = plugin_cwd
@@ -2231,6 +2253,8 @@ impl Action {
                     skip_cache,
                     popup,
                     popup_no_focus,
+                    popup_capture_all_keys,
+                    popup_outside_click,
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),

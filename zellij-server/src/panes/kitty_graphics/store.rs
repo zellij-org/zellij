@@ -78,6 +78,16 @@ impl KittyImageStore {
             });
         }
         self.evict_to_fit(size, None);
+        if self.total_bytes + size > self.quota_bytes {
+            return Err(KittyError {
+                code: KittyErrorCode::Einval,
+                message: "image storage quota exceeded".to_owned(),
+                image_id: None,
+                image_number: None,
+                placement_id: None,
+                quiet: 0,
+            });
+        }
         let id = self.next_image_id;
         self.next_image_id += 1;
         let lru_stamp = self.bump_lru();
@@ -194,6 +204,25 @@ impl KittyImageStore {
                 self.evict_to_fit(0, Some(id));
             }
         }
+    }
+    pub fn reserve_scaled_variant(
+        &mut self,
+        id: InternalImageId,
+        key: ScaledImageKey,
+        bytes: usize,
+    ) -> bool {
+        if bytes > self.quota_bytes {
+            return false;
+        }
+        let existing = self
+            .images
+            .get(&id)
+            .and_then(|stored| stored.image.scaled_variants.get(&key))
+            .map(|variant| variant.len())
+            .unwrap_or(0);
+        let incoming = bytes.saturating_sub(existing);
+        self.evict_to_fit(incoming, Some(id));
+        self.total_bytes + incoming <= self.quota_bytes
     }
     pub fn clear_scaled_variants(&mut self, id: InternalImageId) {
         if let Some(stored) = self.images.get_mut(&id) {

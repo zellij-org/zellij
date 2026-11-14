@@ -53,7 +53,10 @@ impl WindowClient {
             .send_client_msg(handshake.message)
             .expect("failed to send the attach message");
         sender
-            .send_client_msg(ClientToServerMsg::StructuredRenderSupport { supported: true })
+            .send_client_msg(ClientToServerMsg::StructuredRenderSupport {
+                supported: true,
+                row_shifts: false,
+            })
             .expect("failed to declare structured rendering");
 
         let (messages_tx, messages) = mpsc::channel();
@@ -533,7 +536,7 @@ fn text_and_pastes_a_window_sends_while_the_inbox_is_open_go_to_the_inbox_not_th
     window.act(Action::WriteChars {
         chars: "c".to_owned(),
     });
-    window.frame_showing("Nothing in the inbox");
+    window.frame_showing("Inbox (0)");
     window.act(Action::Paste {
         chars: "pasted".to_owned(),
         pane_id: None,

@@ -160,11 +160,32 @@ impl Screen {
     pub(super) fn process_attention(&mut self) {
         let now = now_ms();
         let mut signals = vec![];
+        let mut typed = vec![];
         for tab in self.tabs.values_mut() {
             signals.extend(tab.pending_pane_signals.drain(..));
+            typed.extend(tab.take_typed_into());
+        }
+        for pane_id in typed {
+            self.attention.on_user_input(pane_id.into(), now);
         }
         for (pane_id, pane_signals) in signals {
             self.attention.on_signals(pane_id.into(), pane_signals, now);
+        }
+        self.flush_attention(true);
+    }
+
+    pub(crate) fn note_attention_input(&mut self) {
+        let typed: Vec<PaneId> = self
+            .tabs
+            .values_mut()
+            .flat_map(|tab| tab.take_typed_into())
+            .collect();
+        if typed.is_empty() {
+            return;
+        }
+        let now = now_ms();
+        for pane_id in typed {
+            self.attention.on_user_input(pane_id.into(), now);
         }
         self.flush_attention(true);
     }
@@ -317,7 +338,15 @@ impl Screen {
             ));
     }
 
-    pub(crate) fn set_global_attention(&mut self, global: GlobalAttention) {
+    pub(crate) fn set_global_attention(&mut self, mut global: GlobalAttention) {
+        let colors = &self.attention.config().tray_badge_colors;
+        global.badge_colors = zellij_utils::input::attention::BADGE_STATUSES
+            .iter()
+            .filter_map(|status| colors.get(*status).map(|rgb| (*status, rgb)))
+            .collect();
+        if !self.attention.config().enabled() {
+            global = global.without_attention();
+        }
         if self.global_attention.as_ref() == Some(&global) {
             return;
         }
@@ -808,6 +837,9 @@ impl Screen {
         }
         self.flush_attention(true);
         self.report_session_attention();
+        if let Some(global) = self.global_attention.clone() {
+            self.set_global_attention(global);
+        }
     }
 
     fn context_menu_toggle_is_on(
@@ -883,7 +915,22 @@ impl Screen {
                 self.attention.tab_is_muted(*id as usize)
             },
             ContextMenuAction::Action(Action::MuteSession) => self.attention.session_is_muted(),
+            ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleStackListOrientation) => {
+                clicked_any_pane
+                    .map(|pane_id| self.stack_titles_are_in_a_row(pane_id))
+                    .unwrap_or(false)
+            },
+            ContextMenuAction::Action(Action::ToggleStackListOrientationByPaneId { pane_id }) => {
+                self.stack_titles_are_in_a_row((*pane_id).into())
+            },
             _ => false,
+        })
+    }
+
+    fn stack_titles_are_in_a_row(&self, pane_id: PaneId) -> bool {
+        self.tabs.values().any(|tab| {
+            tab.stack_list_orientation_of_member(&pane_id)
+                == Some(zellij_utils::input::options::StackListOrientation::Horizontal)
         })
     }
 

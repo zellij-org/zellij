@@ -8,6 +8,7 @@ mod keys_screen;
 mod list_editor;
 mod mousebindings_screen;
 mod page;
+mod plugin_settings;
 mod settings;
 mod settings_screen;
 mod setup_screen;
@@ -88,9 +89,17 @@ impl ZellijPlugin for State {
                 EventType::Visible,
                 EventType::PromptResult,
                 EventType::DesktopIntegration,
+                EventType::PluginSettingsEntries,
             ]);
             set_close_directly(false);
-            self.screen = Screen::Settings(SettingsScreen::new());
+            let mut settings_screen = SettingsScreen::new();
+            if let Some(page) = configuration
+                .get("page")
+                .and_then(|page| settings::Category::from_slug(page))
+            {
+                settings_screen.open_at(page);
+            }
+            self.screen = Screen::Settings(settings_screen);
             rename_plugin_pane(own_plugin_id, "Settings");
             if let Some(coordinates) = FloatingPaneCoordinates::new(
                 Some("10%".to_owned()),
@@ -148,6 +157,10 @@ impl ZellijPlugin for State {
                 },
                 Event::AvailableKeybindPresets(presets, errors) => {
                     settings_screen.update_keybind_presets(presets, errors);
+                    true
+                },
+                Event::PluginSettingsEntries(entries) => {
+                    settings_screen.update_plugin_settings_entries(entries);
                     true
                 },
                 Event::ConfigFileChangedSinceRead => {

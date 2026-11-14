@@ -42,6 +42,7 @@ keybinds {
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
         bind "s" { NewPane "stacked"; SwitchToMode "Normal"; }
+        bind "Shift s" { ToggleStackListOrientation; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
@@ -145,6 +146,7 @@ keybinds {
         bind "{primary} o" { SwitchToMode "Normal"; }
         bind "{primary} s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "i" { ToggleSessionCard; SwitchToMode "Normal"; }
         bind "r" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         bind "]" { FocusHostSession; SwitchToMode "Normal"; }
         bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
@@ -221,7 +223,6 @@ keybinds {
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
     }
     shared_except "locked" {
-        bind "F9" { ToggleSessionCard; }
         bind "{primary} g" { SwitchToMode "Locked"; }
         bind "{primary} q" { Quit; }
         bind "{secondary} f" { ToggleFloatingPanes; }

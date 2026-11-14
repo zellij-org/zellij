@@ -14,7 +14,6 @@ pub const AGE_CLOCK_MAX_MS: u64 = 60_000;
 pub const AGE_CLOCK_SLACK_SECONDS: f64 = 0.05;
 pub const CARD_ITEM_LIMIT: usize = 5;
 pub const CARD_WIDTH: usize = 56;
-pub const INBOX_SHORTCUT: &str = "<F9>";
 pub const OPEN_INBOX_TEXT: &str = "Open inbox ›";
 pub const DONT_SHOW_AGAIN_TEXT: &str = " Don't show again ";
 pub const SESSION_MAX_WIDTH: usize = 16;
@@ -26,6 +25,8 @@ pub const EMPTY_INBOX_TEXT: &str = "Nothing in the inbox";
 pub const LIST_MIN_COLS: usize = 20;
 pub const LIST_MAX_COLS: usize = 32;
 pub const LIST_SHARE: usize = 5;
+pub const LIST_AUTO_SHARE: usize = 3;
+pub const LIST_WIDE_SHARE: usize = 2;
 pub const LIVE_VIEW_MIN_COLS: usize = 30;
 pub const LIVE_VIEW_MIN_ROWS: usize = 8;
 pub const LIVE_VIEW_GAP: usize = 2;
@@ -157,9 +158,25 @@ impl LiveLayout {
         cols.saturating_sub(3).max(10)
     }
 
+    pub fn base_list_width(cols: usize) -> usize {
+        (cols / LIST_SHARE).clamp(LIST_MIN_COLS, LIST_MAX_COLS)
+    }
+
+    #[cfg(test)]
     pub fn compute(x: usize, y: usize, cols: usize, rows: usize) -> Option<LiveLayout> {
+        Self::compute_with(x, y, cols, rows, Self::base_list_width(cols))
+    }
+
+    pub fn compute_with(
+        x: usize,
+        y: usize,
+        cols: usize,
+        rows: usize,
+        wanted_list_width: usize,
+    ) -> Option<LiveLayout> {
         let list_x = x + 2;
-        let list_width = (cols / LIST_SHARE).clamp(LIST_MIN_COLS, LIST_MAX_COLS);
+        let room = cols.saturating_sub(2 + LIVE_VIEW_GAP + LIVE_VIEW_MIN_COLS);
+        let list_width = wanted_list_width.min(room).max(Self::base_list_width(cols));
         let box_x = list_x + list_width + LIVE_VIEW_GAP;
         let box_width = (x + cols).checked_sub(box_x)?;
         let box_height = rows.checked_sub(1)?;
@@ -314,6 +331,20 @@ pub struct CardContent {
     pub back_to: Option<String>,
 }
 
+pub fn inbox_shortcut(mode_info: &ModeInfo) -> Option<String> {
+    let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
+    shortcut_for_action(&mode_info.keybinds, base_mode, |action| {
+        matches!(action, actions::Action::ToggleSessionCard)
+    })
+    .filter(|keys| !keys.is_empty())
+    .map(|keys| {
+        keys.iter()
+            .map(|key| format!("<{}>", key))
+            .collect::<Vec<String>>()
+            .join(" ")
+    })
+}
+
 #[derive(Default)]
 pub struct Inbox {
     pub global: Option<GlobalAttention>,
@@ -329,6 +360,7 @@ pub struct Inbox {
     pub card_targets: Vec<(usize, Range<usize>, CardTarget)>,
     pub browser_targets: Vec<(usize, Range<usize>, BrowserTarget)>,
     pub card_hovered: Option<CardTarget>,
+    pub hovered: Option<ItemKey>,
     pub away_since_ms: Option<u64>,
     pub list_scroll: usize,
     pub selected_range: Range<usize>,
@@ -337,11 +369,13 @@ pub struct Inbox {
     pub offer_hints: Vec<crate::help::Hint>,
     pub select_newest_on_arrival: bool,
     pub live: Option<LiveViewStatus>,
+    pub shortcut: Option<String>,
     pub resize_allowed: Option<bool>,
     pub own_resize_allowed: bool,
     pub current_session: Option<String>,
     pub live_layout: Option<LiveLayout>,
     pub live_view_drawn: bool,
+    tabs_row: Option<(usize, usize, usize)>,
     pub live_mode: bool,
     pub live_view_sent: Option<LiveView>,
     pub capture_target: Option<ItemKey>,
@@ -356,6 +390,8 @@ pub struct Inbox {
     viewed: Vec<ItemKey>,
     dropped: Vec<DroppedItem>,
     shown_items: Vec<GlobalAttentionItem>,
+    pub wide_list: bool,
+    list_grown: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -378,6 +414,26 @@ impl DroppedItem {
         item.item.attention.effective_status() == self.status
             && item.item.attention.since_ms <= self.since_ms
     }
+}
+
+fn recalled(item: &GlobalAttentionItem) -> Option<GlobalAttentionItem> {
+    let attention = &item.item.attention;
+    if !attention.status.is_idle() || attention.is_muted() || attention.watched {
+        return None;
+    }
+    let remembered = attention.remembered.as_ref()?;
+    let mut recalled = item.clone();
+    let shown = &mut recalled.item.attention;
+    shown.status = remembered.status;
+    shown.source = Some(AttentionSource::ProgramStatus);
+    shown.text = remembered.text.clone();
+    shown.since_ms = remembered.since_ms;
+    shown.seen = true;
+    Some(recalled)
+}
+
+pub fn is_recalled(item: &GlobalAttentionItem) -> bool {
+    recalled(item).is_some()
 }
 
 fn always_listed(item: &GlobalAttentionItem) -> bool {
@@ -450,6 +506,9 @@ pub fn away_text(away_ms: u64) -> String {
 }
 
 pub fn style_status(text: Text, status: AttentionStatus, range: Range<usize>) -> Text {
+    if let Some(rgb) = crate::badge_colors::of(status) {
+        return text.rgb_color_range(rgb, range);
+    }
     match status {
         AttentionStatus::NeedsYou => text.color_range(0, range),
         AttentionStatus::Failed => text.error_color_range(range),
@@ -780,6 +839,9 @@ impl Inbox {
             .filter(|known| self.session_runs(&known.session))
             .filter_map(|known| {
                 let server = self.server_item(&ItemKey::of(&known));
+                if server.map(is_recalled).unwrap_or(false) {
+                    return None;
+                }
                 if self.holds(&known, server) {
                     let mut kept = known;
                     kept.item.attention.watched = server
@@ -798,6 +860,11 @@ impl Inbox {
         let mut held = vec![];
         for item in self.server_items() {
             let key = ItemKey::of(item);
+            if let Some(recalled) = recalled(item) {
+                items.push(recalled);
+                held.push(key);
+                continue;
+            }
             let known = self.listed.iter().find(|known| ItemKey::of(known) == key);
             match known {
                 Some(known) if self.holds(known, Some(item)) => {
@@ -839,7 +906,7 @@ impl Inbox {
         for index in order {
             let item = &self.shown_items[*index];
             let key = ItemKey::of(item);
-            if self.is_dropped(&key) {
+            if self.is_dropped(&key) || self.server_item(&key).map(is_recalled).unwrap_or(false) {
                 continue;
             }
             match self
@@ -856,6 +923,7 @@ impl Inbox {
     pub fn forget_listed(&mut self) -> bool {
         self.dropped.clear();
         self.viewed.clear();
+        self.list_grown = 0;
         if self.listed.is_empty() {
             return false;
         }
@@ -903,10 +971,29 @@ impl Inbox {
         let Some(key) = self.selected_item().map(ItemKey::of) else {
             return;
         };
+        let stays = self
+            .server_item(&key)
+            .map(|item| item.item.attention.is_remembered())
+            .unwrap_or(false);
+        let order = self.ordered();
+        let neighbour = self
+            .position_of(&order, &key)
+            .filter(|_| stays)
+            .and_then(|position| {
+                order
+                    .get(position + 1)
+                    .or_else(|| position.checked_sub(1).and_then(|before| order.get(before)))
+                    .map(|index| ItemKey::of(&self.items()[*index]))
+            });
         self.mark_selected_seen();
         self.drop_key(&key);
         self.viewed.retain(|viewed| *viewed != key);
         self.forget_listed_where(|known| ItemKey::of(known) == key);
+        if !self.is_capturing() {
+            if let Some(neighbour) = neighbour {
+                self.selection = Some(neighbour);
+            }
+        }
     }
 
     pub fn dismiss_all(&mut self) {
@@ -1306,6 +1393,7 @@ impl Inbox {
             text = text.color_range(3, hint_start..hint_start + "<TAB>".chars().count());
         }
         print_text_with_coordinates(text, x, y, Some(cols.max(1)), None);
+        self.tabs_row = Some((y, x + line.width(), x + cols));
         self.browser_targets
             .retain(|(_, _, t)| !matches!(t, BrowserTarget::Tab(_)));
         let inbox_width = inbox.width();
@@ -1349,7 +1437,7 @@ impl Inbox {
                     })
                     .map(|live| live.resize_allowed)
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
     }
 
     pub fn toggle_resize(&mut self) {
@@ -1374,18 +1462,20 @@ impl Inbox {
         if self.views_own_session() {
             Some(self.own_resize_allowed)
         } else {
-            self.resize_allowed
+            Some(self.resize_allowed.unwrap_or(false))
         }
     }
 
-    pub fn release_key_text(&self) -> String {
-        let text = self
-            .live
+    pub fn release_key_text(&self) -> Option<String> {
+        self.live
             .as_ref()
             .map(|live| live.release_key.clone())
-            .filter(|key| !key.is_empty())
-            .unwrap_or_else(|| DEFAULT_LIVE_VIEW_RELEASE_KEY.to_owned());
-        LiveViewReleaseGesture::display(&text)
+            .filter(|key| !key.trim().is_empty())
+            .map(|key| LiveViewReleaseGesture::display(&key))
+    }
+
+    pub fn stop_typing_key_text(&self) -> Option<String> {
+        self.release_key_text().or_else(|| self.shortcut.clone())
     }
 
     pub fn live_view_target(&self) -> Option<ItemKey> {
@@ -1452,7 +1542,78 @@ impl Inbox {
         cols: usize,
         rows: usize,
     ) -> Option<LiveLayout> {
-        LiveLayout::compute(x, y, cols, rows)
+        LiveLayout::compute_with(x, y, cols, rows, self.wanted_list_width(cols))
+    }
+
+    pub fn toggle_wide_list(&mut self) {
+        self.wide_list = !self.wide_list;
+        self.list_grown = 0;
+    }
+
+    fn wanted_list_width(&self, cols: usize) -> usize {
+        let base = LiveLayout::base_list_width(cols);
+        if self.wide_list {
+            return (cols / LIST_WIDE_SHARE).max(base);
+        }
+        let limit = (cols / LIST_AUTO_SHARE).max(LIST_MAX_COLS);
+        self.natural_list_width()
+            .max(self.list_grown)
+            .min(limit)
+            .max(base)
+    }
+
+    fn session_column_width(&self, order: &[usize]) -> usize {
+        if self.group_by_session {
+            return 0;
+        }
+        order
+            .iter()
+            .map(|index| session_name(&self.items()[*index]).width())
+            .max()
+            .unwrap_or(0)
+            .min(SESSION_COLUMN_MAX)
+    }
+
+    fn row_head_width(session_width: usize) -> usize {
+        if session_width == 0 {
+            2
+        } else {
+            session_width + 4
+        }
+    }
+
+    fn natural_list_width(&self) -> usize {
+        let order = self.ordered();
+        let head = Self::row_head_width(self.session_column_width(&order));
+        order
+            .iter()
+            .map(|index| head + sanitize_display_text(&self.items()[*index].pane_label()).width())
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn cut_title(&self, item: &GlobalAttentionItem) -> Option<String> {
+        let layout = self
+            .live_layout
+            .filter(|layout| !layout.framed && layout.list_width > 0)?;
+        let order = self.ordered();
+        let session_width = self.session_column_width(&order);
+        let pane = sanitize_display_text(&item.pane_label());
+        let session = session_name(item);
+        let session_cut = session_width > 0 && session.width() > session_width;
+        let pane_cut = Self::row_head_width(session_width) + pane.width() > layout.list_width;
+        match (session_cut, pane_cut) {
+            (true, _) => Some(format!("{} › {}", session, pane)),
+            (false, true) => Some(pane),
+            (false, false) => None,
+        }
+    }
+
+    pub fn selected_is_recalled(&self) -> bool {
+        self.selected_item()
+            .and_then(|shown| self.server_item(&ItemKey::of(shown)))
+            .map(is_recalled)
+            .unwrap_or(false)
     }
 
     pub fn prepare_live_view(&mut self, x: usize, y: usize, cols: usize, rows: usize) {
@@ -1630,10 +1791,10 @@ impl Inbox {
             return String::new();
         };
         let mut parts = vec![];
-        if !live.resize_allowed {
+        if !live.resize_allowed && !live.pinned {
             parts.push("resize off".to_owned());
         }
-        if live.resize_allowed || live.state != MirrorState::Live {
+        if live.resize_allowed || live.pinned || live.state != MirrorState::Live {
             return parts.join(" · ");
         }
         let view_size = self
@@ -1654,11 +1815,13 @@ impl Inbox {
                 .capture_labels
                 .clone()
                 .unwrap_or_else(|| ("?".to_owned(), "?".to_owned()));
+            let keys = match self.release_key_text() {
+                Some(release_key) => format!("{}, {}", TYPE_KEY, release_key),
+                None => TYPE_KEY.to_owned(),
+            };
             return format!(
                 "typing into {} › {} · {} or click outside to return",
-                session,
-                pane,
-                self.release_key_text()
+                session, pane, keys
             );
         }
         if let Some(notice) = self.live_notice.as_ref() {
@@ -1682,14 +1845,35 @@ impl Inbox {
         } else {
             format!("{} · {}", status, detail)
         };
+        let title = self.cut_title(item).and_then(|title| {
+            let room = width.saturating_sub(line.width() + 3);
+            (room >= MIN_PANE_WIDTH).then(|| truncate_middle(&title, room))
+        });
+        let (line, status_start) = match title {
+            Some(title) => {
+                let start = title.chars().count() + 3;
+                (format!("{} · {}", title, line), start)
+            },
+            None => (line, 0),
+        };
         let line = truncate_plain(&line, width);
         let total = line.chars().count();
-        let status_end = status.chars().count().min(total);
+        let status_start = status_start.min(total);
+        let status_end = (status_start + status.chars().count()).min(total);
         let text = Text::from(line.as_str());
+        let text = if status_start > 0 {
+            text.dim_range(status_start.saturating_sub(3)..status_start)
+        } else {
+            text
+        };
         Some(if item.is_muted() {
             text.dim_all()
         } else {
-            style_status(text, item.item.attention.effective_status(), 0..status_end)
+            style_status(
+                text,
+                item.item.attention.effective_status(),
+                status_start..status_end,
+            )
         })
     }
 
@@ -1738,7 +1922,10 @@ impl Inbox {
         self.browser_targets
             .retain(|(_, _, t)| matches!(t, BrowserTarget::Tab(_)));
         self.live_layout = None;
-        if let Some(layout) = LiveLayout::compute(x, y, cols, rows) {
+        if let Some(layout) = self.plan_live_layout(x, y, cols, rows) {
+            if !self.wide_list {
+                self.list_grown = self.list_grown.max(layout.list_width);
+            }
             self.live_layout = Some(layout);
             self.render_live_browser(&layout, cols, simplified_ui);
             return;
@@ -1782,7 +1969,37 @@ impl Inbox {
         let y = layout.help_y;
         let width = LiveLayout::help_width(cols);
         let details = self.live_view_details_text();
-        let reserved = if details.is_empty() || details.width() + 2 > width / 2 {
+        let browsing = !capturing && self.live_notice.is_none();
+        let crowded = if !browsing {
+            self.live_view_hint_text().width() + details.width() + 2 > width
+        } else {
+            let detail_need = self
+                .selected_detail(width)
+                .map(|detail| detail.content().width())
+                .unwrap_or(0);
+            let help_need = self
+                .help_block(width, true)
+                .last()
+                .map(|line| line.text.width())
+                .unwrap_or(0);
+            detail_need > 0 && help_need + detail_need + details.width() + 4 > width
+        };
+        let tabs_row = self.tabs_row.take();
+        if crowded && !details.is_empty() {
+            if let Some((tabs_y, tabs_end, tabs_right)) = tabs_row {
+                let right = tabs_right.saturating_sub(2);
+                if tabs_end + 2 + details.width() <= right {
+                    print_text_with_coordinates(
+                        Text::from(details.as_str()).dim_all(),
+                        right - details.width(),
+                        tabs_y,
+                        Some(details.width()),
+                        None,
+                    );
+                }
+            }
+        }
+        let reserved = if details.is_empty() || details.width() + 2 > width / 2 || crowded {
             0
         } else {
             details.width() + 2
@@ -2148,16 +2365,21 @@ impl Inbox {
         if self.selected_item().is_none() {
             return vec![];
         }
+        let dismiss = if self.selected_is_recalled() {
+            "forget"
+        } else {
+            "dismiss"
+        };
         if !live {
             return vec![
                 (crate::help::hint("<ENTER>", "go there"), ItemAction::Go),
-                (crate::help::hint("<c>", "dismiss"), ItemAction::Dismiss),
+                (crate::help::hint("<c>", dismiss), ItemAction::Dismiss),
             ];
         }
         vec![
             (crate::help::hint("<ENTER>", "go"), ItemAction::Go),
             (crate::help::hint(TYPE_KEY, "type"), ItemAction::Type),
-            (crate::help::hint("<c>", "dismiss"), ItemAction::Dismiss),
+            (crate::help::hint("<c>", dismiss), ItemAction::Dismiss),
         ]
     }
 
@@ -2248,16 +2470,7 @@ impl Inbox {
         let selected = self.list_selected_position(&order);
         let show_age = self.live_layout.is_none();
         let mut position = 0;
-        let session_width = if self.group_by_session {
-            0
-        } else {
-            order
-                .iter()
-                .map(|index| session_name(&self.items()[*index]).width())
-                .max()
-                .unwrap_or(0)
-                .min(SESSION_COLUMN_MAX)
-        };
+        let session_width = self.session_column_width(&order);
         for (section_index, (section, members)) in self.sections().into_iter().enumerate() {
             if section_index > 0 {
                 lines.push(BlockLine::Blank);
@@ -2292,6 +2505,16 @@ impl Inbox {
                 );
                 if is_selected {
                     text = text.selected();
+                }
+                if self.hovered.as_ref() == Some(&ItemKey::of(&item)) {
+                    text = text.italic_range(hover_range(
+                        &item,
+                        session_width,
+                        width,
+                        now,
+                        show_age,
+                        simplified_ui,
+                    ));
                 }
                 lines.push(BlockLine::Item {
                     text,
@@ -2356,7 +2579,10 @@ impl Inbox {
         let inner = width.saturating_sub(2);
         let content_x = 2;
         let content_width = width.saturating_sub(4);
-        let title = format!(" {} {} ", content.title, INBOX_SHORTCUT);
+        let title = match self.shortcut.as_ref() {
+            Some(shortcut) => format!(" {} {} ", content.title, shortcut),
+            None => format!(" {} ", content.title),
+        };
         let title = truncate_plain(&title, inner.saturating_sub(4));
         let top = format!(
             "┌{}{} × ─┐",
@@ -2365,9 +2591,17 @@ impl Inbox {
         );
         let title_main_len = content.title.chars().count();
         let close_index = top.chars().count().saturating_sub(4);
-        let top_text = Text::from(top.as_str())
+        let mut top_text = Text::from(top.as_str())
             .color_range(2, 2..2 + title_main_len)
             .color_range(3, close_index..close_index + 1);
+        if let Some(shortcut) = self.shortcut.as_ref() {
+            let shortcut_start = 3 + title_main_len;
+            let shortcut_end =
+                (shortcut_start + shortcut.chars().count()).min(1 + title.chars().count());
+            if shortcut_start < shortcut_end {
+                top_text = top_text.dim_range(shortcut_start..shortcut_end);
+            }
+        }
         print_text_with_coordinates(top_text, 0, 0, Some(width), None);
         let close_x = width.saturating_sub(4);
         self.card_targets
@@ -2685,15 +2919,21 @@ fn section_heading(section: Section, count: usize, width: usize) -> Text {
         .dim_range(title_end..total)
 }
 
-fn pane_row(
+struct PaneRowParts {
+    session: String,
+    head: String,
+    pane: String,
+    tail: String,
+}
+
+fn pane_row_parts(
     item: &GlobalAttentionItem,
     session_width: usize,
     width: usize,
     now: u64,
     show_age: bool,
     simplified_ui: bool,
-    held: bool,
-) -> Text {
+) -> PaneRowParts {
     let symbol = item_symbol(item, simplified_ui);
     let session = truncate_plain(&session_name(item), session_width);
     let session_cell = format!(
@@ -2706,7 +2946,6 @@ fn pane_row(
     } else {
         format!("{} {}  ", symbol, session_cell)
     };
-    let head_len = head.chars().count();
     let mut tail = String::new();
     if show_age {
         let detail = row_text(item);
@@ -2728,6 +2967,46 @@ fn pane_row(
         room.min(pane.width().max(room / 2))
     };
     let pane = truncate_middle(&pane, pane_room);
+    PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    }
+}
+
+fn hover_range(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+) -> std::ops::Range<usize> {
+    let parts = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    if session_width > 0 {
+        return 2..2 + parts.session.chars().count();
+    }
+    let start = parts.head.chars().count();
+    start..start + parts.pane.chars().count()
+}
+
+fn pane_row(
+    item: &GlobalAttentionItem,
+    session_width: usize,
+    width: usize,
+    now: u64,
+    show_age: bool,
+    simplified_ui: bool,
+    held: bool,
+) -> Text {
+    let PaneRowParts {
+        session,
+        head,
+        pane,
+        tail,
+    } = pane_row_parts(item, session_width, width, now, show_age, simplified_ui);
+    let head_len = head.chars().count();
     let pane_len = pane.chars().count();
     let line = truncate_plain(&format!("{}{}{}", head, pane, tail), width);
     let padded = format!("{}{}", line, " ".repeat(width.saturating_sub(line.width())));
@@ -3464,7 +3743,7 @@ mod tests {
             resize_allowed: true,
             pinned: captured,
             source_size: None,
-            release_key: "F9".to_owned(),
+            release_key: String::new(),
         }
     }
 
@@ -3504,7 +3783,7 @@ mod tests {
         );
         assert_eq!(
             inbox.live_view_hint_text(),
-            "typing into here › pane2 · <F9> or click outside to return"
+            "typing into here › pane2 · <Alt ENTER> or click outside to return"
         );
         let mut released = live_status(Some(key("here", 2)), false);
         released.input_released_by = Some(LiveViewRelease::Key);
@@ -3547,7 +3826,7 @@ mod tests {
                 .live_view_sent
                 .as_ref()
                 .map(|view| view.resize_allowed),
-            Some(None)
+            Some(Some(false))
         );
         let mut reported = live_status(inbox.live_view_target(), false);
         reported.resize_allowed = false;
@@ -3588,8 +3867,16 @@ mod tests {
             cols: view_cols,
             rows: view_rows,
         });
-        inbox.apply_live_view_status(reported);
+        inbox.apply_live_view_status(reported.clone());
         assert_eq!(inbox.live_view_details_text(), "resize off");
+        reported.pinned = true;
+        reported.source_size = Some(Size { cols: 80, rows: 24 });
+        inbox.apply_live_view_status(reported);
+        assert_eq!(
+            inbox.live_view_details_text(),
+            "",
+            "a pane resized by typing into it is neither off nor cropped"
+        );
         let mut resizing = live_status(inbox.live_view_target(), true);
         resizing.source_size = Some(Size { cols: 80, rows: 24 });
         inbox.toggle_resize();
@@ -3870,6 +4157,11 @@ mod tests {
         );
         assert_eq!(level(&row, 0), vec![0]);
         assert!(level(&row, 4).is_empty());
+        assert_eq!(
+            hover_range(&long, SESSION_COLUMN_MAX, 40, 200, false, false),
+            2..2 + SESSION_COLUMN_MAX,
+            "a hover marks the session name"
+        );
         let listed = pane_row(
             &long,
             SESSION_COLUMN_MAX,
@@ -4373,7 +4665,11 @@ mod tests {
         assert_eq!(sent(&inbox), Some(true));
         inbox.select_item(key("api", 1));
         render(&mut inbox, 88, 15, false);
-        assert_eq!(sent(&inbox), None, "other sessions keep their own setting");
+        assert_eq!(
+            sent(&inbox),
+            Some(false),
+            "other sessions are not resized while browsing either"
+        );
     }
 
     #[test]
@@ -4595,5 +4891,232 @@ mod tests {
         let start = line.find(TYPE_KEY).unwrap();
         assert!((start..start + TYPE_KEY.len()).all(|index| level(&footer, 3).contains(&index)));
         assert!(!level(&footer, 3).contains(&(start + TYPE_KEY.len())));
+    }
+
+    fn remembered_item(session: &str, id: u32, status: AttentionStatus) -> GlobalAttentionItem {
+        let mut item = item(session, id, AttentionStatus::Idle, 0);
+        item.item.attention.text = String::new();
+        item.item.attention.remembered = Some(RememberedStatus {
+            status,
+            text: status.as_str().to_owned(),
+            since_ms: 50,
+        });
+        item
+    }
+
+    fn titled(mut item: GlobalAttentionItem, title: &str) -> GlobalAttentionItem {
+        item.item.pane_title = title.to_owned();
+        item
+    }
+
+    #[test]
+    fn a_remembered_pane_stays_dimmed_in_the_section_of_its_last_status() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            remembered_item("api", 1, AttentionStatus::Done),
+            item("here", 2, AttentionStatus::Failed, 90),
+        ]));
+        assert!(inbox.is_held(&key("api", 1)));
+        assert_eq!(inbox.counted_count(), 1, "a remembered pane is not counted");
+        assert_eq!(status_title(inbox.find(&key("api", 1)).unwrap()), "Done");
+        let sections: Vec<Group> = inbox.sections().into_iter().map(|(g, _)| g).collect();
+        assert_eq!(
+            sections,
+            vec![Group::Status(Section::Failed), Group::Status(Section::Done)]
+        );
+        inbox.select_newest_counted();
+        assert_eq!(inbox.selection, Some(key("here", 2)));
+        assert!(!inbox.selected_is_recalled());
+        inbox.select_item(key("api", 1));
+        assert!(inbox.selected_is_recalled());
+        let labels: Vec<String> = inbox
+            .primary_hints(true)
+            .into_iter()
+            .map(|(hint, _)| hint.label)
+            .collect();
+        assert!(labels.contains(&"forget".to_owned()));
+    }
+
+    #[test]
+    fn a_remembered_pane_that_works_again_is_listed_normally() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![remembered_item(
+            "api",
+            1,
+            AttentionStatus::Done,
+        )]));
+        let mut working = remembered_item("api", 1, AttentionStatus::Working);
+        working.item.attention.status = AttentionStatus::Working;
+        inbox.update_global(global(vec![working]));
+        assert!(!inbox.is_held(&key("api", 1)));
+        assert_eq!(inbox.counted_count(), 1);
+        inbox.update_global(global(vec![]));
+        assert!(inbox.find(&key("api", 1)).is_none());
+    }
+
+    #[test]
+    fn a_viewed_remembered_pane_goes_away_once_the_server_forgets_it() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![remembered_item(
+            "api",
+            1,
+            AttentionStatus::Done,
+        )]));
+        inbox.select_item(key("api", 1));
+        render(&mut inbox, 120, 30, false);
+        inbox.update_global(global(vec![]));
+        assert!(inbox.find(&key("api", 1)).is_none());
+        assert!(inbox.held.is_empty());
+    }
+
+    #[test]
+    fn muted_or_watched_remembered_panes_are_not_recalled() {
+        let mut muted = remembered_item("api", 1, AttentionStatus::Done);
+        muted.item.attention.muted = Some(MuteScope::Pane);
+        let mut watched = remembered_item("api", 2, AttentionStatus::Done);
+        watched.item.attention.watched = true;
+        assert!(!is_recalled(&muted));
+        assert!(!is_recalled(&watched));
+        assert!(is_recalled(&remembered_item(
+            "api",
+            3,
+            AttentionStatus::Idle
+        )));
+    }
+
+    #[test]
+    fn the_list_grows_to_fit_long_titles_and_keeps_its_width_until_closed() {
+        let long = "a-very-long-pane-title-that-is-cut-off-1";
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            titled(item("api", 1, AttentionStatus::NeedsYou, 100), long),
+            item("here", 2, AttentionStatus::Failed, 90),
+        ]));
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().list_width, 40);
+        inbox.update_global(global(vec![item("here", 2, AttentionStatus::Failed, 90)]));
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(
+            inbox.live_layout.unwrap().list_width,
+            40,
+            "the list does not shrink while open"
+        );
+        inbox.forget_listed();
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().list_width, 24);
+    }
+
+    #[test]
+    fn the_list_never_squeezes_the_live_view_below_its_minimum() {
+        let long = "x".repeat(80);
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![titled(
+            item("api", 1, AttentionStatus::NeedsYou, 100),
+            &long,
+        )]));
+        render(&mut inbox, 64, 30, false);
+        let layout = inbox.live_layout.unwrap();
+        assert_eq!(layout.box_width, LIVE_VIEW_MIN_COLS);
+        inbox.toggle_wide_list();
+        render(&mut inbox, 64, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().box_width, LIVE_VIEW_MIN_COLS);
+    }
+
+    #[test]
+    fn w_widens_the_list_to_half_the_width_and_back() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![item("api", 1, AttentionStatus::NeedsYou, 100)]));
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().list_width, 24);
+        inbox.toggle_wide_list();
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().list_width, 60);
+        inbox.toggle_wide_list();
+        render(&mut inbox, 120, 30, false);
+        assert_eq!(inbox.live_layout.unwrap().list_width, 24);
+    }
+
+    #[test]
+    fn the_bottom_line_shows_the_full_title_of_a_cut_off_row() {
+        let long = "a-very-long-pane-title-that-is-cut-off-by-the-list";
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![titled(
+            item("api", 1, AttentionStatus::NeedsYou, 100),
+            long,
+        )]));
+        inbox.select_item(key("api", 1));
+        render(&mut inbox, 120, 30, false);
+        let detail = inbox.selected_detail(100).unwrap();
+        assert!(detail
+            .content()
+            .starts_with(&format!("{} · Needs You", long)));
+        let short = inbox.selected_detail(30).unwrap();
+        assert!(short.content().contains("…"));
+        assert!(short.content().contains("Needs You"));
+        inbox.update_global(global(vec![item("api", 1, AttentionStatus::NeedsYou, 100)]));
+        render(&mut inbox, 120, 30, false);
+        assert!(inbox
+            .selected_detail(100)
+            .unwrap()
+            .content()
+            .starts_with("Needs You"));
+    }
+
+    #[test]
+    fn dismissing_a_remembered_agent_moves_the_selection_to_the_next_row() {
+        let mut inbox = Inbox::default();
+        let mut agent = item("api", 1, AttentionStatus::NeedsYou, 100);
+        agent.item.attention.remembered = Some(RememberedStatus {
+            status: AttentionStatus::NeedsYou,
+            text: "needs you".to_owned(),
+            since_ms: 100,
+        });
+        inbox.update_global(global(vec![
+            agent,
+            item("web", 2, AttentionStatus::NeedsYou, 90),
+        ]));
+        inbox.select_item(key("api", 1));
+        inbox.dismiss_selected();
+        assert_eq!(inbox.selection, Some(key("web", 2)));
+        inbox.update_global(global(vec![
+            remembered_item("api", 1, AttentionStatus::NeedsYou),
+            item("web", 2, AttentionStatus::NeedsYou, 90),
+        ]));
+        assert!(inbox.is_held(&key("api", 1)));
+        assert_eq!(inbox.selection, Some(key("web", 2)));
+    }
+
+    #[test]
+    fn the_inbox_shortcut_is_the_key_path_from_the_base_mode() {
+        let ctrl_o = KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier();
+        let i = KeyWithModifier::new(BareKey::Char('i'));
+        let mut mode_info = ModeInfo::default();
+        assert_eq!(inbox_shortcut(&mode_info), None);
+        mode_info.keybinds = vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    ctrl_o,
+                    vec![actions::Action::SwitchToMode {
+                        input_mode: InputMode::Session,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Session,
+                vec![(
+                    i,
+                    vec![
+                        actions::Action::ToggleSessionCard,
+                        actions::Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        },
+                    ],
+                )],
+            ),
+        ];
+        assert_eq!(inbox_shortcut(&mode_info), Some("<Ctrl o> <i>".to_owned()));
+        mode_info.base_mode = Some(InputMode::Locked);
+        assert_eq!(inbox_shortcut(&mode_info), None);
     }
 }

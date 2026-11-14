@@ -442,7 +442,7 @@ fn page_down_scrolls_the_list_by_whole_notifications() {
             .iter()
             .any(|line| line.contains(&format!("{} ", arrow)) && line.contains(" more"))
     };
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the list overflows", |grid_snapshot| {
         more_marker(grid_snapshot, "↓") && grid_snapshot.contains("Question number 6?")
     });
@@ -512,7 +512,7 @@ fn f1_opens_all_keys_from_the_sessions_tab() {
     let (mut zellij, _) = main_session_sized(TALL);
     let (other, _) = background_session_with(ATTENTION_CONFIG);
     wait_for_indicator(&zellij, "both sessions are known", "2 running");
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the sessions tab is shown", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(other.session_name())
     });

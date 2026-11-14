@@ -168,7 +168,9 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 
 #[cfg(feature = "terminal")]
 fn register_app_starter() {
-    zellij_server::set_app_starter(Box::new(start_terminal_app));
+    if zellij_terminal::OPENS_WINDOWS {
+        zellij_server::set_app_starter(Box::new(start_terminal_app));
+    }
 }
 
 #[cfg(not(feature = "terminal"))]
@@ -268,16 +270,11 @@ pub(crate) fn run_setup_actions(setup: &zellij_utils::setup::Setup, opts: &CliAr
                     eprintln!("  Run again with --replace-existing to replace it.");
                 }
             }
-            #[cfg(all(feature = "terminal", windows))]
-            if !plan.remove.is_empty() {
-                match zellij_terminal::unregister_app() {
-                    Ok(removed) => {
-                        for removed in removed {
-                            println!("  Removed {}", removed);
-                        }
-                    },
-                    Err(e) => eprintln!("  {:?}", e),
-                }
+        }
+        #[cfg(windows)]
+        if actions.uninstall_desktop_entry {
+            for line in platform::forget_app() {
+                println!("  {}", line);
             }
         }
     }

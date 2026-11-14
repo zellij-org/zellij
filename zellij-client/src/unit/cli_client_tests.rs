@@ -107,7 +107,9 @@ impl ClientOsApi for ScriptedOsApi {
         _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     ) {
     }
-    fn connect_to_server(&self, _path: &std::path::Path) {}
+    fn connect_to_server(&self, _path: &std::path::Path) -> std::io::Result<()> {
+        Ok(())
+    }
     fn load_palette(&self) -> Palette {
         Palette::default()
     }
@@ -135,6 +137,8 @@ fn pipe_action(payload: Option<&str>) -> Action {
         pane_title: None,
         popup: None,
         popup_no_focus: false,
+        popup_capture_all_keys: false,
+        popup_outside_click: None,
     }
 }
 
@@ -458,6 +462,33 @@ fn placement_flags_choose_where_the_popup_opens() {
 }
 
 #[test]
+fn a_prompt_takes_its_outside_click_and_key_capture_from_the_flags() {
+    use zellij_utils::data::OutsideClick;
+    let defaults = prompt_cli(&["menu", "a", "b"]).answer_args();
+    assert_eq!(defaults.outside_click, None);
+    assert!(!defaults.capture_all_keys);
+    let args = prompt_cli(&[
+        "menu",
+        "a",
+        "b",
+        "--outside-click",
+        "close",
+        "--capture-all-keys",
+    ])
+    .answer_args();
+    assert_eq!(args.outside_click, Some(OutsideClick::Close));
+    assert!(args.capture_all_keys);
+    assert!(<PromptCli as clap::Parser>::try_parse_from([
+        "prompt",
+        "menu",
+        "a",
+        "--outside-click",
+        "unfocus"
+    ])
+    .is_err());
+}
+
+#[test]
 fn notify_defaults_to_the_top_right_corner_and_does_not_take_focus() {
     use zellij_utils::data::PipePopupPlacement;
     let notify = prompt_cli(&["notify", "Build finished"]);
@@ -476,7 +507,13 @@ fn notify_defaults_to_the_top_right_corner_and_does_not_take_focus() {
 
 #[test]
 fn notify_does_not_take_the_answer_and_placement_flags() {
-    for flag in ["--json", "--at-cursor", "--at-mouse", "--at-center"] {
+    for flag in [
+        "--json",
+        "--at-cursor",
+        "--at-mouse",
+        "--at-center",
+        "--capture-all-keys",
+    ] {
         assert!(
             <PromptCli as clap::Parser>::try_parse_from(["prompt", "notify", "x", flag]).is_err(),
             "{}",
@@ -488,6 +525,14 @@ fn notify_does_not_take_the_answer_and_placement_flags() {
             flag
         );
     }
+    assert!(<PromptCli as clap::Parser>::try_parse_from([
+        "prompt",
+        "notify",
+        "x",
+        "--outside-click",
+        "close"
+    ])
+    .is_err());
     assert!(<PromptCli as clap::Parser>::try_parse_from([
         "prompt",
         "notify",
@@ -513,6 +558,8 @@ fn notify_does_not_take_the_answer_and_placement_flags() {
         "--at-mouse",
         "--at-center",
         "--default",
+        "--outside-click",
+        "--capture-all-keys",
     ] {
         assert!(!help.contains(flag), "{}: {}", flag, help);
     }

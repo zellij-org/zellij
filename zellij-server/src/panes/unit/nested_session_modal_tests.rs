@@ -248,7 +248,7 @@ fn hit_test_ignores_columns_outside_the_block() {
         None,
         &sample_shortcuts(),
     );
-    let option_row = layout.start_row + layout.option_rows[0];
+    let option_row = layout.start_row + layout.option_row_ranges[0].start;
     assert_eq!(
         hit_at(rows, columns, option_row, layout.left_pad, 0),
         Some(0)
@@ -319,7 +319,7 @@ fn hovered_option_title_is_italic() {
         let chunks = guest_modal_chunks(
             columns, rows, 0, 0, &style, "session", 0, hovered, &shortcuts,
         );
-        let row = &chunks[layout.start_row + layout.option_rows[option]];
+        let row = &chunks[layout.start_row + layout.option_row_ranges[option].start];
         let text: String = row
             .terminal_characters
             .iter()
@@ -348,7 +348,7 @@ fn selected_rows_carry_the_selected_background_rectangle() {
     let layout = guest_modal_layout(
         columns, rows, &styles, "session", selected, None, &shortcuts,
     );
-    let selected_option_offset = layout.option_rows[selected];
+    let selected_option_offset = layout.option_row_ranges[selected].start;
 
     let chunks = guest_modal_chunks(
         columns, rows, 0, 0, &style, "session", selected, None, &shortcuts,
@@ -399,7 +399,7 @@ fn unselected_rows_do_not_use_the_selected_background() {
     let layout = guest_modal_layout(
         columns, rows, &styles, "session", selected, None, &shortcuts,
     );
-    let other_option_offset = layout.option_rows[1];
+    let other_option_offset = layout.option_row_ranges[1].start;
 
     let selected_background = styles.selected_fill.background;
     let chunks = guest_modal_chunks(

@@ -22,7 +22,6 @@ use std::{
 };
 use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
-use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
     BreakPanesToTabWithIndexResponse, CommandType, ConfigSnapshot, ConnectToSession,
@@ -48,7 +47,6 @@ use zellij_utils::data::{
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
 use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
 use zellij_utils::sessions::validate_session_folder_name;
 #[cfg(feature = "web_server_capability")]
@@ -646,6 +644,28 @@ fn desktop_integration(env: &PluginEnv, request: String) {
         });
 }
 
+fn register_settings_entry(env: &PluginEnv, title: String) {
+    let plugin_identity = (
+        env.plugin.location.clone(),
+        env.plugin.initial_userspace_configuration.clone(),
+    );
+    env.senders
+        .send_to_plugin(PluginInstruction::RegisterSettingsEntry {
+            plugin_id: env.plugin_id,
+            plugin_identity,
+            title,
+        })
+        .with_context(|| format!("failed to register a settings entry for {}", env.name()))
+        .non_fatal();
+}
+
+fn unregister_settings_entry(env: &PluginEnv) {
+    env.senders
+        .send_to_plugin(PluginInstruction::UnregisterSettingsEntry(env.plugin_id))
+        .with_context(|| format!("failed to unregister the settings entry of {}", env.name()))
+        .non_fatal();
+}
+
 fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
     if env.shared.is_none() {
         env.pending_popup_size = Some((width, height));
@@ -809,6 +829,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
                     },
+                    PluginCommand::RegisterSettingsEntry(title) => {
+                        register_settings_entry(env, title)
+                    },
+                    PluginCommand::UnregisterSettingsEntry => unregister_settings_entry(env),
                     PluginCommand::DesktopIntegration(request) => {
                         desktop_integration(env, request)
                     },
@@ -1262,8 +1286,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::TogglePaneIdFullscreen(pane_id) => {
                         toggle_pane_id_fullscreen(env, pane_id.into())
                     },
-                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
-                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into())
+                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id, show_and_focus) => {
+                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into(), show_and_focus)
                     },
                     PluginCommand::CloseTabWithIndex(tab_index) => {
                         close_tab_with_index(env, tab_index)
@@ -4128,46 +4152,20 @@ fn delete_dead_session(session_name: String) -> Result<()> {
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    use zellij_utils::consts::is_ipc_socket;
-    let mut live_sessions = vec![];
-    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        files.for_each(|file| {
-            if let Ok(file) = file {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if !zellij_utils::consts::is_app_socket_name(&file_name)
-                        && is_ipc_socket(&file.file_type().unwrap())
-                    {
-                        live_sessions.push(file_name);
-                    }
-                }
-            }
-        });
-    }
-    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(files_in_session_info_folder) => {
-            let files_that_are_folders = files_in_session_info_folder
-                .filter_map(|f| f.ok().map(|f| f.path()))
-                .filter(|f| f.is_dir());
-            files_that_are_folders
-                .filter_map(|folder_name| {
-                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
-                    if live_sessions.contains(&session_name) {
-                        // this is not a dead session...
-                        return None;
-                    }
-                    Some(session_name)
-                })
-                .collect()
-        },
+    let index = match zellij_utils::session_index::SessionIndex::open_default() {
+        Ok(index) => Some(index),
         Err(e) => {
-            log::error!("Failed to read session info cache dir: {:?}", e);
-            vec![]
+            log::error!("Failed to open the session index: {}", e);
+            None
         },
     };
-    for session in dead_sessions {
-        delete_dead_session(session)?;
-    }
-    Ok(())
+    zellij_utils::session_index::delete_dead_sessions_in(
+        &ZELLIJ_SOCK_DIR,
+        &ZELLIJ_SESSION_INFO_CACHE_DIR,
+        index.as_ref(),
+    )
+    .map(|_| ())
+    .map_err(|e| anyhow!(e))
 }
 
 fn edit_scrollback(env: &PluginEnv) {
@@ -4591,32 +4589,9 @@ fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
         let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
             .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
-        let path = &*resolved;
-        match ipc_connect(path) {
-            Ok(stream) => {
-                #[cfg(windows)]
-                {
-                    use zellij_utils::consts::ipc_connect_reply;
-                    use zellij_utils::ipc::{IpcReceiverWithContext, ServerToClientMsg};
-                    let reply = ipc_connect_reply(path);
-                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                        .send_client_msg(ClientToServerMsg::KillSession);
-                    if let Ok(reply_stream) = reply {
-                        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                            IpcReceiverWithContext::new(reply_stream);
-                        let _ = receiver.recv_server_msg();
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                        .send_client_msg(ClientToServerMsg::KillSession);
-                }
-            },
-            Err(e) => {
-                log::error!("Failed to kill session {}: {:?}", session_name, e);
-            },
-        };
+        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved) {
+            log::error!("Failed to kill session {}: {:?}", session_name, e);
+        }
     }
 }
 
@@ -6058,10 +6033,13 @@ fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
         .send_to_screen(ScreenInstruction::TogglePaneIdFullscreen(pane_id));
 }
 
-fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
-    let _ = env
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id));
+fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId, show_and_focus: bool) {
+    let instruction = if show_and_focus {
+        ScreenInstruction::MovePaneBetweenLayersForPaneId(pane_id, Some(acting_client(env)))
+    } else {
+        ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id)
+    };
+    let _ = env.senders.send_to_screen(instruction);
 }
 
 fn close_tab_with_index(env: &PluginEnv, tab_index: usize) {
@@ -6628,6 +6606,11 @@ fn override_layout(
 // formatted as string from the plugin.
 fn report_panic(env: &PluginEnv, msg: &str) {
     log::error!("PANIC IN PLUGIN!\n\r{}", msg);
+    if env.shared.is_some() {
+        let _ = env
+            .senders
+            .send_to_plugin(PluginInstruction::UnregisterSettingsEntry(env.plugin_id));
+    }
     for pane_id in crash_pane_ids(env) {
         handle_plugin_crash(pane_id, msg.to_owned(), env.senders.clone());
     }
@@ -6760,7 +6743,9 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::ToggleSessionPaneMute { .. }
         | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
         | PluginCommand::ToggleSessionPaneWatch { .. }
-        | PluginCommand::FocusSessionPane { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::FocusSessionPane { .. }
+        | PluginCommand::RegisterSettingsEntry(..)
+        | PluginCommand::UnregisterSettingsEntry => PermissionType::ChangeApplicationState,
         PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)

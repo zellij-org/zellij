@@ -543,11 +543,13 @@ fn closing_a_larger_tab_leaves_nothing_behind_outside_the_one_returned_to() {
     let main_grid = zellij.wait_until("main client settled on the shared tab", |grid_snapshot| {
         settled_in_normal_mode(grid_snapshot, TERMINAL_SIZE, "oneone")
             && grid_snapshot.contains("Tab #1 [ ]")
+            && !grid_snapshot.contains("Tab #2")
     });
     let second_grid =
         second_client.wait_until("larger client settled on the shared tab", |grid_snapshot| {
             settled_in_normal_mode(grid_snapshot, TERMINAL_SIZE, "oneone")
                 && grid_snapshot.contains("Tab #1 [ ]")
+                && !grid_snapshot.contains("Tab #2")
                 && !grid_snapshot.contains("twotwo")
         });
 

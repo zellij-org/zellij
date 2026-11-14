@@ -1,7 +1,7 @@
 use super::Screen;
 use crate::panes::PaneId;
 use crate::plugins::{PluginInstruction, PromptCaller, SERVER_NOTICE_CALLER_ID};
-use crate::tab::{PopupKind, PopupPlacement};
+use crate::tab::{PopupBehavior, PopupPlacement};
 use crate::ClientId;
 use std::collections::BTreeMap;
 use zellij_utils::attention::sanitize_display_text;
@@ -192,7 +192,7 @@ impl Screen {
             client_id,
             run_plugin_or_alias,
             PopupPlacement::Corner(PopupCorner::BottomRight),
-            PopupKind::Info,
+            PopupBehavior::info(),
             None,
             MODE_HINTS_INITIAL_COLS,
             MODE_HINTS_INITIAL_ROWS,

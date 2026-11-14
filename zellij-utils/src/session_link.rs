@@ -27,10 +27,11 @@ impl SessionLink {
         Self::open_path(&crate::consts::session_socket_path(session_name))
     }
     pub fn open_path(socket_path: &Path) -> Result<Self, String> {
-        let stream = crate::consts::ipc_connect(socket_path).map_err(|e| e.to_string())?;
         #[cfg(windows)]
-        let reply_stream =
-            crate::consts::ipc_connect_reply(socket_path).map_err(|e| e.to_string())?;
+        let (stream, reply_stream) =
+            crate::pipe_pairs::connect_pair(socket_path).map_err(|e| e.to_string())?;
+        #[cfg(not(windows))]
+        let stream = crate::consts::ipc_connect(socket_path).map_err(|e| e.to_string())?;
         let sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
         #[cfg(windows)]
         let receiver: IpcReceiverWithContext<ServerToClientMsg> =

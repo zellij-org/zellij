@@ -182,6 +182,7 @@ expression: "format!(\"{:#?}\", theme)"
                     ),
                 ),
             },
+            ribbon_hover: None,
             table_title: StyleDeclaration {
                 base: Rgb(
                     (

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
+* fix: broken links to the inbox integrations and plugin workers docs (https://github.com/zellij-org/zellij/pull/5877)
+* fix: terminal settings occasionally not properly applied or bounce back from the settings interface (https://github.com/zellij-org/zellij/pull/5887)
+* fix: resurrected sessions without input being deleted on session switch (https://github.com/zellij-org/zellij/pull/5889)
+* fix: bring a new window of the desktop app to the front on macOS (https://github.com/zellij-org/zellij/pull/5865)
+* feat: plugins can link text, so links in the about plugin open on Windows and over SSH or the web client (https://github.com/zellij-org/zellij/pull/5884)
+* feat: open links with Cmd+click in the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5888)
+* feat: paste the path of a file dropped onto the window (https://github.com/zellij-org/zellij/pull/5870)
+* fix: web client on touch devices with a hardware keyboard losing function keys and shortcuts, and dropping doubled letters from pastes (https://github.com/zellij-org/zellij/pull/5890)
+
+## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
 * (BREAKING CHANGE zellij-tile) `Text::new` is replaced by `Text::from` (https://github.com/zellij-org/zellij/pull/5611)
     * Migration help: to help with the breaking change, this command may help (not for 100% of the cases but a good first pass): `ast-grep run -p 'Text::new($A)' -r 'Text::from($A)' --update-all`
@@ -44,6 +55,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: ctrl-mouse-drag to create a floating pane (https://github.com/zellij-org/zellij/pull/5766)
 * feat: allow programs to set their own resurrection command with zellij action set-resurrection-command (https://github.com/zellij-org/zellij/pull/5769)
 * feat: allow hiding tab-bar + status-bar at runtime (https://github.com/zellij-org/zellij/pull/5781)
+* feat: plugins can register a settings screen entry that opens their own settings (https://github.com/zellij-org/zellij/pull/5779)
+* performance: improve output/stdout/scrolling speed (https://github.com/zellij-org/zellij/pull/5815)
+* feat: standard macOS menu for the desktop window and save window state when quitting from the Dock (https://github.com/zellij-org/zellij/pull/5782)
+* fix: allow cycling with tab/shift-tab in session-manager/welcome-screen (https://github.com/zellij-org/zellij/pull/5818)
+* feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
+* feat: separate font families for bold, italic and bold italic text in the terminal window (`font_bold`, `font_italic`, `font_bold_italic`), and pick a family's normal width over its wider cuts (https://github.com/zellij-org/zellij/pull/5829)
+* feat: install Zellij.app on macOS from the setup screen, with the login shell environment, notifications and reopening from Finder; the setup screen can also copy Zellij to ~/.local/bin (https://github.com/zellij-org/zellij/pull/5830)
+* feat: terminal window (desktop client) on Windows, with the tray, notifications and the setup screen (https://github.com/zellij-org/zellij/pull/5679, https://github.com/zellij-org/zellij/pull/5831, https://github.com/zellij-org/zellij/pull/5832, https://github.com/zellij-org/zellij/pull/5833, https://github.com/zellij-org/zellij/pull/5844, https://github.com/zellij-org/zellij/pull/5846, https://github.com/zellij-org/zellij/pull/5848 and https://github.com/zellij-org/zellij/pull/5857)
+* fix: replies going to the wrong client on Windows after a client drops mid-connect (https://github.com/zellij-org/zellij/pull/5849)
+* fix: tighten pipe permissions on Windows, and small fixes for starting and reaching sessions, session names and paths (https://github.com/zellij-org/zellij/pull/5853, https://github.com/zellij-org/zellij/pull/5854 and https://github.com/zellij-org/zellij/pull/5855)
 
 
 ## [0.45.1] - 2026-08-28

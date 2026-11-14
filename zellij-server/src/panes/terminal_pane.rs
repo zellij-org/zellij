@@ -12,13 +12,13 @@ use crate::panes::{
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
 use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
+use crate::vt_parser;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
-use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
@@ -138,7 +138,7 @@ pub struct TerminalPane {
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub style: Style,
-    vte_parser: vte::Parser,
+    vte_parser: vt_parser::Parser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
@@ -181,6 +181,7 @@ pub struct TerminalPane {
     /// remaining bytes in the queue to be drained after the host reply
     /// has been written.
     pending_pty_input: VecDeque<u8>,
+    held_escape: bool,
     kitty_interceptor: KittyApcInterceptor,
     mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
 }
@@ -233,10 +234,33 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
+        let bytes = if std::mem::take(&mut self.held_escape) {
+            let mut joined = Vec::with_capacity(bytes.len() + 1);
+            joined.push(0x1b);
+            joined.extend_from_slice(&bytes);
+            joined
+        } else {
+            bytes
+        };
         if self.forward_paused {
             // A host-forward initiated by this pane is outstanding.
             // Buffer the bytes; Tab drains them on resume.
             self.pending_pty_input.extend(bytes);
+            return;
+        }
+        if self.kitty_interceptor.is_ground() && memchr::memmem::find(&bytes, b"\x1b_").is_none() {
+            let ends_in_escape = bytes.last() == Some(&0x1b);
+            let head = if ends_in_escape {
+                &bytes[..bytes.len() - 1]
+            } else {
+                &bytes[..]
+            };
+            let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
+            if consumed < head.len() {
+                self.pending_pty_input.extend(&bytes[consumed..]);
+            } else if ends_in_escape {
+                self.held_escape = true;
+            }
             return;
         }
         let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -272,7 +296,7 @@ impl Pane for TerminalPane {
                         if !forwarded.is_empty() {
                             let consumed = self
                                 .vte_parser
-                                .advance_until_terminated(&mut self.grid, &forwarded);
+                                .feed_until_paused(&mut self.grid, &forwarded);
                             if consumed < forwarded.len() {
                                 self.pending_pty_input.extend(&forwarded[consumed..]);
                                 self.pending_pty_input.extend(&bytes[index - 1..]);
@@ -288,7 +312,7 @@ impl Pane for TerminalPane {
                     if !forwarded.is_empty() {
                         let consumed = self
                             .vte_parser
-                            .advance_until_terminated(&mut self.grid, &forwarded);
+                            .feed_until_paused(&mut self.grid, &forwarded);
                         if consumed < forwarded.len() {
                             self.pending_pty_input.extend(&forwarded[consumed..]);
                             self.pending_pty_input.extend(b"\x1b_G");
@@ -312,7 +336,7 @@ impl Pane for TerminalPane {
         }
         let consumed = self
             .vte_parser
-            .advance_until_terminated(&mut self.grid, &forwarded);
+            .feed_until_paused(&mut self.grid, &forwarded);
         if consumed < forwarded.len() {
             self.pending_pty_input.extend(&forwarded[consumed..]);
         }
@@ -1518,6 +1542,7 @@ impl Pane for TerminalPane {
         self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
     }
     fn mirror_screen(&mut self) -> Option<zellij_utils::pane_mirror::MirrorScreen> {
+        self.grid.link_urls_in_changed_lines();
         Some(self.grid.mirror_screen())
     }
     fn mouse_event_for_program(&self, event: &MouseEvent) -> Option<String> {
@@ -1650,7 +1675,7 @@ impl TerminalPane {
             selectable: true,
             geom: position_and_size,
             geom_override: None,
-            vte_parser: vte::Parser::new(),
+            vte_parser: vt_parser::Parser::new(),
             active_at: Instant::now(),
             style,
             selection_scrolled_at: time::Instant::now(),
@@ -1680,6 +1705,7 @@ impl TerminalPane {
             guest_session_name: None,
             guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
+            held_escape: false,
             kitty_interceptor: KittyApcInterceptor::new(),
             mirror_pinned_size: None,
             program_resized_at: None,

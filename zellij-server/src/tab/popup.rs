@@ -3,7 +3,7 @@ use crate::output::Output;
 use crate::panes::{PaneId, PluginPane};
 use crate::plugins::PluginInstruction;
 use crate::ClientId;
-use zellij_utils::data::{Event, KeyWithModifier, Mouse, PopupCorner};
+use zellij_utils::data::{Event, KeyWithModifier, Mouse, OutsideClick, PopupCorner};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::Run;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
@@ -20,28 +20,59 @@ pub enum PopupPlacement {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PopupKind {
-    Menu,
-    Prompt,
-    Modal,
-    Info,
-    Explanation,
+pub struct PopupBehavior {
+    pub focused: bool,
+    pub capture_all_keys: bool,
+    pub outside_click: OutsideClick,
+    pub menu: bool,
 }
 
-impl PopupKind {
-    pub fn takes_focus(&self) -> bool {
-        !matches!(self, PopupKind::Info)
+impl PopupBehavior {
+    pub fn menu() -> Self {
+        PopupBehavior {
+            focused: true,
+            capture_all_keys: false,
+            outside_click: OutsideClick::Close,
+            menu: true,
+        }
+    }
+    pub fn prompt() -> Self {
+        PopupBehavior {
+            focused: true,
+            capture_all_keys: false,
+            outside_click: OutsideClick::Block,
+            menu: false,
+        }
+    }
+    pub fn info() -> Self {
+        PopupBehavior {
+            focused: false,
+            ..PopupBehavior::prompt()
+        }
+    }
+    pub fn capturing_all_keys(self, capture_all_keys: bool) -> Self {
+        PopupBehavior {
+            capture_all_keys,
+            ..self
+        }
+    }
+    pub fn on_outside_click(self, outside_click: OutsideClick) -> Self {
+        PopupBehavior {
+            outside_click,
+            ..self
+        }
     }
 }
 
 pub(crate) struct Popup {
     pub pane: Box<dyn Pane>,
     pub placement: PopupPlacement,
-    pub kind: PopupKind,
+    pub behavior: PopupBehavior,
     pub wanted_cols: usize,
     pub wanted_rows: usize,
     pub anchor_pane: Option<PaneId>,
     pub held_back: bool,
+    pub awaiting_permission: bool,
 }
 
 impl Popup {
@@ -52,7 +83,7 @@ impl Popup {
         }
     }
     fn takes_focus(&self) -> bool {
-        self.kind.takes_focus()
+        self.behavior.focused || self.awaiting_permission
     }
 }
 
@@ -202,14 +233,14 @@ impl Tab {
         client_id: ClientId,
         plugin_id: u32,
         placement: PopupPlacement,
-        kind: PopupKind,
+        behavior: PopupBehavior,
         wanted_cols: usize,
         wanted_rows: usize,
         invoked_with: Option<Run>,
         title: String,
     ) -> Result<Vec<u32>> {
         let err_context = || format!("failed to open popup for client {client_id}");
-        let replaced = if kind == PopupKind::Menu {
+        let replaced = if behavior.menu {
             self.close_menu_popups(client_id)
         } else {
             vec![]
@@ -242,11 +273,12 @@ impl Tab {
         self.popups.entry(client_id).or_default().push(Popup {
             pane,
             placement,
-            kind,
+            behavior,
             wanted_cols,
             wanted_rows,
             anchor_pane: None,
             held_back: false,
+            awaiting_permission: false,
         });
         self.reflow_popups_for_client(client_id, Some(plugin_id));
         self.set_force_render();
@@ -363,7 +395,7 @@ impl Tab {
             return vec![];
         };
         let (info, rest): (Vec<Popup>, Vec<Popup>) =
-            stack.drain(..).partition(|popup| !popup.takes_focus());
+            stack.drain(..).partition(|popup| !popup.behavior.focused);
         *stack = rest;
         if stack.is_empty() {
             self.popups.remove(&client_id);
@@ -398,7 +430,7 @@ impl Tab {
         let _ = self.update_input_modes();
     }
     pub fn close_focused_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.takes_focus())
+        self.remove_popups_where(client_id, |popup| popup.behavior.focused)
     }
     fn remove_popups_where(
         &mut self,
@@ -432,10 +464,10 @@ impl Tab {
         self.remove_popups_where(client_id, |_| true)
     }
     pub fn close_menu_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.kind == PopupKind::Menu)
+        self.remove_popups_where(client_id, |popup| popup.behavior.menu)
     }
     pub fn close_info_popups(&mut self, client_id: ClientId) -> Vec<u32> {
-        self.remove_popups_where(client_id, |popup| popup.kind == PopupKind::Info)
+        self.remove_popups_where(client_id, |popup| !popup.takes_focus())
     }
     pub fn close_popups_with_missing_anchor(&mut self) -> Vec<(ClientId, u32)> {
         let missing_anchors: Vec<PaneId> = self
@@ -502,12 +534,12 @@ impl Tab {
             .get(&client_id)
             .and_then(|stack| stack.iter().rev().find(|popup| popup.takes_focus()))
     }
-    pub fn popup_kind_of_plugin(&self, plugin_id: u32) -> Option<PopupKind> {
+    pub fn popup_behavior_of_plugin(&self, plugin_id: u32) -> Option<PopupBehavior> {
         self.popups
             .values()
             .flat_map(|stack| stack.iter())
             .find(|popup| popup.plugin_id() == Some(plugin_id))
-            .map(|popup| popup.kind)
+            .map(|popup| popup.behavior)
     }
     #[cfg(test)]
     pub fn has_popup_for_client(&self, client_id: ClientId) -> bool {
@@ -521,7 +553,7 @@ impl Tab {
     }
     pub fn focused_popup_takes_all_keys(&self, client_id: ClientId) -> bool {
         self.top_focused_popup(client_id)
-            .map(|popup| popup.kind == PopupKind::Modal)
+            .map(|popup| popup.behavior.capture_all_keys)
             .unwrap_or(false)
     }
     #[cfg(test)]
@@ -620,6 +652,7 @@ impl Tab {
                 if let Some(pane) = self.popup_pane_mut(plugin_id) {
                     pane.request_permissions_from_user(None);
                 }
+                self.set_popup_awaiting_permission(plugin_id, false);
                 let _ = self
                     .senders
                     .send_to_plugin(PluginInstruction::PermissionRequestResult(
@@ -635,14 +668,42 @@ impl Tab {
         }
         true
     }
-    pub fn set_popup_kind(&mut self, plugin_id: u32, kind: PopupKind) -> Option<ClientId> {
+    pub fn set_popup_awaiting_permission(
+        &mut self,
+        plugin_id: u32,
+        awaiting_permission: bool,
+    ) -> Option<ClientId> {
+        let client_id = self.popup_client_for_plugin(plugin_id)?;
+        let stack = self.popups.get_mut(&client_id)?;
+        let position = stack
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))?;
+        if stack[position].awaiting_permission == awaiting_permission {
+            return Some(client_id);
+        }
+        let mut popup = stack.remove(position);
+        popup.awaiting_permission = awaiting_permission;
+        popup.pane.set_should_render(true);
+        popup.pane.render_full_viewport();
+        if awaiting_permission {
+            stack.push(popup);
+        } else {
+            stack.insert(position, popup);
+        }
+        self.reflow_popups_for_client(client_id, None);
+        self.mark_popups_for_full_render();
+        self.set_force_render();
+        let _ = self.update_input_modes();
+        Some(client_id)
+    }
+    pub fn set_popup_focused(&mut self, plugin_id: u32, focused: bool) -> Option<ClientId> {
         let client_id = self.popup_client_for_plugin(plugin_id)?;
         let stack = self.popups.get_mut(&client_id)?;
         let position = stack
             .iter()
             .position(|popup| popup.plugin_id() == Some(plugin_id))?;
         let mut popup = stack.remove(position);
-        popup.kind = kind;
+        popup.behavior.focused = focused;
         popup.pane.set_should_render(true);
         popup.pane.render_full_viewport();
         stack.push(popup);
@@ -828,11 +889,12 @@ impl Tab {
         let is_press = event.event_type == MouseEventType::Press
             && (event.left || event.right || event.middle);
         if !inside && is_press {
-            return match popup.kind {
-                PopupKind::Menu | PopupKind::Explanation => Some(PopupMouseOutcome::CloseRequested),
-                PopupKind::Prompt | PopupKind::Modal | PopupKind::Info => {
-                    Some(PopupMouseOutcome::Consumed)
-                },
+            if popup.awaiting_permission {
+                return Some(PopupMouseOutcome::Consumed);
+            }
+            return match popup.behavior.outside_click {
+                OutsideClick::Close => Some(PopupMouseOutcome::CloseRequested),
+                OutsideClick::Block => Some(PopupMouseOutcome::Consumed),
             };
         }
         let (line, column) = if inside {

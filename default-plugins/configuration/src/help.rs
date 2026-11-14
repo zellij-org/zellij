@@ -14,6 +14,9 @@ fn section_for(path: &[String]) -> Option<SettingSection> {
         ["terminal"] => Some(SettingSection::Terminal),
         ["terminal", "theme"] => Some(SettingSection::TerminalTheme),
         ["attention"] => Some(SettingSection::Attention),
+        ["attention", "desktop_notifications"] => Some(SettingSection::AttentionPopups),
+        ["attention", "tray_badge"] => Some(SettingSection::AttentionBadge),
+        ["attention", "tray_badge_colors"] => Some(SettingSection::AttentionBadgeColors),
         _ => None,
     }
 }

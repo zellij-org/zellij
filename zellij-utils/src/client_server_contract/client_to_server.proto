@@ -191,6 +191,7 @@ message SetMobileRenderPreferencesMsg {
 
 message StructuredRenderSupportMsg {
   bool supported = 1;
+  bool row_shifts = 2;
 }
 
 message ClipboardPasteSupportMsg {

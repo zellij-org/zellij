@@ -419,6 +419,7 @@ impl KeybindProcessor {
                             }
                         )
                     },
+                    |action: &Action| matches!(action, Action::ToggleStackListOrientation),
                     |action: &Action| {
                         matches!(
                             action,
@@ -694,6 +695,7 @@ impl KeybindProcessor {
             },
             InputMode::Session => {
                 let ordered_predicates = vec![
+                    |action: &Action| matches!(action, Action::ToggleSessionCard),
                     |action: &Action| matches!(action, Action::Detach),
                     |action: &Action| {
                         matches!(

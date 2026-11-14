@@ -24,6 +24,7 @@ pub enum PaneSignal {
     },
     Cwd(ReportedCwd),
     Bell,
+    AlternateScreen(bool),
 }
 
 #[derive(Debug, Clone, Default)]

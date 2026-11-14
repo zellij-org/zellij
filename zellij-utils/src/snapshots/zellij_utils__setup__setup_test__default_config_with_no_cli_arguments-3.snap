@@ -48,6 +48,7 @@ Options {
     web_sharing: None,
     stacked_resize: None,
     stacked_pane_list: None,
+    stacked_pane_list_orientation: None,
     show_startup_tips: None,
     show_release_notes: None,
     advanced_mouse_actions: None,

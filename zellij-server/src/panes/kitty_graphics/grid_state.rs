@@ -344,6 +344,24 @@ impl KittyGrid {
             height: source_h,
         };
         if is_scaled {
+            let variant_key = ScaledImageKey {
+                source: source_rect,
+                size: (dst_w, dst_h),
+            };
+            let fits = dst_w
+                .checked_mul(dst_h)
+                .and_then(|pixels| pixels.checked_mul(4))
+                .map(|bytes| {
+                    self.kitty_image_store.borrow_mut().reserve_scaled_variant(
+                        internal,
+                        variant_key,
+                        bytes,
+                    )
+                })
+                .unwrap_or(false);
+            if !fits {
+                return Err(einval(command, "placement too large"));
+            }
             let scaled_bytes = {
                 let store = self.kitty_image_store.borrow();
                 let image = store
@@ -606,13 +624,16 @@ impl KittyGrid {
             self.image_ids
                 .retain(|_, internal| store.get(*internal).is_some());
             drop(store);
-            let live_ids: Vec<u32> = self.image_ids.keys().copied().collect();
+            let image_ids = &self.image_ids;
             self.image_numbers.values_mut().for_each(|ids| {
-                ids.retain(|id| live_ids.contains(id));
+                ids.retain(|id| image_ids.contains_key(id));
             });
             self.image_numbers.retain(|_, ids| !ids.is_empty());
         }
         Ok(())
+    }
+    pub fn tracks_rows_below_the_viewport(&self) -> bool {
+        self.rows_below_the_viewport.is_some()
     }
     pub fn note_rows_below_the_viewport(&mut self, frame: Option<KittyRowsBelowTheViewport>) {
         self.rows_below_the_viewport = frame;

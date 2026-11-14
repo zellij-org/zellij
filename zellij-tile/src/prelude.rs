@@ -1,9 +1,10 @@
 pub use crate::shim::*;
 pub use crate::*;
 pub use zellij_utils::attention::{
-    sanitize_display_text, AttentionCounts, AttentionItem, AttentionStatus, BlockedKind,
-    CommandOutcome, CommandResult, GlobalAttention, GlobalAttentionItem, GlobalSessionAttention,
-    MuteScope, PaneAttention, SessionAttention, TabAttention, CURRENT_SESSION_LABEL,
+    sanitize_display_text, AttentionCounts, AttentionItem, AttentionSource, AttentionStatus,
+    BlockedKind, CommandOutcome, CommandResult, GlobalAttention, GlobalAttentionItem,
+    GlobalSessionAttention, MuteScope, PaneAttention, RememberedStatus, SessionAttention,
+    TabAttention, CURRENT_SESSION_LABEL,
 };
 pub use zellij_utils::consts::VERSION;
 pub use zellij_utils::data::*;
@@ -11,6 +12,7 @@ pub use zellij_utils::desktop_integration;
 pub use zellij_utils::errors::prelude::*;
 pub use zellij_utils::input::actions;
 pub use zellij_utils::input::attention::StartupCard;
+pub use zellij_utils::input::keybinds::shortcut_for_action;
 pub use zellij_utils::pane_size::Size;
 pub use zellij_utils::prompt::{
     ChoiceItem, FormField, FormFieldKind, FormSpec, PromptElement, PromptPlacement, PromptRequest,

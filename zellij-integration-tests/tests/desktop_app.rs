@@ -14,6 +14,7 @@ use zellij_utils::consts::{
     CLIENT_SERVER_CONTRACT_DIR,
 };
 use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
+use zellij_utils::desktop_integration::{update_at, Flag, STATE_FILE_NAME};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
@@ -183,7 +184,10 @@ impl Desktop {
             .join("cache")
             .join(zellij_utils::consts::ZELLIJ_CACHE_DIR.file_name()?)
             .join(&*CLIENT_SERVER_CONTRACT_DIR);
-        let index_path = cache_dir.join(zellij_utils::session_index::SESSION_INDEX_FILE_NAME);
+        let index_path = cache_dir.join(zellij_utils::session_index::index_file_name(
+            &self.contract_dir(),
+            true,
+        ));
         if !index_path.exists() {
             return None;
         }
@@ -1642,4 +1646,270 @@ fn switching_to_a_session_no_window_shows_switches_in_place() {
     desktop.wait_for_client_count("lonely", 1);
     desktop.wait_for_client_count(FIRST, 0);
     assert!(desktop.answers(FIRST));
+}
+
+impl Desktop {
+    fn screen_of(&self, session: &str) -> Option<String> {
+        let dump = self.root.path().join("screen.txt");
+        let _ = std::fs::remove_file(&dump);
+        self.act_on(
+            session,
+            vec![Action::DumpScreen {
+                file_path: Some(dump.display().to_string()),
+                include_scrollback: false,
+                pane_id: None,
+                ansi: false,
+            }],
+        );
+        std::fs::read_to_string(&dump).ok()
+    }
+
+    fn wait_for_screen(&self, session: &str, what: &str, check: impl Fn(&str) -> bool) {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let screen = self.screen_of(session).unwrap_or_default();
+            if check(&screen) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {}\nlast screen:\n{}\n{}",
+                    what,
+                    screen,
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+/// A minimal XDND drag source, to drop files on the real window under Xvfb.
+mod xdnd {
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    use anyhow::{bail, Result};
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{
+        Atom, AtomEnum, ClientMessageEvent, ConnectionExt as _, CreateWindowAux, EventMask,
+        MapState, PropMode, SelectionNotifyEvent, SelectionRequestEvent, Window, WindowClass,
+        SELECTION_NOTIFY_EVENT,
+    };
+    use x11rb::protocol::Event;
+    use x11rb::rust_connection::RustConnection;
+    use x11rb::wrapper::ConnectionExt as _;
+
+    const XDND_VERSION: u32 = 5;
+    const WAIT: Duration = Duration::from_secs(30);
+
+    x11rb::atom_manager! {
+        Atoms: AtomsCookie {
+            XdndAware,
+            XdndEnter,
+            XdndPosition,
+            XdndStatus,
+            XdndDrop,
+            XdndFinished,
+            XdndSelection,
+            XdndActionCopy,
+            URI_LIST: b"text/uri-list",
+        }
+    }
+
+    /// Returns once winit finishes the drop, which it does even without data,
+    /// so callers check the pane.
+    pub fn drop_file(display: &str, path: &Path) -> Result<()> {
+        let (conn, screen) = x11rb::connect(Some(display))?;
+        let root = conn.setup().roots[screen].root;
+        let atoms = Atoms::new(&conn)?.reply()?;
+        let target = wait_for_drop_target(&conn, root, &atoms)?;
+
+        let source = conn.generate_id()?;
+        conn.create_window(
+            x11rb::COPY_DEPTH_FROM_PARENT,
+            source,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &CreateWindowAux::new(),
+        )?;
+        conn.set_selection_owner(source, atoms.XdndSelection, x11rb::CURRENT_TIME)?;
+
+        let send = |message: Atom, data: [u32; 5]| -> Result<()> {
+            let event = ClientMessageEvent::new(32, target, message, data);
+            conn.send_event(false, target, EventMask::NO_EVENT, event)?;
+            conn.flush()?;
+            Ok(())
+        };
+        let position = (10 << 16) | 10;
+        send(
+            atoms.XdndEnter,
+            [source, XDND_VERSION << 24, atoms.URI_LIST, 0, 0],
+        )?;
+        send(
+            atoms.XdndPosition,
+            [
+                source,
+                0,
+                position,
+                x11rb::CURRENT_TIME,
+                atoms.XdndActionCopy,
+            ],
+        )?;
+
+        // Events reach winit in the order sent, so it reads the data before the drop.
+        // Encoding the space is enough for the test's file name.
+        let data = format!("file://{}\r\n", path.display()).replace(' ', "%20");
+        let mut served = false;
+        let deadline = Instant::now() + WAIT;
+        while Instant::now() < deadline {
+            let Some(event) = conn.poll_for_event()? else {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            };
+            match event {
+                Event::SelectionRequest(request)
+                    if request.selection == atoms.XdndSelection
+                        && request.target == atoms.URI_LIST
+                        && !served =>
+                {
+                    conn.change_property8(
+                        PropMode::REPLACE,
+                        request.requestor,
+                        request.property,
+                        atoms.URI_LIST,
+                        data.as_bytes(),
+                    )?;
+                    answer(&conn, &request, request.property)?;
+                    served = true;
+                    send(atoms.XdndDrop, [source, 0, x11rb::CURRENT_TIME, 0, 0])?;
+                },
+                // Refuse anything else (ICCCM), so no requestor waits on us.
+                Event::SelectionRequest(request) => answer(&conn, &request, x11rb::NONE)?,
+                Event::ClientMessage(message) if message.type_ == atoms.XdndStatus => {
+                    if message.data.as_data32()[1] & 1 == 0 {
+                        bail!("the window rejected the drop");
+                    }
+                },
+                Event::ClientMessage(message) if message.type_ == atoms.XdndFinished => {
+                    if message.data.as_data32()[1] & 1 == 0 {
+                        bail!("the window finished the drop without accepting it");
+                    }
+                    return Ok(());
+                },
+                _ => {},
+            }
+        }
+        bail!("the drop never finished (data served: {})", served)
+    }
+
+    fn answer(
+        conn: &RustConnection,
+        request: &SelectionRequestEvent,
+        property: Atom,
+    ) -> Result<()> {
+        let notify = SelectionNotifyEvent {
+            response_type: SELECTION_NOTIFY_EVENT,
+            sequence: 0,
+            time: request.time,
+            requestor: request.requestor,
+            selection: request.selection,
+            target: request.target,
+            property,
+        };
+        conn.send_event(false, request.requestor, EventMask::NO_EVENT, notify)?;
+        conn.flush()?;
+        Ok(())
+    }
+
+    fn wait_for_drop_target(conn: &RustConnection, root: Window, atoms: &Atoms) -> Result<Window> {
+        let deadline = Instant::now() + WAIT;
+        loop {
+            let mut targets = vec![];
+            for window in conn.query_tree(root)?.reply()?.children {
+                if takes_drops(conn, window, atoms)? {
+                    targets.push(window);
+                }
+            }
+            match targets.as_slice() {
+                [window] => return Ok(*window),
+                _ if Instant::now() >= deadline => {
+                    bail!("expected one window taking drops, found {}", targets.len())
+                },
+                _ => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+    }
+
+    /// A window that may vanish mid-scan simply does not count.
+    fn takes_drops(conn: &RustConnection, window: Window, atoms: &Atoms) -> Result<bool> {
+        let aware = conn
+            .get_property(false, window, atoms.XdndAware, AtomEnum::ANY, 0, 1)?
+            .reply()
+            .is_ok_and(|reply| reply.value_len > 0);
+        let viewable = conn
+            .get_window_attributes(window)?
+            .reply()
+            .is_ok_and(|attributes| attributes.map_state == MapState::VIEWABLE);
+        Ok(aware && viewable)
+    }
+}
+
+#[test]
+fn a_file_dropped_on_the_window_is_pasted_into_the_pane_as_its_escaped_path() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    // Skip the first-run setup wizard and welcome card: they take focus, and the drop.
+    let state = desktop
+        .root
+        .path()
+        .join("data/zellij")
+        .join(STATE_FILE_NAME);
+    update_at(&state, |state| {
+        state.set(Flag::SetupNeverShow);
+        state.set(Flag::WelcomeCardShown);
+        state.set(Flag::MissingServicesShown);
+    })
+    .unwrap();
+    let session = desktop.start_app();
+    let file = desktop.root.path().join("dropped shot.png");
+    std::fs::write(&file, b"").unwrap();
+    let file = file.canonicalize().unwrap();
+    desktop.wait_for_screen(&session, "the shell prompt", |screen| {
+        screen.trim_end().ends_with(['$', '#'])
+    });
+
+    if let Err(e) = xdnd::drop_file(&desktop.display, &file) {
+        panic!("dropping the file failed: {:#}\n{}", e, desktop.logs());
+    }
+
+    let expected = file.display().to_string().replace(' ', "\\ ");
+    // `$ ` or `# ` (root), then the path; the dump trims the trailing space.
+    let prompt_holds_just_the_path = |screen: &str| {
+        screen.lines().any(|line| {
+            line.trim_end()
+                .strip_suffix(expected.as_str())
+                .is_some_and(|prompt| prompt == "$ " || prompt == "# ")
+        })
+    };
+    desktop.wait_for_screen(
+        &session,
+        "the escaped path alone at the prompt",
+        &prompt_holds_just_the_path,
+    );
+    // Catch a late duplicate paste.
+    std::thread::sleep(Duration::from_millis(500));
+    let screen = desktop.screen_of(&session).unwrap_or_default();
+    assert!(
+        prompt_holds_just_the_path(&screen),
+        "the prompt line changed after the drop:\n{}",
+        screen
+    );
 }

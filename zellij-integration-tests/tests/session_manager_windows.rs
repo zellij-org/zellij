@@ -82,7 +82,7 @@ fn selected_session_line(grid_snapshot: &GridSnapshot, name: &str) -> bool {
 }
 
 fn open_sessions_tab(zellij: &TestSession, other: &str) {
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until(
         "the session manager opens on the sessions",
         |grid_snapshot| grid_snapshot.contains("<F1> all keys") && grid_snapshot.contains(other),
@@ -211,7 +211,7 @@ fn alt_w_in_the_inbox_opens_the_items_pane_in_a_window() {
     zellij.wait_until("the item reached this session", |grid_snapshot| {
         grid_snapshot.lines()[0].contains("need you")
     });
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("Deploy now?")
     });
@@ -291,7 +291,7 @@ fn open_inbox_on(zellij: &TestSession, text: &str) {
     zellij.wait_until("the item reached this session", |grid_snapshot| {
         grid_snapshot.lines()[0].contains("need you")
     });
-    zellij.send_stdin(&keys::F9);
+    zellij.send_stdin(&keys::INBOX_KEY);
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)")
             && grid_snapshot.contains(text)

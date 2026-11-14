@@ -863,11 +863,11 @@ pub fn osc7_payload_rejects_c0_control_characters() {
     // Test the Grid's osc_dispatch directly, since the VTE parser strips
     // control characters before they reach osc_dispatch. This validates
     // the defense-in-depth guard in the b"7" handler.
-    use vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     let params: &[&[u8]] = &[b"7", b"file://host/path\x01bad"];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
     assert!(
         terminal_pane.osc7_payload().is_none(),
         "URIs with C0 control characters should be rejected"
@@ -878,12 +878,12 @@ pub fn osc7_payload_rejects_c0_control_characters() {
 pub fn osc7_payload_rejects_c1_control_characters() {
     // C1 control characters (U+0080..U+009F) include ST (U+009C) which
     // could terminate the OSC sequence in the parent terminal.
-    use vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     // U+009C (ST) in UTF-8 is 0xC2 0x9C
     let params: &[&[u8]] = &[b"7", "file://host/path\u{9c}bad".as_bytes()];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
     assert!(
         terminal_pane.osc7_payload().is_none(),
         "URIs with C1 control characters should be rejected"
@@ -906,13 +906,13 @@ pub fn osc7_payload_rejects_an_empty_payload() {
 
 #[test]
 pub fn osc7_payload_rejects_invalid_utf8() {
-    use vte::Perform;
+    use crate::vt_parser::Handler;
 
     let mut terminal_pane = make_terminal_pane_for_bell();
     terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
 
     let params: &[&[u8]] = &[b"7", b"file://localhost/\xff\xfe"];
-    terminal_pane.grid.osc_dispatch(params, false);
+    terminal_pane.grid.osc_end(params, false);
 
     assert_eq!(
         terminal_pane.osc7_payload(),
@@ -1419,4 +1419,52 @@ pub fn the_change_counter_moves_only_when_the_pane_changes() {
     assert_ne!(after_output, after_render);
     pane.set_mirror_pinned_size(pinned(5, 2));
     assert_ne!(pane.mirror_change_counter(), after_output);
+}
+
+fn pane_for_split_test() -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(40);
+    fake_win_size.rows.set_inner(10);
+    TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+#[test]
+fn output_split_at_any_byte_renders_the_same_as_output_in_one_piece() {
+    let stream: &[u8] = b"\x1b[31mred\x1b[0m plain \x1b_Gi=1,a=q;AAAA\x1b\\after\x1b[1;32mgreen\x1b[m\r\n\x1b[4mund\x1b[24m end\x1b";
+    let mut whole = pane_for_split_test();
+    whole.handle_pty_bytes(stream.to_vec());
+    whole.handle_pty_bytes(b"[7mrev".to_vec());
+    let expected = format!("{:?}", whole.grid);
+    for split in 1..stream.len() {
+        let mut pane = pane_for_split_test();
+        pane.handle_pty_bytes(stream[..split].to_vec());
+        pane.handle_pty_bytes(stream[split..].to_vec());
+        pane.handle_pty_bytes(b"[7mrev".to_vec());
+        assert_eq!(
+            format!("{:?}", pane.grid),
+            expected,
+            "split at byte {}",
+            split
+        );
+    }
 }

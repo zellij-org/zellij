@@ -351,6 +351,9 @@ impl From<PromptRequest> for ProtobufPromptRequest {
             placement: request.placement.map(Into::into),
             focused: request.focused,
             capture_all_keys: request.capture_all_keys,
+            outside_click: request
+                .outside_click
+                .map(|outside_click| outside_click.to_string()),
             spec: Some(request.spec.into()),
         }
     }
@@ -371,6 +374,14 @@ impl TryFrom<ProtobufPromptRequest> for PromptRequest {
             },
             focused: request.focused,
             capture_all_keys: request.capture_all_keys,
+            outside_click: match request.outside_click {
+                Some(outside_click) => Some(
+                    outside_click
+                        .parse()
+                        .map_err(|_| "Invalid outside click behavior")?,
+                ),
+                None => None,
+            },
             spec: request
                 .spec
                 .ok_or("Prompt request without a spec")?
@@ -465,7 +476,7 @@ impl TryFrom<ProtobufPromptResult> for PromptResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{PopupCorner, StyledText};
+    use crate::data::{OutsideClick, PopupCorner, StyledText};
     use std::collections::BTreeMap;
 
     fn round_trip_request(request: PromptRequest) {
@@ -482,7 +493,8 @@ mod tests {
             ])
             .remember("Always do this")
             .padded()
-            .capture_all_keys(true),
+            .capture_all_keys(true)
+            .outside_click(OutsideClick::Close),
         );
         round_trip_request(
             PromptRequest::confirm("Go?")

@@ -166,7 +166,9 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(unix)]
@@ -179,9 +181,13 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
 #[cfg(windows)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -200,9 +206,13 @@ pub fn ipc_bind_async(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_tokio()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
@@ -214,7 +224,9 @@ pub fn ipc_connect_reply(
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
 #[cfg(windows)]
@@ -222,16 +234,21 @@ pub fn ipc_bind_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    ListenerOptions::new().name(ns_name).create_sync()
+    ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()
 }
 
-pub const APP_DIR_NAME: &str = ".desktop-app";
+// Kept short: macOS limits socket paths to 104 bytes, and the temp dir already uses about half.
+pub const APP_DIR_NAME: &str = ".desk";
 pub const APP_CONTROL_SOCKET_NAME: &str = "control";
 pub const APP_ATTENTION_SOCKET_NAME: &str = "attention";
 pub const APP_LOCK_FILE_NAME: &str = "lock";
-pub const APP_PANEL_SESSION: &str = ".zellij-app-panel";
+pub const APP_PANEL_SESSION: &str = ".zj-panel";
 pub const APP_QUIT_REQUEST: &str = ".zellij-app-quit";
 
 pub fn is_app_socket_name(name: &str) -> bool {
@@ -308,6 +325,13 @@ mod unix_only {
     #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "bytes";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it.
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
+
     lazy_static! {
         static ref UID: Uid = Uid::current();
         pub static ref ZELLIJ_TMP_DIR: PathBuf =
@@ -355,7 +379,24 @@ mod not_unix {
         path
     }
 
-    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
+    // A pipe's whole name, `\\.\pipe\` + the socket path + `-reply`, must fit in MAX_PATH (260
+    // UTF-16 units with its NUL), since Zellij isn't long-path aware.
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 260 - r"\\.\pipe\".len() - "-reply".len();
+
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "characters";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it: in UTF-16 units, as Windows
+    /// counts a pipe name.
+    #[cfg(windows)]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        use std::os::windows::ffi::OsStrExt;
+        path.as_os_str().encode_wide().count()
+    }
+
+    #[cfg(not(windows))]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
 
     lazy_static! {
         pub static ref ZELLIJ_TMP_DIR: PathBuf = {
@@ -386,6 +427,30 @@ mod not_unix {
 mod app_dir_tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn every_desktop_app_socket_fits_the_macos_limit_with_room_to_spare() {
+        const MACOS_SOCKET_PATH_LIMIT: usize = 104;
+        // Leaves room for a longer uid and contract version than we have today.
+        let sock_dir = Path::new(
+            "/var/folders/g_/w_mkp3kj0jnbzm398bln58rm0000gn/T/zellij-50100/contract_version_100",
+        );
+        let app = app_dir_in(sock_dir);
+        for path in [
+            session_socket_path_in(sock_dir, APP_PANEL_SESSION),
+            app.join(APP_CONTROL_SOCKET_NAME),
+            app.join(APP_ATTENTION_SOCKET_NAME),
+            app.join("windows").join("99999"),
+        ] {
+            let length = path.as_os_str().len();
+            assert!(
+                length < MACOS_SOCKET_PATH_LIMIT,
+                "{:?} is {} bytes",
+                path,
+                length
+            );
+        }
+    }
 
     #[test]
     fn the_desktop_app_files_and_its_panel_session_live_in_their_own_folder() {
@@ -433,5 +498,22 @@ mod app_dir_tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o700);
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod socket_length_tests {
+    use super::*;
+
+    #[test]
+    fn the_longest_socket_path_allowed_still_binds_and_connects() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut path = dir.path().to_path_buf();
+        let room = ZELLIJ_SOCK_MAX_LENGTH - 1 - socket_path_length(&path) - 1;
+        path.push("a".repeat(room));
+        assert_eq!(socket_path_length(&path), ZELLIJ_SOCK_MAX_LENGTH - 1);
+        let _requests = ipc_bind(&path).unwrap();
+        let _replies = ipc_bind_reply(&path).unwrap();
+        crate::pipe_pairs::connect_pair(&path).unwrap();
     }
 }

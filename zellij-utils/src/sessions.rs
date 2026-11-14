@@ -395,70 +395,52 @@ pub fn get_active_session() -> ActiveSession {
 }
 
 pub fn kill_session(name: &str) {
-    use crate::consts::ipc_connect;
     let path = &*resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-    match ipc_connect(path) {
-        Ok(stream) => {
-            // On Windows, the server uses a dual-pipe architecture: the main pipe
-            // for client→server and a reply pipe for server→client. We must:
-            // 1. Connect to the reply pipe (so the server unblocks from
-            //    reply_listener.accept() and spawns the route thread)
-            // 2. Send KillSession on the main pipe
-            // 3. Wait for the Exit response on the reply pipe (so we don't
-            //    disconnect before the server processes the message)
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-            }
-        },
-        Err(e) => {
-            eprintln!("Error occurred: {:?}", e);
-            process::exit(1);
-        },
-    };
+    if let Err(e) = send_kill_session(path) {
+        eprintln!("Error occurred: {:?}", e);
+        process::exit(1);
+    }
+}
+
+/// On Windows the server answers on the connection's reply pipe, and waiting for that answer
+/// keeps the request from being dropped before the server has read it.
+#[cfg(windows)]
+pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
+    let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
+    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+        .send_client_msg(ClientToServerMsg::KillSession);
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        IpcReceiverWithContext::new(reply_stream);
+    let _ = receiver.recv_server_msg();
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn send_kill_session(path: &std::path::Path) -> std::io::Result<()> {
+    let stream = crate::consts::ipc_connect(path)?;
+    let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
+        .send_client_msg(ClientToServerMsg::KillSession);
+    Ok(())
 }
 
 pub fn delete_session(name: &str, force: bool) {
     // The socket and the cache folder are named by the session id; the index row by the name.
-    let session_id = resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    let session_id = match resolve_session_id(name) {
+        Some(id) => id,
+        None => {
+            if display_name_for_session_id(name) != name {
+                eprintln!("Session: {:?} not found.", name);
+                process::exit(2);
+            }
+            name.to_owned()
+        },
+    };
     if let Err(e) = validate_session_folder_name(&session_id) {
         eprintln!("{}", e);
         process::exit(1);
     }
     if force {
-        use crate::consts::ipc_connect;
-        let path = &*ZELLIJ_SOCK_DIR.join(&session_id);
-        let _ = ipc_connect(path).ok().map(|stream| {
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession)
-                    .ok();
-            }
-        });
+        let _ = send_kill_session(&ZELLIJ_SOCK_DIR.join(&session_id));
     }
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
@@ -648,7 +630,44 @@ pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.contains('\\') {
         return Err("Session name cannot contain '\\'.".to_string());
     }
+    #[cfg(windows)]
+    if let Some(problem) = windows_file_name_problem(name) {
+        return Err(problem);
+    }
     Ok(())
+}
+
+/// Why Windows can't use `name` as a file name, which a session's socket falls back to when the
+/// session index can't be written.
+#[cfg(windows)]
+fn windows_file_name_problem(name: &str) -> Option<String> {
+    if let Some(c) = name
+        .chars()
+        .find(|c| c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return Some(format!("Session name cannot contain {:?}.", c));
+    }
+    if name.ends_with(['.', ' ']) {
+        return Some("Session name cannot end with a dot or a space.".to_string());
+    }
+    // Device names are reserved even with an extension, as in "nul.txt".
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end()
+        .to_uppercase();
+    let letters: Vec<char> = stem.chars().collect();
+    let numbered_device = letters.len() == 4
+        && matches!(letters[..3], ['C', 'O', 'M'] | ['L', 'P', 'T'])
+        && matches!(letters[3], '0'..='9' | '¹' | '²' | '³');
+    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered_device {
+        return Some(format!(
+            "Session name cannot be {:?}: Windows reserves that name.",
+            name
+        ));
+    }
+    None
 }
 
 pub fn validate_session_folder_name(name: &str) -> Result<(), String> {
@@ -1001,5 +1020,51 @@ mod session_folder_name_tests {
     #[test]
     fn validate_session_name_rejects_backslash_on_windows() {
         assert!(validate_session_name("a\\b").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validate_session_name_rejects_what_windows_cannot_name_a_file() {
+        for name in [
+            "a:b",
+            "a*",
+            "a?",
+            "a\"b",
+            "a<b",
+            "a>b",
+            "a|b",
+            "a\tb",
+            "trailing.",
+            "trailing ",
+            "CON",
+            "nul",
+            "Aux.txt",
+            "com1",
+            "LPT9.log",
+            "COM¹",
+            "prn ",
+        ] {
+            assert!(
+                validate_session_name(name).is_err(),
+                "should reject {:?}",
+                name
+            );
+        }
+        for name in [
+            "my-session",
+            "con-artist",
+            "com10",
+            "lpt",
+            "nullable",
+            ".zj-panel",
+            "v1.2",
+            "café",
+        ] {
+            assert!(
+                validate_session_name(name).is_ok(),
+                "should accept {:?}",
+                name
+            );
+        }
     }
 }

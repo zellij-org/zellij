@@ -20,6 +20,7 @@ const RECORD_KIND_GEOMETRY: u8 = 6;
 const RECORD_KIND_LINKS: u8 = 7;
 const RECORD_KIND_SCROLL: u8 = 8;
 const RECORD_KIND_CLUSTERS: u8 = 9;
+const RECORD_KIND_SHIFT: u8 = 10;
 
 const GEOMETRY_HEADER_LEN: usize = 8;
 const GEOMETRY_ENTRY_LEN: usize = 16;
@@ -35,6 +36,8 @@ pub const MAX_CLUSTER_ENTRY_LEN: usize = 4 * 1024;
 pub const MAX_CLUSTER_RECORD_LEN: usize = 1024 * 1024;
 pub const CLUSTER_CH_BASE: u32 = 0x110000;
 const SCROLL_ENTRY_LEN: usize = 4;
+const SHIFT_HEADER_LEN: usize = 8;
+const SHIFT_ENTRY_LEN: usize = 10;
 
 pub const LINK_NONE: u8 = 0;
 pub const MAX_LINK_ID: u8 = u8::MAX;
@@ -159,16 +162,17 @@ impl WireCell {
         (self.attrs & UNDERLINE_MASK) >> UNDERLINE_SHIFT
     }
 
+    #[inline]
     fn to_bytes(self) -> [u8; CELL_LEN] {
-        let mut bytes = [0u8; CELL_LEN];
-        bytes[0..4].copy_from_slice(&self.ch.to_le_bytes());
-        bytes[4..8].copy_from_slice(&self.fg.to_le_bytes());
-        bytes[8..12].copy_from_slice(&self.bg.to_le_bytes());
-        bytes[12..16].copy_from_slice(&self.underline_color.to_le_bytes());
-        bytes[16..18].copy_from_slice(&self.attrs.to_le_bytes());
-        bytes[18] = self.width;
-        bytes[19] = self.link;
-        bytes
+        let [c0, c1, c2, c3] = self.ch.to_le_bytes();
+        let [f0, f1, f2, f3] = self.fg.to_le_bytes();
+        let [b0, b1, b2, b3] = self.bg.to_le_bytes();
+        let [u0, u1, u2, u3] = self.underline_color.to_le_bytes();
+        let [a0, a1] = self.attrs.to_le_bytes();
+        [
+            c0, c1, c2, c3, f0, f1, f2, f3, b0, b1, b2, b3, u0, u1, u2, u3, a0, a1, self.width,
+            self.link,
+        ]
     }
 }
 
@@ -923,6 +927,97 @@ impl ScrollRecord {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShiftEntry {
+    pub x: u16,
+    pub y: u16,
+    pub cols: u16,
+    pub rows: u16,
+    pub lines: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ShiftRecord {
+    pub entries: Vec<ShiftEntry>,
+}
+
+impl ShiftEntry {
+    pub fn fits(&self, cols: usize, rows: usize) -> bool {
+        self.lines > 0
+            && self.x as usize + self.cols as usize <= cols
+            && self.y as usize + self.rows as usize <= rows
+    }
+
+    pub fn apply(&self, cells: &mut [WireCell], cols: usize, rows: usize) {
+        if !self.fits(cols, rows) || cells.len() < cols * rows {
+            return;
+        }
+        let (x, y) = (self.x as usize, self.y as usize);
+        let (width, height, lines) = (self.cols as usize, self.rows as usize, self.lines as usize);
+        for row in y..y + height {
+            let target = row * cols + x;
+            if row + lines < y + height {
+                let source = (row + lines) * cols + x;
+                cells.copy_within(source..source + width, target);
+            } else {
+                cells[target..target + width].fill(WireCell::BLANK);
+            }
+        }
+    }
+
+    pub fn moved_position(&self, at: usize, cols: usize) -> Option<Option<usize>> {
+        let (row, col) = (at / cols, at % cols);
+        let (x, y) = (self.x as usize, self.y as usize);
+        if col < x || col >= x + self.cols as usize || row < y || row >= y + self.rows as usize {
+            return None;
+        }
+        Some((row >= y + self.lines as usize).then(|| at - self.lines as usize * cols))
+    }
+}
+
+impl ShiftRecord {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    fn encode_payload(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&(self.entries.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(SHIFT_ENTRY_LEN as u16).to_le_bytes());
+        put_u32(out, 0);
+        for entry in &self.entries {
+            for value in [entry.x, entry.y, entry.cols, entry.rows, entry.lines] {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+    }
+
+    fn decode(payload: &[u8]) -> Option<Self> {
+        let header = payload.get(..SHIFT_HEADER_LEN)?;
+        let entry_count = u16::from_le_bytes([header[0], header[1]]) as usize;
+        let entry_len = u16::from_le_bytes([header[2], header[3]]) as usize;
+        if entry_len < SHIFT_ENTRY_LEN {
+            return None;
+        }
+        let entries = payload.get(SHIFT_HEADER_LEN..)?;
+        let mut record = ShiftRecord {
+            entries: Vec::with_capacity(entry_count),
+        };
+        for index in 0..entry_count {
+            let at = index.checked_mul(entry_len)?;
+            let entry = entries.get(at..at.checked_add(entry_len)?)?;
+            let value = |i: usize| u16::from_le_bytes([entry[2 * i], entry[2 * i + 1]]);
+            record.entries.push(ShiftEntry {
+                x: value(0),
+                y: value(1),
+                cols: value(2),
+                rows: value(3),
+                lines: value(4),
+            });
+        }
+        Some(record)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClusterEntry {
     pub id: u16,
@@ -1046,6 +1141,7 @@ fn record_is_decodable(version: u8, kind: u8, medium: u8, payload: &[u8]) -> boo
         RECORD_KIND_SCROLL => {
             version >= FIRST_VERSION_WITH_SCROLL && ScrollRecord::decode(payload).is_some()
         },
+        RECORD_KIND_SHIFT => ShiftRecord::decode(payload).is_some(),
         _ => GraphicsRecord::decode(kind, medium, payload).is_some(),
     }
 }
@@ -1237,9 +1333,11 @@ impl FrameBuilder {
             x0,
             len: cells.len() as u16,
         });
-        self.cells.reserve(cells.len() * CELL_LEN);
-        for cell in cells {
-            self.cells.extend_from_slice(&cell.to_bytes());
+        let start = self.cells.len();
+        self.cells.resize(start + cells.len() * CELL_LEN, 0);
+        for (slot, cell) in self.cells[start..].chunks_exact_mut(CELL_LEN).zip(cells) {
+            let slot: &mut [u8; CELL_LEN] = slot.try_into().expect("chunks are CELL_LEN long");
+            *slot = cell.to_bytes();
         }
     }
 
@@ -1280,6 +1378,15 @@ impl FrameBuilder {
             return;
         }
         self.push_record(RECORD_KIND_LINKS, GRAPHICS_MEDIUM_INLINE, |out| {
+            record.encode_payload(out)
+        });
+    }
+
+    pub fn push_shifts(&mut self, record: &ShiftRecord) {
+        if record.is_empty() {
+            return;
+        }
+        self.push_record(RECORD_KIND_SHIFT, GRAPHICS_MEDIUM_INLINE, |out| {
             record.encode_payload(out)
         });
     }
@@ -1615,6 +1722,30 @@ impl<'a> FrameView<'a> {
         }
         clusters.entries.sort_by_key(|entry| entry.id);
         clusters
+    }
+
+    pub fn shifts(&self) -> ShiftRecord {
+        let start = self.header.graphics_offset as usize;
+        let end = start + self.header.graphics_len as usize;
+        let mut shifts = ShiftRecord::default();
+        let mut at = start;
+        while at < end {
+            let header_end = at + GRAPHICS_RECORD_HEADER_LEN;
+            let payload_len = u32::from_le_bytes([
+                self.buffer[at + 4],
+                self.buffer[at + 5],
+                self.buffer[at + 6],
+                self.buffer[at + 7],
+            ]) as usize;
+            let payload_end = header_end + payload_len;
+            if self.buffer[at] == RECORD_KIND_SHIFT {
+                if let Some(record) = ShiftRecord::decode(&self.buffer[header_end..payload_end]) {
+                    shifts.entries.extend(record.entries);
+                }
+            }
+            at = align_up(payload_end, 4);
+        }
+        shifts
     }
 
     pub fn scroll(&self) -> ScrollRecord {

@@ -173,6 +173,8 @@ fn pipe_to_the_fixture(
         plugin_title: None,
         popup,
         popup_no_focus: false,
+        popup_capture_all_keys: false,
+        popup_outside_click: None,
     };
     zellij.run_cli_pipe(pipe, caller).wait_for_exit();
 }
@@ -263,6 +265,18 @@ fn border_of(grid_snapshot: &GridSnapshot) -> Option<Area> {
         cols: right - column - 1,
         rows: bottom - row - 1,
     })
+}
+
+fn wait_for_text_inside_a_drawn_border(
+    zellij: &TestSession,
+    what: &str,
+    text: &str,
+) -> (GridSnapshot, Area) {
+    let grid_snapshot = zellij.wait_until(what, |grid_snapshot| {
+        grid_snapshot.contains(text) && border_of(grid_snapshot).is_some()
+    });
+    let area = border_of(&grid_snapshot).unwrap();
+    (grid_snapshot, area)
 }
 
 fn assert_inside_the_view(grid_snapshot: &GridSnapshot, text: &str) -> (usize, usize) {
@@ -1483,7 +1497,7 @@ fn a_newer_protocol_version_is_refused() {
 }
 
 #[test]
-fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
+fn a_viewer_with_resizing_off_in_its_config_pins_only_when_toggled_or_typed_into() {
     let watched = start_watched_source("");
     let mut viewer = start_viewer_with_config("mirror_resizes_source_pane false");
     show_pane(
@@ -1492,7 +1506,6 @@ fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
         watched.terminal.terminal_id(),
     );
     status_shows(&viewer.zellij, "the live view is live", "watched source");
-    capture_input(&viewer.zellij);
     status_shows(
         &viewer.zellij,
         "the live view may not resize",
@@ -1508,6 +1521,32 @@ fn a_viewer_with_resizing_off_in_its_config_does_not_pin_until_toggled() {
         &viewer.zellij,
         "the plugin sees the pin",
         "resize=true view_only=false pinned=true",
+    );
+    assert_eq!(
+        viewer.zellij.run_cli_action(CliAction::ToggleMirrorResize),
+        0
+    );
+    wait_for_the_release(
+        &watched.terminal,
+        watched.layout_size,
+        "the toggle turns resizing off again",
+    );
+    status_shows(
+        &viewer.zellij,
+        "the plugin sees resizing turned off",
+        "resize=false view_only=false pinned=false",
+    );
+    assert_not_pinned_after_a_barrier(&watched, "second barrier");
+    capture_input(&viewer.zellij);
+    wait_for_the_pin_at(
+        &watched.terminal,
+        VIEW_SIZE,
+        "typing into the view resizes the source even with resizing off",
+    );
+    status_shows(
+        &viewer.zellij,
+        "the plugin sees the pin while resizing is off",
+        "resize=false view_only=false pinned=true",
     );
     viewer.zellij.quit();
 }
@@ -1538,7 +1577,12 @@ fn a_source_with_resizing_off_in_its_config_refuses_every_pin() {
 
 #[test]
 fn the_toggle_action_releases_and_restores_the_pin() {
-    let pinned = capture_and_pin();
+    let pinned = show_the_watched_source(&[]);
+    wait_for_the_pin_at(
+        pinned.terminal(),
+        VIEW_SIZE,
+        "showing the source pins it at the size of the live view",
+    );
     assert_eq!(
         pinned
             .zellij()
@@ -1568,15 +1612,27 @@ fn the_toggle_action_releases_and_restores_the_pin() {
 }
 
 #[test]
-fn a_live_view_that_may_not_resize_never_pins() {
+fn a_live_view_that_may_not_resize_pins_only_once_typed_into_and_keeps_the_pin_after() {
     let pinned = show_the_watched_source(&[("resize", "false".to_owned())]);
-    capture_input(pinned.zellij());
     status_shows(
         pinned.zellij(),
         "the live view may not resize",
         "resize=false view_only=false pinned=false",
     );
     assert_not_pinned_after_a_barrier(&pinned.watched, "resize false barrier");
+    capture_input(pinned.zellij());
+    wait_for_the_pin_at(
+        pinned.terminal(),
+        VIEW_SIZE,
+        "typing into the view resizes the source",
+    );
+    status_shows(
+        pinned.zellij(),
+        "the plugin sees the pin while resizing is off",
+        "resize=false view_only=false pinned=true",
+    );
+    release_input(pinned.zellij());
+    assert_keeps_the_size_after_a_barrier(&pinned.watched, VIEW_SIZE, "after typing");
     let mut viewer = pinned.viewer;
     viewer.zellij.quit();
 }
@@ -1828,6 +1884,8 @@ fn a_live_view_inside_a_popup_plugin_pane_shows_the_source_and_takes_keys() {
             plugin_title: None,
             popup: Some(PipePopupPlacement::Center),
             popup_no_focus: false,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         CliCaller::from_pane(local_terminal.terminal_id()),
     );
@@ -1839,7 +1897,8 @@ fn a_live_view_inside_a_popup_plugin_pane_shows_the_source_and_takes_keys() {
         zellij.send_stdin(b"y");
     }
     opened.wait_for_exit();
-    let grid_snapshot = status_shows(&zellij, "the popup live view is live", "in a popup");
+    let (grid_snapshot, _) =
+        wait_for_text_inside_a_drawn_border(&zellij, "the popup live view is live", "in a popup");
     assert_inside_the_view(&grid_snapshot, "in a popup");
     zellij.send_stdin(b"C");
     status_shows(
@@ -2404,6 +2463,8 @@ fn a_popup_starts_capture_through_the_api_shows_the_cursor_over_a_pinned_pane_an
             plugin_title: None,
             popup: Some(PipePopupPlacement::Center),
             popup_no_focus: false,
+            popup_capture_all_keys: false,
+            popup_outside_click: None,
         },
         CliCaller::from_pane(local_terminal.terminal_id()),
     );
@@ -2415,8 +2476,8 @@ fn a_popup_starts_capture_through_the_api_shows_the_cursor_over_a_pinned_pane_an
         zellij.send_stdin(b"y");
     }
     opened.wait_for_exit();
-    let grid_snapshot = status_shows(&zellij, "the popup live view is live", "in a popup");
-    let area = border_of(&grid_snapshot).expect("the fixture draws its border");
+    let (_, area) =
+        wait_for_text_inside_a_drawn_border(&zellij, "the popup live view is live", "in a popup");
     status_shows(
         &zellij,
         "the popup plugin starts capture through the API",

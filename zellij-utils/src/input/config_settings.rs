@@ -148,6 +148,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         web_sharing,
         stacked_resize,
         stacked_pane_list,
+        stacked_pane_list_orientation,
         show_startup_tips,
         show_release_notes,
         advanced_mouse_actions,
@@ -275,6 +276,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         ),
         (SettingKey::StackedResize, display_text(stacked_resize)),
         (SettingKey::StackedPaneList, display_text(stacked_pane_list)),
+        (
+            SettingKey::StackedPaneListOrientation,
+            display_text(stacked_pane_list_orientation),
+        ),
         (SettingKey::ShowStartupTips, display_text(show_startup_tips)),
         (
             SettingKey::ShowReleaseNotes,
@@ -732,6 +737,10 @@ fn attention_values(
         attention.done_threshold_secs.map(|v| v.to_string()),
     );
     values.insert(
+        SettingKey::AttentionTrackCommands,
+        attention.track_commands.map(|v| v.to_string()),
+    );
+    values.insert(
         SettingKey::AttentionIdleActivitySecs,
         attention.idle_activity_secs.map(|v| v.to_string()),
     );
@@ -748,15 +757,98 @@ fn attention_values(
         attention.tray_icon.map(|v| v.to_string()),
     );
     values.insert(
-        SettingKey::AttentionDesktopNotifications,
-        attention
-            .desktop_notifications
-            .map(|v| v.as_str().to_owned()),
+        SettingKey::AttentionEnabled,
+        attention.enabled.map(|v| v.to_string()),
     );
     values.insert(
         SettingKey::AttentionNotificationDetails,
         attention.notification_details.map(|v| v.to_string()),
     );
+    for status in crate::input::attention::BADGE_STATUSES {
+        if let Some(key) = popup_setting_key(status) {
+            values.insert(
+                key,
+                attention
+                    .desktop_notifications
+                    .get(status)
+                    .map(|v| v.to_string()),
+            );
+        }
+        if let Some(key) = badge_setting_key(status) {
+            values.insert(key, attention.tray_badge.get(status).map(|v| v.to_string()));
+        }
+        if let Some(key) = badge_colour_setting_key(status) {
+            values.insert(
+                key,
+                attention
+                    .tray_badge_colors
+                    .get(status)
+                    .map(crate::input::attention::colour_text),
+            );
+        }
+    }
+}
+
+pub fn popup_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionPopupNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionPopupFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionPopupDone),
+        _ => None,
+    }
+}
+
+pub fn badge_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionBadgeNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionBadgeFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionBadgeDone),
+        AttentionStatus::Working => Some(SettingKey::AttentionBadgeWorking),
+        AttentionStatus::Quiet => Some(SettingKey::AttentionBadgeQuiet),
+        AttentionStatus::NewOutput => Some(SettingKey::AttentionBadgeNewOutput),
+        AttentionStatus::Idle => None,
+    }
+}
+
+pub fn badge_colour_setting_key(status: crate::attention::AttentionStatus) -> Option<SettingKey> {
+    use crate::attention::AttentionStatus;
+    match status {
+        AttentionStatus::NeedsYou => Some(SettingKey::AttentionBadgeColorNeedsYou),
+        AttentionStatus::Failed => Some(SettingKey::AttentionBadgeColorFailed),
+        AttentionStatus::Done => Some(SettingKey::AttentionBadgeColorDone),
+        AttentionStatus::Working => Some(SettingKey::AttentionBadgeColorWorking),
+        AttentionStatus::Quiet => Some(SettingKey::AttentionBadgeColorQuiet),
+        AttentionStatus::NewOutput => Some(SettingKey::AttentionBadgeColorNewOutput),
+        AttentionStatus::Idle => None,
+    }
+}
+
+fn copy_status_setting(
+    target: &mut crate::input::attention::AttentionConfig,
+    source: &crate::input::attention::AttentionConfig,
+    key: SettingKey,
+) -> bool {
+    for status in crate::input::attention::BADGE_STATUSES {
+        if popup_setting_key(status) == Some(key) {
+            target
+                .desktop_notifications
+                .set(status, source.desktop_notifications.get(status));
+            return true;
+        }
+        if badge_setting_key(status) == Some(key) {
+            target.tray_badge.set(status, source.tray_badge.get(status));
+            return true;
+        }
+        if badge_colour_setting_key(status) == Some(key) {
+            target
+                .tray_badge_colors
+                .set(status, source.tray_badge_colors.get(status));
+            return true;
+        }
+    }
+    false
 }
 
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
@@ -787,6 +879,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             target.attention.done_threshold_secs = source.attention.done_threshold_secs;
             return;
         },
+        SettingKey::AttentionTrackCommands => {
+            target.attention.track_commands = source.attention.track_commands;
+            return;
+        },
         SettingKey::AttentionIdleActivitySecs => {
             target.attention.idle_activity_secs = source.attention.idle_activity_secs;
             return;
@@ -803,8 +899,8 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             target.attention.tray_icon = source.attention.tray_icon;
             return;
         },
-        SettingKey::AttentionDesktopNotifications => {
-            target.attention.desktop_notifications = source.attention.desktop_notifications;
+        SettingKey::AttentionEnabled => {
+            target.attention.enabled = source.attention.enabled;
             return;
         },
         SettingKey::AttentionNotificationDetails => {
@@ -812,6 +908,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             return;
         },
         _ => {},
+    }
+    if copy_status_setting(&mut target.attention, &source.attention, key) {
+        return;
     }
     match key {
         SettingKey::SimplifiedUi => options.simplified_ui = from.simplified_ui,
@@ -878,6 +977,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::WebSharing => options.web_sharing = from.web_sharing,
         SettingKey::StackedResize => options.stacked_resize = from.stacked_resize,
         SettingKey::StackedPaneList => options.stacked_pane_list = from.stacked_pane_list,
+        SettingKey::StackedPaneListOrientation => {
+            options.stacked_pane_list_orientation = from.stacked_pane_list_orientation
+        },
         SettingKey::ShowStartupTips => options.show_startup_tips = from.show_startup_tips,
         SettingKey::ShowReleaseNotes => options.show_release_notes = from.show_release_notes,
         SettingKey::AdvancedMouseActions => {

@@ -654,6 +654,7 @@ impl Screen {
             Ok(()) => {},
             Err(e) => log::error!("Failed to write mirror input to {:?}: {}", pane_id, e),
         }
+        self.note_attention_input();
         if claims && self.pane_mirrors.reclaim(subscriber_id, Instant::now()) {
             self.apply_mirror_pins_and_render();
         }
