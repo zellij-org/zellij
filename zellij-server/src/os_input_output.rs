@@ -742,6 +742,9 @@ pub trait ServerOsApi: Send + Sync {
             Err(error) => (0, Err(error)),
         }
     }
+    /// Cancel an asynchronous write whose queued bytes are being discarded.
+    /// Backends without asynchronous writes do nothing.
+    fn cancel_pending_tty_write(&self, _terminal_id: u32) {}
     /// Record `generation` on the endpoint already registered for `terminal_id`.
     /// A missing endpoint is left missing. Stamped writes fail until this
     /// matches the generation they were admitted with.
@@ -935,6 +938,9 @@ impl ServerOsApi for ServerOsInputOutput {
     ) -> (usize, Result<()>) {
         self.pty_backend
             .write_to_tty_stdin_for_run_with_progress(terminal_id, generation, buf)
+    }
+    fn cancel_pending_tty_write(&self, terminal_id: u32) {
+        self.pty_backend.cancel_pending_tty_write(terminal_id);
     }
     fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
         self.pty_backend
@@ -1262,7 +1268,10 @@ impl Drop for ResizeCache {
     }
 }
 
-fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> Vec<String> {
+pub(crate) fn apply_post_command_hook(
+    command: Vec<String>,
+    post_hook: &Option<String>,
+) -> Vec<String> {
     let Some(post_hook) = post_hook else {
         return command;
     };

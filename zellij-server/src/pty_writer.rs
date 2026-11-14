@@ -320,10 +320,14 @@ fn adopt_run(
     pending: &mut HashMap<u32, PendingQueue>,
     terminal_id: u32,
     generation: u64,
+    os_input: Option<&dyn ServerOsApi>,
 ) {
     let previous = adopted_runs.insert(terminal_id, generation);
     if matches!(previous, Some(current) if current != generation) {
         if let Some(queue) = pending.get_mut(&terminal_id) {
+            if let Some(os_input) = os_input {
+                os_input.cancel_pending_tty_write(terminal_id);
+            }
             queue.fail_all("the pane started another command before this input was written");
         }
     } else if previous.is_none() {
@@ -340,8 +344,15 @@ fn adopt_run(
     }
 }
 
-fn fail_pending_writes(pending: &mut HashMap<u32, PendingQueue>, reason: &str) {
-    for queue in pending.values_mut() {
+fn fail_pending_writes(
+    pending: &mut HashMap<u32, PendingQueue>,
+    reason: &str,
+    os_input: Option<&dyn ServerOsApi>,
+) {
+    for (terminal_id, queue) in pending.iter_mut() {
+        if let Some(os_input) = os_input {
+            os_input.cancel_pending_tty_write(*terminal_id);
+        }
         queue.fail_all(reason);
     }
 }
@@ -384,7 +395,11 @@ impl PtyWriterLoop {
         // Pending completions were handed off; fail_all reports them. A drained
         // Write still owns its guard, so dropping it settles the reservation.
         // Anything that arrives after this drain is settled when the receiver drops.
-        fail_pending_writes(&mut self.pending, self.exit_reason);
+        fail_pending_writes(
+            &mut self.pending,
+            self.exit_reason,
+            self.bus.os_input.as_deref(),
+        );
         for instruction in self.bus.drain_available() {
             drop(instruction);
         }
@@ -453,6 +468,7 @@ impl PtyWriterLoop {
                                 bytes.len(),
                                 MAX_PENDING_BYTES,
                             );
+                            os_input.cancel_pending_tty_write(terminal_id);
                             queue.fail_all(
                                 "pty write queue overflowed the pending byte limit; \
                                  the write was discarded before reaching the terminal",
@@ -517,6 +533,7 @@ impl PtyWriterLoop {
                             &mut self.pending,
                             terminal_id,
                             generation,
+                            Some(os_input.as_ref()),
                         );
                     },
                     PtyWriteInstruction::ForgetRun(terminal_id) => {
@@ -574,6 +591,7 @@ fn drain_terminal_turn(
     let mut turn_calls = 0usize;
     while turn_calls < MAX_DRAIN_CALLS_PER_TURN && turn_bytes < MAX_DRAIN_BYTES_PER_TURN {
         if queue.reject_other_run(adopted) {
+            os_input.cancel_pending_tty_write(tid);
             turn_calls += 1;
             progress = true;
             continue;
@@ -613,6 +631,7 @@ fn drain_terminal_turn(
                 // rest is not described as never sent.
                 let message = error.to_string();
                 Err::<(), _>(error).with_context(err_context).non_fatal();
+                os_input.cancel_pending_tty_write(tid);
                 queue.fail_after_write_error(&message);
                 break;
             },
@@ -722,7 +741,7 @@ mod tests {
         });
         pending.insert(1, queue);
 
-        adopt_run(&mut adopted, &mut pending, 1, 7);
+        adopt_run(&mut adopted, &mut pending, 1, 7, None);
         assert_eq!(pending.get(&1).map(|queue| queue.writes.len()), Some(1));
         assert_eq!(
             pending.get(&1).unwrap().writes[0].run_generation,
@@ -731,10 +750,10 @@ mod tests {
         );
         assert!(keep_rx.try_recv().is_err());
 
-        adopt_run(&mut adopted, &mut pending, 1, 7);
+        adopt_run(&mut adopted, &mut pending, 1, 7, None);
         assert_eq!(pending.get(&1).map(|queue| queue.writes.len()), Some(1));
 
-        adopt_run(&mut adopted, &mut pending, 1, 8);
+        adopt_run(&mut adopted, &mut pending, 1, 8, None);
         let discarded = keep_rx.blocking_recv().expect("discarded write resolves");
         assert!(discarded.error_message.is_some());
         assert!(pending.get(&1).unwrap().is_empty());

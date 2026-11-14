@@ -727,7 +727,7 @@ fn a_queued_write_does_not_reach_a_replacement_before_adoption() {
         assert_eq!(queue.writes.len(), 1, "{bytes:?} did not stay queued");
         let mut pending = HashMap::from([(1, queue)]);
         let mut adopted = HashMap::from([(1, 1u64)]);
-        super::adopt_run(&mut adopted, &mut pending, 1, 2);
+        super::adopt_run(&mut adopted, &mut pending, 1, 2, None);
         assert!(pending[&1].is_empty(), "{bytes:?} survived adoption");
     }
     assert!(

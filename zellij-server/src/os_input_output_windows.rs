@@ -4,24 +4,24 @@ use crate::os_input_output::{
 use crate::panes::PaneId;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     ffi::OsStr,
     io,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, ERROR_IO_PENDING, ERROR_OPERATION_ABORTED,
-    GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, STILL_ACTIVE, S_OK, WAIT_FAILED,
-    WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, ERROR_IO_PENDING, ERROR_NOT_FOUND,
+    ERROR_OPERATION_ABORTED, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
+    STILL_ACTIVE, S_OK, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
@@ -52,19 +52,22 @@ const PIPE_TYPE_BYTE: u32 = 0;
 const PIPE_WAIT: u32 = 0;
 
 /// Bound on one ConPTY input write. A child that stops reading must not pin
-/// the pty-writer thread forever; the overlapped write is cancelled and
-/// reclaimed when this expires.
+/// the shared pty-writer thread; when this expires the overlapped write is
+/// cancelled and its storage is reclaimed asynchronously.
 const CONPTY_INPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Monotonic counter so each ConPTY output pipe gets a unique name, even when
 /// re-spawning on the same `terminal_id` (the old async reader may still hold
 /// the previous pipe handle).
 static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
+static TERMINAL_INCARNATION_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Per-terminal ConPTY state.
 struct ConPtyTerminal {
     hpcon: HPCON,
     input_write_handle: HANDLE,
+    /// Distinguishes a replacement console that reuses the same terminal id.
+    incarnation: u64,
     /// `None` until the run that owns this console is bound. A stamped
     /// write is refused until it matches.
     generation: Option<u64>,
@@ -128,19 +131,126 @@ fn duplicate_write_handle(handle: HANDLE) -> io::Result<HANDLE> {
     }
 }
 
-/// Write to an overlapped pipe handle, cancelling the operation and waiting
-/// for it to be reclaimed if `timeout` expires.
-///
-/// The `OVERLAPPED` and the caller's buffer stay alive until completion,
-/// including after `CancelIoEx`, so the kernel never retains a dangling
-/// pointer.
-fn write_overlapped_with_timeout(
+/// One overlapped ConPTY input write. The buffer and `OVERLAPPED` are owned
+/// here until the kernel has finished with them, including after
+/// `CancelIoEx`, so the shared pty writer never has to wait for a stalled
+/// terminal.
+struct PendingOverlappedWrite {
+    overlapped: Box<OVERLAPPED>,
+    event: HANDLE,
+    handle: HANDLE,
+    #[allow(dead_code)]
+    buffer: Vec<u8>,
+    started_at: Instant,
+    cancelled: bool,
+    generation: Option<u64>,
+    incarnation: u64,
+}
+
+// Raw OS handles are safe to move between threads; the kernel operation and
+// its storage are owned by this struct for the whole lifetime of the I/O.
+unsafe impl Send for PendingOverlappedWrite {}
+
+impl PendingOverlappedWrite {
+    fn poll(&mut self) -> Option<(usize, io::Result<()>)> {
+        match unsafe { WaitForSingleObject(self.event, 0) } {
+            WAIT_OBJECT_0 => {
+                let mut transferred: u32 = 0;
+                if unsafe {
+                    GetOverlappedResult(self.handle, &*self.overlapped, &mut transferred, 0)
+                } == 0
+                {
+                    let error = io::Error::last_os_error();
+                    if error.raw_os_error() == Some(ERROR_OPERATION_ABORTED as i32) {
+                        Some((
+                            transferred as usize,
+                            Err(io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                "ConPTY input write timed out",
+                            )),
+                        ))
+                    } else {
+                        Some((transferred as usize, Err(error)))
+                    }
+                } else {
+                    Some((transferred as usize, Ok(())))
+                }
+            },
+            WAIT_TIMEOUT => None,
+            WAIT_FAILED => Some((0, Err(io::Error::last_os_error()))),
+            other => Some((
+                0,
+                Err(io::Error::other(format!(
+                    "unexpected wait result {}",
+                    other
+                ))),
+            )),
+        }
+    }
+
+    fn cancel(&mut self) {
+        if self.cancelled {
+            return;
+        }
+        if unsafe { CancelIoEx(self.handle, &*self.overlapped) } != 0 {
+            self.cancelled = true;
+            return;
+        }
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() == Some(ERROR_NOT_FOUND as i32) {
+            // The operation already completed; there is nothing to cancel.
+            self.cancelled = true;
+        } else {
+            log::warn!("CancelIoEx failed for a ConPTY input write: {error}");
+        }
+    }
+}
+
+impl Drop for PendingOverlappedWrite {
+    fn drop(&mut self) {
+        let completed = unsafe {
+            if !self.cancelled {
+                let _ = CancelIoEx(self.handle, &*self.overlapped);
+            }
+            WaitForSingleObject(self.event, 1000) == WAIT_OBJECT_0
+        };
+        if completed {
+            unsafe {
+                let mut transferred: u32 = 0;
+                let _ = GetOverlappedResult(self.handle, &*self.overlapped, &mut transferred, 0);
+                if !self.event.is_null() {
+                    CloseHandle(self.event);
+                }
+                if !self.handle.is_null() {
+                    CloseHandle(self.handle);
+                }
+            }
+        } else {
+            // The driver never completed cancellation. Freeing the storage
+            // now would let the kernel write into released memory, so leak the
+            // kernel-visible pieces instead. This is teardown, not the shared
+            // writer path, and should be exceptional.
+            log::error!("leaking a ConPTY overlapped write that did not complete cancellation");
+            let overlapped = std::mem::replace(
+                &mut self.overlapped,
+                Box::new(unsafe { std::mem::zeroed() }),
+            );
+            std::mem::forget(overlapped);
+            std::mem::forget(std::mem::take(&mut self.buffer));
+            self.event = std::ptr::null_mut();
+            self.handle = std::ptr::null_mut();
+        }
+    }
+}
+
+fn start_overlapped_write(
     handle: HANDLE,
     buf: &[u8],
-    timeout: Duration,
-) -> (usize, io::Result<()>) {
+    generation: Option<u64>,
+    incarnation: u64,
+) -> (usize, io::Result<()>, Option<PendingOverlappedWrite>) {
     if buf.is_empty() {
-        return (0, Ok(()));
+        return (0, Ok(()), None);
     }
     let len = match u32::try_from(buf.len()) {
         Ok(len) => len,
@@ -151,63 +261,128 @@ fn write_overlapped_with_timeout(
                     io::ErrorKind::InvalidInput,
                     "ConPTY input chunk exceeds u32",
                 )),
+                None,
             );
         },
     };
     let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
     if event.is_null() {
-        return (0, Err(io::Error::last_os_error()));
+        return (0, Err(io::Error::last_os_error()), None);
     }
-    let _close_event = CloseOnDrop(event);
-    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    let mut overlapped: Box<OVERLAPPED> = Box::new(unsafe { std::mem::zeroed() });
     overlapped.hEvent = event;
+    let buffer = buf.to_vec();
     let mut written: u32 = 0;
-    if unsafe { WriteFile(handle, buf.as_ptr(), len, &mut written, &mut overlapped) } != 0 {
-        return (written as usize, Ok(()));
+    if unsafe { WriteFile(handle, buffer.as_ptr(), len, &mut written, &mut *overlapped) } != 0 {
+        unsafe { CloseHandle(event) };
+        return (written as usize, Ok(()), None);
     }
     let error = io::Error::last_os_error();
     if error.raw_os_error() != Some(ERROR_IO_PENDING as i32) {
-        return (0, Err(error));
+        unsafe { CloseHandle(event) };
+        return (0, Err(error), None);
     }
 
-    let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
-    match unsafe { WaitForSingleObject(event, timeout_ms) } {
-        WAIT_OBJECT_0 => {
-            let mut transferred: u32 = 0;
-            if unsafe { GetOverlappedResult(handle, &overlapped, &mut transferred, 0) } == 0 {
-                (0, Err(io::Error::last_os_error()))
-            } else {
-                (transferred as usize, Ok(()))
+    (
+        0,
+        Ok(()),
+        Some(PendingOverlappedWrite {
+            overlapped,
+            event,
+            handle,
+            buffer,
+            started_at: Instant::now(),
+            cancelled: false,
+            generation,
+            incarnation,
+        }),
+    )
+}
+
+/// Cancel operations that exceeded their deadline and reclaim retired
+/// operations once the kernel releases their storage. This is one thread for
+/// the whole backend, not one per write.
+fn spawn_overlapped_reaper(
+    terminals: Weak<Mutex<BTreeMap<u32, Option<ConPtyTerminal>>>>,
+    pending: Weak<Mutex<HashMap<u32, PendingOverlappedWrite>>>,
+    retired: Weak<Mutex<Vec<PendingOverlappedWrite>>>,
+) -> io::Result<()> {
+    std::thread::Builder::new()
+        .name("conpty-write-reaper".to_owned())
+        .spawn(move || loop {
+            let (Some(terminals), Some(pending), Some(retired)) =
+                (terminals.upgrade(), pending.upgrade(), retired.upgrade())
+            else {
+                break;
+            };
+            let live_incarnations: HashMap<u32, u64> = {
+                let terminals = terminals.lock().unwrap_or_else(|error| error.into_inner());
+                terminals
+                    .iter()
+                    .filter_map(|(terminal_id, terminal)| {
+                        terminal
+                            .as_ref()
+                            .map(|terminal| (*terminal_id, terminal.incarnation))
+                    })
+                    .collect()
+            };
+            let mut newly_retired = Vec::new();
+            {
+                let mut pending = pending.lock().unwrap_or_else(|error| error.into_inner());
+                let stale: Vec<u32> = pending
+                    .iter()
+                    .filter(|(terminal_id, write)| {
+                        live_incarnations.get(terminal_id) != Some(&write.incarnation)
+                    })
+                    .map(|(terminal_id, _)| *terminal_id)
+                    .collect();
+                for terminal_id in stale {
+                    if let Some(mut write) = pending.remove(&terminal_id) {
+                        write.cancel();
+                        newly_retired.push(write);
+                    }
+                }
+                for write in pending.values_mut() {
+                    if !write.cancelled && write.started_at.elapsed() >= CONPTY_INPUT_WRITE_TIMEOUT
+                    {
+                        write.cancel();
+                    }
+                }
             }
-        },
-        WAIT_TIMEOUT => {
-            unsafe { CancelIoEx(handle, &overlapped) };
-            let mut transferred: u32 = 0;
-            if unsafe { GetOverlappedResult(handle, &overlapped, &mut transferred, 1) } != 0 {
-                return (transferred as usize, Ok(()));
+            if !newly_retired.is_empty() {
+                let mut retired = retired.lock().unwrap_or_else(|error| error.into_inner());
+                retired.append(&mut newly_retired);
             }
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() == Some(ERROR_OPERATION_ABORTED as i32) {
-                (
-                    transferred as usize,
-                    Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "ConPTY input write timed out",
-                    )),
-                )
-            } else {
-                (transferred as usize, Err(error))
-            }
-        },
-        WAIT_FAILED => (0, Err(io::Error::last_os_error())),
-        other => (
-            0,
-            Err(io::Error::other(format!(
-                "unexpected wait result {}",
-                other
-            ))),
-        ),
-    }
+            let completed: Vec<PendingOverlappedWrite> = {
+                let mut retired = retired.lock().unwrap_or_else(|error| error.into_inner());
+                let mut completed = Vec::new();
+                let mut index = 0;
+                while index < retired.len() {
+                    if retired[index].poll().is_some() {
+                        completed.push(retired.swap_remove(index));
+                    } else {
+                        index += 1;
+                    }
+                }
+                completed
+            };
+            drop(completed);
+            drop(terminals);
+            drop(pending);
+            drop(retired);
+            std::thread::sleep(Duration::from_millis(25));
+        })
+        .map(|_| ())
+}
+
+/// Cancel an operation whose result no longer matters. The reaper reclaims
+/// its storage once the kernel completes the cancellation.
+fn retire_overlapped_write(
+    entry: PendingOverlappedWrite,
+    retired: &Mutex<Vec<PendingOverlappedWrite>>,
+) {
+    let mut retired = retired.lock().unwrap_or_else(|error| error.into_inner());
+    retired.push(entry);
 }
 
 /// An `AsyncReader` backed by a named pipe connected to ConPTY output.
@@ -599,14 +774,32 @@ pub(crate) struct WindowsPtyBackend {
     terminals: Arc<Mutex<BTreeMap<u32, Option<ConPtyTerminal>>>>,
     last_terminal_sizes: Arc<Mutex<BTreeMap<u32, (u16, u16)>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
+    /// At most one in-flight overlapped input write per terminal. The shared
+    /// pty writer polls completion instead of waiting for a stuck ConPTY.
+    pending_writes: Arc<Mutex<HashMap<u32, PendingOverlappedWrite>>>,
+    /// Cancelled operations whose result is no longer needed. They keep their
+    /// buffer and OVERLAPPED alive until the kernel releases them.
+    retired_writes: Arc<Mutex<Vec<PendingOverlappedWrite>>>,
 }
 
 impl WindowsPtyBackend {
     pub fn new() -> Result<Self, io::Error> {
+        let terminals = Arc::new(Mutex::new(BTreeMap::new()));
+        let pending_writes = Arc::new(Mutex::new(HashMap::new()));
+        let retired_writes = Arc::new(Mutex::new(Vec::new()));
+        if let Err(error) = spawn_overlapped_reaper(
+            Arc::downgrade(&terminals),
+            Arc::downgrade(&pending_writes),
+            Arc::downgrade(&retired_writes),
+        ) {
+            log::error!("failed to start the ConPTY write reaper: {error}");
+        }
         Ok(Self {
-            terminals: Arc::new(Mutex::new(BTreeMap::new())),
+            terminals,
             last_terminal_sizes: Arc::new(Mutex::new(BTreeMap::new())),
             next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
+            pending_writes,
+            retired_writes,
         })
     }
 
@@ -714,17 +907,30 @@ impl WindowsPtyBackend {
             },
         };
 
-        // 6. Store per-terminal state
-        self.terminals.lock().unwrap().insert(
+        // 6. Store per-terminal state. Drop any replaced console only after
+        // releasing the registry lock: ClosePseudoConsole can block while the
+        // output pipe is still being drained on older Windows versions.
+        let replaced_terminal = self.terminals.lock().unwrap().insert(
             terminal_id,
             Some(ConPtyTerminal {
                 hpcon,
                 input_write_handle: input_write,
+                incarnation: TERMINAL_INCARNATION_SEQ.fetch_add(1, Ordering::Relaxed),
                 generation: None,
                 process_handle,
                 child_pid,
             }),
         );
+        drop(replaced_terminal);
+        let replaced_pending = self
+            .pending_writes
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&terminal_id);
+        if let Some(mut replaced_pending) = replaced_pending {
+            replaced_pending.cancel();
+            retire_overlapped_write(replaced_pending, &self.retired_writes);
+        }
 
         // 7. Exit-monitoring thread (zero CPU — spends all time in kernel wait).
         // Its duplicate is closed after `quit_cb`, not before: the callback
@@ -858,11 +1064,62 @@ impl WindowsPtyBackend {
     ) -> (usize, Result<()>) {
         let err_context = || format!("failed to write to stdin of terminal {}", terminal_id);
 
+        let mut retired_entry = None;
+        let mut completed_entry = None;
+        {
+            let mut pending = self
+                .pending_writes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let mut generation_changed = false;
+            if let Some(entry) = pending.get_mut(&terminal_id) {
+                if generation.is_none() && entry.generation.is_some() {
+                    return (
+                        0,
+                        Err(anyhow!(
+                            "a run-stamped ConPTY input write is already in flight for terminal {}",
+                            terminal_id
+                        )),
+                    );
+                }
+                if let (Some(expected), Some(existing)) = (generation, entry.generation) {
+                    if existing != expected {
+                        entry.cancel();
+                        generation_changed = true;
+                    }
+                }
+                if !generation_changed {
+                    if !entry.cancelled && entry.started_at.elapsed() >= CONPTY_INPUT_WRITE_TIMEOUT
+                    {
+                        entry.cancel();
+                    }
+                    match entry.poll() {
+                        None => return (0, Ok(())),
+                        Some(result) => {
+                            completed_entry =
+                                pending.remove(&terminal_id).map(|entry| (result, entry));
+                        },
+                    }
+                }
+            }
+            if generation_changed {
+                retired_entry = pending.remove(&terminal_id);
+            }
+        }
+        if let Some(entry) = retired_entry {
+            retire_overlapped_write(entry, &self.retired_writes);
+            return (0, Err(anyhow::Error::new(TerminalRunChangedBeforeWrite)));
+        }
+        if let Some(((written, result), entry)) = completed_entry {
+            drop(entry);
+            return (written, result.with_context(err_context));
+        }
+
         // Duplicate under the lock, after the generation check, and write the
-        // duplicate after releasing it. A blocking WriteFile must not stall
+        // duplicate after releasing it. A pending overlapped write must not stall
         // every other pane's spawn, kill, or write. The duplicate still names
         // the console that passed the check.
-        let handle = {
+        let (handle, incarnation) = {
             let terminals = match self.terminals.lock().to_anyhow().with_context(err_context) {
                 Ok(terminals) => terminals,
                 Err(error) => return (0, Err(error)),
@@ -875,7 +1132,7 @@ impl WindowsPtyBackend {
                         }
                     }
                     match duplicate_write_handle(term.input_write_handle) {
-                        Ok(handle) => handle,
+                        Ok(handle) => (handle, term.incarnation),
                         Err(error) => return (0, Err(error).with_context(err_context)),
                     }
                 },
@@ -888,9 +1145,43 @@ impl WindowsPtyBackend {
                 },
             }
         };
-        let _close = CloseOnDrop(handle);
-        let (written, result) =
-            write_overlapped_with_timeout(handle, buf, CONPTY_INPUT_WRITE_TIMEOUT);
+        let (written, result, pending_entry) =
+            start_overlapped_write(handle, buf, generation, incarnation);
+        if let Some(entry) = pending_entry {
+            // The pending operation now owns the duplicated handle.
+            let replaced = self
+                .pending_writes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(terminal_id, entry);
+            if let Some(replaced) = replaced {
+                retire_overlapped_write(replaced, &self.retired_writes);
+            }
+            let still_current = self.terminals.lock().ok().and_then(|terminals| {
+                terminals
+                    .get(&terminal_id)
+                    .and_then(|terminal| terminal.as_ref())
+                    .map(|terminal| terminal.incarnation)
+            }) == Some(incarnation);
+            if !still_current {
+                let stale = self
+                    .pending_writes
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .remove(&terminal_id);
+                if let Some(mut stale) = stale {
+                    stale.cancel();
+                    retire_overlapped_write(stale, &self.retired_writes);
+                }
+                return (
+                    0,
+                    Err(anyhow!("no ConPTY terminal found for id {}", terminal_id))
+                        .with_context(err_context),
+                );
+            }
+            return (0, Ok(()));
+        }
+        unsafe { CloseHandle(handle) };
         (written, result.with_context(err_context))
     }
 
@@ -1002,9 +1293,33 @@ impl WindowsPtyBackend {
     }
 
     pub fn clear_terminal_id(&self, terminal_id: u32) {
-        self.terminals.lock().unwrap().remove(&terminal_id);
+        let removed_terminal = self.terminals.lock().unwrap().remove(&terminal_id);
+        let pending_write = self
+            .pending_writes
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&terminal_id);
+        if let Some(mut pending_write) = pending_write {
+            pending_write.cancel();
+            retire_overlapped_write(pending_write, &self.retired_writes);
+        }
+        // ClosePseudoConsole may wait for output to be drained. Never hold the
+        // terminal registry lock while that destructor runs, and revoke the
+        // input write before tearing the console down.
+        drop(removed_terminal);
         if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
             sizes.remove(&terminal_id);
+        }
+    }
+    pub fn cancel_pending_tty_write(&self, terminal_id: u32) {
+        let pending_write = self
+            .pending_writes
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&terminal_id);
+        if let Some(mut pending_write) = pending_write {
+            pending_write.cancel();
+            retire_overlapped_write(pending_write, &self.retired_writes);
         }
     }
 
