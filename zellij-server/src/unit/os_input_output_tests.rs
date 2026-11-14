@@ -223,6 +223,134 @@ fn spawn_and_read_output() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_script_with_a_missing_interpreter_reports_spawn_failure() {
+    use crate::panes::PaneId;
+    use std::os::unix::fs::PermissionsExt;
+    use zellij_utils::input::command::TerminalAction;
+
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("missing-interpreter");
+    std::fs::write(&script, b"#!/zellij-exec-status-does-not-exist\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let server = make_server();
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+    let result = server.spawn_terminal(
+        TerminalAction::RunCommand(RunCommand {
+            command: script,
+            ..Default::default()
+        }),
+        quit_cb,
+        None,
+        &Default::default(),
+    );
+    let error = match result {
+        Ok(_) => panic!("a failed exec was reported as a successful spawn"),
+        Err(error) => error,
+    };
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("No such file") || message.contains("os error 2"),
+        "the exec failure must reach the caller: {message}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_post_command_hook_runs_before_returning_the_command() {
+    let started_at = std::time::Instant::now();
+    let command = crate::os_input_output::apply_post_command_hook(
+        vec!["original".to_owned()],
+        &Some("sleep 1; echo $RESURRECT_COMMAND".to_owned()),
+    );
+    assert!(
+        started_at.elapsed() >= std::time::Duration::from_millis(900),
+        "the hook must be allowed to finish"
+    );
+    assert_eq!(command, vec!["original".to_owned()]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_successful_exec_does_not_inherit_a_nonstdio_descriptor() {
+    use crate::panes::PaneId;
+    use std::os::fd::AsRawFd;
+    use zellij_utils::input::command::TerminalAction;
+
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("marker");
+    std::fs::write(&marker, b"sentinel").unwrap();
+    let file = std::fs::File::open(&marker).unwrap();
+    // Pick a descriptor above the range the shell or runtime normally opens,
+    // and make it inheritable so only Zellij's pre-exec sweep can exclude it.
+    let sentinel = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_DUPFD, 200) };
+    assert!(sentinel >= 0, "failed to duplicate the sentinel descriptor");
+    let flags = unsafe { libc::fcntl(sentinel, libc::F_GETFD) };
+    assert!(flags >= 0);
+    assert!(
+        unsafe { libc::fcntl(sentinel, libc::F_SETFD, flags & !libc::FD_CLOEXEC) } >= 0,
+        "failed to clear close-on-exec on the sentinel"
+    );
+
+    let server = make_server();
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
+        .spawn_terminal(
+            TerminalAction::RunCommand(RunCommand {
+                command: PathBuf::from("sh"),
+                args: vec![
+                    "-c".to_owned(),
+                    format!(
+                        "if [ -e /proc/self/fd/{sentinel} ]; then echo leaked; else echo clean; fi"
+                    ),
+                ],
+                ..Default::default()
+            }),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
+        .expect("spawn_terminal should succeed");
+    unsafe { libc::close(sentinel) };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            let text = String::from_utf8_lossy(&output);
+            if text.contains("leaked") || text.contains("clean") {
+                break;
+            }
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        output
+    });
+    let text = String::from_utf8_lossy(&output);
+    assert!(text.contains("clean"), "sentinel descriptor leaked: {text}");
+    assert!(
+        !text.contains("leaked"),
+        "sentinel descriptor leaked: {text}"
+    );
+}
+
 // Run with this process's stdin redirected to NUL by the test below, the way a server started
 // by the zellij-terminal launcher runs: a pane's shell must still read the pseudo console.
 #[cfg(windows)]

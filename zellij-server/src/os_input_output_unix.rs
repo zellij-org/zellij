@@ -512,7 +512,13 @@ fn handle_openpty(
                 if libc::login_tty(pid_secondary) != 0 {
                     return Err(io::Error::last_os_error());
                 }
-                close_fds::close_open_fds(3, &[]);
+                // Mark non-stdio descriptors close-on-exec instead of closing
+                // them here. Rust's spawn path uses a close-on-exec status
+                // channel to report an exec failure back to the parent; closing
+                // it in `pre_exec` makes that failure look like a successful
+                // exec. Close-on-exec still keeps the descriptors out of the
+                // executed program.
+                close_fds::set_fds_cloexec(3, &[]);
                 Ok(())
             })
             .spawn()
@@ -1041,6 +1047,7 @@ impl UnixPtyBackend {
             sizes.remove(&terminal_id);
         }
     }
+    pub fn cancel_pending_tty_write(&self, _terminal_id: u32) {}
 
     pub fn next_terminal_id(&self) -> Option<u32> {
         Some(
