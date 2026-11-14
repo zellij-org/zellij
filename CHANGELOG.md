@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: open links with Cmd+click in the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5888)
 * feat: paste the path of a file dropped onto the window (https://github.com/zellij-org/zellij/pull/5870)
 * fix: web client on touch devices with a hardware keyboard losing function keys and shortcuts, and dropping doubled letters from pastes (https://github.com/zellij-org/zellij/pull/5890)
+* fix: pane boundaries next to a borderless plugin when pane frames are off (https://github.com/zellij-org/zellij/pull/5874)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
